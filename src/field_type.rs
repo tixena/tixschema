@@ -2126,7 +2126,7 @@ impl FieldDef {
 
     /// Whether the type this field names is an untagged enum whose Zod schema is a discriminated
     /// union, as [`Self::zod_union_members`] reads the members of one that is not.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     pub fn zod_discriminated_union(&self) -> bool {
         if self.array_depth > 0 || self.is_written_around() {
             return false;
@@ -2273,7 +2273,7 @@ impl FieldDef {
     /// binding that publishes it and held to the union's checks: what an object joins in place of
     /// the union's own binding, which reads a payload whole and refuses one that two of its members
     /// accept beside the keys of the object. Nothing where the union publishes no such binding.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     pub fn zod_member_references(&self) -> Vec<ZodUnionMember> {
         let Some(binding) = self.zod_members_binding() else {
             return Vec::new();
@@ -2287,7 +2287,7 @@ impl FieldDef {
     }
 
     /// The binding that publishes, one by one, the members of the untagged union this field names.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     pub fn zod_members_binding(&self) -> Option<String> {
         if self.array_depth > 0 || self.is_written_around() {
             return None;

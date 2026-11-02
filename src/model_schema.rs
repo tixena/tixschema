@@ -39,9 +39,11 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
+#[cfg(all(feature = "serde", feature = "zod"))]
+use crate::field_type::zod_check_wrap_handing;
 use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_check_wrap_handing, zod_preprocess_wrap};
+use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, VariantKind, classify_variant,
@@ -79,9 +81,8 @@ use crate::utils::{
 
 #[cfg(feature = "zod")]
 use crate::utils::{
-    escape_js_regex_literal, placeholders_filled, publishes_zod_factory,
-    record_zod_default_arguments, record_zod_factory, record_zod_preprocess, zod_default_arguments,
-    zod_factory_argument,
+    escape_js_regex_literal, publishes_zod_factory, record_zod_default_arguments,
+    record_zod_factory, record_zod_preprocess, zod_default_arguments, zod_factory_argument,
 };
 
 #[cfg(feature = "arky")]
@@ -219,12 +220,11 @@ use crate::utils::{ident_reexport_ts, noted_ident_reexport_ts};
 use crate::utils::ident_reexport_zod;
 
 #[cfg(feature = "zod")]
+use crate::utils::record_zod_union_members;
+#[cfg(all(feature = "serde", feature = "zod"))]
 use crate::utils::{
-    record_zod_discriminated, record_zod_union_members, record_zod_union_publication,
+    ZodUnionMember, placeholders_filled, record_zod_discriminated, record_zod_union_publication,
 };
-
-#[cfg(feature = "zod")]
-use crate::utils::ZodUnionMember;
 
 #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
 use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
@@ -1515,7 +1515,7 @@ struct PublishedBinding<'binding> {
 
 /// What an untagged enum publishes beside its own binding so an object that flattens it can join
 /// its members one by one: the binding's name and the text that declares it.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 struct PublishedMembers {
     binding: String,
     block: String,
@@ -21503,7 +21503,7 @@ fn generate_ts_definition_method(
 /// member) and so cannot be joined to an object's keys: Zod's union refuses a payload that two of
 /// its members accept beside those keys. A generic enum publishes a factory of them, one list per
 /// filling. Nothing for a union a key tells apart.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 fn zod_published_members(
     item_name: &str,
     parameters: &[String],

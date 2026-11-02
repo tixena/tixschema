@@ -17,7 +17,7 @@ use super::held_maps_models::{
     soundings_swift, stowed_haversack_swift, stowed_pocketing_swift, tabulation_swift,
 };
 #[cfg(feature = "chrono")]
-use super::held_maps_models::{at, moonrise_swift};
+use super::held_maps_models::{Moonlit, at, moonlit_swift, moonrise_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 
@@ -203,8 +203,6 @@ fn alias_rows() -> Vec<Row> {
             &Pocketing {
                 beaconing: flagged(&text()),
                 captioning: HashMap::from([("n".to_owned(), text())]),
-                #[cfg(feature = "chrono")]
-                moonrise: at(),
                 sequencing: currents(&text()),
                 tabulation: numbered(&text()),
             },
@@ -218,6 +216,12 @@ fn alias_rows() -> Vec<Row> {
         ),
         #[cfg(feature = "chrono")]
         read_row("an alias of a date", "Moonrise", &at()),
+        #[cfg(feature = "chrono")]
+        read_row(
+            "a field typed with an alias of a date",
+            "Moonlit",
+            &Moonlit { moonrise: at() },
+        ),
     ]
 }
 
@@ -255,7 +259,10 @@ fn a_map_held_as_a_type_argument_or_named_by_an_alias_reads_and_writes_in_swift_
         stowed_pocketing_swift::swift_definition(),
     ];
     #[cfg(feature = "chrono")]
-    parts.push(moonrise_swift::swift_definition());
+    parts.extend([
+        moonrise_swift::swift_definition(),
+        moonlit_swift::swift_definition(),
+    ]);
     parts.extend([HARNESS.to_owned(), calls.join("\n")]);
     let source = parts.join("\n\n");
     let Some(run) = judged(
