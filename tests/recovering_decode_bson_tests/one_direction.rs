@@ -5,7 +5,7 @@
 //! describes one.
 
 use bson::{Bson, doc};
-use read_renamed_schema::DecodeWith;
+use read_renamed_schema::{DecodeWith as _, Stored as _};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

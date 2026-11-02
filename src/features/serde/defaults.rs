@@ -32,7 +32,16 @@ const FLATTENED: &str = "`#[serde(default)]` on a flattened field is read only b
                          the default, or the flatten.";
 
 /// Why no target but Rust reads the default of a member of an enum whose defaults have no JSON.
-#[cfg(feature = "serde")]
+#[cfg(all(
+    feature = "serde",
+    any(
+        feature = "typescript",
+        feature = "zod",
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
 const UNWRITTEN: &str = "`#[serde(default)]` needs the enum to derive `Serialize`, with no `into` \
                          or `remote`, so the default can be written for the other targets.";
 

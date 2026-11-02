@@ -677,7 +677,11 @@ mod run_dart_text_keys;
 mod run_dart_no_needless_casts;
 
 /// The models of the date runs of the emitted Dart, Kotlin and Swift types.
-#[cfg(all(test, feature = "chrono"))]
+#[cfg(all(
+    test,
+    feature = "chrono",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
 #[path = "service_schema_emitted_client_tests/dates_models.rs"]
 mod dates_models;
 

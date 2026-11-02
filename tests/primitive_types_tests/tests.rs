@@ -38,7 +38,7 @@ const I64_ZOD: &str = "z.codec(z.union([z.bigint(), z.number().int()]), \
 /// Swift or Kotlin target refuses those widths, rather than swapped to a signed width.
 #[cfg(all(
     test,
-    any(feature = "typescript", feature = "zod"),
+    any(feature = "typescript", feature = "zod", feature = "serde"),
     not(any(feature = "swift", feature = "kotlin"))
 ))]
 #[model_schema(enable = ["jsonschema"])]
@@ -74,7 +74,7 @@ struct MixedIntegers {
 
 #[cfg(all(
     test,
-    any(feature = "typescript", feature = "zod"),
+    any(feature = "typescript", feature = "zod", feature = "serde"),
     not(any(feature = "swift", feature = "kotlin"))
 ))]
 #[model_schema(enable = ["jsonschema"])]
