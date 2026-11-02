@@ -203,6 +203,8 @@ test-emitted cfg="":
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_reserved
     @echo "Running the services with operations only http_rest carries, and the dated service, through the TypeScript, Dart, Swift and Kotlin clients..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests -- run_http_alone run_sundial
+    @echo "Running the service whose paths bind a renamed field through the TypeScript, Dart, Swift and Kotlin clients and the TypeScript dispatcher..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_renamed_paths
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # The tests that wait on a real clock compile only under `cfg(slow_tests)`, which no other

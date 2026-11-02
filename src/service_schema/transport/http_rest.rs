@@ -17,7 +17,8 @@ use crate::service_schema::parse::{
     service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
-    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+    message_alias_ident, message_reader_ident, message_validator_ident, message_wire_key_ident,
+    module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -834,7 +835,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
         .collect();
 
     let (value_stmts, value_expr) = message_value(
-        wire,
+        module,
         operation,
         &shape,
         &placeholder_idents,
@@ -962,13 +963,14 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
 /// Split by input shape into [`message_value_for_named`] and [`message_value_for_generated`],
 /// which is also where each shape's own rules are documented.
 fn message_value(
-    wire: &str,
+    module: &Ident,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder_idents: &[Ident],
     placeholder_names: &[String],
 ) -> (TokenStream, TokenStream) {
     let bodied = shape.method.carries_a_body();
+    let wire = operation.wire_name.as_str();
     match &operation.inputs {
         OperationInputs::Empty => {
             if bodied && !matches!(shape.body_kind, BodyKind::Multipart) {
@@ -982,9 +984,13 @@ fn message_value(
                 )
             }
         }
-        OperationInputs::Named(named_type) => {
-            message_value_for_named(wire, named_type, placeholder_idents, placeholder_names)
-        }
+        OperationInputs::Named(named_type) => message_value_for_named(
+            module,
+            operation,
+            named_type,
+            placeholder_idents,
+            placeholder_names,
+        ),
         OperationInputs::Generated(fields) => {
             message_value_for_generated(fields, shape, placeholder_names)
         }
@@ -1003,15 +1009,17 @@ fn from_body_expr(wire: &str) -> TokenStream {
 }
 
 /// A `OperationInputs::Named` message: the body with no placeholder, the one placeholder's own
-/// coerced value when the type is a scalar bound whole, or an object keyed by placeholder.
+/// coerced value when the type is a scalar bound whole, or the body with each placeholder's value
+/// over the key its member is read from, so the body cannot replace it.
 fn message_value_for_named(
-    wire: &str,
+    module: &Ident,
+    operation: &OperationDef,
     named_type: &Type,
     placeholder_idents: &[Ident],
     placeholder_names: &[String],
 ) -> (TokenStream, TokenStream) {
     if placeholder_idents.is_empty() {
-        return (TokenStream::new(), from_body_expr(wire));
+        return (TokenStream::new(), from_body_expr(&operation.wire_name));
     }
     if placeholder_idents.len() == 1 && is_scalar_named_type(named_type) {
         // The whole message *is* this one placeholder — a body, if the method carries one at all,
@@ -1021,11 +1029,17 @@ fn message_value_for_named(
         return (TokenStream::new(), decode);
     }
     let base = object_base(true);
+    let key_of = message_wire_key_ident(operation);
     let inserts: TokenStream = placeholder_names
         .iter()
         .zip(placeholder_idents)
         .map(|(name, ident)| {
-            quote! { object.insert(#name.to_owned(), ::serde_json::Value::String(#ident.clone())); }
+            quote! {
+                object.insert(
+                    $crate::#module::#key_of(#name).to_owned(),
+                    ::serde_json::Value::String(#ident.clone()),
+                );
+            }
         })
         .collect();
     (

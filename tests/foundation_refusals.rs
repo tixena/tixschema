@@ -9,7 +9,8 @@
 //! names a type that does not list `"jsonschema"`, or whose `<Service>Schema` the crate root does
 //! not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
-//! which is no brand without the `serde` feature.
+//! which is no brand without the `serde` feature, and a path placeholder that names no member a
+//! declared message reads under a key of its own.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
@@ -95,6 +96,61 @@ mod tests {
                  serde_json = \"1\"\n",
                 env!("CARGO_MANIFEST_DIR")
             ),
+        );
+    }
+
+    /// Held to the code and the message of each error, the rest being worded by rustc differently
+    /// from one release to the next.
+    #[test]
+    fn a_placeholder_that_names_no_member_of_a_declared_message_is_refused() {
+        let errors = errors_of(
+            "path_names_no_member",
+            &format!(
+                "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
+                 bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
+                 chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
+                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
+                 serde_json = \"1\"\n",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        );
+        let refused = |operation: &str, placeholder: &str| {
+            format!(
+                "evaluation panicked: service_schema: operation `{operation}`'s path names \
+                 `{{{placeholder}}}`, and its message has no field named `{placeholder}` that \
+                 serde reads under a key of its own. A path placeholder names the field as Rust \
+                 writes it, whatever key serde writes it under."
+            )
+        };
+        let reported: Vec<(&str, &str)> = errors
+            .iter()
+            .map(|error| {
+                (
+                    error["code"]["code"].as_str().unwrap_or_default(),
+                    error["message"].as_str().unwrap_or_default(),
+                )
+            })
+            .collect();
+        let expected = [
+            refused("by_wire_name", "documentId"),
+            refused("flattened_member", "title"),
+            refused("skipped_member", "cached_at"),
+        ];
+        assert_eq!(
+            reported.len(),
+            expected.len(),
+            "another count of errors: {reported:#?}"
+        );
+        for message in &expected {
+            assert!(
+                reported.contains(&("E0080", message.as_str())),
+                "not reported: {message}\nin: {reported:#?}"
+            );
+        }
+        assert!(
+            include_str!("../README.md").contains(&format!("error[E0080]: {}", expected[0])),
+            "the README no longer quotes: {}",
+            expected[0]
         );
     }
 

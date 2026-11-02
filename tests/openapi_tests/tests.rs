@@ -197,6 +197,27 @@ pub enum GetVersionError {
     VersionGone,
 }
 
+/// A message whose `document_id` the path binds, which serde reads under another key.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamedMemberRequest {
+    #[model_schema_prop(minLength = 3)]
+    pub document_id: String,
+    pub title: String,
+}
+
+/// A path that binds a member of a declared message under another key.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait RenamedMemberService<Ctx> {
+    #[service_schema_op(http(method = "PUT", path = "/renamed/{document_id}"))]
+    async fn renamed(
+        &self,
+        ctx: &Ctx,
+        req: RenamedMemberRequest,
+    ) -> Result<SweepReport, SweepError>;
+}
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
@@ -519,6 +540,20 @@ impl UploadService<()> for Archive {
     }
 }
 
+impl RenamedMemberService<()> for Archive {
+    async fn renamed(
+        &self,
+        _ctx: &(),
+        req: RenamedMemberRequest,
+    ) -> Result<SweepReport, SweepError> {
+        ready(()).await;
+        if req.title.is_empty() {
+            return Err(SweepError::Busy);
+        }
+        Ok(SweepReport { swept: 1 })
+    }
+}
+
 impl FolderService<()> for Archive {
     async fn create_folder(&self, _ctx: &(), folder: Folder) -> Result<Folder, FolderError> {
         ready(()).await;
@@ -766,6 +801,30 @@ fn a_placeholder_of_a_declared_message_reads_the_member_it_binds() {
         put["requestBody"]["content"]["application/json"]["schema"],
         reference("UpdateDocumentRequest")
     );
+}
+
+/// The parameter keeps the name the path writes, and describes the member serde reads under
+/// another key.
+#[test]
+fn a_placeholder_reads_the_schema_of_a_member_under_the_key_serde_reads_it_from() {
+    let document = RenamedMemberServiceSchema::openapi();
+    assert_eq!(
+        document["paths"]["/renamed/{document_id}"]["put"]["parameters"],
+        json!([{
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 3_u32 },
+        }])
+    );
+    let found = answered(Archive.renamed(
+        &(),
+        RenamedMemberRequest {
+            document_id: "doc-1".to_owned(),
+            title: "t".to_owned(),
+        },
+    ));
+    assert!(found.is_ok(), "the implementation refused");
 }
 
 #[test]

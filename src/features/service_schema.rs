@@ -39,7 +39,11 @@ mod ws_service;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::service_schema::parse::OperationDef;
 use crate::service_schema::parse::ServiceDef;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use crate::service_schema::parse::{HttpShape, path_reads_a_named_field};
 use crate::service_schema::support::exhaustiveness;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use crate::service_schema::support::message_wire_key_ident;
 #[cfg(any(feature = "typescript", feature = "dart"))]
 use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
 use crate::service_schema::transport::OpenApiArguments;
@@ -206,17 +210,22 @@ fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream
     let http_client = http_client::emit(service).join("\n\n");
     let served_at = openapi.map(OpenApiArguments::served_at);
     let http_service = http_service::emit(service, served_at.as_deref()).join("\n\n");
-    let http_service_text = if openapi.is_some() {
+    let http_client_text = with_wire_keys(service, &http_client, "ts_member_read", Vec::new());
+    let document = openapi.map(|_| {
         let marker = http_service::OPENAPI_MARKER;
         quote! {
-            #http_service.replace(
+            .replace(
                 #marker,
                 &serde_json::Value::String(Self::openapi().to_string()).to_string(),
             )
         }
-    } else {
-        quote! { #http_service.to_owned() }
-    };
+    });
+    let http_service_text = with_wire_keys(
+        service,
+        &http_service,
+        "ts_quoted",
+        document.into_iter().collect(),
+    );
     let service_side = service::emit(service).join("\n\n");
     let ws_client = ws_client::emit(service).join("\n\n");
     let ws_service = ws_service::emit(service).join("\n\n");
@@ -231,7 +240,7 @@ fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream
         #[doc = " The service's generated `http_rest` TypeScript client: the plain-terms request"]
         #[doc = " and response seam, the client type, and the factory that binds one to it."]
         pub fn ts_http_client() -> ::std::string::String {
-            #http_client.to_owned()
+            #http_client_text
         }
 
         #[doc = " The service's generated `http_rest` TypeScript server: the route table, the"]
@@ -269,6 +278,40 @@ fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream
         pub fn ts_ws_server() -> ::std::string::String {
             #ws_server.to_owned()
         }
+    }
+}
+
+/// `text` as a `String`, with `more` applied, and the key of each member a path placeholder binds
+/// on a declared message written through `writer` over its [`message::wire_key_marker`].
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn with_wire_keys(
+    service: &ServiceDef,
+    text: &str,
+    writer: &str,
+    mut more: Vec<TokenStream>,
+) -> TokenStream {
+    let module = module_ident(service);
+    let written_by = format_ident!("{writer}");
+    for operation in service
+        .operations
+        .iter()
+        .filter(|operation| path_reads_a_named_field(operation))
+    {
+        let key_of = message_wire_key_ident(operation);
+        for placeholder in HttpShape::of(operation).placeholder_names() {
+            let marker = message::wire_key_marker(operation, &placeholder);
+            more.push(quote! {
+                .replace(
+                    #marker,
+                    &#module::message_wire_keys::#written_by(#module::#key_of(#placeholder)),
+                )
+            });
+        }
+    }
+    if more.is_empty() {
+        quote! { #text.to_owned() }
+    } else {
+        quote! { #text #(#more)* }
     }
 }
 

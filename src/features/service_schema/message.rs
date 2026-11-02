@@ -314,6 +314,16 @@ pub fn placeholder_local(name: &str) -> String {
     moved_off(name, &TAKEN_BY_A_DISPATCHER)
 }
 
+/// Stands in the text of a client and a dispatcher for what reads the member `placeholder` binds of
+/// `operation`'s declared message. The macro never sees that type, so `ts_http_client()` and
+/// `ts_http_service()` replace it at run time, in the crate that can reach the type's `WIRE_KEYS`.
+pub fn wire_key_marker(operation: &OperationDef, placeholder: &str) -> String {
+    format!(
+        "/*__TIXSCHEMA_WIRE_KEY:{}:{placeholder}__*/",
+        written(&operation.ident)
+    )
+}
+
 /// The TypeScript name of an operation's own argument: its Rust name camel-cased. An argument is
 /// taken by position, so moving its name changes nothing for a caller.
 pub fn parameter_name(parameter: &Ident) -> String {

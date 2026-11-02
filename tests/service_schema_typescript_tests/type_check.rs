@@ -16,9 +16,10 @@ use super::{
 #[cfg(feature = "zod")]
 use super::{
     BytesProbeServiceSchema, HeaderProbeDocument, HeaderProbeError, HeaderProbeServiceSchema,
-    LapsedProbeError, LapsedProbeServiceSchema, QuotedFilingProbeServiceSchema,
-    QuotedProbeServiceSchema, ReservedProbeServiceSchema, SpooledProbeServiceSchema,
-    StreamedProbeServiceSchema, UnitPingError, UnitPingRequest, UnitPingServiceSchema,
+    LapsedProbeError, LapsedProbeServiceSchema, OwnKeyPathProbe, QuotedFilingProbeServiceSchema,
+    QuotedProbeServiceSchema, RenamedPathProbe, RenamedPathProbeServiceSchema,
+    ReservedProbeServiceSchema, SpooledProbeServiceSchema, StreamedProbeServiceSchema,
+    UnitPingError, UnitPingRequest, UnitPingServiceSchema,
 };
 use std::env;
 use std::env::temp_dir;
@@ -203,6 +204,34 @@ export async function read(): Promise<string> {
     }
   }
   return said.join(",");
+}
+"#;
+
+/// A caller of `RenamedPathProbeService`, which hands the `http_rest` client and dispatcher each
+/// member under the key its type declares it under.
+#[cfg(feature = "zod")]
+const RENAMED_PATH_CALLER: &str = r#"import {
+  createRenamedPathProbeServiceHttpClient,
+  createRenamedPathProbeServiceHttpDispatcher,
+  type RenamedPathProbeServiceHttpTransport,
+  type RenamedPathProbeServiceOwnKeyOutcome,
+  type RenamedPathProbeServiceRenamedOutcome,
+} from "./bundle.js";
+
+declare const http: RenamedPathProbeServiceHttpTransport;
+declare const ownKey: RenamedPathProbeServiceOwnKeyOutcome;
+declare const renamed: RenamedPathProbeServiceRenamedOutcome;
+
+export const served = createRenamedPathProbeServiceHttpDispatcher<null>({
+  ownKey: async () => ownKey,
+  renamed: async () => renamed,
+});
+
+export async function read(): Promise<boolean> {
+  const client = createRenamedPathProbeServiceHttpClient(http);
+  const first = await client.renamed({ documentId: "d1", title: "t" });
+  const second = await client.ownKey({ "doc-id": "d1", title: "t" });
+  return first.ok && second.ok;
 }
 "#;
 
@@ -1420,6 +1449,43 @@ fn every_client_of_a_bytes_operation_type_checks_against_the_real_zod() {
         accepted,
         "a client of a `bytes` operation does not compile against the real `zod`:\n{said}"
     );
+}
+
+/// The client reads a member a path binds under the key the type declares it under, and the
+/// dispatcher writes the path's value there, where neither compiled.
+#[cfg(feature = "zod")]
+#[test]
+fn a_path_that_binds_a_renamed_member_type_checks_against_the_real_zod() {
+    let bundle = [
+        "import { z, type ZodType } from \"zod\";".to_owned(),
+        UnitPingError::ts_definition(),
+        UnitPingError::zod_schema(),
+        RenamedPathProbe::ts_definition(),
+        RenamedPathProbe::zod_schema(),
+        OwnKeyPathProbe::ts_definition(),
+        OwnKeyPathProbe::zod_schema(),
+        RenamedPathProbeServiceSchema::ts_definition(),
+        RenamedPathProbeServiceSchema::ts_client(),
+        RenamedPathProbeServiceSchema::ts_service(),
+        RenamedPathProbeServiceSchema::ts_http_client(),
+        RenamedPathProbeServiceSchema::ts_http_service(),
+    ]
+    .join("\n\n");
+    for read in ["sending.documentId", "sending[\"doc-id\"]"] {
+        assert!(bundle.contains(read), "no `{read}` in: {bundle}");
+    }
+    for written in ["message[\"documentId\"] =", "message[\"doc-id\"] ="] {
+        assert!(bundle.contains(written), "no `{written}` in: {bundle}");
+    }
+    assert!(!bundle.contains("__TIXSCHEMA"), "a marker in: {bundle}");
+    let files = [
+        ("bundle.ts", bundle),
+        ("caller.ts", RENAMED_PATH_CALLER.to_owned()),
+    ];
+    let Some((accepted, said)) = compiled_beside_zod("renamed-path", &files) else {
+        return;
+    };
+    assert!(accepted, "a path that binds a renamed member: {said}");
 }
 
 /// Every TypeScript surface of a service with an operation only `http_rest` carries compiles

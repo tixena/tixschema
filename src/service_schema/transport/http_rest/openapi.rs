@@ -9,7 +9,9 @@ use crate::service_schema::parse::{
     OperationOutcome, ServiceDef, error_declared_type, is_scalar_named_type, is_unit_type,
     option_inner, tuple_elements, vec_inner, wire_key, written,
 };
-use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
+use crate::service_schema::support::{
+    fault_fields_typescript_name, message_wire_key_ident, module_ident,
+};
 use crate::service_schema::transport::OpenApiArguments;
 use crate::utils::ident_schema_module_name;
 use core::iter;
@@ -52,6 +54,7 @@ struct Header {
 /// What the document reads across operations: the name of every type to be written under
 /// `components.schemas`, and whether an operation reads a member of a declared message's schema.
 struct Named {
+    module: syn::Ident,
     names: Vec<TokenStream>,
     reads_a_member: bool,
 }
@@ -89,6 +92,7 @@ pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenSt
     );
     let fault = quote! { #module::#fault_module };
     let mut named = Named {
+        module,
         names: vec![quote! { #fault::Schema::JSON_SCHEMA_NAME }],
         reads_a_member: false,
     };
@@ -290,7 +294,11 @@ fn parameters(
                 Some(named.described(&subject, declared))
             }
             OperationInputs::Named(_) => {
-                Some(quote! { member_schema(&message, hoisted_defs, #placeholder) })
+                let key_of = message_wire_key_ident(operation);
+                let module = &named.module;
+                Some(quote! {
+                    member_schema(&message, hoisted_defs, #module::#key_of(#placeholder))
+                })
             }
             OperationInputs::Empty => None,
         }
