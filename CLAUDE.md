@@ -110,7 +110,7 @@ just all
 ### The Full Run (every few days)
 ```bash
 just all-named     # both packages: default and all-features lints, the format check, the named feature lists
-just lint-sets     # clippy over every combination of the feature sets
+just lint-sets     # clippy over every combination of the feature sets, and the output features without serde
 just test-sets     # tests over every combination of the feature sets
 just test          # tests over every combination of the plain features
 just test-slow     # the tests that wait on a real clock, with the emitted clients

@@ -239,7 +239,7 @@ A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 
 1. `just check` (cargo check + clippy)
-2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`)
+2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature without `serde`, alone and in `typescript,zod` and `dart,swift,kotlin`)
 3. `cargo test --verbose` (basic tests)
 4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)

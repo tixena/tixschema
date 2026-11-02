@@ -121,6 +121,9 @@ lint-sets:
     @echo "Linting every combination of the feature sets..."
     cargo hack clippy --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
     cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
+    cargo hack clippy --each-feature --include-features typescript,zod,dart,swift,kotlin --exclude-no-default-features --exclude-all-features --all-targets -- -D warnings
+    cargo clippy --all-targets --no-default-features --features typescript,zod -- -D warnings
+    cargo clippy --all-targets --no-default-features --features dart,swift,kotlin -- -D warnings
     @echo "✅ All feature-set combinations lint passed!"
 
 # Type-check the emitted TypeScript with a real compiler; refuses to stand down. Set TIXSCHEMA_TSC
