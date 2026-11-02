@@ -1022,7 +1022,7 @@ fn message_value_for_named(
         let decode = decode_expr(named_type, &quote! { #only.as_str() });
         return (TokenStream::new(), decode);
     }
-    let base = object_base(true);
+    let base = object_base(true, true);
     let inserts: TokenStream = placeholder_names
         .iter()
         .zip(placeholder_idents)
@@ -1052,18 +1052,6 @@ fn message_value_for_generated(
         && fields
             .iter()
             .any(|(field, _)| !placeholder_names.contains(&written(field)));
-    let base = if multipart {
-        quote! { let mut object = ::serde_json::Map::new(); }
-    } else if bodied {
-        object_base(true)
-    } else if reads_query {
-        quote! {
-            let query_map = parse_query(request.query());
-            let mut object = ::serde_json::Map::new();
-        }
-    } else {
-        quote! { let mut object = ::serde_json::Map::new(); }
-    };
     let inserts: TokenStream = fields
         .iter()
         .map(|(field, ty)| {
@@ -1098,6 +1086,18 @@ fn message_value_for_generated(
             }
         })
         .collect();
+    let base = if multipart {
+        quote! { let mut object = ::serde_json::Map::new(); }
+    } else if bodied {
+        object_base(true, !inserts.is_empty())
+    } else if reads_query {
+        quote! {
+            let query_map = parse_query(request.query());
+            let mut object = ::serde_json::Map::new();
+        }
+    } else {
+        quote! { let mut object = ::serde_json::Map::new(); }
+    };
     (
         quote! { #base #inserts },
         quote! { ::serde_json::Value::Object(object) },
@@ -1106,17 +1106,23 @@ fn message_value_for_generated(
 
 /// The object an operation's fields are inserted into: the parsed body where the method carries
 /// one (falling back to an empty object where the body is not itself an object), or a fresh empty
-/// object where it does not.
-fn object_base(bodied: bool) -> TokenStream {
+/// object where it does not. Bound `mut` only where `inserts` says the caller inserts into it, as
+/// a consumer's build warns on a binding nothing mutates.
+fn object_base(bodied: bool, inserts: bool) -> TokenStream {
+    let binding = if inserts {
+        quote! { mut object }
+    } else {
+        quote! { object }
+    };
     if bodied {
         quote! {
-            let mut object = match ::serde_json::from_slice(request.body()) {
+            let #binding = match ::serde_json::from_slice(request.body()) {
                 ::core::result::Result::Ok(::serde_json::Value::Object(map)) => map,
                 ::core::result::Result::Ok(_) | ::core::result::Result::Err(_) => ::serde_json::Map::new(),
             };
         }
     } else {
-        quote! { let mut object = ::serde_json::Map::new(); }
+        quote! { let #binding = ::serde_json::Map::new(); }
     }
 }
 

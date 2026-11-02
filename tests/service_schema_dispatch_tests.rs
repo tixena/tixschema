@@ -105,8 +105,22 @@ mod corrected_request_service;
 #[path = "service_schema_dispatch_tests/corrected_request_http_rest_transport.rs"]
 mod corrected_request_http_rest_transport;
 
+/// `BodiedFieldsService`, whose bodied operations read their fields out of the JSON body with and
+/// without a placeholder binding one, and the tests driving it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/bodied_fields_service.rs"]
+mod bodied_fields_service;
+
+/// The `http_rest` dispatcher for `BodiedFieldsService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/bodied_fields_http_rest_transport.rs"]
+mod bodied_fields_http_rest_transport;
+
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
+#[cfg(all(test, feature = "serde"))]
+use bodied_fields_service::{BodiedFieldsService, bodied_fields_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use corrected_request_service::{CorrectedRequestService, corrected_request_service_schema};
 #[cfg(all(test, feature = "serde"))]
