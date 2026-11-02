@@ -316,11 +316,11 @@ pub struct AliasInfo {
     pub wire: Vec<WireLeaf>,
     /// Whether an untagged enum's Zod schema is a `z.discriminatedUnion`, which an object that
     /// flattens it joins as one operand.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     pub zod_discriminated: bool,
     /// The binding that publishes an untagged enum's members one by one, in the order of
     /// [`Self::zod_union_members`], where the enum's own binding cannot be joined member by member.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "zod"))]
     pub zod_members_binding: Option<String>,
     /// The checks an untagged enum names, which each member is held to wherever the enum is
     /// flattened.
@@ -1334,9 +1334,9 @@ pub fn register_alias_info(
                 wire: Vec::new(),
                 #[cfg(feature = "zod")]
                 zod_union_members: Vec::new(),
-                #[cfg(feature = "zod")]
+                #[cfg(all(feature = "serde", feature = "zod"))]
                 zod_discriminated: false,
-                #[cfg(feature = "zod")]
+                #[cfg(all(feature = "serde", feature = "zod"))]
                 zod_members_binding: None,
                 #[cfg(feature = "zod")]
                 zod_union_checks: Vec::new(),
@@ -1427,7 +1427,7 @@ pub fn record_zod_union_members(rust_ident: &str, members: &[ZodUnionMember]) {
 
 /// Records the checks an untagged enum names and the binding that publishes its members, on the
 /// entry that enum has already registered.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 pub fn record_zod_union_publication(
     rust_ident: &str,
     checks: &[FunctionName],
@@ -1443,7 +1443,7 @@ pub fn record_zod_union_publication(
 
 /// Records whether an untagged enum's Zod schema is a discriminated union, on the entry that enum
 /// has already registered.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 pub fn record_zod_discriminated(rust_ident: &str, discriminated: bool) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {

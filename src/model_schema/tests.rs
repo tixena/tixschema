@@ -3394,23 +3394,13 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
         let expanded = expansion_over(declared);
         assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
     }
-    // A build that describes a type refuses a brand over an `Option` itself; the record is written
+    // Every build with brands refuses a brand over an `Option` itself; the record is written
     // either way.
     let brand = expansion_over(
         "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeMaybeBrand(Box<\
          Option<ProbeFields>>);",
     );
-    assert_eq!(
-        compile_error_count(&brand),
-        usize::from(cfg!(any(
-            feature = "typescript",
-            feature = "zod",
-            feature = "dart",
-            feature = "swift",
-            feature = "kotlin"
-        ))),
-        "got: {brand}"
-    );
+    assert_eq!(compile_error_count(&brand), 1, "got: {brand}");
     let optional = refusal_texts(&expansion_over(
         "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum ProbeOptional { \
          Held(ProbeMaybe) }",

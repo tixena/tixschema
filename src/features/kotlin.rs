@@ -1659,6 +1659,7 @@ pub fn kotlin_declarations() -> Vec<String> {
 /// read with: `serializer<T>()` of its Kotlin type, or one composed over the serializer of each
 /// text of one form and the class of each array of one length it holds, which
 /// [`kotlin_declarations`] declares.
+#[cfg(feature = "serde")]
 pub fn kotlin_read_serializer(field: &FieldDef) -> String {
     kotlin_serializer_expr(field, &[])
 }

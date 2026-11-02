@@ -93,10 +93,16 @@ pub struct Plumbline {
 pub struct Pocketing {
     pub beaconing: Beaconing,
     pub captioning: Captioning,
-    #[cfg(feature = "chrono")]
-    pub moonrise: Moonrise,
     pub sequencing: Sequencing,
     pub tabulation: Tabulation<String>,
+}
+
+/// A field typed with the alias of a date, in the builds that declare it.
+#[cfg(feature = "chrono")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Moonlit {
+    pub moonrise: Moonrise,
 }
 
 /// A field typed with an alias that declares a parameter, in a type that declares one.
