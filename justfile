@@ -7,6 +7,8 @@ kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tix
 
 # `bson3/` is a package of its own, built against version 3 of the `bson` library: each recipe that
 # tests, lints, checks, formats, audits or cleans this package runs the same line over it.
+# `check-all` and `check-mix` add `--tests`: the package holds only tests, and tixschema is a
+# dev-dependency there.
 
 # Default recipe - runs comprehensive tests
 default: test
@@ -235,14 +237,15 @@ check:
 check-all:
     @echo "Checking all feature combinations..."
     cargo hack check --feature-powerset
-    cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset
+    cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset --tests
     @echo "✅ All feature combinations check passed!"
 
-# A check of about five minutes, run by the CI on every push: every feature builds by itself,
-# then the every-build validation tests in a few combinations. Not part of `all`.
+# A check of about five minutes, run by the CI on every push: every feature builds by itself, then
+# the `bson3/` tests build under each, then the every-build validation tests run in a few
+# combinations. Not part of `all`.
 check-mix:
     cargo hack check --each-feature
-    cargo hack check --manifest-path bson3/Cargo.toml --each-feature
+    cargo hack check --manifest-path bson3/Cargo.toml --each-feature --tests
     cargo test --no-default-features --test every_build_validation_tests
     cargo test --no-default-features --features web --test every_build_validation_tests
     cargo test --no-default-features --features mobile --test every_build_validation_tests
