@@ -179,6 +179,8 @@ test-emitted cfg="":
     @echo "Running the emitted WebSocket server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_ws_server
     @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
+    @echo "Running the integer limits of the emitted Zod schemas with $(command -v "${TIXSCHEMA_NODE:-node}")..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_integer_limits
     @echo "Running the emitted TypeScript REST server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_http_service
     @echo "Running the emitted TypeScript services whose names hold a quote against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."

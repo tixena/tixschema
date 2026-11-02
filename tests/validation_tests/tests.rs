@@ -3571,7 +3571,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
     });
     let pair = serde_json::json!([
         { "type": "string", "minLength": 2_u32 },
-        { "type": "integer", "minimum": 1.0_f64, "maximum": 10.0_f64 }
+        { "type": "integer", "minimum": 1_u32, "maximum": 10_u32 }
     ]);
     let tags = serde_json::json!({
         "type": "array", "items": { "type": "string" }, "minItems": 2_u32

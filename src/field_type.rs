@@ -6,6 +6,8 @@ use core::mem;
 #[cfg(feature = "serde")]
 use core::slice::from_ref;
 
+#[cfg(feature = "zod")]
+use syn::Lit;
 use syn::{Fields, GenericArgument, Ident, ItemEnum, PathArguments, Type, Variant};
 
 use proc_macro2::Span;
@@ -14,10 +16,10 @@ use syn::spanned::Spanned as _;
 #[cfg(feature = "serde")]
 use syn::Attribute;
 
-#[cfg(feature = "zod")]
-use crate::features::model_schema_prop::FunctionName;
 use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
+#[cfg(feature = "zod")]
+use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text};
 use crate::utils::{
     MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
 };
@@ -2029,27 +2031,34 @@ impl FieldDef {
                  encode: (): {digits}n => {digits}n }})"
             );
         }
-        let minimum = declared.and_then(|meta| meta.minimum);
-        let maximum = declared.and_then(|meta| meta.maximum);
+        let minimum = declared.and_then(|meta| meta.minimum.as_ref());
+        let maximum = declared.and_then(|meta| meta.maximum.as_ref());
         let (least_held, most_held) = (
-            least.parse::<f64>().unwrap_or_default(),
-            most.parse::<f64>().unwrap_or_default(),
+            least.parse::<i128>().unwrap_or_default(),
+            most.parse::<i128>().unwrap_or_default(),
         );
-        // The validator compares the bound cast to the integer, which drops its fraction.
-        let whole = |bound: f64| format!("{:.0}", bound.trunc());
+        // The validator compares the bound cast to the integer, which drops a float's fraction.
+        let whole = |bound: &Lit| {
+            if matches!(bound, Lit::Int(_)) {
+                limit_text(bound)
+            } else {
+                format!("{:.0}", limit_number(bound).trunc())
+            }
+        };
+        let compared = |bound: &Lit| whole(bound).parse::<i128>().unwrap_or_default();
         let mut held = "z.bigint()".to_owned();
-        if minimum.is_none_or(|bound| bound.trunc() < least_held) {
+        if minimum.is_none_or(|bound| compared(bound) < least_held) {
             held = format!("{held}.min({least}n)");
         }
-        if maximum.is_none_or(|bound| bound.trunc() > most_held) {
+        if maximum.is_none_or(|bound| compared(bound) > most_held) {
             held = format!("{held}.max({most}n)");
         }
         if let Some(min) = minimum {
-            let reported = zod_error_arg(Bound::Minimum(min));
+            let reported = zod_error_arg(Bound::Minimum(&limit_text(min)));
             held = format!("{held}.min({}n, {reported})", whole(min));
         }
         if let Some(max) = maximum {
-            let reported = zod_error_arg(Bound::Maximum(max));
+            let reported = zod_error_arg(Bound::Maximum(&limit_text(max)));
             held = format!("{held}.max({}n, {reported})", whole(max));
         }
         format!(
@@ -2385,26 +2394,28 @@ impl FieldDef {
     fn zod_number_type(&self, base: &str) -> String {
         let mut result = base.to_owned();
         let declared = self.model_schema_prop_meta.as_ref();
-        let minimum = declared.and_then(|meta| meta.minimum);
-        let maximum = declared.and_then(|meta| meta.maximum);
+        let minimum = declared.and_then(|meta| meta.minimum.as_ref());
+        let maximum = declared.and_then(|meta| meta.maximum.as_ref());
         let (least, most) = self.field_type.integer_range();
         if let Some(width) = least
-            && minimum.is_none_or(|bound| bound < width)
+            && minimum.is_none_or(|bound| limit_number(bound) < width)
         {
             result = format!("{result}.min({width})");
         }
         if let Some(width) = most
-            && maximum.is_none_or(|bound| bound > width)
+            && maximum.is_none_or(|bound| limit_number(bound) > width)
         {
             result = format!("{result}.max({width})");
         }
         if let Some(min) = minimum {
-            let reported = zod_error_arg(Bound::Minimum(min));
-            result = format!("{result}.min({min}, {reported})");
+            let written = limit_text(min);
+            let reported = zod_error_arg(Bound::Minimum(&written));
+            result = format!("{result}.min({written}, {reported})");
         }
         if let Some(max) = maximum {
-            let reported = zod_error_arg(Bound::Maximum(max));
-            result = format!("{result}.max({max}, {reported})");
+            let written = limit_text(max);
+            let reported = zod_error_arg(Bound::Maximum(&written));
+            result = format!("{result}.max({written}, {reported})");
         }
         result
     }

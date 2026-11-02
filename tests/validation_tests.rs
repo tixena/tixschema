@@ -49,3 +49,7 @@ mod tests;
 #[cfg(test)]
 #[path = "validation_tests/tuple_struct_slots.rs"]
 mod tuple_struct_slots;
+
+#[cfg(test)]
+#[path = "validation_tests/integer_limits.rs"]
+mod integer_limits;

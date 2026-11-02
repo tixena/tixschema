@@ -10,11 +10,13 @@ use std::collections::{HashMap, HashSet};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ext::IdentExt as _;
-use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
+use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Lit, Variant};
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::JSON_NUMBER;
-use crate::features::model_schema_prop::{FunctionName, LiteralValue, ModelSchemaPropMeta};
+use crate::features::model_schema_prop::{
+    FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
+};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
@@ -255,9 +257,9 @@ pub struct DartTypeArgs<'args> {
 /// or a range.
 struct Bounds<'held> {
     max_length: Option<usize>,
-    maximum: Option<f64>,
+    maximum: Option<&'held Lit>,
     min_length: Option<usize>,
-    minimum: Option<f64>,
+    minimum: Option<&'held Lit>,
     patterns: Vec<&'held str>,
 }
 
@@ -266,9 +268,9 @@ impl<'held> Bounds<'held> {
     fn of(meta: &'held ModelSchemaPropMeta) -> Self {
         Self {
             max_length: meta.max_length,
-            maximum: meta.maximum,
+            maximum: meta.maximum.as_ref(),
             min_length: meta.min_length,
-            minimum: meta.minimum,
+            minimum: meta.minimum.as_ref(),
             patterns: meta.patterns().collect(),
         }
     }
@@ -2643,10 +2645,9 @@ pub fn dart_escaped(text: &str, quote: char) -> String {
     escaped
 }
 
-/// `bound` as a Dart number: as Rust writes it, with `.0` on a whole number too large for an
-/// `int`.
-fn dart_number(bound: f64) -> String {
-    let written = bound.to_string();
+/// A number Rust writes as `written`, as a Dart number: with `.0` on a whole number too large for
+/// an `int`.
+fn dart_number(written: String) -> String {
     if written.parse::<i64>().is_ok() || written.contains('.') {
         written
     } else {
@@ -2794,12 +2795,14 @@ fn range_elements(
 ) -> Vec<String> {
     let mut elements = Vec::new();
     if let Some(least) = bounds.minimum {
-        let said = dart_violation(Bound::Minimum(least), named, shown);
-        elements.push(format!("if ({number} < {}) {said}", dart_number(least)));
+        let written = limit_text(least);
+        let said = dart_violation(Bound::Minimum(&written), named, shown);
+        elements.push(format!("if ({number} < {}) {said}", dart_number(written)));
     }
     if let Some(most) = bounds.maximum {
-        let said = dart_violation(Bound::Maximum(most), named, shown);
-        elements.push(format!("if ({number} > {}) {said}", dart_number(most)));
+        let written = limit_text(most);
+        let said = dart_violation(Bound::Maximum(&written), named, shown);
+        elements.push(format!("if ({number} > {}) {said}", dart_number(written)));
     }
     elements
 }
@@ -3278,7 +3281,7 @@ fn literal_elements(
             if matches!(field.field_type, FieldDefType::F32 | FieldDefType::F64) {
                 helpers.call(Helper::Number);
                 shown = format!("_number({expr})");
-                format!("{expr} != {}", dart_number(number))
+                format!("{expr} != {}", dart_number(number.to_string()))
             } else if let LiteralValue::Integer(value) = literal {
                 format!("{expr} != {value}")
             } else {

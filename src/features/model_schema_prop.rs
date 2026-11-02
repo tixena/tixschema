@@ -122,6 +122,9 @@ impl LiteralValue {
 ///   - JSON Schema: `"maximum"`
 ///   - Rust: `validate()`
 ///
+/// A limit keeps the digits written, past what an `f64` holds, and an integer limit reaches the
+/// JSON Schema as an integer.
+///
 /// ## Where a constraint is checked
 ///
 /// By the `validate()` the type publishes, and by the type's read, which runs that `validate()`.
@@ -223,11 +226,11 @@ pub struct ModelSchemaPropMeta {
     /// as the field takes its metadata, so no reader of a string's length finds it.
     pub max_items: Option<usize>,
     pub max_length: Option<usize>,
-    pub maximum: Option<f64>,
+    pub maximum: Option<Lit>,
     /// `minLength` written on a list, as [`Self::max_items`] is `maxLength`.
     pub min_items: Option<usize>,
     pub min_length: Option<usize>,
-    pub minimum: Option<f64>,
+    pub minimum: Option<Lit>,
     pub nullable: bool,
     /// `pattern` in the spelling every surface reads the same way, or as it was written when it
     /// earned a [`Self::pattern_rejection`].
@@ -315,21 +318,43 @@ fn parse_prop_key(nested: &ParseNestedMeta, meta: &mut ModelSchemaPropMeta) -> s
     Ok(())
 }
 
-/// The `f64` a numeric bound was written as: both bounds reach a numeric comparison in the Rust
-/// validator and a numeric literal in the Zod and JSON schemas, so a non-number is one no surface
-/// can carry.
-fn numeric_bound(nested: &ParseNestedMeta, key: &str) -> syn::Result<f64> {
-    let lit: syn::Lit = nested.value()?.parse()?;
-    if let syn::Lit::Int(int) = &lit {
-        int.base10_parse()
-    } else if let syn::Lit::Float(float) = &lit {
-        float.base10_parse()
+/// The literal a numeric bound was written as, which takes its type where the generated code
+/// compiles: both bounds reach a numeric comparison in the Rust validator and a numeric literal in
+/// the Zod and JSON schemas, so a non-number is one no surface can carry.
+fn numeric_bound(nested: &ParseNestedMeta, key: &str) -> syn::Result<Lit> {
+    let lit: Lit = nested.value()?.parse()?;
+    if matches!(lit, Lit::Int(_) | Lit::Float(_)) {
+        Ok(lit)
     } else {
         Err(syn::Error::new_spanned(
             &lit,
             format!("`model_schema_prop` key `{key}` takes an integer or float literal"),
         ))
     }
+}
+
+/// The limit as every surface writes it: an integer's digits, with no separator or suffix, or a
+/// float as its `Display` writes it, so the sentences of every float limit are unchanged.
+pub fn limit_text(limit: &Lit) -> String {
+    if let Lit::Int(int) = limit {
+        int.base10_digits().to_owned()
+    } else {
+        limit_number(limit).to_string()
+    }
+}
+
+/// The limit as a number, for comparing it in the macro. An integer past 2^53 is rounded here, so
+/// this value is never written into generated code. [`numeric_bound`] refuses every literal that
+/// has no number, which reads as NaN here.
+pub fn limit_number(limit: &Lit) -> f64 {
+    let number = if let Lit::Int(int) = limit {
+        int.base10_parse().ok()
+    } else if let Lit::Float(float) = limit {
+        float.base10_parse().ok()
+    } else {
+        None
+    };
+    number.unwrap_or(f64::NAN)
 }
 
 /// The [`LiteralValue`] a `literal` key was written as, kept in whichever of the four kinds the
