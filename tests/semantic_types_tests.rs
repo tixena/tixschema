@@ -27,6 +27,6 @@ mod option_alias_models;
 mod option_aliases;
 
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "support/kotlin_numbers.rs"]
 mod kotlin_numbers;

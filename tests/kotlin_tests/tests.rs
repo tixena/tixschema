@@ -1762,6 +1762,7 @@ fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
 /// The read of the one entry of `rest` under one of `variants`' names, which a flattened enum
 /// `named` held by `prop` is read from: entries under two names are refused, naming each variant
 /// once.
+#[cfg(feature = "serde")]
 fn one_entry(rest: &str, prop: &str, named: &str, variants: &[&[&str]]) -> String {
     let quoted = |names: &[&str]| {
         names

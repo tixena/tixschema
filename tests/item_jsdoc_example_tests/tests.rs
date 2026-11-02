@@ -414,12 +414,16 @@ fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
     );
 }
 
+#[test]
+fn an_alias_of_a_primitive_with_no_block_is_that_primitive() {
+    let count: UndocumentedCount = 4;
+    assert_eq!(count, 4);
+}
+
 /// An alias of a primitive that writes no block has nothing to show through.
 #[cfg(feature = "zod")]
 #[test]
 fn an_alias_of_a_primitive_with_no_block_publishes_no_examples() {
-    let count: UndocumentedCount = 4;
-    assert_eq!(count, 4);
     let zod = undocumented_count_schema::Schema::zod_schema();
     assert!(zod.contains(".meta({\n  examples: []\n});"), "Got: {zod}");
 }
