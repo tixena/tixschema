@@ -111,6 +111,7 @@ jobs:
         LINT: ${{ steps.lint.outcome }}
         TEST: ${{ steps.test.outcome }}
         MIX: ${{ steps.mix.outcome }}
+        JOB: ${{ job.status }}
       run: |
         # Validate repository to prevent forks from sending notifications
         if [[ "$REPO" != "eburgos/tixschema" && "$REPO" != "tixena/tixschema" ]]; then
@@ -124,6 +125,8 @@ jobs:
         if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy --all-features)";
         elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test --all-features)";
         elif [[ "$MIX" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Every feature by itself (just check-mix)";
+        elif [[ "$JOB" == "cancelled" ]]; then JOB_STATUS="failure"; FAILED_STEP="The run was cancelled";
+        elif [[ "$JOB" != "success" ]]; then JOB_STATUS="failure"; FAILED_STEP="A setup step (see the run)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }

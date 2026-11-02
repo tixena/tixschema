@@ -142,6 +142,7 @@ jobs:
         TSC: ${{ steps.typecheck-ts.outcome }}
         EMIT: ${{ steps.test-emitted.outcome }}
         AUDIT: ${{ steps.audit.outcome }}
+        JOB: ${{ job.status }}
       run: |
         # Validate repository to prevent forks from sending notifications
         if [[ "$REPO" != "eburgos/tixschema" && "$REPO" != "tixena/tixschema" ]]; then
@@ -159,6 +160,8 @@ jobs:
         elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
         elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients and the tests on a real clock (just test-slow)";
         elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
+        elif [[ "$JOB" == "cancelled" ]]; then JOB_STATUS="failure"; FAILED_STEP="The run was cancelled";
+        elif [[ "$JOB" != "success" ]]; then JOB_STATUS="failure"; FAILED_STEP="A setup step (see the run)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; *) printf '⏭️';; esac; }
