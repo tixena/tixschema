@@ -613,7 +613,7 @@ fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_
         "const [in_] = captured;",
         "message[\"in\"] = in_;",
         "const [class_] = captured;",
-        "message[\"class\"] = class_;",
+        "message[/*__TIXSCHEMA_WIRE_KEY:object:class__*/] = class_;",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

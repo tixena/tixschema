@@ -541,6 +541,19 @@ change has to keep.
 - **TypeScript sends what the message's Zod check gives back**, over HTTP, the bus seam and the
   WebSocket transport, which carries the seam's messages: the integer ranges and the `f32` range
   of section 4, and the preprocessors of `NaiveTime` and `NaiveDateTime`, decide what is sent.
+- **A path placeholder on a declared message names the field as Rust writes it.** The member each
+  client reads takes the name its language gives the field: `req.document_id` in Rust and Dart,
+  `req.documentId` in Swift and Kotlin (`swift_field_member`, `kotlin_property_name`) and the wire
+  key in TypeScript, whose type declares the member under it. The macro never sees the declared
+  type, so the key comes from `WIRE_KEYS`, the const `#[model_schema()]` writes on a struct
+  (`read_member_keys` in `src/features/serde.rs`), reached in generated code through
+  `wire_key_{operation}` in the service's schema module: the Rust dispatcher inserts the path's
+  value under it, `openapi()` reads the member's schema under it, and `ts_http_client()` and
+  `ts_http_service()` write it at run time over `message::wire_key_marker`. An inherent const is
+  found ahead of the fallback trait's, so a message `#[model_schema()]` did not write answers `None`
+  and the placeholder's own text is the key. The module holds a `const _` per placeholder that
+  panics where the message lists no such member, so `{documentId}` is refused on every surface at
+  once.
 - **A value written as text is written in the form the Rust dispatcher reads**: a path
   placeholder, a query field, a `header_in` and a text part. `text_types` in
   `src/features/service_schema.rs` lists the types an operation writes as text, which each client

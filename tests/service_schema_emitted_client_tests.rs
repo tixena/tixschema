@@ -1232,6 +1232,18 @@ mod wharf_http_rest_transport;
 #[path = "service_schema_emitted_client_tests/wharf_filing_http_rest_transport.rs"]
 mod wharf_filing_http_rest_transport;
 
+/// A service whose paths bind a field serde names apart from Rust, called through each emitted
+/// `http_rest` client, with each request read by the Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_renamed_paths.rs"]
+mod run_renamed_paths;
+
+/// The `http_rest` dispatcher for `KeyedPathClientService`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/keyed_path_http_rest_transport.rs"]
+mod keyed_path_http_rest_transport;
+
 /// The `http_rest` dispatcher for `ImpostClientService`, the Rust twin each request the node run
 /// writes is read by.
 #[cfg(test)]
@@ -1460,6 +1472,8 @@ use run_quoted_service::{
     TollingClientService, TollingUploadClientService, tolling_client_service_schema,
     tolling_upload_client_service_schema,
 };
+#[cfg(test)]
+use run_renamed_paths::{KeyedPathClientService, keyed_path_client_service_schema};
 #[cfg(all(
     test,
     feature = "chrono",

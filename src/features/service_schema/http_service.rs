@@ -491,7 +491,8 @@ fn empty_message_build(
 }
 
 /// A `Named` message, TypeScript side: the whole body, the one placeholder's decoded value when
-/// the type is a scalar bound whole, or an object keyed by placeholder.
+/// the type is a scalar bound whole, or the body with each placeholder's value over the key
+/// `ts_http_service()` writes over [`message::wire_key_marker`].
 fn named_message_build(
     operation: &OperationDef,
     named_type: &Type,
@@ -519,7 +520,7 @@ fn named_message_build(
         let _ = writeln!(
             setup,
             "        message[{}] = {};",
-            ts_quoted(name),
+            message::wire_key_marker(operation, name),
             message::placeholder_local(name)
         );
     }
@@ -900,8 +901,8 @@ fn named_rule_lines(named_type: &Type, placeholders: &[String]) -> Vec<String> {
         ("placeholders", "are")
     };
     vec![format!(
-        "an author-declared message: the {word} {is_are} inserted under its written spelling as \
-         a string, merged onto the parsed body."
+        "an author-declared message: the {word} {is_are} inserted under the key its member is read \
+         from, as a string, merged onto the parsed body."
     )]
 }
 
