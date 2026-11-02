@@ -7847,10 +7847,11 @@ fn collect_struct_fields(
             // The walk is rebuilt here, the body above being discarded with the rest of a flattened
             // field's. The hop writes no key of its own.
             let place = member_place(field, index, false, ctx.steps(index));
-            if let Some(body) = nested_validate_body(field, &f_def, &place) {
-                validate_bodies.push(body);
-            }
-            validate_bodies.extend(held_member_checks(field, &f_def, &place));
+            let flattened = then_checks(
+                nested_validate_body(field, &f_def, &place),
+                held_member_checks(field, &f_def, &place),
+            );
+            validate_bodies.extend(flattened.map(|checked| under_member_cfgs(field, checked)));
             flattened_fields.push(f_def);
             continue;
         }
@@ -20111,7 +20112,7 @@ fn process_field(
     let validation_fn = bound_fns;
 
     let declared = named_member_validate_body(validate_body, field, &field_def, &place);
-    let body = then_checks(declared, own_checks);
+    let body = then_checks(declared, own_checks).map(|checked| under_member_cfgs(field, checked));
 
     #[cfg(feature = "serde")]
     injected_attrs.extend(as_number_serde_hooks(field, &field_def));
@@ -20152,6 +20153,20 @@ fn nested_validate_body(
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
+}
+
+/// `checked`, a member's statements in `validate()`, under the member's `#[cfg(...)]` attributes:
+/// a build without the member reads nothing of it.
+fn under_member_cfgs(field: &Field, checked: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let cfgs: Vec<&syn::Attribute> = field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .collect();
+    if cfgs.is_empty() {
+        return checked;
+    }
+    quote! { #(#cfgs)* { #checked } }
 }
 
 /// The wrappers a named field's own type is reached through, where a refusal it raises as it is

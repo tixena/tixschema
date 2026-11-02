@@ -166,7 +166,7 @@ fn empty_taskforce() -> Taskforce {
 /// The payloads of each struct, brand and list or optional of maps.
 fn struct_rows() -> Vec<Row> {
     let text = "t".to_owned();
-    let mut rows = vec![
+    vec![
         read_row("each key as a field", "Taskforce", &taskforce()),
         read_row(
             "each key as a field, empty",
@@ -248,10 +248,7 @@ fn struct_rows() -> Vec<Row> {
             },
             "1",
         ),
-    ];
-    #[cfg(feature = "chrono")]
-    rows.extend(date_rows());
-    rows
+    ]
 }
 
 /// The payloads of a map keyed by a date through a brand and through an alias.
@@ -407,6 +404,8 @@ fn variant_rows() -> Vec<Row> {
 #[test]
 fn each_map_keyed_by_a_brand_or_an_alias_reads_and_writes_in_swift_as_serde_does() {
     let mut rows = struct_rows();
+    #[cfg(feature = "chrono")]
+    rows.extend(date_rows());
     rows.push(refused_by_rule_row());
     rows.extend(variant_rows());
     let expected: String = rows.iter().map(|row| row.expected.as_str()).collect();

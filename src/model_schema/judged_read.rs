@@ -138,6 +138,9 @@ struct HookLeaf {
 struct MemberHook {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: String,
+    /// The member's `#[cfg(...)]` attributes, written on its hook so a build without the member
+    /// has no hook naming its type.
+    cfgs: String,
     /// Whether the member's read chooses the variant of an untagged enum.
     choosing: bool,
     /// Whether a missing key is read as the member's default, as it is with no hook.
@@ -309,6 +312,7 @@ impl MemberHook {
         scope: &HookScope,
     ) -> Option<TokenStream> {
         let name = corrects.hook_name(&self.name);
+        let cfgs = self.cfgs.parse::<TokenStream>().unwrap_or_default();
         let HookWritten {
             back,
             leaves,
@@ -330,6 +334,7 @@ impl MemberHook {
             .of_member(self.variant.as_deref(), self.index);
         if functions.is_empty() {
             return Some(quote! {
+                #cfgs
                 fn #name<'de, #(#parameters,)* #reader>(deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
                 where
                     #reader: serde::Deserializer<'de>,
@@ -345,6 +350,7 @@ impl MemberHook {
         let correction = corrects.statements(functions);
         let told = told_by(reader);
         Some(quote! {
+            #cfgs
             fn #name<'de, #(#parameters,)* #reader>(#deserializer: #reader) -> ::core::result::Result<#ty, #reader::Error>
             where
                 #reader: serde::Deserializer<'de>,
@@ -1284,6 +1290,12 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
     MEMBER_HOOKS.with(|held| {
         held.borrow_mut().push(MemberHook {
             back: read.back.to_string(),
+            cfgs: field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .map(|attr| attr.to_token_stream().to_string())
+                .collect(),
             choosing: place.choosing,
             defaulted,
             index: place.index,

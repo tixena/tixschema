@@ -27,16 +27,15 @@ void row(String name, Object? Function() read) {
 ";
 
 fn definitions() -> Vec<String> {
-    let mut written = vec![
+    vec![
         entry_dart::dart_definition(),
         groups_dart::dart_definition(),
         probe_sets_dart::dart_definition(),
         shelf_dart::dart_definition(),
         wrappers_dart::dart_definition(),
-    ];
-    #[cfg(feature = "indexmap")]
-    written.push(indexed_dart::dart_definition());
-    written
+        #[cfg(feature = "indexmap")]
+        indexed_dart::dart_definition(),
+    ]
 }
 
 fn source() -> String {
