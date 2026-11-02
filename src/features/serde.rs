@@ -647,6 +647,28 @@ fn placed(field: &Field, _rename_all: Option<&str>) -> Placed {
     }
 }
 
+/// Each named member of `item_struct` serde reads under a key of its own, as its name in Rust and
+/// that key. A flattened member is read from the keys of the type it holds.
+#[cfg(feature = "serde")]
+pub fn read_member_keys(item_struct: &ItemStruct) -> Vec<(String, String)> {
+    let rule = resolve_rename_rule(parse_read_renames(&item_struct.attrs).rename_all.as_deref());
+    item_struct
+        .fields
+        .iter()
+        .filter(|field| {
+            !parse_serde_field_attributes(&field.attrs).flatten
+                && !parse_serde_key_omission(&field.attrs).skips_deserializing
+        })
+        .filter_map(|field| {
+            let name = field.ident.as_ref()?.unraw().to_string();
+            let key = parse_read_renames(&field.attrs)
+                .rename
+                .unwrap_or_else(|| rule.apply_to_field(&name));
+            Some((name, key))
+        })
+        .collect()
+}
+
 /// The steps serde writes on the way to each member of `fields`, below `prefix`, each beside its
 /// place among the ones declared: a named member under its key, a flattened one under none, the
 /// only slot under none where `lone_is_the_value`, and any other slot under its position among

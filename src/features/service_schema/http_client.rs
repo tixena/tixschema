@@ -247,7 +247,7 @@ fn validation_stmt(prefix: &str, operation: &OperationDef, wire: &str) -> String
 
 /// The value one path placeholder reads off `sending`: a generated field under its camelCase wire
 /// key; the whole message where a `Named` type is itself a wire scalar; a `Named` type's own
-/// field, spelled exactly as the placeholder names it, otherwise.
+/// field otherwise, under the key `ts_http_client()` writes over [`message::wire_key_marker`].
 fn placeholder_value_expr(
     operation: &OperationDef,
     shape: &HttpShape,
@@ -265,7 +265,10 @@ fn placeholder_value_expr(
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
                 "sending".to_owned()
             } else {
-                format!("sending.{placeholder}")
+                format!(
+                    "sending{}",
+                    message::wire_key_marker(operation, placeholder)
+                )
             }
         }
     }

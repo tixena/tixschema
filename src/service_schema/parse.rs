@@ -594,7 +594,6 @@ pub fn is_scalar_named_type(ty: &Type) -> bool {
 
 /// Whether a path placeholder reads a field of the operation's own `Named` message, whose type
 /// this macro never sees, rather than the message bound whole as one wire scalar.
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 pub fn path_reads_a_named_field(operation: &OperationDef) -> bool {
     let OperationInputs::Named(declared) = &operation.inputs else {
         return false;

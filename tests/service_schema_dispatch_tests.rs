@@ -66,6 +66,23 @@ mod solo_path_bound_service;
 #[path = "service_schema_dispatch_tests/solo_path_bound_http_rest_transport.rs"]
 mod solo_path_bound_http_rest_transport;
 
+/// `RenamedPathBoundService`, whose paths bind a declared message's member under each way serde
+/// names one, and the tests driving it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_dispatch_tests/renamed_path_bound_service.rs"]
+mod renamed_path_bound_service;
+
+/// The `http_rest` dispatcher for `RenamedPathBoundService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/renamed_path_bound_http_rest_transport.rs"]
+mod renamed_path_bound_http_rest_transport;
+
+/// The `http_rest` client for `RenamedPathBoundService`, in a module of its own.
+#[cfg(all(test, feature = "serde"))]
+#[path = "service_schema_dispatch_tests/renamed_path_bound_http_rest_client.rs"]
+mod renamed_path_bound_http_rest_client;
+
 /// `PathBoundBesideQueryService`, the same fully path-bound `GET` beside one that reads the
 /// query, and the tests driving both - a service of its own rather than an operation added to
 /// `SoloPathBoundService`, so the "no query reader at all" service above keeps proving that shape
@@ -129,6 +146,8 @@ use multipart_service::{UploadService, upload_service_schema};
 use path_bound_beside_query_service::{
     PathBoundBesideQueryService, path_bound_beside_query_service_schema,
 };
+#[cfg(all(test, feature = "serde"))]
+use renamed_path_bound_service::{RenamedPathBoundService, renamed_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]
 use scalar_path_bound_service::{ScalarPathBoundService, scalar_path_bound_service_schema};
 #[cfg(all(test, feature = "serde"))]

@@ -28,7 +28,8 @@ mod plain_http_rest_transport;
 #[cfg(all(test, feature = "serde"))]
 use tests::{
     ContentService, ContentServiceSchema, DocumentService, FolderService, FolderServiceSchema,
-    PlainService, SearchService, SearchServiceSchema, UploadService, VersionService,
-    content_service_schema, document_service_schema, folder_service_schema, plain_service_schema,
-    search_service_schema, upload_service_schema, version_service_schema,
+    PlainService, RenamedMemberService, SearchService, SearchServiceSchema, UploadService,
+    VersionService, content_service_schema, document_service_schema, folder_service_schema,
+    plain_service_schema, renamed_member_service_schema, search_service_schema,
+    upload_service_schema, version_service_schema,
 };

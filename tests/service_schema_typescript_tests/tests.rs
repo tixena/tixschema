@@ -1282,6 +1282,34 @@ pub enum UnitPingError {
     Unreachable,
 }
 
+/// A struct whose member a path binds under `rename_all`.
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamedPathProbe {
+    pub document_id: String,
+    pub title: String,
+}
+
+/// A struct whose member a path binds under a key that is no identifier.
+#[model_schema()]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct OwnKeyPathProbe {
+    #[serde(rename = "doc-id")]
+    pub document_id: String,
+    pub title: String,
+}
+
+/// A service whose paths bind a member of a declared message that serde names apart from Rust.
+#[service_schema(transports = [])]
+pub trait RenamedPathProbeService<Ctx> {
+    #[service_schema_op(http(method = "PUT", path = "/own/{document_id}"))]
+    async fn own_key(&self, ctx: &Ctx, req: OwnKeyPathProbe) -> Result<(), UnitPingError>;
+
+    #[service_schema_op(http(method = "PUT", path = "/renamed/{document_id}"))]
+    async fn renamed(&self, ctx: &Ctx, req: RenamedPathProbe) -> Result<(), UnitPingError>;
+}
+
 /// A standalone one-operation unit-success service (`Result<(), E>`).
 #[service_schema(transports = [])]
 pub trait UnitPingService<Ctx> {
@@ -1290,6 +1318,24 @@ pub trait UnitPingService<Ctx> {
 
 /// The implementation of `UnitPingService` these tests dispatch to.
 pub struct UnitPingBackEnd;
+
+impl RenamedPathProbeService<()> for UnitPingBackEnd {
+    async fn own_key(&self, _ctx: &(), req: OwnKeyPathProbe) -> Result<(), UnitPingError> {
+        ready(()).await;
+        if req.document_id.is_empty() || req.title.is_empty() {
+            return Err(UnitPingError::Unreachable);
+        }
+        Ok(())
+    }
+
+    async fn renamed(&self, _ctx: &(), req: RenamedPathProbe) -> Result<(), UnitPingError> {
+        ready(()).await;
+        if req.document_id.is_empty() || req.title.is_empty() {
+            return Err(UnitPingError::Unreachable);
+        }
+        Ok(())
+    }
+}
 
 impl UnitPingService<()> for UnitPingBackEnd {
     async fn ping(&self, _ctx: &(), req: UnitPingRequest) -> Result<(), UnitPingError> {
@@ -1773,6 +1819,29 @@ fn the_unit_success_service_is_still_implementable_and_callable() {
     ))
     .unwrap();
     assert!(answered.is_ok(), "got: {answered:?}");
+}
+
+#[test]
+fn a_service_whose_path_binds_a_renamed_member_is_still_implementable_and_callable() {
+    let (id, title) = ("d1".to_owned(), "t".to_owned());
+    let renamed = poll_once(UnitPingBackEnd.renamed(
+        &(),
+        RenamedPathProbe {
+            document_id: id.clone(),
+            title: title.clone(),
+        },
+    ))
+    .unwrap();
+    assert!(renamed.is_ok(), "got: {renamed:?}");
+    let own_key = poll_once(UnitPingBackEnd.own_key(
+        &(),
+        OwnKeyPathProbe {
+            document_id: id,
+            title,
+        },
+    ))
+    .unwrap();
+    assert!(own_key.is_ok(), "got: {own_key:?}");
 }
 
 #[test]

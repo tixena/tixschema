@@ -133,7 +133,8 @@ use crate::features::serde::rename_direction_rejection;
 #[cfg(feature = "serde")]
 use crate::features::serde::{
     NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize,
-    derives_serialize, has_serde_read_hook, parse_read_renames, parse_written_renames, struct_tag,
+    derives_serialize, has_serde_read_hook, parse_read_renames, parse_written_renames,
+    read_member_keys, struct_tag,
 };
 use crate::features::serde::{
     brand_field, carries_untagged, has_serde_default, member_steps, parse_serde_key_omission,
@@ -8546,8 +8547,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
-    let delegate_impl_items =
+    let mut delegate_impl_items =
         struct_delegate_items(&module_ident, &item_name, &item_struct, false, args);
+    delegate_impl_items.push(wire_keys_item(&item_struct));
 
     struct_output_with_unit_impls(
         &SchemaOutputParts {
@@ -8565,6 +8567,25 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         &unit_struct_impls,
         &decode_with,
     )
+}
+
+/// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
+/// reads the member's key on the wire from.
+#[cfg(feature = "serde")]
+fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
+    let (names, keys): (Vec<String>, Vec<String>) =
+        read_member_keys(item_struct).into_iter().unzip();
+    quote! {
+        #[doc = " Each member serde reads under a key of its own, as its name in Rust and that key."]
+        pub const WIRE_KEYS: ::core::option::Option<&'static [(&'static str, &'static str)]> =
+            ::core::option::Option::Some(&[#((#names, #keys)),*]);
+    }
+}
+
+/// Nothing, where no `serde` feature reads the attributes a key is written from.
+#[cfg(not(feature = "serde"))]
+fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
+    TokenStream::new()
 }
 
 /// Records the members of the struct where its `$RawSchema` is one strict object of its named

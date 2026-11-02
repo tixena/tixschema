@@ -3,8 +3,9 @@
 //! call-error enum.
 
 use super::parse::{
-    HttpBinding, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    error_declared_type, service_declares_a_stream, service_needs_body_source_seam, written,
+    HttpBinding, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, error_declared_type, path_reads_a_named_field, service_declares_a_stream,
+    service_needs_body_source_seam, written,
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
@@ -148,6 +149,7 @@ pub fn emit(
     let messages = message_type_aliases(service);
     let message_readers = message_readers(service);
     let validators = message_validators(service);
+    let wire_keys = message_wire_keys(service);
     let readers = violation_readers();
     let anchors = root_anchors(service, asked);
     let http_completeness = http_error_status_completeness(service);
@@ -176,6 +178,7 @@ pub fn emit(
             #messages
             #message_readers
             #validators
+            #wire_keys
             #readers
             #anchors
             #http_completeness
@@ -789,6 +792,178 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
     quote! {
         #(#declared)*
     }
+}
+
+/// The name the key a member of an operation's message is read from is published under:
+/// `read_balance` becomes `wire_key_read_balance`.
+pub fn message_wire_key_ident(operation: &OperationDef) -> Ident {
+    format_ident!(
+        "wire_key_{}",
+        operation.ident,
+        span = operation.ident.span()
+    )
+}
+
+/// What a path placeholder that binds a member of a declared message reads: one function per such
+/// operation answering the key a member is read from, and a refusal at build time of a placeholder
+/// the message publishes no member for.
+fn message_wire_keys(service: &ServiceDef) -> TokenStream {
+    let binding: Vec<&OperationDef> = service
+        .operations
+        .iter()
+        .filter(|operation| path_reads_a_named_field(operation))
+        .collect();
+    if binding.is_empty() {
+        return TokenStream::new();
+    }
+    let library = message_wire_keys_library();
+    let readers = binding.iter().map(|operation| {
+        let named = message_wire_key_ident(operation);
+        let message = message_alias_ident(operation);
+        let doc = format!(
+            "The key operation `{}` reads a member of its message from, named as Rust spells it.",
+            operation.wire_name
+        );
+        let refusals = HttpShape::of(operation)
+            .placeholder_names()
+            .into_iter()
+            .map(|placeholder| {
+                // The message is a format string: a brace in it is written twice.
+                let refused = format!(
+                    "service_schema: operation `{}`'s path names `{{{{{placeholder}}}}}`, and its \
+                     message has no field named `{placeholder}` that serde reads under a key of \
+                     its own. A path placeholder names the field as Rust writes it, whatever key \
+                     serde writes it under.",
+                    written(&operation.ident)
+                );
+                let holds = quote_spanned! { operation.ident.span()=>
+                    ::core::assert!(
+                        message_wire_keys::binds(<#message>::WIRE_KEYS, #placeholder),
+                        #refused
+                    );
+                };
+                quote! {
+                    const _: () = {
+                        use message_wire_keys::MessageWireKeys;
+                        #holds
+                    };
+                }
+            });
+        quote! {
+            #[doc = #doc]
+            pub const fn #named(member: &'static str) -> &'static str {
+                use message_wire_keys::MessageWireKeys;
+                message_wire_keys::key_of(<#message>::WIRE_KEYS, member)
+            }
+
+            #(#refusals)*
+        }
+    });
+    quote! {
+        #library
+        #(#readers)*
+    }
+}
+
+/// The module [`message_wire_keys`] reads a message's `WIRE_KEYS` through.
+fn message_wire_keys_library() -> TokenStream {
+    let typescript = typescript_wire_key_writers();
+    quote! {
+        pub mod message_wire_keys {
+            /// A message's members as `#[model_schema()]` publishes them, each as its name in Rust
+            /// and the key serde reads it from, or `None` for a message it did not write.
+            pub type Keys = ::core::option::Option<&'static [(&'static str, &'static str)]>;
+
+            /// The answer of a message `#[model_schema()]` did not write. An inherent `WIRE_KEYS`
+            /// is found ahead of this one, so a message it wrote answers with its own.
+            pub trait MessageWireKeys {
+                /// No keys, there being nothing that published them.
+                const WIRE_KEYS: Keys = ::core::option::Option::None;
+            }
+
+            impl<T> MessageWireKeys for T {}
+
+            const fn same_bytes(left: &[u8], right: &[u8]) -> bool {
+                match (left, right) {
+                    ([], []) => true,
+                    ([first, left @ ..], [second, right @ ..]) if *first == *second => {
+                        same_bytes(left, right)
+                    }
+                    _ => false,
+                }
+            }
+
+            const fn listed(
+                mut members: &'static [(&'static str, &'static str)],
+                member: &str,
+            ) -> ::core::option::Option<&'static str> {
+                while let [(named, key), rest @ ..] = members {
+                    if same_bytes(named.as_bytes(), member.as_bytes()) {
+                        return ::core::option::Option::Some(*key);
+                    }
+                    members = rest;
+                }
+                ::core::option::Option::None
+            }
+
+            /// Whether a placeholder may name `member`: any name, for a message that published no
+            /// keys, and otherwise one of the members it published.
+            pub const fn binds(keys: Keys, member: &str) -> bool {
+                match keys {
+                    ::core::option::Option::Some(members) => listed(members, member).is_some(),
+                    ::core::option::Option::None => true,
+                }
+            }
+
+            /// The key `member` is read from, and its own name for a message that published no
+            /// keys.
+            pub const fn key_of(keys: Keys, member: &'static str) -> &'static str {
+                let found = match keys {
+                    ::core::option::Option::Some(members) => listed(members, member),
+                    ::core::option::Option::None => ::core::option::Option::None,
+                };
+                match found {
+                    ::core::option::Option::Some(key) => key,
+                    ::core::option::Option::None => member,
+                }
+            }
+
+            #typescript
+        }
+    }
+}
+
+/// How the TypeScript text a service publishes writes a key it learns at run time.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn typescript_wire_key_writers() -> TokenStream {
+    quote! {
+        /// `key` as a TypeScript string literal.
+        pub fn ts_quoted(key: &str) -> ::std::string::String {
+            ::std::format!("\"{}\"", key.escape_default())
+        }
+
+        /// What reads the member under `key` off a TypeScript value: `.key`, or `["key"]` where
+        /// `key` is no identifier.
+        pub fn ts_member_read(key: &str) -> ::std::string::String {
+            let starts_a_name = key
+                .chars()
+                .next()
+                .is_some_and(|first| first == '_' || first == '$' || first.is_ascii_alphabetic());
+            let continues_a_name = key
+                .chars()
+                .all(|held| held == '_' || held == '$' || held.is_ascii_alphanumeric());
+            if starts_a_name && continues_a_name {
+                ::std::format!(".{key}")
+            } else {
+                ::std::format!("[{}]", ts_quoted(key))
+            }
+        }
+    }
+}
+
+#[cfg(not(all(feature = "typescript", feature = "zod")))]
+fn typescript_wire_key_writers() -> TokenStream {
+    TokenStream::new()
 }
 
 /// The type an operation's payload deserializes into, named as it resolves inside the module.
