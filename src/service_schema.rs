@@ -1,6 +1,10 @@
 //! `#[service_schema]`: a service declared once as a trait, read once, and handed to the emitters.
 
 #[cfg(feature = "serde")]
+mod mcp_refusals;
+#[cfg(feature = "serde")]
+pub mod mcp_tools;
+#[cfg(feature = "serde")]
 mod messages;
 #[cfg(feature = "serde")]
 pub mod parse;
@@ -12,7 +16,7 @@ pub mod transport;
 #[cfg(feature = "serde")]
 use crate::features::service_schema::emit as emit_generated_clients;
 #[cfg(feature = "serde")]
-use crate::features::service_schema::openapi_seam;
+use crate::features::service_schema::{mcp_seam, openapi_seam};
 use proc_macro2::TokenStream;
 #[cfg(feature = "serde")]
 use quote::quote;
@@ -55,6 +59,11 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                 reserved_header_out_refusal(&service, &wanted.transports),
                 openapi_transport_refusal(&wanted),
                 openapi_path_refusal(&service, wanted.openapi.as_ref()),
+                wanted
+                    .transports
+                    .contains(&transport::Transport::Mcp)
+                    .then(|| mcp_refusals::refusals(&service))
+                    .flatten(),
             ]
             .into_iter()
             .flatten()
@@ -64,12 +73,19 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
             });
             combined_refusal.map_or_else(
                 || {
+                    let mcp = wanted.transports.contains(&transport::Transport::Mcp);
                     let openapi = wanted.openapi.is_some();
-                    let messages = messages::emit(&service, wanted.non_exhaustive, openapi);
+                    let jsonschema = openapi || mcp;
+                    let messages = messages::emit(&service, wanted.non_exhaustive, jsonschema);
                     // The module is handed the asked-for list as well: it anchors, at the
                     // declaration, the root names a transport's macro reaches through `$crate`.
-                    let support =
-                        support::emit(&service, &wanted.transports, wanted.non_exhaustive, openapi);
+                    let support = support::emit(
+                        &service,
+                        &wanted.transports,
+                        wanted.non_exhaustive,
+                        openapi,
+                        jsonschema,
+                    );
                     // Both halves a transport contributes are `macro_rules!` bodies, so they stay
                     // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
                     let transports =
@@ -82,6 +98,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         .openapi
                         .as_ref()
                         .map(|arguments| openapi_seam(&service, arguments));
+                    let tools = mcp.then(|| mcp_seam(&service));
                     // A bare `Value` or `Map` on the wire is asked of the compiler: no proc macro
                     // can tell whether the name is `serde_json`'s.
                     let any_json_checks = parse::any_json_checks(&service);
@@ -93,6 +110,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         #transports
                         #generated_clients
                         #document
+                        #tools
                     }
                 },
                 // Caught here, ahead of every transport's own macros, rather than left for
@@ -289,7 +307,9 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
         .filter(|declared| {
             matches!(
                 declared,
-                transport::Transport::AmqpRpc | transport::Transport::WsRpc
+                transport::Transport::AmqpRpc
+                    | transport::Transport::Mcp
+                    | transport::Transport::WsRpc
             )
         })
         .collect()
@@ -738,6 +758,9 @@ fn generated_clients(
 
 #[cfg(test)]
 mod feature_tests;
+
+#[cfg(test)]
+mod mcp_tests;
 
 #[cfg(test)]
 mod tests;

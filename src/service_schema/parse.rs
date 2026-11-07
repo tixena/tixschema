@@ -24,7 +24,7 @@ pub const OPERATION_DIRECTIVE: &str = "service_schema_op";
 
 const UNKNOWN_DIRECTIVE_MESSAGE: &str = concat!(
     "service_schema: unknown `service_schema_op` directive\n",
-    "       the directives are `message = \"<wire name>\"`, `one_way` and `http(...)`"
+    "       the directives are `message = \"<wire name>\"`, `one_way`, `http(...)` and `mcp(...)`"
 );
 
 const UNKNOWN_HTTP_ARGUMENT_MESSAGE: &str = concat!(
@@ -88,6 +88,9 @@ pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 pub struct ServiceDef {
     /// The trait's type parameter, which every operation takes and no message carries.
     pub context_param: Ident,
+    /// The trait's rustdoc, a line to a `///` line with the one space after it removed, or `None`
+    /// where it has none.
+    pub doc: Option<String>,
     /// Every message the macro declares for this service, in declaration order: one per operation
     /// that named none.
     pub generated_messages: Vec<GeneratedMessage>,
@@ -140,11 +143,15 @@ pub struct GeneratedMessage {
 /// One operation: a name in three spellings, a message in, and either a reply or nothing.
 #[derive(Clone)]
 pub struct OperationDef {
+    /// The method's rustdoc, read as [`ServiceDef::doc`] is.
+    pub doc: Option<String>,
     /// What `http(...)` declared, or `None` for an operation that named no group.
     pub http: Option<HttpBinding>,
     /// The trait method as declared: `get_open_balance`.
     pub ident: Ident,
     pub inputs: OperationInputs,
+    /// What `mcp(...)` said, with every key unset for an operation that wrote no group.
+    pub mcp: McpDirective,
     pub outcome: OperationOutcome,
     /// How a TypeScript caller spells it: `getOpenBalance`.
     pub ts_name: String,
@@ -176,6 +183,29 @@ impl OperationDef {
                 span = self.ident.span()
             )),
         }
+    }
+
+    /// The name of the operation's tool: the `mcp(name = "...")` written, or the wire name.
+    pub fn mcp_tool_name(&self) -> &str {
+        self.mcp.name.as_deref().unwrap_or(&self.wire_name)
+    }
+
+    /// The title of the operation's tool: the `mcp(title = "...")` written, or the method's name
+    /// in Title Case, so `get_version` becomes `Get Version`.
+    pub fn mcp_tool_title(&self) -> String {
+        self.mcp.title.clone().unwrap_or_else(|| {
+            written(&self.ident)
+                .split('_')
+                .filter(|word| !word.is_empty())
+                .map(|word| {
+                    let mut letters = word.chars();
+                    letters.next().map_or_else(String::new, |first| {
+                        first.to_uppercase().chain(letters).collect()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
     }
 }
 
@@ -444,6 +474,29 @@ impl HttpShape {
     }
 }
 
+/// What `mcp(...)` said of one operation. Every key is optional, and the group is read wherever it
+/// is written, whatever transports the service asks for.
+#[derive(Clone, Default)]
+pub struct McpDirective {
+    /// `destructive = <bool>`: the tool's `destructiveHint`.
+    pub destructive: Option<bool>,
+    /// `header(<argument> = "<Header-Name>")`: each argument marked `x-mcp-header`, with the
+    /// header it is mirrored into.
+    pub header: Vec<(Ident, String)>,
+    /// `icon = "<url>"`: the one icon the tool lists.
+    pub icon: Option<String>,
+    /// `idempotent`: the tool's `idempotentHint`.
+    pub idempotent: bool,
+    /// `name = "..."`: the tool's name, where the wire name is not it.
+    pub name: Option<String>,
+    /// `open_world = <bool>`: the tool's `openWorldHint`.
+    pub open_world: Option<bool>,
+    /// `read_only`: the tool's `readOnlyHint`.
+    pub read_only: bool,
+    /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
+    pub title: Option<String>,
+}
+
 /// What `http(...)` said, before it is checked against the operation's signature and outcome.
 struct RawHttp {
     body: Option<(BodyKind, LitStr)>,
@@ -460,14 +513,16 @@ struct RawHttp {
 /// What one `#[service_schema_op(...)]` said, before anything is derived from it.
 struct OperationDirective {
     http: Option<RawHttp>,
+    mcp: McpDirective,
     message: Option<String>,
     one_way: bool,
 }
 
 impl OperationDirective {
-    fn read(attrs: &[Attribute]) -> Result<Self, syn::Error> {
+    fn read(attrs: &[Attribute], operation: &Ident) -> Result<Self, syn::Error> {
         let mut directive = Self {
             http: None,
+            mcp: McpDirective::default(),
             message: None,
             one_way: false,
         };
@@ -486,6 +541,10 @@ impl OperationDirective {
                 }
                 if meta.path.is_ident("http") {
                     directive.http = Some(read_http_directive(&meta)?);
+                    return Ok(());
+                }
+                if meta.path.is_ident("mcp") {
+                    read_mcp_directive(&meta, operation, &mut directive.mcp)?;
                     return Ok(());
                 }
                 Err(meta.error(UNKNOWN_DIRECTIVE_MESSAGE))
@@ -772,6 +831,106 @@ fn parse_header_out_arg(inner: &ParseNestedMeta<'_>) -> Result<LitStr, syn::Erro
     content.parse()
 }
 
+/// Reads `mcp(...)` into `read`, refusing a key the group does not take and an empty value.
+fn read_mcp_directive(
+    meta: &ParseNestedMeta<'_>,
+    operation: &Ident,
+    read: &mut McpDirective,
+) -> Result<(), syn::Error> {
+    meta.parse_nested_meta(|inner| {
+        if inner.path.is_ident("title") {
+            read.title = Some(non_empty_mcp_text(&inner, operation, "title")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("name") {
+            read.name = Some(non_empty_mcp_text(&inner, operation, "name")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("icon") {
+            read.icon = Some(non_empty_mcp_text(&inner, operation, "icon")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("read_only") {
+            mcp_bare_flag(&inner, operation, "read_only")?;
+            read.read_only = true;
+            return Ok(());
+        }
+        if inner.path.is_ident("idempotent") {
+            mcp_bare_flag(&inner, operation, "idempotent")?;
+            read.idempotent = true;
+            return Ok(());
+        }
+        if inner.path.is_ident("destructive") {
+            read.destructive = Some(mcp_bool(&inner, operation, "destructive")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("open_world") {
+            read.open_world = Some(mcp_bool(&inner, operation, "open_world")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("header") {
+            inner.parse_nested_meta(|bound| {
+                let argument = bound.path.require_ident()?.clone();
+                let header = non_empty_mcp_text(&bound, operation, "header")?;
+                read.header.push((argument, header));
+                Ok(())
+            })?;
+            return Ok(());
+        }
+        Err(inner.error(unknown_mcp_key_message(operation)))
+    })
+}
+
+fn non_empty_mcp_text(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+    key: &str,
+) -> Result<String, syn::Error> {
+    let written = inner.value()?.parse::<LitStr>()?;
+    if written.value().is_empty() {
+        return Err(syn::Error::new(
+            written.span(),
+            format!(
+                "service_schema: operation `{operation}` writes an empty `{key}` in `mcp(...)`\n       \
+                 write the text, or leave `{key}` out"
+            ),
+        ));
+    }
+    Ok(written.value())
+}
+
+fn mcp_bare_flag(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+    key: &str,
+) -> Result<(), syn::Error> {
+    if inner.input.peek(Token![=]) {
+        return Err(inner.error(format!(
+            "service_schema: operation `{operation}` writes `{key} = ...` in `mcp(...)`\n       \
+             `{key}` is a bare flag and takes no value; write `{key}`"
+        )));
+    }
+    Ok(())
+}
+
+fn mcp_bool(inner: &ParseNestedMeta<'_>, operation: &Ident, key: &str) -> Result<bool, syn::Error> {
+    if !inner.input.peek(Token![=]) {
+        return Err(inner.error(format!(
+            "service_schema: operation `{operation}` writes `{key}` in `mcp(...)` with no value\n       \
+             write `{key} = true` or `{key} = false`"
+        )));
+    }
+    Ok(inner.value()?.parse::<syn::LitBool>()?.value)
+}
+
+fn unknown_mcp_key_message(operation: &Ident) -> String {
+    format!(
+        "service_schema: operation `{operation}` writes a key `mcp(...)` does not take\n       \
+         the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
+         `open_world` and `header(<argument> = \"<Header-Name>\")`"
+    )
+}
+
 /// Reads the content of one `http(...)` group. `header_in`, `header_out`, `error_header_out` and
 /// `part` are read by hand: their first token is a string literal, not a bare ident.
 fn read_http_directive(meta: &ParseNestedMeta<'_>) -> Result<RawHttp, syn::Error> {
@@ -863,6 +1022,7 @@ pub fn parse_service(declared: &ItemTrait) -> Result<ServiceDef, syn::Error> {
     }
     let service = ServiceDef {
         context_param,
+        doc: doc_text(&declared.attrs),
         generated_messages: operations.iter().filter_map(generated_message).collect(),
         ident: declared.ident.clone(),
         operations,
@@ -1055,7 +1215,7 @@ where
 }
 
 fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<OperationDef, syn::Error> {
-    let directive = OperationDirective::read(&operation.attrs)?;
+    let directive = OperationDirective::read(&operation.attrs, &operation.sig.ident)?;
     // `header_in` and `part` each claim one ordinary argument beside the message, out of the same
     // pool: neither becomes a field on the message [`operation_inputs`] declares one from.
     let extra_claims: HashSet<String> = mapped_or_default(directive.http.as_ref(), |raw| {
@@ -1077,10 +1237,14 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
         .map(|raw| build_http_binding(&ident, operation, raw, &inputs, &outcome))
         .transpose()?;
     let declared = written(&ident);
+    let mcp = directive.mcp;
+    mcp_header_refusals(&ident, &mcp, &inputs, http.as_ref())?;
     Ok(OperationDef {
+        doc: doc_text(&operation.attrs),
         http,
         ident,
         inputs,
+        mcp,
         outcome,
         ts_name: RenameRule::CamelCase.apply_to_field(&declared),
         wire_name: directive
@@ -1109,6 +1273,67 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
             Some((written(&named.ident), typed.ty.as_ref().clone()))
         })
         .collect()
+}
+
+/// The rustdoc in `attrs`: each `///` line with the single space after it removed, joined with
+/// newlines. `None` where there is none, or where it holds no text.
+fn doc_text(attrs: &[Attribute]) -> Option<String> {
+    let lines: Vec<String> = attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("doc"))
+        .filter_map(|attribute| {
+            let syn::Meta::NameValue(pair) = &attribute.meta else {
+                return None;
+            };
+            let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(text),
+                attrs: _attrs,
+            }) = &pair.value
+            else {
+                return None;
+            };
+            let line = text.value();
+            Some(line.strip_prefix(' ').unwrap_or(&line).to_owned())
+        })
+        .collect();
+    lines
+        .iter()
+        .any(|line| !line.trim().is_empty())
+        .then(|| lines.join("\n"))
+}
+
+/// Refuses an `mcp(header(...))` that marks something the tool's input does not carry as a
+/// property of its own: an argument of a generated message, or a `header_in` argument.
+fn mcp_header_refusals(
+    operation: &Ident,
+    mcp: &McpDirective,
+    inputs: &OperationInputs,
+    http: Option<&HttpBinding>,
+) -> Result<(), syn::Error> {
+    for (argument, header) in &mcp.header {
+        let name = written(argument);
+        let in_message = matches!(
+            inputs,
+            OperationInputs::Generated(fields) if fields.iter().any(|(field, _)| written(field) == name)
+        );
+        let in_headers = http.is_some_and(|binding| {
+            binding
+                .header_in
+                .iter()
+                .any(|bound| written(&bound.parameter) == name)
+        });
+        if !in_message && !in_headers {
+            return Err(syn::Error::new(
+                argument.span(),
+                format!(
+                    "service_schema: operation `{operation}` marks `{name}` with `header({name} = \
+                     \"{header}\")` in `mcp(...)`, and `{name}` is no property of the tool's input\n       \
+                     name an argument of a message the macro declares, or one a `header_in` binds"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The one argument beside `&self`, the context and any `header_in`/`part` binding — the argument

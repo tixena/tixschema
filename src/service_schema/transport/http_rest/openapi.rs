@@ -196,7 +196,7 @@ fn path_statements(service: &ServiceDef, named: &mut Named) -> Vec<TokenStream> 
 
 /// The type of the message an operation receives: the one it names, or the one the macro declared
 /// for it.
-fn message_type(operation: &OperationDef) -> Option<Type> {
+pub fn message_type(operation: &OperationDef) -> Option<Type> {
     match &operation.inputs {
         OperationInputs::Named(declared) => Some(declared.as_ref().clone()),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation

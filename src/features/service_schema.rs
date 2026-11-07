@@ -36,6 +36,7 @@ mod ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_service;
 
+use crate::service_schema::mcp_tools::registry_items as mcp_registry_items;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::service_schema::parse::OperationDef;
 use crate::service_schema::parse::ServiceDef;
@@ -536,6 +537,18 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
     quote! {
         impl #registry {
             #method
+        }
+    }
+}
+
+/// `mcp_tools()`, `wrapped_{operation}()` and `MCP_NAMES` on the service's registry, for a service
+/// that asked for `mcp`.
+pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
+    let registry = registry_ident(service);
+    let items = mcp_registry_items(service);
+    quote! {
+        impl #registry {
+            #items
         }
     }
 }

@@ -787,6 +787,10 @@ thread_local! {
     /// `#[serde(flatten)]`.
     static NON_OBJECT_WIRES: RefCell<HashMap<String, NonObjectWire>> =
         RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far, each with whether serde writes a
+    /// value of it as something other than a JSON object. Kept in every build that reads
+    /// `#[serde(flatten)]`.
+    static NEEDS_WRAPPER: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes as what
     /// fills their type parameter at the position held. Kept in every build that reads
     /// `#[serde(tag)]`.
@@ -1137,6 +1141,21 @@ pub fn record_plain_enum(rust_ident: &str, plain: bool) {
         } else {
             names.borrow_mut().remove(rust_ident);
         }
+    });
+}
+
+/// Whether serde writes a value of `rust_ident` as something other than a JSON object, where
+/// `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn recorded_needs_wrapper(rust_ident: &str) -> Option<bool> {
+    NEEDS_WRAPPER.with(|names| names.borrow().get(rust_ident).copied())
+}
+
+/// Records whether serde writes a value of `rust_ident` as something other than a JSON object.
+#[cfg(feature = "serde")]
+pub fn record_needs_wrapper(rust_ident: &str, wrapped: bool) {
+    NEEDS_WRAPPER.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), wrapped);
     });
 }
 

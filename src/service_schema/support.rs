@@ -131,6 +131,7 @@ pub fn emit(
     asked: &[Transport],
     non_exhaustive: bool,
     openapi: bool,
+    jsonschema: bool,
 ) -> TokenStream {
     let declared = &service.ident;
     let module = module_ident(service);
@@ -139,7 +140,7 @@ pub fn emit(
          Every type here belongs to this service alone: the crate that declares `{declared}` \
          owns them, and nothing is imported from tixschema at runtime."
     );
-    let fault = fault_declaration(declared, non_exhaustive, openapi);
+    let fault = fault_declaration(declared, non_exhaustive, jsonschema);
     let call_error = call_error_declaration(declared, non_exhaustive);
     let accessors = fault_accessors();
     let constructors = fault_constructors();
@@ -199,9 +200,9 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
 }
 
 /// The `model_schema` attribute a generated type carries, listing `"jsonschema"` where the service
-/// asked for `openapi`, whose document reads each generated type's schema.
-pub fn model_schema_attribute(openapi: bool) -> TokenStream {
-    if openapi {
+/// asked for `openapi` or `mcp`, whose documents read each generated type's schema.
+pub fn model_schema_attribute(jsonschema: bool) -> TokenStream {
+    if jsonschema {
         quote! { #[::tixschema::model_schema(enable = ["jsonschema"])] }
     } else {
         quote! { #[::tixschema::model_schema()] }
@@ -1309,10 +1310,10 @@ fn fault_constructors() -> TokenStream {
 /// `ServiceFault` and the kind it reports. Both derive `Serialize`, which is what the transport
 /// needs to put a fault on the wire, and neither derives `Deserialize`, so a fault never arrives
 /// simply by having been written there.
-fn fault_declaration(declared: &Ident, non_exhaustive: bool, openapi: bool) -> TokenStream {
+fn fault_declaration(declared: &Ident, non_exhaustive: bool, jsonschema: bool) -> TokenStream {
     let fields = fault_fields_ident(declared);
     let sealed = exhaustiveness(non_exhaustive);
-    let model_schema = model_schema_attribute(openapi);
+    let model_schema = model_schema_attribute(jsonschema);
     let kind = format_ident!("{declared}FaultKind", span = declared.span());
     let fault_doc = format!(
         "A failure `{declared}` never declared: a payload that would not deserialize, a message \

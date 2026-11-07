@@ -1,0 +1,19 @@
+//! `<Service>Schema::mcp_tools()`, `wrapped_{operation}()` and `MCP_NAMES`: the tools of services
+//! that ask for `mcp`, each held to the `Tool` definition of the official 2026-07-28 schema, and
+//! `needs_wrapper()` on every kind of model type, held to what serde writes.
+
+#[cfg(test)]
+#[path = "mcp_declaration_tests/tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "mcp_declaration_tests/needs_wrapper.rs"]
+mod needs_wrapper;
+
+// What a service generates reaches the trait and its module through `$crate`, this binary's root.
+#[cfg(all(test, feature = "serde"))]
+use tests::{
+    AnnotatedService, AnnotatedServiceSchema, DocumentService, DocumentServiceSchema,
+    TwoTransportService, TwoTransportServiceSchema, annotated_service_schema,
+    document_service_schema, two_transport_service_schema,
+};
