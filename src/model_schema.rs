@@ -8,6 +8,8 @@ pub mod checks;
 pub mod judged_read;
 #[cfg(all(feature = "serde", feature = "zod"))]
 pub mod literal_union;
+#[cfg(feature = "serde")]
+pub mod needs_wrapper;
 pub mod preprocess;
 pub mod ranges;
 
@@ -1690,7 +1692,7 @@ impl ExampleTest {
             module,
             name,
             value_ty,
-            ..
+            json_schema: _json_schema,
         }) = subject.filter(|_| validates)
         else {
             return bridge;
@@ -2347,6 +2349,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
+    #[cfg(feature = "serde")]
+    needs_wrapper::record(&item);
     // Whether a filling satisfies the bounds its parameter declares, and whether a range written by
     // its bare name is the std one, are asked of the compiler: no proc macro can answer either.
     let filling_bound_checks = asked_of_the_compiler(&item, &parsed_args);
@@ -2362,11 +2366,23 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
+    let wrapper_tokens = needs_wrapper_tokens(&item);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
-    quote! { #width_checked #dart_tokens #swift_tokens #kotlin_tokens }
+    quote! { #width_checked #wrapper_tokens #dart_tokens #swift_tokens #kotlin_tokens }
+}
+
+/// The `needs_wrapper()` items `item` earns, which every build with serde writes.
+#[cfg(feature = "serde")]
+fn needs_wrapper_tokens(item: &Item) -> TokenStream {
+    needs_wrapper::items(item)
+}
+
+#[cfg(not(feature = "serde"))]
+fn needs_wrapper_tokens(_item: &Item) -> TokenStream {
+    TokenStream::new()
 }
 
 /// The expansion of `item` by its shape, or the refusal of a string check its shape cannot carry.
@@ -3178,20 +3194,15 @@ where
 }
 
 /// `Schema` and its `impl` of `schema_impl_items`, or `None` where none of them writes a method.
-fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> Option<TokenStream> {
-    schema_impl_items
-        .iter()
-        .any(|item| !item.is_empty())
-        .then(|| {
-            quote! {
-                #[non_exhaustive]
-                pub struct Schema;
+fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> TokenStream {
+    quote! {
+        #[non_exhaustive]
+        pub struct Schema;
 
-                impl Schema {
-                    #(#schema_impl_items)*
-                }
-            }
-        })
+        impl Schema {
+            #(#schema_impl_items)*
+        }
+    }
 }
 
 /// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
@@ -12095,10 +12106,8 @@ fn plain_enum_output(
     // A plain enum publishes `enum_members()` from an `impl` of its own rather than through
     // `assemble_schema_output`, so it repeats the declaration's parameters itself.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
-    let module_items = schema_module_items(
-        schema_struct(schema_impl_items).unwrap_or_default(),
-        &decode_with.schema_module,
-    );
+    let module_items =
+        schema_module_items(schema_struct(schema_impl_items), &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_enum

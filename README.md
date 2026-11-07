@@ -3668,6 +3668,47 @@ error: service_schema: `openapi` takes no value
               write `openapi`, or `openapi(title = "...", path = "...")`
 ```
 
+#### The `mcp` Transport
+
+`#[service_schema(transports = ["mcp"])]` asks for a Model Context Protocol server: each operation becomes one tool, listed in the order the trait declares them, and the trait's rustdoc becomes the server's `instructions`. It sits beside the other transports (`transports = ["mcp", "ws_rpc"]`), and every operation keeps its handler, message, success and error on each of them. This part is the declaration: the tool list the macro writes. The dispatchers and clients are separate parts of the transport.
+
+```rust,ignore
+/// Reads and renames documents in the caller's workspace.
+#[service_schema(transports = ["mcp"])]
+pub trait DocumentService<Ctx> {
+    /// Answers the current version of one document.
+    #[service_schema_op(mcp(title = "Current Document Version", read_only))]
+    async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest) -> Result<VersionResponse, VersionError>;
+
+    /// Answers the current version of the document the identifier names.
+    #[service_schema_op(mcp(name = "lookup-document"))]
+    async fn lookup(&self, ctx: &Ctx, id: DocumentId) -> Result<VersionResponse, VersionError>;
+}
+
+assert_eq!(DocumentServiceSchema::mcp_tools()[0]["name"], "get-version");
+assert_eq!(DocumentServiceSchema::mcp_tools()[0]["annotations"]["readOnlyHint"], true);
+```
+
+A tool takes its fields from the operation:
+
+| Tool field | Taken from |
+|---|---|
+| `name` | `mcp(name = "...")`, otherwise the operation's wire name |
+| `title` | `mcp(title = "...")`, otherwise the method's name in Title Case (`get_version` becomes `Get Version`) |
+| `description` | the method's rustdoc, each `///` line with the space after it removed, joined with newlines |
+| `inputSchema` | the arguments object, built from the JSON Schema of the message |
+| `outputSchema` | the JSON Schema of the success, left out for a unit success and a one-way operation |
+| `annotations` | `read_only`, `destructive = <bool>`, `idempotent` and `open_world = <bool>`: the `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` written |
+| `icons` | `icon = "<url>"` |
+
+`header(<argument> = "<Header-Name>")` marks the property of that argument `x-mcp-header`, for an argument of a message the macro declares or one a `header_in` binds. Every other key in `mcp(...)`, and an empty `title`, `name` or `icon`, is refused naming the operation, whatever transports the service asks for.
+
+**The arguments object is always a JSON object.** A message that serde writes as an object is the arguments object itself. One that serde writes as anything else (a branded newtype over a `String`, a plain enum, a list) is wrapped as the property `value` of an object that allows no other property. Each `header_in` binding adds one property named by the header as written, and a message that is an operation's one argument is wrapped whenever the operation binds one. A `header_out` value is a property of the `outputSchema` beside the success, under `value`.
+
+`#[model_schema()]` writes `needs_wrapper()` on every model type and on its `{type}_schema::Schema`, a `const fn` that answers `true` where serde writes no JSON object, and `<Service>Schema::wrapped_{operation}()` answers it for each operation. A type that writes what fills its type parameter answers `true`, which is always valid. `<Service>Schema::MCP_NAMES` lists `("tool", "<name>")` for every tool, and `<Service>Schema::MCP_INSTRUCTIONS` holds the trait's rustdoc.
+
+On a service that asks for `mcp`, the macro refuses, naming the operation: a method without rustdoc, a tool name over 128 characters or holding a character outside `A-Z`, `a-z`, `0-9`, `_`, `-` and `.`, two tools of one name, a `header_out` or `error_header_out` named `value`, a `header_in` named `value` on an operation whose message is its one argument, a `header_in` named like a key of the generated message, and an operation only `http_rest` carries (a `body = "stream"` reply or a multipart file part). Every model type a message, a `header_in` argument, a `header_out` value or a success names lists `enable = ["jsonschema"]`, as for `openapi`; the macro lists it on the messages it generates. The tool list is built at the trait's scope, so a trait that names a type declared in another module imports that module's `{type}_schema` beside the type.
+
 #### The `ws_rpc` Transport
 
 `#[service_schema(transports = ["ws_rpc"])]` serves a service over one WebSocket as JSON text frames -- the same request, notify and reply terms `amqp_rpc` already answers through, carried over a socket instead of a queue. A service that only answers calls asks for it alone; a service the server calls instead -- pushing an event to whichever connection wants it -- asks for it too, notify travelling either direction over the same wire. The pair below is what a browser dashboard and its backend actually share: the browser calls `Ledger`, and the server pushes `LedgerEvents` back down the same connection.

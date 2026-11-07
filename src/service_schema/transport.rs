@@ -87,12 +87,13 @@ impl OpenApiArguments {
 pub enum Transport {
     AmqpRpc,
     HttpRest,
+    Mcp,
     WsRpc,
 }
 
 impl Transport {
     /// Every transport this version knows, in the order a refusal lists them.
-    pub const KNOWN: &'static [Self] = &[Self::AmqpRpc, Self::HttpRest, Self::WsRpc];
+    pub const KNOWN: &'static [Self] = &[Self::AmqpRpc, Self::HttpRest, Self::Mcp, Self::WsRpc];
 
     fn from_name(written: &str) -> Option<Self> {
         Self::KNOWN
@@ -106,6 +107,7 @@ impl Transport {
         match self {
             Self::AmqpRpc => "amqp_rpc",
             Self::HttpRest => "http_rest",
+            Self::Mcp => "mcp",
             Self::WsRpc => "ws_rpc",
         }
     }
@@ -155,6 +157,7 @@ pub fn emit(
         .map(|known| match *known {
             Transport::AmqpRpc => amqp_rpc::emit(service, *known),
             Transport::HttpRest => http_rest::emit(service, *known, openapi),
+            Transport::Mcp => TokenStream::new(),
             Transport::WsRpc => ws_rpc::emit(service, *known),
         })
         .collect()
@@ -198,7 +201,7 @@ pub fn emit(
 ///
 /// ```text
 /// error: service_schema: `grpc` is not a transport this version knows
-///               known transports: `amqp_rpc`, `http_rest`, `ws_rpc`
+///               known transports: `amqp_rpc`, `http_rest`, `mcp`, `ws_rpc`
 ///   --> tests/zz_probe.rs:11:32
 ///    |
 /// 11 | #[service_schema(transports = ["grpc"])]

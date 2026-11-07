@@ -6,8 +6,8 @@
 //! type that does not list `"jsonschema"` asked for its document or held by one that does, and a
 //! service whose `openapi` lacks `http_rest`, is written with a value, names a path that is no
 //! route or that an operation answers with `GET`, writes a key it does not take, whose operation
-//! names a type that does not list `"jsonschema"`, or whose `<Service>Schema` the crate root does
-//! not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
+//! names a type that does not list `"jsonschema"`, as does one that asks for `mcp`, or whose
+//! `<Service>Schema` the crate root does not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
 //! which is no brand without the `serde` feature, and a path placeholder that names no member a
 //! declared message reads under a key of its own.
