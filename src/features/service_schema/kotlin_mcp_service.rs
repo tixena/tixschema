@@ -5,14 +5,19 @@
 
 use super::kotlin_http_client::{kotlin_held, read_serializer};
 use super::kotlin_ws_client::{HeaderElement, body_type, header_elements, message_serializer};
+use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
-use crate::features::kotlin::{kotlin_declarations, kotlin_name, kotlin_quoted};
+use crate::features::kotlin::{
+    TupleNaming, kotlin_declarations, kotlin_name, kotlin_quoted, kotlin_tuple_naming,
+};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::wrapped_ident;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -25,11 +30,11 @@ val @P@McpInstructions: String? = @MCP_INSTRUCTIONS@
 val @P@McpCatalog: Map<String, List<String>> = mapOf<String, List<String>>(
   "names" to listOf<String>(@MCP_NAMES@),
   "tools" to listOf<String>(@MCP_TOOLS@),
-  "resources" to listOf<String>(),
-  "resourceTemplates" to listOf<String>(),
+  "resources" to listOf<String>(@MCP_RESOURCES@),
+  "resourceTemplates" to listOf<String>(@MCP_TEMPLATES@),
   "prompts" to listOf<String>(),
   "skills" to listOf<String>(),
-  "capabilities" to listOf<String>("{\"tools\":{}}"),
+  "capabilities" to listOf<String>(@MCP_CAPABILITIES@),
 )
 
 private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
@@ -291,31 +296,52 @@ private fun @P@McpNamed(params: JsonObject, method: String): String? {
   return (written as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
-private fun @P@McpListingStart(request: JsonObject, services: Int): Result<Boolean> {
-  val invalid = Result.failure<Boolean>(IllegalArgumentException("Invalid cursor"))
+private class @P@McpStart(val part: Int, val own: String?, val first: Boolean)
+
+private fun @P@McpListingStart(request: JsonObject, services: Int): @P@McpStart? {
   val cursor = @P@McpParams(request)["cursor"]
-  if (cursor == null || cursor is JsonNull) return Result.success(true)
-  if (cursor !is JsonPrimitive || !cursor.isString) return invalid
+  if (cursor == null || cursor is JsonNull) return @P@McpStart(0, null, true)
+  if (cursor !is JsonPrimitive || !cursor.isString) return null
   val written = cursor.content
   val colon = written.indexOf(':')
-  if (colon < 0) return invalid
-  val part = written.substring(0, colon).toIntOrNull()?.takeIf { it >= 0 } ?: return invalid
-  return if (part >= services) invalid else Result.success(false)
+  if (colon < 0) return null
+  val digits = written.substring(0, colon).removePrefix("+")
+  if (digits.isEmpty() || !digits.all { it in '0'..'9' }) return null
+  val part = digits.toIntOrNull() ?: return null
+  if (part >= services) return null
+  val own = written.substring(colon + 1)
+  return @P@McpStart(part, own.ifEmpty { null }, false)
 }
 
-private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint): JsonObject =
-  buildJsonObject {
-    put("cacheScope", "private")
-    put("resultType", "complete")
-    putJsonArray("resources") {
-      if (first) {
-        for (catalog in endpoint.catalogs) {
-          for (text in catalog["resources"].orEmpty()) add(Json.parseToJsonElement(text))
-        }
-      }
+private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page: Pair<Int, @N@McpAnswer>?): @N@McpAnswer {
+  val resources = mutableListOf<JsonElement>()
+  if (first) {
+    for (catalog in endpoint.catalogs) {
+      for (text in catalog["resources"].orEmpty()) resources.add(Json.parseToJsonElement(text))
     }
-    put("ttlMs", 0)
-  }"#;
+  }
+  val members = mutableMapOf<String, JsonElement>(
+    "cacheScope" to JsonPrimitive("private"),
+    "resultType" to JsonPrimitive("complete"),
+    "ttlMs" to JsonPrimitive(0),
+  )
+  if (page != null) {
+    val (part, answer) = page
+    if (answer is @N@McpAnswer.Refused) return answer
+    val listed = (answer as @N@McpAnswer.Answered).result
+    (listed["resources"] as? JsonArray)?.let { resources.addAll(it) }
+    for (key in listOf("ttlMs", "cacheScope")) listed[key]?.let { members[key] = it }
+    val own = (listed["nextCursor"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content
+    val next = when {
+      own != null -> "$part:$own"
+      part + 1 < endpoint.catalogs.size -> "${part + 1}:"
+      else -> null
+    }
+    if (next != null) members["nextCursor"] = JsonPrimitive(next)
+  }
+  members["resources"] = JsonArray(resources)
+  return @N@McpAnswer.Answered(JsonObject(members))
+}"#;
 
 const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that throws means the client has gone. */
 typealias @N@McpWriter = suspend (message: String) -> Unit
@@ -472,10 +498,25 @@ private suspend fun @P@McpAsk(
 ): String {
   val method = (request["method"] as JsonPrimitive).content
   if (method == "resources/list") {
-    val listed: @N@McpAnswer = @P@McpListingStart(request, endpoint.catalogs.size).fold(
-      { @N@McpAnswer.Answered(@P@McpListedResources(it, endpoint)) },
-      { @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid cursor", null)) },
-    )
+    val start = @P@McpListingStart(request, endpoint.catalogs.size)
+    val listed: @N@McpAnswer = if (start == null) {
+      @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid cursor", null))
+    } else {
+      var page: Pair<Int, @N@McpAnswer>? = null
+      for (part in start.part until endpoint.catalogs.size) {
+        val asked = if (part == start.part && start.own != null) {
+          buildJsonObject { put("cursor", start.own) }
+        } else {
+          JsonObject(emptyMap())
+        }
+        val answered = route(part, method, asked)
+        if (answered != null) {
+          page = part to answered
+          break
+        }
+      }
+      @P@McpListedResources(start.first, endpoint, page)
+    }
     return @P@McpResponseText(request["id"] ?: JsonNull, listed, serverName)
   }
   var answered: @N@McpAnswer? = null
@@ -547,15 +588,22 @@ private fun @P@McpNamedField(detail: String): String? {
   return if (closing < 0) null else detail.substring(1, closing)
 }
 
-private fun <T> @P@McpReceive(tool: String, serializer: DeserializationStrategy<T>, source: JsonElement): T {
+private fun <T> @P@McpReceive(
+  tool: String,
+  serializer: DeserializationStrategy<T>,
+  source: JsonElement,
+  refuse: (kind: String, detail: String, field: String?) -> Nothing = { kind, detail, field ->
+    @P@McpRefuse(kind, tool, detail, field)
+  },
+): T {
   try {
     return Json.decodeFromJsonElement(serializer, source)
   } catch (refused: IllegalArgumentException) {
     val unjudged = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*>
     val readable = unjudged != null && runCatching { Json.decodeFromJsonElement(unjudged, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
-    if (readable) @P@McpRefuse("failed-validation", tool, detail, @P@McpNamedField(detail))
-    @P@McpRefuse("undeserializable-payload", tool, detail)
+    if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail))
+    refuse("undeserializable-payload", detail, null)
   }
 }
 
@@ -573,23 +621,89 @@ private fun <T : Any> @P@McpOptionalHeader(
   raw: JsonElement?,
 ): T? = if (raw == null || raw is JsonNull) null else @P@McpHeader(tool, name, serializer, raw)"#;
 
-const ROUTE_HEAD: &str = r#"fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> @N@McpAnswer? =
+const ROUTE_HEAD: &str = "fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> @N@McpAnswer? =
   { mcpMethod, mcpParams -> @P@McpCall(handlers, mcpMethod, mcpParams) }
 
 private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpParams: JsonObject): @N@McpAnswer? {
-  if (mcpMethod != "tools/call") return null
-  val mcpNamed = mcpParams["name"]
-  if (mcpNamed !is JsonPrimitive || !mcpNamed.isString) return null
   try {
-    return when (mcpNamed.content) {
-"#;
-
-const ROUTE_TAIL: &str = "      else -> null
+    return when (mcpMethod) {
+@DISPATCH@      else -> null
     }
   } catch (mcpRefused: @P@McpRefused) {
     return mcpRefused.answer
   }
+}
+";
+
+const TOOL_HEAD: &str = r#"
+private suspend fun @P@McpTool(handlers: @N@Handlers, mcpParams: JsonObject): @N@McpAnswer? {
+  val mcpNamed = mcpParams["name"]
+  if (mcpNamed !is JsonPrimitive || !mcpNamed.isString) return null
+  return when (mcpNamed.content) {
+"#;
+
+const TOOL_TAIL: &str = "    else -> null
+  }
 }";
+
+const RESOURCE_SUPPORT: &str = r#"
+
+private fun @P@McpCaptured(segments: List<Pair<String, Boolean>>, uri: String): List<String>? {
+  var rest = uri
+  val captured = mutableListOf<String>()
+  for ((text, placeholder) in segments) {
+    if (placeholder) {
+      val slash = rest.indexOf('/')
+      val end = if (slash < 0) rest.length else slash
+      if (end == 0) return null
+      captured.add(rest.substring(0, end))
+      rest = rest.substring(end)
+    } else {
+      if (!rest.startsWith(text)) return null
+      rest = rest.substring(text.length)
+    }
+  }
+  return if (rest.isEmpty()) captured else null
+}
+
+private fun @P@McpUnread(operation: String, kind: String, detail: String, field: String?): Nothing =
+  throw @P@McpRefused(
+    @N@McpAnswer.Refused(
+      @P@McpErrorObject(
+        -32602,
+        "Invalid params",
+        buildJsonObject {
+          put("fault", @P@McpFaultObject(kind, operation, detail, field))
+          put("isServiceFault", true)
+        },
+      ),
+    ),
+  )
+
+private fun @P@McpDeclined(error: JsonElement, refusal: String): @N@McpAnswer =
+  @N@McpAnswer.Refused(@P@McpErrorObject(-32602, refusal, error))
+
+private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElement): @N@McpAnswer =
+  @N@McpAnswer.Answered(
+    buildJsonObject {
+      put("cacheScope", scope)
+      put(key, items)
+      put("resultType", "complete")
+      put("ttlMs", ttl)
+    },
+  )
+
+private fun @P@McpFaultedRequest(fault: JsonElement): @N@McpAnswer =
+  @N@McpAnswer.Refused(
+    @P@McpErrorObject(
+      -32602,
+      "Invalid params",
+      buildJsonObject {
+        put("fault", fault)
+        put("isServiceFault", true)
+      },
+    ),
+  )"#;
 
 const DISPATCHERS: &str = "/**
  * Answers the requests of this service alone, one text in and one out. [handlers] builds the
@@ -851,62 +965,152 @@ pub const NAMES_MARKER: &str = "@MCP_NAMES@";
 pub const INSTRUCTIONS_MARKER: &str = "@MCP_INSTRUCTIONS@";
 /// Where the accessor writes the version of the crate that declares the service.
 pub const VERSION_MARKER: &str = "@MCP_VERSION@";
+/// Where the accessor writes the resources, as `Kotlin` literals of their JSON text.
+pub const RESOURCES_MARKER: &str = "@MCP_RESOURCES@";
+/// Where the accessor writes the resource templates, as `Kotlin` literals of their JSON text.
+pub const TEMPLATES_MARKER: &str = "@MCP_TEMPLATES@";
+/// Where the emitted text lists the capabilities, as Kotlin literals of their JSON text.
+const CAPABILITIES_MARKER: &str = "@MCP_CAPABILITIES@";
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Named);
     let service = &declared.enveloped();
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let fields = fault_fields_typescript_name(&named);
+    let held = Resourced::of(service);
     let mut published = vec![
-        fill(CATALOG, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &wrapped_entries(service)),
+        fill(CATALOG, &prefix, &named, &fields)
+            .replace("@WRAPPED_MAP@", &tool_entries(service))
+            .replace(CAPABILITIES_MARKER, &capabilities_literal(&held)),
+        page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
         fill(WRITER, &prefix, &named, &fields),
         fill(SERVING, &prefix, &named, &fields),
         fill(RECEIVING, &prefix, &named, &fields),
-        route(service, &prefix, &named, &fields),
+        route(service, &held, &prefix, &named, &fields),
         fill(DISPATCHERS, &prefix, &named, &fields),
-        fill(HTTP, &prefix, &named, &fields).replace("@SCOPES@", &scopes_table(service)),
+        fill(HTTP, &prefix, &named, &fields)
+            .replace("@SCOPES@", &scopes_table(&ScopeTable::of(service))),
     ];
     published.extend(kotlin_declarations());
+    published.retain(|text| !text.is_empty());
     published
 }
 
-fn scopes_table(service: &ServiceDef) -> String {
-    let cases: Vec<String> = service
-        .operations
-        .iter()
-        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
-        .map(|operation| {
-            let needed: Vec<String> = operation
-                .mcp
-                .scopes
+/// `wrapped_entries` for the operations that are tools.
+fn tool_entries(service: &ServiceDef) -> String {
+    wrapped_entries_of(service, true)
+}
+
+fn scopes_table(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "listOf({})",
+            scopes
                 .iter()
-                .map(|(scope, _)| kotlin_quoted(scope))
-                .collect();
-            format!(
-                "      {} -> return listOf({})\n",
-                kotlin_quoted(operation.mcp_tool_name()),
-                needed.join(", ")
-            )
-        })
-        .collect();
-    if cases.is_empty() {
-        return String::new();
+                .map(|scope| kotlin_quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut text = String::new();
+    if table.has_templates() {
+        text.push_str(
+            "  fun matches(uri: String, template: List<Pair<String, Boolean>>): Boolean {\n    \
+             var rest = uri\n    \
+             for ((text, placeholder) in template) {\n      \
+             if (placeholder) {\n        \
+             val slash = rest.indexOf('/')\n        \
+             val end = if (slash < 0) rest.length else slash\n        \
+             if (end == 0) return false\n        \
+             rest = rest.substring(end)\n      \
+             } else {\n        \
+             if (!rest.startsWith(text)) return false\n        \
+             rest = rest.substring(text.length)\n      \
+             }\n    \
+             }\n    \
+             return rest.isEmpty()\n  \
+             }\n\n",
+        );
     }
-    format!(
-        "  if (method == \"tools/call\") {{\n    when (name) {{\n{}    }}\n  }}\n",
-        cases.concat()
-    )
+    if !table.tools.is_empty() {
+        text.push_str("  if (method == \"tools/call\") {\n    when (name) {\n");
+        for (tool, scopes) in &table.tools {
+            let _ = writeln!(
+                text,
+                "      {} -> return {}",
+                kotlin_quoted(tool),
+                list(scopes)
+            );
+        }
+        text.push_str("    }\n  }\n");
+    }
+    if !table.reads.is_empty() {
+        text.push_str("  if (method == \"resources/read\" && name != null) {\n");
+        for (uri, scopes) in &table.reads {
+            match uri {
+                ReadUri::Fixed(fixed) => {
+                    let _ = writeln!(
+                        text,
+                        "    if (name == {}) return {}",
+                        kotlin_quoted(fixed),
+                        list(scopes)
+                    );
+                }
+                ReadUri::Template(parts) => {
+                    let pairs: Vec<String> = parts
+                        .iter()
+                        .map(|(part, placeholder)| {
+                            format!("{} to {placeholder}", kotlin_quoted(part))
+                        })
+                        .collect();
+                    let _ = writeln!(
+                        text,
+                        "    if (matches(name, listOf({}))) return {}",
+                        pairs.join(", "),
+                        list(scopes)
+                    );
+                }
+            }
+        }
+        text.push_str("    return emptyList()\n  }\n");
+    }
+    if let Some(scopes) = &table.listing {
+        let _ = writeln!(
+            text,
+            "  if (method == \"resources/list\") return {}",
+            list(scopes)
+        );
+    }
+    if !table.completions.is_empty() {
+        text.push_str("  if (method == \"completion/complete\" && name != null) {\n");
+        for (uri, scopes) in &table.completions {
+            let _ = writeln!(
+                text,
+                "    if (name == {}) return {}",
+                kotlin_quoted(uri),
+                list(scopes)
+            );
+        }
+        text.push_str("  }\n");
+    }
+    text
 }
 
 /// One `"tool" to <marker>,` entry per tool: the accessor writes `true` or `false` over each
 /// marker, from `wrapped_{operation}()`.
 pub(super) fn wrapped_entries(service: &ServiceDef) -> String {
+    wrapped_entries_of(service, false)
+}
+
+fn wrapped_entries_of(service: &ServiceDef, tools_only: bool) -> String {
     service
         .operations
         .iter()
         .enumerate()
+        .filter(|(_, operation)| !tools_only || operation.is_mcp_tool())
         .map(|(at, operation)| {
             format!(
                 "{} to {},",
@@ -954,9 +1158,21 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .map(|(kind, name)| literal(&format!("{kind}:{name}")))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let resources = Self::mcp_resources()
+                .iter()
+                .map(|resource| literal(&::std::string::ToString::to_string(resource)))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
+            let templates = Self::mcp_resource_templates()
+                .iter()
+                .map(|template| literal(&::std::string::ToString::to_string(template)))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let instructions = Self::MCP_INSTRUCTIONS.map_or_else(|| "null".to_owned(), literal);
             let mut text = #text
                 .replace(#TOOLS_MARKER, &tools)
+                .replace(#RESOURCES_MARKER, &resources)
+                .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#NAMES_MARKER, &names)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"));
@@ -1006,17 +1222,399 @@ fn literal_fn() -> TokenStream {
     }
 }
 
-fn route(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
-    let arms = service
+fn route(
+    service: &ServiceDef,
+    held: &Resourced<'_>,
+    prefix: &str,
+    named: &str,
+    fields: &str,
+) -> String {
+    let tools: Vec<&OperationDef> = service
         .operations
         .iter()
-        .map(|operation| arm(operation, prefix, named, fields))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let head = fill(ROUTE_HEAD, prefix, named, fields);
-    format!("{head}{arms}\n{ROUTE_TAIL}")
-        .replace("@P@", prefix)
-        .replace("@N@", named)
+        .filter(|operation| operation.is_mcp_tool())
+        .collect();
+    let mut dispatch = String::new();
+    if !tools.is_empty() {
+        dispatch.push_str("      \"tools/call\" -> @P@McpTool(handlers, mcpParams)\n");
+    }
+    if held.reads().next().is_some() {
+        dispatch.push_str("      \"resources/read\" -> @P@McpRead(handlers, mcpParams)\n");
+    }
+    if held.listing.is_some() {
+        dispatch.push_str("      \"resources/list\" -> @P@McpList(handlers, mcpParams)\n");
+    }
+    if !held.completions.is_empty() {
+        dispatch.push_str("      \"completion/complete\" -> @P@McpComplete(handlers, mcpParams)\n");
+    }
+    let mut text = fill(ROUTE_HEAD, prefix, named, fields)
+        .replace("@DISPATCH@", &fill(&dispatch, prefix, named, fields));
+    if !tools.is_empty() {
+        let arms = tools
+            .iter()
+            .map(|operation| arm(operation, prefix, named, fields))
+            .collect::<Vec<_>>()
+            .join("\n");
+        text.push_str(&fill(TOOL_HEAD, prefix, named, fields));
+        text.push_str(&arms);
+        text.push('\n');
+        text.push_str(TOOL_TAIL);
+    }
+    text.push_str(&resource_functions(service, held, prefix, named, fields));
+    text
+}
+
+/// The `capabilities` the catalog lists, as the Kotlin literals of their JSON text.
+fn capabilities_literal(held: &Resourced<'_>) -> String {
+    let mut capabilities = vec![kotlin_quoted("{\"tools\":{}}")];
+    if held.is_served() {
+        capabilities.push(kotlin_quoted("{\"resources\":{}}"));
+    }
+    if !held.completions.is_empty() {
+        capabilities.push(kotlin_quoted("{\"completions\":{}}"));
+    }
+    capabilities.join(", ")
+}
+
+/// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
+/// declares.
+fn page_types(service: &ServiceDef) -> String {
+    if !service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.list_resources)
+    {
+        return String::new();
+    }
+    "/** One resource of a listing, as `resources/list` writes it. */
+@Serializable
+data class McpResource(
+  val uri: String,
+  val name: String,
+  val title: String? = null,
+  val description: String? = null,
+  val mimeType: String? = null,
+  val size: Long? = null,
+)
+
+/** One page of `resources/list`, with the cursor of the next where there is one. */
+@Serializable
+data class McpResourcePage(val resources: List<McpResource>, val nextCursor: String? = null)"
+        .to_owned()
+}
+
+/// The functions that answer the requests the resources, the listing and the completions own.
+fn resource_functions(
+    service: &ServiceDef,
+    held: &Resourced<'_>,
+    prefix: &str,
+    named: &str,
+    fields: &str,
+) -> String {
+    if !held.any() {
+        return String::new();
+    }
+    let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
+    if held.reads().next().is_some() {
+        text.push_str(&read_dispatch(held, prefix, named));
+        for operation in held.reads() {
+            text.push_str(&resource_read(operation, prefix, named, fields));
+        }
+    }
+    if let Some(operation) = held.listing {
+        text.push_str(&resource_listing(operation, prefix, named, fields));
+    }
+    if !held.completions.is_empty() {
+        text.push_str(&complete_dispatch(service, held, prefix, named));
+        for operation in &held.completions {
+            text.push_str(&resource_completion(operation, prefix, named, fields));
+        }
+    }
+    text
+}
+
+fn read_dispatch(held: &Resourced<'_>, prefix: &str, named: &str) -> String {
+    let mut text = format!(
+        "\n\nprivate suspend fun {prefix}McpRead(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+         val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n"
+    );
+    for (at, operation) in held.reads().enumerate() {
+        let Some(resource) = operation.mcp.resource.as_ref() else {
+            continue;
+        };
+        let segments = if resource.is_template() {
+            resource
+                .segments
+                .iter()
+                .map(|segment| match segment {
+                    PathSegment::Literal(literal) => format!("{} to false", kotlin_quoted(literal)),
+                    PathSegment::Placeholder(name) => format!("{} to true", kotlin_quoted(name)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            format!("{} to false", kotlin_quoted(&resource.uri))
+        };
+        let uses_captured = !resource.placeholder_names().is_empty()
+            && !matches!(operation.inputs, OperationInputs::Empty);
+        let local = if uses_captured {
+            format!("mcpCaptured{at}")
+        } else {
+            format!("mcpMatched{at}")
+        };
+        let arguments = if uses_captured {
+            format!("handlers, mcpUri, {local}")
+        } else {
+            "handlers, mcpUri".to_owned()
+        };
+        let _ = write!(
+            text,
+            "  val {local} = {prefix}McpCaptured(listOf({segments}), mcpUri)\n  \
+             if ({local} != null) return {prefix}McpRead{op}({arguments})\n",
+            op = pascal(operation),
+        );
+    }
+    text.push_str("  return null\n}");
+    text
+}
+
+fn pascal(operation: &OperationDef) -> String {
+    RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
+}
+
+/// The statements that read the message of `operation` from `mcpSource`, call its handler and
+/// answer what `answered` holds through `success`, where `success` has the JSON of the answer as
+/// `mcpEncoded`.
+fn resource_body(
+    operation: &OperationDef,
+    prefix: &str,
+    named: &str,
+    fields: &str,
+    source: &str,
+    refusal: &str,
+    success: &str,
+) -> String {
+    let OperationOutcome::Reply { error, success: ty } = &operation.outcome else {
+        return String::new();
+    };
+    let wire = kotlin_quoted(&operation.wire_name);
+    let read_by = message_serializer(operation);
+    let result = result_name(named, operation).unwrap_or_default();
+    let call = format!("handlers.{}(decoded)", kotlin_name(&operation.ts_name));
+    let written_error = read_serializer(error);
+    let encoded = if matches!(ty.as_ref(), Type::Tuple(_)) {
+        String::new()
+    } else {
+        format!(
+            "        val mcpEncoded = Json.encodeToJsonElement({}, answered.value)\n",
+            read_serializer(ty)
+        )
+    };
+    format!(
+        "  val mcpSource: JsonElement = {source}\n  \
+         val decoded = {prefix}McpReceive({wire}, {read_by}, mcpSource) {{ kind, detail, field ->\n    \
+         {prefix}McpUnread({wire}, kind, detail, field)\n  }}\n  \
+         val answered = try {{\n    {call}\n  }} catch (unexpected: Throwable) {{\n    \
+         if (unexpected is CancellationException) throw unexpected\n    \
+         throw {prefix}McpRefused({prefix}McpInternal({wire}, unexpected.message ?: unexpected.toString()))\n  }}\n  \
+         return try {{\n    when (answered) {{\n      \
+         is {result}.Ok -> {{\n{encoded}{success}\n      }}\n      \
+         is {result}.Declared -> {prefix}McpDeclined(Json.encodeToJsonElement({written_error}, answered.error), {refusal})\n      \
+         is {result}.Fault -> {prefix}McpFaultedRequest(Json.encodeToJsonElement(serializer<{fields}>(), answered.fault))\n    \
+         }}\n  }} catch (unwritten: SerializationException) {{\n    \
+         throw {prefix}McpRefused({prefix}McpInternal({wire}, \"the answer would not serialize: ${{unwritten.message}}\"))\n  }}\n}}"
+    )
+}
+
+fn resource_read(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
+    let Some(resource) = operation.mcp.resource.as_ref() else {
+        return String::new();
+    };
+    let slots = resource.placeholder_names();
+    let uses_captured = !slots.is_empty() && !matches!(operation.inputs, OperationInputs::Empty);
+    let source = match &operation.inputs {
+        OperationInputs::Empty => "JsonObject(emptyMap())".to_owned(),
+        OperationInputs::Named(_) if slots.is_empty() => "JsonNull".to_owned(),
+        OperationInputs::Named(_) => "JsonPrimitive(mcpCaptured[0])".to_owned(),
+        OperationInputs::Generated(declared) => {
+            let members = slots
+                .iter()
+                .enumerate()
+                .filter_map(|(at, name)| {
+                    let (field, _) = declared.iter().find(|(field, _)| written(field) == *name)?;
+                    Some(format!(
+                        "put({}, mcpCaptured[{at}])",
+                        kotlin_quoted(&wire_key(field))
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            format!("buildJsonObject {{ {members} }}")
+        }
+    };
+    let ttl = operation.mcp.ttl_ms.unwrap_or(0);
+    let scope = operation.mcp.cache_scope.as_deref().unwrap_or("private");
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    let content = if blob {
+        "          val mcpBytes = answered.value.slot0.map { it.toByte() }.toByteArray()\n          \
+         put(\"blob\", java.util.Base64.getEncoder().encodeToString(mcpBytes))\n          \
+         put(\"mimeType\", answered.value.slot1)"
+            .to_owned()
+    } else {
+        let mime = operation
+            .mcp
+            .mime_type
+            .as_ref()
+            .map(|mime| format!("          put(\"mimeType\", {})\n", kotlin_quoted(mime)))
+            .unwrap_or_default();
+        format!("{mime}          put(\"text\", mcpEncoded.jsonPrimitive.content)")
+    };
+    let success = format!(
+        "        {prefix}McpAnswerOf(\n          {scope},\n          {ttl},\n          \"contents\",\n          \
+         buildJsonArray {{\n            add(\n              buildJsonObject {{\n          put(\"uri\", mcpUri)\n{content}\n              }},\n            )\n          }},\n        )",
+        scope = kotlin_quoted(scope),
+    );
+    let captured = if uses_captured {
+        ", mcpCaptured: List<String>"
+    } else {
+        ""
+    };
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpRead{op}(handlers: {named}Handlers, mcpUri: String{captured}): {named}McpAnswer {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation,
+            prefix,
+            named,
+            fields,
+            &source,
+            "\"Resource not found\"",
+            &success,
+        )
+    )
+}
+
+fn resource_listing(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
+    let source = if matches!(operation.inputs, OperationInputs::Named(_)) {
+        "(mcpCursor as? JsonPrimitive)?.takeIf { it.isString } ?: JsonNull"
+    } else {
+        "JsonObject(emptyMap())"
+    };
+    let ttl = operation.mcp.ttl_ms.unwrap_or(0);
+    let scope = operation.mcp.cache_scope.as_deref().unwrap_or("private");
+    let success = format!(
+        "        {named}McpAnswer.Answered(\n          JsonObject(\n            mcpEncoded.jsonObject + mapOf(\n              \"cacheScope\" to JsonPrimitive({scope}),\n              \"resultType\" to JsonPrimitive(\"complete\"),\n              \"ttlMs\" to JsonPrimitive({ttl}),\n            ),\n          ),\n        )",
+        scope = kotlin_quoted(scope),
+    );
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpList(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer {{\n  \
+         val mcpCursor = mcpParams[\"cursor\"]\n"
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation,
+            prefix,
+            named,
+            fields,
+            source,
+            "\"Resources could not be listed\"",
+            &success,
+        )
+    )
+}
+
+fn resource_completion(
+    operation: &OperationDef,
+    prefix: &str,
+    named: &str,
+    fields: &str,
+) -> String {
+    let OperationInputs::Generated(members) = &operation.inputs else {
+        return String::new();
+    };
+    let (Some(typed), Some(chosen)) = (members.first(), members.get(1)) else {
+        return String::new();
+    };
+    let source = format!(
+        "buildJsonObject {{ put({}, mcpTyped); put({}, mcpChosen) }}",
+        kotlin_quoted(&wire_key(&typed.0)),
+        kotlin_quoted(&wire_key(&chosen.0)),
+    );
+    let success = format!(
+        "        val mcpSuggested = mcpEncoded.jsonArray\n        \
+         {named}McpAnswer.Answered(\n          buildJsonObject {{\n            \
+         put(\n              \"completion\",\n              buildJsonObject {{\n                \
+         put(\"hasMore\", mcpSuggested.size > 100)\n                \
+         if (mcpSuggested.size > 100) put(\"total\", mcpSuggested.size)\n                \
+         put(\"values\", JsonArray(mcpSuggested.take(100)))\n              }},\n            )\n            \
+         put(\"resultType\", \"complete\")\n          }},\n        )"
+    );
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpComplete{op}(handlers: {named}Handlers, mcpTyped: String, mcpChosen: JsonElement): {named}McpAnswer {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation,
+            prefix,
+            named,
+            fields,
+            &source,
+            "\"Completion refused\"",
+            &success,
+        )
+    )
+}
+
+fn complete_dispatch(
+    service: &ServiceDef,
+    held: &Resourced<'_>,
+    prefix: &str,
+    named: &str,
+) -> String {
+    let mut text = format!(
+        "\n\nprivate suspend fun {prefix}McpComplete(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+         val mcpReference = mcpParams[\"ref\"] as? JsonObject ?: return null\n  \
+         if ((mcpReference[\"type\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content != \"ref/resource\") return null\n  \
+         val mcpUri = (mcpReference[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
+         val mcpArgument = mcpParams[\"argument\"] as? JsonObject ?: return null\n  \
+         val mcpParameter = (mcpArgument[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
+         val mcpTyped = (mcpArgument[\"value\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: \"\"\n  \
+         val mcpContext = mcpParams[\"context\"] as? JsonObject\n  \
+         val mcpChosen: JsonElement = if (mcpContext != null && \"arguments\" in mcpContext) mcpContext.getValue(\"arguments\") else JsonObject(emptyMap())\n"
+    );
+    for operation in &held.completions {
+        let Some(completes) = operation.mcp.completes.as_ref() else {
+            continue;
+        };
+        let Some(target) = service
+            .operations
+            .iter()
+            .find(|candidate| written(&candidate.ident) == completes.resource)
+        else {
+            continue;
+        };
+        let Some(resource) = target.mcp.resource.as_ref() else {
+            continue;
+        };
+        let _ = writeln!(
+            text,
+            "  if (mcpUri == {} && mcpParameter == {}) return {prefix}McpComplete{}(handlers, mcpTyped, mcpChosen)",
+            kotlin_quoted(&resource.uri),
+            kotlin_quoted(&completes.parameter),
+            pascal(operation),
+        );
+    }
+    text.push_str("  return null\n}");
+    text
 }
 
 fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {

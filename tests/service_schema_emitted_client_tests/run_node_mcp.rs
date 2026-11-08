@@ -90,7 +90,7 @@ async function main() {
     ["tools/call", call(17, "get-tagged", { value: "doc-1", "if-none-match": 5 })],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })],
     ["tools/list", "not json"],
-    ["tools/list", request(18, "resources/list", {})],
+    ["tools/list", request(18, "prompts/list", {})],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", id: 19, method: "tools/list", params: {} })],
   ];
   const answers = [];
@@ -314,7 +314,7 @@ export const needed: ReadonlyArray<string> = documentServiceMcpScopes("tools/cal
 export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
-export const operations = documentServiceMcpOperations.map((operation) => operation.tool);
+export const operations = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
 export const names: readonly ["tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
 
 export async function usage() {

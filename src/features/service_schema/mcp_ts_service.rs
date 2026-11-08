@@ -3,13 +3,20 @@
 //! factories that drive `create{Service}Dispatcher` for one service.
 
 use super::fault;
+use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type, written,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    is_unit_type, wire_key, written,
 };
 use crate::utils::ts_quoted;
+use core::fmt::Write as _;
+use syn::Type;
+
+const DEFAULT_TTL_MS: u64 = 0;
+const DEFAULT_CACHE_SCOPE: &str = "private";
 
 /// The text `ts_mcp_service()` and `ts_mcp_client()` replace with the version of the crate that
 /// declared the service, quoted as a string literal.
@@ -20,6 +27,13 @@ pub const INSTRUCTIONS_MARKER: &str = "/*__TIXSCHEMA_MCP_INSTRUCTIONS__*/";
 
 /// The text `ts_mcp_service()` replaces with the tools' JSON texts, each quoted, joined by commas.
 pub const TOOLS_MARKER: &str = "/*__TIXSCHEMA_MCP_TOOLS__*/";
+
+/// The text `ts_mcp_service()` replaces with the resources' JSON texts, each quoted, joined by commas.
+pub const RESOURCES_MARKER: &str = "/*__TIXSCHEMA_MCP_RESOURCES__*/";
+
+/// The text `ts_mcp_service()` replaces with the resource templates' JSON texts, each quoted,
+/// joined by commas.
+pub const TEMPLATES_MARKER: &str = "/*__TIXSCHEMA_MCP_TEMPLATES__*/";
 
 const TYPES: &str = "/** Everything a service puts on an endpoint: its names, and each list item as JSON text. */
 export type __N__McpPart = {
@@ -219,6 +233,75 @@ function __p__McpCapabilities(endpoint: __N__McpEndpoint): Record<string, unknow
   return merged;
 }
 
+/** What a routed request asks for: the tool, the URI, or the URI of the template a completion is for. */
+function __p__McpNamed(params: Record<string, unknown> | undefined, method: string): string | undefined {
+  const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+  if (method === "tools/call") return text(params?.name);
+  if (method === "resources/read") return text(params?.uri);
+  return text(__p__McpObject(params?.argument)?.name) === undefined
+    ? undefined
+    : text(__p__McpObject(params?.ref)?.uri);
+}
+
+type __N__McpListingStart =
+  | { readonly part: number; readonly own: string | undefined; readonly first: boolean }
+  | undefined;
+
+/** Where a `resources/list` starts: the service, its own cursor, and whether this is the first page. */
+function __p__McpListingStart(cursor: unknown, services: number): __N__McpListingStart {
+  if (cursor === undefined || cursor === null) return { part: 0, own: undefined, first: true };
+  if (typeof cursor !== "string") return undefined;
+  const colon = cursor.indexOf(":");
+  if (colon < 0) return undefined;
+  const place = cursor.slice(0, colon);
+  if (!/^\+?[0-9]+$/.test(place)) return undefined;
+  const part = Number(place);
+  if (part >= services) return undefined;
+  const own = cursor.slice(colon + 1);
+  return { part, own: own === "" ? undefined : own, first: false };
+}
+
+/** One page of `resources/list`: the resources with a fixed URI on the first page, then the page the first service that lists answered. */
+async function __p__McpListResources(
+  id: unknown,
+  params: Record<string, unknown> | undefined,
+  info: Record<string, unknown>,
+  endpoint: __N__McpEndpoint,
+  route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
+): Promise<__N__McpHandled> {
+  const start = __p__McpListingStart(params?.cursor, endpoint.parts.length);
+  if (start === undefined) return __p__McpRefused(id, 200, -32602, "Invalid cursor");
+  let page: { readonly part: number; readonly answer: __N__McpAnswer } | undefined;
+  for (let part = start.part; part < endpoint.parts.length; part += 1) {
+    const asked = part === start.part && start.own !== undefined ? { cursor: start.own } : {};
+    const answer = await route(part, "resources/list", asked);
+    if (answer !== undefined) {
+      page = { part, answer };
+      break;
+    }
+  }
+  const resources: Array<unknown> = start.first
+    ? endpoint.parts.flatMap((part) => part.resources.map((resource) => new __N__McpRaw(resource)))
+    : [];
+  const result: Record<string, unknown> = { _meta: info, cacheScope: "private", resultType: "complete", ttlMs: 0 };
+  if (page !== undefined) {
+    if ("error" in page.answer) return __p__McpReplied(200, { id, error: page.answer.error });
+    const listed = __p__McpObject(page.answer.result) ?? {};
+    if (Array.isArray(listed.resources)) resources.push(...(listed.resources as ReadonlyArray<unknown>));
+    for (const key of ["ttlMs", "cacheScope"]) {
+      if (listed[key] !== undefined) result[key] = listed[key];
+    }
+    const own = typeof listed.nextCursor === "string" && listed.nextCursor !== "" ? listed.nextCursor : undefined;
+    if (own !== undefined) {
+      result.nextCursor = `${page.part}:${own}`;
+    } else if (page.part + 1 < endpoint.parts.length) {
+      result.nextCursor = `${page.part + 1}:`;
+    }
+  }
+  result.resources = resources;
+  return __p__McpReplied(200, { id, result });
+}
+
 async function __p__McpHandle(
   message: Record<string, unknown>,
   serverName: string,
@@ -271,7 +354,28 @@ async function __p__McpHandle(
           ttlMs: 300000,
         },
       });
-    case "tools/call": {
+    case "resources/templates/list":
+      return __p__McpReplied(200, {
+        id,
+        result: {
+          _meta: info,
+          cacheScope: "public",
+          resourceTemplates: endpoint.parts.flatMap((part) =>
+            part.resourceTemplates.map((template) => new __N__McpRaw(template)),
+          ),
+          resultType: "complete",
+          ttlMs: 300000,
+        },
+      });
+    case "resources/list":
+      return __p__McpListResources(id, params, info, endpoint, route);
+    case "tools/call":
+    case "resources/read":
+    case "completion/complete": {
+      const name = __p__McpNamed(params, method);
+      if (name === undefined) {
+        return __p__McpRefused(id, 200, -32602, `Invalid params: ${method} names nothing to answer`);
+      }
       for (let part = 0; part < endpoint.parts.length; part += 1) {
         const answer = await route(part, method, params);
         if (answer === undefined) continue;
@@ -282,8 +386,8 @@ async function __p__McpHandle(
           result: result === undefined ? answer.result : { ...result, _meta: info },
         });
       }
-      const name = String(params?.name);
-      return __p__McpRefused(id, 200, -32602, `Unknown tool: ${name}`, {
+      const unknown = method === "tools/call" ? "Unknown tool" : method === "resources/read" ? "Resource not found" : "Unknown completion";
+      return __p__McpRefused(id, 200, -32602, `${unknown}: ${name}`, {
         fault: {
           detail: "the service answers to no operation by that name",
           kind: "unknown-operation",
@@ -356,19 +460,71 @@ export async function __p__McpServe<Ctx>(
 
 const ROUTE: &str = r#"const __p__McpEmpty = { content: [], isError: false, resultType: "complete" };
 
+/** The `-32603` answer of a handler that came apart. */
+function __p__McpPanicked(operation: string, thrown: unknown): __N__McpAnswer {
+  const detail = thrown instanceof Error ? thrown.message : String(thrown);
+  return {
+    error: {
+      code: -32603,
+      data: { fault: __FAULT__("handler-panic", operation, detail), isServiceFault: true },
+      message: `${operation}: ${detail}`,
+    },
+  };
+}
+
+/** `value` in base64: a `Uint8Array`, or the array of bytes a dispatcher writes it as. */
+function __p__McpBase64(value: unknown): string {
+  const bytes = value instanceof Uint8Array ? value : Uint8Array.from(Array.isArray(value) ? (value as ReadonlyArray<number>) : []);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/** What each placeholder of `segments` captures in `uri`: one non-empty run of text up to the next `/`. */
+function __p__McpCaptured(
+  segments: ReadonlyArray<readonly [string, boolean]>,
+  uri: string,
+): ReadonlyArray<string> | undefined {
+  let rest = uri;
+  const captured: Array<string> = [];
+  for (const [text, placeholder] of segments) {
+    if (placeholder) {
+      const slash = rest.indexOf("/");
+      const end = slash < 0 ? rest.length : slash;
+      if (end === 0) return undefined;
+      captured.push(rest.slice(0, end));
+      rest = rest.slice(end);
+    } else {
+      if (!rest.startsWith(text)) return undefined;
+      rest = rest.slice(text.length);
+    }
+  }
+  return rest === "" ? captured : undefined;
+}
+
+/** A failed resource request: a fault is `Invalid params`, and a declared error is `refusal`, both a `-32602`. */
+function __p__McpDeclined(error: unknown, refusal: string): __N__McpAnswer {
+  const fault = typeof error === "object" && error !== null && "isServiceFault" in error;
+  return { error: { code: -32602, data: error, message: fault ? "Invalid params" : refusal } };
+}
+
 /**
- * The route of `__N__`: answers a `tools/call` of one of its tools through `create__N__Dispatcher`,
- * so the Zod reads judge every message, and answers `undefined` for any other request.
+ * The route of `__N__`: answers a `tools/call` of one of its tools, a `resources/read`, its page of
+ * `resources/list` and a `completion/complete` through `create__N__Dispatcher`, so the Zod reads
+ * judge every message, and answers `undefined` for any other request.
  */
 export function create__N__McpRoute<Ctx>(
   impl: __DRIVEN__,
 ): (ctx: Ctx, method: string, params: unknown) => Promise<__N__McpAnswer | undefined> {
   const dispatch = create__N__Dispatcher(impl);
-  return async (ctx, method, params) => {
-    const call = __p__McpObject(params);
-    if (method !== "tools/call" || call === undefined) return undefined;
-    const operation = __p__McpOperations.find((candidate) => candidate.tool === call.name);
-    if (operation === undefined) return undefined;
+  const attempted = (ctx: Ctx, operation: string, payload: unknown, headers: Array<readonly [string, string]>) =>
+    dispatch(ctx, operation, payload, headers).then(
+      (dispatched) => ({ dispatched }),
+      (thrown: unknown) => ({ thrown }),
+    );
+  const calling = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const operation = __p__McpOperations.find((candidate) => candidate.kind === "tool" && candidate.tool === call.name);
+    if (operation === undefined || operation.kind !== "tool") return undefined;
     const given: unknown = call.arguments === undefined ? {} : call.arguments;
     const held = __p__McpObject(given);
     const headers: Array<readonly [string, string]> = [];
@@ -382,10 +538,7 @@ export function create__N__McpRoute<Ctx>(
       }
       payload = operation.wrapped ? held.value : rest;
     }
-    const attempt = await dispatch(ctx, operation.operation, payload, headers).then(
-      (dispatched) => ({ dispatched }),
-      (thrown: unknown) => ({ thrown }),
-    );
+    const attempt = await attempted(ctx, operation.operation, payload, headers);
     if ("thrown" in attempt) {
       if (operation.oneWay) return { result: __p__McpEmpty };
       const detail = attempt.thrown instanceof Error ? attempt.thrown.message : String(attempt.thrown);
@@ -433,6 +586,106 @@ export function create__N__McpRoute<Ctx>(
     return {
       result: { content: [{ text: __p__McpText(body), type: "text" }], isError: true, resultType: "complete" },
     };
+  };
+  const answering = async (
+    ctx: Ctx,
+    operation: string,
+    payload: unknown,
+    refusal: string,
+    success: (value: unknown) => Record<string, unknown>,
+  ): Promise<__N__McpAnswer> => {
+    const attempt = await attempted(ctx, operation, payload, []);
+    if ("thrown" in attempt) return __p__McpPanicked(operation, attempt.thrown);
+    const answered = attempt.dispatched?.answered as { ok: boolean; value?: unknown; error?: unknown } | undefined;
+    if (answered === undefined || !answered.ok) return __p__McpDeclined(answered?.error, refusal);
+    return { result: success(answered.value) };
+  };
+  const reading = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const uri = call.uri;
+    if (typeof uri !== "string") return undefined;
+    for (const operation of __p__McpOperations) {
+      if (operation.kind !== "resource") continue;
+      const captured = __p__McpCaptured(operation.segments, uri);
+      if (captured === undefined) continue;
+      const payload =
+        operation.source === "empty"
+          ? {}
+          : operation.source === "none"
+            ? null
+            : operation.source === "single"
+              ? captured[0]
+              : Object.fromEntries(operation.members.map(([at, key]) => [key, captured[at]]));
+      return answering(ctx, operation.operation, payload, "Resource not found", (value) => {
+        const given: Record<string, unknown> = { uri };
+        const pair = operation.blob ? (value as ReadonlyArray<unknown>) : [];
+        if (operation.blob) {
+          given.mimeType = pair[1];
+          given.blob = __p__McpBase64(pair[0]);
+        } else {
+          given.mimeType = operation.mimeType;
+          given.text = value;
+        }
+        return { cacheScope: operation.cacheScope, contents: [given], resultType: "complete", ttlMs: operation.ttlMs };
+      });
+    }
+    return undefined;
+  };
+  const listing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const operation = __p__McpOperations.find((candidate) => candidate.kind === "listing");
+    if (operation === undefined || operation.kind !== "listing") return undefined;
+    const payload = operation.cursor ? (typeof call.cursor === "string" ? call.cursor : null) : {};
+    return answering(ctx, operation.operation, payload, "Resources could not be listed", (value) => ({
+      ...(__p__McpObject(value) ?? {}),
+      cacheScope: operation.cacheScope,
+      resultType: "complete",
+      ttlMs: operation.ttlMs,
+    }));
+  };
+  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const reference = __p__McpObject(call.ref);
+    const argument = __p__McpObject(call.argument);
+    if (reference === undefined || reference.type !== "ref/resource") return undefined;
+    const uri = reference.uri;
+    const parameter = argument?.name;
+    if (typeof uri !== "string" || typeof parameter !== "string") return undefined;
+    const typed = typeof argument?.value === "string" ? argument.value : "";
+    const context = __p__McpObject(call.context);
+    const chosen = context !== undefined && "arguments" in context ? context.arguments : {};
+    for (const operation of __p__McpOperations) {
+      if (operation.kind !== "completion" || operation.uri !== uri || operation.parameter !== parameter) continue;
+      return answering(
+        ctx,
+        operation.operation,
+        { [operation.typed]: typed, [operation.chosen]: chosen },
+        "Completion refused",
+        (value) => {
+          const suggested = Array.isArray(value) ? (value as ReadonlyArray<unknown>) : [];
+          const completion: Record<string, unknown> = {
+            hasMore: suggested.length > 100,
+            values: suggested.slice(0, 100),
+          };
+          if (suggested.length > 100) completion.total = suggested.length;
+          return { completion, resultType: "complete" };
+        },
+      );
+    }
+    return undefined;
+  };
+  return async (ctx, method, params) => {
+    const call = __p__McpObject(params);
+    if (call === undefined) return undefined;
+    switch (method) {
+      case "tools/call":
+        return calling(ctx, call);
+      case "resources/read":
+        return reading(ctx, call);
+      case "resources/list":
+        return listing(ctx, call);
+      case "completion/complete":
+        return completing(ctx, call);
+      default:
+        return undefined;
+    }
   };
 }"#;
 
@@ -734,9 +987,15 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let fill = |template: &str| filled(template, &named, &prefix);
-    vec![
-        constants(&named, &prefix),
-        fill(TYPES),
+    let lists = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.list_resources);
+    let mut published = vec![constants(&named, &prefix), fill(TYPES)];
+    if lists {
+        published.push(page_types());
+    }
+    published.extend([
         part(service, &named, &prefix),
         operations(service, &named, &prefix),
         message::read_fn(&format!("{prefix}McpRead")),
@@ -751,7 +1010,8 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         scopes(service, &prefix),
         fill(SERVE_HTTP),
         factories(service, &named, &prefix),
-    ]
+    ]);
+    published
 }
 
 fn constants(named: &str, prefix: &str) -> String {
@@ -766,47 +1026,264 @@ fn constants(named: &str, prefix: &str) -> String {
     )
 }
 
+/// The name an operation takes on an endpoint, `kind:name`: a tool, a resource or a template.
+fn endpoint_name(operation: &OperationDef) -> Option<String> {
+    if operation.is_mcp_tool() {
+        return Some(format!("tool:{}", operation.mcp_tool_name()));
+    }
+    let resource = operation.mcp.resource.as_ref()?;
+    let kind = if resource.is_template() {
+        "resource template"
+    } else {
+        "resource"
+    };
+    Some(format!("{kind}:{}", resource.uri))
+}
+
 fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
-    let tool_names: Vec<String> = service
+    let literal = service
         .operations
         .iter()
-        .map(|operation| ts_quoted(&format!("tool:{}", operation.mcp_tool_name())))
-        .collect();
-    let literal = tool_names.join(", ");
+        .filter_map(endpoint_name)
+        .map(|name| ts_quoted(&name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let served = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.resource.is_some() || operation.mcp.list_resources);
+    let completes = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.completes.is_some());
+    let mut capabilities = vec![ts_quoted("{\"tools\":{}}")];
+    if served {
+        capabilities.push(ts_quoted("{\"resources\":{}}"));
+    }
+    if completes {
+        capabilities.push(ts_quoted("{\"completions\":{}}"));
+    }
     format!(
         "/** Everything `{named}` puts on an endpoint: its names, and each list item as JSON text, \
          so a schema keeps the digits Rust wrote. */\n\
          export const {prefix}McpPart: {named}McpPart & {{ readonly names: readonly [{literal}] }} = {{\n  \
          names: [{literal}],\n  \
          tools: [{TOOLS_MARKER}],\n  \
-         resources: [],\n  \
-         resourceTemplates: [],\n  \
+         resources: [{RESOURCES_MARKER}],\n  \
+         resourceTemplates: [{TEMPLATES_MARKER}],\n  \
          prompts: [],\n  \
          skills: [],\n  \
          capabilities: [{capabilities}],\n\
          }};",
-        capabilities = ts_quoted("{\"tools\":{}}"),
+        capabilities = capabilities.join(", "),
     )
 }
 
+/// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module declares.
+/// Interfaces, so two services of one bundle that both list declare them without a clash.
+fn page_types() -> String {
+    "/** One resource of a listing, as `resources/list` writes it. */\n\
+     export interface McpResource {\n  \
+     uri: string;\n  \
+     name: string;\n  \
+     title?: string;\n  \
+     description?: string;\n  \
+     mimeType?: string;\n  \
+     size?: number;\n\
+     }\n\n\
+     /** One page of `resources/list`, with the cursor of the next where there is one. */\n\
+     export interface McpResourcePage {\n  \
+     resources: Array<McpResource>;\n  \
+     nextCursor?: string;\n\
+     }"
+    .to_owned()
+}
+
 fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
-    let rows: Vec<String> = service.operations.iter().map(operation_row).collect();
+    let mut rows: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .map(operation_row)
+        .collect();
+    rows.extend(resource_rows(service));
     format!(
-        "/** What the route reads of each tool: the operation it calls, and how its arguments, \
-         success and error are carried. */\n\
-         export type {named}McpOperation = {{\n  \
-         readonly tool: string;\n  \
-         readonly operation: string;\n  \
-         readonly wrapped: boolean;\n  \
-         readonly oneWay: boolean;\n  \
-         readonly unit: boolean;\n  \
-         readonly headersIn: ReadonlyArray<string>;\n  \
-         readonly headersOut: ReadonlyArray<string>;\n  \
-         readonly errorHeadersOut: ReadonlyArray<string>;\n\
+        "/** What the route reads of each operation: the tool, resource, listing or completion it \
+         answers, the operation it calls, and how its arguments, success and error are carried. */\n\
+         export type {named}McpOperation =\n  \
+         | {{\n      \
+         readonly kind: \"tool\";\n      \
+         readonly tool: string;\n      \
+         readonly operation: string;\n      \
+         readonly wrapped: boolean;\n      \
+         readonly oneWay: boolean;\n      \
+         readonly unit: boolean;\n      \
+         readonly headersIn: ReadonlyArray<string>;\n      \
+         readonly headersOut: ReadonlyArray<string>;\n      \
+         readonly errorHeadersOut: ReadonlyArray<string>;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"resource\";\n      \
+         readonly uri: string;\n      \
+         readonly operation: string;\n      \
+         readonly segments: ReadonlyArray<readonly [string, boolean]>;\n      \
+         readonly source: \"empty\" | \"none\" | \"single\" | \"members\";\n      \
+         readonly members: ReadonlyArray<readonly [number, string]>;\n      \
+         readonly blob: boolean;\n      \
+         readonly mimeType: string | undefined;\n      \
+         readonly ttlMs: number;\n      \
+         readonly cacheScope: string;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"listing\";\n      \
+         readonly operation: string;\n      \
+         readonly cursor: boolean;\n      \
+         readonly ttlMs: number;\n      \
+         readonly cacheScope: string;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"completion\";\n      \
+         readonly operation: string;\n      \
+         readonly uri: string;\n      \
+         readonly parameter: string;\n      \
+         readonly typed: string;\n      \
+         readonly chosen: string;\n    \
          }};\n\n\
          export const {prefix}McpOperations: ReadonlyArray<{named}McpOperation> = [\n{rows}\n];",
         rows = rows.join("\n"),
     )
+}
+
+/// The rows of the resources, a fixed URI ahead of a template, then the listing and the completions.
+fn resource_rows(service: &ServiceDef) -> Vec<String> {
+    let resourced: Vec<&OperationDef> = service
+        .operations
+        .iter()
+        .filter(|operation| !operation.is_mcp_tool())
+        .collect();
+    let reads = |template: bool| {
+        resourced
+            .iter()
+            .filter(move |operation| {
+                operation
+                    .mcp
+                    .resource
+                    .as_ref()
+                    .is_some_and(|resource| resource.is_template() == template)
+            })
+            .map(|operation| resource_row(operation))
+    };
+    let listing = resourced
+        .iter()
+        .find(|operation| operation.mcp.list_resources)
+        .map(|operation| listing_row(operation));
+    let completions = resourced
+        .iter()
+        .filter_map(|operation| completion_row(service, operation));
+    reads(false)
+        .chain(reads(true))
+        .chain(listing)
+        .chain(completions)
+        .collect()
+}
+
+fn resource_row(operation: &OperationDef) -> String {
+    let Some(resource) = operation.mcp.resource.as_ref() else {
+        return String::new();
+    };
+    let segments = if resource.is_template() {
+        resource
+            .segments
+            .iter()
+            .map(|segment| match segment {
+                PathSegment::Literal(text) => format!("[{}, false]", ts_quoted(text)),
+                PathSegment::Placeholder(name) => format!("[{}, true]", ts_quoted(name)),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        format!("[{}, false]", ts_quoted(&resource.uri))
+    };
+    let names = resource.placeholder_names();
+    let (source, members) = match &operation.inputs {
+        OperationInputs::Empty => ("empty", String::new()),
+        OperationInputs::Named(_) if names.is_empty() => ("none", String::new()),
+        OperationInputs::Named(_) => ("single", String::new()),
+        OperationInputs::Generated(fields) => (
+            "members",
+            names
+                .iter()
+                .enumerate()
+                .filter_map(|(at, name)| {
+                    let (field, _) = fields.iter().find(|(field, _)| written(field) == *name)?;
+                    Some(format!("[{at}, {}]", ts_quoted(&wire_key(field))))
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+    };
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    format!(
+        "  {{ kind: \"resource\", uri: {uri}, operation: {wire}, segments: [{segments}], \
+         source: \"{source}\", members: [{members}], blob: {blob}, mimeType: {mime}, \
+         ttlMs: {ttl}, cacheScope: {scope} }},",
+        uri = ts_quoted(&resource.uri),
+        wire = ts_quoted(&operation.wire_name),
+        mime = operation
+            .mcp
+            .mime_type
+            .as_deref()
+            .map_or_else(|| "undefined".to_owned(), ts_quoted),
+        ttl = operation.mcp.ttl_ms.unwrap_or(DEFAULT_TTL_MS),
+        scope = ts_quoted(
+            operation
+                .mcp
+                .cache_scope
+                .as_deref()
+                .unwrap_or(DEFAULT_CACHE_SCOPE)
+        ),
+    )
+}
+
+fn listing_row(operation: &OperationDef) -> String {
+    format!(
+        "  {{ kind: \"listing\", operation: {wire}, cursor: {cursor}, ttlMs: {ttl}, \
+         cacheScope: {scope} }},",
+        wire = ts_quoted(&operation.wire_name),
+        cursor = matches!(operation.inputs, OperationInputs::Named(_)),
+        ttl = operation.mcp.ttl_ms.unwrap_or(DEFAULT_TTL_MS),
+        scope = ts_quoted(
+            operation
+                .mcp
+                .cache_scope
+                .as_deref()
+                .unwrap_or(DEFAULT_CACHE_SCOPE)
+        ),
+    )
+}
+
+fn completion_row(service: &ServiceDef, operation: &OperationDef) -> Option<String> {
+    let completes = operation.mcp.completes.as_ref()?;
+    let target = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == completes.resource)?;
+    let uri = &target.mcp.resource.as_ref()?.uri;
+    let OperationInputs::Generated(fields) = &operation.inputs else {
+        return None;
+    };
+    Some(format!(
+        "  {{ kind: \"completion\", operation: {wire}, uri: {uri}, parameter: {parameter}, \
+         typed: {typed}, chosen: {chosen} }},",
+        wire = ts_quoted(&operation.wire_name),
+        uri = ts_quoted(uri),
+        parameter = ts_quoted(&completes.parameter),
+        typed = ts_quoted(&wire_key(&fields.first()?.0)),
+        chosen = ts_quoted(&wire_key(&fields.get(1)?.0)),
+    ))
 }
 
 fn operation_row(operation: &OperationDef) -> String {
@@ -835,7 +1312,7 @@ fn operation_row(operation: &OperationDef) -> String {
         .map(|bound| bound.name.clone())
         .collect();
     format!(
-        "  {{ tool: {tool}, operation: {wire}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
+        "  {{ kind: \"tool\", tool: {tool}, operation: {wire}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
          headersIn: [{headers_in}], headersOut: [{headers_out}], errorHeadersOut: \
          [{error_headers_out}] }},",
         tool = ts_quoted(operation.mcp_tool_name()),
@@ -847,36 +1324,101 @@ fn operation_row(operation: &OperationDef) -> String {
 }
 
 fn scopes(service: &ServiceDef, prefix: &str) -> String {
-    let cases: Vec<String> = service
-        .operations
-        .iter()
-        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
-        .map(|operation| {
-            let needed: Vec<String> = operation
-                .mcp
-                .scopes
-                .iter()
-                .map(|(scope, _)| ts_quoted(scope))
-                .collect();
-            format!(
-                "      case {}:\n        return [{}];",
-                ts_quoted(operation.mcp_tool_name()),
-                needed.join(", ")
-            )
-        })
-        .collect();
-    let table = if cases.is_empty() {
-        String::new()
-    } else {
+    let table = ScopeTable::of(service);
+    let list = |scopes: &[String]| {
         format!(
-            "  if (method === \"tools/call\") {{\n    switch (name) {{\n{}\n      default:\n        return [];\n    }}\n  }}\n",
-            cases.join("\n")
+            "[{}]",
+            scopes
+                .iter()
+                .map(|scope| ts_quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     };
+    let mut body = String::new();
+    if table.has_templates() {
+        body.push_str(
+            "  const matches = (uri: string, template: ReadonlyArray<readonly [string, boolean]>): boolean => {\n    \
+             let rest = uri;\n    \
+             for (const [text, placeholder] of template) {\n      \
+             if (placeholder) {\n        \
+             const slash = rest.indexOf(\"/\");\n        \
+             const end = slash < 0 ? rest.length : slash;\n        \
+             if (end === 0) return false;\n        \
+             rest = rest.slice(end);\n      \
+             } else if (rest.startsWith(text)) {\n        \
+             rest = rest.slice(text.length);\n      \
+             } else {\n        \
+             return false;\n      \
+             }\n    \
+             }\n    \
+             return rest.length === 0;\n  \
+             };\n",
+        );
+    }
+    if !table.tools.is_empty() {
+        body.push_str("  if (method === \"tools/call\") {\n    switch (name) {\n");
+        for (tool, needed) in &table.tools {
+            let _ = writeln!(
+                body,
+                "      case {}:\n        return {};",
+                ts_quoted(tool),
+                list(needed)
+            );
+        }
+        body.push_str("      default:\n        return [];\n    }\n  }\n");
+    }
+    if !table.reads.is_empty() {
+        body.push_str("  if (method === \"resources/read\" && name !== undefined) {\n");
+        for (uri, needed) in &table.reads {
+            match uri {
+                ReadUri::Fixed(fixed) => {
+                    let _ = writeln!(
+                        body,
+                        "    if (name === {}) return {};",
+                        ts_quoted(fixed),
+                        list(needed)
+                    );
+                }
+                ReadUri::Template(parts) => {
+                    let pairs: Vec<String> = parts
+                        .iter()
+                        .map(|(part, placeholder)| format!("[{}, {placeholder}]", ts_quoted(part)))
+                        .collect();
+                    let _ = writeln!(
+                        body,
+                        "    if (matches(name, [{}] as const)) return {};",
+                        pairs.join(", "),
+                        list(needed)
+                    );
+                }
+            }
+        }
+        body.push_str("    return [];\n  }\n");
+    }
+    if let Some(needed) = &table.listing {
+        let _ = writeln!(
+            body,
+            "  if (method === \"resources/list\") return {};",
+            list(needed)
+        );
+    }
+    if !table.completions.is_empty() {
+        body.push_str("  if (method === \"completion/complete\" && name !== undefined) {\n");
+        for (uri, needed) in &table.completions {
+            let _ = writeln!(
+                body,
+                "    if (name === {}) return {};",
+                ts_quoted(uri),
+                list(needed)
+            );
+        }
+        body.push_str("  }\n");
+    }
     format!(
         "/** The scopes a caller needs for the request `method` and `name` name, none for any other. */\n\
          export function {prefix}McpScopes(method: string, name: string | undefined): ReadonlyArray<string> {{\n\
-         {table}  return [];\n\
+         {body}  return [];\n\
          }}"
     )
 }

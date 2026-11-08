@@ -97,6 +97,19 @@ const VALIDATE_DECLARED: &str = "{ fun validate(): List<String> }";
 /// The payload a serializer that corrects the plugin's reads, `transformDeserialize`'s parameter.
 const ELEMENT: &str = "element";
 
+/// How an item names the wrapper of a tuple, and whether it declares it.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum TupleNaming {
+    /// A number of the item's own, declared by the item: a model type's.
+    Counted,
+    /// A name derived from the shape, declared by the item: the accessor that declares a
+    /// service's result types.
+    Declared,
+    /// The name derived from the shape, declared by no one here: an accessor that is only
+    /// compiled beside the one that declares it.
+    Named,
+}
+
 /// What `#[model_schema(...)]` wrote on an item, as this module reads it.
 pub struct KotlinArgs<'args> {
     /// The functions `check` names on the type, each taking the whole value.
@@ -283,6 +296,9 @@ thread_local! {
     /// invocations — never reset, since every tuple wrapper this module ever writes lands in the
     /// same consuming file and must not collide with any other item's.
     static KOTLIN_TUPLE_COUNTER: Cell<u32> = const { Cell::new(0) };
+    /// How the item being expanded names and declares the wrapper of a tuple. Reset to
+    /// [`TupleNaming::Counted`] with [`KOTLIN_TUPLE_AUX`].
+    static KOTLIN_TUPLE_NAMING: Cell<TupleNaming> = const { Cell::new(TupleNaming::Counted) };
     /// The class each kind of range the item being expanded writes is declared as, by the members
     /// it declares, so every range of one kind names one class. Cleared with
     /// [`KOTLIN_TUPLE_AUX`].
@@ -1257,6 +1273,41 @@ fn tuple_wrapper_serializer(elements: &[FieldDef], walked: bool) -> String {
     }
 }
 
+/// Names the tuple wrappers the item being expanded writes as `naming` says, until
+/// [`kotlin_declarations`] closes the item.
+pub fn kotlin_tuple_naming(naming: TupleNaming) {
+    KOTLIN_TUPLE_NAMING.with(|held| held.set(naming));
+}
+
+/// `shape` without the numbers of the helpers an item numbers for itself (`KotlinNumber627`), which
+/// differ between the items that name one tuple.
+fn unnumbered(shape: &str) -> String {
+    let mut written = String::with_capacity(shape.len());
+    let mut rest = shape;
+    while let Some(at) = rest.find("Kotlin") {
+        let (before, after) = rest.split_at(at);
+        written.push_str(before);
+        let name_end = after
+            .find(|letter: char| !letter.is_ascii_alphabetic())
+            .unwrap_or(after.len());
+        let (name, tail) = after.split_at(name_end);
+        written.push_str(name);
+        rest = tail.trim_start_matches(|letter: char| letter.is_ascii_digit());
+    }
+    written.push_str(rest);
+    written
+}
+
+/// A name for `shape` that no counter and no build changes: the FNV-1a hash of its text.
+fn shape_name(shape: &str) -> String {
+    let hash = unnumbered(shape)
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |held, byte| {
+            (held ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    format!("{hash:016x}")
+}
+
 /// The wrapper of a Tuple-shaped field, and the type parameters it declares: queues a wrapper
 /// `data class` plus the `KSerializer` that reads and writes it as a JSON array, once per shape in
 /// the item being expanded. Monotonically numbered so two fields named alike in two different
@@ -1327,21 +1378,28 @@ fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
     }) {
         return (named, parameters);
     }
-    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
-        let next = counter.get() + 1;
-        counter.set(next);
-        next
-    });
-    let wrapper_name = format!("KotlinTuple{index}");
-    let class_text = tuple_wrapper_declarations(
-        &wrapper_name,
-        &parameters,
-        &params,
-        &encode_entries,
-        &decode_entries,
-        elements.len(),
-    );
-    KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
+    let naming = KOTLIN_TUPLE_NAMING.with(Cell::get);
+    let wrapper_name = if naming == TupleNaming::Counted {
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        format!("KotlinTuple{index}")
+    } else {
+        format!("KotlinTupleOf{}", shape_name(&shape))
+    };
+    if naming != TupleNaming::Named {
+        let class_text = tuple_wrapper_declarations(
+            &wrapper_name,
+            &parameters,
+            &params,
+            &encode_entries,
+            &decode_entries,
+            elements.len(),
+        );
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
+    }
     KOTLIN_TUPLES.with(|tuples| {
         tuples.borrow_mut().push((shape, wrapper_name.clone()));
     });
@@ -1415,12 +1473,17 @@ fn unit_typename() -> String {
     }) {
         return named;
     }
-    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
-        let next = counter.get() + 1;
-        counter.set(next);
-        next
-    });
-    let named = format!("KotlinUnit{index}");
+    let naming = KOTLIN_TUPLE_NAMING.with(Cell::get);
+    let named = if naming == TupleNaming::Counted {
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        format!("KotlinUnit{index}")
+    } else {
+        "KotlinUnitOf".to_owned()
+    };
     let serializer = format!("{named}Serializer");
     let declared = format!(
         "@Serializable(with = {serializer}::class) object {named} \
@@ -1433,7 +1496,9 @@ fn unit_typename() -> String {
          throw SerializationException(\"invalid type: \" + payload + \", expected unit\"); \
          return {named} }} }}"
     );
-    KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
+    if naming != TupleNaming::Named {
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
+    }
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().push((String::new(), named.clone())));
     named
 }
@@ -1650,6 +1715,7 @@ pub fn kotlin_declarations() -> Vec<String> {
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
+    KOTLIN_TUPLE_NAMING.with(|held| held.set(TupleNaming::Counted));
     texts::clear();
     arrays::clear();
     KOTLIN_TUPLE_AUX.with(RefCell::take)
