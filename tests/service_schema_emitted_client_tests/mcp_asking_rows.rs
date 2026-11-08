@@ -953,22 +953,19 @@ fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
 
 #[test]
 fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
-    let settings = dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = dispatcher::McpHttpSettings::new(&[], None);
     let (_, text) = requests().remove(1);
     let stand = Stand::default();
-    let asked = dispatcher::McpHttpRequest {
-        body: text.into_bytes(),
-        headers: vec![
+    let asked = dispatcher::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "delete-document".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+        text.into_bytes(),
+    );
     for (denied, status) in [
         (dispatcher::McpDenied::Forbidden, 403_u16),
         (
@@ -996,7 +993,7 @@ fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
                 },
             ))
         });
-        assert_eq!(response.status, status);
+        assert_eq!(response.status(), status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
 }
@@ -1028,25 +1025,22 @@ fn the_rust_preview_dispatcher_listens_alike_through_every_entry_point() {
 
 #[test]
 fn an_admit_that_denies_stops_a_preview_before_its_handler_runs() {
-    let settings = preview_dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = preview_dispatcher::McpHttpSettings::new(&[], None);
     let (_, text) = requests()
         .into_iter()
         .find(|(name, _)| *name == "preview_image")
         .unwrap();
     let stand = Stand::default();
-    let asked = preview_dispatcher::McpHttpRequest {
-        body: text.into_bytes(),
-        headers: vec![
+    let asked = preview_dispatcher::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "document-preview".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+        text.into_bytes(),
+    );
     for (denied, status) in [
         (preview_dispatcher::McpDenied::Forbidden, 403_u16),
         (
@@ -1075,7 +1069,7 @@ fn an_admit_that_denies_stops_a_preview_before_its_handler_runs() {
                 },
             ))
         });
-        assert_eq!(response.status, status);
+        assert_eq!(response.status(), status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
 }

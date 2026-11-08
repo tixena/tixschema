@@ -1973,3 +1973,30 @@ mod run_kotlin_mcp_guide;
 #[cfg(feature = "swift")]
 #[path = "service_schema_emitted_client_tests/run_swift_mcp_guide.rs"]
 mod run_swift_mcp_guide;
+
+#[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/published_structs.rs"]
+mod published_structs;
+
+#[cfg(test)]
+mod published {
+    built_and_read_back!(
+        mcp_asking_dispatcher,
+        mcp_bare_dispatcher,
+        mcp_depot_dispatcher,
+        mcp_guide_dispatcher,
+        mcp_lesson_dispatcher,
+        mcp_library_dispatcher,
+        mcp_preview_dispatcher,
+        mcp_shelf_dispatcher,
+        mcp_stacks_dispatcher,
+        mcp_writer_dispatcher,
+    );
+}
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+mod published_mobile {
+    built_and_read_back!(mcp_mobile_billing, mcp_mobile_document);
+}

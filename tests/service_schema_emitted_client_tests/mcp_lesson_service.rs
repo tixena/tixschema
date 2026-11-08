@@ -273,16 +273,13 @@ pub fn lesson_answer(text: &str) -> Option<String> {
 
 /// What the Rust dispatcher answers to the request in plain terms.
 pub fn rust_http(row: &HttpRow) -> HttpAnswer {
-    let terms = super::mcp_lesson_dispatcher::McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
-    let settings = super::mcp_lesson_dispatcher::McpHttpSettings {
-        allowed_origins: &[ORIGIN],
-        oauth: None,
-    };
+    let terms = super::mcp_lesson_dispatcher::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    );
+    let settings = super::mcp_lesson_dispatcher::McpHttpSettings::new(&[ORIGIN], None);
     let answered = through(|stream| {
         poll_once(super::mcp_lesson_dispatcher::answer_http(
             &terms,
@@ -294,9 +291,9 @@ pub fn rust_http(row: &HttpRow) -> HttpAnswer {
         .unwrap()
     });
     (
-        answered.status,
-        answered.headers,
-        String::from_utf8(answered.body).unwrap(),
+        answered.status(),
+        answered.headers().to_vec(),
+        String::from_utf8(answered.body().to_vec()).unwrap(),
     )
 }
 

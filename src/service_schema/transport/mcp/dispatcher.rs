@@ -494,10 +494,15 @@ fn endpoint_type() -> TokenStream {
     quote! {
         /// The services of one endpoint, in order.
         pub struct McpEndpoint {
-            pub catalogs: &'static [fn() -> ::serde_json::Value],
+            catalogs: &'static [fn() -> ::serde_json::Value],
         }
 
         impl McpEndpoint {
+            /// The `catalog` of each service, in order.
+            pub const fn catalogs(&self) -> &'static [fn() -> ::serde_json::Value] {
+                self.catalogs
+            }
+
             /// Panics on a name two services share, so a `const` endpoint with one fails the build.
             pub const fn new(
                 names: &'static [&'static [(&'static str, &'static str)]],
@@ -536,7 +541,7 @@ fn endpoint_fns() -> TokenStream {
     quote! {
         /// This service as the only one of its endpoint.
         const fn alone() -> McpServer<'static> {
-            McpServer { endpoint: &ALONE, instructions: INSTRUCTIONS, name: SERVER_NAME }
+            McpServer::new(&ALONE, INSTRUCTIONS, SERVER_NAME)
         }
 
         const fn same_text(left: &str, right: &str) -> bool {
@@ -700,7 +705,7 @@ fn answers() -> TokenStream {
         fn discovered(instructions: ::core::option::Option<&str>, endpoint: &McpEndpoint, listens: bool) -> ::serde_json::Value {
             let mut capabilities = ::serde_json::Map::new();
             let mut extensions = ::serde_json::Map::new();
-            for catalog in endpoint.catalogs {
+            for catalog in endpoint.catalogs() {
                 let catalog = catalog();
                 for (held, into) in [("capabilities", &mut capabilities), ("extensions", &mut extensions)] {
                     if let ::core::option::Option::Some(::serde_json::Value::Object(offered)) = catalog.get(held) {
@@ -735,7 +740,7 @@ fn answers() -> TokenStream {
         /// What the catalogs hold under `key`, one after the other, as a list result.
         fn listed(endpoint: &McpEndpoint, key: &str) -> ::serde_json::Value {
             let mut items = ::std::vec::Vec::new();
-            for catalog in endpoint.catalogs {
+            for catalog in endpoint.catalogs() {
                 if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get(key) {
                     items.extend(offered.iter().cloned());
                 }
@@ -849,7 +854,7 @@ fn routing() -> TokenStream {
             in_flight: ::core::option::Option<&McpInFlight>,
             listens: bool,
         ) -> ::core::result::Result<::serde_json::Value, ::core::option::Option<::std::string::String>> {
-            match begun(text, server.instructions, server.endpoint, server.name, listens) {
+            match begun(text, server.instructions(), server.endpoint(), server.name(), listens) {
                 Begun::Answered(answered) => ::core::result::Result::Err(answered),
                 Begun::Notified(notice) => {
                     if let ::core::option::Option::Some(table) = in_flight {
@@ -880,12 +885,12 @@ fn routing() -> TokenStream {
         {
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
-                let (start, own, first) = match listing_start(request, endpoint.catalogs.len()) {
+                let (start, own, first) = match listing_start(request, endpoint.catalogs().len()) {
                     ::core::result::Result::Ok(start) => start,
                     ::core::result::Result::Err(refused) => return ::core::option::Option::Some(::core::result::Result::Err(refused)),
                 };
                 let mut page = ::core::option::Option::None;
-                for part in start..endpoint.catalogs.len() {
+                for part in start..endpoint.catalogs().len() {
                     let params = listing_params(if part == start { own.as_ref() } else { ::core::option::Option::None });
                     if let ::core::option::Option::Some(answered) = route(ctx, part, "resources/list", &params).await {
                         page = ::core::option::Option::Some((part, answered));
@@ -894,7 +899,7 @@ fn routing() -> TokenStream {
                 }
                 return ::core::option::Option::Some(listed_resources(first, endpoint, page));
             }
-            for part in 0..endpoint.catalogs.len() {
+            for part in 0..endpoint.catalogs().len() {
                 let answered = route(ctx, part, method, &request["params"]).await;
                 if answered.is_some() {
                     return answered;
@@ -929,34 +934,36 @@ fn serve_fns() -> TokenStream {
         /// `ctx` built from the request in flight. A notification answers `None`, and
         /// `notifications/cancelled` marks the request it names in `in_flight`. `route` boxes a
         /// `Send` future that owns what it routes to, so the future of `serve` can be spawned.
-        pub async fn serve<Ctx, W>(
+        pub async fn serve<Ctx, W, MakeCtx>(
             text: &str,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             host: McpHost<'_, W>,
             route: #route_type,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
         {
-            let server = McpServer { endpoint, instructions, name: server_name };
+            let server = McpServer::new(endpoint, instructions, server_name);
             serve_core(text, &server, ctx, host, route, &mut idle, false).await
         }
 
         /// `serve` for an application that hands in its source of changes: `subscriptions/listen`
         /// is answered, and `server/discover` says so.
-        pub async fn serve_listening<Ctx, W, Changes>(
+        pub async fn serve_listening<Ctx, W, Changes, MakeCtx>(
             text: &str,
             server: &McpServer<'_>,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             host: McpHost<'_, W>,
             route: #route_type,
             changes: &mut Changes,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
@@ -964,33 +971,34 @@ fn serve_fns() -> TokenStream {
             serve_core(text, server, ctx, host, route, changes, true).await
         }
 
-        async fn serve_core<Ctx, W, Changes>(
+        async fn serve_core<Ctx, W, Changes, MakeCtx>(
             text: &str,
             server: &McpServer<'_>,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             host: McpHost<'_, W>,
             route: #route_type,
             changes: &mut Changes,
             listens: bool,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
         {
-            let request = match started(text, server, ::core::option::Option::Some(host.in_flight), listens) {
+            let request = match started(text, server, ::core::option::Option::Some(host.in_flight()), listens) {
                 ::core::result::Result::Ok(request) => request,
                 ::core::result::Result::Err(answered) => return answered,
             };
             let call = McpCall::of(&request);
             let ctx = ctx(call.clone());
-            let _entered = host.in_flight.enter(&request["id"], &call);
+            let _entered = host.in_flight().enter(&request["id"], &call);
             let answered = if request["method"] == "subscriptions/listen" {
-                Driven::new(&call, host.writer, listening(&request, &call, server.endpoint, changes)).await
+                Driven::new(&call, host.writer(), listening(&request, &call, server.endpoint(), changes)).await
             } else {
-                Driven::new(&call, host.writer, put_to_services(&request, server.endpoint, &ctx, route)).await
+                Driven::new(&call, host.writer(), put_to_services(&request, server.endpoint(), &ctx, route)).await
             };
-            finished(&request, &call, answered, server.name)
+            finished(&request, &call, answered, server.name())
         }
     }
 }
@@ -1000,14 +1008,15 @@ fn answer(contract: &Ident) -> TokenStream {
         /// `serve` for this service alone, with `SERVER_NAME`, `INSTRUCTIONS`, `catalog()` and
         /// `route`. Usable as is for stdio, and its future is `Send` wherever `Svc`, `Ctx` and
         /// `writer` allow it.
-        pub async fn answer<Svc, Ctx, W>(
+        pub async fn answer<Svc, Ctx, W, MakeCtx>(
             text: &str,
             svc: &Svc,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             writer: &W,
             in_flight: &McpInFlight,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
@@ -1017,15 +1026,16 @@ fn answer(contract: &Ident) -> TokenStream {
 
         /// `answer` for an application that hands in its source of changes: `subscriptions/listen`
         /// is answered, and `server/discover` says so.
-        pub async fn answer_listening<Svc, Ctx, W, Changes>(
+        pub async fn answer_listening<Svc, Ctx, W, Changes, MakeCtx>(
             text: &str,
             svc: &Svc,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             writer: &W,
             in_flight: &McpInFlight,
             changes: &mut Changes,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
@@ -1034,16 +1044,17 @@ fn answer(contract: &Ident) -> TokenStream {
             answer_core(text, svc, ctx, writer, in_flight, changes, true).await
         }
 
-        async fn answer_core<Svc, Ctx, W, Changes>(
+        async fn answer_core<Svc, Ctx, W, Changes, MakeCtx>(
             text: &str,
             svc: &Svc,
-            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            ctx: MakeCtx,
             writer: &W,
             in_flight: &McpInFlight,
             changes: &mut Changes,
             listens: bool,
         ) -> ::core::option::Option<::std::string::String>
         where
+            MakeCtx: ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
@@ -1076,7 +1087,7 @@ fn answer(contract: &Ident) -> TokenStream {
         {
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
-                let (_start, own, first) = match listing_start(request, ALONE.catalogs.len()) {
+                let (_start, own, first) = match listing_start(request, ALONE.catalogs().len()) {
                     ::core::result::Result::Ok(start) => start,
                     ::core::result::Result::Err(refused) => return ::core::option::Option::Some(::core::result::Result::Err(refused)),
                 };
@@ -1179,14 +1190,131 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
 fn http_fns() -> TokenStream {
     quote! {
         fn without_body(status: u16) -> McpHttpResponse {
-            McpHttpResponse { status, headers: ::std::vec::Vec::new(), body: ::std::vec::Vec::new() }
+            McpHttpResponse::new(status, ::std::vec::Vec::new(), ::std::vec::Vec::new())
         }
 
         fn json_response(status: u16, body: &::serde_json::Value) -> McpHttpResponse {
-            McpHttpResponse {
+            McpHttpResponse::new(
                 status,
-                headers: ::std::vec![("Content-Type".to_owned(), "application/json".to_owned())],
-                body: canonical(body).into_bytes(),
+                ::std::vec![("Content-Type".to_owned(), "application/json".to_owned())],
+                canonical(body).into_bytes(),
+            )
+        }
+    }
+}
+
+/// The server an endpoint answers as, and what an HTTP server of it is configured with.
+fn server_and_settings_types() -> TokenStream {
+    quote! {
+        /// The server the services of an endpoint answer as.
+        #[derive(Clone, Copy)]
+        pub struct McpServer<'server> {
+            endpoint: &'server McpEndpoint,
+            instructions: ::core::option::Option<&'server str>,
+            name: &'server str,
+        }
+
+        impl<'server> McpServer<'server> {
+            /// The endpoint it answers for.
+            pub const fn endpoint(&self) -> &'server McpEndpoint {
+                self.endpoint
+            }
+
+            /// The text reported as `instructions`, where there is one.
+            pub const fn instructions(&self) -> ::core::option::Option<&'server str> {
+                self.instructions
+            }
+
+            /// The name reported as `serverInfo.name`.
+            pub const fn name(&self) -> &'server str {
+                self.name
+            }
+
+            /// Binds a server to its endpoint, instructions and name.
+            pub const fn new(
+                endpoint: &'server McpEndpoint,
+                instructions: ::core::option::Option<&'server str>,
+                name: &'server str,
+            ) -> Self {
+                Self { endpoint, instructions, name }
+            }
+        }
+
+        /// An HTTP request in plain terms, the way `http_rest` publishes its own.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct McpHttpRequest {
+            body: ::std::vec::Vec<u8>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            method: ::std::string::String,
+            path: ::std::string::String,
+        }
+
+        /// What an HTTP server of this endpoint is configured with.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpHttpSettings<'settings> {
+            allowed_origins: &'settings [&'settings str],
+            oauth: ::core::option::Option<McpOAuth<'settings>>,
+        }
+
+        impl<'settings> McpHttpSettings<'settings> {
+            /// The origins a request may come from.
+            pub const fn allowed_origins(&self) -> &'settings [&'settings str] {
+                self.allowed_origins
+            }
+
+            /// Binds the origins a request may come from and the OAuth metadata. `oauth` is `None`
+            /// where the server authorizes by other means: no metadata document and no challenge.
+            pub const fn new(
+                allowed_origins: &'settings [&'settings str],
+                oauth: ::core::option::Option<McpOAuth<'settings>>,
+            ) -> Self {
+                Self { allowed_origins, oauth }
+            }
+
+            /// The OAuth metadata, where the server authorizes by OAuth.
+            pub const fn oauth(&self) -> ::core::option::Option<McpOAuth<'settings>> {
+                self.oauth
+            }
+        }
+
+        /// The protected-resource metadata of a server that authorizes by OAuth.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpOAuth<'oauth> {
+            authorization_servers: &'oauth [&'oauth str],
+            resource: &'oauth str,
+            resource_metadata_url: &'oauth str,
+            scopes_supported: &'oauth [&'oauth str],
+        }
+
+        impl<'oauth> McpOAuth<'oauth> {
+            /// The authorization servers the resource trusts.
+            pub const fn authorization_servers(&self) -> &'oauth [&'oauth str] {
+                self.authorization_servers
+            }
+
+            /// Binds the metadata a protected resource publishes.
+            pub const fn new(
+                authorization_servers: &'oauth [&'oauth str],
+                resource: &'oauth str,
+                resource_metadata_url: &'oauth str,
+                scopes_supported: &'oauth [&'oauth str],
+            ) -> Self {
+                Self { authorization_servers, resource, resource_metadata_url, scopes_supported }
+            }
+
+            /// The identifier of the protected resource.
+            pub const fn resource(&self) -> &'oauth str {
+                self.resource
+            }
+
+            /// Where the metadata document is served.
+            pub const fn resource_metadata_url(&self) -> &'oauth str {
+                self.resource_metadata_url
+            }
+
+            /// The scopes the resource understands.
+            pub const fn scopes_supported(&self) -> &'oauth [&'oauth str] {
+                self.scopes_supported
             }
         }
     }
@@ -1195,6 +1323,7 @@ fn http_fns() -> TokenStream {
 /// The enum and structs the dispatcher publishes or reads, with their impls.
 fn types() -> TokenStream {
     let endpoint = endpoint_type();
+    let settings = server_and_settings_types();
     quote! {
         #endpoint
 
@@ -1206,44 +1335,11 @@ fn types() -> TokenStream {
             Routed(::serde_json::Value),
         }
 
-        /// The server the services of an endpoint answer as.
-        #[derive(Clone, Copy)]
-        pub struct McpServer<'server> {
-            pub endpoint: &'server McpEndpoint,
-            pub instructions: ::core::option::Option<&'server str>,
-            pub name: &'server str,
-        }
-
-        /// An HTTP request in plain terms, the way `http_rest` publishes its own.
-        #[derive(Clone, Debug, Eq, PartialEq)]
-        pub struct McpHttpRequest {
-            pub body: ::std::vec::Vec<u8>,
-            pub headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
-            pub method: ::std::string::String,
-            /// The request's path, with or without its query.
-            pub path: ::std::string::String,
-        }
-
-        /// What an HTTP server of this endpoint is configured with.
-        #[derive(Clone, Copy, Debug)]
-        pub struct McpHttpSettings<'settings> {
-            pub allowed_origins: &'settings [&'settings str],
-            /// `None` where the server authorizes by other means: no metadata document and no
-            /// challenge.
-            pub oauth: ::core::option::Option<McpOAuth<'settings>>,
-        }
-
-        /// The protected-resource metadata of a server that authorizes by OAuth.
-        #[derive(Clone, Copy, Debug)]
-        pub struct McpOAuth<'oauth> {
-            pub authorization_servers: &'oauth [&'oauth str],
-            pub resource: &'oauth str,
-            pub resource_metadata_url: &'oauth str,
-            pub scopes_supported: &'oauth [&'oauth str],
-        }
+        #settings
 
         /// Why `admit` refused a request.
         #[derive(Clone, Debug, Eq, PartialEq)]
+        #[non_exhaustive]
         pub enum McpDenied {
             /// `401`: no credentials, or credentials that do not hold. `scope` names what the
             /// called operation needs, where it is known.
@@ -1257,9 +1353,35 @@ fn types() -> TokenStream {
         /// An HTTP response in plain terms.
         #[derive(Clone, Debug, Eq, PartialEq)]
         pub struct McpHttpResponse {
-            pub body: ::std::vec::Vec<u8>,
-            pub headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
-            pub status: u16,
+            body: ::std::vec::Vec<u8>,
+            headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+            status: u16,
+        }
+
+        impl McpHttpResponse {
+            /// The response body.
+            pub fn body(&self) -> &[u8] {
+                &self.body
+            }
+
+            /// Every header this response carries, in the order they were written.
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
+                &self.headers
+            }
+
+            /// Binds one response, for an adapter to write back however its own framework answers.
+            pub const fn new(
+                status: u16,
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+                body: ::std::vec::Vec<u8>,
+            ) -> Self {
+                Self { body, headers, status }
+            }
+
+            /// The status code.
+            pub const fn status(&self) -> u16 {
+                self.status
+            }
         }
 
         impl McpHttpRequest {
@@ -1271,17 +1393,48 @@ fn types() -> TokenStream {
                 (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
             }
 
+            /// The request body, undecoded.
+            pub fn body(&self) -> &[u8] {
+                &self.body
+            }
+
             /// The value of the header called `name`, whatever its case.
             pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
-                self.headers
+                self.headers()
                     .iter()
                     .find(|(held, _)| held.eq_ignore_ascii_case(name))
                     .map(|(_, value)| value.as_str())
             }
 
+            /// Every header this request carried, in the order it carried them.
+            pub fn headers(&self) -> &[(::std::string::String, ::std::string::String)] {
+                &self.headers
+            }
+
             /// The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so.
             pub fn mcp_name(&self) -> ::core::option::Option<::std::string::String> {
                 decoded_header(self.header("mcp-name")?)
+            }
+
+            /// The method exactly as the request line carried it.
+            pub fn method(&self) -> &str {
+                &self.method
+            }
+
+            /// Binds one request as an adapter read it off the wire. `path` is the request's path,
+            /// with or without its query.
+            pub const fn new(
+                method: ::std::string::String,
+                path: ::std::string::String,
+                headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
+                body: ::std::vec::Vec<u8>,
+            ) -> Self {
+                Self { body, headers, method, path }
+            }
+
+            /// The path, with or without its query.
+            pub fn path(&self) -> &str {
+                &self.path
             }
         }
     }
@@ -1405,10 +1558,10 @@ fn http_authorization() -> TokenStream {
             settings: &McpHttpSettings<'_>,
             request: &McpHttpRequest,
         ) -> McpHttpResponse {
-            let (status, challenge) = match (denied, settings.oauth.as_ref()) {
+            let (status, challenge) = match (denied, settings.oauth()) {
                 (McpDenied::NoValidCredentials { scope }, oauth) => {
                     let challenge = oauth.map(|oauth| {
-                        let mut parts = ::std::vec![format!("resource_metadata=\"{}\"", oauth.resource_metadata_url)];
+                        let mut parts = ::std::vec![format!("resource_metadata=\"{}\"", oauth.resource_metadata_url())];
                         if let ::core::option::Option::Some(scope) = scope {
                             parts.push(format!("scope=\"{scope}\""));
                         }
@@ -1424,7 +1577,7 @@ fn http_authorization() -> TokenStream {
                     oauth.map(|oauth| {
                         format!(
                             "Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{}\"",
-                            oauth.resource_metadata_url
+                            oauth.resource_metadata_url()
                         )
                     }),
                 ),
@@ -1440,12 +1593,12 @@ fn http_authorization() -> TokenStream {
         /// The protected-resource metadata document of `oauth`.
         fn metadata_response(oauth: &McpOAuth<'_>) -> McpHttpResponse {
             let mut document = ::serde_json::json!({
-                "authorization_servers": oauth.authorization_servers,
+                "authorization_servers": oauth.authorization_servers(),
                 "bearer_methods_supported": ["header"],
-                "resource": oauth.resource,
+                "resource": oauth.resource(),
             });
-            if !oauth.scopes_supported.is_empty() {
-                document["scopes_supported"] = ::serde_json::json!(oauth.scopes_supported);
+            if !oauth.scopes_supported().is_empty() {
+                document["scopes_supported"] = ::serde_json::json!(oauth.scopes_supported());
             }
             json_response(200, &document)
         }
@@ -1456,19 +1609,19 @@ fn http_authorization() -> TokenStream {
             request: &McpHttpRequest,
             settings: &McpHttpSettings<'_>,
         ) -> ::core::result::Result<(), McpHttpResponse> {
-            if let ::core::option::Option::Some(oauth) = settings.oauth.as_ref() {
-                let path = request.path.split(['?', '#']).next().unwrap_or_default();
-                if request.method == "GET" && path == url_path(oauth.resource_metadata_url) {
-                    return ::core::result::Result::Err(metadata_response(oauth));
+            if let ::core::option::Option::Some(oauth) = settings.oauth() {
+                let path = request.path().split(['?', '#']).next().unwrap_or_default();
+                if request.method() == "GET" && path == url_path(oauth.resource_metadata_url()) {
+                    return ::core::result::Result::Err(metadata_response(&oauth));
                 }
             }
-            if request.method != "POST" {
+            if request.method() != "POST" {
                 let mut refused = without_body(405);
                 refused.headers.push(("Allow".to_owned(), "POST".to_owned()));
                 return ::core::result::Result::Err(refused);
             }
             if let ::core::option::Option::Some(origin) = request.header("origin") {
-                if !settings.allowed_origins.contains(&origin) {
+                if !settings.allowed_origins().contains(&origin) {
                     return ::core::result::Result::Err(without_body(403));
                 }
             }
@@ -1483,7 +1636,7 @@ fn http_entry() -> TokenStream {
         /// The rules a request meets once `admit` let it through: the text of its body where they
         /// let it through, and the response that refuses it where they do not.
         fn admitted(request: &McpHttpRequest, listens: bool) -> ::core::result::Result<&str, McpHttpResponse> {
-            let ::core::result::Result::Ok(text) = ::core::str::from_utf8(&request.body) else {
+            let ::core::result::Result::Ok(text) = ::core::str::from_utf8(request.body()) else {
                 return ::core::result::Result::Err(json_response(
                     400,
                     &failed(
@@ -1521,11 +1674,11 @@ fn http_entry() -> TokenStream {
         /// The response that carries the text `serve` answered.
         fn http_response(answered: ::core::option::Option<::std::string::String>) -> McpHttpResponse {
             match answered {
-                ::core::option::Option::Some(body) => McpHttpResponse {
-                    status: 200,
-                    headers: ::std::vec![("Content-Type".to_owned(), "application/json".to_owned())],
-                    body: body.into_bytes(),
-                },
+                ::core::option::Option::Some(body) => McpHttpResponse::new(
+                    200,
+                    ::std::vec![("Content-Type".to_owned(), "application/json".to_owned())],
+                    body.into_bytes(),
+                ),
                 ::core::option::Option::None => without_body(202),
             }
         }
@@ -1609,12 +1762,12 @@ fn http_serving() -> TokenStream {
                         ::core::result::Result::Ok(asked_request) => {
                             let work = async {
                                 if asked_request["method"] == "subscriptions/listen" {
-                                    listening(&asked_request, &call, server.endpoint, changes).await
+                                    listening(&asked_request, &call, server.endpoint(), changes).await
                                 } else {
-                                    put_to_services(&asked_request, server.endpoint, &ctx, route).await
+                                    put_to_services(&asked_request, server.endpoint(), &ctx, route).await
                                 }
                             };
-                            http_answer(&asked_request, &call, stream, server.name, work).await
+                            http_answer(&asked_request, &call, stream, server.name(), work).await
                         }
                     }
                 }

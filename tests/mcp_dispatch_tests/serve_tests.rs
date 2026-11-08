@@ -644,10 +644,7 @@ fn discover_answers_the_union_of_the_capabilities_with_the_extensions_inside_the
         Some("Everything."),
         &ENDPOINT,
         |_call| (),
-        document_mcp::McpHost {
-            in_flight: &document_mcp::McpInFlight::default(),
-            writer: &Lines::default(),
-        },
+        document_mcp::McpHost::new(&document_mcp::McpInFlight::default(), &Lines::default()),
         &|_ctx: &(), _part, _method: &str, _params: &Value| Box::pin(async { None }),
     ))
     .unwrap();
@@ -672,8 +669,8 @@ fn a_tool_and_a_prompt_of_one_name_share_an_endpoint() {
         &[&[("tool", "get-version")], &[("prompt", "get-version")]],
         &[],
     );
-    assert_eq!(ENDPOINT.catalogs.len(), 0);
-    assert_eq!(WORKSPACE.catalogs.len(), 2);
+    assert_eq!(ENDPOINT.catalogs().len(), 0);
+    assert_eq!(WORKSPACE.catalogs().len(), 2);
 }
 
 #[test]
@@ -708,10 +705,7 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             billing_mcp::INSTRUCTIONS,
             &ALONE,
             |_call| (),
-            billing_mcp::McpHost {
-                in_flight: &billing_mcp::McpInFlight::default(),
-                writer: &Lines::default(),
-            },
+            billing_mcp::McpHost::new(&billing_mcp::McpInFlight::default(), &Lines::default()),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 let held = archive.clone();
                 Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
@@ -726,20 +720,17 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         by_answer["result"]["structuredContent"],
         json!({ "cents": CENTS })
     );
-    let over_http = McpHttpRequest {
-        body: asked.to_string().into_bytes(),
-        headers: vec![
+    let over_http = McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "get-balance".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+        asked.to_string().into_bytes(),
+    );
+    let settings = McpHttpSettings::new(&[], None);
     let response = through(|stream| {
         block_on(billing_mcp::answer_http(
             &over_http,
@@ -749,17 +740,13 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             async |_request, _call| Ok(()),
         ))
     });
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status(), 200);
     let served = through(|stream| {
         block_on(billing_mcp::serve_http(
             &over_http,
             &settings,
             stream,
-            &billing_mcp::McpServer {
-                endpoint: &ALONE,
-                instructions: None,
-                name: billing_mcp::SERVER_NAME,
-            },
+            &billing_mcp::McpServer::new(&ALONE, None, billing_mcp::SERVER_NAME),
             async |_request, _call| Ok(()),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 let held = archive.clone();
@@ -796,10 +783,7 @@ fn the_futures_of_serve_and_serve_http_are_send() {
             None,
             &WORKSPACE,
             |_call| (),
-            document_mcp::McpHost {
-                in_flight: &in_flight,
-                writer: &lines,
-            },
+            document_mcp::McpHost::new(&in_flight, &lines),
             &|ctx: &(), part, method: &str, params: &Value| {
                 let held_documents = Arc::clone(&documents);
                 let held_billing = Arc::clone(&billing);
@@ -818,20 +802,13 @@ fn the_futures_of_serve_and_serve_http_are_send() {
     drop(spawned(async move {
         let documents = Arc::new(Archive::default());
         let billing = Arc::new(Archive::default());
-        let settings = document_mcp::McpHttpSettings {
-            allowed_origins: &[ORIGIN],
-            oauth: None,
-        };
+        let settings = document_mcp::McpHttpSettings::new(&[ORIGIN], None);
         let stream = Recorded::default();
         document_mcp::serve_http(
             &asked,
             &settings,
             &stream,
-            &document_mcp::McpServer {
-                endpoint: &WORKSPACE,
-                instructions: None,
-                name: "Workspace",
-            },
+            &document_mcp::McpServer::new(&WORKSPACE, None, "Workspace"),
             async |_request: &document_mcp::McpHttpRequest, _call: document_mcp::McpCall| {
                 Ok::<(), document_mcp::McpDenied>(())
             },

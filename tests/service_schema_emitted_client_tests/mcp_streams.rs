@@ -20,7 +20,7 @@ macro_rules! streams_here {
                 ::core::future::ready(
                     self.record($crate::mcp_streams::Seen::Wrote(message))
                         .then_some(())
-                        .ok_or(McpClientGone),
+                        .ok_or(McpClientGone::new()),
                 )
             }
         }
@@ -34,7 +34,7 @@ macro_rules! streams_here {
                 ::core::future::ready(
                     self.record($crate::mcp_streams::Seen::Began(status, headers.to_vec()))
                         .then_some(())
-                        .ok_or(McpClientGone),
+                        .ok_or(McpClientGone::new()),
                 )
             }
         }

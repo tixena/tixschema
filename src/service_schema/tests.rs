@@ -1918,9 +1918,9 @@ fn a_streamed_body_beside_both_envelope_transports_is_refused_once_naming_both()
         refused.to_string(),
         "service_schema: operation `get_content` declares a streamed body, and this service \
          also declares `amqp_rpc`, `ws_rpc`\n       \
-         a streamed body has no carrier inside the `{ ok, value, error }` envelope those \
-         transports answer with - drop them from `transports`, or drop `body = \"stream\"` from \
-         this operation"
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope \
+         `amqp_rpc` and `ws_rpc` answers with - drop them from `transports`, or drop \
+         `body = \"stream\"` from this operation"
     );
 }
 
@@ -1935,9 +1935,111 @@ fn a_multipart_file_part_beside_both_envelope_transports_is_refused_once_naming_
         refused.to_string(),
         "service_schema: operation `upload_document` declares a multipart file part, and this \
          service also declares `amqp_rpc`, `ws_rpc`\n       \
-         a file part has no carrier inside the `{ ok, value, error }` envelope those \
-         transports answer with - drop them from `transports`, or drop the `part(...)` binding \
-         and `body = \"multipart\"` from this operation"
+         a file part has no carrier inside the `{ ok, value, error }` envelope \
+         `amqp_rpc` and `ws_rpc` answers with - drop them from `transports`, or drop the \
+         `part(...)` binding and `body = \"multipart\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_mcp_alone_names_the_tool_result() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `mcp`\n       \
+         a streamed body has no carrier inside the tool result `mcp` answers with - drop them \
+         from `transports`, or drop `body = \"stream\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_an_envelope_transport_and_mcp_names_both_carriers() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::AmqpRpc, Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `amqp_rpc`, `mcp`\n       \
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` \
+         answers with, nor inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop `body = \"stream\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_ws_rpc_alone_names_the_envelope() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::WsRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `ws_rpc`\n       \
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` \
+         answers with - drop them from `transports`, or drop `body = \"stream\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_mcp_alone_names_the_tool_result() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `mcp`\n       \
+         a file part has no carrier inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop the `part(...)` binding and `body = \"multipart\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_an_envelope_transport_and_mcp_names_both_carriers() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::AmqpRpc, Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `amqp_rpc`, `mcp`\n       \
+         a file part has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` \
+         answers with, nor inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop the `part(...)` binding and `body = \"multipart\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_ws_rpc_alone_names_the_envelope() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::WsRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `ws_rpc`\n       \
+         a file part has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers \
+         with - drop them from `transports`, or drop the `part(...)` binding and \
+         `body = \"multipart\"` from this operation"
     );
 }
 

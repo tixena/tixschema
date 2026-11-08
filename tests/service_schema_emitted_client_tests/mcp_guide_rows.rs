@@ -367,16 +367,13 @@ fn answered(text: &str) -> (String, Vec<Value>) {
 }
 
 fn http_answered(headers: &[(String, String)], body: &str) -> Value {
-    let settings = dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
-    let asked = dispatcher::McpHttpRequest {
-        body: body.as_bytes().to_vec(),
-        headers: headers.to_vec(),
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+    let settings = dispatcher::McpHttpSettings::new(&[], None);
+    let asked = dispatcher::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        headers.to_vec(),
+        body.as_bytes().to_vec(),
+    );
     let response = through(|stream| {
         ready_output(dispatcher::answer_http(
             &asked,
@@ -386,7 +383,7 @@ fn http_answered(headers: &[(String, String)], body: &str) -> Value {
             async |_request, _call| Ok(()),
         ))
     });
-    json!({ "status": response.status, "body": String::from_utf8(response.body).unwrap() })
+    json!({ "status": response.status(), "body": String::from_utf8(response.body().to_vec()).unwrap() })
 }
 
 /// What the Rust dispatcher answers every request, and the calls that reached its handlers.
@@ -695,18 +692,15 @@ fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
 
 #[test]
 fn an_admit_that_denies_stops_a_prompt_before_its_handler_runs() {
-    let settings = dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = dispatcher::McpHttpSettings::new(&[], None);
     let row = http_rows().remove(0);
     let stand = Stand::default();
-    let asked = dispatcher::McpHttpRequest {
-        body: row.body.into_bytes(),
-        headers: row.headers,
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+    let asked = dispatcher::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        row.headers,
+        row.body.into_bytes(),
+    );
     for (denied, status) in [
         (dispatcher::McpDenied::Forbidden, 403_u16),
         (
@@ -734,7 +728,7 @@ fn an_admit_that_denies_stops_a_prompt_before_its_handler_runs() {
                 },
             ))
         });
-        assert_eq!(response.status, status);
+        assert_eq!(response.status(), status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
 }

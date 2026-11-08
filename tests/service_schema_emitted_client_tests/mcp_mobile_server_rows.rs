@@ -11,16 +11,10 @@ use serde_json::{Value, json};
 
 pub const ORIGIN: &str = "https://app.example.com";
 
-const DOCUMENT_SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[ORIGIN],
-    oauth: None,
-};
+const DOCUMENT_SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[ORIGIN], None);
 
 const BILLING_SETTINGS: mcp_mobile_billing::McpHttpSettings<'static> =
-    mcp_mobile_billing::McpHttpSettings {
-        allowed_origins: &[ORIGIN],
-        oauth: None,
-    };
+    mcp_mobile_billing::McpHttpSettings::new(&[ORIGIN], None);
 
 /// Two services behind one endpoint, built in a `const` so a shared name would stop the build.
 pub const WORKSPACE: McpEndpoint = McpEndpoint::new(
@@ -400,10 +394,7 @@ pub fn workspace_answer(text: &str) -> Option<String> {
         None,
         &WORKSPACE,
         |call| call.progress(0.0_f64, None, None),
-        mcp_mobile_document::McpHost {
-            in_flight: &mcp_mobile_document::McpInFlight::default(),
-            writer: &Sink,
-        },
+        mcp_mobile_document::McpHost::new(&mcp_mobile_document::McpInFlight::default(), &Sink),
         &|ctx: &(), part, method: &str, params: &Value| {
             Box::pin(async move {
                 match part {
@@ -560,12 +551,12 @@ pub fn http_rows() -> Vec<HttpRow> {
 }
 
 fn plain_terms(row: &HttpRow) -> McpHttpRequest {
-    McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: row.method.to_owned(),
-        path: "/mcp".to_owned(),
-    }
+    McpHttpRequest::new(
+        row.method.to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    )
 }
 
 /// What the Rust dispatcher of `MobileDocumentService` alone answers to the request in plain terms.
@@ -580,19 +571,19 @@ pub fn rust_http(row: &HttpRow) -> (u16, Vec<(String, String)>, String) {
         ))
     });
     (
-        answered.status,
-        answered.headers,
-        String::from_utf8(answered.body).unwrap(),
+        answered.status(),
+        answered.headers().to_vec(),
+        String::from_utf8(answered.body().to_vec()).unwrap(),
     )
 }
 
 fn billing_terms(row: &HttpRow) -> mcp_mobile_billing::McpHttpRequest {
-    mcp_mobile_billing::McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: row.method.to_owned(),
-        path: "/mcp".to_owned(),
-    }
+    mcp_mobile_billing::McpHttpRequest::new(
+        row.method.to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    )
 }
 
 #[test]
@@ -610,10 +601,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
         mcp_mobile_billing::INSTRUCTIONS,
         &endpoint,
         |call| call.progress(0.0_f64, None, None),
-        mcp_mobile_billing::McpHost {
-            in_flight: &mcp_mobile_billing::McpInFlight::default(),
-            writer: &Sink,
-        },
+        mcp_mobile_billing::McpHost::new(&mcp_mobile_billing::McpInFlight::default(), &Sink),
         &|ctx: &(), _part, method: &str, params: &Value| {
             Box::pin(async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await })
         },
@@ -638,11 +626,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             &billing_terms(&asked),
             &BILLING_SETTINGS,
             stream,
-            &mcp_mobile_billing::McpServer {
-                endpoint: &endpoint,
-                instructions: None,
-                name: mcp_mobile_billing::SERVER_NAME,
-            },
+            &mcp_mobile_billing::McpServer::new(&endpoint, None, mcp_mobile_billing::SERVER_NAME),
             async |_request, _call| Ok(()),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 Box::pin(
@@ -651,18 +635,14 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             },
         ))
     });
-    assert_eq!(over_http.status, 200);
-    assert_eq!(over_http.status, served_over_http.status);
+    assert_eq!(over_http.status(), 200);
+    assert_eq!(over_http.status(), served_over_http.status());
     let workspace = through(|stream| {
         block_on(mcp_mobile_document::serve_http(
             &plain_terms(&asked),
             &DOCUMENT_SETTINGS,
             stream,
-            &mcp_mobile_document::McpServer {
-                endpoint: &WORKSPACE,
-                instructions: None,
-                name: "Workspace",
-            },
+            &mcp_mobile_document::McpServer::new(&WORKSPACE, None, "Workspace"),
             async |_request, _call| Ok(()),
             &|ctx: &(), part, method: &str, params: &Value| {
                 Box::pin(async move {
@@ -675,7 +655,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             },
         ))
     });
-    assert_eq!(workspace.status, rust_http(&asked).0);
+    assert_eq!(workspace.status(), rust_http(&asked).0);
 }
 
 #[test]
@@ -714,7 +694,7 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
                 },
             ))
         });
-        assert_eq!(response.status, status, "{denied:?}");
+        assert_eq!(response.status(), status, "{denied:?}");
     }
     for (denied, status) in [
         (
@@ -742,7 +722,7 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
                 },
             ))
         });
-        assert_eq!(response.status, status, "{denied:?}");
+        assert_eq!(response.status(), status, "{denied:?}");
     }
 }
 
