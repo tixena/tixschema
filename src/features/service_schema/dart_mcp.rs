@@ -168,37 +168,92 @@ class @N@McpForbidden extends @N@McpDenied {
 /// write that throws means the client has gone.
 typedef @N@McpWriter = Future<void> Function(String message);
 
+/// What the application's source of changes hands to a `subscriptions/listen` stream.
+sealed class @N@McpChange {
+  const @N@McpChange();
+}
+
+/// The list of resources changed.
+class @N@McpResourcesListChanged extends @N@McpChange {
+  const @N@McpResourcesListChanged();
+}
+
+/// One resource changed.
+class @N@McpResourceUpdated extends @N@McpChange {
+  const @N@McpResourceUpdated(this.uri);
+  final String uri;
+}
+
+/// One task moved.
+class @N@McpTaskMoved extends @N@McpChange {
+  const @N@McpTaskMoved(this.taskId);
+  final String taskId;
+}
+
+/// Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio.
+class @N@McpKeepAlive extends @N@McpChange {
+  const @N@McpKeepAlive();
+}
+
+/// The application's source of changes: each call answers the next change, and `null` ends the stream.
+typedef @N@McpChanges = Future<@N@McpChange?> Function();
+
 /// The request in flight, handed to `admit` and to the function that builds `Ctx`, so that a
-/// handler reaches it. `token` is the request's `progressToken`, and `writer` takes what it writes
-/// beyond its answer.
+/// handler reaches it. `token` is the request's `progressToken`, `writer` takes what it writes
+/// beyond its answer, and `comment` writes the comment line that keeps an event stream open.
 class @N@McpCall {
-  @N@McpCall({Object? token, @N@McpWriter? writer})
+  @N@McpCall({Object? token, @N@McpWriter? writer, Future<void> Function()? comment})
       : _token = token,
-        _writer = writer;
+        _writer = writer,
+        _comment = comment;
   final Object? _token;
   final @N@McpWriter? _writer;
+  final Future<void> Function()? _comment;
+  final Completer<void> _stopped = Completer<void>();
   bool _gone = false;
+
+  void _cancel() {
+    _gone = true;
+    if (!_stopped.isCompleted) _stopped.complete();
+  }
+
+  Future<bool> _write(String message) async {
+    if (_gone) return false;
+    try {
+      await _writer?.call(message);
+      return true;
+    } catch (_) {
+      _cancel();
+      return false;
+    }
+  }
+
+  Future<bool> _keepAlive() async {
+    if (_gone) return false;
+    try {
+      await _comment?.call();
+      return true;
+    } catch (_) {
+      _cancel();
+      return false;
+    }
+  }
 
   /// Writes `notifications/progress` where the request carries a `progressToken`, and does nothing
   /// otherwise. A write that fails cancels the call.
   Future<void> progress(num done, {num? total, String? message}) async {
-    final writer = _writer;
     final token = _token;
-    if (writer == null || token == null || _gone) return;
-    try {
-      await writer(_@P@McpJson(<String, dynamic>{
-        'jsonrpc': '2.0',
-        'method': 'notifications/progress',
-        'params': <String, dynamic>{
-          'progress': done,
-          'progressToken': token,
-          if (total != null) 'total': total,
-          if (message != null) 'message': message,
-        },
-      }));
-    } catch (_) {
-      _gone = true;
-    }
+    if (_writer == null || token == null) return;
+    await _write(_@P@McpJson(<String, dynamic>{
+      'jsonrpc': '2.0',
+      'method': 'notifications/progress',
+      'params': <String, dynamic>{
+        'progress': done,
+        'progressToken': token,
+        if (total != null) 'total': total,
+        if (message != null) 'message': message,
+      },
+    }));
   }
 
   /// Whether the client cancelled this request, or went away.
@@ -210,7 +265,7 @@ class @N@McpInFlight {
   final Map<String, @N@McpCall> _calls = <String, @N@McpCall>{};
 
   void _cancel(Object? id) {
-    _calls[jsonEncode(id)]?._gone = true;
+    _calls[jsonEncode(id)]?._cancel();
   }
 
   void Function() _enter(Object? id, @N@McpCall call) {
@@ -224,9 +279,12 @@ class @N@McpInFlight {
 
 /// What `@P@McpServe` writes to, and the requests it has in flight.
 class @N@McpHost {
-  const @N@McpHost({required this.writer, required this.inFlight});
+  const @N@McpHost({required this.writer, required this.inFlight, this.changes});
   final @N@McpWriter writer;
   final @N@McpInFlight inFlight;
+
+  /// Where `subscriptions/listen` takes its changes from; `null` where the host offers none.
+  final @N@McpChanges? changes;
 }
 
 /// What `admit` answers: the context the handlers run with in `ctx`, or why the request is refused in `denied`.
@@ -277,6 +335,83 @@ Map<String, dynamic> _@P@McpUnknownOperation(String operation) => <String, dynam
       'isServiceFault': true,
     };
 
+const _@P@McpStopped = Object();
+
+/// The `subscriptions/listen` of one call: the acknowledgment, then what `changes` yields that the
+/// client asked for, until it yields `null` or the call is cancelled.
+Future<({String? text, int status})> _@P@McpListen(
+  Object? id,
+  Map<String, dynamic> params,
+  String info,
+  @N@McpEndpoint endpoint,
+  @N@McpCall call,
+  @N@McpChanges changes,
+) async {
+  ({String? text, int status}) invalid(String detail) => (
+        text: _@P@McpJson(<String, dynamic>{
+          'error': <String, dynamic>{'code': -32602, 'message': 'Invalid params: $detail'},
+          'id': id,
+          'jsonrpc': '2.0',
+        }),
+        status: 200,
+      );
+  final filter = params['notifications'];
+  if (filter is! Map<String, dynamic>) return invalid('subscriptions/listen needs `notifications`');
+  final uris = filter['resourceSubscriptions'];
+  if (filter.containsKey('resourcesListChanged') && filter['resourcesListChanged'] is! bool) {
+    return invalid('`resourcesListChanged` is not a boolean');
+  }
+  if (filter.containsKey('resourceSubscriptions') && !(uris is List && uris.every((uri) => uri is String))) {
+    return invalid('`resourceSubscriptions` is not an array of strings');
+  }
+  final agreed = <String, dynamic>{};
+  final offersResources = endpoint.catalogs.any(
+    (catalog) => catalog.capabilities.any((written) => (jsonDecode(written) as Map).containsKey('resources')),
+  );
+  if (offersResources) {
+    if (filter['resourcesListChanged'] == true) agreed['resourcesListChanged'] = true;
+    if (uris is List && uris.isNotEmpty) agreed['resourceSubscriptions'] = uris;
+  }
+  const subscription = 'io.modelcontextprotocol/subscriptionId';
+  String notified(String method, Map<String, dynamic> given) => _@P@McpJson(<String, dynamic>{
+        'jsonrpc': '2.0',
+        'method': method,
+        'params': <String, dynamic>{...given, '_meta': <String, dynamic>{subscription: id}},
+      });
+  final lists = agreed['resourcesListChanged'] == true;
+  final watched = <String>{
+    if (agreed['resourceSubscriptions'] case final List<dynamic> held) ...held.cast<String>(),
+  };
+  final meta = Map<String, dynamic>.of(jsonDecode(info) as Map<String, dynamic>)..[subscription] = id;
+  final ended = (
+    text: _@P@McpJson(<String, dynamic>{
+      'id': id,
+      'jsonrpc': '2.0',
+      'result': <String, dynamic>{'_meta': meta, 'resultType': 'complete'},
+    }),
+    status: 200,
+  );
+  if (!await call._write(notified('notifications/subscriptions/acknowledged', <String, dynamic>{'notifications': agreed}))) {
+    return ended;
+  }
+  while (true) {
+    final Object? change = await Future.any<Object?>(<Future<Object?>>[
+      changes(),
+      call._stopped.future.then<Object?>((_) => _@P@McpStopped),
+    ]);
+    if (call.cancelled || change == null || identical(change, _@P@McpStopped)) return ended;
+    final written = switch (change) {
+      @N@McpResourcesListChanged() when lists =>
+        await call._write(notified('notifications/resources/list_changed', const <String, dynamic>{})),
+      @N@McpResourceUpdated(:final uri) when watched.contains(uri) =>
+        await call._write(notified('notifications/resources/updated', <String, dynamic>{'uri': uri})),
+      @N@McpKeepAlive() => await call._keepAlive(),
+      _ => true,
+    };
+    if (!written) return ended;
+  }
+}
+
 Future<({String? text, int status})> _@P@McpRespond(
   String text,
   String serverName,
@@ -284,6 +419,7 @@ Future<({String? text, int status})> _@P@McpRespond(
   String? instructions,
   @N@McpEndpoint endpoint,
   Future<@N@McpAnswer?> Function(int part, String method, Map<String, dynamic> params) route,
+  Future<({String? text, int status})> Function(Object? id, Map<String, dynamic> params, String info)? listening,
 ) async {
   ({String? text, int status}) failed(Object? id, int status, int code, String message,
           [Object? data]) =>
@@ -326,12 +462,19 @@ Future<({String? text, int status})> _@P@McpRespond(
   ({String? text, int status}) answered(String result) =>
       (text: '{"id":${_@P@McpJson(id)},"jsonrpc":"2.0","result":$result}', status: 200);
 
+  if (method == 'subscriptions/listen' && listening != null) return listening(id, params, info);
+
   if (method == 'server/discover') {
     final capabilities = <String, dynamic>{};
     for (final catalog in endpoint.catalogs) {
       for (final written in catalog.capabilities) {
         _@P@McpMerge(capabilities, jsonDecode(written) as Map<String, dynamic>);
       }
+    }
+    final resources = capabilities['resources'];
+    if (listening != null && resources is Map<String, dynamic>) {
+      resources['listChanged'] = true;
+      resources['subscribe'] = true;
     }
     return answered(_@P@McpObject(<String, String>{
       '_meta': info,
@@ -511,7 +654,8 @@ Object? _@P@McpToken(Map<String, dynamic>? message) {
 /// service at that place in the endpoint, or `null` for a request it does not own, and receives
 /// the `Ctx` that `ctx` built from the request in flight. A notification answers `null`, and
 /// `notifications/cancelled` marks the request it names in `host.inFlight`. The answer of a
-/// cancelled request is dropped.
+/// cancelled request is dropped. A host that hands in `host.changes` also answers
+/// `subscriptions/listen`.
 Future<String?> @P@McpServe<Ctx>(
   String text,
   String serverName,
@@ -533,6 +677,7 @@ Future<String?> @P@McpServe<Ctx>(
   void Function()? leave;
   Ctx? built;
   var building = true;
+  final changes = host.changes;
   try {
     final answered = await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint,
         (part, method, params) {
@@ -542,7 +687,12 @@ Future<String?> @P@McpServe<Ctx>(
         built = ctx(call);
       }
       return route(built as Ctx, part, method, params);
-    });
+    }, changes == null
+        ? null
+        : (id, params, info) {
+            leave = host.inFlight._enter(message?['id'], call);
+            return _@P@McpListen(id, params, info, endpoint, call, changes);
+          });
     return call.cancelled ? null : answered.text;
   } finally {
     leave?.call();
@@ -558,11 +708,12 @@ Object? _@P@McpBodyToken(@N@McpHttpRequest request) {
 }
 
 /// The `200` event-stream answer: each event written, then the answer.
-@N@McpHttpResponse _@P@McpEventStream(List<String> events, String? answered) => @N@McpHttpResponse(
+@N@McpHttpResponse _@P@McpEventStream(List<String?> events, String? answered) => @N@McpHttpResponse(
       status: 200,
       headers: const [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')],
       body: utf8.encode([
-        for (final event in [...events, if (answered != null) answered]) 'event: message\ndata: $event\n\n',
+        for (final event in [...events, if (answered != null) answered])
+          event == null ? ':\n\n' : 'event: message\ndata: $event\n\n',
       ].join()),
     );
 
@@ -612,7 +763,8 @@ String _@P@McpUrlPath(String url) {
 
 /// The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
 /// `admit`, the body and the headers that must agree with it. `route` also receives the `Ctx` that
-/// `admit` answered.
+/// `admit` answered. A `subscriptions/listen` answers an event stream where `changes` is handed in:
+/// it ends when `changes` answers `null`.
 Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   @N@McpHttpRequest request,
   @N@McpHttpSettings settings,
@@ -620,8 +772,9 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   String? instructions,
   @N@McpEndpoint endpoint,
   @N@McpAdmit<Ctx> admit,
-  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route,
-) async {
+  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route, [
+  @N@McpChanges? changes,
+]) async {
   @N@McpHttpResponse respond(int status, [String? body]) => _@P@McpReplied(status, body: body);
   String? header(String name) => request.header(name);
 
@@ -641,8 +794,12 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   }
   final origin = header('origin');
   if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
-  final events = <String>[];
-  final call = @N@McpCall(token: _@P@McpBodyToken(request), writer: (event) async => events.add(event));
+  final events = <String?>[];
+  final call = @N@McpCall(
+    token: _@P@McpBodyToken(request),
+    writer: (event) async => events.add(event),
+    comment: () async => events.add(null),
+  );
   final admitted = await admit(request, call);
   final denied = admitted.denied;
   if (denied != null) return _@P@McpDenial(denied, settings, request);
@@ -685,10 +842,15 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
       endpoint, (part, method, params) {
     routed = true;
     return route(ctx, part, method, params);
-  });
+  }, changes == null
+      ? null
+      : (id, params, info) {
+          routed = true;
+          return _@P@McpListen(id, params, info, endpoint, call, changes);
+        });
   if (!routed) return respond(answered.status, answered.text);
   final written = call.cancelled ? null : answered.text;
-  if (_@P@McpToken(parsed) != null) return _@P@McpEventStream(events, written);
+  if (_@P@McpToken(parsed) != null || method == 'subscriptions/listen') return _@P@McpEventStream(events, written);
   return written == null ? respond(202) : respond(answered.status, written);
 }
 "#;
@@ -807,18 +969,19 @@ Future<String?> Function(
   String text,
   Ctx Function(@N@McpCall call) ctx,
   @N@McpWriter writer,
-  @N@McpInFlight inFlight,
-) create@N@McpDispatcher<Ctx>(
+  @N@McpInFlight inFlight, [
+  @N@McpChanges? changes,
+]) create@N@McpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
 ) {
   final route = create@N@McpRoute(handlers);
-  return (text, ctx, writer, inFlight) => @P@McpServe<Ctx>(
+  return (text, ctx, writer, inFlight, [changes]) => @P@McpServe<Ctx>(
         text,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,
         ctx,
-        @N@McpHost(writer: writer, inFlight: inFlight),
+        @N@McpHost(writer: writer, inFlight: inFlight, changes: changes),
         (built, part, method, params) => route(built, method, params),
       );
 }
@@ -828,8 +991,9 @@ Future<String?> Function(
 Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
   @N@McpHttpSettings settings,
-  @N@McpAdmit<Ctx> admit,
-) {
+  @N@McpAdmit<Ctx> admit, [
+  @N@McpChanges? changes,
+]) {
   final route = create@N@McpRoute(handlers);
   return (request) => @P@McpServeHttp<Ctx>(
         request,
@@ -839,6 +1003,7 @@ Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatche
         _@P@McpAlone,
         admit,
         (ctx, part, method, params) => route(ctx, method, params),
+        changes,
       );
 }";
 

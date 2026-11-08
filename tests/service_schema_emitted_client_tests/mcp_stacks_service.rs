@@ -239,3 +239,15 @@ fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike
     assert!(alone.is_some());
     assert_eq!(status, 200);
 }
+
+#[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        mcp_stacks_dispatcher,
+        StacksServiceSchema,
+        Shelved,
+        ready_now
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+}

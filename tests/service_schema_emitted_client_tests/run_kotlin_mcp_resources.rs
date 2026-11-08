@@ -21,7 +21,7 @@ use super::{bare_service_schema, depot_service_schema, library_service_schema};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
-const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
+pub const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.coroutines.flow.*\n\
      import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -29,7 +29,7 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.serialization.encoding.*\n\
      import kotlinx.serialization.builtins.*";
 
-const HANDLERS: &str = r##"
+pub const HANDLERS: &str = r##"
 object LibraryHandlers : LibraryServiceHandlers {
     override suspend fun getBook(req: BookRequest): LibraryServiceGetBookResult {
         if (req.bookId == "panic") throw IllegalStateException("the handler came apart")
@@ -183,14 +183,14 @@ fun main() = runBlocking {
 "#;
 
 /// The name of the class `text` declares for a byte array and its content type.
-fn wrapper_of_bytes(text: &str) -> String {
+pub fn wrapper_of_bytes(text: &str) -> String {
     let shape = "(val slot0: List<UByte>, val slot1: String)";
     let before = &text[..text.find(shape).unwrap()];
     let start = before.rfind("data class ").unwrap() + "data class ".len();
     before[start..].to_owned()
 }
 
-fn definitions() -> Vec<String> {
+pub fn definitions() -> Vec<String> {
     vec![
         book_info_kotlin::kotlin_definition(),
         book_error_kotlin::kotlin_definition(),
@@ -217,7 +217,7 @@ fn definitions() -> Vec<String> {
 }
 
 /// `text` as it is written between the quotes of a Kotlin string.
-fn kotlin_text(text: &str) -> String {
+pub fn kotlin_text(text: &str) -> String {
     let mut written = String::with_capacity(text.len());
     for letter in text.chars() {
         match letter {

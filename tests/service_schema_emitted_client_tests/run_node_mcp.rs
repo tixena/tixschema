@@ -1519,3 +1519,10 @@ fn the_typescript_host_writes_the_messages_the_rust_host_writes() {
     };
     assert_matches(&report);
 }
+
+#[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(document_mcp, DocumentServiceSchema, Stand, answered);
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+}

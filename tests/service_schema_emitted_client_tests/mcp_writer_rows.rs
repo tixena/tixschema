@@ -153,12 +153,12 @@ type Task<'task> = Pin<Box<dyn Future<Output = ()> + 'task>>;
 
 /// Tasks polled in turn, each only after something woke it.
 #[derive(Default)]
-struct Tasks<'tasks> {
+pub struct Tasks<'tasks> {
     running: Vec<(Arc<Woken>, Task<'tasks>)>,
 }
 
 impl<'tasks> Tasks<'tasks> {
-    fn run_until_idle(&mut self) {
+    pub fn run_until_idle(&mut self) {
         loop {
             let mut polled = false;
             self.running.retain_mut(|(woken, task)| {
@@ -177,7 +177,11 @@ impl<'tasks> Tasks<'tasks> {
         }
     }
 
-    fn spawn(&mut self, task: impl Future<Output = ()> + 'tasks) {
+    pub fn running(&self) -> usize {
+        self.running.len()
+    }
+
+    pub fn spawn(&mut self, task: impl Future<Output = ()> + 'tasks) {
         self.running
             .push((Arc::new(Woken(AtomicBool::new(true))), Box::pin(task)));
     }
@@ -191,7 +195,7 @@ pub struct HttpRow {
 }
 
 /// What `answering` answers on its first poll.
-fn ready_output<Answering>(answering: Answering) -> Answering::Output
+pub fn ready_output<Answering>(answering: Answering) -> Answering::Output
 where
     Answering: Future,
 {
@@ -544,4 +548,11 @@ fn an_admit_that_denies_by_name_stops_the_request_before_any_handler_runs() {
         assert_eq!(response.status, status, "{name}");
         assert!(response.body.is_empty(), "{name}");
     }
+}
+
+#[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(dispatcher, WriterServiceSchema, Stand, ready_output);
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
 }

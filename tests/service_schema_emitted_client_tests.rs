@@ -1672,6 +1672,17 @@ mod mcp_stacks_dispatcher;
 #[cfg(test)]
 use mcp_stacks_service::{StacksService, StacksServiceSchema, stacks_service_schema};
 
+/// The requests `subscriptions/listen` is held to on every server, and the Rust dispatcher's
+/// answers to them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_listen_rows.rs"]
+mod mcp_listen_rows;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_listen.rs"]
+mod run_node_mcp_listen;
+
 /// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, templates,
 /// a listing and a completion.
 #[cfg(test)]
@@ -1683,6 +1694,12 @@ mod run_node_mcp_resources;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_mcp_scopes.rs"]
 mod run_node_mcp_scopes;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_listen.rs"]
+mod run_dart_mcp_listen;
 
 /// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
@@ -1697,6 +1714,12 @@ mod run_dart_mcp_resources;
 #[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/run_dart_mcp_scopes.rs"]
 mod run_dart_mcp_scopes;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_listen.rs"]
+mod run_kotlin_mcp_listen;
 
 /// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
