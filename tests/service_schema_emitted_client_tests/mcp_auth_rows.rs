@@ -36,8 +36,8 @@ macro_rules! rust_serves_alike {
                 in_flight: &$module::McpInFlight::default(),
                 writer: &Sink,
             },
-            async |ctx: &(), _part, method, params| {
-                $module::route(method, params, &$svc, ctx).await
+            &|ctx: &(), _part, method: &str, params: &Value| {
+                Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
             },
         ));
         let asked = $module::McpHttpRequest {
@@ -59,8 +59,8 @@ macro_rules! rust_serves_alike {
             async |_request: &$module::McpHttpRequest,
                    _call: $module::McpCall|
                    -> Result<(), $module::McpDenied> { Ok(()) },
-            async |ctx: &(), _part, method, params| {
-                $module::route(method, params, &$svc, ctx).await
+            &|ctx: &(), _part, method: &str, params: &Value| {
+                Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
             },
         ));
         (alone, served, over_http.status)
