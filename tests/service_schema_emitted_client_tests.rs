@@ -1676,6 +1676,31 @@ mod mcp_stacks_dispatcher;
 #[cfg(test)]
 use mcp_stacks_service::{StacksService, StacksServiceSchema, stacks_service_schema};
 
+/// `LessonService`, which ships a skills folder and writes two skills at run time, and its Rust
+/// dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_lesson_service.rs"]
+mod mcp_lesson_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_lesson_dispatcher.rs"]
+mod mcp_lesson_dispatcher;
+
+#[cfg(test)]
+use mcp_lesson_service::{LessonService, LessonServiceSchema, lesson_service_schema};
+
+/// The requests `subscriptions/listen` is held to on every server, and the Rust dispatcher's
+/// answers to them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_listen_rows.rs"]
+mod mcp_listen_rows;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_listen.rs"]
+mod run_node_mcp_listen;
+
 /// `ShelfService`, whose template and completion a request can fail to read or the validator can
 /// refuse, and its Rust dispatcher.
 #[cfg(test)]
@@ -1700,11 +1725,22 @@ mod resource_cases;
 #[path = "service_schema_emitted_client_tests/run_node_mcp_resources.rs"]
 mod run_node_mcp_resources;
 
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_skills.rs"]
+mod run_node_mcp_skills;
+
 /// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, a template,
 /// a listing and a completion that declare scopes.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_mcp_scopes.rs"]
 mod run_node_mcp_scopes;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_listen.rs"]
+mod run_dart_mcp_listen;
 
 /// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
@@ -1713,6 +1749,12 @@ mod run_node_mcp_scopes;
 #[path = "service_schema_emitted_client_tests/run_dart_mcp_resources.rs"]
 mod run_dart_mcp_resources;
 
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_skills.rs"]
+mod run_dart_mcp_skills;
+
 /// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, a template, a
 /// listing and a completion that declare scopes.
 #[cfg(test)]
@@ -1720,12 +1762,24 @@ mod run_dart_mcp_resources;
 #[path = "service_schema_emitted_client_tests/run_dart_mcp_scopes.rs"]
 mod run_dart_mcp_scopes;
 
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_listen.rs"]
+mod run_kotlin_mcp_listen;
+
 /// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
 #[cfg(test)]
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_mcp_resources.rs"]
 mod run_kotlin_mcp_resources;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_skills.rs"]
+mod run_kotlin_mcp_skills;
 
 /// `WriterService`, whose handler reports progress, and the rows the emitted TypeScript, Dart and
 /// Kotlin servers are measured against.

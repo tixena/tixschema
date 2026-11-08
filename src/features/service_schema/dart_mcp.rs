@@ -24,6 +24,7 @@ use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
@@ -199,6 +200,8 @@ const VERSION_MARKER: &str = "@VERSION@";
 const RESOURCES_MARKER: &str = "@RESOURCES@";
 const TEMPLATES_MARKER: &str = "@TEMPLATES@";
 const PROMPTS_MARKER: &str = "@PROMPTS@";
+const SKILLS_MARKER: &str = "@SKILLS@";
+const SKILL_FILES_MARKER: &str = "@SKILLFILES@";
 
 const SERVER_HEAD: &str = r#"/// The name `server/discover` reports this service under.
 const @P@McpServerName = @NAMEQ@;
@@ -227,10 +230,11 @@ const @N@McpCatalog @P@McpCatalog = (
   resources: <String>[@RESOURCES@],
   resourceTemplates: <String>[@TEMPLATES@],
   prompts: <String>[@PROMPTS@],
-  skills: <String>[],
+  skills: <String>[@SKILLS@],
   capabilities: <String>[@CAPABILITIES@],
 );
 
+@SKILLFILESDECL@
 /// What a route answers: the `result` object of a message, or its JSON-RPC `error` object.
 typedef @N@McpAnswer = ({Object? result, Object? error});
 
@@ -336,37 +340,92 @@ class @N@McpForbidden extends @N@McpDenied {
 /// write that throws means the client has gone.
 typedef @N@McpWriter = Future<void> Function(String message);
 
+/// What the application's source of changes hands to a `subscriptions/listen` stream.
+sealed class @N@McpChange {
+  const @N@McpChange();
+}
+
+/// The list of resources changed.
+class @N@McpResourcesListChanged extends @N@McpChange {
+  const @N@McpResourcesListChanged();
+}
+
+/// One resource changed.
+class @N@McpResourceUpdated extends @N@McpChange {
+  const @N@McpResourceUpdated(this.uri);
+  final String uri;
+}
+
+/// One task moved.
+class @N@McpTaskMoved extends @N@McpChange {
+  const @N@McpTaskMoved(this.taskId);
+  final String taskId;
+}
+
+/// Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio.
+class @N@McpKeepAlive extends @N@McpChange {
+  const @N@McpKeepAlive();
+}
+
+/// The application's source of changes: each call answers the next change, and `null` ends the stream.
+typedef @N@McpChanges = Future<@N@McpChange?> Function();
+
 /// The request in flight, handed to `admit` and to the function that builds `Ctx`, so that a
-/// handler reaches it. `token` is the request's `progressToken`, and `writer` takes what it writes
-/// beyond its answer.
+/// handler reaches it. `token` is the request's `progressToken`, `writer` takes what it writes
+/// beyond its answer, and `comment` writes the comment line that keeps an event stream open.
 class @N@McpCall {
-  @N@McpCall({Object? token, @N@McpWriter? writer})
+  @N@McpCall({Object? token, @N@McpWriter? writer, Future<void> Function()? comment})
       : _token = token,
-        _writer = writer;
+        _writer = writer,
+        _comment = comment;
   final Object? _token;
   final @N@McpWriter? _writer;
+  final Future<void> Function()? _comment;
+  final Completer<void> _stopped = Completer<void>();
   bool _gone = false;
+
+  void _cancel() {
+    _gone = true;
+    if (!_stopped.isCompleted) _stopped.complete();
+  }
+
+  Future<bool> _write(String message) async {
+    if (_gone) return false;
+    try {
+      await _writer?.call(message);
+      return true;
+    } catch (_) {
+      _cancel();
+      return false;
+    }
+  }
+
+  Future<bool> _keepAlive() async {
+    if (_gone) return false;
+    try {
+      await _comment?.call();
+      return true;
+    } catch (_) {
+      _cancel();
+      return false;
+    }
+  }
 
   /// Writes `notifications/progress` where the request carries a `progressToken`, and does nothing
   /// otherwise. A write that fails cancels the call.
   Future<void> progress(num done, {num? total, String? message}) async {
-    final writer = _writer;
     final token = _token;
-    if (writer == null || token == null || _gone) return;
-    try {
-      await writer(_@P@McpJson(<String, dynamic>{
-        'jsonrpc': '2.0',
-        'method': 'notifications/progress',
-        'params': <String, dynamic>{
-          'progress': done,
-          'progressToken': token,
-          if (total != null) 'total': total,
-          if (message != null) 'message': message,
-        },
-      }));
-    } catch (_) {
-      _gone = true;
-    }
+    if (_writer == null || token == null) return;
+    await _write(_@P@McpJson(<String, dynamic>{
+      'jsonrpc': '2.0',
+      'method': 'notifications/progress',
+      'params': <String, dynamic>{
+        'progress': done,
+        'progressToken': token,
+        if (total != null) 'total': total,
+        if (message != null) 'message': message,
+      },
+    }));
   }
 
   /// Whether the client cancelled this request, or went away.
@@ -378,7 +437,7 @@ class @N@McpInFlight {
   final Map<String, @N@McpCall> _calls = <String, @N@McpCall>{};
 
   void _cancel(Object? id) {
-    _calls[jsonEncode(id)]?._gone = true;
+    _calls[jsonEncode(id)]?._cancel();
   }
 
   void Function() _enter(Object? id, @N@McpCall call) {
@@ -392,9 +451,12 @@ class @N@McpInFlight {
 
 /// What `@P@McpServe` writes to, and the requests it has in flight.
 class @N@McpHost {
-  const @N@McpHost({required this.writer, required this.inFlight});
+  const @N@McpHost({required this.writer, required this.inFlight, this.changes});
   final @N@McpWriter writer;
   final @N@McpInFlight inFlight;
+
+  /// Where `subscriptions/listen` takes its changes from; `null` where the host offers none.
+  final @N@McpChanges? changes;
 }
 
 /// What `admit` answers: the context the handlers run with in `ctx`, or why the request is refused in `denied`.
@@ -445,6 +507,83 @@ Map<String, dynamic> _@P@McpUnknownOperation(String operation) => <String, dynam
       'isServiceFault': true,
     };
 
+const _@P@McpStopped = Object();
+
+/// The `subscriptions/listen` of one call: the acknowledgment, then what `changes` yields that the
+/// client asked for, until it yields `null` or the call is cancelled.
+Future<({String? text, int status})> _@P@McpListen(
+  Object? id,
+  Map<String, dynamic> params,
+  String info,
+  @N@McpEndpoint endpoint,
+  @N@McpCall call,
+  @N@McpChanges changes,
+) async {
+  ({String? text, int status}) invalid(String detail) => (
+        text: _@P@McpJson(<String, dynamic>{
+          'error': <String, dynamic>{'code': -32602, 'message': 'Invalid params: $detail'},
+          'id': id,
+          'jsonrpc': '2.0',
+        }),
+        status: 200,
+      );
+  final filter = params['notifications'];
+  if (filter is! Map<String, dynamic>) return invalid('subscriptions/listen needs `notifications`');
+  final uris = filter['resourceSubscriptions'];
+  if (filter.containsKey('resourcesListChanged') && filter['resourcesListChanged'] is! bool) {
+    return invalid('`resourcesListChanged` is not a boolean');
+  }
+  if (filter.containsKey('resourceSubscriptions') && !(uris is List && uris.every((uri) => uri is String))) {
+    return invalid('`resourceSubscriptions` is not an array of strings');
+  }
+  final agreed = <String, dynamic>{};
+  final offersResources = endpoint.catalogs.any(
+    (catalog) => catalog.capabilities.any((written) => (jsonDecode(written) as Map).containsKey('resources')),
+  );
+  if (offersResources) {
+    if (filter['resourcesListChanged'] == true) agreed['resourcesListChanged'] = true;
+    if (uris is List && uris.isNotEmpty) agreed['resourceSubscriptions'] = uris;
+  }
+  const subscription = 'io.modelcontextprotocol/subscriptionId';
+  String notified(String method, Map<String, dynamic> given) => _@P@McpJson(<String, dynamic>{
+        'jsonrpc': '2.0',
+        'method': method,
+        'params': <String, dynamic>{...given, '_meta': <String, dynamic>{subscription: id}},
+      });
+  final lists = agreed['resourcesListChanged'] == true;
+  final watched = <String>{
+    if (agreed['resourceSubscriptions'] case final List<dynamic> held) ...held.cast<String>(),
+  };
+  final meta = Map<String, dynamic>.of(jsonDecode(info) as Map<String, dynamic>)..[subscription] = id;
+  final ended = (
+    text: _@P@McpJson(<String, dynamic>{
+      'id': id,
+      'jsonrpc': '2.0',
+      'result': <String, dynamic>{'_meta': meta, 'resultType': 'complete'},
+    }),
+    status: 200,
+  );
+  if (!await call._write(notified('notifications/subscriptions/acknowledged', <String, dynamic>{'notifications': agreed}))) {
+    return ended;
+  }
+  while (true) {
+    final Object? change = await Future.any<Object?>(<Future<Object?>>[
+      changes(),
+      call._stopped.future.then<Object?>((_) => _@P@McpStopped),
+    ]);
+    if (call.cancelled || change == null || identical(change, _@P@McpStopped)) return ended;
+    final written = switch (change) {
+      @N@McpResourcesListChanged() when lists =>
+        await call._write(notified('notifications/resources/list_changed', const <String, dynamic>{})),
+      @N@McpResourceUpdated(:final uri) when watched.contains(uri) =>
+        await call._write(notified('notifications/resources/updated', <String, dynamic>{'uri': uri})),
+      @N@McpKeepAlive() => await call._keepAlive(),
+      _ => true,
+    };
+    if (!written) return ended;
+  }
+}
+
 Future<({String? text, int status})> _@P@McpRespond(
   String text,
   String serverName,
@@ -452,6 +591,7 @@ Future<({String? text, int status})> _@P@McpRespond(
   String? instructions,
   @N@McpEndpoint endpoint,
   Future<@N@McpAnswer?> Function(int part, String method, Map<String, dynamic> params) route,
+  Future<({String? text, int status})> Function(Object? id, Map<String, dynamic> params, String info)? listening,
 ) async {
   ({String? text, int status}) failed(Object? id, int status, int code, String message,
           [Object? data]) =>
@@ -494,12 +634,19 @@ Future<({String? text, int status})> _@P@McpRespond(
   ({String? text, int status}) answered(String result) =>
       (text: '{"id":${_@P@McpJson(id)},"jsonrpc":"2.0","result":$result}', status: 200);
 
+  if (method == 'subscriptions/listen' && listening != null) return listening(id, params, info);
+
   if (method == 'server/discover') {
     final capabilities = <String, dynamic>{};
     for (final catalog in endpoint.catalogs) {
       for (final written in catalog.capabilities) {
         _@P@McpMerge(capabilities, jsonDecode(written) as Map<String, dynamic>);
       }
+    }
+    final resources = capabilities['resources'];
+    if (listening != null && resources is Map<String, dynamic>) {
+      resources['listChanged'] = true;
+      resources['subscribe'] = true;
     }
     return answered(_@P@McpObject(<String, String>{
       '_meta': info,
@@ -530,8 +677,10 @@ Future<({String? text, int status})> _@P@McpRespond(
     case 'skills/list':
       field = 'skills';
       listed = [for (final catalog in catalogs) ...catalog.skills];
-      scope = 'private';
-      ttl = 0;
+      if (listed.any((text) => (jsonDecode(text) as Map<String, dynamic>)['resources'] == 'dynamic')) {
+        scope = 'private';
+        ttl = 0;
+      }
     default:
       field = null;
       listed = const <String>[];
@@ -618,6 +767,12 @@ Future<({String? text, int status})> _@P@McpRespond(
       named = params['uri'] is String ? params['uri'] as String : null;
     case 'prompts/get':
       named = params['name'] is String ? params['name'] as String : null;
+    case 'skills/get':
+      named = params['name'] is String
+          ? params['name'] as String
+          : params['uri'] is String
+              ? params['uri'] as String
+              : null;
     case 'completion/complete':
       final argument = params['argument'];
       final reference = params['ref'];
@@ -630,7 +785,8 @@ Future<({String? text, int status})> _@P@McpRespond(
       (method == 'tools/call' ||
           method == 'resources/read' ||
           method == 'prompts/get' ||
-          method == 'completion/complete')) {
+          method == 'completion/complete' ||
+          method == 'skills/get')) {
     return failed(id, 200, -32602, 'Invalid params: $method names nothing to answer');
   }
   for (var part = 0; part < catalogs.length; part += 1) {
@@ -653,6 +809,7 @@ Future<({String? text, int status})> _@P@McpRespond(
     'tools/call' => 'Unknown tool',
     'resources/read' => 'Resource not found',
     'prompts/get' => 'Unknown prompt',
+    'skills/get' => 'Skill not found',
     'completion/complete' => 'Unknown completion',
     _ => null,
   };
@@ -685,7 +842,8 @@ Object? _@P@McpToken(Map<String, dynamic>? message) {
 /// service at that place in the endpoint, or `null` for a request it does not own, and receives
 /// the `Ctx` that `ctx` built from the request in flight. A notification answers `null`, and
 /// `notifications/cancelled` marks the request it names in `host.inFlight`. The answer of a
-/// cancelled request is dropped.
+/// cancelled request is dropped. A host that hands in `host.changes` also answers
+/// `subscriptions/listen`.
 Future<String?> @P@McpServe<Ctx>(
   String text,
   String serverName,
@@ -707,6 +865,7 @@ Future<String?> @P@McpServe<Ctx>(
   void Function()? leave;
   Ctx? built;
   var building = true;
+  final changes = host.changes;
   try {
     final answered = await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint,
         (part, method, params) {
@@ -716,7 +875,12 @@ Future<String?> @P@McpServe<Ctx>(
         built = ctx(call);
       }
       return route(built as Ctx, part, method, params);
-    });
+    }, changes == null
+        ? null
+        : (id, params, info) {
+            leave = host.inFlight._enter(message?['id'], call);
+            return _@P@McpListen(id, params, info, endpoint, call, changes);
+          });
     return call.cancelled ? null : answered.text;
   } finally {
     leave?.call();
@@ -732,11 +896,12 @@ Object? _@P@McpBodyToken(@N@McpHttpRequest request) {
 }
 
 /// The `200` event-stream answer: each event written, then the answer.
-@N@McpHttpResponse _@P@McpEventStream(List<String> events, String? answered) => @N@McpHttpResponse(
+@N@McpHttpResponse _@P@McpEventStream(List<String?> events, String? answered) => @N@McpHttpResponse(
       status: 200,
       headers: const [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')],
       body: utf8.encode([
-        for (final event in [...events, if (answered != null) answered]) 'event: message\ndata: $event\n\n',
+        for (final event in [...events, if (answered != null) answered])
+          event == null ? ':\n\n' : 'event: message\ndata: $event\n\n',
       ].join()),
     );
 
@@ -786,7 +951,8 @@ String _@P@McpUrlPath(String url) {
 
 /// The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
 /// `admit`, the body and the headers that must agree with it. `route` also receives the `Ctx` that
-/// `admit` answered.
+/// `admit` answered. A `subscriptions/listen` answers an event stream where `changes` is handed in:
+/// it ends when `changes` answers `null`.
 Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   @N@McpHttpRequest request,
   @N@McpHttpSettings settings,
@@ -794,8 +960,9 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   String? instructions,
   @N@McpEndpoint endpoint,
   @N@McpAdmit<Ctx> admit,
-  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route,
-) async {
+  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route, [
+  @N@McpChanges? changes,
+]) async {
   @N@McpHttpResponse respond(int status, [String? body]) => _@P@McpReplied(status, body: body);
   String? header(String name) => request.header(name);
 
@@ -815,8 +982,12 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   }
   final origin = header('origin');
   if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
-  final events = <String>[];
-  final call = @N@McpCall(token: _@P@McpBodyToken(request), writer: (event) async => events.add(event));
+  final events = <String?>[];
+  final call = @N@McpCall(
+    token: _@P@McpBodyToken(request),
+    writer: (event) async => events.add(event),
+    comment: () async => events.add(null),
+  );
   final admitted = await admit(request, call);
   final denied = admitted.denied;
   if (denied != null) return _@P@McpDenial(denied, settings, request);
@@ -859,10 +1030,15 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
       endpoint, (part, method, params) {
     routed = true;
     return route(ctx, part, method, params);
-  });
+  }, changes == null
+      ? null
+      : (id, params, info) {
+          routed = true;
+          return _@P@McpListen(id, params, info, endpoint, call, changes);
+        });
   if (!routed) return respond(answered.status, answered.text);
   final written = call.cancelled ? null : answered.text;
-  if (_@P@McpToken(parsed) != null) return _@P@McpEventStream(events, written);
+  if (_@P@McpToken(parsed) != null || method == 'subscriptions/listen') return _@P@McpEventStream(events, written);
   return written == null ? respond(202) : respond(answered.status, written);
 }
 "#;
@@ -1023,18 +1199,19 @@ Future<String?> Function(
   String text,
   Ctx Function(@N@McpCall call) ctx,
   @N@McpWriter writer,
-  @N@McpInFlight inFlight,
-) create@N@McpDispatcher<Ctx>(
+  @N@McpInFlight inFlight, [
+  @N@McpChanges? changes,
+]) create@N@McpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
 ) {
   final route = create@N@McpRoute(handlers);
-  return (text, ctx, writer, inFlight) => @P@McpServe<Ctx>(
+  return (text, ctx, writer, inFlight, [changes]) => @P@McpServe<Ctx>(
         text,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,
         ctx,
-        @N@McpHost(writer: writer, inFlight: inFlight),
+        @N@McpHost(writer: writer, inFlight: inFlight, changes: changes),
         (built, part, method, params) => route(built, method, params),
       );
 }
@@ -1044,8 +1221,9 @@ Future<String?> Function(
 Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
   @N@McpHttpSettings settings,
-  @N@McpAdmit<Ctx> admit,
-) {
+  @N@McpAdmit<Ctx> admit, [
+  @N@McpChanges? changes,
+]) {
   final route = create@N@McpRoute(handlers);
   return (request) => @P@McpServeHttp<Ctx>(
         request,
@@ -1055,6 +1233,7 @@ Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatche
         _@P@McpAlone,
         admit,
         (ctx, part, method, params) => route(ctx, method, params),
+        changes,
       );
 }";
 
@@ -1278,7 +1457,14 @@ pub fn service_text(declared: &ServiceDef) -> String {
     let held = Resourced::of(service);
     let mut published = vec![
         filled(SERVER_HEAD, &named, &prefix)
-            .replace("@CAPABILITIES@", &capabilities_literal(service, &held))
+            .replace(
+                "@SKILLFILESDECL@\n",
+                &skill_files_declaration(service, &prefix),
+            )
+            .replace(
+                "@CAPABILITIES@",
+                &capabilities_literal(service, &held, skilled(service)),
+            )
             .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
         page_types(service),
         wrapped_table(&prefix, "Server", service)
@@ -1820,11 +2006,17 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
              default:\n              return null;\n          }}\n"
         );
     }
-    if held.reads().next().is_some() {
+    if held.reads().next().is_some() || skilled(service) {
         let _ = write!(
             cases,
             "        case 'resources/read':\n          final uri = params['uri'];\n          \
              return uri is String ? _{prefix}McpRead<Ctx>(handlers, ctx, uri) : null;\n"
+        );
+    }
+    if skilled(service) {
+        let _ = write!(
+            cases,
+            "        case 'skills/get':\n          return _{prefix}McpSkillGet(params);\n"
         );
     }
     if held.listing.is_some() {
@@ -1861,18 +2053,48 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
 }
 
 /// The `capabilities` the catalog lists, as the literals of their JSON text.
-fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>) -> String {
+fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![quoted("{\"tools\":{}}")];
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
         capabilities.push(quoted("{\"prompts\":{}}"));
     }
-    if held.is_served() {
+    if held.is_served() || skilled {
         capabilities.push(quoted("{\"resources\":{}}"));
+    }
+    if skilled {
+        capabilities.push(quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
     }
     if !held.completions.is_empty() {
         capabilities.push(quoted("{\"completions\":{}}"));
     }
     capabilities.join(", ")
+}
+
+/// Whether the service ships a skills folder or has an operation that writes a skill.
+fn skilled(service: &ServiceDef) -> bool {
+    service.skills.is_some() || !dynamic_skills(service).is_empty()
+}
+
+/// The operations that write a skill at run time.
+fn dynamic_skills(service: &ServiceDef) -> Vec<&OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.skill.is_some())
+        .collect()
+}
+
+/// The constant that holds the files of the skills folder, over the marker the accessor fills.
+fn skill_files_declaration(service: &ServiceDef, prefix: &str) -> String {
+    if service.skills.is_none() {
+        return String::new();
+    }
+    format!(
+        "/// The content `resources/read` answers for each file of the skills folder, as JSON text, by URI.\n\
+         const _{prefix}McpSkillFiles = <String, String>{{{SKILL_FILES_MARKER}}};\n\n"
+    )
 }
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
@@ -1950,11 +2172,15 @@ fn resource_functions(
         .iter()
         .filter(|operation| operation.is_mcp_prompt())
         .collect();
-    if !held.any() && prompts.is_empty() {
+    let dynamic = dynamic_skills(service);
+    if !held.any() && prompts.is_empty() && !skilled(service) {
         return Vec::new();
     }
     let fields = fault_fields_typescript_name(named);
-    let mut published = vec![filled(UNREAD, named, prefix).replace("@F@", &fields)];
+    let mut published = Vec::new();
+    if held.any() || !prompts.is_empty() || !dynamic.is_empty() {
+        published.push(filled(UNREAD, named, prefix).replace("@F@", &fields));
+    }
     if !prompts.is_empty() {
         published.extend(
             prompts
@@ -1969,7 +2195,17 @@ fn resource_functions(
             held.reads()
                 .map(|operation| resource_read(named, prefix, operation)),
         );
-        published.push(read_dispatch(held, named, prefix));
+    }
+    if held.reads().next().is_some() || skilled(service) {
+        published.extend(
+            dynamic
+                .iter()
+                .map(|operation| skill_read(named, prefix, operation)),
+        );
+        published.push(read_dispatch(service, held, named, prefix));
+    }
+    if skilled(service) {
+        published.push(skill_get(named, prefix));
     }
     if let Some(operation) = held.listing {
         published.push(resource_listing(named, prefix, operation));
@@ -2115,10 +2351,108 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
     )
 }
 
-fn read_dispatch(held: &Resourced<'_>, named: &str, prefix: &str) -> String {
+/// The read of a file of a skill an operation writes: the frontmatter ahead of the manifest's text.
+fn skill_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+        return String::new();
+    };
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), syn::Type::Tuple(_))
+    );
+    let content = if blob {
+        "<String, dynamic>{'uri': uri, 'mimeType': answered.$2, 'blob': base64Encode(answered.$1)}"
+            .to_owned()
+    } else {
+        let frontmatter = quoted(&written_frontmatter(
+            skill,
+            operation.doc.as_deref().unwrap_or_default(),
+        ));
+        format!(
+            "<String, dynamic>{{'uri': uri, 'mimeType': 'text/markdown', \
+             'text': path == 'SKILL.md' ? {frontmatter} + @ENCODED@ : @ENCODED@}}"
+        )
+    };
+    let success = format!(
+        "return (\n      result: <String, dynamic>{{\n        \
+         'cacheScope': 'private',\n        \
+         'contents': <Object>[{content}],\n        \
+         'resultType': 'complete',\n        \
+         'ttlMs': 0,\n      }},\n      error: null,\n    );"
+    );
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpReadSkill{op}<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         String uri,\n  \
+         String path,\n\
+         ) async {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            named,
+            prefix,
+            operation,
+            "path",
+            "'Skill file not found'",
+            &success,
+        )
+    )
+}
+
+/// The `skills/get` of the service: the entry its catalog lists under the name or the URI asked.
+fn skill_get(named: &str, prefix: &str) -> String {
+    format!(
+        "{named}McpAnswer? _{prefix}McpSkillGet(Map<String, dynamic> params) {{\n  \
+         final name = params['name'];\n  \
+         final uri = params['uri'];\n  \
+         for (final text in {prefix}McpCatalog.skills) {{\n    \
+         final entry = jsonDecode(text) as Map<String, dynamic>;\n    \
+         final frontmatter = entry['frontmatter'];\n    \
+         final held = (name is String && frontmatter is Map && frontmatter['name'] == name) ||\n        \
+         (uri is String && entry['uri'] == uri);\n    \
+         if (!held) continue;\n    \
+         final written = entry['resources'] == 'dynamic';\n    \
+         return (\n      result: <String, dynamic>{{\n        \
+         'cacheScope': written ? 'private' : 'public',\n        \
+         'resultType': 'complete',\n        \
+         'skill': entry,\n        \
+         'ttlMs': written ? 0 : 300000,\n      }},\n      error: null,\n    );\n  }}\n  \
+         return null;\n}}"
+    )
+}
+
+fn read_dispatch(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &str) -> String {
     let mut text = format!(
         "Future<{named}McpAnswer?> _{prefix}McpRead<Ctx>({named}Handlers<Ctx> handlers, Ctx ctx, String uri) async {{\n"
     );
+    if service.skills.is_some() {
+        let _ = write!(
+            text,
+            "  final folder = _{prefix}McpSkillFiles[uri];\n  \
+             if (folder != null) {{\n    \
+             return (\n      result: <String, dynamic>{{\n        \
+             'cacheScope': 'public',\n        \
+             'contents': <Object>[jsonDecode(folder)],\n        \
+             'resultType': 'complete',\n        \
+             'ttlMs': 300000,\n      }},\n      error: null,\n    );\n  }}\n"
+        );
+    }
+    for operation in dynamic_skills(service) {
+        let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+            continue;
+        };
+        let root = quoted(&format!("skill://{skill}/"));
+        let _ = write!(
+            text,
+            "  {{\n    const root = {root};\n    \
+             if (uri.startsWith(root) && uri.length > root.length) {{\n      \
+             return _{prefix}McpReadSkill{op}<Ctx>(handlers, ctx, uri, uri.substring(root.length));\n    }}\n  }}\n",
+            op = pascal(operation),
+        );
+    }
     for operation in held.reads() {
         let Some(resource) = operation.mcp.resource.as_ref() else {
             continue;
@@ -2702,6 +3036,28 @@ fn form_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
+/// The `skills` and `skill_files` literals `dart_mcp_service()` writes over their markers.
+fn skill_literals() -> TokenStream {
+    quote! {
+        let skills = Self::mcp_skills()
+            .iter()
+            .map(|skill| literal(&skill.to_string()))
+            .collect::<::std::vec::Vec<_>>()
+            .join(", ");
+        let skill_files = Self::mcp_skill_files()
+            .iter()
+            .map(|file| {
+                ::std::format!(
+                    "{}: {}",
+                    literal(file["uri"].as_str().unwrap_or_default()),
+                    literal(&file.to_string())
+                )
+            })
+            .collect::<::std::vec::Vec<_>>()
+            .join(", ");
+    }
+}
+
 /// `dart_mcp_service()` and `dart_mcp_client()`, for a service that asks for `mcp`. They write the
 /// tool list, the names, the instructions, the version and each `wrapped_{operation}()` over the
 /// markers when they run, since only the compiled types know them.
@@ -2724,6 +3080,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
         .collect();
     let wrapped_server = wrapped.clone();
     let forms = form_replacements(declared);
+    let skill_literals = skill_literals();
     let content = declared
         .operations
         .iter()
@@ -2777,6 +3134,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|prompt| literal(&prompt.to_string()))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            #skill_literals
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
                 ::core::option::Option::None => ::std::string::String::from("null"),
@@ -2787,6 +3145,8 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#PROMPTS_MARKER, &prompts)
+                .replace(#SKILLS_MARKER, &skills)
+                .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*

@@ -650,3 +650,23 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
         assert_eq!(response.status, status, "{denied:?}");
     }
 }
+
+#[test]
+fn the_rust_dispatchers_listen_alike_through_every_entry_point() {
+    let (document, document_served) = rust_listens_alike!(
+        mcp_mobile_document,
+        MobileDocumentServiceSchema,
+        Archive,
+        block_on
+    );
+    assert_eq!(document, document_served);
+    assert!(document.is_some());
+    let (billing, billing_served) = rust_listens_alike!(
+        mcp_mobile_billing,
+        MobileBillingServiceSchema,
+        Archive,
+        block_on
+    );
+    assert_eq!(billing, billing_served);
+    assert!(billing.is_some());
+}

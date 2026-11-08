@@ -34,6 +34,9 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         if operation.is_mcp_prompt() {
             return Some(("prompt", operation.mcp_tool_name().to_owned()));
         }
+        if let Some((skill, _)) = &operation.mcp.skill {
+            return Some(("skill", skill.clone()));
+        }
         let resource = operation.mcp.resource.as_ref()?;
         let kind = if resource.is_template() {
             "resource template"
@@ -42,13 +45,21 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         };
         Some((kind, resource.uri.clone()))
     });
-    let (kinds, names): (Vec<_>, Vec<_>) = listed.unzip();
+    let folder_skills = service
+        .skills
+        .iter()
+        .flat_map(|folder| folder.skills.iter())
+        .map(|skill| ("skill", skill.name.clone()));
+    let (kinds, names): (Vec<_>, Vec<_>) = listed.chain(folder_skills).unzip();
     let scopes = scopes_method(service);
     let listed_resources = resources_methods(service);
     let listed_prompts = prompts_method(service);
+    let listed_skills = skills_methods(service);
     let sorted = sorted_fn();
     quote! {
         #sorted
+
+        #listed_skills
 
         #tools
 
@@ -120,6 +131,102 @@ fn prompts_method(service: &ServiceDef) -> TokenStream {
         #[doc = " The service's prompts, in the order the trait declares them."]
         pub fn mcp_prompts() -> ::std::vec::Vec<::serde_json::Value> {
             ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#prompts))),*]
+        }
+    }
+}
+
+/// `mcp_skills()`, `mcp_skill_file(uri)` and `mcp_skill_files()`: the entries `skills/list` answers
+/// for the service, and the content of each file of its skills folder, as the servers in other
+/// languages write them.
+fn skills_methods(service: &ServiceDef) -> TokenStream {
+    let folder = service
+        .skills
+        .iter()
+        .flat_map(|folder| folder.skills.iter());
+    let entries: Vec<TokenStream> = folder
+        .clone()
+        .map(|skill| {
+            let uri = skill.uri();
+            let members = skill.frontmatter.iter().map(|(key, value)| quote! { #key: #value });
+            let files = skill.files.iter().map(|file| {
+                let (file_uri, digest, size) = (file.uri(&skill.name), &file.digest, file.size);
+                quote! { { "uri": #file_uri, "digest": #digest, "size": #size } }
+            });
+            quote! { { "uri": #uri, "frontmatter": { #(#members),* }, "resources": [#(#files),*] } }
+        })
+        .chain(service.operations.iter().filter_map(|operation| {
+            let (name, _) = operation.mcp.skill.as_ref()?;
+            let uri = format!("skill://{name}/SKILL.md");
+            let description = operation.doc.as_deref().unwrap_or_default();
+            Some(quote! {
+                { "uri": #uri, "frontmatter": { "name": #name, "description": #description }, "resources": "dynamic" }
+            })
+        }))
+        .collect();
+    let files: Vec<TokenStream> = service
+        .skills
+        .iter()
+        .flat_map(|held| held.skills.iter().map(move |skill| (held, skill)))
+        .flat_map(|(held, skill)| {
+            skill.files.iter().map(move |file| {
+                let uri = file.uri(&skill.name);
+                let (mime, text) = (&file.mime, file.text);
+                let source = format!("/{}", held.source(&skill.name, &file.path));
+                quote! {
+                    (#uri, #mime, #text, ::core::include_bytes!(::core::concat!(::core::env!("CARGO_MANIFEST_DIR"), #source)) as &[u8])
+                }
+            })
+        })
+        .collect();
+    let held = files.len();
+    quote! {
+        #[doc = " The service's skills, in the order `skills/list` answers them: the folder's, then the"]
+        #[doc = " ones its operations write."]
+        pub fn mcp_skills() -> ::std::vec::Vec<::serde_json::Value> {
+            ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#entries))),*]
+        }
+
+        const MCP_SKILL_FILES: [(&'static str, &'static str, bool, &'static [u8]); #held] = [#(#files),*];
+
+        #[doc = " What `resources/read` answers for the file of a skills folder at `uri`."]
+        pub fn mcp_skill_file(uri: &str) -> ::core::option::Option<::serde_json::Value> {
+            let (_, mime, text, bytes) = Self::MCP_SKILL_FILES.iter().find(|held| held.0 == uri)?;
+            ::core::option::Option::Some(Self::mcp_sorted(if *text {
+                ::serde_json::json!({
+                    "uri": uri,
+                    "mimeType": mime,
+                    "text": ::std::string::String::from_utf8_lossy(bytes),
+                })
+            } else {
+                ::serde_json::json!({ "uri": uri, "mimeType": mime, "blob": Self::mcp_base64(bytes) })
+            }))
+        }
+
+        #[doc = " Every file of the skills folder, as `resources/read` answers it."]
+        pub fn mcp_skill_files() -> ::std::vec::Vec<::serde_json::Value> {
+            Self::MCP_SKILL_FILES
+                .iter()
+                .filter_map(|held| Self::mcp_skill_file(held.0))
+                .collect()
+        }
+
+        fn mcp_base64(bytes: &[u8]) -> ::std::string::String {
+            const ALPHABET: &[u8] =
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let letter = |group: u32, shift: u32| -> char {
+                let at = usize::try_from((group >> shift) & 63).unwrap_or(0);
+                ALPHABET.get(at).copied().map_or('=', char::from)
+            };
+            let mut text = ::std::string::String::new();
+            for chunk in bytes.chunks(3) {
+                let byte = |at: usize| u32::from(chunk.get(at).copied().unwrap_or(0));
+                let group = (byte(0) << 16_u32) | (byte(1) << 8_u32) | byte(2);
+                text.push(letter(group, 18));
+                text.push(letter(group, 12));
+                text.push(if chunk.len() > 1 { letter(group, 6) } else { '=' });
+                text.push(if chunk.len() > 2 { letter(group, 0) } else { '=' });
+            }
+            text
         }
     }
 }

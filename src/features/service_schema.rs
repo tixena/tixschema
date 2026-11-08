@@ -656,6 +656,39 @@ fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
     TokenStream::new()
 }
 
+/// The two `replace` calls of `ts_mcp_service()` that write the skills over their markers.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn ts_skill_replacements() -> TokenStream {
+    let skills = mcp_ts_service::SKILLS_MARKER;
+    let skill_files = mcp_ts_service::SKILL_FILES_MARKER;
+    quote! {
+                .replace(
+            #skills,
+            &Self::mcp_skills()
+                .iter()
+                .map(|skill| ::serde_json::Value::String(skill.to_string()).to_string())
+                .collect::<::std::vec::Vec<_>>()
+                .join(", "),
+        )
+        .replace(
+            #skill_files,
+            &Self::mcp_skill_files()
+                .iter()
+                .map(|file| {
+                    ::std::format!(
+                        "[{}, {}]",
+                        ::serde_json::Value::String(
+                            file["uri"].as_str().unwrap_or_default().to_owned()
+                        ),
+                        ::serde_json::Value::String(file.to_string())
+                    )
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", "),
+        )
+    }
+}
+
 /// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
@@ -702,6 +735,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
     let resources = mcp_ts_service::RESOURCES_MARKER;
     let templates = mcp_ts_service::TEMPLATES_MARKER;
     let prompts = mcp_ts_service::PROMPTS_MARKER;
+    let skill_replacements = ts_skill_replacements();
     let wrapped: Vec<TokenStream> = service
         .operations
         .iter()
@@ -772,6 +806,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                         .collect::<::std::vec::Vec<_>>()
                         .join(", "),
                 )
+                #skill_replacements
                 #(#wrapped)*
                 #(#forms)*
         }

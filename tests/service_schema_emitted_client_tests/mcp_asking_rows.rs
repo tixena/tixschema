@@ -847,6 +847,18 @@ fn the_rust_dispatcher_answers_alone_beside_an_endpoint_and_over_http_alike() {
 }
 
 #[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        dispatcher,
+        AskingServiceSchema,
+        Stand::default(),
+        ready_output
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+}
+
+#[test]
 fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
     let settings = dispatcher::McpHttpSettings {
         allowed_origins: &[],
@@ -904,6 +916,18 @@ fn the_rust_preview_dispatcher_answers_alone_beside_an_endpoint_and_over_http_al
     assert_eq!(alone, served);
     assert!(alone.is_some());
     assert_eq!(status, 200);
+}
+
+#[test]
+fn the_rust_preview_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        preview_dispatcher,
+        PreviewServiceSchema,
+        Stand::default(),
+        ready_output
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
 }
 
 #[test]

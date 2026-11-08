@@ -1,5 +1,6 @@
 //! The shape a `#[service_schema]` trait is read into, and the only place it is read.
 
+use super::skills::SkillsFolder;
 use crate::model_schema::ranges::{any_json_bare, any_json_check, any_json_named};
 use crate::model_schema::{UndescribableStd, undescribable_std_message};
 use crate::rename_rule::RenameRule;
@@ -87,6 +88,8 @@ pub struct ServiceDef {
     /// The trait as declared: `BillingService`.
     pub ident: Ident,
     pub operations: Vec<OperationDef>,
+    /// The folder `mcp(skills = "...")` names, read at expansion.
+    pub skills: Option<SkillsFolder>,
 }
 
 impl ServiceDef {
@@ -181,12 +184,13 @@ impl OperationDef {
     }
 
     /// Whether the operation is a tool: one that no `mcp(resource = ...)`, `mcp(list_resources)`,
-    /// `mcp(prompt)` or `mcp(completes(...))` made something else.
+    /// `mcp(prompt)`, `mcp(completes(...))` or `mcp(skill = ...)` made something else.
     pub const fn is_mcp_tool(&self) -> bool {
         self.mcp.resource.is_none()
             && !self.mcp.list_resources
             && self.mcp.prompt.is_none()
             && self.mcp.completes.is_none()
+            && self.mcp.skill.is_none()
     }
 
     /// The name of the operation's tool: the `mcp(name = "...")` written, or the wire name.
@@ -521,6 +525,8 @@ pub struct McpDirective {
     /// `scopes = ["..."]`: the scopes a caller needs to call the operation, each with the span of
     /// its literal.
     pub scopes: Vec<(String, proc_macro2::Span)>,
+    /// `skill = "<name>"`: the operation writes the files of one skill at run time.
+    pub skill: Option<(String, proc_macro2::Span)>,
     /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
     pub title: Option<String>,
     /// `ttl_ms = <number>`: the `ttlMs` a resource read or listing answers.
@@ -972,17 +978,12 @@ fn read_mcp_directive(
             return Ok(());
         }
         if inner.path.is_ident("resource") {
-            let uri = inner.value()?.parse::<LitStr>()?;
-            if uri.value().is_empty() {
-                return Err(syn::Error::new(
-                    uri.span(),
-                    empty_mcp_text_message(operation, "resource"),
-                ));
-            }
-            read.resource = Some(McpResourceUri {
-                segments: parse_path_template(&uri, RESOURCE_URI)?,
-                uri: uri.value(),
-            });
+            read.resource = Some(read_mcp_resource(&inner, operation)?);
+            return Ok(());
+        }
+        if inner.path.is_ident("skill") {
+            let name = inner.value()?.parse::<LitStr>()?;
+            read.skill = Some((name.value(), name.span()));
             return Ok(());
         }
         if inner.path.is_ident("mime_type") {
@@ -1035,6 +1036,23 @@ fn read_mcp_directive(
             return Ok(());
         }
         Err(inner.error(unknown_mcp_key_message(operation)))
+    })
+}
+
+fn read_mcp_resource(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+) -> Result<McpResourceUri, syn::Error> {
+    let uri = inner.value()?.parse::<LitStr>()?;
+    if uri.value().is_empty() {
+        return Err(syn::Error::new(
+            uri.span(),
+            empty_mcp_text_message(operation, "resource"),
+        ));
+    }
+    Ok(McpResourceUri {
+        segments: parse_path_template(&uri, RESOURCE_URI)?,
+        uri: uri.value(),
     })
 }
 
@@ -1229,7 +1247,7 @@ fn unknown_mcp_key_message(operation: &Ident) -> String {
          `mime_type`, `list_resources`, `prompt`, \
          `completes(resource = \"<operation>\", parameter = \"<argument>\")` or \
          `completes(prompt = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
-         `cache_scope`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
+         `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
          `interview(arm = \"<Arm>\", url)`"
     )
 }
@@ -1329,6 +1347,7 @@ pub fn parse_service(declared: &ItemTrait) -> Result<ServiceDef, syn::Error> {
         generated_messages: operations.iter().filter_map(generated_message).collect(),
         ident: declared.ident.clone(),
         operations,
+        skills: None,
     };
     if let Some(across) = service_refusals(&service) {
         refusals = Some(combined(refusals.take(), across));

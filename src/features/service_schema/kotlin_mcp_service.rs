@@ -18,6 +18,7 @@ use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
@@ -35,9 +36,11 @@ val @P@McpCatalog: Map<String, List<String>> = mapOf<String, List<String>>(
   "resources" to listOf<String>(@MCP_RESOURCES@),
   "resourceTemplates" to listOf<String>(@MCP_TEMPLATES@),
   "prompts" to listOf<String>(@MCP_PROMPTS@),
-  "skills" to listOf<String>(),
+  "skills" to listOf<String>(@MCP_SKILLS@),
   "capabilities" to listOf<String>(@MCP_CAPABILITIES@),
 )
+
+private val @P@McpSkillFiles: Map<String, String> = mapOf<String, String>(@MCP_SKILL_FILES@)
 
 private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
   @WRAPPED_MAP@
@@ -67,10 +70,12 @@ const PROTOCOL: &str = r#"private const val @P@McpVersionText = "2026-07-28"
 private const val @P@McpProtocolKey = "io.modelcontextprotocol/protocolVersion"
 private const val @P@McpCapabilitiesKey = "io.modelcontextprotocol/clientCapabilities"
 private const val @P@McpInfoKey = "io.modelcontextprotocol/serverInfo"
+private const val @P@McpSubscriptionKey = "io.modelcontextprotocol/subscriptionId"
 private const val @P@McpListedForMs = 300000
 private val @P@McpMethods: Set<String> = setOf(
   "completion/complete", "prompts/get", "prompts/list", "resources/list", "resources/read",
-  "resources/templates/list", "server/discover", "tools/call", "tools/list",
+  "resources/templates/list", "server/discover", "skills/get", "skills/list", "tools/call",
+  "tools/list",
 )
 
 private fun @P@McpServeText(element: JsonElement): String {
@@ -247,7 +252,7 @@ private fun @P@McpWithInfo(result: JsonObject, serverName: String): JsonObject {
   return JsonObject(members)
 }
 
-private fun @P@McpDiscovered(instructions: String?, endpoint: @N@McpEndpoint): JsonObject {
+private fun @P@McpDiscovered(instructions: String?, endpoint: @N@McpEndpoint, listens: Boolean): JsonObject {
   val capabilities = mutableMapOf<String, JsonElement>()
   val extensions = mutableMapOf<String, JsonElement>()
   for (catalog in endpoint.catalogs) {
@@ -263,6 +268,10 @@ private fun @P@McpDiscovered(instructions: String?, endpoint: @N@McpEndpoint): J
     }
   }
   if (extensions.isNotEmpty()) capabilities["extensions"] = JsonObject(extensions)
+  val resources = capabilities["resources"]
+  if (listens && resources is JsonObject) {
+    capabilities["resources"] = JsonObject(resources + mapOf("listChanged" to JsonPrimitive(true), "subscribe" to JsonPrimitive(true)))
+  }
   return buildJsonObject {
     put("cacheScope", "public")
     put("capabilities", JsonObject(capabilities))
@@ -285,10 +294,22 @@ private fun @P@McpListedItems(endpoint: @N@McpEndpoint, key: String): JsonObject
     put("ttlMs", @P@McpListedForMs)
   }
 
+private fun @P@McpListedSkills(endpoint: @N@McpEndpoint): JsonObject {
+  val skills = endpoint.catalogs.flatMap { catalog -> catalog["skills"].orEmpty().map { Json.parseToJsonElement(it) } }
+  val written = skills.any { ((it as? JsonObject)?.get("resources") as? JsonPrimitive)?.content == "dynamic" }
+  return buildJsonObject {
+    put("cacheScope", if (written) "private" else "public")
+    put("resultType", "complete")
+    put("skills", JsonArray(skills))
+    put("ttlMs", if (written) 0 else @P@McpListedForMs)
+  }
+}
+
 private fun @P@McpNamed(params: JsonObject, method: String): String? {
   val written = when (method) {
     "tools/call", "prompts/get" -> params["name"]
     "resources/read" -> params["uri"]
+    "skills/get" -> params["name"]?.takeIf { it is JsonPrimitive && it.isString } ?: params["uri"]
     else -> if (((params["argument"] as? JsonObject)?.get("name") as? JsonPrimitive)?.isString == true) {
       val reference = params["ref"] as? JsonObject
       if ((reference?.get("type") as? JsonPrimitive)?.content == "ref/prompt") reference["name"] else reference?.get("uri")
@@ -354,9 +375,15 @@ typealias @N@McpWriter = suspend (message: String) -> Unit
  * handler reaches it. [token] is the request's `progressToken`, and [writer] takes what it writes
  * beyond its answer.
  */
-class @N@McpCall(private val token: JsonPrimitive? = null, private val writer: @N@McpWriter? = null) {
+class @N@McpCall(
+  private val token: JsonPrimitive? = null,
+  private val writer: @N@McpWriter? = null,
+  private val comment: (suspend () -> Unit)? = null,
+) {
   @Volatile
   private var gone = false
+
+  internal val stopped = kotlinx.coroutines.CompletableDeferred<Unit>()
 
   /** Whether the client cancelled this request, or went away. */
   val cancelled: Boolean
@@ -364,38 +391,77 @@ class @N@McpCall(private val token: JsonPrimitive? = null, private val writer: @
 
   /** Writes `notifications/progress` where the request carries a `progressToken`, and does nothing otherwise. A write that fails cancels the call. */
   suspend fun progress(done: Double, total: Double? = null, message: String? = null) {
-    val sink = writer
     val reported = token
-    if (sink == null || reported == null || gone) return
+    if (writer == null || reported == null) return
+    write(
+      @P@McpServeText(
+        buildJsonObject {
+          put("jsonrpc", "2.0")
+          put("method", "notifications/progress")
+          put(
+            "params",
+            buildJsonObject {
+              put("progress", done)
+              put("progressToken", reported)
+              if (total != null) put("total", total)
+              if (message != null) put("message", message)
+            },
+          )
+        },
+      ),
+    )
+  }
+
+  internal suspend fun write(message: String): Boolean {
+    val sink = writer
+    if (gone) return false
     try {
-      sink(
-        @P@McpServeText(
-          buildJsonObject {
-            put("jsonrpc", "2.0")
-            put("method", "notifications/progress")
-            put(
-              "params",
-              buildJsonObject {
-                put("progress", done)
-                put("progressToken", reported)
-                if (total != null) put("total", total)
-                if (message != null) put("message", message)
-              },
-            )
-          },
-        ),
-      )
+      sink?.invoke(message)
+      return true
     } catch (stopped: CancellationException) {
       throw stopped
     } catch (failed: Exception) {
-      gone = true
+      cancel()
+      return false
+    }
+  }
+
+  internal suspend fun keepAlive(): Boolean {
+    if (gone) return false
+    try {
+      comment?.invoke()
+      return true
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      cancel()
+      return false
     }
   }
 
   internal fun cancel() {
     gone = true
+    stopped.complete(Unit)
   }
 }
+
+/** What the application's source of changes hands to a `subscriptions/listen` stream. */
+sealed interface @N@McpChange {
+  /** The list of resources changed. */
+  object ResourcesListChanged : @N@McpChange
+
+  /** One resource changed. */
+  data class ResourceUpdated(val uri: String) : @N@McpChange
+
+  /** One task moved. */
+  data class Task(val taskId: String) : @N@McpChange
+
+  /** Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio. */
+  object KeepAlive : @N@McpChange
+}
+
+/** The application's source of changes: each call answers the next change, and `null` ends the stream. */
+typealias @N@McpChanges = suspend () -> @N@McpChange?
 
 /** The requests a stdio host has in flight, so that `notifications/cancelled` reaches the right one. */
 class @N@McpInFlight {
@@ -412,8 +478,11 @@ class @N@McpInFlight {
   }
 }
 
-/** What [@P@McpServe] writes to, and the requests it has in flight. */
-class @N@McpHost(val writer: @N@McpWriter, val inFlight: @N@McpInFlight)
+/**
+ * What [@P@McpServe] writes to, and the requests it has in flight. [changes] is where
+ * `subscriptions/listen` takes its changes from; `null` where the host offers none.
+ */
+class @N@McpHost(val writer: @N@McpWriter, val inFlight: @N@McpInFlight, val changes: @N@McpChanges? = null)
 
 private fun @P@McpToken(message: JsonObject): JsonPrimitive? {
   val token = (@P@McpParams(message)["_meta"] as? JsonObject)?.get("progressToken") as? JsonPrimitive
@@ -450,6 +519,7 @@ private fun @P@McpBegin(
   instructions: String?,
   endpoint: @N@McpEndpoint,
   serverName: String,
+  listens: Boolean,
 ): @P@McpBegun {
   val (request, refusal) = @P@McpReadRequest(text)
   if (request == null) return @P@McpBegun.Answered(@P@McpServeText(refusal ?: JsonNull))
@@ -458,12 +528,18 @@ private fun @P@McpBegin(
   if (unchecked != null) return @P@McpBegun.Answered(@P@McpServeText(unchecked))
   val method = (request["method"] as JsonPrimitive).content
   val answered: @N@McpAnswer = when (method) {
-    "server/discover" -> @N@McpAnswer.Answered(@P@McpDiscovered(instructions, endpoint))
+    "server/discover" -> @N@McpAnswer.Answered(@P@McpDiscovered(instructions, endpoint, listens))
     "tools/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "tools"))
     "resources/templates/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "resourceTemplates"))
     "prompts/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "prompts"))
+    "skills/list" -> @N@McpAnswer.Answered(@P@McpListedSkills(endpoint))
     "resources/list" -> return @P@McpBegun.Routed(request)
-    "tools/call", "resources/read", "prompts/get", "completion/complete" -> {
+    "subscriptions/listen" -> if (listens) {
+      return @P@McpBegun.Routed(request)
+    } else {
+      @N@McpAnswer.Refused(@P@McpErrorObject(-32601, "Method not found: $method", null))
+    }
+    "tools/call", "resources/read", "prompts/get", "completion/complete", "skills/get" -> {
       if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
       @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
@@ -479,6 +555,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
     "tools/call" -> "Unknown tool"
     "resources/read" -> "Resource not found"
     "prompts/get" -> "Unknown prompt"
+    "skills/get" -> "Skill not found"
     else -> "Unknown completion"
   }
   val resolved = answered ?: @N@McpAnswer.Refused(
@@ -532,11 +609,75 @@ private suspend fun @P@McpAsk(
   return @P@McpRoutedText(request, answered, serverName)
 }
 
+/** The `subscriptions/listen` of one call: the acknowledgment, then what [changes] yields that the client asked for, until it yields `null` or the call is cancelled. */
+private suspend fun @P@McpListen(
+  request: JsonObject,
+  endpoint: @N@McpEndpoint,
+  call: @N@McpCall,
+  changes: @N@McpChanges,
+): @N@McpAnswer {
+  val id = request["id"] ?: JsonNull
+  val ended = @N@McpAnswer.Answered(buildJsonObject { put("_meta", buildJsonObject { put(@P@McpSubscriptionKey, id) }) })
+  fun invalid(detail: String): @N@McpAnswer =
+    @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $detail", null))
+  val filter = @P@McpParams(request)["notifications"] as? JsonObject
+    ?: return invalid("subscriptions/listen needs `notifications`")
+  val listed = filter["resourcesListChanged"]
+  if (listed != null && !(listed is JsonPrimitive && !listed.isString && (listed.content == "true" || listed.content == "false"))) {
+    return invalid("`resourcesListChanged` is not a boolean")
+  }
+  val uris = filter["resourceSubscriptions"]
+  if (uris != null && !(uris is JsonArray && uris.all { it is JsonPrimitive && it.isString })) {
+    return invalid("`resourceSubscriptions` is not an array of strings")
+  }
+  val agreed = mutableMapOf<String, JsonElement>()
+  val offersResources = endpoint.catalogs.any { catalog ->
+    catalog["capabilities"].orEmpty().any { (Json.parseToJsonElement(it) as? JsonObject)?.containsKey("resources") == true }
+  }
+  if (offersResources) {
+    if (listed?.toString() == "true") agreed["resourcesListChanged"] = JsonPrimitive(true)
+    if (uris is JsonArray && uris.isNotEmpty()) agreed["resourceSubscriptions"] = uris
+  }
+  fun notified(method: String, given: Map<String, JsonElement>): String =
+    @P@McpServeText(
+      buildJsonObject {
+        put("jsonrpc", "2.0")
+        put("method", method)
+        put("params", JsonObject(given + mapOf("_meta" to buildJsonObject { put(@P@McpSubscriptionKey, id) })))
+      },
+    )
+  val lists = agreed.containsKey("resourcesListChanged")
+  val watched = (agreed["resourceSubscriptions"] as? JsonArray).orEmpty().map { (it as JsonPrimitive).content }.toSet()
+  if (!call.write(notified("notifications/subscriptions/acknowledged", mapOf("notifications" to JsonObject(agreed))))) return ended
+  while (true) {
+    val (stopped, change) = kotlinx.coroutines.coroutineScope {
+      val next = async { changes() }
+      val chosen = kotlinx.coroutines.selects.select<Pair<Boolean, @N@McpChange?>> {
+        next.onAwait { false to it }
+        call.stopped.onAwait { true to null }
+      }
+      next.cancel()
+      chosen
+    }
+    if (stopped || call.cancelled || change == null) return ended
+    val written = when (change) {
+      is @N@McpChange.ResourcesListChanged ->
+        !lists || call.write(notified("notifications/resources/list_changed", emptyMap()))
+      is @N@McpChange.ResourceUpdated ->
+        change.uri !in watched || call.write(notified("notifications/resources/updated", mapOf("uri" to JsonPrimitive(change.uri))))
+      is @N@McpChange.KeepAlive -> call.keepAlive()
+      is @N@McpChange.Task -> true
+    }
+    if (!written) return ended
+  }
+}
+
 /**
  * One JSON-RPC message in, one out, for the services of [endpoint]. [route] answers for the
  * service at that place in the endpoint, and receives the [@N@McpCall] of the request in flight
  * to build its handlers from. A notification answers `null`, `notifications/cancelled` marks the
- * request it names in [host], and the answer of a cancelled request is dropped.
+ * request it names in [host], and the answer of a cancelled request is dropped. A host that hands
+ * in [@N@McpHost.changes] also answers `subscriptions/listen`.
  */
 suspend fun @P@McpServe(
   text: String,
@@ -546,7 +687,7 @@ suspend fun @P@McpServe(
   host: @N@McpHost,
   route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
 ): String? {
-  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, host.changes != null)) {
     is @P@McpBegun.Answered -> return begun.text
     is @P@McpBegun.Notified -> {
       if ((begun.notice["method"] as JsonPrimitive).content == "notifications/cancelled") {
@@ -559,7 +700,12 @@ suspend fun @P@McpServe(
   val call = @N@McpCall(@P@McpToken(request), host.writer)
   val leave = host.inFlight.enter(request["id"] ?: JsonNull, call)
   try {
-    val answered = @P@McpAsk(request, endpoint, serverName) { part, method, params -> route(call, part, method, params) }
+    val listening = host.changes
+    val answered = if (listening != null && (request["method"] as JsonPrimitive).content == "subscriptions/listen") {
+      @P@McpResponseText(request["id"] ?: JsonNull, @P@McpListen(request, endpoint, call, listening), serverName)
+    } else {
+      @P@McpAsk(request, endpoint, serverName) { part, method, params -> route(call, part, method, params) }
+    }
     return if (call.cancelled) null else answered
   } finally {
     leave()
@@ -796,10 +942,20 @@ const DISPATCHERS: &str = "/**
  */
 fun create@N@McpDispatcher(
   handlers: (@N@McpCall) -> @N@Handlers,
+): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? =
+  create@N@McpDispatcher(null, handlers)
+
+/**
+ * [create@N@McpDispatcher] for an application that hands in its source of changes: [changes]
+ * answers `subscriptions/listen`, and `server/discover` says so.
+ */
+fun create@N@McpDispatcher(
+  changes: @N@McpChanges?,
+  handlers: (@N@McpCall) -> @N@Handlers,
 ): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
   return { text, writer, inFlight ->
-    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint, @N@McpHost(writer, inFlight)) { call, _, method, params ->
+    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint, @N@McpHost(writer, inFlight, changes)) { call, _, method, params ->
       create@N@McpRoute(handlers(call))(method, params)
     }
   }
@@ -957,7 +1113,7 @@ private fun @P@McpBeforeAdmit(request: @N@McpHttpRequest, settings: @N@McpHttpSe
   return null
 }
 
-private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHttpResponse?> {
+private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean): Pair<String?, @N@McpHttpResponse?> {
   val text = try {
     Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(request.body)).toString()
   } catch (rejected: Exception) {
@@ -971,7 +1127,7 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHt
   val unchecked = @P@McpChecked(message)
   if (unchecked != null) return null to @P@McpJsonResponse(400, unchecked)
   val method = (message["method"] as JsonPrimitive).content
-  if (method !in @P@McpMethods) {
+  if (method !in @P@McpMethods && !(listens && method == "subscriptions/listen")) {
     return null to @P@McpJsonResponse(
       404,
       @P@McpFailed(message["id"], @P@McpErrorObject(-32601, "Method not found: $method", null)),
@@ -980,11 +1136,16 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHt
   return text to null
 }
 
-private fun @P@McpEventStream(events: Collection<String>, answered: String?): @N@McpHttpResponse =
+/** One event of an event stream, or the comment line that keeps it open where [text] is `null`. */
+private class @P@McpEvent(val text: String?)
+
+private fun @P@McpEventStream(events: Collection<@P@McpEvent>, answered: String?): @N@McpHttpResponse =
   @N@McpHttpResponse(
     200,
     listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no"),
-    (events + listOfNotNull(answered)).joinToString("") { "event: message\ndata: $it\n\n" }.encodeToByteArray(),
+    (events + listOfNotNull(answered?.let { @P@McpEvent(it) }))
+      .joinToString("") { if (it.text == null) ":\n\n" else "event: message\ndata: ${it.text}\n\n" }
+      .encodeToByteArray(),
   )
 
 private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
@@ -997,7 +1158,8 @@ private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
 /**
  * The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body and the headers that must agree with it. [route] also receives the handlers
- * that `admit` built for the caller.
+ * that `admit` built for the caller. A `subscriptions/listen` answers an event stream where
+ * [changes] is handed in: it ends when [changes] answers `null`.
  */
 suspend fun @P@McpServeHttp(
   request: @N@McpHttpRequest,
@@ -1006,36 +1168,52 @@ suspend fun @P@McpServeHttp(
   instructions: String?,
   endpoint: @N@McpEndpoint,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
+  changes: @N@McpChanges? = null,
   route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
 ): @N@McpHttpResponse {
   val before = @P@McpBeforeAdmit(request, settings)
   if (before != null) return before
-  val events = java.util.concurrent.ConcurrentLinkedQueue<String>()
-  val call = @N@McpCall(@P@McpBodyToken(request)) { event -> events.add(event) }
+  val events = java.util.concurrent.ConcurrentLinkedQueue<@P@McpEvent>()
+  val call = @N@McpCall(@P@McpBodyToken(request), { event -> events.add(@P@McpEvent(event)) }, { events.add(@P@McpEvent(null)) })
   val caller = when (val admitted = admit(request, call)) {
     is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
     is @N@McpAdmitted.Caller -> admitted.handlers
   }
-  val (text, refused) = @P@McpAfterAdmit(request)
+  val (text, refused) = @P@McpAfterAdmit(request, changes != null)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
-  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, changes != null)) {
     is @P@McpBegun.Answered -> return @P@McpHttpAnswer(begun.text)
     is @P@McpBegun.Notified -> return @P@McpHttpAnswer(null)
     is @P@McpBegun.Routed -> begun.request
   }
-  val answered = @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
+  val listens = changes != null && (asked["method"] as JsonPrimitive).content == "subscriptions/listen"
+  val answered = if (changes != null && listens) {
+    @P@McpResponseText(asked["id"] ?: JsonNull, @P@McpListen(asked, endpoint, call, changes), serverName)
+  } else {
+    @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
+  }
   val written = if (call.cancelled) null else answered
-  return if (@P@McpToken(asked) != null) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
+  return if (@P@McpToken(asked) != null || listens) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
 }
 
 /** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
 fun create@N@McpHttpDispatcher(
   settings: @N@McpHttpSettings,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
+): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse = create@N@McpHttpDispatcher(settings, null, admit)
+
+/**
+ * [create@N@McpHttpDispatcher] for an application that hands in its source of changes: [changes]
+ * answers `subscriptions/listen` with an event stream, and `server/discover` says so.
+ */
+fun create@N@McpHttpDispatcher(
+  settings: @N@McpHttpSettings,
+  changes: @N@McpChanges?,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
 ): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
   return { request ->
-    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit) { caller, _, method, params ->
+    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
       create@N@McpRoute(caller)(method, params)
     }
   }
@@ -1185,6 +1363,13 @@ pub const TEMPLATES_MARKER: &str = "@MCP_TEMPLATES@";
 
 /// Where the accessor writes the prompts, as the comma-joined Kotlin literals of their JSON text.
 pub const PROMPTS_MARKER: &str = "@MCP_PROMPTS@";
+
+/// The text the accessor replaces with the skills' JSON texts, each a Kotlin literal.
+pub const SKILLS_MARKER: &str = "@MCP_SKILLS@";
+
+/// The text the accessor replaces with the files of the skills folder, each `"uri" to "json"`.
+pub const SKILL_FILES_MARKER: &str = "@MCP_SKILL_FILES@";
+
 /// Where the emitted text lists the capabilities, as Kotlin literals of their JSON text.
 const CAPABILITIES_MARKER: &str = "@MCP_CAPABILITIES@";
 
@@ -1198,7 +1383,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let mut published = vec![
         fill(CATALOG, &prefix, &named, &fields)
             .replace("@WRAPPED_MAP@", &tool_entries(service))
-            .replace(CAPABILITIES_MARKER, &capabilities_literal(service, &held)),
+            .replace(
+                CAPABILITIES_MARKER,
+                &capabilities_literal(service, &held, skilled(service)),
+            ),
         page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
@@ -1498,12 +1686,30 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .map(|prompt| literal(&::std::string::ToString::to_string(prompt)))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let skills = Self::mcp_skills()
+                .iter()
+                .map(|skill| literal(&::std::string::ToString::to_string(skill)))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
+            let skill_files = Self::mcp_skill_files()
+                .iter()
+                .map(|file| {
+                    format!(
+                        "{} to {}",
+                        literal(file["uri"].as_str().unwrap_or_default()),
+                        literal(&::std::string::ToString::to_string(file))
+                    )
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let instructions = Self::MCP_INSTRUCTIONS.map_or_else(|| "null".to_owned(), literal);
             let mut text = #text
                 .replace(#TOOLS_MARKER, &tools)
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#PROMPTS_MARKER, &prompts)
+                .replace(#SKILLS_MARKER, &skills)
+                .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#NAMES_MARKER, &names)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"));
@@ -1570,8 +1776,11 @@ fn route(
     if !tools.is_empty() {
         dispatch.push_str("      \"tools/call\" -> @P@McpTool(handlers, mcpParams)\n");
     }
-    if held.reads().next().is_some() {
+    if held.reads().next().is_some() || skilled(service) {
         dispatch.push_str("      \"resources/read\" -> @P@McpRead(handlers, mcpParams)\n");
+    }
+    if skilled(service) {
+        dispatch.push_str("      \"skills/get\" -> @P@McpSkillGet(mcpParams)\n");
     }
     if held.listing.is_some() {
         dispatch.push_str("      \"resources/list\" -> @P@McpList(handlers, mcpParams)\n");
@@ -1600,18 +1809,37 @@ fn route(
 }
 
 /// The `capabilities` the catalog lists, as the Kotlin literals of their JSON text.
-fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>) -> String {
+fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![kotlin_quoted("{\"tools\":{}}")];
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
         capabilities.push(kotlin_quoted("{\"prompts\":{}}"));
     }
-    if held.is_served() {
+    if held.is_served() || skilled {
         capabilities.push(kotlin_quoted("{\"resources\":{}}"));
+    }
+    if skilled {
+        capabilities.push(kotlin_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
     }
     if !held.completions.is_empty() {
         capabilities.push(kotlin_quoted("{\"completions\":{}}"));
     }
     capabilities.join(", ")
+}
+
+/// Whether the service ships a skills folder or has an operation that writes a skill.
+fn skilled(service: &ServiceDef) -> bool {
+    service.skills.is_some() || !dynamic_skills(service).is_empty()
+}
+
+/// The operations that write a skill at run time.
+fn dynamic_skills(service: &ServiceDef) -> Vec<&OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.skill.is_some())
+        .collect()
 }
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
@@ -1654,7 +1882,7 @@ fn resource_functions(
         .iter()
         .filter(|operation| operation.is_mcp_prompt())
         .collect();
-    if !held.any() && prompts.is_empty() {
+    if !held.any() && prompts.is_empty() && !skilled(service) {
         return String::new();
     }
     let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
@@ -1664,11 +1892,17 @@ fn resource_functions(
             text.push_str(&prompt_function(operation, prefix, named, fields));
         }
     }
-    if held.reads().next().is_some() {
-        text.push_str(&read_dispatch(held, prefix, named));
+    if held.reads().next().is_some() || skilled(service) {
+        text.push_str(&read_dispatch(service, held, prefix, named));
         for operation in held.reads() {
             text.push_str(&resource_read(operation, prefix, named, fields));
         }
+        for operation in dynamic_skills(service) {
+            text.push_str(&skill_read(operation, prefix, named, fields));
+        }
+    }
+    if skilled(service) {
+        text.push_str(&skill_get(prefix, named));
     }
     if let Some(operation) = held.listing {
         text.push_str(&resource_listing(operation, prefix, named, fields));
@@ -1682,11 +1916,99 @@ fn resource_functions(
     text
 }
 
-fn read_dispatch(held: &Resourced<'_>, prefix: &str, named: &str) -> String {
+/// The read of a file of a skill an operation writes: the frontmatter ahead of the manifest's text.
+fn skill_read(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
+    let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+        return String::new();
+    };
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    let content = if blob {
+        "          val mcpBytes = answered.value.slot0.map { it.toByte() }.toByteArray()\n          \
+         put(\"blob\", java.util.Base64.getEncoder().encodeToString(mcpBytes))\n          \
+         put(\"mimeType\", answered.value.slot1)"
+            .to_owned()
+    } else {
+        let frontmatter = kotlin_quoted(&written_frontmatter(
+            skill,
+            operation.doc.as_deref().unwrap_or_default(),
+        ));
+        format!(
+            "          put(\"mimeType\", \"text/markdown\")\n          \
+             put(\"text\", (if (mcpPath == \"SKILL.md\") {frontmatter} else \"\") + mcpEncoded.jsonPrimitive.content)"
+        )
+    };
+    let success = format!(
+        "        {prefix}McpAnswerOf(\n          \"private\",\n          0,\n          \"contents\",\n          \
+         buildJsonArray {{\n            add(\n              buildJsonObject {{\n          put(\"uri\", mcpUri)\n{content}\n              }},\n            )\n          }},\n        )"
+    );
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpReadSkill{op}(handlers: {named}Handlers, mcpUri: String, mcpPath: String): {named}McpAnswer {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation,
+            prefix,
+            named,
+            fields,
+            "JsonPrimitive(mcpPath)",
+            "\"Skill file not found\"",
+            &success,
+        )
+    )
+}
+
+/// The `skills/get` of the service: the entry its catalog lists under the name or the URI asked.
+fn skill_get(prefix: &str, named: &str) -> String {
+    format!(
+        "\n\nprivate fun {prefix}McpSkillGet(mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+         val mcpName = (mcpParams[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
+         val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
+         for (text in {prefix}McpCatalog[\"skills\"].orEmpty()) {{\n    \
+         val entry = Json.parseToJsonElement(text) as JsonObject\n    \
+         val frontmatter = entry[\"frontmatter\"] as? JsonObject\n    \
+         val held = (mcpName != null && (frontmatter?.get(\"name\") as? JsonPrimitive)?.content == mcpName) ||\n      \
+         (mcpUri != null && (entry[\"uri\"] as? JsonPrimitive)?.content == mcpUri)\n    \
+         if (!held) continue\n    \
+         val written = (entry[\"resources\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content == \"dynamic\"\n    \
+         return {named}McpAnswer.Answered(\n      buildJsonObject {{\n        \
+         put(\"cacheScope\", if (written) \"private\" else \"public\")\n        \
+         put(\"resultType\", \"complete\")\n        \
+         put(\"skill\", entry)\n        \
+         put(\"ttlMs\", if (written) 0 else {prefix}McpListedForMs)\n      }},\n    )\n  }}\n  \
+         return null\n}}"
+    )
+}
+
+fn read_dispatch(service: &ServiceDef, held: &Resourced<'_>, prefix: &str, named: &str) -> String {
     let mut text = format!(
         "\n\nprivate suspend fun {prefix}McpRead(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
          val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n"
     );
+    if service.skills.is_some() {
+        let _ = write!(
+            text,
+            "  val mcpFolder = {prefix}McpSkillFiles[mcpUri]\n  \
+             if (mcpFolder != null) {{\n    \
+             return {prefix}McpAnswerOf(\"public\", {prefix}McpListedForMs, \"contents\", buildJsonArray {{ add(Json.parseToJsonElement(mcpFolder)) }})\n  }}\n"
+        );
+    }
+    for operation in dynamic_skills(service) {
+        let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+            continue;
+        };
+        let root = kotlin_quoted(&format!("skill://{skill}/"));
+        let _ = write!(
+            text,
+            "  if (mcpUri.startsWith({root}) && mcpUri.length > {root}.length) {{\n    \
+             return {prefix}McpReadSkill{op}(handlers, mcpUri, mcpUri.substring({root}.length))\n  }}\n",
+            op = pascal(operation),
+        );
+    }
     for (at, operation) in held.reads().enumerate() {
         let Some(resource) = operation.mcp.resource.as_ref() else {
             continue;

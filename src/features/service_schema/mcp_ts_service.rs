@@ -12,6 +12,7 @@ use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, is_unit_type, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
@@ -39,6 +40,13 @@ pub const TEMPLATES_MARKER: &str = "/*__TIXSCHEMA_MCP_TEMPLATES__*/";
 /// The text `ts_mcp_service()` replaces with the prompts' JSON texts, each quoted, joined by commas.
 pub const PROMPTS_MARKER: &str = "/*__TIXSCHEMA_MCP_PROMPTS__*/";
 
+/// The text `ts_mcp_service()` replaces with the skills' JSON texts, each quoted, joined by commas.
+pub const SKILLS_MARKER: &str = "/*__TIXSCHEMA_MCP_SKILLS__*/";
+
+/// The text `ts_mcp_service()` replaces with the files of the skills folder, each a quoted URI and
+/// the quoted JSON text of its content, joined by commas.
+pub const SKILL_FILES_MARKER: &str = "/*__TIXSCHEMA_MCP_SKILL_FILES__*/";
+
 const TYPES: &str = "/** Everything a service puts on an endpoint: its names, and each list item as JSON text. */
 export type __N__McpPart = {
   readonly names: ReadonlyArray<string>;
@@ -49,6 +57,20 @@ export type __N__McpPart = {
   readonly skills: ReadonlyArray<string>;
   readonly capabilities: ReadonlyArray<string>;
 };
+
+/** What the application's source of changes hands to a `subscriptions/listen` stream. */
+export type __N__McpChange =
+  /** The list of resources changed. */
+  | { readonly kind: \"resourcesListChanged\" }
+  /** One resource changed. */
+  | { readonly kind: \"resourceUpdated\"; readonly uri: string }
+  /** One task moved. */
+  | { readonly kind: \"task\"; readonly taskId: string }
+  /** Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio. */
+  | { readonly kind: \"keepAlive\" };
+
+/** The application's source of changes: each call answers the next change, and `undefined` ends the stream. */
+export type __N__McpChanges = () => Promise<__N__McpChange | undefined>;
 
 /** What a route answers for a request it owns: the `result` or the `error` of the JSON-RPC message. */
 export type __N__McpAnswer = { result: unknown } | { error: unknown };
@@ -118,11 +140,19 @@ export type __N__McpWriter = (message: string) => Promise<void>;
 export class __N__McpCall {
   private readonly token: string | number | bigint | undefined;
   private readonly writer: __N__McpWriter;
+  private readonly comment: () => Promise<void>;
   private gone = false;
+  private release: () => void = () => {};
+  /** Resolves when the client cancels this request or goes away. */
+  readonly stopped: Promise<void>;
 
-  constructor(token?: string | number | bigint, writer?: __N__McpWriter) {
+  constructor(token?: string | number | bigint, writer?: __N__McpWriter, comment?: () => Promise<void>) {
     this.token = token;
     this.writer = writer ?? (() => Promise.resolve());
+    this.comment = comment ?? (() => Promise.resolve());
+    this.stopped = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
   }
 
   /** Writes `notifications/progress` where the request carries a `progressToken`, and does nothing otherwise. A write that fails cancels the call. */
@@ -131,10 +161,30 @@ export class __N__McpCall {
     const params: Record<string, unknown> = { progress: done, progressToken: this.token };
     if (total !== undefined) params.total = total;
     if (message !== undefined) params.message = message;
+    await this.write(__p__McpText({ jsonrpc: "2.0", method: "notifications/progress", params }));
+  }
+
+  /** Writes one message beyond the answer. A write that fails cancels the call, and answers `false`. */
+  async write(message: string): Promise<boolean> {
+    if (this.gone) return false;
     try {
-      await this.writer(__p__McpText({ jsonrpc: "2.0", method: "notifications/progress", params }));
+      await this.writer(message);
+      return true;
     } catch {
-      this.gone = true;
+      this.cancel();
+      return false;
+    }
+  }
+
+  /** Writes the comment line `:` that keeps an event stream open. A write that fails cancels the call, and answers `false`. */
+  async keepAlive(): Promise<boolean> {
+    if (this.gone) return false;
+    try {
+      await this.comment();
+      return true;
+    } catch {
+      this.cancel();
+      return false;
     }
   }
 
@@ -146,6 +196,7 @@ export class __N__McpCall {
   /** Marks the request cancelled. The transport calls it. */
   cancel(): void {
     this.gone = true;
+    this.release();
   }
 }
 
@@ -169,7 +220,12 @@ export class __N__McpInFlight {
 }
 
 /** What `serve` writes to, and the requests it has in flight. */
-export type __N__McpHost = { readonly writer: __N__McpWriter; readonly inFlight: __N__McpInFlight };
+export type __N__McpHost = {
+  readonly writer: __N__McpWriter;
+  readonly inFlight: __N__McpInFlight;
+  /** Where `subscriptions/listen` takes its changes from; absent where the host offers none. */
+  readonly changes?: __N__McpChanges;
+};
 
 function __p__McpToken(message: Record<string, unknown>): string | number | bigint | undefined {
   const token = __p__McpObject(__p__McpObject(message.params)?._meta)?.progressToken;
@@ -226,13 +282,18 @@ function __p__McpJoined(into: Record<string, unknown>, from: Record<string, unkn
 }
 
 /** The union of the capabilities of the parts of an endpoint. */
-function __p__McpCapabilities(endpoint: __N__McpEndpoint): Record<string, unknown> {
+function __p__McpCapabilities(endpoint: __N__McpEndpoint, listens: boolean): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
   for (const part of endpoint.parts) {
     for (const text of part.capabilities) {
       const held = __p__McpObject(__p__McpRead(text));
       if (held !== undefined) __p__McpJoined(merged, held);
     }
+  }
+  const resources = __p__McpObject(merged.resources);
+  if (listens && resources !== undefined) {
+    resources.listChanged = true;
+    resources.subscribe = true;
   }
   return merged;
 }
@@ -242,6 +303,7 @@ function __p__McpNamed(params: Record<string, unknown> | undefined, method: stri
   const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
   if (method === "tools/call" || method === "prompts/get") return text(params?.name);
   if (method === "resources/read") return text(params?.uri);
+  if (method === "skills/get") return text(params?.name) ?? text(params?.uri);
   if (text(__p__McpObject(params?.argument)?.name) === undefined) return undefined;
   const reference = __p__McpObject(params?.ref);
   return reference?.type === "ref/prompt" ? text(reference.name) : text(reference?.uri);
@@ -306,12 +368,62 @@ async function __p__McpListResources(
   return __p__McpReplied(200, { id, result });
 }
 
+const __p__McpSubscription = "io.modelcontextprotocol/subscriptionId";
+
+/** The `subscriptions/listen` of one call: the acknowledgment, then what `changes` yields that the client asked for, until it yields `undefined` or the call is cancelled. */
+async function __p__McpListen(
+  id: unknown,
+  params: Record<string, unknown> | undefined,
+  info: Record<string, unknown>,
+  endpoint: __N__McpEndpoint,
+  call: __N__McpCall,
+  changes: __N__McpChanges,
+): Promise<__N__McpHandled> {
+  const invalid = (detail: string): __N__McpHandled => __p__McpRefused(id, 200, -32602, `Invalid params: ${detail}`);
+  const filter = __p__McpObject(params?.notifications);
+  if (filter === undefined) return invalid("subscriptions/listen needs `notifications`");
+  const uris = filter.resourceSubscriptions;
+  if (filter.resourcesListChanged !== undefined && typeof filter.resourcesListChanged !== "boolean") {
+    return invalid("`resourcesListChanged` is not a boolean");
+  }
+  if (uris !== undefined && !(Array.isArray(uris) && uris.every((uri: unknown) => typeof uri === "string"))) {
+    return invalid("`resourceSubscriptions` is not an array of strings");
+  }
+  const agreed: Record<string, unknown> = {};
+  if (endpoint.parts.some((part) => part.capabilities.some((text) => __p__McpObject(__p__McpRead(text))?.resources !== undefined))) {
+    if (filter.resourcesListChanged === true) agreed.resourcesListChanged = true;
+    if (Array.isArray(uris) && uris.length > 0) agreed.resourceSubscriptions = uris;
+  }
+  const notified = (method: string, given: Record<string, unknown>): string =>
+    __p__McpText({ jsonrpc: "2.0", method, params: { ...given, _meta: { [__p__McpSubscription]: id } } });
+  const lists = agreed.resourcesListChanged === true;
+  const watched = Array.isArray(agreed.resourceSubscriptions) ? (agreed.resourceSubscriptions as ReadonlyArray<string>) : [];
+  const ended = __p__McpReplied(200, { id, result: { _meta: { ...info, [__p__McpSubscription]: id }, resultType: "complete" } });
+  if (!(await call.write(notified("notifications/subscriptions/acknowledged", { notifications: agreed })))) return ended;
+  const stopped = call.stopped.then(() => "stopped" as const);
+  for (;;) {
+    const change = await Promise.race([changes(), stopped]);
+    if (call.cancelled || change === "stopped") return ended;
+    if (change === undefined) return ended;
+    let written = true;
+    if (change.kind === "resourcesListChanged" && lists) {
+      written = await call.write(notified("notifications/resources/list_changed", {}));
+    } else if (change.kind === "resourceUpdated" && watched.includes(change.uri)) {
+      written = await call.write(notified("notifications/resources/updated", { uri: change.uri }));
+    } else if (change.kind === "keepAlive") {
+      written = await call.keepAlive();
+    }
+    if (!written) return ended;
+  }
+}
+
 async function __p__McpHandle(
   message: Record<string, unknown>,
   serverName: string,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
   route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
+  listening?: (id: unknown, params: Record<string, unknown> | undefined, info: Record<string, unknown>) => Promise<__N__McpHandled>,
 ): Promise<__N__McpHandled> {
   const id = message.id;
   const method = message.method;
@@ -333,6 +445,7 @@ async function __p__McpHandle(
   const info = {
     "io.modelcontextprotocol/serverInfo": { name: serverName, version: __p__McpServerVersion },
   };
+  if (method === "subscriptions/listen" && listening !== undefined) return listening(id, params, info);
   switch (method) {
     case "server/discover":
       return __p__McpReplied(200, {
@@ -340,7 +453,7 @@ async function __p__McpHandle(
         result: {
           _meta: info,
           cacheScope: "public",
-          capabilities: __p__McpCapabilities(endpoint),
+          capabilities: __p__McpCapabilities(endpoint, listening !== undefined),
           instructions,
           resultType: "complete",
           supportedVersions: [__p__McpVersion],
@@ -384,9 +497,24 @@ async function __p__McpHandle(
       });
     case "resources/list":
       return __p__McpListResources(id, params, info, endpoint, route);
+    case "skills/list": {
+      const skills = endpoint.parts.flatMap((part) => part.skills);
+      const dynamic = skills.some((text) => __p__McpObject(__p__McpRead(text))?.resources === "dynamic");
+      return __p__McpReplied(200, {
+        id,
+        result: {
+          _meta: info,
+          cacheScope: dynamic ? "private" : "public",
+          resultType: "complete",
+          skills: skills.map((text) => new __N__McpRaw(text)),
+          ttlMs: dynamic ? 0 : 300000,
+        },
+      });
+    }
     case "tools/call":
     case "resources/read":
     case "prompts/get":
+    case "skills/get":
     case "completion/complete": {
       const name = __p__McpNamed(params, method);
       if (name === undefined) {
@@ -409,7 +537,9 @@ async function __p__McpHandle(
             ? "Resource not found"
             : method === "prompts/get"
               ? "Unknown prompt"
-              : "Unknown completion";
+              : method === "skills/get"
+                ? "Skill not found"
+                : "Unknown completion";
       return __p__McpRefused(id, 200, -32602, `${unknown}: ${name}`, {
         fault: {
           detail: "the service answers to no operation by that name",
@@ -445,7 +575,8 @@ const SERVE: &str = r#"/**
  * One JSON-RPC message in, one out, for the services of `endpoint`. `route` answers for the
  * service at that place in the endpoint and receives the `Ctx` that `ctx` built from the request
  * in flight, and a notification answers `undefined`. `notifications/cancelled` marks the request
- * it names in `host.inFlight`, and the answer of a cancelled request is dropped.
+ * it names in `host.inFlight`, and the answer of a cancelled request is dropped. A host that hands in
+ * `host.changes` also answers `subscriptions/listen`.
  */
 export async function __p__McpServe<Ctx>(
   text: string,
@@ -468,13 +599,28 @@ export async function __p__McpServe<Ctx>(
   const call = new __N__McpCall(__p__McpToken(message), host.writer);
   const entered: { leave?: () => void; ctx?: { readonly built: Ctx } } = {};
   try {
-    const handled = await __p__McpHandle(message, serverName, instructions, endpoint, async (part, method, params) => {
-      if (entered.ctx === undefined) {
-        entered.leave = host.inFlight.enter(message.id, call);
-        entered.ctx = { built: ctx(call) };
-      }
-      return route(entered.ctx.built, part, method, params);
-    });
+    const changes = host.changes;
+    const listening =
+      changes === undefined
+        ? undefined
+        : (id: unknown, params: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
+            entered.leave = host.inFlight.enter(message.id, call);
+            return __p__McpListen(id, params, info, endpoint, call, changes);
+          };
+    const handled = await __p__McpHandle(
+      message,
+      serverName,
+      instructions,
+      endpoint,
+      async (part, method, params) => {
+        if (entered.ctx === undefined) {
+          entered.leave = host.inFlight.enter(message.id, call);
+          entered.ctx = { built: ctx(call) };
+        }
+        return route(entered.ctx.built, part, method, params);
+      },
+      listening,
+    );
     return call.cancelled ? undefined : handled.text;
   } finally {
     entered.leave?.();
@@ -745,6 +891,30 @@ __ASKING__    const faulted = error as { fault: object };
   const reading = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
     const uri = call.uri;
     if (typeof uri !== "string") return undefined;
+    const folder = __p__McpSkillFiles.get(uri);
+    if (folder !== undefined) {
+      return {
+        result: { cacheScope: "public", contents: [new __N__McpRaw(folder)], resultType: "complete", ttlMs: 300000 },
+      };
+    }
+    for (const operation of __p__McpOperations) {
+      if (operation.kind !== "skill") continue;
+      const root = `skill://${operation.name}/`;
+      if (!uri.startsWith(root) || uri.length === root.length) continue;
+      const path = uri.slice(root.length);
+      return answering(ctx, operation.operation, operation.schema, path, "Skill file not found", (value) => {
+        const given: Record<string, unknown> = { uri };
+        if (operation.blob) {
+          const pair = value as ReadonlyArray<unknown>;
+          given.mimeType = pair[1];
+          given.blob = __p__McpBase64(pair[0]);
+        } else {
+          given.mimeType = "text/markdown";
+          given.text = path === "SKILL.md" ? `${operation.frontmatter}${value as string}` : value;
+        }
+        return { cacheScope: "private", contents: [given], resultType: "complete", ttlMs: 0 };
+      });
+    }
     for (const operation of __p__McpOperations) {
       if (operation.kind !== "resource") continue;
       const captured = __p__McpCaptured(operation.segments, uri);
@@ -769,6 +939,26 @@ __ASKING__    const faulted = error as { fault: object };
         }
         return { cacheScope: operation.cacheScope, contents: [given], resultType: "complete", ttlMs: operation.ttlMs };
       });
+    }
+    return undefined;
+  };
+  const getting = (call: Record<string, unknown>): __N__McpAnswer | undefined => {
+    const name = typeof call.name === "string" ? call.name : undefined;
+    const uri = typeof call.uri === "string" ? call.uri : undefined;
+    for (const text of __p__McpPart.skills) {
+      const entry = __p__McpObject(__p__McpRead(text));
+      if (entry === undefined) continue;
+      const held = __p__McpObject(entry.frontmatter);
+      if (!((name !== undefined && held?.name === name) || (uri !== undefined && entry.uri === uri))) continue;
+      const dynamic = entry.resources === "dynamic";
+      return {
+        result: {
+          cacheScope: dynamic ? "private" : "public",
+          resultType: "complete",
+          skill: new __N__McpRaw(text),
+          ttlMs: dynamic ? 0 : 300000,
+        },
+      };
     }
     return undefined;
   };
@@ -825,7 +1015,9 @@ __PROMPTING__  const completing = async (ctx: Ctx, call: Record<string, unknown>
         return reading(ctx, call);
       case "resources/list":
         return listing(ctx, call);
-__PROMPT_CASE__      case "completion/complete":
+__PROMPT_CASE__      case "skills/get":
+        return getting(call);
+      case "completion/complete":
         return completing(ctx, call);
       default:
         return undefined;
@@ -965,7 +1157,7 @@ function __p__McpHeaderText(value: string): string | undefined {
 }
 
 /** The `200` event-stream answer: each event written, then the answer. */
-function __p__McpEventStream(events: ReadonlyArray<string>, answered: string | undefined): __N__McpHttpResponse {
+function __p__McpEventStream(events: ReadonlyArray<string | null>, answered: string | undefined): __N__McpHttpResponse {
   const written = answered === undefined ? events : [...events, answered];
   return {
     status: 200,
@@ -973,7 +1165,9 @@ function __p__McpEventStream(events: ReadonlyArray<string>, answered: string | u
       ["Content-Type", "text/event-stream"],
       ["X-Accel-Buffering", "no"],
     ],
-    body: new TextEncoder().encode(written.map((event) => `event: message\ndata: ${event}\n\n`).join("")),
+    body: new TextEncoder().encode(
+      written.map((event) => (event === null ? ":\n\n" : `event: message\ndata: ${event}\n\n`)).join(""),
+    ),
   };
 }
 
@@ -1046,7 +1240,8 @@ function __p__McpMetadata(oauth: __N__McpOAuth): __N__McpHttpResponse {
  * The Streamable HTTP rules around `__p__McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body, the headers that must agree with it, and the status each refusal travels
  * under. `route` also receives the `Ctx` that `admit` answered. A routed request that carries a
- * `progressToken` answers an event stream: each notification, then the answer.
+ * `progressToken` answers an event stream: each notification, then the answer. So does a
+ * `subscriptions/listen`, where `changes` is handed in: it ends when `changes` answers `undefined`.
  */
 export async function __p__McpServeHttp<Ctx>(
   request: __N__McpHttpRequest,
@@ -1056,6 +1251,7 @@ export async function __p__McpServeHttp<Ctx>(
   endpoint: __N__McpEndpoint,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   route: (ctx: Ctx, part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
+  changes?: __N__McpChanges,
 ): Promise<__N__McpHttpResponse> {
   if (settings.oauth !== undefined) {
     const path = request.path.split(/[?#]/)[0];
@@ -1066,11 +1262,18 @@ export async function __p__McpServeHttp<Ctx>(
   if (request.method !== "POST") return { ...__p__McpHttpReplied(405), headers: [["Allow", "POST"]] };
   const origin = __p__McpHeader(request, "origin");
   if (origin !== undefined && !settings.allowedOrigins.includes(origin)) return __p__McpHttpReplied(403);
-  const events: Array<string> = [];
-  const call = new __N__McpCall(__p__McpBodyToken(request), (event) => {
-    events.push(event);
-    return Promise.resolve();
-  });
+  const events: Array<string | null> = [];
+  const call = new __N__McpCall(
+    __p__McpBodyToken(request),
+    (event) => {
+      events.push(event);
+      return Promise.resolve();
+    },
+    () => {
+      events.push(null);
+      return Promise.resolve();
+    },
+  );
   const admitted = await admit(request, call);
   if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
   const { ctx } = admitted;
@@ -1102,13 +1305,27 @@ export async function __p__McpServeHttp<Ctx>(
     }
   }
   const asked = { routed: false };
-  const handled = await __p__McpHandle(message, serverName, instructions, endpoint, (part, called, given) => {
-    asked.routed = true;
-    return route(ctx, part, called, given);
-  });
+  const listening =
+    changes === undefined
+      ? undefined
+      : (id: unknown, given: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
+          asked.routed = true;
+          return __p__McpListen(id, given, info, endpoint, call, changes);
+        };
+  const handled = await __p__McpHandle(
+    message,
+    serverName,
+    instructions,
+    endpoint,
+    (part, called, given) => {
+      asked.routed = true;
+      return route(ctx, part, called, given);
+    },
+    listening,
+  );
   if (!asked.routed) return __p__McpHttpReplied(handled);
   const answered = call.cancelled ? undefined : handled.text;
-  if (__p__McpToken(message) !== undefined) return __p__McpEventStream(events, answered);
+  if (__p__McpToken(message) !== undefined || method === "subscriptions/listen") return __p__McpEventStream(events, answered);
   return __p__McpHttpReplied(answered === undefined ? 202 : handled);
 }"#;
 
@@ -1116,7 +1333,8 @@ const FACTORIES: &str = "/**
  * Turns a `__N__` implementation into the function that answers one JSON-RPC message of the
  * service alone: usable as it is over stdio, one line in and one line out. `ctx` builds the
  * handler's context from the request in flight, `writer` takes what the request writes beyond its
- * answer, and `inFlight` lists the requests that `notifications/cancelled` can reach.
+ * answer, and `inFlight` lists the requests that `notifications/cancelled` can reach. `changes`
+ * is the application's source of changes: where it is handed in, `subscriptions/listen` is answered.
  */
 export function create__N__McpDispatcher<Ctx>(
   impl: __DRIVEN__,
@@ -1125,17 +1343,18 @@ export function create__N__McpDispatcher<Ctx>(
   ctx: (call: __N__McpCall) => Ctx,
   writer: __N__McpWriter,
   inFlight: __N__McpInFlight,
+  changes?: __N__McpChanges,
 ) => Promise<string | undefined> {
   const route = create__N__McpRoute(impl);
   const endpoint = __p__McpEndpoint(__p__McpPart);
-  return (text, ctx, writer, inFlight) =>
+  return (text, ctx, writer, inFlight, changes) =>
     __p__McpServe(
       text,
       __p__McpServerName,
       __p__McpInstructions,
       endpoint,
       ctx,
-      { writer, inFlight },
+      changes === undefined ? { writer, inFlight } : { writer, inFlight, changes },
       (built, part, method, params) =>
         part === 0 ? route(built, method, params) : Promise.resolve(undefined),
     );
@@ -1146,6 +1365,7 @@ export function create__N__McpHttpDispatcher<Ctx>(
   impl: __DRIVEN__,
   settings: __N__McpHttpSettings,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
+  changes?: __N__McpChanges,
 ): (request: __N__McpHttpRequest) => Promise<__N__McpHttpResponse> {
   const route = create__N__McpRoute(impl);
   const endpoint = __p__McpEndpoint(__p__McpPart);
@@ -1158,6 +1378,7 @@ export function create__N__McpHttpDispatcher<Ctx>(
       endpoint,
       admit,
       (ctx, part, method, params) => (part === 0 ? route(ctx, method, params) : Promise.resolve(undefined)),
+      changes,
     );
 }";
 
@@ -1256,13 +1477,17 @@ fn constants(named: &str, prefix: &str) -> String {
     )
 }
 
-/// The name an operation takes on an endpoint, `kind:name`: a tool, a resource or a template.
+/// The name an operation takes on an endpoint, `kind:name`: a tool, a resource, a template or a
+/// skill.
 fn endpoint_name(operation: &OperationDef) -> Option<String> {
     if operation.is_mcp_tool() {
         return Some(format!("tool:{}", operation.mcp_tool_name()));
     }
     if operation.is_mcp_prompt() {
         return Some(format!("prompt:{}", operation.mcp_tool_name()));
+    }
+    if let Some((skill, _)) = &operation.mcp.skill {
+        return Some(format!("skill:{skill}"));
     }
     let resource = operation.mcp.resource.as_ref()?;
     let kind = if resource.is_template() {
@@ -1274,17 +1499,29 @@ fn endpoint_name(operation: &OperationDef) -> Option<String> {
 }
 
 fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
+    let folder_names = service
+        .skills
+        .iter()
+        .flat_map(|folder| folder.skills.iter())
+        .map(|skill| format!("skill:{}", skill.name));
     let literal = service
         .operations
         .iter()
         .filter_map(endpoint_name)
+        .chain(folder_names)
         .map(|name| ts_quoted(&name))
         .collect::<Vec<_>>()
         .join(", ");
-    let served = service
-        .operations
-        .iter()
-        .any(|operation| operation.mcp.resource.is_some() || operation.mcp.list_resources);
+    let skilled = service.skills.is_some()
+        || service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.skill.is_some());
+    let served = skilled
+        || service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.resource.is_some() || operation.mcp.list_resources);
     let completes = service
         .operations
         .iter()
@@ -1299,6 +1536,11 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
         capabilities.push(ts_quoted("{\"prompts\":{}}"));
     }
+    if skilled {
+        capabilities.push(ts_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
+    }
     format!(
         "/** Everything `{named}` puts on an endpoint: its names, and each list item as JSON text, \
          so a schema keeps the digits Rust wrote. */\n\
@@ -1308,9 +1550,12 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
          resources: [{RESOURCES_MARKER}],\n  \
          resourceTemplates: [{TEMPLATES_MARKER}],\n  \
          prompts: [{PROMPTS_MARKER}],\n  \
-         skills: [],\n  \
+         skills: [{SKILLS_MARKER}],\n  \
          capabilities: [{capabilities}],\n\
-         }};",
+         }};\n\n\
+         /** The content `resources/read` answers for each file of the skills folder, as JSON text, by \
+         its URI. */\n\
+         const {prefix}McpSkillFiles: ReadonlyMap<string, string> = new Map<string, string>([{SKILL_FILES_MARKER}]);",
         capabilities = capabilities.join(", "),
     )
 }
@@ -1350,6 +1595,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
             .filter(|operation| operation.is_mcp_prompt())
             .map(prompt_row),
     );
+    rows.extend(service.operations.iter().filter_map(skill_row));
     format!(
         "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
          wire key of the argument that carries a form's answers and the JSON text of the form, \
@@ -1389,6 +1635,14 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly mimeType: string | undefined;\n      \
          readonly ttlMs: number;\n      \
          readonly cacheScope: string;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"skill\";\n      \
+         readonly name: string;\n      \
+         readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
+         readonly blob: boolean;\n      \
+         readonly frontmatter: string;\n    \
          }}\n  \
          | {{\n      \
          readonly kind: \"listing\";\n      \
@@ -1516,6 +1770,25 @@ fn resource_row(operation: &OperationDef) -> String {
                 .unwrap_or(DEFAULT_CACHE_SCOPE)
         ),
     )
+}
+
+fn skill_row(operation: &OperationDef) -> Option<String> {
+    let (name, _) = operation.mcp.skill.as_ref()?;
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    Some(format!(
+        "  {{ kind: \"skill\", name: {name}, operation: {wire}, schema: {schema}, blob: {blob}, \
+         frontmatter: {frontmatter} }},",
+        name = ts_quoted(name),
+        wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
+        frontmatter = ts_quoted(&written_frontmatter(
+            name,
+            operation.doc.as_deref().unwrap_or_default()
+        )),
+    ))
 }
 
 fn listing_row(operation: &OperationDef) -> String {

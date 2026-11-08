@@ -4,9 +4,11 @@ use super::parse::{
     McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, ServiceDef, option_inner,
     wire_key, written,
 };
+use super::skills::name_problem;
 use quote::ToTokens as _;
 use syn::{Ident, Type};
 
+const SKILL_DESCRIPTION_LIMIT: usize = 1024;
 const TOOL_NAME_LIMIT: usize = 128;
 const WRAPPED_KEY: &str = "value";
 
@@ -17,6 +19,7 @@ pub fn refusals(service: &ServiceDef) -> Option<syn::Error> {
         refused.extend(operation_refusals(operation));
         refused.extend(resource_refusals(service, position, operation));
         refused.extend(prompt_refusals(operation));
+        refused.extend(skill_refusals(service, position, operation));
         let kind = if operation.is_mcp_tool() {
             "tool"
         } else if operation.is_mcp_prompt() {
@@ -301,6 +304,128 @@ fn refusal(operation: &Ident, what: &str, advice: &str) -> syn::Error {
     )
 }
 
+/// What an operation that writes a skill at run time is refused for.
+fn skill_refusals(
+    service: &ServiceDef,
+    position: usize,
+    operation: &OperationDef,
+) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some((name, span)) = &operation.mcp.skill else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    if let Some(problem) = name_problem(name) {
+        refused.push(syn::Error::new(
+            *span,
+            format!(
+                "service_schema: operation `{ident}` is the skill `{name}`, which {problem}, and \
+                 this service asks for `mcp`\n       \
+                 a skill's name is 1 to 64 characters of `a-z`, `0-9` and `-`, with no `-` at \
+                 either end and no two together"
+            ),
+        ));
+    }
+    if operation
+        .doc
+        .as_ref()
+        .is_some_and(|doc| doc.chars().count() > SKILL_DESCRIPTION_LIMIT)
+    {
+        refused.push(refusal(
+            ident,
+            &format!(
+                "is the skill `{name}` and its rustdoc is over {SKILL_DESCRIPTION_LIMIT} characters"
+            ),
+            "a skill's description is its method's rustdoc, and holds at most 1024 characters",
+        ));
+    }
+    if service
+        .skills
+        .as_ref()
+        .is_some_and(|folder| folder.skills.iter().any(|held| held.name == *name))
+    {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}`, which the skills folder also holds"),
+            "a server lists each skill once; rename the operation's skill or the folder's",
+        ));
+    }
+    if let Some(first) = service.operations[..position].iter().find(|earlier| {
+        earlier
+            .mcp
+            .skill
+            .as_ref()
+            .is_some_and(|(held, _)| held == name)
+    }) {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}`, which `{}` already is", first.ident),
+            "a server lists each skill once; write another name on one of them",
+        ));
+    }
+    refused.extend(skill_shape_refusals(operation, name));
+    refused
+}
+
+/// What the signature and bindings of an operation that writes the skill `name` are refused for.
+fn skill_shape_refusals(operation: &OperationDef, name: &str) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    let path_only = matches!(
+        &operation.inputs,
+        OperationInputs::Named(declared) if type_text(declared) == "String"
+    );
+    if !path_only {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and takes more than the path of a file"),
+            "take one `path: String`, the file's path relative to the skill's root",
+        ));
+    }
+    match &operation.outcome {
+        OperationOutcome::OneWay => refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and is one way"),
+            "a skill's file is the operation's answer, so it declares a success and an error",
+        )),
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } if !matches!(type_text(success).as_str(), "String" | "(Vec<u8>,String)") => {
+            refused.push(refusal(
+                ident,
+                &format!("is the skill `{name}` and answers a success a skill's file cannot"),
+                "answer a `String` for text, or a `(Vec<u8>, String)` of bytes and their content type",
+            ));
+        }
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => {}
+    }
+    if !operation.mcp.header.is_empty()
+        || operation.http.as_ref().is_some_and(|binding| {
+            !binding.header_in.is_empty()
+                || !binding.header_out.is_empty()
+                || !binding.error_header_out.is_empty()
+        })
+    {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and binds a header"),
+            "a skill's file is read by its path alone; drop the header binding",
+        ));
+    }
+    if !operation.mcp.scopes.is_empty() {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and writes `scopes` in `mcp(...)`"),
+            "a skill is listed and read for every caller; drop the scopes",
+        ));
+    }
+    refused
+}
+
 /// What a resource, a resource listing or a completion operation is refused for.
 fn resource_refusals(
     service: &ServiceDef,
@@ -323,11 +448,13 @@ fn resource_refusals(
     let kinds = usize::from(mcp.resource.is_some())
         + usize::from(mcp.list_resources)
         + usize::from(mcp.prompt.is_some())
-        + usize::from(mcp.completes.is_some());
+        + usize::from(mcp.completes.is_some())
+        + usize::from(mcp.skill.is_some());
     if kinds > 1 {
         refused.push(refusal(
             ident,
-            "is more than one of `resource`, `list_resources`, `prompt` and `completes` in `mcp(...)`",
+            "is more than one of `resource`, `list_resources`, `prompt`, `completes` and `skill` \
+             in `mcp(...)`",
             "an operation is one of them; split it into one operation each",
         ));
         return refused;

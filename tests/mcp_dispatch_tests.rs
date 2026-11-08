@@ -47,6 +47,10 @@ mod prompt_tests;
 mod document_mcp;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/skill_tests.rs"]
+mod skill_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/billing_mcp.rs"]
 mod billing_mcp;
 
@@ -85,6 +89,15 @@ mod resource_tests;
 #[cfg(test)]
 #[path = "mcp_dispatch_tests/writer_tests.rs"]
 mod writer_tests;
+
+#[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/listens_through.rs"]
+mod listens_through;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/listen_tests.rs"]
+mod listen_tests;
 
 #[cfg(test)]
 #[path = "mcp_dispatch_tests/client_tests.rs"]

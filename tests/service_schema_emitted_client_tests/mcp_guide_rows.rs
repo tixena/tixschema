@@ -655,6 +655,18 @@ fn the_rust_dispatcher_answers_alone_beside_an_endpoint_and_over_http_alike() {
 }
 
 #[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        dispatcher,
+        GuideServiceSchema,
+        Stand::default(),
+        ready_output
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+}
+
+#[test]
 fn an_admit_that_denies_stops_a_prompt_before_its_handler_runs() {
     let settings = dispatcher::McpHttpSettings {
         allowed_origins: &[],
