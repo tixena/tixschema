@@ -284,7 +284,7 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
 
 /// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
 /// failing key. `doc` is the body of its `JSDoc`.
-fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
+pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
     format!(
         "/**\n\
          {doc}\n \
@@ -362,7 +362,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
 
 /// The parameter list the client type's member declares: the message, then one argument per
 /// `header_in` binding, named and typed as the REST client's own method takes it.
-fn method_params(operation: &OperationDef) -> String {
+pub(super) fn method_params(operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     once(format!("req: {}", message::typename(operation)))
         .chain(shape.header_in.iter().map(|header| {
@@ -575,7 +575,12 @@ fn validation(service: &ServiceDef, operation: &OperationDef) -> String {
 /// What a method answers for a value it refuses before the transport is reached, the issues
 /// `issues` holds folded into one outbound fault: thrown by a one-way method, answered in the
 /// failure arm by a replying one.
-fn outbound_refusal(prefix: &str, operation: &OperationDef, wire: &str, issues: &str) -> String {
+pub(super) fn outbound_refusal(
+    prefix: &str,
+    operation: &OperationDef,
+    wire: &str,
+    issues: &str,
+) -> String {
     match &operation.outcome {
         OperationOutcome::OneWay => {
             format!("        throw {prefix}Refused({prefix}OutboundFault({wire}, {issues}));")

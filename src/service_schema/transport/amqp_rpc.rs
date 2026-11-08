@@ -1176,6 +1176,24 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 /// The private mirror of `ServiceFault`, the only thing here that deserializes one, and the tagged
 /// member the failure arm carries it in.
 pub(super) fn fault_mirror() -> TokenStream {
+    let wire = fault_wire_types();
+    quote! {
+        #wire
+
+        /// What a failure arm holds: a fault, or the error the operation declared. The tagged
+        /// member is tried first, which is what the tag is for.
+        #[derive(::serde::Deserialize)]
+        #[serde(untagged)]
+        enum ReportedError<E> {
+            Fault(TaggedFault),
+            Operation(E),
+        }
+    }
+}
+
+/// The fault as it arrives and the tag it arrives under, without the arm that holds one or the
+/// error the operation declared.
+pub(super) fn fault_wire_types() -> TokenStream {
     quote! {
         /// A fault as it arrives, which is the one shape that reads one back. `ServiceFault`
         /// derives no `Deserialize` of its own, that being a public constructor by another name.
@@ -1206,15 +1224,6 @@ pub(super) fn fault_mirror() -> TokenStream {
         struct TaggedFault {
             fault: FaultOnTheWire,
             is_service_fault: bool,
-        }
-
-        /// What a failure arm holds: a fault, or the error the operation declared. The tagged
-        /// member is tried first, which is what the tag is for.
-        #[derive(::serde::Deserialize)]
-        #[serde(untagged)]
-        enum ReportedError<E> {
-            Fault(TaggedFault),
-            Operation(E),
         }
     }
 }

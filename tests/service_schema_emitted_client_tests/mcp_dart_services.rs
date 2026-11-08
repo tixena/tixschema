@@ -47,7 +47,7 @@ pub struct McpInvoiceList {
 
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
-pub trait DocumentService<Ctx> {
+pub trait DartDocumentService<Ctx> {
     /// Answers the current version of one document, unless it still carries the tag the caller
     /// knows.
     #[service_schema_op(http(
@@ -94,7 +94,7 @@ pub trait DocumentService<Ctx> {
 
 /// Lists the invoices of an organization.
 #[service_schema(transports = ["mcp"])]
-pub trait BillingService<Ctx> {
+pub trait DartBillingService<Ctx> {
     /// Lists the invoices of the caller's organization.
     async fn list_invoices(
         &self,
@@ -141,7 +141,7 @@ pub trait TaggingService<Ctx> {
 /// rather than merely declared.
 pub struct Archive;
 
-impl DocumentService<()> for Archive {
+impl DartDocumentService<()> for Archive {
     async fn get_tagged(
         &self,
         _ctx: &(),
@@ -187,7 +187,7 @@ impl DocumentService<()> for Archive {
     }
 }
 
-impl BillingService<()> for Archive {
+impl DartBillingService<()> for Archive {
     async fn list_invoices(
         &self,
         _ctx: &(),

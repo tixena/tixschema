@@ -3670,7 +3670,7 @@ error: service_schema: `openapi` takes no value
 
 #### The `mcp` Transport
 
-`#[service_schema(transports = ["mcp"])]` asks for a Model Context Protocol server: each operation becomes one tool, listed in the order the trait declares them, and the trait's rustdoc becomes the server's `instructions`. It sits beside the other transports (`transports = ["mcp", "ws_rpc"]`), and every operation keeps its handler, message, success and error on each of them. This part is the declaration: the tool list the macro writes. The dispatchers and clients are separate parts of the transport.
+`#[service_schema(transports = ["mcp"])]` asks for a Model Context Protocol server: each operation becomes one tool, listed in the order the trait declares them, and the trait's rustdoc becomes the server's `instructions`. It sits beside the other transports (`transports = ["mcp", "ws_rpc"]`), and every operation keeps its handler, message, success and error on each of them. The macro writes the tool list, a Rust dispatcher macro and a Rust client macro; the servers and clients of the other languages are separate parts of the transport.
 
 ```rust,ignore
 /// Reads and renames documents in the caller's workspace.
@@ -3708,6 +3708,60 @@ A tool takes its fields from the operation:
 `#[model_schema()]` writes `needs_wrapper()` on every model type and on its `{type}_schema::Schema`, a `const fn` that answers `true` where serde writes no JSON object, and `<Service>Schema::wrapped_{operation}()` answers it for each operation. A type that writes what fills its type parameter answers `true`, which is always valid. `<Service>Schema::MCP_NAMES` lists `("tool", "<name>")` for every tool, and `<Service>Schema::MCP_INSTRUCTIONS` holds the trait's rustdoc.
 
 On a service that asks for `mcp`, the macro refuses, naming the operation: a method without rustdoc, a tool name over 128 characters or holding a character outside `A-Z`, `a-z`, `0-9`, `_`, `-` and `.`, two tools of one name, a `header_out` or `error_header_out` named `value`, a `header_in` named `value` on an operation whose message is its one argument, a `header_in` named like a key of the generated message, and an operation only `http_rest` carries (a `body = "stream"` reply or a multipart file part). Every model type a message, a `header_in` argument, a `header_out` value or a success names lists `enable = ["jsonschema"]`, as for `openapi`; the macro lists it on the messages it generates. The tool list is built at the trait's scope, so a trait that names a type declared in another module imports that module's `{type}_schema` beside the type.
+
+**Serving tools.** `{service}_mcp_dispatcher!()` goes in a module of its own file, as the other dispatcher macros do, and emits `SERVER_NAME`, `INSTRUCTIONS`, `catalog()`, `route`, `McpEndpoint`, `serve`, `answer`, `McpHttpRequest`, `McpHttpResponse`, `serve_http` and `answer_http`. A crate that invokes it names `serde`, `serde_json` and `tracing`, and reaches the service as `$crate::<Service>Schema`, so a service declared in a submodule re-exports its `<Service>Schema` at the crate root. The application owns the stdio loop and the HTTP server:
+
+```rust,ignore
+// stdio: one line in, at most one line out
+while let Some(line) = lines.next() {
+    if let Some(reply) = document_mcp::answer(&line, &documents, &ctx).await {
+        println!("{reply}");
+    }
+}
+
+// HTTP: build `McpHttpRequest` from the framework's request, write the response back
+let response = document_mcp::answer_http(&request, &["https://app.example.com"], &documents, &ctx).await;
+```
+
+The server answers revision 2026-07-28 only: `server/discover`, `tools/list` and `tools/call`. It checks each message in this order: text that is no JSON-RPC message answers `-32600`; a notification answers nothing; a missing `_meta.io.modelcontextprotocol/protocolVersion` or `clientCapabilities` answers `-32602`; another version answers `-32022` naming both; an unknown method answers `-32601`. A call is read through the operation's `unjudged_` reader and judged by its `validated_` validator, so `preprocess`, bounds and checks run as on every other transport. A success answers `structuredContent` and the same JSON as one text block (an empty `content` list for a unit success and for a one-way operation, once its handler has returned); a declared error answers `isError: true` with its JSON as the text; arguments that do not read, a field the validator refuses, a missing `header_in` property and an unknown tool answer the fault envelope `{"isServiceFault": true, "fault": ...}`, as the text of a tool error or, for an unknown tool and a handler panic, in the `data` of `-32602` and `-32603`. Every answer is compact JSON with the keys of each object in order, and every result carries `serverInfo`, the trait's name and the version of the crate that invoked the macro. `answer` and `answer_http` take a service that is `Sync` and a `Ctx` that is `Sync`, and their futures are `Send` where those are.
+
+`serve_http` applies, in order, the Streamable HTTP rules: `405` for a method other than `POST`, `403` for an `Origin` not in `allowed_origins`, `400` with `-32600` for an unreadable body, `202` for a notification, `400` with `-32020` when `MCP-Protocol-Version`, `Mcp-Method` or (for `tools/call`, `resources/read` and `prompts/get`) `Mcp-Name` is missing or differs from the body (header names compared in any case, `Mcp-Name` decoded from `=?base64?...?=`), `400` with `-32602` and `-32022` as above, `404` with `-32601` for an unknown method, and otherwise `200` with `Content-Type: application/json`.
+
+**Several services behind one endpoint.** Each dispatcher publishes `catalog()` and a `route` that answers only what its service owns. An application declares the endpoint as a `const`, numbers its services in the same order in the endpoint and in `route`, and hands both to `serve` or `serve_http`:
+
+```rust,ignore
+const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
+    &[DocumentServiceSchema::MCP_NAMES, BillingServiceSchema::MCP_NAMES],
+    &[document_mcp::catalog, billing_mcp::catalog],
+);
+
+let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, async |part, method, params| match part {
+    0 => document_mcp::route(method, params, &documents, &ctx).await,
+    1 => billing_mcp::route(method, params, &billing, &ctx).await,
+    _ => None,
+})
+.await;
+```
+
+`tools/list` concatenates the catalogs in the endpoint's order, `server/discover` answers the union of their capabilities with the extensions under `capabilities.extensions`, and a `tools/call` asks each service's `route` in turn. A tool name two services share fails the build when the endpoint is a `const`: `McpEndpoint::new` panics on a name of one kind two services share (a tool and a prompt of one name do not collide), and rustc prints `error[E0080]: evaluation panicked: get-version`. Resolve it with `mcp(name = "...")` on one of the operations.
+
+**Calling tools.** `{service}_mcp_client!()` emits `Transport`, `McpMessage` and `{Service}Client<T>`, with one method per operation answering what the other Rust clients answer (`Result<Success, CallError<Error>>`, and `Result<(), ServiceFault>` for a one-way operation). `Transport::send` is handed the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` an HTTP seam writes as headers; it answers the server's text, or `Err` for a call that did not travel. A message the validator refuses is refused before `send` is called. The client reads each answer as follows: a result with `isError: false` is the success (from `structuredContent`, or its `value` and the `header_out` properties beside it); `isError: true` with `"isServiceFault": true` is that fault; any other `isError: true` is the declared error; a JSON-RPC error that carries the fault envelope is that fault; any other JSON-RPC error and a failing `send` are a `transport-failure` fault; text that is no JSON, or a value its read refuses, is an `undeserializable-payload` fault.
+
+```rust,ignore
+let client = DocumentServiceClient::new(HttpMcpTransport::new(url, api_key));
+let version = client.get_version(GetVersionRequest { document_id: "doc-1".into() }).await;
+```
+
+**TypeScript server and client.** A service that asks for `mcp` also publishes `<Service>Schema::ts_mcp_service()` and `ts_mcp_client()`, beside `ts_http_service()` and `ts_http_client()`. The server takes the `{Service}Impl<Ctx>` that `create{Service}Dispatcher` takes and calls that dispatcher, so the generated Zod reads judge every message. It answers `server/discover`, `tools/list` and `tools/call` with the bytes the Rust server answers: keys in order, and each tool kept as the JSON text Rust wrote, so a schema keeps its digits.
+
+```ts
+const route = createDocumentServiceMcpRoute(impl);
+const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
+const reply = await documentServiceMcpServe(line, "Workspace", undefined, workspace,
+  async (part, method, params) => (part === 0 ? route(ctx, method, params) : undefined));
+```
+
+`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, and `createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins })` applies the Streamable HTTP rules around it. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
 
 ##### The Dart server and client
 

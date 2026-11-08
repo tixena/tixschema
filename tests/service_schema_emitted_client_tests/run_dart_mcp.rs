@@ -5,10 +5,10 @@
 #![cfg(feature = "dart")]
 
 use super::mcp_dart_services::{
-    Archive, AuditService, AuditServiceSchema, BillingService as _, BillingServiceSchema,
-    DocumentService, DocumentServiceSchema, McpDocumentId, McpInvoiceRequest, McpVersionError,
-    McpVersionRequest, TaggingService as _, TaggingServiceSchema, mcp_document_id_dart,
-    mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_version_error_dart,
+    Archive, AuditService, AuditServiceSchema, DartBillingService as _, DartBillingServiceSchema,
+    DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequest,
+    McpVersionError, McpVersionRequest, TaggingService as _, TaggingServiceSchema,
+    mcp_document_id_dart, mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_version_error_dart,
     mcp_version_request_dart, mcp_version_response_dart,
 };
 use super::run_dart_validate::{analyzed, dart};
@@ -46,7 +46,7 @@ String request(Object? id, String method, [Map<String, dynamic> params = const <
 void main() async {
   final touched = <String>[];
   final tags = <String?>[];
-  final documents = DocumentServiceHandlers<void>(
+  final documents = DartDocumentServiceHandlers<void>(
     getTagged: (ctx, req, known_tag) async {
       tags.add(known_tag);
       return (McpVersionResponse(version: 7), '"v7"');
@@ -62,24 +62,24 @@ void main() async {
       touched.add('${req.document_id}:${req.reader}');
     },
   );
-  final billing = BillingServiceHandlers<void>(
+  final billing = DartBillingServiceHandlers<void>(
     listInvoices: (ctx, req) async => McpInvoiceList(invoices: <String>['inv-1', req.organization]),
   );
-  final documentRoute = createDocumentServiceMcpRoute<void>(documents);
-  final billingRoute = createBillingServiceMcpRoute<void>(billing);
+  final documentRoute = createDartDocumentServiceMcpRoute<void>(documents);
+  final billingRoute = createDartBillingServiceMcpRoute<void>(billing);
   final guide = (
-    tools: billingServiceMcpCatalog.tools,
+    tools: dartBillingServiceMcpCatalog.tools,
     resources: <String>['{"mimeType":"text/markdown","name":"configuration-guide","uri":"guide://configure-organization"}'],
     resourceTemplates: <String>['{"name":"documents","uriTemplate":"workspace://documents/{document_id}"}'],
     prompts: <String>[],
     skills: <String>[],
     capabilities: <String>['{"resources":{},"tools":{}}'],
   );
-  final endpoint = DocumentServiceMcpEndpoint(
-    {...documentServiceMcpNames, ...billingServiceMcpNames},
-    [documentServiceMcpCatalog, guide],
+  final endpoint = DartDocumentServiceMcpEndpoint(
+    {...dartDocumentServiceMcpNames, ...dartBillingServiceMcpNames},
+    [dartDocumentServiceMcpCatalog, guide],
   );
-  Future<DocumentServiceMcpAnswer?> route(int part, String method, Map<String, dynamic> params) async {
+  Future<DartDocumentServiceMcpAnswer?> route(int part, String method, Map<String, dynamic> params) async {
     if (method == 'resources/list') {
       final cursor = params['cursor'];
       if (part == 0 && cursor == null) {
@@ -108,7 +108,7 @@ void main() async {
 
   final answers = <String, String?>{};
   Future<void> ask(String name, String text) async {
-    answers[name] = await documentServiceMcpServe(text, 'Workspace', null, endpoint, route);
+    answers[name] = await dartDocumentServiceMcpServe(text, 'Workspace', null, endpoint, route);
   }
 
   await ask('discover', request('discover-1', 'server/discover'));
@@ -145,7 +145,7 @@ void main() async {
   await ask('prompts', request(25, 'prompts/list'));
   await ask('no_arguments', request(26, 'tools/call', {'name': 'get-version'}));
 
-  final alone = createDocumentServiceMcpDispatcher<void>(documents);
+  final alone = createDartDocumentServiceMcpDispatcher<void>(documents);
   answers['alone'] = await alone(null, request(27, 'tools/list'));
 
   print(jsonEncode({'answers': answers, 'touched': touched, 'tags': tags}));
@@ -159,12 +159,12 @@ const meta = <String, dynamic>{
   'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
 };
 
-DocumentServiceMcpHttpRequest post(
+DartDocumentServiceMcpHttpRequest post(
   Map<String, dynamic> body, {
   Map<String, String> headers = const <String, String>{},
   String method = 'POST',
 }) =>
-    DocumentServiceMcpHttpRequest(
+    DartDocumentServiceMcpHttpRequest(
       method: method,
       headers: [for (final entry in headers.entries) (entry.key, entry.value)],
       body: utf8.encode(jsonEncode(body)),
@@ -184,16 +184,16 @@ const proper = <String, String>{
 };
 
 void main() async {
-  final documents = DocumentServiceHandlers<void>(
+  final documents = DartDocumentServiceHandlers<void>(
     getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
     getVersion: (ctx, req) async => McpVersionResponse(version: 7),
     lookup: (ctx, req) async => McpVersionResponse(version: 7),
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async {},
   );
-  final serve = createDocumentServiceMcpHttpDispatcher<void>(documents, null, ['https://app.example.com']);
+  final serve = createDartDocumentServiceMcpHttpDispatcher<void>(documents, null, ['https://app.example.com']);
   final answers = <String, Map<String, dynamic>>{};
-  Future<void> ask(String name, DocumentServiceMcpHttpRequest request) async {
+  Future<void> ask(String name, DartDocumentServiceMcpHttpRequest request) async {
     final response = await serve(request);
     answers[name] = {
       'status': response.status,
@@ -216,7 +216,7 @@ void main() async {
   await ask('get', post(call(5, 'get-version'), headers: proper, method: 'GET'));
   await ask('foreign_origin', post(call(6, 'get-version'), headers: {...proper, 'Origin': 'https://evil.example.com'}));
   await ask('allowed_origin', post(call(7, 'get-version'), headers: {...proper, 'Origin': 'https://app.example.com'}));
-  await ask('unreadable', DocumentServiceMcpHttpRequest(method: 'POST', headers: const [], body: utf8.encode('{')));
+  await ask('unreadable', DartDocumentServiceMcpHttpRequest(method: 'POST', headers: const [], body: utf8.encode('{')));
   await ask('notification', post({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers: proper));
   await ask('no_version_header', post(call(8, 'get-version'), headers: {'Mcp-Method': 'tools/call', 'Mcp-Name': 'get-version'}));
   await ask('method_differs', post(call(9, 'get-version'), headers: {...proper, 'Mcp-Method': 'tools/list'}));
@@ -247,7 +247,7 @@ void main() async {
 
 /// A client over a seam that answers canned text, one answer per call.
 const CLIENT_DRIVER: &str = r#"
-class Canned implements DocumentServiceMcpTransport {
+class Canned implements DartDocumentServiceMcpTransport {
   Canned(this.answers);
   final List<Object> answers;
   final sent = <({String text, String protocolVersion, String method, String? name})>[];
@@ -274,10 +274,10 @@ String fault(String kind) => jsonEncode({
       'fault': {'detail': 'it broke', 'kind': kind, 'operation': 'get-version'},
     });
 
-String summary(DocumentServiceGetVersionResult outcome) => switch (outcome) {
-      DocumentServiceGetVersionResultOk(:final value) => 'ok version=${value.version}',
-      DocumentServiceGetVersionResultOperation(:final error) => 'declared ${jsonEncode(error.toJson())}',
-      DocumentServiceGetVersionResultFault(:final fault) => 'fault ${fault.kind.wireValue}',
+String summary(DartDocumentServiceGetVersionResult outcome) => switch (outcome) {
+      DartDocumentServiceGetVersionResultOk(:final value) => 'ok version=${value.version}',
+      DartDocumentServiceGetVersionResultOperation(:final error) => 'declared ${jsonEncode(error.toJson())}',
+      DartDocumentServiceGetVersionResultFault(:final fault) => 'fault ${fault.kind.wireValue}',
     };
 
 void main() async {
@@ -292,7 +292,7 @@ void main() async {
     Object(),
     result(8, {'content': [], 'structuredContent': {'version': 'seven'}, 'isError': false}),
   ]);
-  final client = DocumentServiceMcpClient(canned);
+  final client = DartDocumentServiceMcpClient(canned);
   for (var call = 0; call < 8; call += 1) {
     lines.add(summary(await client.getVersion(McpVersionRequest(document_id: 'doc-1'))));
   }
@@ -305,7 +305,7 @@ void main() async {
     result(5, toolText(jsonDecode(fault('failed-validation'))).isEmpty ? {} : jsonDecode(toolText(jsonDecode(fault('failed-validation')))) as Map<String, dynamic>),
     Object(),
   ]);
-  final other = DocumentServiceMcpClient(more);
+  final other = DartDocumentServiceMcpClient(more);
   final lookup = await other.lookup(McpDocumentId('doc-12'));
   final tagged = await other.getTagged('doc-1', '"v6"');
   final renamed = await other.renameDocument(RenameDocumentRequest(document_id: 'doc-1', title: 'Plan'));
@@ -313,13 +313,13 @@ void main() async {
   var refusal = '';
   try {
     await other.touchDocument(TouchDocumentRequest(document_id: 'doc-1', reader: 'reviewer-7'));
-  } on DocumentServiceMcpRefusal catch (refused) {
+  } on DartDocumentServiceMcpRefusal catch (refused) {
     refusal = refused.fault.kind.wireValue;
   }
   var down = '';
   try {
     await other.touchDocument(TouchDocumentRequest(document_id: 'doc-1', reader: 'reviewer-7'));
-  } on DocumentServiceMcpRefusal catch (refused) {
+  } on DartDocumentServiceMcpRefusal catch (refused) {
     down = refused.fault.kind.wireValue;
   }
 
@@ -329,12 +329,12 @@ void main() async {
       for (final message in [...canned.sent.take(1), ...more.sent])
         {'text': message.text, 'protocolVersion': message.protocolVersion, 'method': message.method, 'name': message.name},
     ],
-    'lookup': (lookup as DocumentServiceLookupResultOk).value.version,
+    'lookup': (lookup as DartDocumentServiceLookupResultOk).value.version,
     'tagged': (() {
-      final ok = (tagged as DocumentServiceGetTaggedResultOk).value;
+      final ok = (tagged as DartDocumentServiceGetTaggedResultOk).value;
       return [ok.$1.version, ok.$2];
     })(),
-    'renamed': renamed is DocumentServiceRenameDocumentResultOk,
+    'renamed': renamed is DartDocumentServiceRenameDocumentResultOk,
     'refusal': refusal,
     'down': down,
   }));
@@ -385,14 +385,14 @@ fn module(driver: &str) -> String {
         mcp_document_id_dart::dart_definition(),
         mcp_invoice_request_dart::dart_definition(),
         mcp_invoice_list_dart::dart_definition(),
-        DocumentServiceSchema::dart_definition(),
-        DocumentServiceSchema::dart_ws_client(),
-        DocumentServiceSchema::dart_mcp_service(),
-        DocumentServiceSchema::dart_mcp_client(),
-        BillingServiceSchema::dart_definition(),
-        BillingServiceSchema::dart_ws_client(),
-        BillingServiceSchema::dart_mcp_service(),
-        BillingServiceSchema::dart_mcp_client(),
+        DartDocumentServiceSchema::dart_definition(),
+        DartDocumentServiceSchema::dart_ws_client(),
+        DartDocumentServiceSchema::dart_mcp_service(),
+        DartDocumentServiceSchema::dart_mcp_client(),
+        DartBillingServiceSchema::dart_definition(),
+        DartBillingServiceSchema::dart_ws_client(),
+        DartBillingServiceSchema::dart_mcp_service(),
+        DartBillingServiceSchema::dart_mcp_client(),
         TaggingServiceSchema::dart_definition(),
         TaggingServiceSchema::dart_ws_client(),
         TaggingServiceSchema::dart_mcp_service(),
@@ -531,8 +531,8 @@ fn the_server_answers_the_messages_of_the_design_on_the_bytes_rust_writes() {
     let Some(driven) = driven("mcp_server", SERVER_DRIVER) else {
         return;
     };
-    let mut tools = DocumentServiceSchema::mcp_tools();
-    tools.extend(BillingServiceSchema::mcp_tools());
+    let mut tools = DartDocumentServiceSchema::mcp_tools();
+    tools.extend(DartBillingServiceSchema::mcp_tools());
 
     answered(
         &driven,
@@ -861,9 +861,9 @@ fn a_service_served_alone_answers_its_own_tools() {
         "ListToolsResultResponse",
         &tools_answer(
             27,
-            "DocumentService",
+            "DartDocumentService",
             VERSION,
-            &DocumentServiceSchema::mcp_tools(),
+            &DartDocumentServiceSchema::mcp_tools(),
         ),
     );
 }
@@ -972,7 +972,7 @@ fn the_client_reads_the_seven_outcomes_and_writes_each_call_as_the_server_reads_
         json!({
             "io.modelcontextprotocol/clientCapabilities": {},
             "io.modelcontextprotocol/clientInfo": {
-                "name": "DocumentServiceMcpClient",
+                "name": "DartDocumentServiceMcpClient",
                 "version": VERSION,
             },
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -1025,25 +1025,25 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
             mcp_document_id_dart::dart_definition(),
             mcp_invoice_request_dart::dart_definition(),
             mcp_invoice_list_dart::dart_definition(),
-            DocumentServiceSchema::dart_definition(),
-            DocumentServiceSchema::dart_ws_client(),
-            DocumentServiceSchema::dart_mcp_service(),
-            BillingServiceSchema::dart_definition(),
-            BillingServiceSchema::dart_ws_client(),
-            BillingServiceSchema::dart_mcp_service(),
+            DartDocumentServiceSchema::dart_definition(),
+            DartDocumentServiceSchema::dart_ws_client(),
+            DartDocumentServiceSchema::dart_mcp_service(),
+            DartBillingServiceSchema::dart_definition(),
+            DartBillingServiceSchema::dart_ws_client(),
+            DartBillingServiceSchema::dart_mcp_service(),
             AuditServiceSchema::dart_definition(),
             AuditServiceSchema::dart_ws_client(),
             AuditServiceSchema::dart_mcp_service(),
             format!(
-                "const workspace = DocumentServiceMcpEndpoint(\n  \
-                 {{...documentServiceMcpNames, ...{second}ServiceMcpNames}},\n  \
-                 [documentServiceMcpCatalog, {second}ServiceMcpCatalog],\n);\n\n\
+                "const workspace = DartDocumentServiceMcpEndpoint(\n  \
+                 {{...dartDocumentServiceMcpNames, ...{second}ServiceMcpNames}},\n  \
+                 [dartDocumentServiceMcpCatalog, {second}ServiceMcpCatalog],\n);\n\n\
                  void main() {{\n  print(workspace.names.length);\n}}"
             ),
         ]
         .join("\n\n")
     };
-    let Some((distinct, said)) = dart("endpoint-distinct", &[], &endpoint("billing")) else {
+    let Some((distinct, said)) = dart("endpoint-distinct", &[], &endpoint("dartBilling")) else {
         return;
     };
     assert!(distinct, "{said}");
@@ -1071,7 +1071,7 @@ fn the_archive_answers_every_operation_of_every_service() {
     let version = || McpVersionRequest {
         document_id: "doc-1".to_owned(),
     };
-    let answered = poll_once(DocumentService::get_version(&Archive, &(), version())).unwrap();
+    let answered = poll_once(DartDocumentService::get_version(&Archive, &(), version())).unwrap();
     assert_eq!(answered.unwrap().version, 5);
     let lookup = poll_once(Archive.lookup(&(), McpDocumentId("doc-1".to_owned()))).unwrap();
     assert_eq!(lookup.unwrap_err(), McpVersionError::NotFound);
