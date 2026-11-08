@@ -654,7 +654,8 @@ function __p__McpAsking(
   declined: boolean,
 ): Record<string, unknown> | undefined {
   const written = __p__McpObject(error);
-  const arm = interview.tag === "" ? __p__McpObject(written?.[interview.wire]) : written?.[interview.tag] === interview.wire ? written : undefined;
+  const held = interview.tag === "" ? __p__McpObject(written?.[interview.wire]) : written?.[interview.tag] === interview.wire ? written : undefined;
+  const arm = interview.content === "" ? held : __p__McpObject(held?.[interview.content]);
   if (arm === undefined) return undefined;
   const message = typeof arm.message === "string" ? arm.message : undefined;
   if (interview.answers !== undefined) {
@@ -1725,6 +1726,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly arm: string;\n  \
          readonly tag: string;\n  \
          readonly wire: string;\n  \
+         readonly content: string;\n  \
          readonly answers: string | undefined;\n  \
          readonly form: string | undefined;\n  \
          readonly doc: string;\n\
@@ -2053,7 +2055,8 @@ pub fn form_marker(operation: &OperationDef) -> String {
 }
 
 /// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
-/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+/// name it writes the arm under and the key it holds the arm's members under: `part` is `TAG`, `WIRE`
+/// or `CONTENT`.
 pub fn arm_marker(operation: &OperationDef, part: &str) -> String {
     format!(
         "/*__TIXSCHEMA_MCP_ARM_{part}:{}__*/",
@@ -2084,10 +2087,11 @@ fn interview_literal(operation: &OperationDef) -> String {
         "undefined".to_owned()
     };
     format!(
-        "{{ arm: {}, tag: {}, wire: {}, answers: {answers}, form: {form}, doc: {} }}",
+        "{{ arm: {}, tag: {}, wire: {}, content: {}, answers: {answers}, form: {form}, doc: {} }}",
         ts_quoted(&interview.arm.to_string()),
         arm_marker(operation, "TAG"),
         arm_marker(operation, "WIRE"),
+        arm_marker(operation, "CONTENT"),
         ts_quoted(operation.doc.as_deref().unwrap_or_default()),
     )
 }

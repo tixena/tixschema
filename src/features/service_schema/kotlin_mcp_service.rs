@@ -814,6 +814,7 @@ private fun @P@McpInputRequired(key: String, request: JsonObject): JsonObject =
 private fun @P@McpAsking(
   tag: String,
   wire: String,
+  content: String,
   answers: String?,
   form: String?,
   doc: String,
@@ -822,7 +823,8 @@ private fun @P@McpAsking(
   declined: Boolean,
 ): JsonObject? {
   val written = error as? JsonObject ?: return null
-  val body = if (tag.isEmpty()) written[wire] as? JsonObject else written.takeIf { (it[tag] as? JsonPrimitive)?.takeIf { held -> held.isString }?.content == wire }
+  val named = if (tag.isEmpty()) written[wire] as? JsonObject else written.takeIf { (it[tag] as? JsonPrimitive)?.takeIf { held -> held.isString }?.content == wire }
+  val body = if (content.isEmpty()) named else named?.get(content) as? JsonObject
   if (body == null) return null
   val message = (body["message"] as? JsonPrimitive)?.takeIf { it.isString }?.content
   if (answers != null) {
@@ -1507,7 +1509,8 @@ fn blocks_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) ->
 }
 
 /// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
-/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+/// name it writes the arm under and the key it holds the arm's members under: `part` is `TAG`, `WIRE`
+/// or `CONTENT`.
 fn arm_marker(operation: &OperationDef, part: &str) -> String {
     format!("@MCP_ARM_{part}_{}@", written(&operation.ident))
 }
@@ -1731,14 +1734,19 @@ fn form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
-/// One statement per interview and part, writing the tag key and the wire name of its arm.
+/// One statement per interview and part, writing the tag key, the wire name and the content key of its arm.
 fn arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
     service
         .operations
         .iter()
         .filter(|operation| operation.mcp.interview.is_some())
         .flat_map(|operation| {
-            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+            [
+                ("TAG", "mcp_arm_tag"),
+                ("WIRE", "mcp_arm_wire"),
+                ("CONTENT", "mcp_arm_content"),
+            ]
+            .map(|(part, head)| {
                 let marker = arm_marker(operation, part);
                 let method = format_ident!(
                     "{head}_{}",
@@ -2660,10 +2668,11 @@ fn declared_arm(
         return format!(
             "          is {result}.Declared -> {{\n            \
              val mcpBody = Json.encodeToJsonElement({written}, answered.error)\n            \
-             {prefix}McpAsking({}, {}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
+             {prefix}McpAsking({}, {}, {}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
              ?: {prefix}McpDone(null, {prefix}McpServeText(mcpBody))\n          }}\n",
             arm_marker(operation, "TAG"),
             arm_marker(operation, "WIRE"),
+            arm_marker(operation, "CONTENT"),
             kotlin_quoted(operation.doc.as_deref().unwrap_or_default()),
         );
     }

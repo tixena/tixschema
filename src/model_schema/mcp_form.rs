@@ -68,37 +68,35 @@ pub fn items(item: &Item) -> TokenStream {
     }
 }
 
-/// `mcp_variant_tag`: the key serde tags an enum's variant with and the name it writes the variant
-/// under, for a variant serde writes. The key is empty for an enum with no tag, and no variant of
-/// an untagged enum has a name.
+/// `mcp_variant_tag`: the key serde tags an enum's variant with, the name it writes the variant
+/// under and the key it holds the variant's members under, for a variant serde writes. The tag is
+/// empty for an enum with no tag, the content key for one that is not adjacently tagged, and no
+/// variant of an untagged enum has a name.
 fn variant_tag(declared: &syn::ItemEnum) -> TokenStream {
     let key = match Tagging::of(declared) {
-        Tagging::Adjacent {
-            content: _content,
-            tag,
-        } => Some(tag),
-        Tagging::Internal { tag } => Some(tag),
-        Tagging::External | Tagging::Plain => Some(String::new()),
+        Tagging::Adjacent { content, tag } => Some((tag, content)),
+        Tagging::Internal { tag } => Some((tag, String::new())),
+        Tagging::External | Tagging::Plain => Some((String::new(), String::new())),
         Tagging::Untagged => None,
     };
-    let arms = key.into_iter().flat_map(|tag| {
+    let arms = key.into_iter().flat_map(|(tag, content)| {
         declared
             .variants
             .iter()
             .filter(|variant| variant_on_the_wire(variant))
-            .filter_map(move |variant| {
+            .filter_map(|variant| {
                 let (_, wire) = variant_wire_names(declared, variant).into_iter().next()?;
                 let ident = variant.ident.to_string();
                 Some(quote! {
                     if same(variant.as_bytes(), #ident.as_bytes()) {
-                        return ::core::option::Option::Some((#tag, #wire));
+                        return ::core::option::Option::Some((#tag, #wire, #content));
                     }
                 })
             })
             .collect::<Vec<_>>()
     });
     quote! {
-        pub const fn mcp_variant_tag(variant: &str) -> ::core::option::Option<(&'static str, &'static str)> {
+        pub const fn mcp_variant_tag(variant: &str) -> ::core::option::Option<(&'static str, &'static str, &'static str)> {
             const fn same(left: &[u8], right: &[u8]) -> bool {
                 if left.len() != right.len() {
                     return false;
@@ -222,14 +220,28 @@ mod tests {
             }
         });
         for expected in [
-            "same (variant . as_bytes () , \"NeedsConfirmation\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"needs-confirmation\")) ; }",
-            "same (variant . as_bytes () , \"NotFound\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"gone-for-good\")) ; }",
+            "same (variant . as_bytes () , \"NeedsConfirmation\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"needs-confirmation\" , \"\")) ; }",
+            "same (variant . as_bytes () , \"NotFound\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"gone-for-good\" , \"\")) ; }",
         ] {
             assert!(
                 renamed.contains(expected),
                 "missing `{expected}` in {renamed}"
             );
         }
+    }
+
+    #[test]
+    fn an_adjacently_tagged_variant_is_answered_with_its_content_key() {
+        let adjacent = written(parse_quote! {
+            #[serde(rename_all = "kebab-case", tag = "kind", content = "data")]
+            enum Asked {
+                NeedsConnection { message: ::std::string::String },
+            }
+        });
+        assert!(
+            adjacent.contains("Some ((\"kind\" , \"needs-connection\" , \"data\"))"),
+            "got: {adjacent}"
+        );
     }
 
     #[test]
@@ -242,7 +254,7 @@ mod tests {
             }
         });
         assert!(
-            external.contains("Some ((\"\" , \"Wanted\"))"),
+            external.contains("Some ((\"\" , \"Wanted\" , \"\"))"),
             "got: {external}"
         );
         assert!(!external.contains("\"Hidden\""), "got: {external}");

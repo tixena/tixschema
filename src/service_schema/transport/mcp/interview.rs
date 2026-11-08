@@ -113,6 +113,9 @@ pub(super) fn asking(
             return answered;
         };
         let form = format_ident!("mcp_form_{name}", span = operation.ident.span());
+        let tag = format_ident!("mcp_arm_tag_{name}", span = operation.ident.span());
+        let wire = format_ident!("mcp_arm_wire_{name}", span = operation.ident.span());
+        let content = format_ident!("mcp_arm_content_{name}", span = operation.ident.span());
         let rustdoc = operation.doc.clone().unwrap_or_default();
         quote! {
             if !declined
@@ -125,8 +128,18 @@ pub(super) fn asking(
                         return ::core::option::Option::Some(::core::result::Result::Err(refused));
                     }
                 };
-                let message = said
-                    .get("message")
+                let named = if $crate::#schema::#tag().is_empty() {
+                    said.get($crate::#schema::#wire())
+                } else {
+                    ::core::option::Option::Some(&said)
+                };
+                let held = if $crate::#schema::#content().is_empty() {
+                    named
+                } else {
+                    named.and_then(|named| named.get($crate::#schema::#content()))
+                };
+                let message = held
+                    .and_then(|held| held.get("message"))
                     .and_then(::serde_json::Value::as_str)
                     .unwrap_or(#rustdoc);
                 return ::core::option::Option::Some(::core::result::Result::Ok(input_required(

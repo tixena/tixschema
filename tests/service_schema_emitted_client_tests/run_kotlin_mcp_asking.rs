@@ -6,10 +6,11 @@
 #![cfg(feature = "kotlin")]
 
 use super::mcp_asking_rows::{
-    asking_confirmation_kotlin, asking_error_kotlin, asking_kind_error_kotlin,
-    asking_link_error_kotlin, asking_linked_kotlin, asking_miss_kotlin, asking_priority_kotlin,
-    asking_renamed_error_kotlin, asking_report_request_kotlin, asking_shipping_kotlin,
-    assert_client, assert_matches, client_input, delete_document_request_kotlin, input,
+    asking_adjacent_error_kotlin, asking_confirmation_kotlin, asking_error_kotlin,
+    asking_kind_error_kotlin, asking_link_error_kotlin, asking_linked_kotlin, asking_miss_kotlin,
+    asking_priority_kotlin, asking_renamed_error_kotlin, asking_report_request_kotlin,
+    asking_shipping_kotlin, assert_client, assert_matches, client_input,
+    delete_adjacent_request_kotlin, delete_document_request_kotlin, input,
     ship_document_request_kotlin,
 };
 use super::mcp_mobile_rows::kotlin_text;
@@ -58,6 +59,31 @@ object AskingHandlers : AskingServiceHandlers {
                 "https://mcp.example.com/connect/drive?request=7f3a",
             ),
         )
+    }
+
+    override suspend fun connectAdjacent(req: String): AskingServiceConnectAdjacentResult {
+        note(JsonPrimitive("connect-adjacent"), JsonPrimitive(req))
+        return AskingServiceConnectAdjacentResult.Declared(
+            AskingAdjacentErrorNeedsConnection(
+                "Connect your Google Drive so this server can import the file.",
+                "https://mcp.example.com/connect/drive?request=7f3a",
+            ),
+        )
+    }
+
+    override suspend fun deleteAdjacent(req: DeleteAdjacentRequest): AskingServiceDeleteAdjacentResult {
+        val confirmation = req.confirmation
+        note(
+            JsonPrimitive("delete-adjacent"),
+            JsonPrimitive(req.documentId),
+            if (confirmation == null) JsonNull else Json.encodeToJsonElement(serializer<AskingConfirmation>(), confirmation),
+        )
+        if (req.documentId == "missing") return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNotFound)
+        if (confirmation == null) {
+            return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNeedsConfirmation("Delete this document for good?"))
+        }
+        return if (confirmation.confirm) AskingServiceDeleteAdjacentResult.Ok
+        else AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorRefused)
     }
 
     override suspend fun connectByKind(req: String): AskingServiceConnectByKindResult {
@@ -238,6 +264,7 @@ fn definitions() -> Vec<String> {
         asking_priority_kotlin::kotlin_definition(),
         asking_shipping_kotlin::kotlin_definition(),
         asking_confirmation_kotlin::kotlin_definition(),
+        asking_adjacent_error_kotlin::kotlin_definition(),
         asking_error_kotlin::kotlin_definition(),
         asking_link_error_kotlin::kotlin_definition(),
         asking_renamed_error_kotlin::kotlin_definition(),
@@ -245,6 +272,7 @@ fn definitions() -> Vec<String> {
         asking_miss_kotlin::kotlin_definition(),
         asking_report_request_kotlin::kotlin_definition(),
         asking_linked_kotlin::kotlin_definition(),
+        delete_adjacent_request_kotlin::kotlin_definition(),
         delete_document_request_kotlin::kotlin_definition(),
         ship_document_request_kotlin::kotlin_definition(),
         asking_service_schema::asking_service_fault_fields_kotlin::kotlin_definition(),

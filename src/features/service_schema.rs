@@ -735,8 +735,9 @@ fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
-/// One `.replace` for the tag key and one for the wire name of the arm each interview operation
-/// asks with, writing `mcp_arm_tag_{operation}()` and `mcp_arm_wire_{operation}()` over their markers.
+/// One `.replace` for the tag key, the wire name and the content key of the arm each interview
+/// operation asks with, writing `mcp_arm_tag_{operation}()`, `mcp_arm_wire_{operation}()` and
+/// `mcp_arm_content_{operation}()` over their markers.
 #[cfg(all(feature = "typescript", feature = "zod"))]
 fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
     use crate::service_schema::parse::written;
@@ -746,7 +747,12 @@ fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .iter()
         .filter(|operation| operation.mcp.interview.is_some())
         .flat_map(|operation| {
-            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+            [
+                ("TAG", "mcp_arm_tag"),
+                ("WIRE", "mcp_arm_wire"),
+                ("CONTENT", "mcp_arm_content"),
+            ]
+            .map(|(part, head)| {
                 let marker = mcp_ts_service::arm_marker(operation, part);
                 let method = format_ident!(
                     "{head}_{}",
