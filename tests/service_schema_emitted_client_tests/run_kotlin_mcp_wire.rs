@@ -6,7 +6,9 @@
 
 use super::ShelfWireServiceSchema;
 use super::mcp_wire_rust::{BLOCKS, MESSAGES, PAGE, over_http, over_ws};
-use super::mcp_wire_service::{shelf_wire_error_kotlin, shelf_wire_request_kotlin};
+use super::mcp_wire_service::{
+    shelf_count_kotlin, shelf_wire_error_kotlin, shelf_wire_request_kotlin,
+};
 use super::runtime::ran_kotlin;
 use super::shelf_wire_service_schema;
 use serde_json::{Value, json};
@@ -49,6 +51,10 @@ fun messagesOf(result: ShelfWireServiceReviewShelfResult): JsonElement = when (r
 }
 
 object Handlers : ShelfWireServiceHandlers {
+    override suspend fun countStatus(req: String) = ShelfWireServiceCountStatusResult.Ok(McpTaskState.Working(McpTask(req, "a", "a")))
+
+    override suspend fun startCount(req: ShelfWireRequest) = ShelfWireServiceStartCountResult.Ok(McpTask("count-1", "a", "a"))
+
     override suspend fun describeShelf(req: ShelfWireRequest) = ShelfWireServiceDescribeShelfResult.Ok(listOf(
         McpContent.Text("Eleven books."),
         McpContent.Image(listOf<UByte>(0x89u, 0x50u, 0x4eu, 0x47u), "image/png"),
@@ -114,6 +120,7 @@ fn module(declared: &str) -> String {
         KOTLIN_IMPORTS.to_owned(),
         shelf_wire_error_kotlin::kotlin_definition(),
         shelf_wire_request_kotlin::kotlin_definition(),
+        shelf_count_kotlin::kotlin_definition(),
         shelf_wire_service_schema::shelf_wire_service_fault_fields_kotlin::kotlin_definition(),
         shelf_wire_service_schema::shelf_wire_service_fault_kind_kotlin::kotlin_definition(),
         ShelfWireServiceSchema::kotlin_http_client(),

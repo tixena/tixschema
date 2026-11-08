@@ -6,7 +6,7 @@
 
 use super::ShelfWireServiceSchema;
 use super::mcp_wire_rust::{BLOCKS, MESSAGES, PAGE, over_http, over_ws};
-use super::mcp_wire_service::{shelf_wire_error_dart, shelf_wire_request_dart};
+use super::mcp_wire_service::{shelf_count_dart, shelf_wire_error_dart, shelf_wire_request_dart};
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use serde_json::{Value, json};
@@ -85,6 +85,8 @@ void main() async {
     }),
     null,
     ShelfWireServiceHandlers<void>(
+      countStatus: (ctx, taskId) async => McpTaskWorking<ShelfCount>(McpTask(taskId: taskId, createdAt: 'a', lastUpdatedAt: 'a')),
+      startCount: (ctx, req) async => McpTask(taskId: 'count-1', createdAt: 'a', lastUpdatedAt: 'a'),
       describeShelf: (ctx, req) async => <McpContent>[
         McpContentText('Eleven books.'),
         McpContentImage(Uint8List.fromList([0x89, 0x50, 0x4e, 0x47]), 'image/png'),
@@ -129,6 +131,7 @@ fn module(driver: &str, given: &str) -> String {
         "import 'dart:typed_data';".to_owned(),
         shelf_wire_error_dart::dart_definition(),
         shelf_wire_request_dart::dart_definition(),
+        shelf_count_dart::dart_definition(),
         ShelfWireServiceSchema::dart_definition(),
         ShelfWireServiceSchema::dart_mcp_content(),
         ShelfWireServiceSchema::dart_http_client(),

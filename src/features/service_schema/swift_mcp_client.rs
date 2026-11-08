@@ -465,6 +465,118 @@ public struct McpPromptMessage: Sendable, Equatable, Codable {
   }
 }"#;
 
+/// The types an `mcp(task(...))` operation answers, as the service module declares them in Rust:
+/// the handle of a task, and where a task stands.
+pub const TASK_TYPE: &str = r#"/// A JSON value the specification leaves open.
+public indirect enum McpJSON: Sendable, Equatable, Codable {
+  case null
+  case bool(Bool)
+  case number(Double)
+  case string(String)
+  case array([McpJSON])
+  case object([String: McpJSON])
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if container.decodeNil() {
+      self = .null
+    } else if let value = try? container.decode(Bool.self) {
+      self = .bool(value)
+    } else if let value = try? container.decode(Double.self) {
+      self = .number(value)
+    } else if let value = try? container.decode(String.self) {
+      self = .string(value)
+    } else if let value = try? container.decode([McpJSON].self) {
+      self = .array(value)
+    } else {
+      self = .object(try container.decode([String: McpJSON].self))
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .null: try container.encodeNil()
+    case .bool(let value): try container.encode(value)
+    case .number(let value): try container.encode(value)
+    case .string(let value): try container.encode(value)
+    case .array(let value): try container.encode(value)
+    case .object(let value): try container.encode(value)
+    }
+  }
+}
+
+/// The handle of a task: the id the application keeps it under, and when it started.
+public struct McpTask: Sendable, Equatable, Codable {
+  public let taskId: String
+  public let createdAt: String
+  public let lastUpdatedAt: String
+  public let ttlMs: Int?
+  public let pollIntervalMs: Int?
+
+  public init(taskId: String, createdAt: String, lastUpdatedAt: String, ttlMs: Int? = nil, pollIntervalMs: Int? = nil) {
+    self.taskId = taskId
+    self.createdAt = createdAt
+    self.lastUpdatedAt = lastUpdatedAt
+    self.ttlMs = ttlMs
+    self.pollIntervalMs = pollIntervalMs
+  }
+}
+
+/// Why a task failed, as the specification writes an error.
+public struct McpTaskError: Sendable, Equatable, Codable {
+  public let code: Int
+  public let message: String
+  public let data: McpJSON?
+
+  public init(code: Int, message: String, data: McpJSON? = nil) {
+    self.code = code
+    self.message = message
+    self.data = data
+  }
+}
+
+/// Where a task stands: what `tasks/get` and the operation named in `task(get = ...)` answer.
+public enum McpTaskState<Result: Sendable>: Sendable {
+  /// The work goes on.
+  case working(McpTask)
+  /// The work waits for the user: each request is an `elicitation/create` request.
+  case inputRequired(McpTask, inputRequests: [String: McpJSON])
+  /// The work ended: `result` is what the starting tool would have answered.
+  case completed(McpTask, result: Result)
+  /// The work failed.
+  case failed(McpTask, error: McpTaskError)
+  /// The work was cancelled.
+  case cancelled(McpTask)
+
+  /// The task the state is about.
+  public var task: McpTask {
+    switch self {
+    case .working(let task), .inputRequired(let task, _), .completed(let task, _), .failed(let task, _), .cancelled(let task):
+      return task
+    }
+  }
+}
+
+extension McpTaskState: Decodable where Result: Decodable {
+  private enum Keys: String, CodingKey {
+    case status, inputRequests, result, error
+  }
+
+  public init(from decoder: Decoder) throws {
+    let task = try McpTask(from: decoder)
+    let container = try decoder.container(keyedBy: Keys.self)
+    switch try container.decode(String.self, forKey: .status) {
+    case "working": self = .working(task)
+    case "input_required": self = .inputRequired(task, inputRequests: try container.decode([String: McpJSON].self, forKey: .inputRequests))
+    case "completed": self = .completed(task, result: try container.decode(Result.self, forKey: .result))
+    case "failed": self = .failed(task, error: try container.decode(McpTaskError.self, forKey: .error))
+    case "cancelled": self = .cancelled(task)
+    default: throw DecodingError.dataCorruptedError(forKey: .status, in: container, debugDescription: "a task of a status this client does not read")
+    }
+  }
+}"#;
+
 /// Where the accessor writes the version of the crate that declares the service.
 const VERSION_MARKER: &str = "@MCP_VERSION@";
 

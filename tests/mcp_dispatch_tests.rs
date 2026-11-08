@@ -43,6 +43,23 @@ mod counsel_client;
 mod prompt_tests;
 
 #[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/job.rs"]
+mod job;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/job_mcp.rs"]
+mod job_mcp;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/job_client.rs"]
+mod job_client;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/task_tests.rs"]
+mod task_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/document_mcp.rs"]
 mod document_mcp;
 
@@ -113,6 +130,8 @@ use approval::{ApprovalService, ApprovalServiceSchema, approval_service_schema};
 #[cfg(test)]
 use counsel::{CounselService, CounselServiceSchema, counsel_service_schema};
 #[cfg(test)]
+use job::{JobService, JobServiceSchema, job_service_schema};
+#[cfg(test)]
 use tests::{
     BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema, ExportService,
     ExportServiceSchema, billing_service_schema, document_service_schema, export_service_schema,
@@ -130,6 +149,7 @@ mod published {
         billing_mcp,
         counsel_mcp,
         document_mcp,
-        export_mcp
+        export_mcp,
+        job_mcp
     );
 }

@@ -7,7 +7,9 @@
 use super::ShelfWireServiceSchema;
 use super::mcp_mobile_rows::swift_text;
 use super::mcp_wire_rust::{BLOCKS, MESSAGES, PAGE, over_http, over_ws};
-use super::mcp_wire_service::{shelf_wire_error_swift, shelf_wire_request_swift};
+use super::mcp_wire_service::{
+    shelf_count_swift, shelf_wire_error_swift, shelf_wire_request_swift,
+};
 use super::runtime::ran;
 use super::shelf_wire_service_schema;
 use serde_json::{Value, json};
@@ -82,6 +84,7 @@ fn emitted() -> String {
         "import Foundation".to_owned(),
         shelf_wire_error_swift::swift_definition(),
         shelf_wire_request_swift::swift_definition(),
+        shelf_count_swift::swift_definition(),
         shelf_wire_service_schema::shelf_wire_service_fault_fields_swift::swift_definition(),
         shelf_wire_service_schema::shelf_wire_service_fault_kind_swift::swift_definition(),
         ShelfWireServiceSchema::swift_http_client(),

@@ -38,17 +38,27 @@ listens_through_every_entry_point_of!(
     |_call| ()
 );
 
+listens_through_every_entry_point_of!(
+    the_job_dispatcher_listens_through_every_entry_point,
+    job_mcp,
+    JobServiceSchema,
+    Jobs::default(),
+    |_call| ()
+);
+
 use crate::approval::Approvals;
 use crate::counsel::Counsels;
 use crate::document_mcp::{self, McpChange, McpEndpoint, McpHttpRequest, McpHttpSettings};
+use crate::job::Jobs;
 use crate::support::{
-    Feed, Lines, Recorded, Seen, Tasks, answer, assert_error, assert_result, assert_valid,
-    block_on, id, request, server_info, through,
+    Feed, Lines, Recorded, Seen, Tasks, answer, assert_error, assert_result, assert_task,
+    assert_valid, block_on, id, request, server_info, through,
 };
 use crate::tests::{Archive, Reporting};
 use crate::{
     ApprovalServiceSchema, BillingServiceSchema, CounselServiceSchema, DocumentServiceSchema,
-    ExportServiceSchema, approval_mcp, billing_mcp, counsel_mcp, export_mcp,
+    ExportServiceSchema, JobServiceSchema, approval_mcp, billing_mcp, counsel_mcp, export_mcp,
+    job_mcp,
 };
 use alloc::collections::VecDeque;
 use core::future::pending;
@@ -134,6 +144,7 @@ fn the_acknowledgment_comes_first_and_only_what_was_asked_follows() {
             McpChange::KeepAlive,
             McpChange::Task {
                 task_id: "export:1".to_owned(),
+                state: json!({}),
             },
         ],
         &lines,
@@ -517,4 +528,88 @@ fn over_http_a_listen_whose_write_fails_is_cancelled_and_ends() {
     assert!(answered.is_none());
     assert_eq!(stream.seen().len(), 1);
     assert!(held_call.lock().unwrap().as_ref().unwrap().cancelled());
+}
+
+#[test]
+fn a_task_change_is_written_for_the_task_ids_the_client_followed_where_the_extension_is_offered() {
+    let asked = listen(&json!({ "taskIds": ["start-export:7f3a"] }));
+    let listened_by = |service: &Value, changes: Vec<job_mcp::McpChange>| {
+        let lines = Lines::default();
+        let mut queue = VecDeque::from(changes);
+        let mut source = async || queue.pop_front();
+        block_on(job_mcp::answer_listening(
+            &service.to_string(),
+            &Jobs::default(),
+            |_call| (),
+            &lines,
+            &job_mcp::McpInFlight::default(),
+            &mut source,
+        ))
+        .unwrap();
+        written(&lines)
+    };
+    let task = |id: &str| job_mcp::McpChange::Task {
+        task_id: id.to_owned(),
+        state: json!({
+            "status": "completed",
+            "taskId": "7f3a",
+            "createdAt": "2026-11-01T20:00:00Z",
+            "lastUpdatedAt": "2026-11-01T20:04:10Z",
+            "ttlMs": null,
+            "result": { "files": 3_u32 },
+        }),
+    };
+    let notifications = listened_by(
+        &asked,
+        vec![task("start-export:other"), task("start-export:7f3a")],
+    );
+    assert_eq!(
+        notifications,
+        vec![
+            acknowledgment(&json!({ "taskIds": ["start-export:7f3a"] })),
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/tasks",
+                "params": {
+                    "_meta": { "io.modelcontextprotocol/subscriptionId": 1_u64 },
+                    "status": "completed",
+                    "taskId": "start-export:7f3a",
+                    "createdAt": "2026-11-01T20:00:00Z",
+                    "lastUpdatedAt": "2026-11-01T20:04:10Z",
+                    "ttlMs": null,
+                    "result": {
+                        "content": [{ "type": "text", "text": "{\"files\":3}" }],
+                        "isError": false,
+                        "resultType": "complete",
+                        "structuredContent": { "files": 3_u32 },
+                    },
+                },
+            }),
+        ]
+    );
+    assert_task("TaskStatusNotification", &notifications[1]);
+    assert_task(
+        "TaskSubscriptionAcknowledgedNotifications",
+        &notifications[0]["params"]["notifications"],
+    );
+    let mut malformed = asked;
+    malformed["params"]["notifications"]["taskIds"] = json!([7_u8]);
+    let refused = listened_by(&malformed, Vec::new());
+    assert_eq!(refused, Vec::<Value>::new());
+}
+
+#[test]
+fn a_task_subscription_is_not_acknowledged_where_no_service_offers_tasks() {
+    let asked = listen(&json!({ "taskIds": ["start-export:7f3a"] }));
+    let lines = Lines::default();
+    listened(
+        &asked,
+        vec![McpChange::Task {
+            task_id: "start-export:7f3a".to_owned(),
+            state: json!({}),
+        }],
+        &lines,
+    )
+    .unwrap();
+    assert_eq!(written(&lines), vec![acknowledgment(&json!({}))]);
 }

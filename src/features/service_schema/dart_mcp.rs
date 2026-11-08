@@ -18,7 +18,7 @@ use crate::features::dart::{
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
-    answers_key, is_content_list, is_content_pair, is_prompt_messages,
+    answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages,
 };
 use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
@@ -193,6 +193,158 @@ final class McpPromptMessage {
   Map<String, dynamic> toJson() => <String, dynamic>{'content': content.toJson(), 'role': role.name};
 }";
 
+/// The types an `mcp(task(...))` operation answers, as the service module declares them in Rust:
+/// the handle of a task, and where a task stands.
+const TASK_TYPE: &str = "/// The handle of a task: the id the application keeps it under, and when it started.
+class McpTask {
+  const McpTask({
+    required this.taskId,
+    required this.createdAt,
+    required this.lastUpdatedAt,
+    this.ttlMs,
+    this.pollIntervalMs,
+  });
+
+  /// Reads a handle as the specification writes it.
+  factory McpTask.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) throw const FormatException('a task is not an object');
+    String text(String key) {
+      final held = json[key];
+      if (held is! String) throw FormatException('a task holds no `$key`');
+      return held;
+    }
+
+    return McpTask(
+      taskId: text('taskId'),
+      createdAt: text('createdAt'),
+      lastUpdatedAt: text('lastUpdatedAt'),
+      ttlMs: json['ttlMs'] as int?,
+      pollIntervalMs: json['pollIntervalMs'] as int?,
+    );
+  }
+
+  final String taskId;
+  final String createdAt;
+  final String lastUpdatedAt;
+  final int? ttlMs;
+  final int? pollIntervalMs;
+
+  /// The handle as it travels, `working` being where every task starts.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'taskId': taskId,
+        'status': 'working',
+        'createdAt': createdAt,
+        'lastUpdatedAt': lastUpdatedAt,
+        'ttlMs': ttlMs,
+        if (pollIntervalMs != null) 'pollIntervalMs': pollIntervalMs,
+      };
+}
+
+/// Why a task failed, as the specification writes an error.
+class McpTaskError {
+  const McpTaskError({required this.code, required this.message, this.data});
+
+  /// Reads an error as the specification writes it.
+  factory McpTaskError.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) throw const FormatException('an error is not an object');
+    final code = json['code'];
+    final message = json['message'];
+    if (code is! int || message is! String) throw const FormatException('an error holds no `code` or `message`');
+    return McpTaskError(code: code, message: message, data: json['data']);
+  }
+
+  final int code;
+  final String message;
+  final Object? data;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'code': code,
+        'message': message,
+        if (data != null) 'data': data,
+      };
+}
+
+/// Where a task stands: what `tasks/get` and the operation named in `task(get = ...)` answer.
+sealed class McpTaskState<T> {
+  const McpTaskState(this.task);
+
+  /// Reads where a task stands as the specification writes it; `readResult` reads the result of a
+  /// completed task.
+  factory McpTaskState.fromJson(Object? json, T Function(dynamic) readResult) {
+    final task = McpTask.fromJson(json);
+    final members = json as Map<String, dynamic>;
+    switch (members['status']) {
+      case 'working':
+        return McpTaskWorking<T>(task);
+      case 'input_required':
+        final requests = members['inputRequests'];
+        if (requests is! Map<String, dynamic>) throw const FormatException('a task holds no `inputRequests`');
+        return McpTaskInputRequired<T>(task, requests);
+      case 'completed':
+        return McpTaskCompleted<T>(task, readResult(members['result']));
+      case 'failed':
+        return McpTaskFailed<T>(task, McpTaskError.fromJson(members['error']));
+      case 'cancelled':
+        return McpTaskCancelled<T>(task);
+      default:
+        throw FormatException('a task of a status this client does not read: ${members['status']}');
+    }
+  }
+
+  final McpTask task;
+
+  /// The state as it travels; `encodeResult` writes the result of a completed task.
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult);
+}
+
+/// The work goes on.
+class McpTaskWorking<T> extends McpTaskState<T> {
+  const McpTaskWorking(super.task);
+
+  @override
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult) =>
+      <String, dynamic>{...this.task.toJson(), 'status': 'working'};
+}
+
+/// The work waits for the user: each request is an `elicitation/create` request.
+class McpTaskInputRequired<T> extends McpTaskState<T> {
+  const McpTaskInputRequired(super.task, this.inputRequests);
+  final Map<String, dynamic> inputRequests;
+
+  @override
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult) =>
+      <String, dynamic>{...this.task.toJson(), 'status': 'input_required', 'inputRequests': inputRequests};
+}
+
+/// The work ended: `result` is what the starting tool would have answered.
+class McpTaskCompleted<T> extends McpTaskState<T> {
+  const McpTaskCompleted(super.task, this.result);
+  final T result;
+
+  @override
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult) =>
+      <String, dynamic>{...this.task.toJson(), 'status': 'completed', 'result': encodeResult(result)};
+}
+
+/// The work failed.
+class McpTaskFailed<T> extends McpTaskState<T> {
+  const McpTaskFailed(super.task, this.error);
+  final McpTaskError error;
+
+  @override
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult) =>
+      <String, dynamic>{...this.task.toJson(), 'status': 'failed', 'error': error.toJson()};
+}
+
+/// The work was cancelled.
+class McpTaskCancelled<T> extends McpTaskState<T> {
+  const McpTaskCancelled(super.task);
+
+  @override
+  Map<String, dynamic> toJson(Object? Function(T) encodeResult) =>
+      <String, dynamic>{...this.task.toJson(), 'status': 'cancelled'};
+}";
+
 const TOOLS_MARKER: &str = "@TOOLS@";
 const NAMES_MARKER: &str = "@NAMES@";
 const INSTRUCTIONS_MARKER: &str = "@INSTRUCTIONS@";
@@ -365,10 +517,11 @@ class @N@McpResourceUpdated extends @N@McpChange {
   final String uri;
 }
 
-/// One task moved.
+/// One task moved: where it stands now, as `McpTaskState` writes it.
 class @N@McpTaskMoved extends @N@McpChange {
-  const @N@McpTaskMoved(this.taskId);
+  const @N@McpTaskMoved(this.taskId, this.state);
   final String taskId;
+  final Map<String, dynamic> state;
 }
 
 /// Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio.
@@ -516,6 +669,21 @@ Map<String, dynamic> _@P@McpUnknownOperation(String operation) => <String, dynam
       'isServiceFault': true,
     };
 
+/// A task state as a task method and a notification write it: under the full task id, with a
+/// completed task's result as the `CallToolResult` the starting tool would have answered.
+Map<String, dynamic> _@P@McpTaskView(String taskId, Map<String, dynamic> state) {
+  final view = Map<String, dynamic>.of(state)..['taskId'] = taskId;
+  if (view.containsKey('result')) {
+    view['result'] = <String, dynamic>{
+      'content': <Object>[<String, dynamic>{'text': _@P@McpJson(view['result']), 'type': 'text'}],
+      'isError': false,
+      'resultType': 'complete',
+      'structuredContent': view['result'],
+    };
+  }
+  return view;
+}
+
 const _@P@McpStopped = Object();
 
 /// The `subscriptions/listen` of one call: the acknowledgment, then what `changes` yields that the
@@ -545,6 +713,10 @@ Future<({String? text, int status})> _@P@McpListen(
   if (filter.containsKey('resourceSubscriptions') && !(uris is List && uris.every((uri) => uri is String))) {
     return invalid('`resourceSubscriptions` is not an array of strings');
   }
+  final tasks = filter['taskIds'];
+  if (filter.containsKey('taskIds') && !(tasks is List && tasks.every((task) => task is String))) {
+    return invalid('`taskIds` is not an array of strings');
+  }
   final agreed = <String, dynamic>{};
   final offersResources = endpoint.catalogs.any(
     (catalog) => catalog.capabilities.any((written) => (jsonDecode(written) as Map).containsKey('resources')),
@@ -553,6 +725,7 @@ Future<({String? text, int status})> _@P@McpListen(
     if (filter['resourcesListChanged'] == true) agreed['resourcesListChanged'] = true;
     if (uris is List && uris.isNotEmpty) agreed['resourceSubscriptions'] = uris;
   }
+  if (_@P@McpTasked(endpoint) && tasks is List && tasks.isNotEmpty) agreed['taskIds'] = tasks;
   const subscription = 'io.modelcontextprotocol/subscriptionId';
   String notified(String method, Map<String, dynamic> given) => _@P@McpJson(<String, dynamic>{
         'jsonrpc': '2.0',
@@ -562,6 +735,9 @@ Future<({String? text, int status})> _@P@McpListen(
   final lists = agreed['resourcesListChanged'] == true;
   final watched = <String>{
     if (agreed['resourceSubscriptions'] case final List<dynamic> held) ...held.cast<String>(),
+  };
+  final followed = <String>{
+    if (agreed['taskIds'] case final List<dynamic> held) ...held.cast<String>(),
   };
   final meta = Map<String, dynamic>.of(jsonDecode(info) as Map<String, dynamic>)..[subscription] = id;
   final ended = (
@@ -586,12 +762,20 @@ Future<({String? text, int status})> _@P@McpListen(
         await call._write(notified('notifications/resources/list_changed', const <String, dynamic>{})),
       @N@McpResourceUpdated(:final uri) when watched.contains(uri) =>
         await call._write(notified('notifications/resources/updated', <String, dynamic>{'uri': uri})),
+      @N@McpTaskMoved(:final taskId, :final state) when followed.contains(taskId) =>
+        await call._write(notified('notifications/tasks', _@P@McpTaskView(taskId, state))),
       @N@McpKeepAlive() => await call._keepAlive(),
       _ => true,
     };
     if (!written) return ended;
   }
 }
+
+/// Whether any service of the endpoint offers the tasks extension.
+bool _@P@McpTasked(@N@McpEndpoint endpoint) => endpoint.catalogs.any((catalog) => catalog.capabilities.any((written) {
+      final extensions = (jsonDecode(written) as Map<String, dynamic>)['extensions'];
+      return extensions is Map && extensions.containsKey('io.modelcontextprotocol/tasks');
+    }));
 
 Future<({String? text, int status})> _@P@McpRespond(
   String text,
@@ -762,12 +946,12 @@ Future<({String? text, int status})> _@P@McpRespond(
     'resources/read',
     'prompts/get',
     'completion/complete',
-    'tasks/get',
-    'tasks/cancel',
-    'tasks/update',
     'skills/get',
   };
-  if (!routed.contains(method)) return failed(id, 404, -32601, 'Method not found: $method');
+  final taskMethod = method == 'tasks/get' || method == 'tasks/cancel' || method == 'tasks/update';
+  if (!(routed.contains(method) || (taskMethod && _@P@McpTasked(endpoint)))) {
+    return failed(id, 404, -32601, 'Method not found: $method');
+  }
   final String? named;
   switch (method) {
     case 'tools/call':
@@ -782,6 +966,8 @@ Future<({String? text, int status})> _@P@McpRespond(
           : params['uri'] is String
               ? params['uri'] as String
               : null;
+    case 'tasks/get' || 'tasks/cancel' || 'tasks/update':
+      named = params['taskId'] is String ? params['taskId'] as String : null;
     case 'completion/complete':
       final argument = params['argument'];
       final reference = params['ref'];
@@ -795,6 +981,7 @@ Future<({String? text, int status})> _@P@McpRespond(
           method == 'resources/read' ||
           method == 'prompts/get' ||
           method == 'completion/complete' ||
+          taskMethod ||
           method == 'skills/get')) {
     return failed(id, 200, -32602, 'Invalid params: $method names nothing to answer');
   }
@@ -820,6 +1007,7 @@ Future<({String? text, int status})> _@P@McpRespond(
     'prompts/get' => 'Unknown prompt',
     'skills/get' => 'Skill not found',
     'completion/complete' => 'Unknown completion',
+    'tasks/get' || 'tasks/cancel' || 'tasks/update' => 'Unknown task',
     _ => null,
   };
   return failed(
@@ -1537,6 +1725,13 @@ pub fn service_text(declared: &ServiceDef) -> String {
     }
     published.extend(tools_of(service).map(|operation| server_call(&named, &prefix, operation)));
     published.extend(resource_functions(service, &held, &named, &prefix));
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
+    {
+        published.push(task_helpers(service, &named, &prefix));
+    }
     published.push(route_fn(service, &held, &named, &prefix));
     published.push(filled(SERVER_ALONE, &named, &prefix));
     published
@@ -1565,6 +1760,38 @@ fn prompt_scopes(table: &ScopeTable) -> String {
         );
     }
     text.push_str("    }\n  }\n");
+    text
+}
+
+/// The scopes the task methods need, by the tool that started the task.
+fn task_scopes(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "const <String>[{}]",
+            scopes
+                .iter()
+                .map(|scope| quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut text = String::new();
+    for (method, rows) in &table.tasks {
+        let _ = writeln!(
+            text,
+            "  if (method == {} && name != null) {{\n    switch (name.split(':').first) {{",
+            quoted(method)
+        );
+        for (tool, scopes) in rows {
+            let _ = writeln!(
+                text,
+                "      case {}:\n        return {};",
+                quoted(tool),
+                list(scopes)
+            );
+        }
+        text.push_str("    }\n  }\n");
+    }
     text
 }
 
@@ -1613,6 +1840,7 @@ fn scopes_table(table: &ScopeTable) -> String {
         text.push_str("    }\n  }\n");
     }
     text.push_str(&prompt_scopes(table));
+    text.push_str(&task_scopes(table));
     if !table.reads.is_empty() {
         text.push_str("  if (method == 'resources/read' && name != null) {\n");
         for (uri, scopes) in &table.reads {
@@ -2067,6 +2295,157 @@ fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (Strin
     (asking, "declaredBody".to_owned())
 }
 
+/// The statements of the tasks route that call one of the operations a task tool names.
+fn task_call(
+    service: &ServiceDef,
+    prefix: &str,
+    start: &OperationDef,
+    method: &str,
+) -> Option<String> {
+    let task = start.mcp.task.as_ref()?;
+    let wanted = match method {
+        "tasks/get" => task.get.as_deref(),
+        "tasks/cancel" => task.cancel.as_deref(),
+        _ => task.update.as_deref(),
+    }?;
+    let target = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == wanted)?;
+    let tool = quoted(start.mcp_tool_name());
+    let calling = |arguments: &str| {
+        format!(
+            "_{prefix}McpCall{}(handlers, ctx, params, <String, dynamic>{{{arguments}}})",
+            pascal(target)
+        )
+    };
+    let body = match method {
+        "tasks/get" => format!(
+            "      return _{prefix}McpTaskAnswer(\n          {},\n          '{}: the service refused the task',\n          \
+             (structured) => <String, dynamic>{{\
+             ..._{prefix}McpTaskView(taskId, structured as Map<String, dynamic>),\
+             'resultType': 'complete',\
+             }});",
+            calling("'value': held"),
+            start.mcp_tool_name()
+        ),
+        "tasks/cancel" => format!(
+            "      return _{prefix}McpTaskAnswer(\n          {},\n          '{}: the service refused to cancel the task',\n          \
+             (structured) => <String, dynamic>{{}});",
+            calling("'value': held"),
+            start.mcp_tool_name()
+        ),
+        _ => {
+            let OperationInputs::Generated(fields) = &target.inputs else {
+                return None;
+            };
+            let keys: Vec<String> = fields
+                .iter()
+                .map(|(field, _)| quoted(&wire_key(field)))
+                .collect();
+            let [id_key, key_key, action_key, content_key] = keys.as_slice() else {
+                return None;
+            };
+            let arguments = format!(
+                "{id_key}: held, {key_key}: key, {action_key}: given['action'] is String ? given['action'] : '', \
+                 if (given.containsKey('content')) {content_key}: _{prefix}McpJson(given['content'])"
+            );
+            format!(
+                "      final responses = params['inputResponses'];\n      \
+                 if (responses is! Map<String, dynamic>) {{\n        \
+                 return (result: null, error: <String, dynamic>{{'code': -32602, 'message': 'Invalid params: tasks/update needs `inputResponses`'}});\n      \
+                 }}\n      \
+                 for (final key in responses.keys.toList()..sort()) {{\n        \
+                 final response = responses[key];\n        \
+                 final given = response is Map<String, dynamic> ? response : <String, dynamic>{{}};\n        \
+                 final answered = await _{prefix}McpTaskAnswer(\n            {},\n            '{}: the service refused the answer',\n            \
+                 (structured) => <String, dynamic>{{}});\n        \
+                 if (answered.error != null) return answered;\n      \
+                 }}\n      \
+                 return (result: <String, dynamic>{{}}, error: null);",
+                calling(&arguments),
+                start.mcp_tool_name()
+            )
+        }
+    };
+    Some(format!("    case ({}, {tool}):\n{body}\n", quoted(method)))
+}
+
+/// What the tasks route and the tool that starts a task share: whether the client declared the
+/// extension, the handle a declared client receives, and the answer of a task method.
+fn task_helpers(service: &ServiceDef, named: &str, prefix: &str) -> String {
+    let mut cases = String::new();
+    for start in service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.task.is_some())
+    {
+        for method in ["tasks/get", "tasks/cancel", "tasks/update"] {
+            if let Some(text) = task_call(service, prefix, start, method) {
+                cases.push_str(&text);
+            }
+        }
+    }
+    format!(
+        "/// Whether the client declared the tasks extension.\n\
+         bool _{prefix}McpDeclaresTasks(Map<String, dynamic> params) {{\n  \
+         final meta = params['_meta'];\n  \
+         final capabilities = meta is Map ? meta['io.modelcontextprotocol/clientCapabilities'] : null;\n  \
+         final extensions = capabilities is Map ? capabilities['extensions'] : null;\n  \
+         return extensions is Map && extensions['io.modelcontextprotocol/tasks'] is Map;\n\
+         }}\n\n\
+         /// The answer of the tool that starts a task: the task a declared client receives, and the\n\
+         /// handle as a structured value for any other.\n\
+         Future<{named}McpAnswer> _{prefix}McpTaskStart(Future<{named}McpAnswer> answering, String tool, Map<String, dynamic> params) async {{\n  \
+         final answered = await answering;\n  \
+         final result = answered.result;\n  \
+         if (answered.error != null || result is! Map<String, dynamic> || result['isError'] == true || !_{prefix}McpDeclaresTasks(params)) {{\n    \
+         return answered;\n  \
+         }}\n  \
+         final handle = Map<String, dynamic>.of(result['structuredContent'] as Map<String, dynamic>);\n  \
+         handle['taskId'] = '$tool:${{handle['taskId']}}';\n  \
+         handle['resultType'] = 'task';\n  \
+         return (result: handle, error: null);\n\
+         }}\n\n\
+         /// The answer of a task method: what `success` makes of the structured value of the tool it\n\
+         /// calls, or the `-32602` of the fault or declared error that tool answered.\n\
+         Future<{named}McpAnswer> _{prefix}McpTaskAnswer(\n    \
+         Future<{named}McpAnswer> answering,\n    \
+         String refusal,\n    \
+         Object? Function(Object? structured) success,\n\
+         ) async {{\n  \
+         final answered = await answering;\n  \
+         final result = answered.result;\n  \
+         if (answered.error != null || result is! Map<String, dynamic>) return answered;\n  \
+         if (result['isError'] != true) return (result: success(result['structuredContent']), error: null);\n  \
+         final parsed = jsonDecode(((result['content'] as List).first as Map<String, dynamic>)['text'] as String);\n  \
+         final fault = parsed is Map<String, dynamic> && parsed['isServiceFault'] == true;\n  \
+         return (\n    \
+         result: null,\n    \
+         error: <String, dynamic>{{'code': -32602, 'data': parsed, 'message': fault ? 'Invalid params' : refusal}},\n  \
+         );\n\
+         }}\n\n\
+         /// Answers `tasks/get`, `tasks/cancel` and `tasks/update` for the tasks the tools of this service\n\
+         /// start, and `null` for a task another tool started.\n\
+         Future<{named}McpAnswer?> _{prefix}McpTasks<Ctx>(\n    \
+         {named}Handlers<Ctx> handlers,\n    \
+         Ctx ctx,\n    \
+         String method,\n    \
+         Map<String, dynamic> params,\n\
+         ) async {{\n  \
+         final taskId = params['taskId'];\n  \
+         final colon = taskId is String ? taskId.indexOf(':') : -1;\n  \
+         if (taskId is! String || colon < 0) return null;\n  \
+         final tool = taskId.substring(0, colon);\n  \
+         final held = taskId.substring(colon + 1);\n  \
+         switch ((method, tool)) {{\n{cases}  \
+         default:\n      \
+         return null;\n  \
+         }}\n\
+         }}"
+    )
+}
+
 /// `create{Service}McpRoute`: answers `tools/call` for the tool each operation names, and the
 /// resource, listing and completion requests for the operations that are those.
 fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &str) -> String {
@@ -2089,11 +2468,22 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
             } else {
                 ""
             };
+            let call = format!(
+                "_{prefix}McpCall{}(handlers, ctx, params, params['arguments']{fault_argument})",
+                pascal(operation)
+            );
+            let returned = if operation.mcp.task.is_some() {
+                format!(
+                    "_{prefix}McpTaskStart({call}, {}, params)",
+                    quoted(operation.mcp_tool_name())
+                )
+            } else {
+                call
+            };
             let _ = writeln!(
                 arms,
-                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']{fault_argument});",
+                "            case {}:\n              return {returned};",
                 quoted(operation.mcp_tool_name()),
-                pascal(operation)
             );
         }
         let _ = write!(
@@ -2120,6 +2510,17 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
             cases,
             "        case 'resources/list':\n          \
              return _{prefix}McpList<Ctx>(handlers, ctx, params['cursor']);\n"
+        );
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
+    {
+        let _ = write!(
+            cases,
+            "        case 'tasks/get' || 'tasks/cancel' || 'tasks/update':\n          \
+             return _{prefix}McpTasks<Ctx>(handlers, ctx, method, params);\n"
         );
     }
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
@@ -2164,6 +2565,15 @@ fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: boo
     }
     if !held.completions.is_empty() {
         capabilities.push(quoted("{\"completions\":{}}"));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
+    {
+        capabilities.push(quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/tasks\":{}}}",
+        ));
     }
     capabilities.join(", ")
 }
@@ -3154,15 +3564,20 @@ fn skill_literals() -> TokenStream {
     }
 }
 
-/// `dart_mcp_content()`: the value types of the service's blocks and messages, and its page types.
+/// `dart_mcp_content()`: the value types of the service's blocks, messages, tasks and pages.
 fn content_accessor(declared: &ServiceDef) -> Option<TokenStream> {
     let listed = declared
         .operations
         .iter()
         .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
     let pages = page_types(declared);
-    (listed || !pages.is_empty()).then(|| {
-        let written = [listed.then(|| CONTENT_TYPE.to_owned()), Some(pages)]
+    let tasked = has_tasks(declared);
+    (listed || tasked || !pages.is_empty()).then(|| {
+        let written = [
+            listed.then(|| CONTENT_TYPE.to_owned()),
+            Some(pages),
+            tasked.then(|| TASK_TYPE.to_owned()),
+        ]
             .into_iter()
             .flatten()
             .filter(|held| !held.is_empty())

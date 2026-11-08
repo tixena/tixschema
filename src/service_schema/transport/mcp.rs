@@ -9,6 +9,7 @@ mod listen;
 pub mod prompts;
 pub mod resources;
 mod skills;
+mod tasks;
 mod writer;
 
 use super::Transport;

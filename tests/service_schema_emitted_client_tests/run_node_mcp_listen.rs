@@ -211,7 +211,7 @@ declare const writer: LibraryServiceMcpWriter;
 const queue: Array<LibraryServiceMcpChange> = [
   { kind: "resourcesListChanged" },
   { kind: "resourceUpdated", uri: "library://covers/book-1" },
-  { kind: "task", taskId: "export:1" },
+  { kind: "task", taskId: "export:1", state: {} },
   { kind: "keepAlive" },
 ];
 export const changes: LibraryServiceMcpChanges = async () => queue.shift();

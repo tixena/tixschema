@@ -1936,6 +1936,44 @@ mod run_kotlin_mcp;
 #[path = "service_schema_emitted_client_tests/run_swift_mcp.rs"]
 mod run_swift_mcp;
 
+/// `JobService`, whose operations start a task and report, cancel and answer it, and the rows the
+/// emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_task_rows.rs"]
+mod mcp_task_rows;
+
+/// The `JobService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_task_dispatcher.rs"]
+mod mcp_task_dispatcher;
+
+#[cfg(test)]
+use mcp_task_rows::{JobService, JobServiceSchema, job_service_schema};
+
+/// The emitted TypeScript `mcp` server and client run by node on the task service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_tasks.rs"]
+mod run_node_mcp_tasks;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the task service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_tasks.rs"]
+mod run_dart_mcp_tasks;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the task service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_tasks.rs"]
+mod run_kotlin_mcp_tasks;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the task service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_tasks.rs"]
+mod run_swift_mcp_tasks;
+
 /// `GuideService`, whose operations are prompts and the completion of a prompt's argument, and the
 /// rows the emitted TypeScript, Dart and Kotlin servers are measured against.
 #[cfg(test)]
@@ -2064,6 +2102,7 @@ mod published {
         mcp_preview_dispatcher,
         mcp_shelf_dispatcher,
         mcp_stacks_dispatcher,
+        mcp_task_dispatcher,
         mcp_wire_mcp_transport,
         mcp_writer_dispatcher,
     );

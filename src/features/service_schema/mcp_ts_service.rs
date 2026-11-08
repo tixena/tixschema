@@ -64,8 +64,8 @@ export type __N__McpChange =
   | { readonly kind: \"resourcesListChanged\" }
   /** One resource changed. */
   | { readonly kind: \"resourceUpdated\"; readonly uri: string }
-  /** One task moved. */
-  | { readonly kind: \"task\"; readonly taskId: string }
+  /** One task moved: where it stands now, as `McpTaskState` writes it. */
+  | { readonly kind: \"task\"; readonly taskId: string; readonly state: Readonly<Record<string, unknown>> }
   /** Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio. */
   | { readonly kind: \"keepAlive\" };
 
@@ -298,12 +298,22 @@ function __p__McpCapabilities(endpoint: __N__McpEndpoint, listens: boolean): Rec
   return merged;
 }
 
+/** Whether any part of an endpoint offers the tasks extension. */
+function __p__McpTasked(endpoint: __N__McpEndpoint): boolean {
+  return endpoint.parts.some((part) =>
+    part.capabilities.some(
+      (text) => __p__McpObject(__p__McpObject(__p__McpRead(text))?.extensions)?.["io.modelcontextprotocol/tasks"] !== undefined,
+    ),
+  );
+}
+
 /** What a routed request asks for: the tool, the URI, the prompt, or the URI of the template or the name of the prompt a completion is for. */
 function __p__McpNamed(params: Record<string, unknown> | undefined, method: string): string | undefined {
   const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
   if (method === "tools/call" || method === "prompts/get") return text(params?.name);
   if (method === "resources/read") return text(params?.uri);
   if (method === "skills/get") return text(params?.name) ?? text(params?.uri);
+  if (method === "tasks/get" || method === "tasks/cancel" || method === "tasks/update") return text(params?.taskId);
   if (text(__p__McpObject(params?.argument)?.name) === undefined) return undefined;
   const reference = __p__McpObject(params?.ref);
   return reference?.type === "ref/prompt" ? text(reference.name) : text(reference?.uri);
@@ -368,6 +378,20 @@ async function __p__McpListResources(
   return __p__McpReplied(200, { id, result });
 }
 
+/** A task state as a task method and a notification write it: under the full task id, with a completed task's result as the `CallToolResult` the starting tool would have answered. */
+function __p__McpTaskView(taskId: string, state: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const view: Record<string, unknown> = { ...state, taskId };
+  if ("result" in view) {
+    view.result = {
+      content: [{ text: __p__McpText(view.result), type: "text" }],
+      isError: false,
+      resultType: "complete",
+      structuredContent: view.result,
+    };
+  }
+  return view;
+}
+
 const __p__McpSubscription = "io.modelcontextprotocol/subscriptionId";
 
 /** The `subscriptions/listen` of one call: the acknowledgment, then what `changes` yields that the client asked for, until it yields `undefined` or the call is cancelled. */
@@ -389,15 +413,21 @@ async function __p__McpListen(
   if (uris !== undefined && !(Array.isArray(uris) && uris.every((uri: unknown) => typeof uri === "string"))) {
     return invalid("`resourceSubscriptions` is not an array of strings");
   }
+  const tasks = filter.taskIds;
+  if (tasks !== undefined && !(Array.isArray(tasks) && tasks.every((task: unknown) => typeof task === "string"))) {
+    return invalid("`taskIds` is not an array of strings");
+  }
   const agreed: Record<string, unknown> = {};
   if (endpoint.parts.some((part) => part.capabilities.some((text) => __p__McpObject(__p__McpRead(text))?.resources !== undefined))) {
     if (filter.resourcesListChanged === true) agreed.resourcesListChanged = true;
     if (Array.isArray(uris) && uris.length > 0) agreed.resourceSubscriptions = uris;
   }
+  if (__p__McpTasked(endpoint) && Array.isArray(tasks) && tasks.length > 0) agreed.taskIds = tasks;
   const notified = (method: string, given: Record<string, unknown>): string =>
     __p__McpText({ jsonrpc: "2.0", method, params: { ...given, _meta: { [__p__McpSubscription]: id } } });
   const lists = agreed.resourcesListChanged === true;
   const watched = Array.isArray(agreed.resourceSubscriptions) ? (agreed.resourceSubscriptions as ReadonlyArray<string>) : [];
+  const followed = Array.isArray(agreed.taskIds) ? (agreed.taskIds as ReadonlyArray<string>) : [];
   const ended = __p__McpReplied(200, { id, result: { _meta: { ...info, [__p__McpSubscription]: id }, resultType: "complete" } });
   if (!(await call.write(notified("notifications/subscriptions/acknowledged", { notifications: agreed })))) return ended;
   const stopped = call.stopped.then(() => "stopped" as const);
@@ -410,6 +440,8 @@ async function __p__McpListen(
       written = await call.write(notified("notifications/resources/list_changed", {}));
     } else if (change.kind === "resourceUpdated" && watched.includes(change.uri)) {
       written = await call.write(notified("notifications/resources/updated", { uri: change.uri }));
+    } else if (change.kind === "task" && followed.includes(change.taskId)) {
+      written = await call.write(notified("notifications/tasks", __p__McpTaskView(change.taskId, change.state)));
     } else if (change.kind === "keepAlive") {
       written = await call.keepAlive();
     }
@@ -446,6 +478,9 @@ async function __p__McpHandle(
     "io.modelcontextprotocol/serverInfo": { name: serverName, version: __p__McpServerVersion },
   };
   if (method === "subscriptions/listen" && listening !== undefined) return listening(id, params, info);
+  if (method.startsWith("tasks/") && !__p__McpTasked(endpoint)) {
+    return __p__McpRefused(id, 404, -32601, `Method not found: ${method}`);
+  }
   switch (method) {
     case "server/discover":
       return __p__McpReplied(200, {
@@ -511,6 +546,9 @@ async function __p__McpHandle(
         },
       });
     }
+    case "tasks/get":
+    case "tasks/cancel":
+    case "tasks/update":
     case "tools/call":
     case "resources/read":
     case "prompts/get":
@@ -539,7 +577,9 @@ async function __p__McpHandle(
               ? "Unknown prompt"
               : method === "skills/get"
                 ? "Skill not found"
-                : "Unknown completion";
+                : method === "completion/complete"
+                  ? "Unknown completion"
+                  : "Unknown task";
       return __p__McpRefused(id, 200, -32602, `${unknown}: ${name}`, {
         fault: {
           detail: "the service answers to no operation by that name",
@@ -834,7 +874,7 @@ __ANSWERS__      payload = operation.wrapped ? held.value : rest;
       return written;
     };
     if (answered.ok) {
-__BLOCKS__      let structured: unknown;
+__TASK_START____BLOCKS__      let structured: unknown;
       if (operation.headersOut.length > 0) {
         structured = { value: answered.value ?? null, ...beside(operation.headersOut) };
       } else if (!operation.unit) {
@@ -962,7 +1002,7 @@ __ASKING__    const faulted = error as { fault: object };
       ttlMs: operation.ttlMs,
     }));
   };
-__PROMPTING__  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+__PROMPTING____TASKING__  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
     const reference = __p__McpObject(call.ref);
     const argument = __p__McpObject(call.argument);
     if (reference === undefined) return undefined;
@@ -1004,7 +1044,7 @@ __PROMPTING__  const completing = async (ctx: Ctx, call: Record<string, unknown>
         return reading(ctx, call);
       case "resources/list":
         return listing(ctx, call);
-__PROMPT_CASE__      case "skills/get":
+__PROMPT_CASE____TASK_CASE__      case "skills/get":
         return getting(call);
       case "completion/complete":
         return completing(ctx, call);
@@ -1030,6 +1070,85 @@ const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<str
       resultType: "complete",
     }));
   };
+"#;
+
+const TASK_START: &str = r#"      if (operation.task !== undefined) {
+        const handle: Record<string, unknown> = { ...(__p__McpObject(answered.value) ?? {}), status: "working" };
+        const declares = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.extensions)?.[
+          "io.modelcontextprotocol/tasks"
+        ];
+        if (__p__McpObject(declares) !== undefined) {
+          return { result: { ...handle, resultType: "task", taskId: `${operation.tool}:${String(handle.taskId)}` } };
+        }
+        return {
+          result: {
+            content: [{ text: __p__McpText(handle), type: "text" }],
+            isError: false,
+            resultType: "complete",
+            structuredContent: handle,
+          },
+        };
+      }
+"#;
+
+const TASKING: &str = r#"  const tasking = async (ctx: Ctx, method: string, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const taskId = typeof call.taskId === "string" ? call.taskId : undefined;
+    const colon = taskId === undefined ? -1 : taskId.indexOf(":");
+    if (taskId === undefined || colon < 0) return undefined;
+    const tool = taskId.slice(0, colon);
+    const held = taskId.slice(colon + 1);
+    const start = __p__McpOperations.find((candidate) => candidate.kind === "tool" && candidate.tool === tool);
+    if (start === undefined || start.kind !== "tool" || start.task === undefined) return undefined;
+    const named = (name: string | undefined) => {
+      const found = __p__McpOperations.find((candidate) => candidate.kind === "tool" && candidate.tool === name);
+      return found !== undefined && found.kind === "tool" ? found : undefined;
+    };
+    if (method === "tasks/get") {
+      const target = named(start.task.get);
+      if (target === undefined) return undefined;
+      return answering(ctx, target.operation, target.schema, held, `${tool}: the service refused the task`, (value) => {
+        return { ...__p__McpTaskView(taskId, __p__McpObject(value) ?? {}), resultType: "complete" };
+      });
+    }
+    if (method === "tasks/cancel") {
+      const target = named(start.task.cancel);
+      if (target === undefined) return undefined;
+      return answering(ctx, target.operation, target.schema, held, `${tool}: the service refused to cancel the task`, () => ({
+        resultType: "complete",
+      }));
+    }
+    const target = named(start.task.update);
+    if (target === undefined) return undefined;
+    const responses = __p__McpObject(call.inputResponses);
+    if (responses === undefined) {
+      return { error: { code: -32602, message: "Invalid params: tasks/update needs `inputResponses`" } };
+    }
+    const [idKey, keyKey, actionKey, contentKey] = start.task.keys;
+    for (const key of Object.keys(responses).sort()) {
+      const response = __p__McpObject(responses[key]);
+      const answer = await answering(
+        ctx,
+        target.operation,
+        target.schema,
+        {
+          [idKey ?? ""]: held,
+          [keyKey ?? ""]: key,
+          [actionKey ?? ""]: typeof response?.action === "string" ? response.action : "",
+          [contentKey ?? ""]: response?.content === undefined ? null : __p__McpText(response.content),
+        },
+        `${tool}: the service refused the answer`,
+        () => ({ resultType: "complete" }),
+      );
+      if ("error" in answer) return answer;
+    }
+    return { result: { resultType: "complete" } };
+  };
+"#;
+
+const TASK_CASE: &str = r#"      case "tasks/get":
+      case "tasks/cancel":
+      case "tasks/update":
+        return tasking(ctx, method, call);
 "#;
 
 const PROMPT_CASE: &str = r#"      case "prompts/get":
@@ -1524,6 +1643,58 @@ export const McpPromptMessage$Schema: ZodType<McpPromptMessage> = z.object({
   content: McpContent$Schema,
 });"#;
 
+/// The types an `mcp(task(...))` operation answers, as the service module declares them in Rust:
+/// the handle of a task, and where a task stands.
+pub const TASK_TYPE: &str = r#"/** The handle of a task: the id the application keeps it under, and when it started. */
+export type McpTask = {
+  readonly taskId: string;
+  readonly createdAt: string;
+  readonly lastUpdatedAt: string;
+  readonly ttlMs: number | null;
+  readonly pollIntervalMs?: number | undefined;
+};
+
+/** Why a task failed, as the specification writes an error. */
+export type McpTaskError = { readonly code: number; readonly message: string; readonly data?: unknown };
+
+/** Where a task stands: what `tasks/get` and the operation named in `task(get = ...)` answer. */
+export type McpTaskState<T> =
+  | (McpTask & { readonly status: "working" })
+  | (McpTask & { readonly status: "input_required"; readonly inputRequests: Readonly<Record<string, unknown>> })
+  | (McpTask & { readonly status: "completed"; readonly result: T })
+  | (McpTask & { readonly status: "failed"; readonly error: McpTaskError })
+  | (McpTask & { readonly status: "cancelled" });
+
+const McpTask$Members = {
+  taskId: z.string(),
+  createdAt: z.string(),
+  lastUpdatedAt: z.string(),
+  ttlMs: z.number().nullable(),
+  pollIntervalMs: z.number().optional(),
+};
+
+/** The schema a client reads the handle of a task by. */
+export const McpTask$Schema = z.object(McpTask$Members);
+
+/** The schema a client reads where a task stands by, given the schema of its result. */
+export function McpTaskState$SchemaFactory<Result extends ZodType>(result: Result) {
+  return z.discriminatedUnion("status", [
+    z.object({ ...McpTask$Members, status: z.literal("working") }),
+    z.object({
+      ...McpTask$Members,
+      status: z.literal("input_required"),
+      inputRequests: z.record(z.string(), z.unknown()),
+    }),
+    z.object({ ...McpTask$Members, status: z.literal("completed"), result }),
+    z.object({
+      ...McpTask$Members,
+      status: z.literal("failed"),
+      error: z.object({ code: z.number(), message: z.string(), data: z.unknown().optional() }),
+    }),
+    z.object({ ...McpTask$Members, status: z.literal("cancelled") }),
+  ]);
+}"#;
+
 /// Stands in the emitted text for what `wrapped_{operation}()` answers.
 pub fn wrapped_marker(operation: &OperationDef) -> String {
     format!(
@@ -1641,6 +1812,15 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
             "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
         ));
     }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
+    {
+        capabilities.push(ts_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/tasks\":{}}}",
+        ));
+    }
     format!(
         "/** Everything `{named}` puts on an endpoint: its names, and each list item as JSON text, \
          so a schema keeps the digits Rust wrote. */\n\
@@ -1707,7 +1887,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .operations
         .iter()
         .filter(|operation| operation.is_mcp_tool())
-        .map(operation_row)
+        .map(|operation| operation_row(service, operation))
         .collect();
     rows.extend(resource_rows(service));
     rows.extend(
@@ -1719,18 +1899,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
     );
     rows.extend(service.operations.iter().filter_map(skill_row));
     format!(
-        "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
-         wire key of the argument that carries a form's answers and the JSON text of the form, \
-         and the message to ask with where the arm holds none. */\n\
-         export type {named}McpInterview = {{\n  \
-         readonly arm: string;\n  \
-         readonly tag: string;\n  \
-         readonly wire: string;\n  \
-         readonly content: string;\n  \
-         readonly answers: string | undefined;\n  \
-         readonly form: string | undefined;\n  \
-         readonly doc: string;\n\
-         }};\n\n\
+        "{interview_types}\n\n\
          /** What the route reads of each operation: the tool, resource, listing or completion it \
          answers, the operation it calls, and how its arguments, success and error are carried. */\n\
          export type {named}McpOperation =\n  \
@@ -1746,7 +1915,8 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly headersOut: ReadonlyArray<string>;\n      \
          readonly errorHeadersOut: ReadonlyArray<string>;\n      \
          readonly content: \"pair\" | \"list\" | undefined;\n      \
-         readonly interview: {named}McpInterview | undefined;\n    \
+         readonly interview: {named}McpInterview | undefined;\n      \
+         readonly task: {named}McpTask | undefined;\n    \
          }}\n  \
          | {{\n      \
          readonly kind: \"resource\";\n      \
@@ -1798,7 +1968,33 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly doc: string;\n    \
          }};\n\n\
          export const {prefix}McpOperations: ReadonlyArray<{named}McpOperation> = [\n{rows}\n];",
+        interview_types = interview_types(named),
         rows = rows.join("\n"),
+    )
+}
+
+fn interview_types(named: &str) -> String {
+    format!(
+        "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
+         wire key of the argument that carries a form's answers and the JSON text of the form, \
+         and the message to ask with where the arm holds none. */\n\
+         export type {named}McpInterview = {{\n  \
+         readonly arm: string;\n  \
+         readonly tag: string;\n  \
+         readonly wire: string;\n  \
+         readonly content: string;\n  \
+         readonly answers: string | undefined;\n  \
+         readonly form: string | undefined;\n  \
+         readonly doc: string;\n\
+         }};\n\n\
+         /** What a tool that starts a task is told: the tools that answer `tasks/get`, \
+         `tasks/cancel` and `tasks/update`, and the wire keys of the update's message. */\n\
+         export type {named}McpTask = {{\n  \
+         readonly get: string;\n  \
+         readonly cancel: string | undefined;\n  \
+         readonly update: string | undefined;\n  \
+         readonly keys: ReadonlyArray<string>;\n\
+         }};"
     )
 }
 
@@ -2009,7 +2205,7 @@ fn prompt_row(operation: &OperationDef) -> String {
     )
 }
 
-fn operation_row(operation: &OperationDef) -> String {
+fn operation_row(service: &ServiceDef, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     let wrapped = match &operation.inputs {
         OperationInputs::Named(_) => wrapped_marker(operation),
@@ -2037,8 +2233,9 @@ fn operation_row(operation: &OperationDef) -> String {
     format!(
         "  {{ kind: \"tool\", tool: {tool}, operation: {wire}, schema: {schema}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
          headersIn: [{headers_in}], headersOut: [{headers_out}], errorHeadersOut: \
-         [{error_headers_out}], content: {content}, interview: {interview} }},",
+         [{error_headers_out}], content: {content}, interview: {interview}, task: {task} }},",
         content = content_kind(operation),
+        task = task_literal(service, operation),
         interview = interview_literal(operation),
         tool = ts_quoted(operation.mcp_tool_name()),
         schema = message::schema(operation),
@@ -2073,6 +2270,44 @@ fn content_kind(operation: &OperationDef) -> &'static str {
     } else {
         "undefined"
     }
+}
+
+/// The tools a task tool names, by tool name, and the wire keys of the update's message.
+fn task_literal(service: &ServiceDef, operation: &OperationDef) -> String {
+    let Some(task) = operation.mcp.task.as_ref() else {
+        return "undefined".to_owned();
+    };
+    let tool_of = |name: &str| {
+        service
+            .operations
+            .iter()
+            .find(|candidate| written(&candidate.ident) == name)
+    };
+    let quoted_tool = |name: &Option<String>| {
+        name.as_deref().and_then(tool_of).map_or_else(
+            || "undefined".to_owned(),
+            |found| ts_quoted(found.mcp_tool_name()),
+        )
+    };
+    let keys = task
+        .update
+        .as_deref()
+        .and_then(tool_of)
+        .map(|target| match &target.inputs {
+            OperationInputs::Generated(fields) => fields
+                .iter()
+                .map(|(field, _)| ts_quoted(&wire_key(field)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            OperationInputs::Empty | OperationInputs::Named(_) => String::new(),
+        })
+        .unwrap_or_default();
+    format!(
+        "{{ get: {}, cancel: {}, update: {}, keys: [{keys}] }}",
+        quoted_tool(&task.get),
+        quoted_tool(&task.cancel),
+        quoted_tool(&task.update),
+    )
 }
 
 fn interview_literal(operation: &OperationDef) -> String {
@@ -2148,6 +2383,38 @@ fn prompt_scopes(table: &ScopeTable) -> String {
     body
 }
 
+/// The scopes the task methods need, by the tool that started the task.
+fn task_scopes(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "[{}]",
+            scopes
+                .iter()
+                .map(|scope| ts_quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut body = String::new();
+    for (method, rows) in &table.tasks {
+        let _ = writeln!(
+            body,
+            "  if (method === {} && name !== undefined) {{\n    switch (name.split(\":\")[0]) {{",
+            ts_quoted(method)
+        );
+        for (tool, needed) in rows {
+            let _ = writeln!(
+                body,
+                "      case {}:\n        return {};",
+                ts_quoted(tool),
+                list(needed)
+            );
+        }
+        body.push_str("      default:\n        return [];\n    }\n  }\n");
+    }
+    body
+}
+
 fn scopes(service: &ServiceDef, prefix: &str) -> String {
     let table = ScopeTable::of(service);
     let list = |scopes: &[String]| {
@@ -2194,6 +2461,7 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
         body.push_str("      default:\n        return [];\n    }\n  }\n");
     }
     body.push_str(&prompt_scopes(&table));
+    body.push_str(&task_scopes(&table));
     if !table.reads.is_empty() {
         body.push_str("  if (method === \"resources/read\" && name !== undefined) {\n");
         for (uri, needed) in &table.reads {
@@ -2284,7 +2552,14 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
         ""
     };
     let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    let tasks = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some());
     ROUTE
+        .replace("__TASK_START__", if tasks { TASK_START } else { "" })
+        .replace("__TASKING__", if tasks { TASKING } else { "" })
+        .replace("__TASK_CASE__", if tasks { TASK_CASE } else { "" })
         .replace("__PROMPTING__", if prompting { PROMPTING } else { "" })
         .replace("__PROMPT_CASE__", if prompting { PROMPT_CASE } else { "" })
         .replace("__DECLINED__", declined)

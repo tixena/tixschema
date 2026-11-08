@@ -184,6 +184,8 @@ pub fn emit(
                 .any(|operation| operation.mcp.content.is_some())))
     .then(content_types);
     let prompt_types = prompting.then(prompt_types);
+    let task_types = (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service))
+        .then(|| task_types(non_exhaustive));
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -208,6 +210,7 @@ pub fn emit(
             #resource_page
             #content_types
             #prompt_types
+            #task_types
         }
     }
 }
@@ -406,6 +409,117 @@ fn prompt_types() -> TokenStream {
             pub content: McpContent,
             /// Who the message is from.
             pub role: McpRole,
+        }
+    }
+}
+
+/// What an `mcp(task(...))` operation answers: the handle of a task, and the state `tasks/get`
+/// reports. The application keeps the task; the times are the application's own text.
+fn task_types(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
+    quote! {
+        /// The handle of a task: the id the application keeps it under, and when it started.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        #sealed
+        pub struct McpTask {
+            /// The id the application keeps the task under; the transport adds the tool's name.
+            pub task_id: ::std::string::String,
+            /// When the task started, as an RFC 3339 timestamp.
+            pub created_at: ::std::string::String,
+            /// When the task last changed, as an RFC 3339 timestamp.
+            pub last_updated_at: ::std::string::String,
+            /// How long, in milliseconds, the application keeps the task; `null` for no limit.
+            #[serde(default)]
+            pub ttl_ms: ::core::option::Option<u64>,
+            /// How often, in milliseconds, a client may ask where the task stands.
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub poll_interval_ms: ::core::option::Option<u64>,
+        }
+
+        /// Why a task failed, as the specification writes an error.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #sealed
+        pub struct McpTaskError {
+            pub code: i64,
+            pub message: ::std::string::String,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub data: ::core::option::Option<::serde_json::Value>,
+        }
+
+        /// Where a task stands, as `tasks/get` and the operation named in `task(get = ...)` answer.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(tag = "status", rename_all = "snake_case")]
+        #sealed
+        pub enum McpTaskState<T> {
+            /// The work goes on.
+            Working {
+                #[serde(flatten)]
+                task: McpTask,
+            },
+            /// The work waits for the user: each request is an `elicitation/create` request under
+            /// the key `task(update = ...)` answers.
+            InputRequired {
+                #[serde(flatten)]
+                task: McpTask,
+                #[serde(rename = "inputRequests")]
+                input_requests: ::std::collections::BTreeMap<::std::string::String, ::serde_json::Value>,
+            },
+            /// The work ended: `result` is what the starting tool would have answered.
+            Completed {
+                #[serde(flatten)]
+                task: McpTask,
+                result: T,
+            },
+            /// The work failed.
+            Failed {
+                #[serde(flatten)]
+                task: McpTask,
+                error: McpTaskError,
+            },
+            /// The work was cancelled.
+            Cancelled {
+                #[serde(flatten)]
+                task: McpTask,
+            },
+        }
+
+        impl McpTask {
+            /// A task started at `created_at` and last changed at `last_updated_at`, kept for
+            /// `ttl_ms` milliseconds and polled every `poll_interval_ms`.
+            pub const fn new(
+                task_id: ::std::string::String,
+                created_at: ::std::string::String,
+                last_updated_at: ::std::string::String,
+                ttl_ms: ::core::option::Option<u64>,
+                poll_interval_ms: ::core::option::Option<u64>,
+            ) -> Self {
+                Self { task_id, created_at, last_updated_at, ttl_ms, poll_interval_ms }
+            }
+        }
+
+        impl McpTaskError {
+            /// An error of `code` saying `message`, with the `data` it carries.
+            pub const fn new(
+                code: i64,
+                message: ::std::string::String,
+                data: ::core::option::Option<::serde_json::Value>,
+            ) -> Self {
+                Self { code, message, data }
+            }
+        }
+
+        impl<T> McpTaskState<T> {
+            /// The task the state is about.
+            pub const fn task(&self) -> &McpTask {
+                match self {
+                    Self::Working { task }
+                    | Self::InputRequired { task, .. }
+                    | Self::Completed { task, .. }
+                    | Self::Failed { task, .. }
+                    | Self::Cancelled { task } => task,
+                }
+            }
         }
     }
 }

@@ -4,7 +4,7 @@
 
 use super::ShelfWireServiceSchema;
 use super::mcp_wire_rust::{BLOCKS, MESSAGES, PAGE, over_http, over_ws};
-use super::mcp_wire_service::{ShelfWireError, ShelfWireRequest};
+use super::mcp_wire_service::{ShelfCount, ShelfWireError, ShelfWireRequest};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use serde_json::{Value, json};
 
@@ -40,7 +40,13 @@ const page = {
   resources: [{ uri: "shelf://history", name: "history", mimeType: "text/markdown", size: 11 }],
   nextCursor: "page-2",
 };
+const counting = { taskId: "count-1", createdAt: "2026-07-28T09:00:00Z", lastUpdatedAt: "2026-07-28T09:00:00Z", ttlMs: null };
 const impl = {
+  async countStatus(ctx, taskId) {
+    return taskId === "count-1"
+      ? { ok: true, value: { ...counting, status: "completed", result: { books: 11 } } }
+      : { ok: false, error: { errorCode: "not-found" } };
+  },
   async describeShelf(ctx, req) {
     return req.shelf === "history" ? { ok: true, value: blocks } : { ok: false, error: { errorCode: "not-found" } };
   },
@@ -51,6 +57,9 @@ const impl = {
   },
   async reviewShelf(ctx, shelf) {
     return shelf === "history" ? { ok: true, value: messages } : { ok: false, error: { errorCode: "not-found" } };
+  },
+  async startCount(ctx, req) {
+    return req.shelf === "history" ? { ok: true, value: counting } : { ok: false, error: { errorCode: "not-found" } };
   },
 };
 
@@ -163,6 +172,8 @@ fn bundle() -> String {
         ShelfWireError::zod_schema(),
         ShelfWireRequest::ts_definition(),
         ShelfWireRequest::zod_schema(),
+        ShelfCount::ts_definition(),
+        ShelfCount::zod_schema(),
         ShelfWireServiceSchema::ts_definition(),
         ShelfWireServiceSchema::ts_mcp_content(),
         ShelfWireServiceSchema::ts_service(),

@@ -1,5 +1,6 @@
 //! What a service that asks for `mcp` is refused at expansion, each refusal naming the operation.
 
+use super::mcp_tools::{is_task_handle, is_task_state};
 use super::parse::{
     McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, ServiceDef, option_inner,
     wire_key, written,
@@ -19,6 +20,7 @@ pub fn refusals(service: &ServiceDef) -> Option<syn::Error> {
         refused.extend(operation_refusals(operation));
         refused.extend(resource_refusals(service, position, operation));
         refused.extend(prompt_refusals(operation));
+        refused.extend(task_refusals(service, operation));
         refused.extend(skill_refusals(service, position, operation));
         let kind = if operation.is_mcp_tool() {
             "tool"
@@ -713,6 +715,7 @@ fn prompt_refusals(operation: &OperationDef) -> Vec<syn::Error> {
         ("cache_scope", mcp.cache_scope.is_some()),
         ("content", mcp.content.is_some()),
         ("interview", mcp.interview.is_some()),
+        ("task", mcp.task.is_some()),
     ];
     for (key, written_here) in beside {
         if written_here {
@@ -724,4 +727,171 @@ fn prompt_refusals(operation: &OperationDef) -> Vec<syn::Error> {
         }
     }
     refused
+}
+
+/// What an operation that starts a task, or answers a task's state, is refused for.
+fn task_refusals(service: &ServiceDef, operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(task) = &operation.mcp.task else {
+        return unstarted_task_refusals(service, operation);
+    };
+    let mut refused = Vec::new();
+    if !operation.is_mcp_tool() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` and is not a tool",
+            "a task is started by a tool; drop the other flag of the operation",
+        ));
+    }
+    if !is_task_handle(operation) || operation.mcp.content.is_some() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` in `mcp(...)` and does not answer an `McpTask`",
+            "answer the `McpTask` of the type the service module declares, with no `content`",
+        ));
+    }
+    if operation.mcp.interview.is_some() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` and `interview(...)` in `mcp(...)`",
+            "a task handle is the whole success; ask the user from the operation named in \
+             `task(update = ...)`",
+        ));
+    }
+    let Some(get) = &task.get else {
+        refused.push(syn::Error::new(
+            task.span,
+            format!(
+                "service_schema: operation `{ident}` writes `task(...)` without `get`, and this \
+                 service asks for `mcp`\n       \
+                 write `task(get = \"<operation>\")`, naming the operation that answers `tasks/get`"
+            ),
+        ));
+        return refused;
+    };
+    refused.extend(named_task_refusals(service, ident, "get", get));
+    if let Some(cancel) = &task.cancel {
+        refused.extend(named_task_refusals(service, ident, "cancel", cancel));
+    }
+    if let Some(update) = &task.update {
+        refused.extend(update_refusals(service, ident, update));
+    }
+    refused
+}
+
+/// What an `McpTask` or an `McpTaskState` no `task(...)` accounts for is refused for.
+fn unstarted_task_refusals(service: &ServiceDef, operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    if is_task_handle(operation) {
+        refused.push(refusal(
+            ident,
+            "answers an `McpTask` and writes no `task(...)` in `mcp(...)`",
+            "write `mcp(task(get = \"<operation>\"))` to name the operation that answers \
+             `tasks/get`",
+        ));
+    }
+    let named_by_a_task = service.operations.iter().any(|starter| {
+        starter
+            .mcp
+            .task
+            .as_ref()
+            .is_some_and(|task| task.get.as_deref() == Some(written(ident).as_str()))
+    });
+    if is_task_state(operation) && !named_by_a_task {
+        refused.push(refusal(
+            ident,
+            "answers an `McpTaskState` and no operation names it in `task(get = ...)`",
+            "name it from the operation that starts the task, or answer another type",
+        ));
+    }
+    refused
+}
+
+/// The operation `key` of a `task(...)` names: a tool of the trait that takes the task's id as one
+/// `String` and answers a state (`get`) or nothing (`cancel`).
+fn named_task_refusals(
+    service: &ServiceDef,
+    ident: &Ident,
+    key: &str,
+    named: &str,
+) -> Vec<syn::Error> {
+    let Some(target) = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == named)
+    else {
+        return vec![refusal(
+            ident,
+            &format!("writes `task({key} = \"{named}\")` and the service has no such operation"),
+            "name an operation of the trait",
+        )];
+    };
+    let takes_the_id =
+        matches!(&target.inputs, OperationInputs::Named(held) if type_text(held) == "String");
+    let answers = if key == "get" {
+        is_task_state(target)
+    } else {
+        matches!(
+            &target.outcome,
+            OperationOutcome::Reply { success, error: _error } if type_text(success) == "()"
+        )
+    };
+    if target.is_mcp_tool() && takes_the_id && answers {
+        return Vec::new();
+    }
+    let answer = if key == "get" {
+        "an `McpTaskState<T>`"
+    } else {
+        "an empty success"
+    };
+    vec![refusal(
+        ident,
+        &format!(
+            "writes `task({key} = \"{named}\")`, and `{named}` is not a tool that takes the \
+             task's id as one `String` and answers {answer}"
+        ),
+        &format!(
+            "declare `{named}(&self, ctx, task_id: String)` answering {answer}; the `taskId` it \
+             receives is the id the start tool answered"
+        ),
+    )]
+}
+
+/// The operation `task(update = ...)` names: a tool of the trait that takes the id, the key of the
+/// request answered, the action and the answer as text, and answers nothing.
+fn update_refusals(service: &ServiceDef, ident: &Ident, named: &str) -> Vec<syn::Error> {
+    let shaped = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == named)
+        .is_some_and(|target| {
+            let types = match &target.inputs {
+                OperationInputs::Generated(fields) => {
+                    fields.iter().map(|(_, ty)| type_text(ty)).collect()
+                }
+                OperationInputs::Empty | OperationInputs::Named(_) => Vec::new(),
+            };
+            let answers_nothing = matches!(
+                &target.outcome,
+                OperationOutcome::Reply { success, error: _error } if type_text(success) == "()"
+            );
+            target.is_mcp_tool()
+                && types == ["String", "String", "String", "Option<String>"]
+                && answers_nothing
+        });
+    if shaped {
+        return Vec::new();
+    }
+    vec![refusal(
+        ident,
+        &format!(
+            "writes `task(update = \"{named}\")`, and `{named}` is not a tool of the right shape"
+        ),
+        &format!(
+            "declare `{named}(&self, ctx, task_id: String, key: String, action: String, \
+             content: Option<String>)` answering `()`: the id, the key of the request answered, \
+             `accept`, `decline` or `cancel`, and the JSON text of the answer"
+        ),
+    )]
 }

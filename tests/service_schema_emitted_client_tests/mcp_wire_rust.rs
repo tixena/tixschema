@@ -4,8 +4,8 @@
 
 use super::ShelfWireServiceSchema;
 use super::mcp_streams::through;
+use super::mcp_wire_service::{ShelfCount, ShelfWireRequest, Stand, blocks, messages, page, task};
 use super::mcp_wire_service::{ShelfWireError, shelf_wire_service_schema};
-use super::mcp_wire_service::{ShelfWireRequest, Stand, blocks, messages, page};
 use super::{
     mcp_wire_amqp_client, mcp_wire_amqp_transport, mcp_wire_http_rest_client,
     mcp_wire_http_rest_transport, mcp_wire_mcp_transport, mcp_wire_ws_rpc_client,
@@ -463,9 +463,11 @@ fn the_http_rest_route_table_names_each_operation_by_its_wire_name() {
     assert_eq!(
         routes,
         [
+            ("count-status", "POST", "/count-status", 200, vec![422]),
             ("describe-shelf", "POST", "/describe-shelf", 200, vec![422]),
             ("list-shelves", "POST", "/list-shelves", 200, vec![422]),
             ("review-shelf", "POST", "/review-shelf", 200, vec![422]),
+            ("start-count", "POST", "/start-count", 200, vec![422]),
         ]
     );
 }
@@ -564,4 +566,55 @@ fn the_listing_is_answered_on_every_transport_in_the_page_form() {
         written: Mutex::new(Vec::new()),
     });
     assert_eq!(once(amqp.list_shelves(None)), Ok(page()));
+}
+
+#[test]
+fn a_task_operation_starts_and_reports_on_every_transport() {
+    let started = json!({
+        "taskId": "count-1",
+        "createdAt": "2026-07-28T09:00:00Z",
+        "lastUpdatedAt": "2026-07-28T09:00:00Z",
+        "ttlMs": null,
+    });
+    let (status, body) = over_http("/start-count", &json!({ "shelf": "history" }));
+    assert_eq!(status, 200);
+    assert_eq!(written(&body), started);
+    let (_, reply) = over_ws("start-count", &json!({ "shelf": "history" }));
+    assert!(reply.contains(r#""ok":true"#), "{reply}");
+    let http = mcp_wire_http_rest_client::ShelfWireServiceClient::new(HttpLoop);
+    let amqp = mcp_wire_amqp_client::ShelfWireServiceClient::new(AmqpLoop {
+        written: Mutex::new(Vec::new()),
+    });
+    let counted = || {
+        Ok(shelf_wire_service_schema::McpTaskState::Completed {
+            task: task(),
+            result: ShelfCount { books: 11 },
+        })
+    };
+    let request = || ShelfWireRequest {
+        shelf: "history".to_owned(),
+    };
+    assert_eq!(once(http.start_count(request())), Ok(task()));
+    assert_eq!(once(amqp.start_count(request())), Ok(task()));
+    assert_eq!(once(http.count_status("count-1".to_owned())), counted());
+    assert_eq!(once(amqp.count_status("count-1".to_owned())), counted());
+    let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+    let mailbox = Arc::clone(&sent);
+    let session = mcp_wire_ws_rpc_client::FrameSession::new(move |text| {
+        mailbox.lock().unwrap().push(text);
+        ready(Ok(()))
+    });
+    let client = mcp_wire_ws_rpc_client::ShelfWireServiceClient::new(session.clone());
+    let context = &mut Context::from_waker(Waker::noop());
+    let mut starting = pin!(client.start_count(request()));
+    assert!(starting.as_mut().poll(context).is_pending());
+    let frame = sent.lock().unwrap().remove(0);
+    once(session.deliver(&once(mcp_wire_ws_rpc_transport::answer(&frame, &Stand, &())).unwrap()));
+    assert_eq!(starting.as_mut().poll(context), Poll::Ready(Ok(task())));
+    let mut counting = pin!(client.count_status("count-1".to_owned()));
+    assert!(counting.as_mut().poll(context).is_pending());
+    let count_frame = sent.lock().unwrap().remove(0);
+    let count_reply = once(mcp_wire_ws_rpc_transport::answer(&count_frame, &Stand, &())).unwrap();
+    once(session.deliver(&count_reply));
+    assert_eq!(counting.as_mut().poll(context), Poll::Ready(counted()));
 }

@@ -18,9 +18,22 @@ pub struct ShelfWireRequest {
     pub shelf: String,
 }
 
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ShelfCount {
+    pub books: u32,
+}
+
 /// Describes the shelves of a library.
 #[service_schema(transports = ["mcp", "ws_rpc", "http_rest", "amqp_rpc"])]
 pub trait ShelfWireService<Ctx> {
+    /// Answers where the count of one shelf stands.
+    async fn count_status(
+        &self,
+        ctx: &Ctx,
+        task_id: String,
+    ) -> Result<shelf_wire_service_schema::McpTaskState<ShelfCount>, ShelfWireError>;
+
     /// Answers the blocks that describe one shelf.
     #[service_schema_op(mcp(content))]
     async fn describe_shelf(
@@ -44,12 +57,36 @@ pub trait ShelfWireService<Ctx> {
         ctx: &Ctx,
         shelf_name: String,
     ) -> Result<Vec<shelf_wire_service_schema::McpPromptMessage>, ShelfWireError>;
+
+    /// Starts the count of one shelf.
+    #[service_schema_op(mcp(task(get = "count_status")))]
+    async fn start_count(
+        &self,
+        ctx: &Ctx,
+        req: ShelfWireRequest,
+    ) -> Result<shelf_wire_service_schema::McpTask, ShelfWireError>;
 }
 
 /// Answers every operation, or a fault for a shelf that is not the history shelf.
 pub struct Stand;
 
 impl ShelfWireService<()> for Stand {
+    fn count_status(
+        &self,
+        _ctx: &(),
+        task_id: String,
+    ) -> impl Future<Output = Result<shelf_wire_service_schema::McpTaskState<ShelfCount>, ShelfWireError>>
+    {
+        ready(if task_id == "count-1" {
+            Ok(shelf_wire_service_schema::McpTaskState::Completed {
+                task: task(),
+                result: ShelfCount { books: 11 },
+            })
+        } else {
+            Err(ShelfWireError::NotFound)
+        })
+    }
+
     fn describe_shelf(
         &self,
         _ctx: &(),
@@ -86,6 +123,29 @@ impl ShelfWireService<()> for Stand {
         } else {
             Err(ShelfWireError::NotFound)
         })
+    }
+
+    fn start_count(
+        &self,
+        _ctx: &(),
+        req: ShelfWireRequest,
+    ) -> impl Future<Output = Result<shelf_wire_service_schema::McpTask, ShelfWireError>> {
+        ready(if req.shelf == "history" {
+            Ok(task())
+        } else {
+            Err(ShelfWireError::NotFound)
+        })
+    }
+}
+
+/// The task the count of the history shelf starts.
+pub fn task() -> shelf_wire_service_schema::McpTask {
+    shelf_wire_service_schema::McpTask {
+        task_id: "count-1".to_owned(),
+        created_at: "2026-07-28T09:00:00Z".to_owned(),
+        last_updated_at: "2026-07-28T09:00:00Z".to_owned(),
+        ttl_ms: None,
+        poll_interval_ms: None,
     }
 }
 

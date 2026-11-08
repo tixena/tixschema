@@ -63,7 +63,7 @@ class Feed {
 fun changeOf(spec: JsonObject): LibraryServiceMcpChange = when (spec.getValue("kind").jsonPrimitive.content) {
     "resourcesListChanged" -> LibraryServiceMcpChange.ResourcesListChanged
     "resourceUpdated" -> LibraryServiceMcpChange.ResourceUpdated(spec.getValue("uri").jsonPrimitive.content)
-    "task" -> LibraryServiceMcpChange.Task(spec.getValue("taskId").jsonPrimitive.content)
+    "task" -> LibraryServiceMcpChange.Task(spec.getValue("taskId").jsonPrimitive.content, spec.getValue("state").jsonObject)
     else -> LibraryServiceMcpChange.KeepAlive
 }
 
