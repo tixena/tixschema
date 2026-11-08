@@ -71,10 +71,11 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub fn emit(
-    service: &ServiceDef,
+    declared: &ServiceDef,
     non_exhaustive: bool,
     openapi: Option<&OpenApiArguments>,
 ) -> TokenStream {
+    let service = &declared.with_page_named();
     let named = service.ident.to_string();
     let registry = registry_ident(service);
     let rustdoc = registry_rustdoc(&named);
@@ -565,10 +566,11 @@ pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
     let forms = form_assertions(service);
-    let typescript = mcp_ts_seam(service);
-    let dart = dart_mcp_seam(service);
-    let kotlin = kotlin_mcp_seam(service);
-    let swift = swift_mcp_seam(service);
+    let published = &service.with_page_named();
+    let typescript = mcp_ts_seam(published);
+    let dart = dart_mcp_seam(published);
+    let kotlin = kotlin_mcp_seam(published);
+    let swift = swift_mcp_seam(published);
     quote! {
         #forms
 

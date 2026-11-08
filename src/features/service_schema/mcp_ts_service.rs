@@ -1395,7 +1395,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         .any(|operation| operation.mcp.list_resources);
     let mut published = vec![constants(&named, &prefix), fill(TYPES)];
     if lists {
-        published.push(page_types());
+        published.push(page_types(service));
     }
     published.extend([
         part(service, &named, &prefix),
@@ -1510,9 +1510,9 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module declares.
 /// Interfaces, so two services of one bundle that both list declare them without a clash.
-fn page_types() -> String {
+fn page_types(service: &ServiceDef) -> String {
     "/** One resource of a listing, as `resources/list` writes it. */\n\
-     export interface McpResource {\n  \
+     export interface @N@McpResource {\n  \
      uri: string;\n  \
      name: string;\n  \
      title?: string;\n  \
@@ -1521,11 +1521,11 @@ fn page_types() -> String {
      size?: number;\n\
      }\n\n\
      /** One page of `resources/list`, with the cursor of the next where there is one. */\n\
-     export interface McpResourcePage {\n  \
-     resources: Array<McpResource>;\n  \
+     export interface @N@McpResourcePage {\n  \
+     resources: Array<@N@McpResource>;\n  \
      nextCursor?: string;\n\
      }"
-    .to_owned()
+    .replace("@N@", &service.ident.to_string())
 }
 
 fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
