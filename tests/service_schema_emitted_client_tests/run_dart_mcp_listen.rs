@@ -26,6 +26,7 @@ final libraryHandlers = LibraryServiceHandlers<void>(
 final depotHandlers = DepotServiceHandlers<void>(
   getCrate: (ctx, crateId) async => throw const BookErrorNotFound(),
   getBin: (ctx, req) async => '${req.aisle}/${req.bin_id}',
+  listCrates: (ctx, cursor) async => throw const BookErrorNotFound(),
 );
 
 const workspace = LibraryServiceMcpEndpoint(

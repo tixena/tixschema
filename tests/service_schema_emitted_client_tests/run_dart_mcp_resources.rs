@@ -39,15 +39,15 @@ final libraryHandlers = LibraryServiceHandlers<void>(
   },
   listBooks: (ctx, cursor) async {
     if (cursor == null) {
-      return McpResourcePage(
-        resources: [McpResource(uri: 'library://covers/book-1', name: 'cover-1.pdf', mimeType: 'application/pdf')],
+      return LibraryServiceMcpResourcePage(
+        resources: [LibraryServiceMcpResource(uri: 'library://covers/book-1', name: 'cover-1.pdf', mimeType: 'application/pdf')],
         nextCursor: 'page-2',
       );
     }
     if (cursor == 'page-2') {
-      return McpResourcePage(
+      return LibraryServiceMcpResourcePage(
         resources: [
-          McpResource(
+          LibraryServiceMcpResource(
             uri: 'library://covers/book-2',
             name: 'cover-2.pdf',
             mimeType: 'application/pdf',
@@ -75,6 +75,12 @@ final depotHandlers = DepotServiceHandlers<void>(
     throw const BookErrorNotFound();
   },
   getBin: (ctx, req) async => '${req.aisle}/${req.bin_id}',
+  listCrates: (ctx, cursor) async {
+    if (cursor != null) throw const BookErrorNotFound();
+    return DepotServiceMcpResourcePage(
+      resources: [DepotServiceMcpResource(uri: 'depot://crates/crate-1', name: 'crate-1', mimeType: 'application/json')],
+    );
+  },
 );
 
 final bareHandlers = BareServiceHandlers<void>(

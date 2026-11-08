@@ -47,7 +47,7 @@ object Handlers : StacksServiceHandlers {
 
     override suspend fun listItems(req: String?): StacksServiceListItemsResult {
         reached += 1
-        return StacksServiceListItemsResult.Ok(McpResourcePage(listOf(McpResource("stacks://items/item-1", "item-1"))))
+        return StacksServiceListItemsResult.Ok(StacksServiceMcpResourcePage(listOf(StacksServiceMcpResource("stacks://items/item-1", "item-1"))))
     }
 
     override suspend fun suggestItems(req: SuggestItemsRequest): StacksServiceSuggestItemsResult {

@@ -9,7 +9,7 @@ use super::{on_one_line, text_types};
 use crate::features::kotlin::{
     TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
     kotlin_property_name, kotlin_quoted, kotlin_read_serializer, kotlin_tuple_naming,
-    kotlin_typename,
+    kotlin_typename, kotlin_unjudged_read_serializer,
 };
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -1298,6 +1298,11 @@ fn kotlin_type_of(ty: &Type) -> String {
 /// array of one length it holds, composed, so a text or an array of another is refused.
 pub(super) fn read_serializer(ty: &Type) -> String {
     kotlin_read_serializer(&kotlin_field_def("value", ty))
+}
+
+/// The `KSerializer` a value typed `ty` is read with and judged by nothing.
+pub(super) fn unjudged_read_serializer(ty: &Type) -> String {
+    kotlin_unjudged_read_serializer(&kotlin_field_def("value", ty))
 }
 
 /// The Kotlin expression that renders `ty`'s value at `expr` as URL- or header-safe text: an

@@ -1730,6 +1730,13 @@ pub fn kotlin_read_serializer(field: &FieldDef) -> String {
     kotlin_serializer_expr(field, &[])
 }
 
+/// The `KSerializer` that reads a value typed `field` with no judgement: [`kotlin_read_serializer`]
+/// with each model it holds replaced by its `{Type}Unjudged`.
+#[cfg(feature = "serde")]
+pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
+    read::unjudged_serializer(field, &[])
+}
+
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
 fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
