@@ -10,6 +10,7 @@ use core::fmt::Debug;
 use core::future::Future;
 use core::mem::take;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::panic::resume_unwind;
 use std::sync::Mutex;
 
@@ -160,6 +161,31 @@ fn a_message_the_validator_refuses_is_refused_before_the_seam_is_reached() {
     assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(fault.field(), Some("document_id"));
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
+}
+
+#[test]
+fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_bound() {
+    let archive = Archive::default();
+    let client = DocumentServiceClient::new(Dispatching::over(&archive));
+    let broken = || GetVersionRequest {
+        document_id: String::new(),
+    };
+    let refusals = [
+        fault_of(block_on(client.check_many(vec![broken()]))),
+        fault_of(block_on(
+            client.check_named(HashMap::from([("first".to_owned(), broken())])),
+        )),
+        fault_of(block_on(client.check_maybe(Some(broken())))),
+    ];
+    for fault in refusals {
+        assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
+        assert_eq!(fault.field(), Some("document_id"));
+    }
+    assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
+    let read = block_on(client.check_many(vec![GetVersionRequest {
+        document_id: "doc-1".to_owned(),
+    }]));
+    assert_eq!(read, Ok(VersionResponse { version: 7 }));
 }
 
 #[test]

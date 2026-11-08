@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-pub const FAULT_CASES: [FaultCase; 5] = [
+pub const FAULT_CASES: [FaultCase; 11] = [
     FaultCase {
         arguments: r#"{"document_id":5}"#,
         field: None,
@@ -39,6 +39,48 @@ pub const FAULT_CASES: [FaultCase; 5] = [
         kind: "handler-panic",
         operation: "lookup-document",
         tool: "lookup-document",
+    },
+    FaultCase {
+        arguments: r#"{"value":[{"document_id":7}]}"#,
+        field: None,
+        kind: "undeserializable-payload",
+        operation: "check-many",
+        tool: "check-many",
+    },
+    FaultCase {
+        arguments: r#"{"value":[{"document_id":""}]}"#,
+        field: Some("document_id"),
+        kind: "failed-validation",
+        operation: "check-many",
+        tool: "check-many",
+    },
+    FaultCase {
+        arguments: r#"{"first":{"document_id":7}}"#,
+        field: None,
+        kind: "undeserializable-payload",
+        operation: "check-named",
+        tool: "check-named",
+    },
+    FaultCase {
+        arguments: r#"{"first":{"document_id":""}}"#,
+        field: Some("document_id"),
+        kind: "failed-validation",
+        operation: "check-named",
+        tool: "check-named",
+    },
+    FaultCase {
+        arguments: r#"{"value":{"document_id":7}}"#,
+        field: None,
+        kind: "undeserializable-payload",
+        operation: "check-maybe",
+        tool: "check-maybe",
+    },
+    FaultCase {
+        arguments: r#"{"value":{"document_id":""}}"#,
+        field: Some("document_id"),
+        kind: "failed-validation",
+        operation: "check-maybe",
+        tool: "check-maybe",
     },
 ];
 

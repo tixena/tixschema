@@ -6,10 +6,11 @@
 #![cfg(feature = "kotlin")]
 
 use super::mcp_asking_rows::{
-    asking_confirmation_kotlin, asking_error_kotlin, asking_link_error_kotlin,
-    asking_linked_kotlin, asking_miss_kotlin, asking_priority_kotlin, asking_report_request_kotlin,
-    asking_shipping_kotlin, assert_client, assert_matches, client_input,
-    delete_document_request_kotlin, input, ship_document_request_kotlin,
+    asking_confirmation_kotlin, asking_error_kotlin, asking_kind_error_kotlin,
+    asking_link_error_kotlin, asking_linked_kotlin, asking_miss_kotlin, asking_priority_kotlin,
+    asking_renamed_error_kotlin, asking_report_request_kotlin, asking_shipping_kotlin,
+    assert_client, assert_matches, client_input, delete_document_request_kotlin, input,
+    ship_document_request_kotlin,
 };
 use super::mcp_mobile_rows::kotlin_text;
 use super::runtime::ran_kotlin;
@@ -45,6 +46,26 @@ object AskingHandlers : AskingServiceHandlers {
                 McpContent.ResourceLink("workspace://documents/doc-1", "id-card.pdf", "Id card", null, "application/pdf"),
                 McpContent.Resource("workspace://documents/doc-2", "text/plain", McpResourceContents.Text("passport")),
                 McpContent.Resource("workspace://documents/doc-3", null, McpResourceContents.Blob(listOf<UByte>(9u, 8u, 7u))),
+            ),
+        )
+    }
+
+    override suspend fun connectRenamed(req: String): AskingServiceConnectRenamedResult {
+        note(JsonPrimitive("connect-renamed"), JsonPrimitive(req))
+        return AskingServiceConnectRenamedResult.Declared(
+            AskingRenamedErrorNeedsConnection(
+                "Connect your Google Drive so this server can import the file.",
+                "https://mcp.example.com/connect/drive?request=7f3a",
+            ),
+        )
+    }
+
+    override suspend fun connectByKind(req: String): AskingServiceConnectByKindResult {
+        note(JsonPrimitive("connect-by-kind"), JsonPrimitive(req))
+        return AskingServiceConnectByKindResult.Declared(
+            AskingKindErrorNeedsConnection(
+                "Connect your Google Drive so this server can import the file.",
+                "https://mcp.example.com/connect/drive?request=7f3a",
             ),
         )
     }
@@ -219,6 +240,8 @@ fn definitions() -> Vec<String> {
         asking_confirmation_kotlin::kotlin_definition(),
         asking_error_kotlin::kotlin_definition(),
         asking_link_error_kotlin::kotlin_definition(),
+        asking_renamed_error_kotlin::kotlin_definition(),
+        asking_kind_error_kotlin::kotlin_definition(),
         asking_miss_kotlin::kotlin_definition(),
         asking_report_request_kotlin::kotlin_definition(),
         asking_linked_kotlin::kotlin_definition(),

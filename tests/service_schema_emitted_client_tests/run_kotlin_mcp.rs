@@ -17,7 +17,7 @@ use super::mcp_mobile_rows::{
 };
 use super::mcp_mobile_server_rows::{
     HttpRow, ORIGIN, ServerRow, billing_answer, expected, http_rows, observed, rust_http,
-    server_rows, workspace_answer, wrapped_refusal_requests,
+    server_rows, workspace_answer,
 };
 use super::mcp_mobile_service::Archive;
 use super::mcp_mobile_service::{
@@ -159,7 +159,6 @@ suspend fun serverReport(input: JsonObject): JsonObject {
             }
         })
     }
-    val wrappedAnswers = input.getValue("wrapped").jsonArray.map { nullable(alone(it.jsonPrimitive.content, nowhere, MobileDocumentServiceMcpInFlight())) }
     val aloneAnswers = requests.map { nullable(alone(it, nowhere, MobileDocumentServiceMcpInFlight())) }
     val billingAnswers = requests.map { nullable(billingAlone(it, nowhere, MobileBillingServiceMcpInFlight())) }
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
@@ -205,10 +204,49 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     } catch (refused: IllegalStateException) {
         refused.message ?: ""
     }
+    val faultsOf = { held: MutableList<JsonElement> ->
+        { fault: MobileDocumentServiceFaultFields -> held.add(Json.encodeToJsonElement(serializer<MobileDocumentServiceFaultFields>(), fault)); Unit }
+    }
+    val touchPanic = requests.first { it.contains("\"reader\":\"panic\"") }
+    val heardFaults = mutableListOf<JsonElement>()
+    val heard = createMobileDocumentServiceMcpDispatcher(null, faultsOf(heardFaults)) { DocumentHandlers }(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+    val cancelling = object : MobileDocumentServiceHandlers by DocumentHandlers {
+        override suspend fun touchDocument(req: TouchDocumentRequest) { throw CancellationException("cancelled") }
+    }
+    val cancelledFaults = mutableListOf<JsonElement>()
+    val cancelled = try {
+        createMobileDocumentServiceMcpDispatcher(null, faultsOf(cancelledFaults)) { cancelling }(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+        "answered"
+    } catch (rethrown: CancellationException) {
+        "rethrown"
+    }
+    val routedFaults = mutableListOf<JsonElement>()
+    val routed = createMobileDocumentServiceMcpRoute(DocumentHandlers, faultsOf(routedFaults))(
+        "tools/call",
+        buildJsonObject { put("name", "touch-document"); put("arguments", buildJsonObject { put("documentId", "doc-1"); put("reader", "panic") }) },
+    )
+    val originalErr = System.err
+    val printed = java.io.ByteArrayOutputStream()
+    System.setErr(java.io.PrintStream(printed, true))
+    val silent = try {
+        alone(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+    } finally {
+        System.setErr(originalErr)
+    }
+    val oneWay = buildJsonObject {
+        put("heard", nullable(heard))
+        put("heardFaults", JsonArray(heardFaults))
+        put("cancelled", cancelled)
+        put("cancelledFaults", JsonArray(cancelledFaults))
+        put("routed", routed ?: JsonNull)
+        put("routedFaults", JsonArray(routedFaults))
+        put("silent", nullable(silent))
+        put("printed", printed.toString())
+    }
     return buildJsonObject {
+        put("oneWay", oneWay)
         put("workspace", JsonArray(workspaceAnswers))
         put("alone", JsonArray(aloneAnswers))
-        put("wrapped", JsonArray(wrappedAnswers))
         put("billing", JsonArray(billingAnswers))
         put("badRoutes", JsonArray(badRoutes))
         put("http", JsonArray(httpAnswers))
@@ -579,7 +617,6 @@ fn input() -> Value {
         "origin": ORIGIN,
         "writer": writer_input(),
         "requests": server_rows().iter().map(|row| row.text.clone()).collect::<Vec<_>>(),
-        "wrapped": wrapped_refusal_requests().iter().map(|(_, text)| text.clone()).collect::<Vec<_>>(),
         "http": http_rows().iter().map(http_input).collect::<Vec<_>>(),
         "replies": replies,
         "oauth": {
@@ -681,20 +718,6 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         &rows,
     );
     assert_answers("billing", billing_answer, &texts(&server["billing"]), &rows);
-    for ((tool, _), answered) in wrapped_refusal_requests()
-        .iter()
-        .zip(texts(&server["wrapped"]))
-    {
-        let reply: Value = serde_json::from_str(&answered.unwrap()).unwrap();
-        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
-        let fault: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(
-            fault["fault"]["kind"], "failed-validation",
-            "{tool}: {reply}"
-        );
-        assert_eq!(fault["fault"]["field"], "document_id", "{tool}: {reply}");
-        assert_eq!(fault["fault"]["operation"], *tool, "{reply}");
-    }
     let bad_routes = texts(&server["badRoutes"]);
     assert_eq!(bad_routes.len(), 3);
     for answered in bad_routes {
@@ -712,6 +735,40 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         server["kept"], "built",
         "a tool and a prompt of one name do not collide"
     );
+}
+
+#[test]
+fn a_one_way_handler_that_throws_reaches_the_callback_or_standard_error() {
+    let Some(report) = driven() else {
+        return;
+    };
+    let one_way = &report["server"]["oneWay"];
+    let empty = |reply: &Value| {
+        let parsed: Value = serde_json::from_str(reply.as_str().unwrap()).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed:#}");
+        assert_eq!(parsed["result"]["content"], json!([]), "{parsed:#}");
+    };
+    empty(&one_way["heard"]);
+    empty(&one_way["silent"]);
+    assert_eq!(one_way["routed"]["result"]["isError"], false, "{one_way:#}");
+    for held in ["heardFaults", "routedFaults"] {
+        let faults = one_way[held].as_array().unwrap();
+        assert_eq!(faults.len(), 1, "{held}: {one_way:#}");
+        assert_eq!(faults[0]["kind"], "handler-panic", "{held}: {one_way:#}");
+        assert_eq!(
+            faults[0]["operation"], "touch-document",
+            "{held}: {one_way:#}"
+        );
+        assert_eq!(
+            faults[0]["detail"], "the handler came apart",
+            "{held}: {one_way:#}"
+        );
+    }
+    assert_eq!(one_way["cancelled"], "rethrown", "{one_way:#}");
+    assert_eq!(one_way["cancelledFaults"], json!([]), "{one_way:#}");
+    let printed: Value = serde_json::from_str(one_way["printed"].as_str().unwrap().trim()).unwrap();
+    assert_eq!(printed["kind"], "handler-panic", "{one_way:#}");
+    assert_eq!(printed["operation"], "touch-document", "{one_way:#}");
 }
 
 #[test]

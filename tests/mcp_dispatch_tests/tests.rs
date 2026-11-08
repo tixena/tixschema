@@ -96,6 +96,30 @@ pub trait BillingService<Ctx> {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DocumentService<Ctx> {
+    /// Answers the versions of several documents, one request for each.
+    #[service_schema_op(mcp(title = "Versions Of Many"))]
+    async fn check_many(
+        &self,
+        ctx: &Ctx,
+        req: Vec<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
+    /// Answers the version of a document, if one is asked for.
+    #[service_schema_op(mcp(title = "Version Of Maybe One"))]
+    async fn check_maybe(
+        &self,
+        ctx: &Ctx,
+        req: Option<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
+    /// Answers the versions of documents asked for by name.
+    #[service_schema_op(mcp(title = "Versions By Name"))]
+    async fn check_named(
+        &self,
+        ctx: &Ctx,
+        req: HashMap<String, GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// The guide to the configuration of a workspace.
     #[service_schema_op(mcp(
         resource = "guide://configure-workspace",
@@ -313,6 +337,39 @@ impl BillingService<()> for Archive {
 }
 
 impl<Ctx> DocumentService<Ctx> for Archive {
+    fn check_many(
+        &self,
+        _ctx: &Ctx,
+        req: Vec<GetVersionRequest>,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(req.first().map_or(Err(VersionError::NotFound), |first| {
+            Self::version_of(&first.document_id)
+        }))
+    }
+
+    fn check_maybe(
+        &self,
+        _ctx: &Ctx,
+        req: Option<GetVersionRequest>,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(req.map_or(Err(VersionError::NotFound), |found| {
+            Self::version_of(&found.document_id)
+        }))
+    }
+
+    fn check_named(
+        &self,
+        _ctx: &Ctx,
+        req: HashMap<String, GetVersionRequest>,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(
+            req.get("first")
+                .map_or(Err(VersionError::NotFound), |found| {
+                    Self::version_of(&found.document_id)
+                }),
+        )
+    }
+
     fn configuration_guide(
         &self,
         _ctx: &Ctx,

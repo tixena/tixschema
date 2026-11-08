@@ -5,9 +5,10 @@
 #![cfg(feature = "swift")]
 
 use super::mcp_asking_rows::{
-    asking_confirmation_swift, asking_error_swift, asking_link_error_swift, asking_linked_swift,
-    asking_miss_swift, asking_priority_swift, asking_report_request_swift, asking_shipping_swift,
-    assert_client, client_input, delete_document_request_swift, ship_document_request_swift,
+    asking_confirmation_swift, asking_error_swift, asking_kind_error_swift,
+    asking_link_error_swift, asking_linked_swift, asking_miss_swift, asking_priority_swift,
+    asking_renamed_error_swift, asking_report_request_swift, asking_shipping_swift, assert_client,
+    client_input, delete_document_request_swift, ship_document_request_swift,
 };
 use super::mcp_mobile_rows::swift_text;
 use super::runtime::ran;
@@ -145,6 +146,8 @@ fn emitted() -> String {
         asking_confirmation_swift::swift_definition(),
         asking_error_swift::swift_definition(),
         asking_link_error_swift::swift_definition(),
+        asking_renamed_error_swift::swift_definition(),
+        asking_kind_error_swift::swift_definition(),
         asking_miss_swift::swift_definition(),
         asking_report_request_swift::swift_definition(),
         asking_linked_swift::swift_definition(),
