@@ -5,10 +5,7 @@
 mod api_key_headers {
     use super::*;
 
-    const KEYS: McpHttpSettings<'static> = McpHttpSettings {
-        allowed_origins: &[ORIGIN],
-        oauth: None,
-    };
+    const KEYS: McpHttpSettings<'static> = McpHttpSettings::new(&[ORIGIN], None);
 
     struct Account {
         organization_admin: bool,
@@ -52,7 +49,7 @@ mod api_key_headers {
         let mut asked = post(&get_version());
         for (name, held) in [("x-api-key", key), ("x-api-secret", secret)] {
             if let Some(text) = held {
-                asked = with_header(asked, name, text);
+                asked = with_header(&asked, name, text);
             }
         }
         asked
@@ -68,24 +65,24 @@ mod api_key_headers {
             (keyed(Some("unknown"), Some("unknown")), 403),
             (keyed(Some("member-key"), Some("member-secret")), 403),
             (keyed(admin.0, admin.1), 200),
-            (with_header(keyed(admin.0, admin.1), "Origin", ORIGIN), 200),
+            (with_header(&keyed(admin.0, admin.1), "Origin", ORIGIN), 200),
             (
                 with_header(
-                    keyed(admin.0, admin.1),
+                    &keyed(admin.0, admin.1),
                     "Origin",
                     "https://evil.example.com",
                 ),
                 403,
             ),
             (
-                with_header(keyed(None, None), "Origin", "https://evil.example.com"),
+                with_header(&keyed(None, None), "Origin", "https://evil.example.com"),
                 403,
             ),
         ];
         for (asked, status) in cases {
             let response = respond_keys(&asked);
-            assert_eq!(response.status, status, "{:?}", asked.headers);
-            assert_eq!(challenge(&response), None, "{:?}", asked.headers);
+            assert_eq!(response.status(), status, "{:?}", asked.headers());
+            assert_eq!(challenge(&response), None, "{:?}", asked.headers());
         }
     }
 }
@@ -106,17 +103,14 @@ const METADATA_URL: &str = "https://mcp.example.com/.well-known/oauth-protected-
 const METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
 const RESOURCE: &str = "https://mcp.example.com/mcp";
 
-const OAUTH: McpOAuth<'static> = McpOAuth {
-    authorization_servers: &["https://auth.example.com"],
-    resource: RESOURCE,
-    resource_metadata_url: METADATA_URL,
-    scopes_supported: &["documents:read"],
-};
+const OAUTH: McpOAuth<'static> = McpOAuth::new(
+    &["https://auth.example.com"],
+    RESOURCE,
+    METADATA_URL,
+    &["documents:read"],
+);
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[ORIGIN],
-    oauth: Some(OAUTH),
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[ORIGIN], Some(OAUTH));
 
 struct Claims {
     scope: &'static str,
@@ -173,25 +167,36 @@ fn respond(asked: &McpHttpRequest) -> McpHttpResponse {
     respond_with(asked, &SETTINGS)
 }
 
-fn with_header(mut asked: McpHttpRequest, name: &str, value: &str) -> McpHttpRequest {
-    asked.headers.push((name.to_owned(), value.to_owned()));
-    asked
+fn edited(from: &McpHttpRequest, edit: impl FnOnce(&mut Vec<(String, String)>)) -> McpHttpRequest {
+    let mut headers = from.headers().to_vec();
+    edit(&mut headers);
+    McpHttpRequest::new(
+        from.method().to_owned(),
+        from.path().to_owned(),
+        headers,
+        from.body().to_vec(),
+    )
 }
 
-fn without_name(mut asked: McpHttpRequest) -> McpHttpRequest {
-    asked
-        .headers
-        .retain(|(name, _)| !name.eq_ignore_ascii_case("mcp-name"));
-    asked
+fn with_header(asked: &McpHttpRequest, name: &str, value: &str) -> McpHttpRequest {
+    edited(asked, |headers| {
+        headers.push((name.to_owned(), value.to_owned()));
+    })
 }
 
-fn bearing(token: &str, asked: McpHttpRequest) -> McpHttpRequest {
+fn without_name(asked: &McpHttpRequest) -> McpHttpRequest {
+    edited(asked, |headers| {
+        headers.retain(|(name, _)| !name.eq_ignore_ascii_case("mcp-name"));
+    })
+}
+
+fn bearing(token: &str, asked: &McpHttpRequest) -> McpHttpRequest {
     with_header(asked, "Authorization", &format!("Bearer {token}"))
 }
 
 fn challenge(response: &McpHttpResponse) -> Option<&str> {
     response
-        .headers
+        .headers()
         .iter()
         .find(|(name, _)| name == "WWW-Authenticate")
         .map(|(_, value)| value.as_str())
@@ -206,24 +211,24 @@ fn rename() -> Value {
 }
 
 fn metadata_get() -> McpHttpRequest {
-    McpHttpRequest {
-        body: Vec::new(),
-        headers: Vec::new(),
-        method: "GET".to_owned(),
-        path: METADATA_PATH.to_owned(),
-    }
+    McpHttpRequest::new(
+        "GET".to_owned(),
+        METADATA_PATH.to_owned(),
+        Vec::new(),
+        Vec::new(),
+    )
 }
 
 #[test]
 fn a_get_at_the_metadata_path_answers_the_document_byte_for_byte() {
     let response = respond(&metadata_get());
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status(), 200);
     assert_eq!(
-        response.headers,
+        response.headers(),
         [("Content-Type".to_owned(), "application/json".to_owned())]
     );
     assert_eq!(
-        String::from_utf8(response.body).unwrap(),
+        String::from_utf8(response.body().to_vec()).unwrap(),
         concat!(
             r#"{"authorization_servers":["https://auth.example.com"],"#,
             r#""bearer_methods_supported":["header"],"#,
@@ -235,15 +240,21 @@ fn a_get_at_the_metadata_path_answers_the_document_byte_for_byte() {
 
 #[test]
 fn the_metadata_document_leaves_out_an_empty_scope_list_and_ignores_a_query() {
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: Some(McpOAuth {
-            scopes_supported: &[],
-            ..OAUTH
-        }),
-    };
-    let mut asked = metadata_get();
-    asked.path = format!("{METADATA_PATH}?probe=1");
+    let settings = McpHttpSettings::new(
+        &[],
+        Some(McpOAuth::new(
+            OAUTH.authorization_servers(),
+            OAUTH.resource(),
+            OAUTH.resource_metadata_url(),
+            &[],
+        )),
+    );
+    let asked = McpHttpRequest::new(
+        "GET".to_owned(),
+        format!("{METADATA_PATH}?probe=1"),
+        Vec::new(),
+        Vec::new(),
+    );
     let sent = body_of(&respond_with(&asked, &settings));
     assert!(sent.get("scopes_supported").is_none(), "{sent}");
     assert_eq!(sent["resource"], RESOURCE);
@@ -251,27 +262,24 @@ fn the_metadata_document_leaves_out_an_empty_scope_list_and_ignores_a_query() {
 
 #[test]
 fn the_metadata_path_is_answered_ahead_of_the_origin_rule_and_without_credentials() {
-    let asked = with_header(metadata_get(), "Origin", "https://evil.example.com");
-    assert_eq!(respond(&asked).status, 200);
+    let asked = with_header(&metadata_get(), "Origin", "https://evil.example.com");
+    assert_eq!(respond(&asked).status(), 200);
 }
 
 #[test]
 fn a_get_elsewhere_or_without_oauth_answers_405() {
-    let mut elsewhere = metadata_get();
-    "/mcp".clone_into(&mut elsewhere.path);
-    assert_eq!(respond(&elsewhere).status, 405);
-    let without_oauth = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
-    assert_eq!(respond_with(&metadata_get(), &without_oauth).status, 405);
+    let elsewhere =
+        McpHttpRequest::new("GET".to_owned(), "/mcp".to_owned(), Vec::new(), Vec::new());
+    assert_eq!(respond(&elsewhere).status(), 405);
+    let without_oauth = McpHttpSettings::new(&[], None);
+    assert_eq!(respond_with(&metadata_get(), &without_oauth).status(), 405);
 }
 
 #[test]
 fn no_credentials_answers_401_naming_the_scope_the_operation_needs() {
     let response = respond(&post(&rename()));
-    assert_eq!(response.status, 401);
-    assert_eq!(response.body, Vec::<u8>::new());
+    assert_eq!(response.status(), 401);
+    assert_eq!(response.body(), Vec::<u8>::new());
     assert_eq!(
         challenge(&response),
         Some(&*format!(
@@ -284,7 +292,7 @@ fn no_credentials_answers_401_naming_the_scope_the_operation_needs() {
 fn no_credentials_for_an_operation_without_scopes_names_none() {
     let list = request(&id(3), "tools/list", json!({}));
     let response = respond(&post(&list));
-    assert_eq!(response.status, 401);
+    assert_eq!(response.status(), 401);
     assert_eq!(
         challenge(&response),
         Some(&*format!("Bearer resource_metadata=\"{METADATA_URL}\""))
@@ -293,8 +301,8 @@ fn no_credentials_for_an_operation_without_scopes_names_none() {
 
 #[test]
 fn a_token_that_does_not_hold_answers_401_with_invalid_token() {
-    let response = respond(&bearing("forged", post(&get_version())));
-    assert_eq!(response.status, 401);
+    let response = respond(&bearing("forged", &post(&get_version())));
+    assert_eq!(response.status(), 401);
     assert_eq!(
         challenge(&response),
         Some(&*format!(
@@ -308,7 +316,7 @@ fn a_notification_without_credentials_answers_401() {
     let notification =
         json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": {} });
     let response = respond(&post(&notification));
-    assert_eq!(response.status, 401);
+    assert_eq!(response.status(), 401);
     assert_eq!(
         challenge(&response),
         Some(&*format!("Bearer resource_metadata=\"{METADATA_URL}\""))
@@ -317,10 +325,10 @@ fn a_notification_without_credentials_answers_401() {
 
 #[test]
 fn enough_scopes_answer_200() {
-    let response = respond(&bearing("read-token", post(&get_version())));
-    assert_eq!(response.status, 200);
+    let response = respond(&bearing("read-token", &post(&get_version())));
+    assert_eq!(response.status(), 200);
     assert_eq!(
-        respond(&bearing("write-token", post(&rename()))).status,
+        respond(&bearing("write-token", &post(&rename()))).status(),
         200
     );
 }
@@ -331,16 +339,16 @@ fn too_few_scopes_answer_403_naming_the_missing_scope_with_a_plain_or_base64_nam
         "Bearer error=\"insufficient_scope\", scope=\"documents:write\", \
          resource_metadata=\"{METADATA_URL}\""
     );
-    let plain = respond(&bearing("read-token", post(&rename())));
-    assert_eq!(plain.status, 403);
+    let plain = respond(&bearing("read-token", &post(&rename())));
+    assert_eq!(plain.status(), 403);
     assert_eq!(challenge(&plain), Some(&*expected));
     let encoded = with_header(
-        without_name(post(&rename())),
+        &without_name(&post(&rename())),
         "Mcp-Name",
         "=?base64?cmVuYW1lLWRvY3VtZW50?=",
     );
-    let response = respond(&bearing("read-token", encoded));
-    assert_eq!(response.status, 403);
+    let response = respond(&bearing("read-token", &encoded));
+    assert_eq!(response.status(), 403);
     assert_eq!(challenge(&response), Some(&*expected));
 }
 
@@ -357,16 +365,13 @@ fn a_forbidden_answers_403_with_no_challenge() {
             },
         ))
     });
-    assert_eq!(response.status, 403);
+    assert_eq!(response.status(), 403);
     assert_eq!(challenge(&response), None);
 }
 
 #[test]
 fn without_oauth_every_denial_answers_its_status_with_no_challenge() {
-    let settings = McpHttpSettings {
-        allowed_origins: &[ORIGIN],
-        oauth: None,
-    };
+    let settings = McpHttpSettings::new(&[ORIGIN], None);
     for (denied, status) in [
         (McpDenied::NoValidCredentials { scope: None }, 401),
         (
@@ -385,7 +390,7 @@ fn without_oauth_every_denial_answers_its_status_with_no_challenge() {
     ] {
         let response = through(|stream| {
             block_on(document_mcp::answer_http(
-                &bearing("forged", post(&get_version())),
+                &bearing("forged", &post(&get_version())),
                 &settings,
                 stream,
                 &Archive::default(),
@@ -394,17 +399,17 @@ fn without_oauth_every_denial_answers_its_status_with_no_challenge() {
                 },
             ))
         });
-        assert_eq!(response.status, status, "{denied:?}");
+        assert_eq!(response.status(), status, "{denied:?}");
         assert_eq!(challenge(&response), None, "{denied:?}");
-        assert_eq!(response.body, Vec::<u8>::new(), "{denied:?}");
+        assert_eq!(response.body(), Vec::<u8>::new(), "{denied:?}");
     }
 }
 
 #[test]
 fn an_origin_that_is_not_allowed_is_refused_ahead_of_admit_with_no_challenge() {
-    let asked = with_header(post(&get_version()), "Origin", "https://evil.example.com");
+    let asked = with_header(&post(&get_version()), "Origin", "https://evil.example.com");
     let response = respond(&asked);
-    assert_eq!(response.status, 403);
+    assert_eq!(response.status(), 403);
     assert_eq!(challenge(&response), None);
 }
 
@@ -413,7 +418,7 @@ fn admit_reads_the_method_and_the_name_ahead_of_the_rule_that_holds_them_to_the_
     let seen = Mutex::new(Vec::new());
     let archive = Archive::default();
     let asked = with_header(
-        without_name(post(&get_version())),
+        &without_name(&post(&get_version())),
         "Mcp-Name",
         "rename-document",
     );
@@ -439,7 +444,7 @@ fn admit_reads_the_method_and_the_name_ahead_of_the_rule_that_holds_them_to_the_
             Some("rename-document".to_owned())
         )]
     );
-    assert_eq!(response.status, 400);
+    assert_eq!(response.status(), 400);
     let sent = body_of(&response);
     assert_eq!(sent["error"]["code"], HEADER_MISMATCH);
     assert_error("HeaderMismatchError", &sent);
@@ -451,7 +456,7 @@ fn a_name_that_names_a_read_tool_over_a_write_body_reaches_no_handler() {
     let archive = Archive::default();
     let asked = bearing(
         "read-token",
-        with_header(without_name(post(&rename())), "Mcp-Name", "get-version"),
+        &with_header(&without_name(&post(&rename())), "Mcp-Name", "get-version"),
     );
     let response = through(|stream| {
         block_on(document_mcp::answer_http(
@@ -462,14 +467,14 @@ fn a_name_that_names_a_read_tool_over_a_write_body_reaches_no_handler() {
             admit_scopes,
         ))
     });
-    assert_eq!(response.status, 400);
+    assert_eq!(response.status(), 400);
     assert_eq!(body_of(&response)["error"]["code"], HEADER_MISMATCH);
     assert!(archive.reached.lock().unwrap().is_empty());
 }
 
 #[test]
 fn the_helpers_read_the_authorization_header() {
-    let asked = |value: &str| with_header(post(&get_version()), "authorization", value);
+    let asked = |value: &str| with_header(&post(&get_version()), "authorization", value);
     assert_eq!(asked("Bearer abc").bearer_token(), Some("abc"));
     assert_eq!(asked("bEaReR abc").bearer_token(), Some("abc"));
     assert_eq!(asked("Basic abc").bearer_token(), None);
@@ -560,8 +565,8 @@ fn a_resource_read_without_the_scope_answers_403_insufficient_scope() {
         ("guide://configure-workspace", "guides:read"),
         ("workspace://documents/doc-1", "documents:read files:read"),
     ] {
-        let response = respond(&bearing("read-token", read(uri)));
-        assert_eq!(response.status, 403, "{uri}");
+        let response = respond(&bearing("read-token", &read(uri)));
+        assert_eq!(response.status(), 403, "{uri}");
         assert_eq!(
             challenge(&response),
             Some(&*format!(
@@ -572,11 +577,11 @@ fn a_resource_read_without_the_scope_answers_403_insufficient_scope() {
         );
     }
     let encoded = with_header(
-        without_name(read("guide://configure-workspace")),
+        &without_name(&read("guide://configure-workspace")),
         "Mcp-Name",
         "=?base64?Z3VpZGU6Ly9jb25maWd1cmUtd29ya3NwYWNl?=",
     );
-    assert_eq!(respond(&bearing("read-token", encoded)).status, 403);
+    assert_eq!(respond(&bearing("read-token", &encoded)).status(), 403);
 }
 
 #[test]
@@ -586,8 +591,8 @@ fn a_resource_read_with_the_scopes_reaches_the_handler() {
         "resources/read",
         json!({ "uri": "workspace://documents/doc-1" }),
     ));
-    let response = respond(&bearing("file-token", read));
-    assert_eq!(response.status, 200);
+    let response = respond(&bearing("file-token", &read));
+    assert_eq!(response.status(), 200);
     let sent = body_of(&response);
     assert_valid("JSONRPCResultResponse", &sent);
     assert_eq!(sent["result"]["contents"][0]["blob"], "JVBERi0=");
@@ -621,10 +626,7 @@ fn the_second_service_denies_and_reads_the_name_as_the_first_does() {
         "get-balance",
         &json!({ "value": "acct-1", "x-ledger": "main" }),
     ));
-    let settings = billing_mcp::McpHttpSettings {
-        allowed_origins: &[ORIGIN],
-        oauth: None,
-    };
+    let settings = billing_mcp::McpHttpSettings::new(&[ORIGIN], None);
     for (denied, status) in [
         (
             billing_mcp::McpDenied::NoValidCredentials { scope: None },
@@ -650,15 +652,15 @@ fn the_second_service_denies_and_reads_the_name_as_the_first_does() {
                 },
             ))
         });
-        assert_eq!(response.status, status, "{denied:?}");
+        assert_eq!(response.status(), status, "{denied:?}");
     }
 }
 
 fn billing_request(from: &McpHttpRequest) -> billing_mcp::McpHttpRequest {
-    billing_mcp::McpHttpRequest {
-        body: from.body.clone(),
-        headers: from.headers.clone(),
-        method: from.method.clone(),
-        path: from.path.clone(),
-    }
+    billing_mcp::McpHttpRequest::new(
+        from.method().to_owned(),
+        from.path().to_owned(),
+        from.headers().to_vec(),
+        from.body().to_vec(),
+    )
 }

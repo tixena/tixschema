@@ -24,8 +24,8 @@ struct Canned {
 
 impl Transport for Canned {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
-        assert_eq!(message.method, "tools/call");
-        assert_eq!(message.name.as_deref(), Some("get-version"));
+        assert_eq!(message.method(), "tools/call");
+        assert_eq!(message.name(), Some("get-version"));
         self.sent.fetch_add(1, Ordering::Relaxed);
         let answer = self.answer.clone();
         async move { answer }

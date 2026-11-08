@@ -12,8 +12,16 @@ pub(super) fn types() -> TokenStream {
     let event_stream = event_stream_type();
     quote! {
         /// The client has gone: a write to it failed.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+        #[non_exhaustive]
         pub struct McpClientGone;
+
+        impl McpClientGone {
+            /// The failure a writer answers once its client has gone.
+            pub const fn new() -> Self {
+                Self
+            }
+        }
 
         /// Where the transport writes a message beyond the answer: one line on stdio, one event of
         /// an event-stream answer on HTTP. A failed write means the client has gone.
@@ -52,8 +60,25 @@ pub(super) fn types() -> TokenStream {
 
         /// What `serve` writes to, and the requests it has in flight.
         pub struct McpHost<'host, W> {
-            pub in_flight: &'host McpInFlight,
-            pub writer: &'host W,
+            in_flight: &'host McpInFlight,
+            writer: &'host W,
+        }
+
+        impl<'host, W> McpHost<'host, W> {
+            /// The requests it has in flight.
+            pub const fn in_flight(&self) -> &'host McpInFlight {
+                self.in_flight
+            }
+
+            /// Binds the table of requests in flight and the writer.
+            pub const fn new(in_flight: &'host McpInFlight, writer: &'host W) -> Self {
+                Self { in_flight, writer }
+            }
+
+            /// Where it writes.
+            pub const fn writer(&self) -> &'host W {
+                self.writer
+            }
         }
 
         #call
@@ -181,7 +206,7 @@ fn call() -> TokenStream {
 
             /// The call of an HTTP request, read before its body is judged.
             fn of_body(request: &McpHttpRequest) -> Self {
-                match ::serde_json::from_slice::<::serde_json::Value>(&request.body) {
+                match ::serde_json::from_slice::<::serde_json::Value>(request.body()) {
                     ::core::result::Result::Ok(message) => Self::of(&message),
                     ::core::result::Result::Err(_) => Self::new(::core::option::Option::None),
                 }

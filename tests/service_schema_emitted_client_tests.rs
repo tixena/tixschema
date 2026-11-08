@@ -2046,3 +2046,31 @@ mod run_swift_mcp_wire;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/mcp_library_clients.rs"]
 mod mcp_library_clients;
+
+#[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/published_structs.rs"]
+mod published_structs;
+
+#[cfg(test)]
+mod published {
+    built_and_read_back!(
+        mcp_asking_dispatcher,
+        mcp_bare_dispatcher,
+        mcp_depot_dispatcher,
+        mcp_guide_dispatcher,
+        mcp_lesson_dispatcher,
+        mcp_library_dispatcher,
+        mcp_preview_dispatcher,
+        mcp_shelf_dispatcher,
+        mcp_stacks_dispatcher,
+        mcp_wire_mcp_transport,
+        mcp_writer_dispatcher,
+    );
+}
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+mod published_mobile {
+    built_and_read_back!(mcp_mobile_billing, mcp_mobile_document);
+}

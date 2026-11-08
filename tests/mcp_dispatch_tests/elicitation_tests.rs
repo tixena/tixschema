@@ -16,24 +16,24 @@ mod over_http {
         &[approval_mcp::catalog],
     );
 
-    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: Some(McpOAuth {
-            authorization_servers: &["https://auth.example.com"],
-            resource: "https://mcp.example.com/mcp",
-            resource_metadata_url: "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
-            scopes_supported: &[],
-        }),
-    };
+    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(
+        &[],
+        Some(McpOAuth::new(
+            &["https://auth.example.com"],
+            "https://mcp.example.com/mcp",
+            "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
+            &[],
+        )),
+    );
 
     fn asked(message: &Value) -> McpHttpRequest {
         let from = post(message);
-        McpHttpRequest {
-            body: from.body,
-            headers: from.headers,
-            method: from.method,
-            path: from.path,
-        }
+        McpHttpRequest::new(
+            from.method().to_owned(),
+            from.path().to_owned(),
+            from.headers().to_vec(),
+            from.body().to_vec(),
+        )
     }
 
     fn message() -> Value {
@@ -60,11 +60,7 @@ mod over_http {
                     &asked(&message()),
                     &SETTINGS,
                     stream,
-                    &approval_mcp::McpServer {
-                        endpoint: &ENDPOINT,
-                        instructions: None,
-                        name: "Approvals",
-                    },
+                    &approval_mcp::McpServer::new(&ENDPOINT, None, "Approvals"),
                     async |request: &McpHttpRequest, _call: McpCall| {
                         assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
                         assert_eq!(request.bearer_token(), None);
@@ -82,7 +78,7 @@ mod over_http {
                     },
                 ))
             });
-            assert!(matches!(response.status, 401 | 403), "{denied:?}");
+            assert!(matches!(response.status(), 401 | 403), "{denied:?}");
         }
         let response = through(|stream| {
             block_on(approval_mcp::answer_http(
@@ -93,8 +89,8 @@ mod over_http {
                 async |_request, _call| Ok(()),
             ))
         });
-        assert_eq!(response.status, 200);
-        let sent: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(response.status(), 200);
+        let sent: Value = serde_json::from_slice(response.body()).unwrap();
         assert_result("CallToolResult", &sent);
 
         let text = block_on(approval_mcp::serve(
@@ -103,10 +99,7 @@ mod over_http {
             None,
             &ENDPOINT,
             |_call| (),
-            approval_mcp::McpHost {
-                in_flight: &approval_mcp::McpInFlight::default(),
-                writer: &Lines::default(),
-            },
+            approval_mcp::McpHost::new(&approval_mcp::McpInFlight::default(), &Lines::default()),
             &|ctx: &(), part, method: &str, params: &Value| {
                 let held = approvals.clone();
                 Box::pin(async move {
@@ -152,10 +145,7 @@ mod with_progress {
             None,
             &ENDPOINT,
             |call| call.progress(1.0_f64, None, Some("asking")),
-            McpHost {
-                in_flight: &McpInFlight::default(),
-                writer: lines,
-            },
+            McpHost::new(&McpInFlight::default(), lines),
             &|_ctx: &(), part, method: &str, params: &Value| {
                 Box::pin(async move {
                     match part {
@@ -212,16 +202,16 @@ impl Transport for Dispatching<'_> {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
         assert_valid(
             "CallToolRequest",
-            &serde_json::from_str(&message.text).unwrap(),
+            &serde_json::from_str(message.text()).unwrap(),
         );
-        let sent = (message.method, message.name, message.protocol_version);
+        let sent = (message.method(), message.name(), message.protocol_version());
         assert_eq!(sent.0, "tools/call");
         assert!(sent.1.is_some());
         assert_eq!(sent.2, "2026-07-28");
         let approvals = self.approvals;
         async move {
             Ok(approval_mcp::answer(
-                &message.text,
+                message.text(),
                 approvals,
                 |_call| (),
                 &Lines::default(),

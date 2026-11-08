@@ -13,10 +13,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use serde_json::{Value, json};
 use std::sync::Mutex;
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[],
-    oauth: None,
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
 const PROGRESS_FIRST: &str = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{\"message\":\"exported 1 of 3 files\",\"progress\":1.0,\"progressToken\":\"export-1\",\"total\":3.0}}";
 
@@ -53,23 +50,20 @@ fn answer_export(asked: &Value, lines: &Lines) -> Option<Value> {
 }
 
 fn post(asked: &Value) -> McpHttpRequest {
-    McpHttpRequest {
-        body: asked.to_string().into_bytes(),
-        headers: vec![
+    McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "export-folder".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    }
+        asked.to_string().into_bytes(),
+    )
 }
 
 fn respond(asked: &Value) -> export_mcp::McpHttpResponse {
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = McpHttpSettings::new(&[], None);
     through(|stream| {
         block_on(export_mcp::answer_http(
             &post(asked),
@@ -84,7 +78,7 @@ fn respond(asked: &Value) -> export_mcp::McpHttpResponse {
 }
 
 fn events_of(response: &export_mcp::McpHttpResponse) -> Vec<Value> {
-    let body = String::from_utf8(response.body.clone()).unwrap();
+    let body = String::from_utf8(response.body().to_vec()).unwrap();
     body.split_terminator("\n\n")
         .map(|event| {
             let data = event.strip_prefix("event: message\ndata: ").unwrap();
@@ -179,9 +173,9 @@ fn a_write_that_fails_cancels_the_call_and_drops_the_answer() {
 #[test]
 fn a_request_with_a_token_answers_an_event_stream_over_http() {
     let response = respond(&export(1, "docs", Some("export-1")));
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status(), 200);
     assert_eq!(
-        response.headers,
+        response.headers(),
         vec![
             ("Content-Type".to_owned(), "text/event-stream".to_owned()),
             ("X-Accel-Buffering".to_owned(), "no".to_owned()),
@@ -201,12 +195,12 @@ fn a_request_with_a_token_answers_an_event_stream_over_http() {
 #[test]
 fn a_request_without_a_token_answers_one_json_object_over_http() {
     let response = respond(&export(1, "docs", None));
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status(), 200);
     assert_eq!(
-        response.headers,
+        response.headers(),
         vec![("Content-Type".to_owned(), "application/json".to_owned())]
     );
-    let answered: Value = serde_json::from_slice(&response.body).unwrap();
+    let answered: Value = serde_json::from_slice(response.body()).unwrap();
     assert_valid("JSONRPCResultResponse", &answered);
 }
 
@@ -214,12 +208,16 @@ fn a_request_without_a_token_answers_one_json_object_over_http() {
 fn an_error_answer_closes_the_event_stream_too() {
     let mut asked = call(&id(1), "delete-everything", &json!({}));
     asked["params"]["_meta"]["progressToken"] = json!("export-1");
-    let mut unknown = post(&asked);
-    unknown.headers[2].1 = "delete-everything".to_owned();
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let posted = post(&asked);
+    let mut headers = posted.headers().to_vec();
+    headers[2].1 = "delete-everything".to_owned();
+    let unknown = McpHttpRequest::new(
+        posted.method().to_owned(),
+        posted.path().to_owned(),
+        headers,
+        posted.body().to_vec(),
+    );
+    let settings = McpHttpSettings::new(&[], None);
     let response = through(|stream| {
         block_on(export_mcp::answer_http(
             &unknown,
@@ -268,10 +266,7 @@ fn the_stdio_host_drops_the_answer_of_an_export_the_client_cancelled() {
                 None,
                 &WORKSPACE,
                 |call| reporting(&call),
-                export_mcp::McpHost {
-                    in_flight,
-                    writer: stdout,
-                },
+                export_mcp::McpHost::new(in_flight, stdout),
                 &|ctx: &Reporting, part, method: &str, params: &Value| {
                     let held = archive.clone();
                     Box::pin(async move {
@@ -338,10 +333,7 @@ fn a_cancellation_of_a_request_nobody_runs_changes_nothing() {
 #[test]
 fn a_call_without_a_token_ignores_progress_in_every_dispatcher() {
     let archive = Archive::default();
-    let settings = document_mcp::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = document_mcp::McpHttpSettings::new(&[], None);
     let response = through(|stream| {
         block_on(document_mcp::answer_http(
             &http_tests::post(&http_tests::get_version()),
@@ -355,11 +347,8 @@ fn a_call_without_a_token_ignores_progress_in_every_dispatcher() {
             },
         ))
     });
-    assert_eq!(response.status, 200);
-    let billing_settings = billing_mcp::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    assert_eq!(response.status(), 200);
+    let billing_settings = billing_mcp::McpHttpSettings::new(&[], None);
     let denied = through(|stream| {
         block_on(billing_mcp::answer_http(
             &billing_post(),
@@ -373,7 +362,7 @@ fn a_call_without_a_token_ignores_progress_in_every_dispatcher() {
             },
         ))
     });
-    assert_eq!(denied.status, 403);
+    assert_eq!(denied.status(), 403);
 }
 
 fn billing_post() -> billing_mcp::McpHttpRequest {
@@ -382,40 +371,40 @@ fn billing_post() -> billing_mcp::McpHttpRequest {
         "get-balance",
         &json!({ "value": "acct-1", "x-ledger": "main" }),
     );
-    billing_mcp::McpHttpRequest {
-        body: asked.to_string().into_bytes(),
-        headers: vec![
+    billing_mcp::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "get-balance".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    }
+        asked.to_string().into_bytes(),
+    )
 }
 
 #[test]
 fn serve_http_streams_for_an_endpoint_and_its_admit_may_deny_by_name() {
     static ONLY_EXPORT: McpEndpoint =
         McpEndpoint::new(&[ExportServiceSchema::MCP_NAMES], &[export_mcp::catalog]);
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = McpHttpSettings::new(&[], None);
     let archive = Archive::default();
     let serve = |asked: &Value, name: &str| {
-        let mut posted = post(asked);
-        posted.headers[2].1 = name.to_owned();
+        let from = post(asked);
+        let mut headers = from.headers().to_vec();
+        headers[2].1 = name.to_owned();
+        let posted = McpHttpRequest::new(
+            from.method().to_owned(),
+            from.path().to_owned(),
+            headers,
+            from.body().to_vec(),
+        );
         through(|stream| {
             block_on(export_mcp::serve_http(
                 &posted,
                 &settings,
                 stream,
-                &export_mcp::McpServer {
-                    endpoint: &ONLY_EXPORT,
-                    instructions: None,
-                    name: "Exports",
-                },
+                &export_mcp::McpServer::new(&ONLY_EXPORT, None, "Exports"),
                 async |request: &McpHttpRequest, call: McpCall| match request.mcp_name().as_deref()
                 {
                     Some("forbidden") => Err(export_mcp::McpDenied::Forbidden),
@@ -440,11 +429,11 @@ fn serve_http_streams_for_an_endpoint_and_its_admit_may_deny_by_name() {
         })
     };
     let streamed = serve(&export(1, "docs", Some("export-1")), "export-folder");
-    assert_eq!(streamed.status, 200);
+    assert_eq!(streamed.status(), 200);
     assert_eq!(events_of(&streamed).len(), 2);
     for (name, status) in [("forbidden", 403), ("scoped", 403), ("anonymous", 401)] {
         assert_eq!(
-            serve(&export(1, "docs", None), name).status,
+            serve(&export(1, "docs", None), name).status(),
             status,
             "{name}"
         );
@@ -578,20 +567,16 @@ fn a_one_object_answer_is_returned_and_the_stream_is_never_begun() {
         },
     ))
     .unwrap();
-    assert_eq!(answered.status, 200);
+    assert_eq!(answered.status(), 200);
     assert_valid(
         "JSONRPCResultResponse",
-        &serde_json::from_slice(&answered.body).unwrap(),
+        &serde_json::from_slice(answered.body()).unwrap(),
     );
     let served = block_on(export_mcp::serve_http(
         &asked,
         &SETTINGS,
         &stream,
-        &export_mcp::McpServer {
-            endpoint: &ONLY_EXPORT,
-            instructions: None,
-            name: "ExportService",
-        },
+        &export_mcp::McpServer::new(&ONLY_EXPORT, None, "ExportService"),
         async |_request: &McpHttpRequest, call: McpCall| {
             Ok::<_, export_mcp::McpDenied>(reporting(&call))
         },
@@ -606,6 +591,6 @@ fn a_one_object_answer_is_returned_and_the_stream_is_never_begun() {
         },
     ))
     .unwrap();
-    assert_eq!(served.body, answered.body);
+    assert_eq!(served.body(), answered.body());
     assert_eq!(stream.seen(), Vec::new());
 }

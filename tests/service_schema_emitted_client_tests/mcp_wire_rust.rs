@@ -388,10 +388,7 @@ fn the_mcp_dispatcher_listens_alike_through_every_entry_point() {
 
 #[test]
 fn an_admit_that_denies_stops_a_call_before_its_handler_runs() {
-    let settings = mcp_wire_mcp_transport::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = mcp_wire_mcp_transport::McpHttpSettings::new(&[], None);
     let body = json!({
         "jsonrpc": "2.0",
         "id": 1_u8,
@@ -406,17 +403,17 @@ fn an_admit_that_denies_stops_a_call_before_its_handler_runs() {
         },
     })
     .to_string();
-    let asked = mcp_wire_mcp_transport::McpHttpRequest {
-        body: body.into_bytes(),
-        headers: vec![
+    let asked = mcp_wire_mcp_transport::McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("Content-Type".to_owned(), "application/json".to_owned()),
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tools/call".to_owned()),
             ("Mcp-Name".to_owned(), "describe-shelf".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+        body.into_bytes(),
+    );
     for (denied, status) in [
         (mcp_wire_mcp_transport::McpDenied::Forbidden, 403_u16),
         (
@@ -445,7 +442,7 @@ fn an_admit_that_denies_stops_a_call_before_its_handler_runs() {
                 },
             ))
         });
-        assert_eq!(response.status, status);
+        assert_eq!(response.status(), status);
     }
 }
 

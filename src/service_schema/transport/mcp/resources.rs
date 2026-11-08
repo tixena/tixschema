@@ -617,7 +617,7 @@ pub(super) fn listing_fns() -> TokenStream {
         ) -> ::core::result::Result<::serde_json::Value, ::serde_json::Value> {
             let mut resources = ::std::vec::Vec::new();
             if first {
-                for catalog in endpoint.catalogs {
+                for catalog in endpoint.catalogs() {
                     if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get("resources") {
                         resources.extend(offered.iter().cloned());
                     }
@@ -641,7 +641,7 @@ pub(super) fn listing_fns() -> TokenStream {
                 let own = page.get("nextCursor").and_then(::serde_json::Value::as_str).filter(|cursor| !cursor.is_empty());
                 let next = match own {
                     ::core::option::Option::Some(cursor) => ::core::option::Option::Some(format!("{part}:{cursor}")),
-                    ::core::option::Option::None => (part + 1 < endpoint.catalogs.len()).then(|| format!("{}:", part + 1)),
+                    ::core::option::Option::None => (part + 1 < endpoint.catalogs().len()).then(|| format!("{}:", part + 1)),
                 };
                 if let ::core::option::Option::Some(next) = next {
                     result["nextCursor"] = ::serde_json::Value::String(next);

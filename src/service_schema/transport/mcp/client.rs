@@ -19,6 +19,53 @@ use quote::{format_ident, quote};
 use syn::Ident;
 use syn::Type;
 
+/// The message a seam carries.
+fn message_type() -> TokenStream {
+    quote! {
+        /// One JSON-RPC text for the seam to carry, and the values an HTTP seam writes as
+        /// headers. A stdio seam writes the text alone.
+        #[derive(Debug)]
+        pub struct McpMessage {
+            method: &'static str,
+            name: ::core::option::Option<::std::string::String>,
+            protocol_version: &'static str,
+            text: ::std::string::String,
+        }
+
+        impl McpMessage {
+            /// The JSON-RPC method, for the `Mcp-Method` header.
+            pub const fn method(&self) -> &'static str {
+                self.method
+            }
+
+            /// The tool, prompt or resource name, for the `Mcp-Name` header, where there is one.
+            pub fn name(&self) -> ::core::option::Option<&str> {
+                self.name.as_deref()
+            }
+
+            /// Binds the text to send and the values an HTTP seam writes as headers.
+            pub const fn new(
+                method: &'static str,
+                name: ::core::option::Option<::std::string::String>,
+                protocol_version: &'static str,
+                text: ::std::string::String,
+            ) -> Self {
+                Self { method, name, protocol_version, text }
+            }
+
+            /// The protocol revision, for the `MCP-Protocol-Version` header.
+            pub const fn protocol_version(&self) -> &'static str {
+                self.protocol_version
+            }
+
+            /// The JSON-RPC text.
+            pub fn text(&self) -> &str {
+                &self.text
+            }
+        }
+    }
+}
+
 pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
     let client = format_ident!("{contract}Client", span = contract.span());
@@ -57,6 +104,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
          nothing else: the context is the implementation's, and a caller has none to hand."
     );
     let fault = &generated.fault;
+    let message = message_type();
     let wire = fault_wire_types();
     let readers = fault_mirror_readers(&generated);
     let canonical = super::canonical_json();
@@ -74,15 +122,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
             () => {
                 const PROTOCOL_VERSION: &str = "2026-07-28";
 
-                /// One JSON-RPC text for the seam to carry, and the values an HTTP seam writes as
-                /// headers. A stdio seam writes the text alone.
-                #[derive(Debug)]
-                pub struct McpMessage {
-                    pub method: &'static str,
-                    pub name: ::core::option::Option<::std::string::String>,
-                    pub protocol_version: &'static str,
-                    pub text: ::std::string::String,
-                }
+                #message
 
                 /// What binds a client to a server: it carries one message and answers the text
                 /// that came back. `Err` is a call that did not travel, in words.
@@ -495,12 +535,12 @@ fn exchange(fault: &TokenStream, tools: bool, prompting: bool) -> TokenStream {
                     },
                 },
             }));
-            let message = McpMessage {
-                text,
-                protocol_version: PROTOCOL_VERSION,
+            let message = McpMessage::new(
                 method,
-                name: ::core::option::Option::Some(name.to_owned()),
-            };
+                ::core::option::Option::Some(name.to_owned()),
+                PROTOCOL_VERSION,
+                text,
+            );
             transport.send(message).await
         }
 

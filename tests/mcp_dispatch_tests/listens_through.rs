@@ -9,10 +9,7 @@ macro_rules! listens_through_every_entry_point_of {
 
             static ENDPOINT: $module::McpEndpoint =
                 $module::McpEndpoint::new(&[$schema::MCP_NAMES], &[$module::catalog]);
-            const SETTINGS: $module::McpHttpSettings<'static> = $module::McpHttpSettings {
-                allowed_origins: &[],
-                oauth: None,
-            };
+            const SETTINGS: $module::McpHttpSettings<'static> = $module::McpHttpSettings::new(&[], None);
 
             fn script() -> VecDeque<$module::McpChange> {
                 VecDeque::from([
@@ -28,11 +25,7 @@ macro_rules! listens_through_every_entry_point_of {
             }
 
             fn server() -> $module::McpServer<'static> {
-                $module::McpServer {
-                    endpoint: &ENDPOINT,
-                    instructions: None,
-                    name: $module::SERVER_NAME,
-                }
+                $module::McpServer::new(&ENDPOINT, None, $module::SERVER_NAME)
             }
 
             fn asked() -> Value {
@@ -40,15 +33,10 @@ macro_rules! listens_through_every_entry_point_of {
             }
 
             fn posted() -> $module::McpHttpRequest {
-                $module::McpHttpRequest {
-                    body: asked().to_string().into_bytes(),
-                    headers: vec![
+                $module::McpHttpRequest::new("POST".to_owned(), "/mcp".to_owned(), vec![
                         ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
                         ("Mcp-Method".to_owned(), "subscriptions/listen".to_owned()),
-                    ],
-                    method: "POST".to_owned(),
-                    path: "/mcp".to_owned(),
-                }
+                    ], asked().to_string().into_bytes())
             }
 
             fn closes(answered: &str) {
@@ -92,10 +80,7 @@ macro_rules! listens_through_every_entry_point_of {
                         &asked().to_string(),
                         &server(),
                         $ctx,
-                        $module::McpHost {
-                            in_flight: &$module::McpInFlight::default(),
-                            writer: &lines,
-                        },
+                        $module::McpHost::new(&$module::McpInFlight::default(), &lines),
                         &|ctx: &_, part, method: &str, params: &Value| {
                             let held = service.clone();
                             Box::pin(async move {
@@ -129,8 +114,8 @@ macro_rules! listens_through_every_entry_point_of {
                     },
                     &mut source,
                 )));
-                assert_eq!(response.status, 200);
-                let streamed = String::from_utf8(response.body).unwrap();
+                assert_eq!(response.status(), 200);
+                let streamed = String::from_utf8(response.body().to_vec()).unwrap();
                 assert_eq!(streamed.matches(":\n\n").count(), 1, "{streamed}");
             }
 
@@ -157,8 +142,8 @@ macro_rules! listens_through_every_entry_point_of {
                     },
                     &mut source,
                 )));
-                assert_eq!(response.status, 200);
-                let streamed = String::from_utf8(response.body).unwrap();
+                assert_eq!(response.status(), 200);
+                let streamed = String::from_utf8(response.body().to_vec()).unwrap();
                 assert_eq!(streamed.matches(":\n\n").count(), 1, "{streamed}");
             }
         }

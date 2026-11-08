@@ -23,7 +23,7 @@ macro_rules! writes_to {
                 &self,
                 message: String,
             ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
-                ready(self.keep(message).then_some(()).ok_or($module::McpClientGone))
+                ready(self.keep(message).then_some(()).ok_or($module::McpClientGone::new()))
             }
         }
     )*};
@@ -39,7 +39,7 @@ macro_rules! streams_to {
                 ready(
                     self.record(Seen::Wrote(message))
                         .then_some(())
-                        .ok_or($module::McpClientGone),
+                        .ok_or($module::McpClientGone::new()),
                 )
             }
         }
@@ -53,18 +53,14 @@ macro_rules! streams_to {
                 ready(
                     self.record(Seen::Began(status, headers.to_vec()))
                         .then_some(())
-                        .ok_or($module::McpClientGone),
+                        .ok_or($module::McpClientGone::new()),
                 )
             }
         }
 
         impl From<Streamed> for $module::McpHttpResponse {
             fn from(streamed: Streamed) -> Self {
-                Self {
-                    body: streamed.body,
-                    headers: streamed.headers,
-                    status: streamed.status,
-                }
+                Self::new(streamed.status, streamed.headers, streamed.body)
             }
         }
     )*};
@@ -437,10 +433,7 @@ pub fn answer_workspace(archive: &Archive, asked: &Value) -> Option<Value> {
         None,
         &WORKSPACE,
         |_call| (),
-        document_mcp::McpHost {
-            in_flight: &document_mcp::McpInFlight::default(),
-            writer: &Lines::default(),
-        },
+        document_mcp::McpHost::new(&document_mcp::McpInFlight::default(), &Lines::default()),
         &|ctx: &(), part, method: &str, params: &Value| {
             let held = archive.clone();
             Box::pin(async move {

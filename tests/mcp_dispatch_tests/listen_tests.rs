@@ -58,10 +58,7 @@ use std::sync::Mutex;
 const WATCHED: &str = "workspace://documents/64de3d95ff45b119e5b53a01";
 const OTHER: &str = "workspace://documents/another";
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[],
-    oauth: None,
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
 fn listen(filter: &Value) -> Value {
     let asked = request(
@@ -113,15 +110,15 @@ fn acknowledgment(notifications: &Value) -> Value {
 }
 
 fn post(asked: &Value) -> McpHttpRequest {
-    McpHttpRequest {
-        body: asked.to_string().into_bytes(),
-        headers: vec![
+    McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "subscriptions/listen".to_owned()),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    }
+        asked.to_string().into_bytes(),
+    )
 }
 
 #[test]
@@ -336,15 +333,15 @@ fn over_http_the_stream_holds_the_events_a_comment_and_the_end() {
         &asked,
         vec![McpChange::KeepAlive, updated(WATCHED), updated(OTHER)],
     );
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status(), 200);
     assert_eq!(
-        response.headers,
+        response.headers(),
         vec![
             ("Content-Type".to_owned(), "text/event-stream".to_owned()),
             ("X-Accel-Buffering".to_owned(), "no".to_owned()),
         ]
     );
-    let body = String::from_utf8(response.body).unwrap();
+    let body = String::from_utf8(response.body().to_vec()).unwrap();
     let events: Vec<&str> = body.split_terminator("\n\n").collect();
     assert_eq!(events.len(), 4, "{body}");
     assert_eq!(events[1], ":");
@@ -374,7 +371,7 @@ fn over_http_a_service_handed_no_changes_does_not_know_the_method() {
             },
         ))
     });
-    assert_eq!(response.status, 404);
+    assert_eq!(response.status(), 404);
 }
 
 #[test]
@@ -396,16 +393,9 @@ fn an_endpoint_of_two_services_honors_resources_of_either() {
     let mut source = async || queue.pop_front();
     let answered = block_on(document_mcp::serve_listening(
         &asked.to_string(),
-        &document_mcp::McpServer {
-            endpoint: &ENDPOINT,
-            instructions: None,
-            name: "Workspace",
-        },
+        &document_mcp::McpServer::new(&ENDPOINT, None, "Workspace"),
         |_call| (),
-        document_mcp::McpHost {
-            in_flight: &document_mcp::McpInFlight::default(),
-            writer: &lines,
-        },
+        document_mcp::McpHost::new(&document_mcp::McpInFlight::default(), &lines),
         &|ctx: &(), part, method: &str, params: &Value| {
             let held = archive.clone();
             Box::pin(async move {
