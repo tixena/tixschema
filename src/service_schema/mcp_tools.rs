@@ -182,7 +182,7 @@ fn uri_matcher() -> TokenStream {
     }
 }
 
-fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
+pub fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
     format_ident!(
         "wrapped_{}",
         written(&operation.ident),
