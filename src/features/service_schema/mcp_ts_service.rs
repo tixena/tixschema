@@ -190,7 +190,7 @@ function __p__McpRefused(
   message: string,
   data?: unknown,
 ): __N__McpHandled {
-  return __p__McpReplied(status, { id, error: { code, data, message } });
+  return __p__McpReplied(status, { id: id ?? undefined, error: { code, data, message } });
 }
 
 function __p__McpParse(
@@ -460,6 +460,28 @@ export async function __p__McpServe<Ctx>(
 
 const ROUTE: &str = r#"const __p__McpEmpty = { content: [], isError: false, resultType: "complete" };
 
+/** The Zod issue codes that mean the arguments do not read as the message; any other is a validator's refusal. */
+const __p__McpUnreadable: ReadonlySet<string> = new Set([
+  "invalid_type",
+  "invalid_union",
+  "invalid_value",
+  "invalid_key",
+  "invalid_element",
+  "unrecognized_keys",
+]);
+
+/** The `undeserializable-payload` fault of a message that does not read as `schema`; none where it reads or only the validator refuses it. */
+function __p__McpUnread(schema: ZodType, payload: unknown, operation: string): __N__Fault | undefined {
+  const read = schema.safeParse(payload);
+  if (read.success) return undefined;
+  const issues = read.error.issues;
+  if (!issues.some((issue) => __p__McpUnreadable.has(issue.code))) return undefined;
+  const detail = issues
+    .map((issue) => (issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
+    .join("; ");
+  return __FAULT__("undeserializable-payload", operation, detail);
+}
+
 /** The `-32603` answer of a handler that came apart. */
 function __p__McpPanicked(operation: string, thrown: unknown): __N__McpAnswer {
   const detail = thrown instanceof Error ? thrown.message : String(thrown);
@@ -538,14 +560,18 @@ export function create__N__McpRoute<Ctx>(
       }
       payload = operation.wrapped ? held.value : rest;
     }
-    const attempt = await attempted(ctx, operation.operation, payload, headers);
+    const unread = __p__McpUnread(operation.schema, payload, operation.tool);
+    const attempt =
+      unread === undefined
+        ? await attempted(ctx, operation.operation, payload, headers)
+        : { dispatched: __p__Framed(unread) };
     if ("thrown" in attempt) {
       if (operation.oneWay) return { result: __p__McpEmpty };
       const detail = attempt.thrown instanceof Error ? attempt.thrown.message : String(attempt.thrown);
       return {
         error: {
           code: -32603,
-          data: { fault: __FAULT__("handler-panic", operation.operation, detail), isServiceFault: true },
+          data: { fault: __FAULT__("handler-panic", operation.tool, detail), isServiceFault: true },
           message: `${operation.tool}: ${detail}`,
         },
       };
@@ -579,10 +605,12 @@ export function create__N__McpRoute<Ctx>(
     }
     const error = answered.error;
     const fault = typeof error === "object" && error !== null && "isServiceFault" in error;
+    const faulted = error as { fault: object };
+    const named = fault ? { ...faulted, fault: { ...faulted.fault, operation: operation.tool } } : error;
     const body =
       !fault && operation.errorHeadersOut.length > 0
         ? { value: error, ...beside(operation.errorHeadersOut) }
-        : error;
+        : named;
     return {
       result: { content: [{ text: __p__McpText(body), type: "text" }], isError: true, resultType: "complete" },
     };
@@ -590,10 +618,13 @@ export function create__N__McpRoute<Ctx>(
   const answering = async (
     ctx: Ctx,
     operation: string,
+    schema: ZodType,
     payload: unknown,
     refusal: string,
     success: (value: unknown) => Record<string, unknown>,
   ): Promise<__N__McpAnswer> => {
+    const unread = __p__McpUnread(schema, payload, operation);
+    if (unread !== undefined) return __p__McpDeclined({ fault: unread, isServiceFault: true }, refusal);
     const attempt = await attempted(ctx, operation, payload, []);
     if ("thrown" in attempt) return __p__McpPanicked(operation, attempt.thrown);
     const answered = attempt.dispatched?.answered as { ok: boolean; value?: unknown; error?: unknown } | undefined;
@@ -615,7 +646,7 @@ export function create__N__McpRoute<Ctx>(
             : operation.source === "single"
               ? captured[0]
               : Object.fromEntries(operation.members.map(([at, key]) => [key, captured[at]]));
-      return answering(ctx, operation.operation, payload, "Resource not found", (value) => {
+      return answering(ctx, operation.operation, operation.schema, payload, "Resource not found", (value) => {
         const given: Record<string, unknown> = { uri };
         const pair = operation.blob ? (value as ReadonlyArray<unknown>) : [];
         if (operation.blob) {
@@ -634,7 +665,7 @@ export function create__N__McpRoute<Ctx>(
     const operation = __p__McpOperations.find((candidate) => candidate.kind === "listing");
     if (operation === undefined || operation.kind !== "listing") return undefined;
     const payload = operation.cursor ? (typeof call.cursor === "string" ? call.cursor : null) : {};
-    return answering(ctx, operation.operation, payload, "Resources could not be listed", (value) => ({
+    return answering(ctx, operation.operation, operation.schema, payload, "Resources could not be listed", (value) => ({
       ...(__p__McpObject(value) ?? {}),
       cacheScope: operation.cacheScope,
       resultType: "complete",
@@ -656,6 +687,7 @@ export function create__N__McpRoute<Ctx>(
       return answering(
         ctx,
         operation.operation,
+        operation.schema,
         { [operation.typed]: typed, [operation.chosen]: chosen },
         "Completion refused",
         (value) => {
@@ -1115,6 +1147,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly kind: \"tool\";\n      \
          readonly tool: string;\n      \
          readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
          readonly wrapped: boolean;\n      \
          readonly oneWay: boolean;\n      \
          readonly unit: boolean;\n      \
@@ -1126,6 +1159,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly kind: \"resource\";\n      \
          readonly uri: string;\n      \
          readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
          readonly segments: ReadonlyArray<readonly [string, boolean]>;\n      \
          readonly source: \"empty\" | \"none\" | \"single\" | \"members\";\n      \
          readonly members: ReadonlyArray<readonly [number, string]>;\n      \
@@ -1137,6 +1171,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          | {{\n      \
          readonly kind: \"listing\";\n      \
          readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
          readonly cursor: boolean;\n      \
          readonly ttlMs: number;\n      \
          readonly cacheScope: string;\n    \
@@ -1144,6 +1179,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          | {{\n      \
          readonly kind: \"completion\";\n      \
          readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
          readonly uri: string;\n      \
          readonly parameter: string;\n      \
          readonly typed: string;\n      \
@@ -1227,11 +1263,12 @@ fn resource_row(operation: &OperationDef) -> String {
         OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
     );
     format!(
-        "  {{ kind: \"resource\", uri: {uri}, operation: {wire}, segments: [{segments}], \
+        "  {{ kind: \"resource\", uri: {uri}, operation: {wire}, schema: {schema}, segments: [{segments}], \
          source: \"{source}\", members: [{members}], blob: {blob}, mimeType: {mime}, \
          ttlMs: {ttl}, cacheScope: {scope} }},",
         uri = ts_quoted(&resource.uri),
         wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
         mime = operation
             .mcp
             .mime_type
@@ -1250,9 +1287,10 @@ fn resource_row(operation: &OperationDef) -> String {
 
 fn listing_row(operation: &OperationDef) -> String {
     format!(
-        "  {{ kind: \"listing\", operation: {wire}, cursor: {cursor}, ttlMs: {ttl}, \
+        "  {{ kind: \"listing\", operation: {wire}, schema: {schema}, cursor: {cursor}, ttlMs: {ttl}, \
          cacheScope: {scope} }},",
         wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
         cursor = matches!(operation.inputs, OperationInputs::Named(_)),
         ttl = operation.mcp.ttl_ms.unwrap_or(DEFAULT_TTL_MS),
         scope = ts_quoted(
@@ -1276,9 +1314,10 @@ fn completion_row(service: &ServiceDef, operation: &OperationDef) -> Option<Stri
         return None;
     };
     Some(format!(
-        "  {{ kind: \"completion\", operation: {wire}, uri: {uri}, parameter: {parameter}, \
+        "  {{ kind: \"completion\", operation: {wire}, schema: {schema}, uri: {uri}, parameter: {parameter}, \
          typed: {typed}, chosen: {chosen} }},",
         wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
         uri = ts_quoted(uri),
         parameter = ts_quoted(&completes.parameter),
         typed = ts_quoted(&wire_key(&fields.first()?.0)),
@@ -1312,10 +1351,11 @@ fn operation_row(operation: &OperationDef) -> String {
         .map(|bound| bound.name.clone())
         .collect();
     format!(
-        "  {{ kind: \"tool\", tool: {tool}, operation: {wire}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
+        "  {{ kind: \"tool\", tool: {tool}, operation: {wire}, schema: {schema}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
          headersIn: [{headers_in}], headersOut: [{headers_out}], errorHeadersOut: \
          [{error_headers_out}] }},",
         tool = ts_quoted(operation.mcp_tool_name()),
+        schema = message::schema(operation),
         wire = ts_quoted(&operation.wire_name),
         headers_in = quoted(&headers_in),
         headers_out = quoted(&shape.header_out),

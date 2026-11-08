@@ -10,9 +10,13 @@ use super::mcp_library_rows::{
     http_rows, library_answer, rows, workspace_answer,
 };
 use super::mcp_library_service::{book_error_dart, book_info_dart, book_request_dart};
+use super::mcp_shelf_service::{assert_faults, fault_requests, shelf_label_dart};
 use super::run_dart_validate::{analyzed, dart};
 use super::runtime::ran;
-use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorServiceSchema};
+use super::{
+    BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorServiceSchema,
+    ShelfServiceSchema,
+};
 use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -141,6 +145,48 @@ void main() async {
 }
 "#;
 
+/// Answers the fault table's requests through the dispatcher of `ShelfService` alone and through
+/// its route.
+const FAULT_DRIVER: &str = "
+final shelfHandlers = ShelfServiceHandlers<void>(
+  getSlot: (ctx, req) async => '${req.aisle.value}/${req.slot}',
+  getCount: (ctx, bin) async => '$bin',
+  suggestSlots: (ctx, req) async => [req.typed.value],
+);
+
+void main() async {
+  final requests = [for (final text in jsonDecode(INPUT) as List<dynamic>) text as String];
+  final route = createShelfServiceMcpRoute<void>(shelfHandlers);
+  final alone = createShelfServiceMcpDispatcher<void>(shelfHandlers);
+  final host = ShelfServiceMcpHost(writer: (message) async {}, inFlight: ShelfServiceMcpInFlight());
+  const endpoint = ShelfServiceMcpEndpoint({...shelfServiceMcpNames}, [shelfServiceMcpCatalog]);
+  print(jsonEncode({
+    'alone': [for (final text in requests) await alone(text, (call) {}, host.writer, host.inFlight)],
+    'endpoint': [
+      for (final text in requests)
+        await shelfServiceMcpServe<void>(text, 'Workspace', null, endpoint, (call) {}, host, (ctx, part, method, params) => route(ctx, method, params)),
+    ],
+  }));
+}
+";
+
+fn fault_module() -> String {
+    let literal = Value::String(json!(fault_requests()).to_string());
+    let dollar_safe = literal.to_string().replace('$', "\\$");
+    [
+        "import 'dart:async';".to_owned(),
+        "import 'dart:convert';".to_owned(),
+        shelf_label_dart::dart_definition(),
+        book_error_dart::dart_definition(),
+        ShelfServiceSchema::dart_definition(),
+        ShelfServiceSchema::dart_ws_client(),
+        ShelfServiceSchema::dart_mcp_service(),
+        format!("const INPUT = {dollar_safe};"),
+        FAULT_DRIVER.to_owned(),
+    ]
+    .join("\n\n")
+}
+
 fn input(requests: &[Row], http: &[HttpRow]) -> Value {
     json!({
         "origin": ORIGIN,
@@ -153,7 +199,7 @@ fn input(requests: &[Row], http: &[HttpRow]) -> Value {
 }
 
 fn module() -> String {
-    let literal = Value::String(input(&rows(true), &http_rows()).to_string());
+    let literal = Value::String(input(&rows(), &http_rows()).to_string());
     let dollar_safe = literal.to_string().replace('$', "\\$");
     [
         "import 'dart:async';".to_owned(),
@@ -197,7 +243,7 @@ fn the_dart_server_answers_the_bytes_the_rust_dispatcher_answers() {
     let Some(report) = driven() else {
         return;
     };
-    let rows = rows(true);
+    let rows = rows();
     assert_answers(
         "endpoint",
         workspace_answer,
@@ -307,4 +353,21 @@ fn a_const_endpoint_whose_services_share_a_resource_does_not_compile() {
         ),
         "{refused}"
     );
+}
+
+#[test]
+fn a_resource_read_and_a_completion_the_dart_reads_refuse_answer_the_fault_the_rust_dispatcher_answers()
+ {
+    let Some(wrote) = ran(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "mcp-resource-faults.dart",
+        &fault_module(),
+    ) else {
+        return;
+    };
+    let report: Value = serde_json::from_str(wrote.trim()).unwrap();
+    assert_faults("alone", &texts(&report["alone"]));
+    assert_faults("endpoint", &texts(&report["endpoint"]));
 }
