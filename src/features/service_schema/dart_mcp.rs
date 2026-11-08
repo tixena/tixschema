@@ -17,10 +17,12 @@ use crate::features::dart::{
     dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
 };
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{answers_key, is_content_list, is_content_pair};
+use crate::service_schema::mcp_tools::{
+    answers_key, is_content_list, is_content_pair, is_prompt_messages,
+};
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    is_unit_type, option_inner, wire_key, written,
+    HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
@@ -164,6 +166,31 @@ final class McpResourceContentsText extends McpResourceContents {
 final class McpResourceContentsBlob extends McpResourceContents {
   const McpResourceContentsBlob(this.bytes);
   final Uint8List bytes;
+}
+
+/// Who a prompt's message is from.
+enum McpRole { user, assistant }
+
+/// One message of a prompt: who it is from, and the block it holds.
+final class McpPromptMessage {
+  const McpPromptMessage({required this.role, required this.content});
+
+  /// Reads one message as the specification writes it.
+  factory McpPromptMessage.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) throw const FormatException('a message is not an object');
+    final role = switch (json['role']) {
+      'user' => McpRole.user,
+      'assistant' => McpRole.assistant,
+      _ => throw const FormatException('a message of a role this client does not read'),
+    };
+    return McpPromptMessage(role: role, content: McpContent.fromJson(json['content']));
+  }
+
+  final McpRole role;
+  final McpContent content;
+
+  /// This message as the specification writes it.
+  Map<String, dynamic> toJson() => <String, dynamic>{'content': content.toJson(), 'role': role.name};
 }";
 
 const TOOLS_MARKER: &str = "@TOOLS@";
@@ -172,6 +199,7 @@ const INSTRUCTIONS_MARKER: &str = "@INSTRUCTIONS@";
 const VERSION_MARKER: &str = "@VERSION@";
 const RESOURCES_MARKER: &str = "@RESOURCES@";
 const TEMPLATES_MARKER: &str = "@TEMPLATES@";
+const PROMPTS_MARKER: &str = "@PROMPTS@";
 const SKILLS_MARKER: &str = "@SKILLS@";
 const SKILL_FILES_MARKER: &str = "@SKILLFILES@";
 
@@ -201,7 +229,7 @@ const @N@McpCatalog @P@McpCatalog = (
   tools: <String>[@TOOLS@],
   resources: <String>[@RESOURCES@],
   resourceTemplates: <String>[@TEMPLATES@],
-  prompts: <String>[],
+  prompts: <String>[@PROMPTS@],
   skills: <String>[@SKILLS@],
   capabilities: <String>[@CAPABILITIES@],
 );
@@ -737,6 +765,8 @@ Future<({String? text, int status})> _@P@McpRespond(
       named = params['name'] is String ? params['name'] as String : null;
     case 'resources/read':
       named = params['uri'] is String ? params['uri'] as String : null;
+    case 'prompts/get':
+      named = params['name'] is String ? params['name'] as String : null;
     case 'skills/get':
       named = params['name'] is String
           ? params['name'] as String
@@ -746,15 +776,15 @@ Future<({String? text, int status})> _@P@McpRespond(
     case 'completion/complete':
       final argument = params['argument'];
       final reference = params['ref'];
-      named = argument is Map && argument['name'] is String && reference is Map && reference['uri'] is String
-          ? reference['uri'] as String
-          : null;
+      final held = reference is Map ? (reference['type'] == 'ref/prompt' ? reference['name'] : reference['uri']) : null;
+      named = argument is Map && argument['name'] is String && held is String ? held : null;
     default:
       named = null;
   }
   if (named == null &&
       (method == 'tools/call' ||
           method == 'resources/read' ||
+          method == 'prompts/get' ||
           method == 'completion/complete' ||
           method == 'skills/get')) {
     return failed(id, 200, -32602, 'Invalid params: $method names nothing to answer');
@@ -778,6 +808,7 @@ Future<({String? text, int status})> _@P@McpRespond(
   final unknown = switch (method) {
     'tools/call' => 'Unknown tool',
     'resources/read' => 'Resource not found',
+    'prompts/get' => 'Unknown prompt',
     'skills/get' => 'Skill not found',
     'completion/complete' => 'Unknown completion',
     _ => null,
@@ -1051,12 +1082,13 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
   Future<Map<String, dynamic>> _call(
     String tool,
     String operation,
-    Map<String, dynamic> arguments,
-  ) async {
+    Map<String, dynamic> arguments, {
+    String method = 'tools/call',
+  }) async {
     final text = jsonEncode(<String, dynamic>{
       'id': _nextId++,
       'jsonrpc': '2.0',
-      'method': 'tools/call',
+      'method': method,
       'params': <String, dynamic>{
         '_meta': <String, dynamic>{
           'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
@@ -1073,7 +1105,7 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
     final String answer;
     try {
       answer = await _transport.send(
-        (text: text, protocolVersion: '2026-07-28', method: 'tools/call', name: tool),
+        (text: text, protocolVersion: '2026-07-28', method: method, name: tool),
       );
     } catch (uncarried) {
       throw _@N@McpCallFault(
@@ -1101,6 +1133,12 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
         }
         throw _@N@McpCallFault(fault);
       }
+      if (method == 'prompts/get' && error['code'] == -32602 && data != null) {
+        return <String, dynamic>{
+          'content': <Object>[<String, dynamic>{'text': jsonEncode(data), 'type': 'text'}],
+          'isError': true,
+        };
+      }
       throw _@N@McpCallFault(
         _@P@McpClientFault(
           @N@FaultKind.transportFailure,
@@ -1114,6 +1152,25 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
       throw _@N@McpCallFault(_@P@McpReadFailed(operation, 'the answer holds no result'));
     }
     return result;
+  }";
+
+const CLIENT_PROMPT_METHOD: &str = "  Future<Map<String, dynamic>> _prompt(
+    String prompt,
+    String operation,
+    Map<String, dynamic> arguments,
+    bool text,
+  ) async {
+    final result = await _call(prompt, operation, arguments, method: 'prompts/get');
+    if (result['isError'] == true) return result;
+    final messages = result['messages'];
+    if (!text) return <String, dynamic>{'isError': false, 'structuredContent': messages};
+    final first = messages is List && messages.isNotEmpty ? messages.first : null;
+    final content = first is Map<String, dynamic> ? first['content'] : null;
+    final held = content is Map<String, dynamic> ? content['text'] : null;
+    if (held is! String) {
+      throw _@N@McpCallFault(_@P@McpReadFailed(operation, 'the first message holds no text'));
+    }
+    return <String, dynamic>{'isError': false, 'structuredContent': held};
   }";
 
 const CLIENT_FAULT_OF: &str = "@F@ _@P@McpFaultOf(Map<String, dynamic> result, String operation) {
@@ -1406,7 +1463,7 @@ pub fn service_text(declared: &ServiceDef) -> String {
             )
             .replace(
                 "@CAPABILITIES@",
-                &capabilities_literal(&held, skilled(service)),
+                &capabilities_literal(service, &held, skilled(service)),
             )
             .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
         page_types(service),
@@ -1443,6 +1500,28 @@ pub fn service_text(declared: &ServiceDef) -> String {
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// The scopes `prompts/get` needs, by the name of the prompt.
+fn prompt_scopes(table: &ScopeTable) -> String {
+    if table.prompts.is_empty() {
+        return String::new();
+    }
+    let mut text = String::from("  if (method == 'prompts/get') {\n    switch (name) {\n");
+    for (prompt, scopes) in &table.prompts {
+        let list = scopes
+            .iter()
+            .map(|scope| quoted(scope))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(
+            text,
+            "      case {}:\n        return const <String>[{list}];",
+            quoted(prompt)
+        );
+    }
+    text.push_str("    }\n  }\n");
+    text
 }
 
 fn scopes_table(table: &ScopeTable) -> String {
@@ -1489,6 +1568,7 @@ fn scopes_table(table: &ScopeTable) -> String {
         }
         text.push_str("    }\n  }\n");
     }
+    text.push_str(&prompt_scopes(table));
     if !table.reads.is_empty() {
         text.push_str("  if (method == 'resources/read' && name != null) {\n");
         for (uri, scopes) in &table.reads {
@@ -1547,7 +1627,8 @@ fn answer_helpers(
     service: &ServiceDef,
 ) -> String {
     let tools = tools_of(service).next().is_some();
-    let panics = calls.declared || held.any();
+    let panics =
+        calls.declared || held.any() || service.operations.iter().any(OperationDef::is_mcp_prompt);
     let fields = fault_fields_typescript_name(named);
     let mut text = format!(
         "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail, {{String? field}}) =>\n    \
@@ -1945,6 +2026,13 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
              return _{prefix}McpList<Ctx>(handlers, ctx, params['cursor']);\n"
         );
     }
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        let _ = write!(
+            cases,
+            "        case 'prompts/get':\n          \
+             return _{prefix}McpGetPrompt<Ctx>(handlers, ctx, params);\n"
+        );
+    }
     if !held.completions.is_empty() {
         let _ = write!(
             cases,
@@ -1965,8 +2053,11 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
 }
 
 /// The `capabilities` the catalog lists, as the literals of their JSON text.
-fn capabilities_literal(held: &Resourced<'_>, skilled: bool) -> String {
+fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![quoted("{\"tools\":{}}")];
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        capabilities.push(quoted("{\"prompts\":{}}"));
+    }
     if held.is_served() || skilled {
         capabilities.push(quoted("{\"resources\":{}}"));
     }
@@ -2076,14 +2167,27 @@ fn resource_functions(
     named: &str,
     prefix: &str,
 ) -> Vec<String> {
+    let prompts: Vec<&OperationDef> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_prompt())
+        .collect();
     let dynamic = dynamic_skills(service);
-    if !held.any() && !skilled(service) {
+    if !held.any() && prompts.is_empty() && !skilled(service) {
         return Vec::new();
     }
     let fields = fault_fields_typescript_name(named);
     let mut published = Vec::new();
-    if held.any() || !dynamic.is_empty() {
+    if held.any() || !prompts.is_empty() || !dynamic.is_empty() {
         published.push(filled(UNREAD, named, prefix).replace("@F@", &fields));
+    }
+    if !prompts.is_empty() {
+        published.extend(
+            prompts
+                .iter()
+                .map(|operation| prompt_function(named, prefix, operation)),
+        );
+        published.push(prompt_dispatch(&prompts, named, prefix));
     }
     if held.reads().next().is_some() {
         published.push(filled(CAPTURED, named, prefix));
@@ -2473,8 +2577,9 @@ fn complete_dispatch(
          ) async {{\n  \
          final reference = params['ref'];\n  \
          final argument = params['argument'];\n  \
-         if (reference is! Map || reference['type'] != 'ref/resource') return null;\n  \
-         final uri = reference['uri'];\n  \
+         if (reference is! Map) return null;\n  \
+         final kind = reference['type'];\n  \
+         final uri = kind == 'ref/prompt' ? reference['name'] : kind == 'ref/resource' ? reference['uri'] : null;\n  \
          final parameter = argument is Map ? argument['name'] : null;\n  \
          if (uri is! String || parameter is! String) return null;\n  \
          final typed = argument is Map && argument['value'] is String ? argument['value'] as String : '';\n  \
@@ -2488,18 +2593,119 @@ fn complete_dispatch(
         let Some(target) = service
             .operations
             .iter()
-            .find(|candidate| written(&candidate.ident) == completes.resource)
+            .find(|candidate| written(&candidate.ident) == completes.operation)
         else {
             continue;
         };
-        let Some(resource) = target.mcp.resource.as_ref() else {
-            continue;
+        let (reference, name, parameter) = match completes.kind {
+            McpCompletesKind::Resource => {
+                let Some(resource) = target.mcp.resource.as_ref() else {
+                    continue;
+                };
+                (
+                    "ref/resource",
+                    resource.uri.clone(),
+                    completes.parameter.clone(),
+                )
+            }
+            McpCompletesKind::Prompt => {
+                let Some(argument) = target.mcp.prompt.as_ref().and_then(|prompt| {
+                    prompt
+                        .arguments
+                        .iter()
+                        .find(|(argument, _)| written(argument) == completes.parameter)
+                }) else {
+                    continue;
+                };
+                (
+                    "ref/prompt",
+                    target.mcp_tool_name().to_owned(),
+                    wire_key(&argument.0),
+                )
+            }
         };
         let _ = writeln!(
             text,
-            "  if (uri == {} && parameter == {}) return _{prefix}McpComplete{}<Ctx>(handlers, ctx, typed, chosen);",
-            quoted(&resource.uri),
-            quoted(&completes.parameter),
+            "  if (kind == {} && uri == {} && parameter == {}) return _{prefix}McpComplete{}<Ctx>(handlers, ctx, typed, chosen);",
+            quoted(reference),
+            quoted(&name),
+            quoted(&parameter),
+            pascal(operation),
+        );
+    }
+    text.push_str("  return null;\n}");
+    text
+}
+
+/// The prompt `operation`: reads its arguments, calls its handler and answers its messages.
+fn prompt_function(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let source = match &operation.inputs {
+        OperationInputs::Empty => "<String, dynamic>{}".to_owned(),
+        OperationInputs::Generated(_) => "arguments".to_owned(),
+        OperationInputs::Named(_) => {
+            format!("arguments[{}]", quoted(&prompt_argument_key(operation)))
+        }
+    };
+    let description = quoted(operation.doc.as_deref().unwrap_or_default());
+    let messages = if is_prompt_messages(operation) {
+        "<Object>[for (final message in answered) message.toJson()]".to_owned()
+    } else {
+        "<Object>[\n          <String, dynamic>{\n            'content': <String, dynamic>{'text': answered, 'type': 'text'},\n            'role': 'user',\n          },\n        ]".to_owned()
+    };
+    let success = format!(
+        "return (\n      result: <String, dynamic>{{\n        \
+         'description': {description},\n        \
+         'messages': {messages},\n        \
+         'resultType': 'complete',\n      }},\n      error: null,\n    );"
+    );
+    let refusal = quoted(&format!(
+        "{}: the service refused the prompt",
+        operation.mcp_tool_name()
+    ));
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpPrompt{op}<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         Map<String, dynamic> arguments,\n\
+         ) async {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(named, prefix, operation, &source, &refusal, &success)
+    )
+}
+
+/// The wire key of the one argument a prompt takes as its whole message.
+fn prompt_argument_key(operation: &OperationDef) -> String {
+    operation
+        .mcp
+        .prompt
+        .iter()
+        .filter_map(|prompt| prompt.arguments.first())
+        .map(|(argument, _)| wire_key(argument))
+        .next()
+        .unwrap_or_default()
+}
+
+/// `_McpGetPrompt`: finds the prompt a `prompts/get` names.
+fn prompt_dispatch(prompts: &[&OperationDef], named: &str, prefix: &str) -> String {
+    let mut text = format!(
+        "Future<{named}McpAnswer?> _{prefix}McpGetPrompt<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         Map<String, dynamic> params,\n\
+         ) async {{\n  \
+         final name = params['name'];\n  \
+         if (name is! String) return null;\n  \
+         final given = params['arguments'];\n  \
+         final arguments = given is Map<String, dynamic> ? given : <String, dynamic>{{}};\n"
+    );
+    for operation in prompts {
+        let _ = writeln!(
+            text,
+            "  if (name == {}) return _{prefix}McpPrompt{}<Ctx>(handlers, ctx, arguments);",
+            quoted(operation.mcp_tool_name()),
             pascal(operation),
         );
     }
@@ -2528,7 +2734,7 @@ pub fn client_text(declared: &ServiceDef) -> String {
              }}"
         ));
     }
-    if tools_of(service).next().is_none() {
+    if served_by_client(service).next().is_none() {
         published.push(format!(
             "/// A `{named}` caller over `mcp`.\n\
              class {named}McpClient {{\n  \
@@ -2552,17 +2758,23 @@ pub fn client_text(declared: &ServiceDef) -> String {
     if has_one_way(service) {
         published.push(with_fields(CLIENT_FAULT_OF));
     }
-    let methods = tools_of(service)
+    let methods = served_by_client(service)
         .map(|operation| client_method(&named, &prefix, operation))
         .collect::<Vec<_>>()
         .join("\n\n");
+    let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    let prompt_call = if prompting {
+        format!("{}\n\n", with_fields(CLIENT_PROMPT_METHOD))
+    } else {
+        String::new()
+    };
     published.push(format!(
         "/// A `{named}` caller over `mcp`.\n\
          class {named}McpClient {{\n  \
          {named}McpClient(this._transport);\n  \
          final {named}McpTransport _transport;\n\n\
          {call}\n\n\
-         {methods}\n\
+         {prompt_call}{methods}\n\
          }}",
         call = with_fields(CLIENT_CALL_METHOD),
     ));
@@ -2617,15 +2829,64 @@ fn method_head(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> Met
     }
 }
 
+/// The operations the client has a method for: the tools and the prompts.
+fn served_by_client(service: &ServiceDef) -> impl Iterator<Item = &OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool() || operation.is_mcp_prompt())
+}
+
 fn client_method(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
-    let head = method_head(prefix, operation, &shape);
+    let mut head = method_head(prefix, operation, &shape);
+    if operation.is_mcp_prompt() {
+        return prompt_method(named, prefix, operation, &shape, &mut head);
+    }
     match &operation.outcome {
         OperationOutcome::OneWay => one_way_method(named, prefix, &head),
         OperationOutcome::Reply { error, success } => {
             reply_method(named, prefix, operation, &shape, &head, (success, error))
         }
     }
+}
+
+/// A prompt's method: the message's text members as the arguments, and the messages read as the
+/// success its result type declares.
+fn prompt_method(
+    named: &str,
+    prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+    head: &mut MethodHead,
+) -> String {
+    let OperationOutcome::Reply { error, success } = &operation.outcome else {
+        return String::new();
+    };
+    let sent = message_encode(operation);
+    head.arguments = match &operation.inputs {
+        OperationInputs::Named(_) => format!(
+            "    final Object? sent = {sent};\n    \
+             final arguments = <String, dynamic>{{if (sent is String) {}: sent}};\n",
+            quoted(&prompt_argument_key(operation))
+        ),
+        OperationInputs::Empty | OperationInputs::Generated(_) => format!(
+            "    final arguments = <String, dynamic>{{\n      \
+             for (final entry in {sent}.entries)\n        \
+             if (entry.value is String) entry.key: entry.value,\n    }};\n"
+        ),
+    };
+    let text = if is_prompt_messages(operation) {
+        "false"
+    } else {
+        "true"
+    };
+    let tool = &head.tool;
+    let wire = &head.wire;
+    reply_method(named, prefix, operation, shape, head, (success, error)).replace(
+        &format!("result = await _call({tool}, {wire}, arguments);"),
+        &format!("result = await _prompt({tool}, {wire}, arguments, {text});"),
+    )
 }
 
 fn one_way_method(named: &str, prefix: &str, head: &MethodHead) -> String {
@@ -2820,10 +3081,15 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
     let wrapped_server = wrapped.clone();
     let forms = form_replacements(declared);
     let skill_literals = skill_literals();
-    let content = declared.operations.iter().any(is_content_list).then(|| {
+    let content = declared
+        .operations
+        .iter()
+        .any(|operation| is_content_list(operation) || is_prompt_messages(operation))
+        .then(|| {
         quote! {
-            #[doc = " The `McpContent` types a `List<McpContent>` success of an `mcp(content)`"]
-            #[doc = " operation is written in. A bundle names it once, and imports"]
+            #[doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a `List<McpContent>`"]
+            #[doc = " success of an `mcp(content)` operation and a prompt's messages are written in."]
+            #[doc = " A bundle names them once, and imports"]
             #[doc = " `dart:convert` and `dart:typed_data`."]
             pub fn dart_mcp_content() -> ::std::string::String {
                 #CONTENT_TYPE.to_owned()
@@ -2863,6 +3129,11 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|template| literal(&template.to_string()))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let prompts = Self::mcp_prompts()
+                .iter()
+                .map(|prompt| literal(&prompt.to_string()))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             #skill_literals
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
@@ -2873,6 +3144,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#NAMES_MARKER, &names)
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
+                .replace(#PROMPTS_MARKER, &prompts)
                 .replace(#SKILLS_MARKER, &skills)
                 .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)

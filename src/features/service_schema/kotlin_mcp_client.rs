@@ -2,7 +2,7 @@
 //! transport and read back as the sealed result `kotlin_http_client()` declares.
 
 use super::kotlin_http_client::{carries_no_value, held_copies, kotlin_held, read_serializer};
-use super::kotlin_mcp_service::{VERSION_MARKER, wrapped_entries, wrapped_replacements};
+use super::kotlin_mcp_service::{VERSION_MARKER, tool_entries, wrapped_replacements};
 use super::kotlin_ws_client::{
     body_type, header_elements, kotlin_type_of, message_kotlin_typename, message_serializer,
 };
@@ -13,9 +13,10 @@ use crate::features::kotlin::{
     kotlin_tuple_naming,
 };
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{is_content_list, is_content_pair};
+use crate::service_schema::mcp_tools::{is_content_list, is_content_pair, is_prompt_messages};
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, option_inner, written,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, option_inner, wire_key,
+    written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
@@ -47,13 +48,14 @@ private fun @P@McpCallFault(kind: @N@FaultKind, operation: String, detail: Strin
 private suspend fun @P@McpCallExchange(
   transport: @N@McpTransport,
   id: Long,
+  method: String,
   tool: String,
   arguments: JsonObject,
 ): @P@McpCalled {
   val request = buildJsonObject {
     put("id", id)
     put("jsonrpc", "2.0")
-    put("method", "tools/call")
+    put("method", method)
     put(
       "params",
       buildJsonObject {
@@ -77,7 +79,7 @@ private suspend fun @P@McpCallExchange(
     )
   }
   val answer = try {
-    transport.send(@N@McpMessage(request.toString(), "2026-07-28", "tools/call", tool))
+    transport.send(@N@McpMessage(request.toString(), "2026-07-28", method, tool))
   } catch (uncarried: Exception) {
     if (uncarried is CancellationException) throw uncarried
     return @P@McpCalled.Faulted(@P@McpCallFault(@N@FaultKind.TransportFailure, tool, uncarried.toString()))
@@ -95,6 +97,12 @@ private suspend fun @P@McpCallExchange(
   if (error != null) {
     val data = (error as? JsonObject)?.get("data") as? JsonObject
     if (data != null && "isServiceFault" in data) return @P@McpCallReported(tool, data)
+    val errorObject = error as? JsonObject
+    val carried = errorObject?.get("data")
+    val code = (errorObject?.get("code") as? JsonPrimitive)?.content
+    if (method == "prompts/get" && code == "-32602" && carried != null && carried !is JsonNull) {
+      return @P@McpCalled.Declared(carried)
+    }
     val said = (error as? JsonObject)?.get("message")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
     return @P@McpCalled.Faulted(
       @P@McpCallFault(@N@FaultKind.TransportFailure, tool, "${(error as? JsonObject)?.get("code")}: $said"),
@@ -102,6 +110,7 @@ private suspend fun @P@McpCallExchange(
   }
   val result = body["result"] as? JsonObject
     ?: return unreadable("the answer holds neither a result nor an error")
+  if (method == "prompts/get") return @P@McpCalled.Succeeded(result["messages"], null)
   val flagged = result["isError"]
   if (!(flagged is JsonPrimitive && !flagged.isString && flagged.content == "true")) {
     return @P@McpCalled.Succeeded(result["structuredContent"], result["content"])
@@ -161,7 +170,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         published.push(fill(REFUSAL, &prefix, &named, &fields));
     }
     published.push(
-        fill(SUPPORT, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &wrapped_entries(service)),
+        fill(SUPPORT, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &tool_entries(service)),
     );
     if service.operations.iter().any(is_content_pair) {
         published.push(fill(PAIR, &prefix, &named, &fields));
@@ -201,6 +210,7 @@ fn client(service: &ServiceDef, prefix: &str, named: &str) -> String {
     let methods = service
         .operations
         .iter()
+        .filter(|operation| operation.is_mcp_tool() || operation.is_mcp_prompt())
         .map(|operation| method(operation, prefix, named))
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -233,6 +243,33 @@ fn arguments_stmt(
 ) -> String {
     let tool = kotlin_quoted(operation.mcp_tool_name());
     let read_by = message_serializer(operation);
+    if operation.is_mcp_prompt() {
+        let single = matches!(operation.inputs, OperationInputs::Named(_)).then(|| {
+            let key = operation
+                .mcp
+                .prompt
+                .iter()
+                .filter_map(|prompt| prompt.arguments.first())
+                .map(|(argument, _)| wire_key(argument))
+                .next()
+                .unwrap_or_default();
+            format!(
+                "      if (message is JsonPrimitive && message.isString) sent[{}] = message\n",
+                kotlin_quoted(&key)
+            )
+        });
+        return format!(
+            "    val arguments = try {{\n      \
+             val message = Json.encodeToJsonElement({read_by}, req)\n      \
+             val sent = mutableMapOf<String, JsonElement>()\n      \
+             if (message is JsonObject) {{\n        \
+             for (member in message) if (member.value is JsonPrimitive && (member.value as JsonPrimitive).isString) sent[member.key] = member.value\n      \
+             }}\n{}      \
+             JsonObject(sent)\n    }} catch (rejected: Exception) {{\n      \
+             {faulted}\n    }}\n",
+            single.unwrap_or_default()
+        );
+    }
     let mut text = format!(
         "    val arguments = try {{\n      \
          val message = Json.encodeToJsonElement({read_by}, req)\n      \
@@ -277,8 +314,13 @@ fn method(operation: &OperationDef, prefix: &str, named: &str) -> String {
     let failure = format!(
         "{prefix}McpCallFault({named}FaultKind.FailedValidation, {tool}, rejected.message ?: rejected.toString())"
     );
+    let verb = if operation.is_mcp_prompt() {
+        "prompts/get"
+    } else {
+        "tools/call"
+    };
     let exchange = format!(
-        "    val outcome = {prefix}McpCallExchange(this.transport, synchronized(this) {{ ++this.nextId }}, {tool}, arguments)\n"
+        "    val outcome = {prefix}McpCallExchange(this.transport, synchronized(this) {{ ++this.nextId }}, \"{verb}\", {tool}, arguments)\n"
     );
     match &operation.outcome {
         OperationOutcome::OneWay => {
@@ -339,7 +381,20 @@ fn succeeded_read(
     if carries_no_value(operation, shape) {
         return format!("      is {prefix}McpCalled.Succeeded -> {result}.Ok\n");
     }
-    let read = if shape.header_out.is_empty() {
+    let read = if operation.is_mcp_prompt() {
+        if is_prompt_messages(operation) {
+            format!(
+                "          {result}.Ok(Json.decodeFromJsonElement({}, outcome.structured ?: JsonNull))\n",
+                read_serializer(success)
+            )
+        } else {
+            format!(
+                "          {result}.Ok(\n            ((((outcome.structured as? JsonArray)?.firstOrNull() as? JsonObject)?.get(\"content\") as? JsonObject)\n              \
+                 ?.get(\"text\") as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n              \
+                 ?: throw SerializationException(\"the first message holds no text\"),\n          )\n"
+            )
+        }
+    } else if shape.header_out.is_empty() {
         if is_content_pair(operation) {
             format!(
                 "          {result}.Ok({prefix}McpCallDecode(outcome.structured ?: {prefix}McpCallPair(outcome.content) ?: JsonNull))\n"

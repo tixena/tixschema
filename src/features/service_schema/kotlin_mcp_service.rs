@@ -14,11 +14,11 @@ use crate::features::kotlin::{
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
-    answers_key, is_content_list, is_content_pair, wrapped_ident,
+    answers_key, is_content_list, is_content_pair, is_prompt_messages, wrapped_ident,
 };
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    is_unit_type, option_inner, wire_key, written,
+    HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
@@ -37,7 +37,7 @@ val @P@McpCatalog: Map<String, List<String>> = mapOf<String, List<String>>(
   "tools" to listOf<String>(@MCP_TOOLS@),
   "resources" to listOf<String>(@MCP_RESOURCES@),
   "resourceTemplates" to listOf<String>(@MCP_TEMPLATES@),
-  "prompts" to listOf<String>(),
+  "prompts" to listOf<String>(@MCP_PROMPTS@),
   "skills" to listOf<String>(@MCP_SKILLS@),
   "capabilities" to listOf<String>(@MCP_CAPABILITIES@),
 )
@@ -70,8 +70,9 @@ private const val @P@McpInfoKey = "io.modelcontextprotocol/serverInfo"
 private const val @P@McpSubscriptionKey = "io.modelcontextprotocol/subscriptionId"
 private const val @P@McpListedForMs = 300000
 private val @P@McpMethods: Set<String> = setOf(
-  "completion/complete", "resources/list", "resources/read", "resources/templates/list",
-  "server/discover", "skills/get", "skills/list", "tools/call", "tools/list",
+  "completion/complete", "prompts/get", "prompts/list", "resources/list", "resources/read",
+  "resources/templates/list", "server/discover", "skills/get", "skills/list", "tools/call",
+  "tools/list",
 )
 
 private fun @P@McpServeText(element: JsonElement): String {
@@ -307,11 +308,12 @@ private fun @P@McpListedSkills(endpoint: @N@McpEndpoint): JsonObject {
 
 private fun @P@McpNamed(params: JsonObject, method: String): String? {
   val written = when (method) {
-    "tools/call" -> params["name"]
+    "tools/call", "prompts/get" -> params["name"]
     "resources/read" -> params["uri"]
     "skills/get" -> params["name"]?.takeIf { it is JsonPrimitive && it.isString } ?: params["uri"]
     else -> if (((params["argument"] as? JsonObject)?.get("name") as? JsonPrimitive)?.isString == true) {
-      (params["ref"] as? JsonObject)?.get("uri")
+      val reference = params["ref"] as? JsonObject
+      if ((reference?.get("type") as? JsonPrimitive)?.content == "ref/prompt") reference["name"] else reference?.get("uri")
     } else {
       null
     }
@@ -529,6 +531,7 @@ private fun @P@McpBegin(
     "server/discover" -> @P@McpResultOf(@P@McpDiscovered(instructions, endpoint, listens))
     "tools/list" -> @P@McpResultOf(@P@McpListedItems(endpoint, "tools"))
     "resources/templates/list" -> @P@McpResultOf(@P@McpListedItems(endpoint, "resourceTemplates"))
+    "prompts/list" -> @P@McpResultOf(@P@McpListedItems(endpoint, "prompts"))
     "skills/list" -> @P@McpResultOf(@P@McpListedSkills(endpoint))
     "resources/list" -> return @P@McpBegun.Routed(request)
     "subscriptions/listen" -> if (listens) {
@@ -536,7 +539,7 @@ private fun @P@McpBegin(
     } else {
       @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
     }
-    "tools/call", "resources/read", "completion/complete", "skills/get" -> {
+    "tools/call", "resources/read", "prompts/get", "completion/complete", "skills/get" -> {
       if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
       @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
@@ -551,6 +554,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverN
   val unknown = when (method) {
     "tools/call" -> "Unknown tool"
     "resources/read" -> "Resource not found"
+    "prompts/get" -> "Unknown prompt"
     "skills/get" -> "Skill not found"
     else -> "Unknown completion"
   }
@@ -1260,6 +1264,17 @@ sealed interface McpResourceContents {
   data class Blob(val bytes: List<UByte>) : McpResourceContents
 }
 
+/** Who a prompt's message is from. */
+@Serializable
+enum class McpRole {
+  @SerialName("user") User,
+  @SerialName("assistant") Assistant,
+}
+
+/** One message of a prompt: who it is from, and the block it holds. */
+@Serializable
+data class McpPromptMessage(val role: McpRole, val content: McpContent)
+
 /** Reads and writes a [McpContent] as the block the specification writes. */
 object McpContentSerializer : KSerializer<McpContent> {
   override val descriptor: SerialDescriptor = buildClassSerialDescriptor("McpContent")
@@ -1355,11 +1370,15 @@ pub const RESOURCES_MARKER: &str = "@MCP_RESOURCES@";
 /// Where the accessor writes the resource templates, as `Kotlin` literals of their JSON text.
 pub const TEMPLATES_MARKER: &str = "@MCP_TEMPLATES@";
 
+/// Where the accessor writes the prompts, as the comma-joined Kotlin literals of their JSON text.
+pub const PROMPTS_MARKER: &str = "@MCP_PROMPTS@";
+
 /// The text the accessor replaces with the skills' JSON texts, each a Kotlin literal.
 pub const SKILLS_MARKER: &str = "@MCP_SKILLS@";
 
 /// The text the accessor replaces with the files of the skills folder, each `"uri" to "json"`.
 pub const SKILL_FILES_MARKER: &str = "@MCP_SKILL_FILES@";
+
 /// Where the emitted text lists the capabilities, as Kotlin literals of their JSON text.
 const CAPABILITIES_MARKER: &str = "@MCP_CAPABILITIES@";
 
@@ -1375,7 +1394,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
             .replace("@WRAPPED_MAP@", &tool_entries(service))
             .replace(
                 CAPABILITIES_MARKER,
-                &capabilities_literal(&held, skilled(service)),
+                &capabilities_literal(service, &held, skilled(service)),
             ),
         page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
@@ -1468,9 +1487,26 @@ fn answers_stmt(prefix: &str, operation: &OperationDef) -> String {
     )
 }
 
-/// `wrapped_entries` for the operations that are tools.
-fn tool_entries(service: &ServiceDef) -> String {
-    wrapped_entries_of(service, true)
+/// The scopes `prompts/get` needs, by the name of the prompt.
+fn prompt_scopes(table: &ScopeTable) -> String {
+    if table.prompts.is_empty() {
+        return String::new();
+    }
+    let mut text = String::from("  if (method == \"prompts/get\") {\n    when (name) {\n");
+    for (prompt, scopes) in &table.prompts {
+        let list = scopes
+            .iter()
+            .map(|scope| kotlin_quoted(scope))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(
+            text,
+            "      {} -> return listOf({list})",
+            kotlin_quoted(prompt)
+        );
+    }
+    text.push_str("    }\n  }\n");
+    text
 }
 
 fn scopes_table(table: &ScopeTable) -> String {
@@ -1516,6 +1552,7 @@ fn scopes_table(table: &ScopeTable) -> String {
         }
         text.push_str("    }\n  }\n");
     }
+    text.push_str(&prompt_scopes(table));
     if !table.reads.is_empty() {
         text.push_str("  if (method == \"resources/read\" && name != null) {\n");
         for (uri, scopes) in &table.reads {
@@ -1570,16 +1607,12 @@ fn scopes_table(table: &ScopeTable) -> String {
 
 /// One `"tool" to <marker>,` entry per tool: the accessor writes `true` or `false` over each
 /// marker, from `wrapped_{operation}()`.
-pub(super) fn wrapped_entries(service: &ServiceDef) -> String {
-    wrapped_entries_of(service, false)
-}
-
-fn wrapped_entries_of(service: &ServiceDef, tools_only: bool) -> String {
+pub(super) fn tool_entries(service: &ServiceDef) -> String {
     service
         .operations
         .iter()
         .enumerate()
-        .filter(|(_, operation)| !tools_only || operation.is_mcp_tool())
+        .filter(|(_, operation)| operation.is_mcp_tool())
         .map(|(at, operation)| {
             format!(
                 "{} to {},",
@@ -1657,6 +1690,11 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .map(|template| literal(&::std::string::ToString::to_string(template)))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let prompts = Self::mcp_prompts()
+                .iter()
+                .map(|prompt| literal(&::std::string::ToString::to_string(prompt)))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let skills = Self::mcp_skills()
                 .iter()
                 .map(|skill| literal(&::std::string::ToString::to_string(skill)))
@@ -1678,6 +1716,7 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .replace(#TOOLS_MARKER, &tools)
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
+                .replace(#PROMPTS_MARKER, &prompts)
                 .replace(#SKILLS_MARKER, &skills)
                 .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#NAMES_MARKER, &names)
@@ -1755,6 +1794,9 @@ fn route(
     if held.listing.is_some() {
         dispatch.push_str("      \"resources/list\" -> @P@McpList(handlers, mcpParams)\n");
     }
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        dispatch.push_str("      \"prompts/get\" -> @P@McpGetPrompt(handlers, mcpParams)\n");
+    }
     if !held.completions.is_empty() {
         dispatch.push_str("      \"completion/complete\" -> @P@McpComplete(handlers, mcpParams)\n");
     }
@@ -1776,8 +1818,11 @@ fn route(
 }
 
 /// The `capabilities` the catalog lists, as the Kotlin literals of their JSON text.
-fn capabilities_literal(held: &Resourced<'_>, skilled: bool) -> String {
+fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![kotlin_quoted("{\"tools\":{}}")];
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        capabilities.push(kotlin_quoted("{\"prompts\":{}}"));
+    }
     if held.is_served() || skilled {
         capabilities.push(kotlin_quoted("{\"resources\":{}}"));
     }
@@ -1841,10 +1886,21 @@ fn resource_functions(
     named: &str,
     fields: &str,
 ) -> String {
-    if !held.any() && !skilled(service) {
+    let prompts: Vec<&OperationDef> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_prompt())
+        .collect();
+    if !held.any() && prompts.is_empty() && !skilled(service) {
         return String::new();
     }
     let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
+    if !prompts.is_empty() {
+        text.push_str(&prompt_dispatch(&prompts, prefix, named));
+        for operation in &prompts {
+            text.push_str(&prompt_function(operation, prefix, named, fields));
+        }
+    }
     if held.reads().next().is_some() || skilled(service) {
         text.push_str(&read_dispatch(service, held, prefix, named));
         for operation in held.reads() {
@@ -2208,8 +2264,8 @@ fn complete_dispatch(
     let mut text = format!(
         "\n\nprivate suspend fun {prefix}McpComplete(handlers: {named}Handlers, mcpParams: JsonObject): JsonObject? {{\n  \
          val mcpReference = mcpParams[\"ref\"] as? JsonObject ?: return null\n  \
-         if ((mcpReference[\"type\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content != \"ref/resource\") return null\n  \
-         val mcpUri = (mcpReference[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
+         val mcpKind = (mcpReference[\"type\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
+         val mcpUri = (mcpReference[if (mcpKind == \"ref/prompt\") \"name\" else \"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
          val mcpArgument = mcpParams[\"argument\"] as? JsonObject ?: return null\n  \
          val mcpParameter = (mcpArgument[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
          val mcpTyped = (mcpArgument[\"value\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: \"\"\n  \
@@ -2223,18 +2279,117 @@ fn complete_dispatch(
         let Some(target) = service
             .operations
             .iter()
-            .find(|candidate| written(&candidate.ident) == completes.resource)
+            .find(|candidate| written(&candidate.ident) == completes.operation)
         else {
             continue;
         };
-        let Some(resource) = target.mcp.resource.as_ref() else {
-            continue;
+        let (reference, name, parameter) = match completes.kind {
+            McpCompletesKind::Resource => {
+                let Some(resource) = target.mcp.resource.as_ref() else {
+                    continue;
+                };
+                (
+                    "ref/resource",
+                    resource.uri.clone(),
+                    completes.parameter.clone(),
+                )
+            }
+            McpCompletesKind::Prompt => {
+                let Some(argument) = target.mcp.prompt.as_ref().and_then(|prompt| {
+                    prompt
+                        .arguments
+                        .iter()
+                        .find(|(argument, _)| written(argument) == completes.parameter)
+                }) else {
+                    continue;
+                };
+                (
+                    "ref/prompt",
+                    target.mcp_tool_name().to_owned(),
+                    wire_key(&argument.0),
+                )
+            }
         };
         let _ = writeln!(
             text,
-            "  if (mcpUri == {} && mcpParameter == {}) return {prefix}McpComplete{}(handlers, mcpTyped, mcpChosen)",
-            kotlin_quoted(&resource.uri),
-            kotlin_quoted(&completes.parameter),
+            "  if (mcpKind == {} && mcpUri == {} && mcpParameter == {}) return {prefix}McpComplete{}(handlers, mcpTyped, mcpChosen)",
+            kotlin_quoted(reference),
+            kotlin_quoted(&name),
+            kotlin_quoted(&parameter),
+            pascal(operation),
+        );
+    }
+    text.push_str("  return null\n}");
+    text
+}
+
+/// The prompt `operation`: reads its arguments, calls its handler and answers its messages.
+fn prompt_function(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
+    let source = match &operation.inputs {
+        OperationInputs::Empty => "JsonObject(emptyMap())".to_owned(),
+        OperationInputs::Generated(_) => "mcpArguments".to_owned(),
+        OperationInputs::Named(_) => {
+            format!(
+                "mcpArguments[{}] ?: JsonNull",
+                kotlin_quoted(&prompt_argument_key(operation))
+            )
+        }
+    };
+    let description = kotlin_quoted(operation.doc.as_deref().unwrap_or_default());
+    let messages = if is_prompt_messages(operation) {
+        "mcpEncoded".to_owned()
+    } else {
+        "buildJsonArray {\n            add(\n              buildJsonObject {\n                \
+         put(\"content\", buildJsonObject { put(\"text\", mcpEncoded.jsonPrimitive.content); put(\"type\", \"text\") })\n                \
+         put(\"role\", \"user\")\n              },\n            )\n          }"
+            .to_owned()
+    };
+    let success = format!(
+        "        {prefix}McpResultOf(\n          buildJsonObject {{\n            \
+         put(\"description\", {description})\n            \
+         put(\"messages\", {messages})\n            \
+         put(\"resultType\", \"complete\")\n          }},\n        )"
+    );
+    let refusal = kotlin_quoted(&format!(
+        "{}: the service refused the prompt",
+        operation.mcp_tool_name()
+    ));
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpPrompt{op}(handlers: {named}Handlers, mcpArguments: JsonObject): JsonObject {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation, prefix, named, fields, &source, &refusal, &success,
+        )
+    )
+}
+
+/// The wire key of the one argument a prompt takes as its whole message.
+fn prompt_argument_key(operation: &OperationDef) -> String {
+    operation
+        .mcp
+        .prompt
+        .iter()
+        .filter_map(|prompt| prompt.arguments.first())
+        .map(|(argument, _)| wire_key(argument))
+        .next()
+        .unwrap_or_default()
+}
+
+/// `McpGetPrompt`: finds the prompt a `prompts/get` names.
+fn prompt_dispatch(prompts: &[&OperationDef], prefix: &str, named: &str) -> String {
+    let mut text = format!(
+        "\n\nprivate suspend fun {prefix}McpGetPrompt(handlers: {named}Handlers, mcpParams: JsonObject): JsonObject? {{\n  \
+         val mcpName = (mcpParams[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
+         val mcpArguments = mcpParams[\"arguments\"] as? JsonObject ?: JsonObject(emptyMap())\n"
+    );
+    for operation in prompts {
+        let _ = writeln!(
+            text,
+            "  if (mcpName == {}) return {prefix}McpPrompt{}(handlers, mcpArguments)",
+            kotlin_quoted(operation.mcp_tool_name()),
             pascal(operation),
         );
     }

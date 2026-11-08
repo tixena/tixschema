@@ -5,6 +5,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
+use crate::service_schema::mcp_tools::is_prompt_messages;
 pub(super) use crate::service_schema::mcp_tools::{
     is_content_list as is_list, is_content_pair as is_pair,
 };
@@ -16,10 +17,15 @@ pub(super) fn any(service: &ServiceDef) -> bool {
         .any(|operation| operation.mcp.content.is_some())
 }
 
+/// Whether a prompt answers a list of messages, which hold blocks.
+pub(super) fn prompt_messages(service: &ServiceDef) -> bool {
+    service.operations.iter().any(is_prompt_messages)
+}
+
 /// The result of blocks, and what writes one block.
 pub(super) fn helpers(service: &ServiceDef, module: &Ident) -> TokenStream {
     let pair = service.operations.iter().any(is_pair);
-    let list = service.operations.iter().any(is_list);
+    let list = service.operations.iter().any(is_list) || prompt_messages(service);
     let media = pair.then(|| {
         quote! {
             /// An image or audio block for `bytes`, where `content_type` says they are one.
@@ -85,12 +91,16 @@ pub(super) fn helpers(service: &ServiceDef, module: &Ident) -> TokenStream {
             }
         }
     });
-    quote! {
-        /// The result of a tool that answers blocks.
-        fn blocks_result(content: ::std::vec::Vec<::serde_json::Value>) -> ::serde_json::Value {
-            ::serde_json::json!({ "resultType": "complete", "content": content, "isError": false })
+    let result = any(service).then(|| {
+        quote! {
+            /// The result of a tool that answers blocks.
+            fn blocks_result(content: ::std::vec::Vec<::serde_json::Value>) -> ::serde_json::Value {
+                ::serde_json::json!({ "resultType": "complete", "content": content, "isError": false })
+            }
         }
-
+    });
+    quote! {
+        #result
         #media
         #blocks
     }

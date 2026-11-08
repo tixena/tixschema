@@ -7,10 +7,10 @@ use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
+use crate::service_schema::mcp_tools::{answers_key, is_content_pair, is_prompt_messages};
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    is_unit_type, wire_key, written,
+    HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
+    ServiceDef, is_unit_type, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
 use crate::utils::ts_quoted;
@@ -36,6 +36,9 @@ pub const RESOURCES_MARKER: &str = "/*__TIXSCHEMA_MCP_RESOURCES__*/";
 /// The text `ts_mcp_service()` replaces with the resource templates' JSON texts, each quoted,
 /// joined by commas.
 pub const TEMPLATES_MARKER: &str = "/*__TIXSCHEMA_MCP_TEMPLATES__*/";
+
+/// The text `ts_mcp_service()` replaces with the prompts' JSON texts, each quoted, joined by commas.
+pub const PROMPTS_MARKER: &str = "/*__TIXSCHEMA_MCP_PROMPTS__*/";
 
 /// The text `ts_mcp_service()` replaces with the skills' JSON texts, each quoted, joined by commas.
 pub const SKILLS_MARKER: &str = "/*__TIXSCHEMA_MCP_SKILLS__*/";
@@ -295,15 +298,15 @@ function __p__McpCapabilities(endpoint: __N__McpEndpoint, listens: boolean): Rec
   return merged;
 }
 
-/** What a routed request asks for: the tool, the URI, or the URI of the template a completion is for. */
+/** What a routed request asks for: the tool, the URI, the prompt, or the URI of the template or the name of the prompt a completion is for. */
 function __p__McpNamed(params: Record<string, unknown> | undefined, method: string): string | undefined {
   const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-  if (method === "tools/call") return text(params?.name);
+  if (method === "tools/call" || method === "prompts/get") return text(params?.name);
   if (method === "resources/read") return text(params?.uri);
   if (method === "skills/get") return text(params?.name) ?? text(params?.uri);
-  return text(__p__McpObject(params?.argument)?.name) === undefined
-    ? undefined
-    : text(__p__McpObject(params?.ref)?.uri);
+  if (text(__p__McpObject(params?.argument)?.name) === undefined) return undefined;
+  const reference = __p__McpObject(params?.ref);
+  return reference?.type === "ref/prompt" ? text(reference.name) : text(reference?.uri);
 }
 
 type __N__McpListingStart =
@@ -481,6 +484,17 @@ async function __p__McpHandle(
           ttlMs: 300000,
         },
       });
+    case "prompts/list":
+      return __p__McpReplied(200, {
+        id,
+        result: {
+          _meta: info,
+          cacheScope: "public",
+          prompts: endpoint.parts.flatMap((part) => part.prompts.map((prompt) => new __N__McpRaw(prompt))),
+          resultType: "complete",
+          ttlMs: 300000,
+        },
+      });
     case "resources/list":
       return __p__McpListResources(id, params, info, endpoint, route);
     case "skills/list": {
@@ -499,6 +513,7 @@ async function __p__McpHandle(
     }
     case "tools/call":
     case "resources/read":
+    case "prompts/get":
     case "skills/get":
     case "completion/complete": {
       const name = __p__McpNamed(params, method);
@@ -520,9 +535,11 @@ async function __p__McpHandle(
           ? "Unknown tool"
           : method === "resources/read"
             ? "Resource not found"
-            : method === "skills/get"
-              ? "Skill not found"
-              : "Unknown completion";
+            : method === "prompts/get"
+              ? "Unknown prompt"
+              : method === "skills/get"
+                ? "Skill not found"
+                : "Unknown completion";
       return __p__McpRefused(id, 200, -32602, `${unknown}: ${name}`, {
         fault: {
           detail: "the service answers to no operation by that name",
@@ -771,8 +788,8 @@ function __p__McpDeclined(error: unknown, refusal: string): __N__McpAnswer {
 }
 
 /**
- * The route of `__N__`: answers a `tools/call` of one of its tools, a `resources/read`, its page of
- * `resources/list` and a `completion/complete` through `create__N__Dispatcher`, so the Zod reads
+ * The route of `__N__`: answers a `tools/call` of one of its tools, a `resources/read`, a
+ * `prompts/get`, its page of `resources/list` and a `completion/complete` through `create__N__Dispatcher`, so the Zod reads
  * judge every message, and answers `undefined` for any other request.
  */
 export function create__N__McpRoute<Ctx>(
@@ -956,18 +973,19 @@ __ASKING__    const faulted = error as { fault: object };
       ttlMs: operation.ttlMs,
     }));
   };
-  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+__PROMPTING__  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
     const reference = __p__McpObject(call.ref);
     const argument = __p__McpObject(call.argument);
-    if (reference === undefined || reference.type !== "ref/resource") return undefined;
-    const uri = reference.uri;
+    if (reference === undefined) return undefined;
+    const kind = reference.type === "ref/resource" ? "resource" : reference.type === "ref/prompt" ? "prompt" : undefined;
+    const uri = kind === "prompt" ? reference.name : reference.uri;
     const parameter = argument?.name;
-    if (typeof uri !== "string" || typeof parameter !== "string") return undefined;
+    if (kind === undefined || typeof uri !== "string" || typeof parameter !== "string") return undefined;
     const typed = typeof argument?.value === "string" ? argument.value : "";
     const context = __p__McpObject(call.context);
     const chosen = context !== undefined && "arguments" in context ? context.arguments : {};
     for (const operation of __p__McpOperations) {
-      if (operation.kind !== "completion" || operation.uri !== uri || operation.parameter !== parameter) continue;
+      if (operation.kind !== "completion" || operation.reference !== kind || operation.uri !== uri || operation.parameter !== parameter) continue;
       return answering(
         ctx,
         operation.operation,
@@ -997,7 +1015,7 @@ __ASKING__    const faulted = error as { fault: object };
         return reading(ctx, call);
       case "resources/list":
         return listing(ctx, call);
-      case "skills/get":
+__PROMPT_CASE__      case "skills/get":
         return getting(call);
       case "completion/complete":
         return completing(ctx, call);
@@ -1006,6 +1024,28 @@ __ASKING__    const faulted = error as { fault: object };
     }
   };
 }"#;
+
+const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
+    const operation = __p__McpOperations.find((candidate) => candidate.kind === "prompt" && candidate.prompt === call.name);
+    if (operation === undefined || operation.kind !== "prompt") return undefined;
+    const given = __p__McpObject(call.arguments) ?? {};
+    const payload = operation.source === "empty" ? {} : operation.source === "single" ? (given[operation.key] ?? null) : given;
+    return answering(ctx, operation.operation, operation.schema, payload, `${operation.prompt}: the service refused the prompt`, (value) => ({
+      description: operation.doc,
+      messages: operation.text
+        ? [{ content: { text: value, type: "text" }, role: "user" }]
+        : (Array.isArray(value) ? (value as ReadonlyArray<Record<string, unknown>>) : []).map((message) => ({
+            content: __p__McpBlock(message.content),
+            role: message.role,
+          })),
+      resultType: "complete",
+    }));
+  };
+"#;
+
+const PROMPT_CASE: &str = r#"      case "prompts/get":
+        return prompting(ctx, call);
+"#;
 
 const ANSWERS: &str = r#"      const answers = operation.interview?.answers;
       if (answers !== undefined) {
@@ -1369,7 +1409,13 @@ export type McpContent =
       readonly uri: string;
       readonly mimeType?: string | undefined;
       readonly blob: Uint8Array;
-    };";
+    };
+
+/** Who a prompt's message is from. */
+export type McpRole = \"user\" | \"assistant\";
+
+/** One message of a prompt: who it is from, and the block it holds. */
+export type McpPromptMessage = { readonly role: McpRole; readonly content: McpContent };";
 
 /// Stands in the emitted text for what `wrapped_{operation}()` answers.
 pub fn wrapped_marker(operation: &OperationDef) -> String {
@@ -1437,6 +1483,9 @@ fn endpoint_name(operation: &OperationDef) -> Option<String> {
     if operation.is_mcp_tool() {
         return Some(format!("tool:{}", operation.mcp_tool_name()));
     }
+    if operation.is_mcp_prompt() {
+        return Some(format!("prompt:{}", operation.mcp_tool_name()));
+    }
     if let Some((skill, _)) = &operation.mcp.skill {
         return Some(format!("skill:{skill}"));
     }
@@ -1484,6 +1533,9 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
     if completes {
         capabilities.push(ts_quoted("{\"completions\":{}}"));
     }
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        capabilities.push(ts_quoted("{\"prompts\":{}}"));
+    }
     if skilled {
         capabilities.push(ts_quoted(
             "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
@@ -1497,7 +1549,7 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
          tools: [{TOOLS_MARKER}],\n  \
          resources: [{RESOURCES_MARKER}],\n  \
          resourceTemplates: [{TEMPLATES_MARKER}],\n  \
-         prompts: [],\n  \
+         prompts: [{PROMPTS_MARKER}],\n  \
          skills: [{SKILLS_MARKER}],\n  \
          capabilities: [{capabilities}],\n\
          }};\n\n\
@@ -1536,6 +1588,13 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .map(operation_row)
         .collect();
     rows.extend(resource_rows(service));
+    rows.extend(
+        service
+            .operations
+            .iter()
+            .filter(|operation| operation.is_mcp_prompt())
+            .map(prompt_row),
+    );
     rows.extend(service.operations.iter().filter_map(skill_row));
     format!(
         "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
@@ -1597,10 +1656,21 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly kind: \"completion\";\n      \
          readonly operation: string;\n      \
          readonly schema: ZodType;\n      \
+         readonly reference: \"resource\" | \"prompt\";\n      \
          readonly uri: string;\n      \
          readonly parameter: string;\n      \
          readonly typed: string;\n      \
          readonly chosen: string;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"prompt\";\n      \
+         readonly prompt: string;\n      \
+         readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
+         readonly source: \"empty\" | \"members\" | \"single\";\n      \
+         readonly key: string;\n      \
+         readonly text: boolean;\n      \
+         readonly doc: string;\n    \
          }};\n\n\
          export const {prefix}McpOperations: ReadonlyArray<{named}McpOperation> = [\n{rows}\n];",
         rows = rows.join("\n"),
@@ -1612,7 +1682,7 @@ fn resource_rows(service: &ServiceDef) -> Vec<String> {
     let resourced: Vec<&OperationDef> = service
         .operations
         .iter()
-        .filter(|operation| !operation.is_mcp_tool())
+        .filter(|operation| !operation.is_mcp_tool() && !operation.is_mcp_prompt())
         .collect();
     let reads = |template: bool| {
         resourced
@@ -1744,21 +1814,74 @@ fn completion_row(service: &ServiceDef, operation: &OperationDef) -> Option<Stri
     let target = service
         .operations
         .iter()
-        .find(|candidate| written(&candidate.ident) == completes.resource)?;
-    let uri = &target.mcp.resource.as_ref()?.uri;
+        .find(|candidate| written(&candidate.ident) == completes.operation)?;
+    let (reference, uri, parameter) = match completes.kind {
+        McpCompletesKind::Resource => (
+            "resource",
+            target.mcp.resource.as_ref()?.uri.clone(),
+            completes.parameter.clone(),
+        ),
+        McpCompletesKind::Prompt => {
+            let argument = target
+                .mcp
+                .prompt
+                .as_ref()?
+                .arguments
+                .iter()
+                .find(|(argument, _)| written(argument) == completes.parameter)?;
+            (
+                "prompt",
+                target.mcp_tool_name().to_owned(),
+                wire_key(&argument.0),
+            )
+        }
+    };
     let OperationInputs::Generated(fields) = &operation.inputs else {
         return None;
     };
     Some(format!(
-        "  {{ kind: \"completion\", operation: {wire}, schema: {schema}, uri: {uri}, parameter: {parameter}, \
-         typed: {typed}, chosen: {chosen} }},",
+        "  {{ kind: \"completion\", operation: {wire}, schema: {schema}, reference: \"{reference}\", uri: {uri}, \
+         parameter: {parameter}, typed: {typed}, chosen: {chosen} }},",
         wire = ts_quoted(&operation.wire_name),
         schema = message::schema(operation),
-        uri = ts_quoted(uri),
-        parameter = ts_quoted(&completes.parameter),
+        uri = ts_quoted(&uri),
+        parameter = ts_quoted(&parameter),
         typed = ts_quoted(&wire_key(&fields.first()?.0)),
         chosen = ts_quoted(&wire_key(&fields.get(1)?.0)),
     ))
+}
+
+/// The row of a prompt: how its arguments are read, and whether its success is one text.
+fn prompt_row(operation: &OperationDef) -> String {
+    let (source, key) = match &operation.inputs {
+        OperationInputs::Empty => ("empty", String::new()),
+        OperationInputs::Generated(_) => ("members", String::new()),
+        OperationInputs::Named(_) => (
+            "single",
+            operation
+                .mcp
+                .prompt
+                .iter()
+                .filter_map(|prompt| prompt.arguments.first())
+                .map(|(argument, _)| wire_key(argument))
+                .next()
+                .unwrap_or_default(),
+        ),
+    };
+    let text = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error }
+            if matches!(success.as_ref(), Type::Path(path) if path.path.is_ident("String"))
+    );
+    format!(
+        "  {{ kind: \"prompt\", prompt: {prompt}, operation: {wire}, schema: {schema}, source: \"{source}\", \
+         key: {key}, text: {text}, doc: {doc} }},",
+        prompt = ts_quoted(operation.mcp_tool_name()),
+        wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
+        key = ts_quoted(&key),
+        doc = ts_quoted(operation.doc.as_deref().unwrap_or_default()),
+    )
 }
 
 fn operation_row(operation: &OperationDef) -> String {
@@ -1852,11 +1975,39 @@ fn content_text(service: &ServiceDef, prefix: &str) -> String {
         .operations
         .iter()
         .any(|operation| operation.mcp.content.is_some())
+        || prompt_messages(service)
     {
         filled(CONTENT, "", prefix)
     } else {
         String::new()
     }
+}
+
+/// Whether a prompt answers a list of messages.
+fn prompt_messages(service: &ServiceDef) -> bool {
+    service.operations.iter().any(is_prompt_messages)
+}
+
+/// The scopes `prompts/get` needs, by the name of the prompt.
+fn prompt_scopes(table: &ScopeTable) -> String {
+    if table.prompts.is_empty() {
+        return String::new();
+    }
+    let mut body = String::from("  if (method === \"prompts/get\") {\n    switch (name) {\n");
+    for (prompt, needed) in &table.prompts {
+        let scopes = needed
+            .iter()
+            .map(|scope| ts_quoted(scope))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(
+            body,
+            "      case {}:\n        return [{scopes}];",
+            ts_quoted(prompt)
+        );
+    }
+    body.push_str("      default:\n        return [];\n    }\n  }\n");
+    body
 }
 
 fn scopes(service: &ServiceDef, prefix: &str) -> String {
@@ -1904,6 +2055,7 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
         }
         body.push_str("      default:\n        return [];\n    }\n  }\n");
     }
+    body.push_str(&prompt_scopes(&table));
     if !table.reads.is_empty() {
         body.push_str("  if (method === \"resources/read\" && name !== undefined) {\n");
         for (uri, needed) in &table.reads {
@@ -1993,7 +2145,10 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
     } else {
         ""
     };
+    let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
     ROUTE
+        .replace("__PROMPTING__", if prompting { PROMPTING } else { "" })
+        .replace("__PROMPT_CASE__", if prompting { PROMPT_CASE } else { "" })
         .replace("__DECLINED__", declined)
         .replace("__ANSWERS__", if answers { ANSWERS } else { "" })
         .replace("__BLOCKS__", if blocks { BLOCKS } else { "" })

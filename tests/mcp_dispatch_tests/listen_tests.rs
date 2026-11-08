@@ -30,8 +30,16 @@ listens_through_every_entry_point_of!(
     Approvals::default(),
     |_call| ()
 );
+listens_through_every_entry_point_of!(
+    the_counsel_dispatcher_listens_through_every_entry_point,
+    counsel_mcp,
+    CounselServiceSchema,
+    Counsels::default(),
+    |_call| ()
+);
 
 use crate::approval::Approvals;
+use crate::counsel::Counsels;
 use crate::document_mcp::{self, McpChange, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use crate::support::{
     Lines, Tasks, answer, assert_error, assert_result, assert_valid, block_on, id, request,
@@ -39,8 +47,8 @@ use crate::support::{
 };
 use crate::tests::{Archive, Reporting};
 use crate::{
-    ApprovalServiceSchema, BillingServiceSchema, DocumentServiceSchema, ExportServiceSchema,
-    approval_mcp, billing_mcp, export_mcp,
+    ApprovalServiceSchema, BillingServiceSchema, CounselServiceSchema, DocumentServiceSchema,
+    ExportServiceSchema, approval_mcp, billing_mcp, counsel_mcp, export_mcp,
 };
 use alloc::collections::VecDeque;
 use core::future::pending;
