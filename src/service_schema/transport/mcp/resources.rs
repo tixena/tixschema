@@ -44,7 +44,7 @@ impl<'service> Resourced<'service> {
         for operation in service
             .operations
             .iter()
-            .filter(|operation| !operation.is_mcp_tool())
+            .filter(|operation| !operation.is_mcp_tool() && operation.mcp.skill.is_none())
         {
             if let Some(resource) = &operation.mcp.resource {
                 if resource.is_template() {
@@ -74,9 +74,9 @@ pub(super) struct CatalogParts {
     pub templates: Vec<TokenStream>,
 }
 
-pub(super) fn catalog_parts(held: &Resourced<'_>) -> CatalogParts {
+pub(super) fn catalog_parts(held: &Resourced<'_>, reads_skills: bool) -> CatalogParts {
     let mut capabilities = TokenStream::new();
-    if held.is_served() {
+    if held.is_served() || reads_skills {
         capabilities.extend(quote! { , "resources": {} });
     }
     if !held.completions.is_empty() {
@@ -198,14 +198,19 @@ fn is_blob(operation: &OperationDef) -> bool {
 }
 
 /// The `route` arm of `resources/read`.
-pub(super) fn read_arm(held: &Resourced<'_>, module: &Ident) -> Option<TokenStream> {
-    if held.fixed.is_empty() && held.templates.is_empty() {
+pub(super) fn read_arm(
+    held: &Resourced<'_>,
+    module: &Ident,
+    skills: &[TokenStream],
+) -> Option<TokenStream> {
+    if held.fixed.is_empty() && held.templates.is_empty() && skills.is_empty() {
         return None;
     }
     let reads = held.reads().map(|operation| read_block(operation, module));
     Some(quote! {
         "resources/read" => {
             let uri = params.get("uri")?.as_str()?;
+            #(#skills)*
             #(#reads)*
             ::core::option::Option::None
         }
@@ -367,7 +372,7 @@ fn complete_block(
 
 /// The statements that read and judge the message of `operation` from `source`, answering the
 /// request with a fault where either refuses it.
-fn reading(
+pub(super) fn reading(
     operation: &OperationDef,
     module: &Ident,
     source: &TokenStream,

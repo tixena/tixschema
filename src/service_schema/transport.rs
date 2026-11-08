@@ -16,6 +16,8 @@ use syn::{Expr, ExprLit, Ident, Lit, LitStr, parse::Parser as _};
 
 const TRANSPORTS_ARGUMENT: &str = "transports";
 const NON_EXHAUSTIVE_ARGUMENT: &str = "non_exhaustive";
+const MCP_ARGUMENT: &str = "mcp";
+const MCP_SKILLS_KEY: &str = "skills";
 const OPENAPI_ARGUMENT: &str = "openapi";
 const OPENAPI_PATH_KEY: &str = "path";
 const OPENAPI_TITLE_KEY: &str = "title";
@@ -24,13 +26,19 @@ const DEFAULT_OPENAPI_PATH: &str = "/openapi.json";
 const UNKNOWN_ARGUMENT_MESSAGE: &str = concat!(
     "service_schema: unknown `service_schema` argument\n",
     "       the arguments are `transports`, written `transports = [\"amqp_rpc\"]`,\n",
-    "       `non_exhaustive`, written bare, and `openapi`, written bare or ",
-    "`openapi(title = \"...\", path = \"...\")`"
+    "       `non_exhaustive`, written bare, `openapi`, written bare or ",
+    "`openapi(title = \"...\", path = \"...\")`, and `mcp`, written `mcp(skills = \"skills\")`"
 );
 
 const UNKNOWN_OPENAPI_KEY_MESSAGE: &str = concat!(
     "service_schema: unknown `openapi` argument\n",
     "       the arguments are `title` and `path`, each written `name = \"...\"`"
+);
+
+const UNKNOWN_MCP_KEY_MESSAGE: &str = concat!(
+    "service_schema: unknown `mcp` argument\n",
+    "       the argument is `skills`, written `skills = \"skills\"`: a folder, relative to the ",
+    "crate's `Cargo.toml`, with one directory for each skill"
 );
 
 const OPENAPI_PATH_SHAPE_MESSAGE: &str =
@@ -58,6 +66,8 @@ pub struct ServiceArguments {
     pub non_exhaustive: bool,
     /// `Some` where the service asked for `openapi`.
     pub openapi: Option<OpenApiArguments>,
+    /// `mcp(skills = "...")`: the folder of skills the server ships, as written.
+    pub skills: Option<LitStr>,
     /// The transports asked for, in the order written. Nothing sorts or dedupes it.
     pub transports: Vec<Transport>,
 }
@@ -271,7 +281,7 @@ pub fn emit(
 /// ```text
 /// error: service_schema: unknown `service_schema` argument
 ///               the arguments are `transports`, written `transports = ["amqp_rpc"]`,
-///               `non_exhaustive`, written bare, and `openapi`, written bare or `openapi(title = "...", path = "...")`
+///               `non_exhaustive`, written bare, `openapi`, written bare or `openapi(title = "...", path = "...")`, and `mcp`, written `mcp(skills = "skills")`
 ///   --> tests/zz_probe.rs:11:18
 ///    |
 /// 11 | #[service_schema(transport = ["amqp_rpc"])]
@@ -345,6 +355,19 @@ pub fn parse_arguments(args: TokenStream) -> Result<ServiceArguments, syn::Error
                 return Err(meta.error(NON_EXHAUSTIVE_SHAPE_MESSAGE));
             }
             read.non_exhaustive = true;
+            return Ok(());
+        }
+        if meta.path.is_ident(MCP_ARGUMENT) {
+            meta.parse_nested_meta(|nested| {
+                if !nested.path.is_ident(MCP_SKILLS_KEY) {
+                    return Err(nested.error(UNKNOWN_MCP_KEY_MESSAGE));
+                }
+                let folder = nested.value()?.parse::<LitStr>()?;
+                if read.skills.replace(folder).is_some() {
+                    return Err(nested.error(UNKNOWN_MCP_KEY_MESSAGE));
+                }
+                Ok(())
+            })?;
             return Ok(());
         }
         if meta.path.is_ident(OPENAPI_ARGUMENT) {

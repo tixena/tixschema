@@ -18,6 +18,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
     is_unit_type, option_inner, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
@@ -35,9 +36,11 @@ val @P@McpCatalog: Map<String, List<String>> = mapOf<String, List<String>>(
   "resources" to listOf<String>(@MCP_RESOURCES@),
   "resourceTemplates" to listOf<String>(@MCP_TEMPLATES@),
   "prompts" to listOf<String>(),
-  "skills" to listOf<String>(),
+  "skills" to listOf<String>(@MCP_SKILLS@),
   "capabilities" to listOf<String>(@MCP_CAPABILITIES@),
 )
+
+private val @P@McpSkillFiles: Map<String, String> = mapOf<String, String>(@MCP_SKILL_FILES@)
 
 private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
   @WRAPPED_MAP@
@@ -71,7 +74,7 @@ private const val @P@McpSubscriptionKey = "io.modelcontextprotocol/subscriptionI
 private const val @P@McpListedForMs = 300000
 private val @P@McpMethods: Set<String> = setOf(
   "completion/complete", "resources/list", "resources/read", "resources/templates/list",
-  "server/discover", "tools/call", "tools/list",
+  "server/discover", "skills/get", "skills/list", "tools/call", "tools/list",
 )
 
 private fun @P@McpServeText(element: JsonElement): String {
@@ -290,10 +293,22 @@ private fun @P@McpListedItems(endpoint: @N@McpEndpoint, key: String): JsonObject
     put("ttlMs", @P@McpListedForMs)
   }
 
+private fun @P@McpListedSkills(endpoint: @N@McpEndpoint): JsonObject {
+  val skills = endpoint.catalogs.flatMap { catalog -> catalog["skills"].orEmpty().map { Json.parseToJsonElement(it) } }
+  val written = skills.any { ((it as? JsonObject)?.get("resources") as? JsonPrimitive)?.content == "dynamic" }
+  return buildJsonObject {
+    put("cacheScope", if (written) "private" else "public")
+    put("resultType", "complete")
+    put("skills", JsonArray(skills))
+    put("ttlMs", if (written) 0 else @P@McpListedForMs)
+  }
+}
+
 private fun @P@McpNamed(params: JsonObject, method: String): String? {
   val written = when (method) {
     "tools/call" -> params["name"]
     "resources/read" -> params["uri"]
+    "skills/get" -> params["name"]?.takeIf { it is JsonPrimitive && it.isString } ?: params["uri"]
     else -> if (((params["argument"] as? JsonObject)?.get("name") as? JsonPrimitive)?.isString == true) {
       (params["ref"] as? JsonObject)?.get("uri")
     } else {
@@ -514,13 +529,14 @@ private fun @P@McpBegin(
     "server/discover" -> @N@McpAnswer.Answered(@P@McpDiscovered(instructions, endpoint, listens))
     "tools/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "tools"))
     "resources/templates/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "resourceTemplates"))
+    "skills/list" -> @N@McpAnswer.Answered(@P@McpListedSkills(endpoint))
     "resources/list" -> return @P@McpBegun.Routed(request)
     "subscriptions/listen" -> if (listens) {
       return @P@McpBegun.Routed(request)
     } else {
       @N@McpAnswer.Refused(@P@McpErrorObject(-32601, "Method not found: $method", null))
     }
-    "tools/call", "resources/read", "completion/complete" -> {
+    "tools/call", "resources/read", "completion/complete", "skills/get" -> {
       if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
       @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
@@ -535,6 +551,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
   val unknown = when (method) {
     "tools/call" -> "Unknown tool"
     "resources/read" -> "Resource not found"
+    "skills/get" -> "Skill not found"
     else -> "Unknown completion"
   }
   val resolved = answered ?: @N@McpAnswer.Refused(
@@ -1368,6 +1385,12 @@ pub const VERSION_MARKER: &str = "@MCP_VERSION@";
 pub const RESOURCES_MARKER: &str = "@MCP_RESOURCES@";
 /// Where the accessor writes the resource templates, as `Kotlin` literals of their JSON text.
 pub const TEMPLATES_MARKER: &str = "@MCP_TEMPLATES@";
+
+/// The text the accessor replaces with the skills' JSON texts, each a Kotlin literal.
+pub const SKILLS_MARKER: &str = "@MCP_SKILLS@";
+
+/// The text the accessor replaces with the files of the skills folder, each `"uri" to "json"`.
+pub const SKILL_FILES_MARKER: &str = "@MCP_SKILL_FILES@";
 /// Where the emitted text lists the capabilities, as Kotlin literals of their JSON text.
 const CAPABILITIES_MARKER: &str = "@MCP_CAPABILITIES@";
 
@@ -1381,7 +1404,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let mut published = vec![
         fill(CATALOG, &prefix, &named, &fields)
             .replace("@WRAPPED_MAP@", &tool_entries(service))
-            .replace(CAPABILITIES_MARKER, &capabilities_literal(&held)),
+            .replace(
+                CAPABILITIES_MARKER,
+                &capabilities_literal(&held, skilled(service)),
+            ),
         page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
@@ -1662,11 +1688,29 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .map(|template| literal(&::std::string::ToString::to_string(template)))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let skills = Self::mcp_skills()
+                .iter()
+                .map(|skill| literal(&::std::string::ToString::to_string(skill)))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
+            let skill_files = Self::mcp_skill_files()
+                .iter()
+                .map(|file| {
+                    format!(
+                        "{} to {}",
+                        literal(file["uri"].as_str().unwrap_or_default()),
+                        literal(&::std::string::ToString::to_string(file))
+                    )
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let instructions = Self::MCP_INSTRUCTIONS.map_or_else(|| "null".to_owned(), literal);
             let mut text = #text
                 .replace(#TOOLS_MARKER, &tools)
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
+                .replace(#SKILLS_MARKER, &skills)
+                .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#NAMES_MARKER, &names)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"));
@@ -1733,8 +1777,11 @@ fn route(
     if !tools.is_empty() {
         dispatch.push_str("      \"tools/call\" -> @P@McpTool(handlers, mcpParams)\n");
     }
-    if held.reads().next().is_some() {
+    if held.reads().next().is_some() || skilled(service) {
         dispatch.push_str("      \"resources/read\" -> @P@McpRead(handlers, mcpParams)\n");
+    }
+    if skilled(service) {
+        dispatch.push_str("      \"skills/get\" -> @P@McpSkillGet(mcpParams)\n");
     }
     if held.listing.is_some() {
         dispatch.push_str("      \"resources/list\" -> @P@McpList(handlers, mcpParams)\n");
@@ -1760,15 +1807,34 @@ fn route(
 }
 
 /// The `capabilities` the catalog lists, as the Kotlin literals of their JSON text.
-fn capabilities_literal(held: &Resourced<'_>) -> String {
+fn capabilities_literal(held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![kotlin_quoted("{\"tools\":{}}")];
-    if held.is_served() {
+    if held.is_served() || skilled {
         capabilities.push(kotlin_quoted("{\"resources\":{}}"));
+    }
+    if skilled {
+        capabilities.push(kotlin_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
     }
     if !held.completions.is_empty() {
         capabilities.push(kotlin_quoted("{\"completions\":{}}"));
     }
     capabilities.join(", ")
+}
+
+/// Whether the service ships a skills folder or has an operation that writes a skill.
+fn skilled(service: &ServiceDef) -> bool {
+    service.skills.is_some() || !dynamic_skills(service).is_empty()
+}
+
+/// The operations that write a skill at run time.
+fn dynamic_skills(service: &ServiceDef) -> Vec<&OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.skill.is_some())
+        .collect()
 }
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
@@ -1806,15 +1872,21 @@ fn resource_functions(
     named: &str,
     fields: &str,
 ) -> String {
-    if !held.any() {
+    if !held.any() && !skilled(service) {
         return String::new();
     }
     let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
-    if held.reads().next().is_some() {
-        text.push_str(&read_dispatch(held, prefix, named));
+    if held.reads().next().is_some() || skilled(service) {
+        text.push_str(&read_dispatch(service, held, prefix, named));
         for operation in held.reads() {
             text.push_str(&resource_read(operation, prefix, named, fields));
         }
+        for operation in dynamic_skills(service) {
+            text.push_str(&skill_read(operation, prefix, named, fields));
+        }
+    }
+    if skilled(service) {
+        text.push_str(&skill_get(prefix, named));
     }
     if let Some(operation) = held.listing {
         text.push_str(&resource_listing(operation, prefix, named, fields));
@@ -1828,11 +1900,99 @@ fn resource_functions(
     text
 }
 
-fn read_dispatch(held: &Resourced<'_>, prefix: &str, named: &str) -> String {
+/// The read of a file of a skill an operation writes: the frontmatter ahead of the manifest's text.
+fn skill_read(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
+    let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+        return String::new();
+    };
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    let content = if blob {
+        "          val mcpBytes = answered.value.slot0.map { it.toByte() }.toByteArray()\n          \
+         put(\"blob\", java.util.Base64.getEncoder().encodeToString(mcpBytes))\n          \
+         put(\"mimeType\", answered.value.slot1)"
+            .to_owned()
+    } else {
+        let frontmatter = kotlin_quoted(&written_frontmatter(
+            skill,
+            operation.doc.as_deref().unwrap_or_default(),
+        ));
+        format!(
+            "          put(\"mimeType\", \"text/markdown\")\n          \
+             put(\"text\", (if (mcpPath == \"SKILL.md\") {frontmatter} else \"\") + mcpEncoded.jsonPrimitive.content)"
+        )
+    };
+    let success = format!(
+        "        {prefix}McpAnswerOf(\n          \"private\",\n          0,\n          \"contents\",\n          \
+         buildJsonArray {{\n            add(\n              buildJsonObject {{\n          put(\"uri\", mcpUri)\n{content}\n              }},\n            )\n          }},\n        )"
+    );
+    let head = format!(
+        "\n\nprivate suspend fun {prefix}McpReadSkill{op}(handlers: {named}Handlers, mcpUri: String, mcpPath: String): {named}McpAnswer {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            operation,
+            prefix,
+            named,
+            fields,
+            "JsonPrimitive(mcpPath)",
+            "\"Skill file not found\"",
+            &success,
+        )
+    )
+}
+
+/// The `skills/get` of the service: the entry its catalog lists under the name or the URI asked.
+fn skill_get(prefix: &str, named: &str) -> String {
+    format!(
+        "\n\nprivate fun {prefix}McpSkillGet(mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+         val mcpName = (mcpParams[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
+         val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
+         for (text in {prefix}McpCatalog[\"skills\"].orEmpty()) {{\n    \
+         val entry = Json.parseToJsonElement(text) as JsonObject\n    \
+         val frontmatter = entry[\"frontmatter\"] as? JsonObject\n    \
+         val held = (mcpName != null && (frontmatter?.get(\"name\") as? JsonPrimitive)?.content == mcpName) ||\n      \
+         (mcpUri != null && (entry[\"uri\"] as? JsonPrimitive)?.content == mcpUri)\n    \
+         if (!held) continue\n    \
+         val written = (entry[\"resources\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content == \"dynamic\"\n    \
+         return {named}McpAnswer.Answered(\n      buildJsonObject {{\n        \
+         put(\"cacheScope\", if (written) \"private\" else \"public\")\n        \
+         put(\"resultType\", \"complete\")\n        \
+         put(\"skill\", entry)\n        \
+         put(\"ttlMs\", if (written) 0 else {prefix}McpListedForMs)\n      }},\n    )\n  }}\n  \
+         return null\n}}"
+    )
+}
+
+fn read_dispatch(service: &ServiceDef, held: &Resourced<'_>, prefix: &str, named: &str) -> String {
     let mut text = format!(
         "\n\nprivate suspend fun {prefix}McpRead(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
          val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n"
     );
+    if service.skills.is_some() {
+        let _ = write!(
+            text,
+            "  val mcpFolder = {prefix}McpSkillFiles[mcpUri]\n  \
+             if (mcpFolder != null) {{\n    \
+             return {prefix}McpAnswerOf(\"public\", {prefix}McpListedForMs, \"contents\", buildJsonArray {{ add(Json.parseToJsonElement(mcpFolder)) }})\n  }}\n"
+        );
+    }
+    for operation in dynamic_skills(service) {
+        let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+            continue;
+        };
+        let root = kotlin_quoted(&format!("skill://{skill}/"));
+        let _ = write!(
+            text,
+            "  if (mcpUri.startsWith({root}) && mcpUri.length > {root}.length) {{\n    \
+             return {prefix}McpReadSkill{op}(handlers, mcpUri, mcpUri.substring({root}.length))\n  }}\n",
+            op = pascal(operation),
+        );
+    }
     for (at, operation) in held.reads().enumerate() {
         let Some(resource) = operation.mcp.resource.as_ref() else {
             continue;

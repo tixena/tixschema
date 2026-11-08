@@ -7,6 +7,7 @@ mod dispatcher;
 mod interview;
 mod listen;
 pub mod resources;
+mod skills;
 mod writer;
 
 use super::Transport;
@@ -39,7 +40,7 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
 
 /// The resources and the resource templates a service lists, each as the members of its entry.
 pub fn resource_entries(service: &ServiceDef) -> (Vec<TokenStream>, Vec<TokenStream>) {
-    let parts = resources::catalog_parts(&resources::Resourced::of(service));
+    let parts = resources::catalog_parts(&resources::Resourced::of(service), false);
     (parts.resources, parts.templates)
 }
 

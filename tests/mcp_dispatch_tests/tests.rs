@@ -173,7 +173,7 @@ pub trait DocumentService<Ctx> {
 }
 
 /// Exports folders.
-#[service_schema(transports = ["mcp"])]
+#[service_schema(transports = ["mcp"], mcp(skills = "tests/mcp_skills"))]
 pub trait ExportService<Ctx> {
     /// Exports one folder, reporting one step of three.
     async fn export_folder(&self, ctx: &Ctx, folder: String) -> Result<(), VersionError>;
@@ -181,6 +181,18 @@ pub trait ExportService<Ctx> {
     /// The report of one folder, reporting one step of three while it is read.
     #[service_schema_op(mcp(resource = "export://reports/{folder}", mime_type = "text/plain"))]
     async fn export_report(&self, ctx: &Ctx, folder: String) -> Result<String, VersionError>;
+
+    /// Writes the figures of the caller's workspace.
+    #[service_schema_op(mcp(skill = "workspace-figures"))]
+    async fn figures_skill(
+        &self,
+        ctx: &Ctx,
+        path: String,
+    ) -> Result<(Vec<u8>, String), VersionError>;
+
+    /// Writes the release notes of the caller's workspace: "what changed", from its latest changes.
+    #[service_schema_op(mcp(skill = "release-notes"))]
+    async fn release_notes_skill(&self, ctx: &Ctx, path: String) -> Result<String, VersionError>;
 }
 
 /// What a handler reaches of the request in flight, whichever dispatcher's call it came from.
@@ -210,8 +222,25 @@ pub struct Archive {
 }
 
 impl Archive {
+    fn figures(path: &str) -> Result<(Vec<u8>, String), VersionError> {
+        match path {
+            "SKILL.md" => Ok((b"# Figures\n".to_vec(), "text/markdown".to_owned())),
+            "figures.bin" => Ok((vec![0, 255, 128, 1], "application/octet-stream".to_owned())),
+            _ => Err(VersionError::NotFound),
+        }
+    }
+
     fn reach(&self, call: String) {
         self.reached.lock().unwrap().push(call);
+    }
+
+    fn release_notes(path: &str) -> Result<String, VersionError> {
+        match path {
+            "SKILL.md" => Ok("# Release notes\n\nRead the changes since 2026-11-01, then write one line per change.\n".to_owned()),
+            "references/changes.md" => Ok("- renamed a document\n".to_owned()),
+            "panic" => came_apart(),
+            _ => Err(VersionError::NotFound),
+        }
     }
 
     fn version_of(document_id: &str) -> Result<VersionResponse, VersionError> {
@@ -454,6 +483,22 @@ impl ExportService<Reporting> for Archive {
         self.reach(format!("export-report {folder}"));
         (ctx.progress)(1.0_f64, Some(3.0_f64), Some("exported 1 of 3 files"));
         ready(Ok(format!("report of {folder}")))
+    }
+
+    fn figures_skill(
+        &self,
+        _ctx: &Reporting,
+        path: String,
+    ) -> impl Future<Output = Result<(Vec<u8>, String), VersionError>> {
+        ready(Self::figures(&path))
+    }
+
+    fn release_notes_skill(
+        &self,
+        _ctx: &Reporting,
+        path: String,
+    ) -> impl Future<Output = Result<String, VersionError>> {
+        ready(Self::release_notes(&path))
     }
 }
 

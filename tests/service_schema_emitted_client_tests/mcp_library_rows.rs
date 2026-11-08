@@ -5,14 +5,16 @@
 
 use super::mcp_bare_dispatcher;
 use super::mcp_depot_dispatcher;
+use super::mcp_lesson_dispatcher;
+use super::mcp_lesson_service::Lessons;
 use super::mcp_library_dispatcher::{self, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use super::mcp_library_service::{Sink, Stand};
 use super::mcp_shelf_dispatcher;
 use super::mcp_shelf_service::Shelves;
 use super::tests::poll_once;
 use super::{
-    BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorService,
-    MirrorServiceSchema, ShelfServiceSchema,
+    BareServiceSchema, DepotServiceSchema, LessonServiceSchema, LibraryServiceSchema,
+    MirrorService, MirrorServiceSchema, ShelfServiceSchema,
 };
 use crate::mcp_streams::through;
 use serde_json::{Value, json};
@@ -486,7 +488,7 @@ pub fn rows() -> Vec<Row> {
     every
 }
 
-fn headers_for(message: &Value) -> Vec<(String, String)> {
+pub fn headers_for(message: &Value) -> Vec<(String, String)> {
     let method = message["method"].as_str().unwrap().to_owned();
     let mut headers = vec![
         ("Content-Type".to_owned(), "application/json".to_owned()),
@@ -675,6 +677,7 @@ pub fn assert_answer_valid(method: &str, answer: &str) {
         "resources/templates/list" => "ListResourceTemplatesResult",
         "resources/read" => "ReadResourceResult",
         "completion/complete" => "CompleteResult",
+        "skills/list" | "skills/get" | "skills" => return,
         _ => "CallToolResult",
     };
     assert_valid(definition, &parsed["result"]);
@@ -803,6 +806,13 @@ exercised!(
     Shelves
 );
 
+exercised!(
+    lesson_exercised,
+    mcp_lesson_dispatcher,
+    LessonServiceSchema,
+    Lessons
+);
+
 #[test]
 fn every_dispatcher_serves_a_read_over_http_alone_and_on_an_endpoint_and_answers_a_denial() {
     let row = http_rows().remove(0);
@@ -810,6 +820,7 @@ fn every_dispatcher_serves_a_read_over_http_alone_and_on_an_endpoint_and_answers
     depot_exercised(&row);
     bare_exercised(&row);
     shelf_exercised(&row);
+    lesson_exercised(&row);
 }
 
 #[test]

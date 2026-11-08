@@ -9,6 +9,8 @@ mod messages;
 #[cfg(feature = "serde")]
 pub mod parse;
 #[cfg(feature = "serde")]
+pub mod skills;
+#[cfg(feature = "serde")]
 pub mod support;
 #[cfg(feature = "serde")]
 pub mod transport;
@@ -50,10 +52,12 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
     // Both readings are answered together, so a service that asks for a transport nobody has and
     // declares a bad operation is told about each rather than about whichever was read first.
     match (asked, parse::parse_service(&declared)) {
-        (Ok(wanted), Ok(service)) => {
+        (Ok(wanted), Ok(mut service)) => {
             // Both wire-carrier gaps are answered together, for the same reason as above: a service
             // tripping both is told about each rather than about whichever was read first.
+            let skills_refusal = read_skills(&mut service, &wanted);
             let combined_refusal = [
+                skills_refusal,
                 multipart_envelope_refusal(&service, &wanted.transports),
                 stream_envelope_refusal(&service, &wanted.transports),
                 reserved_header_out_refusal(&service, &wanted.transports),
@@ -135,6 +139,31 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                 #contract
             }
         }
+    }
+}
+
+/// Reads the skills folder `mcp(skills = "...")` names into `service`, or refuses it: unreadable,
+/// holding no skill, or written on a service that does not ask for `mcp`.
+#[cfg(feature = "serde")]
+fn read_skills(
+    service: &mut parse::ServiceDef,
+    wanted: &transport::ServiceArguments,
+) -> Option<syn::Error> {
+    let folder = wanted.skills.as_ref()?;
+    if !wanted.transports.contains(&transport::Transport::Mcp) {
+        return Some(syn::Error::new(
+            folder.span(),
+            "service_schema: `mcp(skills = \"...\")` ships skills through the `mcp` transport, and \
+             this service does not ask for it\n       \
+             add \"mcp\" to `transports`, or remove `mcp(skills = ...)`",
+        ));
+    }
+    match skills::read_folder(folder) {
+        Ok(read) => {
+            service.skills = Some(read);
+            None
+        }
+        Err(refusal) => Some(refusal),
     }
 }
 
@@ -761,6 +790,9 @@ mod feature_tests;
 
 #[cfg(test)]
 mod mcp_tests;
+
+#[cfg(test)]
+mod skill_tests;
 
 #[cfg(test)]
 mod tests;

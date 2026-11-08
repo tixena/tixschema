@@ -221,7 +221,7 @@ fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
                  `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
                  `mime_type`, `list_resources`, \
                  `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
-                 `cache_scope`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
+                 `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
                  `interview(arm = \"<Arm>\", url)`"
                     .to_owned()
             ]
@@ -754,8 +754,8 @@ fn an_operation_that_is_two_things_is_refused() {
         reported,
         [
             "service_schema: operation `configuration_guide` is more than one of `resource`, \
-             `list_resources` and `completes` in `mcp(...)`, and this service asks for \
-             `mcp`\n       an operation is one of them; split it into one operation each"
+             `list_resources`, `completes` and `skill` in `mcp(...)`, and this service asks \
+             for `mcp`\n       an operation is one of them; split it into one operation each"
         ]
     );
 }

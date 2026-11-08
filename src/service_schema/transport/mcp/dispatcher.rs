@@ -3,7 +3,7 @@
 
 use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried, writer};
-use super::{content, interview, listen};
+use super::{content, interview, listen, skills};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, written,
@@ -42,7 +42,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let types = types();
     let endpoint_fns = endpoint_fns();
     let held = Resourced::of(service);
-    let catalog = catalog(&schema, &held);
+    let catalog = catalog(&schema, &held, skills::any(service));
     let route = route(service, &module, &schema, contract, &held);
     let listing = resources::listing_fns();
     let protocol = protocol();
@@ -93,8 +93,9 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     }
 }
 
-fn catalog(schema: &Ident, held: &Resourced<'_>) -> TokenStream {
-    let parts = resources::catalog_parts(held);
+fn catalog(schema: &Ident, held: &Resourced<'_>, skilled: bool) -> TokenStream {
+    let parts = resources::catalog_parts(held, skilled);
+    let extensions = skilled.then(|| quote! { "io.modelcontextprotocol/skills": {} });
     let capabilities = parts.capabilities;
     let (resources, templates) = (parts.resources, parts.templates);
     quote! {
@@ -102,6 +103,8 @@ fn catalog(schema: &Ident, held: &Resourced<'_>) -> TokenStream {
         pub fn catalog() -> ::serde_json::Value {
             ::serde_json::json!({
                 "capabilities": { "tools": {} #capabilities },
+                "extensions": { #extensions },
+                "skills": $crate::#schema::mcp_skills(),
                 "tools": $crate::#schema::mcp_tools(),
                 "resources": [#(#resources),*],
                 "resourceTemplates": [#(#templates),*],
@@ -137,7 +140,8 @@ fn route(
     let asking = interview::any(service).then(interview::helpers);
     let blocks = content::any(service).then(|| content::helpers(service, module));
     let base64 =
-        (resources::reads_bytes(held) || content::any(service)).then(resources::base64_helper);
+        (resources::reads_bytes(held) || skills::reads_bytes(service) || content::any(service))
+            .then(resources::base64_helper);
     let tool_call = (!tools.is_empty()).then(|| {
         quote! {
             "tools/call" => {
@@ -149,8 +153,11 @@ fn route(
             }
         }
     });
-    let resource_helpers = held.any().then(|| resources::helpers(held));
-    let reads = resources::read_arm(held, module);
+    let resource_helpers =
+        (held.any() || !skills::dynamic(service).is_empty()).then(|| resources::helpers(held));
+    let skill_reads = skills::read_blocks(service, schema, module);
+    let skill_get = skills::get_arm(service, schema);
+    let reads = resources::read_arm(held, module, &skill_reads);
     let listing = resources::list_arm(held, module);
     let completing = resources::complete_arm(held, service, module);
     quote! {
@@ -179,6 +186,7 @@ fn route(
             match method {
                 #tool_call
                 #reads
+                #skill_get
                 #listing
                 #completing
                 _ => ::core::option::Option::None,
@@ -627,6 +635,7 @@ fn answers() -> TokenStream {
             match method {
                 "tools/call" => params["name"].as_str(),
                 "resources/read" => params["uri"].as_str(),
+                "skills/get" => params["name"].as_str().or(params["uri"].as_str()),
                 _ => params["argument"]["name"]
                     .as_str()
                     .and(params["ref"]["uri"].as_str()),
@@ -711,11 +720,12 @@ fn answers() -> TokenStream {
                     items.extend(offered.iter().cloned());
                 }
             }
+            let dynamic = items.iter().any(|item| item["resources"] == "dynamic");
             ::serde_json::json!({
                 "resultType": "complete",
                 key: items,
-                "ttlMs": LISTED_FOR_MS,
-                "cacheScope": "public",
+                "ttlMs": if dynamic { 0_u64 } else { LISTED_FOR_MS },
+                "cacheScope": if dynamic { "private" } else { "public" },
             })
         }
     }
@@ -742,9 +752,10 @@ fn serving(module: &Ident) -> TokenStream {
                 "resources/templates/list" => {
                     ::core::result::Result::Ok(listed(endpoint, "resourceTemplates"))
                 }
+                "skills/list" => ::core::result::Result::Ok(listed(endpoint, "skills")),
                 "resources/list" => return Begun::Routed(request),
                 "subscriptions/listen" if listens => return Begun::Routed(request),
-                method @ ("tools/call" | "resources/read" | "completion/complete") => {
+                method @ ("tools/call" | "resources/read" | "completion/complete" | "skills/get") => {
                     if named(&request["params"], method).is_some() {
                         return Begun::Routed(request);
                     }
@@ -775,6 +786,7 @@ fn serving(module: &Ident) -> TokenStream {
                 let unknown = match method {
                     "tools/call" => "Unknown tool",
                     "resources/read" => "Resource not found",
+                    "skills/get" => "Skill not found",
                     _ => "Unknown completion",
                 };
                 ::core::result::Result::Err(error_object(
@@ -1265,12 +1277,14 @@ fn constants(schema: &Ident, contract_name: &str) -> TokenStream {
         const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
         const LISTED_FOR_MS: u64 = 300_000;
         /// The methods `serve` answers itself or asks `route` for.
-        const METHODS: [&str; 7] = [
+        const METHODS: [&str; 9] = [
             "completion/complete",
             "resources/list",
             "resources/read",
             "resources/templates/list",
             "server/discover",
+            "skills/get",
+            "skills/list",
             "tools/call",
             "tools/list",
         ];
