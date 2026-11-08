@@ -3915,6 +3915,31 @@ The Kotlin and Swift clients write only `send`. `DocumentServiceMcpTransport.sen
 
 `McpResource` and `McpResourcePage` are declared by the accessor of a service that declares a listing, `ts_mcp_service()` as TypeScript interfaces, `dart_mcp_service()` as Dart classes with `fromJson` and `toJson`, and `kotlin_mcp_service()` as `@Serializable` data classes. TypeScript interfaces of one name merge, so a bundle of several services may list; a Dart or Kotlin bundle names one service that lists, since a class is declared once. In TypeScript, `{service}McpOperations` lists each operation by `kind` (`"tool"`, `"resource"`, `"listing"` or `"completion"`). A service that declares no tool gets no `tools/call` arm. In Kotlin the `(Vec<u8>, String)` wrapper is the `KotlinTupleOf{hash}` that `kotlin_http_client()` declares.
 
+**Skills.** A server ships skills, sets of instructions a host loads into the model's context, in two ways, each answering `skills/list`, `skills/get` and `resources/read` of `skill://<name>/<path>` on the Rust, TypeScript, Dart and Kotlin servers, with the same bytes. `server/discover` then adds `"resources": {}` and `"io.modelcontextprotocol/skills": {}` under `capabilities` and `capabilities.extensions`.
+
+A folder named on the service holds one directory per skill, each with a `SKILL.md` and its supporting files:
+
+```rust,ignore
+#[service_schema(transports = ["mcp"], mcp(skills = "skills"))]
+pub trait DocumentService<Ctx> { /* ... */ }
+// skills/code-review/SKILL.md
+// skills/code-review/references/checklist.md
+```
+
+The path is relative to the crate's `Cargo.toml`. The macro reads the folder when it expands, with each `SKILL.md` frontmatter (`name` and `description`, plain, quoted or `|` and `>` block scalars; any other key must be a scalar too) and the SHA-256 digest and size of every file, and embeds the files with `include_bytes!`, so cargo rebuilds when one changes. `skills/list` answers `{ uri, frontmatter, resources: [{ uri, digest, size }] }` for each skill, in name order, and a file reads as `text` when it is UTF-8 and as a base64 `blob` otherwise. The directory name is the skill's name, must follow the Agent Skills rules, and must equal `name:` in the frontmatter; a `description` is required and holds at most 1024 characters. `sha2` is a dependency of the macro alone, used at compile time; nothing reaches a consumer at run time.
+
+An operation writes a skill at run time, for content that varies by caller:
+
+```rust,ignore
+/// Writes the release notes of the caller's workspace: "what changed", from its latest changes.
+#[service_schema_op(mcp(skill = "release-notes"))]
+async fn release_notes_skill(&self, ctx: &Ctx, path: String) -> Result<String, DocumentError>;
+```
+
+It is listed with `"resources": "dynamic"`, its rustdoc as the description, `ttlMs: 0` and `cacheScope: "private"`, and `resources/read` of `skill://release-notes/<path>` calls the operation with `path` relative to the skill's root (`SKILL.md` for the instructions). A `String` success answers `text` as `text/markdown`; a `(Vec<u8>, String)` answers a `blob` with the content type of the pair. The transport writes the frontmatter of `SKILL.md` itself, ahead of the handler's text (`name`, and `description` as a JSON string, which YAML reads as the same text), so the file a host reads always equals the entry it compares it with. A declared error answers `-32602` with the error's JSON in `data`, and a panic answers `-32603`. `skills/get` takes the skill's `name` or its `uri` and answers `{ skill: <entry> }`; a skill nobody has answers `-32602` with the `unknown-operation` fault. A listing that holds a dynamic skill answers `ttlMs: 0` and `cacheScope: "private"`, and one of folder skills alone answers the five minutes and `public` of the other lists. An operation stays an ordinary operation on every other transport, and `MCP_NAMES` holds `("skill", name)` for both kinds, so two services of one endpoint cannot share a skill name.
+
+The macro refuses, naming the operation: a skill name outside the Agent Skills rules (1 to 64 characters of `a-z`, `0-9` and `-`, with no `-` at either end and no two together), a rustdoc over 1024 characters, a name the folder also holds or another operation writes, arguments other than one `String`, a success other than `String` or `(Vec<u8>, String)`, a one-way operation, a header binding, and `scopes` (a skill is listed and read for every caller). `mcp(skills = "...")` on a service that does not ask for `mcp`, and a folder that cannot be read, holds no skill, holds a skill without a `SKILL.md` or whose frontmatter is not flat scalars, are refused as well. The TypeScript, Dart and Kotlin servers embed the entries and the files through their accessors, which read `mcp_skills()` and `mcp_skill_files()` when they run in your program.
+
 #### The `ws_rpc` Transport
 
 `#[service_schema(transports = ["ws_rpc"])]` serves a service over one WebSocket as JSON text frames -- the same request, notify and reply terms `amqp_rpc` already answers through, carried over a socket instead of a queue. A service that only answers calls asks for it alone; a service the server calls instead -- pushing an event to whichever connection wants it -- asks for it too, notify travelling either direction over the same wire. The pair below is what a browser dashboard and its backend actually share: the browser calls `Ledger`, and the server pushes `LedgerEvents` back down the same connection.

@@ -21,6 +21,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
     is_unit_type, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
@@ -33,6 +34,8 @@ const INSTRUCTIONS_MARKER: &str = "@INSTRUCTIONS@";
 const VERSION_MARKER: &str = "@VERSION@";
 const RESOURCES_MARKER: &str = "@RESOURCES@";
 const TEMPLATES_MARKER: &str = "@TEMPLATES@";
+const SKILLS_MARKER: &str = "@SKILLS@";
+const SKILL_FILES_MARKER: &str = "@SKILLFILES@";
 
 const SERVER_HEAD: &str = r#"/// The name `server/discover` reports this service under.
 const @P@McpServerName = @NAMEQ@;
@@ -61,10 +64,11 @@ const @N@McpCatalog @P@McpCatalog = (
   resources: <String>[@RESOURCES@],
   resourceTemplates: <String>[@TEMPLATES@],
   prompts: <String>[],
-  skills: <String>[],
+  skills: <String>[@SKILLS@],
   capabilities: <String>[@CAPABILITIES@],
 );
 
+@SKILLFILESDECL@
 /// What a route answers: the `result` object of a message, or its JSON-RPC `error` object.
 typedef @N@McpAnswer = ({Object? result, Object? error});
 
@@ -364,8 +368,10 @@ Future<({String? text, int status})> _@P@McpRespond(
     case 'skills/list':
       field = 'skills';
       listed = [for (final catalog in catalogs) ...catalog.skills];
-      scope = 'private';
-      ttl = 0;
+      if (listed.any((text) => (jsonDecode(text) as Map<String, dynamic>)['resources'] == 'dynamic')) {
+        scope = 'private';
+        ttl = 0;
+      }
     default:
       field = null;
       listed = const <String>[];
@@ -450,6 +456,12 @@ Future<({String? text, int status})> _@P@McpRespond(
       named = params['name'] is String ? params['name'] as String : null;
     case 'resources/read':
       named = params['uri'] is String ? params['uri'] as String : null;
+    case 'skills/get':
+      named = params['name'] is String
+          ? params['name'] as String
+          : params['uri'] is String
+              ? params['uri'] as String
+              : null;
     case 'completion/complete':
       final argument = params['argument'];
       final reference = params['ref'];
@@ -459,7 +471,11 @@ Future<({String? text, int status})> _@P@McpRespond(
     default:
       named = null;
   }
-  if (named == null && (method == 'tools/call' || method == 'resources/read' || method == 'completion/complete')) {
+  if (named == null &&
+      (method == 'tools/call' ||
+          method == 'resources/read' ||
+          method == 'completion/complete' ||
+          method == 'skills/get')) {
     return failed(id, 200, -32602, 'Invalid params: $method names nothing to answer');
   }
   for (var part = 0; part < catalogs.length; part += 1) {
@@ -481,6 +497,7 @@ Future<({String? text, int status})> _@P@McpRespond(
   final unknown = switch (method) {
     'tools/call' => 'Unknown tool',
     'resources/read' => 'Resource not found',
+    'skills/get' => 'Skill not found',
     'completion/complete' => 'Unknown completion',
     _ => null,
   };
@@ -984,7 +1001,14 @@ pub fn service_text(declared: &ServiceDef) -> String {
     let held = Resourced::of(service);
     let mut published = vec![
         filled(SERVER_HEAD, &named, &prefix)
-            .replace("@CAPABILITIES@", &capabilities_literal(&held))
+            .replace(
+                "@SKILLFILESDECL@\n",
+                &skill_files_declaration(service, &prefix),
+            )
+            .replace(
+                "@CAPABILITIES@",
+                &capabilities_literal(&held, skilled(service)),
+            )
             .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
         page_types(service),
         wrapped_table(&prefix, "Server", service)
@@ -1397,11 +1421,17 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
              default:\n              return null;\n          }}\n"
         );
     }
-    if held.reads().next().is_some() {
+    if held.reads().next().is_some() || skilled(service) {
         let _ = write!(
             cases,
             "        case 'resources/read':\n          final uri = params['uri'];\n          \
              return uri is String ? _{prefix}McpRead<Ctx>(handlers, ctx, uri) : null;\n"
+        );
+    }
+    if skilled(service) {
+        let _ = write!(
+            cases,
+            "        case 'skills/get':\n          return _{prefix}McpSkillGet(params);\n"
         );
     }
     if held.listing.is_some() {
@@ -1431,15 +1461,45 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
 }
 
 /// The `capabilities` the catalog lists, as the literals of their JSON text.
-fn capabilities_literal(held: &Resourced<'_>) -> String {
+fn capabilities_literal(held: &Resourced<'_>, skilled: bool) -> String {
     let mut capabilities = vec![quoted("{\"tools\":{}}")];
-    if held.is_served() {
+    if held.is_served() || skilled {
         capabilities.push(quoted("{\"resources\":{}}"));
+    }
+    if skilled {
+        capabilities.push(quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
     }
     if !held.completions.is_empty() {
         capabilities.push(quoted("{\"completions\":{}}"));
     }
     capabilities.join(", ")
+}
+
+/// Whether the service ships a skills folder or has an operation that writes a skill.
+fn skilled(service: &ServiceDef) -> bool {
+    service.skills.is_some() || !dynamic_skills(service).is_empty()
+}
+
+/// The operations that write a skill at run time.
+fn dynamic_skills(service: &ServiceDef) -> Vec<&OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.skill.is_some())
+        .collect()
+}
+
+/// The constant that holds the files of the skills folder, over the marker the accessor fills.
+fn skill_files_declaration(service: &ServiceDef, prefix: &str) -> String {
+    if service.skills.is_none() {
+        return String::new();
+    }
+    format!(
+        "/// The content `resources/read` answers for each file of the skills folder, as JSON text, by URI.\n\
+         const _{prefix}McpSkillFiles = <String, String>{{{SKILL_FILES_MARKER}}};\n\n"
+    )
 }
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
@@ -1512,18 +1572,32 @@ fn resource_functions(
     named: &str,
     prefix: &str,
 ) -> Vec<String> {
-    if !held.any() {
+    let dynamic = dynamic_skills(service);
+    if !held.any() && !skilled(service) {
         return Vec::new();
     }
     let fields = fault_fields_typescript_name(named);
-    let mut published = vec![filled(UNREAD, named, prefix).replace("@F@", &fields)];
+    let mut published = Vec::new();
+    if held.any() || !dynamic.is_empty() {
+        published.push(filled(UNREAD, named, prefix).replace("@F@", &fields));
+    }
     if held.reads().next().is_some() {
         published.push(filled(CAPTURED, named, prefix));
         published.extend(
             held.reads()
                 .map(|operation| resource_read(named, prefix, operation)),
         );
-        published.push(read_dispatch(held, named, prefix));
+    }
+    if held.reads().next().is_some() || skilled(service) {
+        published.extend(
+            dynamic
+                .iter()
+                .map(|operation| skill_read(named, prefix, operation)),
+        );
+        published.push(read_dispatch(service, held, named, prefix));
+    }
+    if skilled(service) {
+        published.push(skill_get(named, prefix));
     }
     if let Some(operation) = held.listing {
         published.push(resource_listing(named, prefix, operation));
@@ -1669,10 +1743,108 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
     )
 }
 
-fn read_dispatch(held: &Resourced<'_>, named: &str, prefix: &str) -> String {
+/// The read of a file of a skill an operation writes: the frontmatter ahead of the manifest's text.
+fn skill_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+        return String::new();
+    };
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), syn::Type::Tuple(_))
+    );
+    let content = if blob {
+        "<String, dynamic>{'uri': uri, 'mimeType': answered.$2, 'blob': base64Encode(answered.$1)}"
+            .to_owned()
+    } else {
+        let frontmatter = quoted(&written_frontmatter(
+            skill,
+            operation.doc.as_deref().unwrap_or_default(),
+        ));
+        format!(
+            "<String, dynamic>{{'uri': uri, 'mimeType': 'text/markdown', \
+             'text': path == 'SKILL.md' ? {frontmatter} + @ENCODED@ : @ENCODED@}}"
+        )
+    };
+    let success = format!(
+        "return (\n      result: <String, dynamic>{{\n        \
+         'cacheScope': 'private',\n        \
+         'contents': <Object>[{content}],\n        \
+         'resultType': 'complete',\n        \
+         'ttlMs': 0,\n      }},\n      error: null,\n    );"
+    );
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpReadSkill{op}<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         String uri,\n  \
+         String path,\n\
+         ) async {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            named,
+            prefix,
+            operation,
+            "path",
+            "'Skill file not found'",
+            &success,
+        )
+    )
+}
+
+/// The `skills/get` of the service: the entry its catalog lists under the name or the URI asked.
+fn skill_get(named: &str, prefix: &str) -> String {
+    format!(
+        "{named}McpAnswer? _{prefix}McpSkillGet(Map<String, dynamic> params) {{\n  \
+         final name = params['name'];\n  \
+         final uri = params['uri'];\n  \
+         for (final text in {prefix}McpCatalog.skills) {{\n    \
+         final entry = jsonDecode(text) as Map<String, dynamic>;\n    \
+         final frontmatter = entry['frontmatter'];\n    \
+         final held = (name is String && frontmatter is Map && frontmatter['name'] == name) ||\n        \
+         (uri is String && entry['uri'] == uri);\n    \
+         if (!held) continue;\n    \
+         final written = entry['resources'] == 'dynamic';\n    \
+         return (\n      result: <String, dynamic>{{\n        \
+         'cacheScope': written ? 'private' : 'public',\n        \
+         'resultType': 'complete',\n        \
+         'skill': entry,\n        \
+         'ttlMs': written ? 0 : 300000,\n      }},\n      error: null,\n    );\n  }}\n  \
+         return null;\n}}"
+    )
+}
+
+fn read_dispatch(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &str) -> String {
     let mut text = format!(
         "Future<{named}McpAnswer?> _{prefix}McpRead<Ctx>({named}Handlers<Ctx> handlers, Ctx ctx, String uri) async {{\n"
     );
+    if service.skills.is_some() {
+        let _ = write!(
+            text,
+            "  final folder = _{prefix}McpSkillFiles[uri];\n  \
+             if (folder != null) {{\n    \
+             return (\n      result: <String, dynamic>{{\n        \
+             'cacheScope': 'public',\n        \
+             'contents': <Object>[jsonDecode(folder)],\n        \
+             'resultType': 'complete',\n        \
+             'ttlMs': 300000,\n      }},\n      error: null,\n    );\n  }}\n"
+        );
+    }
+    for operation in dynamic_skills(service) {
+        let Some((skill, _)) = operation.mcp.skill.as_ref() else {
+            continue;
+        };
+        let root = quoted(&format!("skill://{skill}/"));
+        let _ = write!(
+            text,
+            "  {{\n    const root = {root};\n    \
+             if (uri.startsWith(root) && uri.length > root.length) {{\n      \
+             return _{prefix}McpReadSkill{op}<Ctx>(handlers, ctx, uri, uri.substring(root.length));\n    }}\n  }}\n",
+            op = pascal(operation),
+        );
+    }
     for operation in held.reads() {
         let Some(resource) = operation.mcp.resource.as_ref() else {
             continue;
@@ -2117,6 +2289,22 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|template| literal(&template.to_string()))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let skills = Self::mcp_skills()
+                .iter()
+                .map(|skill| literal(&skill.to_string()))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
+            let skill_files = Self::mcp_skill_files()
+                .iter()
+                .map(|file| {
+                    ::std::format!(
+                        "{}: {}",
+                        literal(file["uri"].as_str().unwrap_or_default()),
+                        literal(&file.to_string())
+                    )
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
                 ::core::option::Option::None => ::std::string::String::from("null"),
@@ -2126,6 +2314,8 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#NAMES_MARKER, &names)
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
+                .replace(#SKILLS_MARKER, &skills)
+                .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*
