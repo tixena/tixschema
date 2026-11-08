@@ -96,6 +96,7 @@ fn module() -> String {
         book_error_dart::dart_definition(),
         StacksServiceSchema::dart_definition(),
         StacksServiceSchema::dart_ws_client(),
+        StacksServiceSchema::dart_mcp_content(),
         StacksServiceSchema::dart_mcp_service(),
         dart_respond("StacksService"),
         format!("const INPUT = {dollar_safe};"),

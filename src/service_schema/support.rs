@@ -214,6 +214,7 @@ pub fn emit(
 
 /// What an `mcp(content)` operation answers a list of: one block of a tool's `content`.
 fn content_types() -> TokenStream {
+    let wire_form = content_wire_form();
     quote! {
         /// One block of a tool's `content`.
         #[derive(Clone, Debug, Eq, PartialEq)]
@@ -248,6 +249,140 @@ fn content_types() -> TokenStream {
             /// Bytes.
             Blob(::std::vec::Vec<u8>),
         }
+
+        #wire_form
+    }
+}
+
+/// The reading and writing of a block in the specification's form, and the serde impls over them.
+fn content_wire_form() -> TokenStream {
+    let reading = content_wire_reading();
+    let encoder = super::transport::mcp::resources::base64_helper();
+    let decoder = super::transport::mcp::resources::base64_decoder();
+    quote! {
+        #encoder
+        #decoder
+
+        impl McpContent {
+            fn mcp_block(&self) -> ::serde_json::Value {
+                let mut written = ::serde_json::Map::new();
+                match self {
+                    Self::Text { text } => {
+                        written.insert("text".to_owned(), ::serde_json::Value::String(text.clone()));
+                        written.insert("type".to_owned(), ::serde_json::Value::String("text".to_owned()));
+                    }
+                    Self::Image { data, mime_type } | Self::Audio { data, mime_type } => {
+                        let kind = if ::core::matches!(self, Self::Image { .. }) { "image" } else { "audio" };
+                        written.insert("data".to_owned(), ::serde_json::Value::String(base64_encoded(data)));
+                        written.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        written.insert("type".to_owned(), ::serde_json::Value::String(kind.to_owned()));
+                    }
+                    Self::ResourceLink { uri, name, title, description, mime_type } => {
+                        if let ::core::option::Option::Some(description) = description {
+                            written.insert("description".to_owned(), ::serde_json::Value::String(description.clone()));
+                        }
+                        if let ::core::option::Option::Some(mime_type) = mime_type {
+                            written.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        }
+                        written.insert("name".to_owned(), ::serde_json::Value::String(name.clone()));
+                        if let ::core::option::Option::Some(title) = title {
+                            written.insert("title".to_owned(), ::serde_json::Value::String(title.clone()));
+                        }
+                        written.insert("type".to_owned(), ::serde_json::Value::String("resource_link".to_owned()));
+                        written.insert("uri".to_owned(), ::serde_json::Value::String(uri.clone()));
+                    }
+                    Self::Resource { uri, mime_type, contents } => {
+                        let mut resource = ::serde_json::Map::new();
+                        if let McpResourceContents::Blob(bytes) = contents {
+                            resource.insert("blob".to_owned(), ::serde_json::Value::String(base64_encoded(bytes)));
+                        }
+                        if let ::core::option::Option::Some(mime_type) = mime_type {
+                            resource.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        }
+                        if let McpResourceContents::Text(text) = contents {
+                            resource.insert("text".to_owned(), ::serde_json::Value::String(text.clone()));
+                        }
+                        resource.insert("uri".to_owned(), ::serde_json::Value::String(uri.clone()));
+                        written.insert("resource".to_owned(), ::serde_json::Value::Object(resource));
+                        written.insert("type".to_owned(), ::serde_json::Value::String("resource".to_owned()));
+                    }
+                }
+                ::serde_json::Value::Object(written)
+            }
+        }
+
+        #reading
+
+        impl ::serde::Serialize for McpContent {
+            fn serialize<S>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                ::serde::Serialize::serialize(&self.mcp_block(), serializer)
+            }
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for McpContent {
+            fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                let block = <::serde_json::Value as ::serde::Deserialize>::deserialize(deserializer)?;
+                Self::from_mcp_block(&block).map_err(<D::Error as ::serde::de::Error>::custom)
+            }
+        }
+    }
+}
+
+/// The read of a block in the specification's form.
+fn content_wire_reading() -> TokenStream {
+    quote! {
+        impl McpContent {
+            fn from_mcp_block(block: &::serde_json::Value) -> ::core::result::Result<Self, ::std::string::String> {
+                fn optional(source: &::serde_json::Value, key: &str) -> ::core::option::Option<::std::string::String> {
+                    source.get(key).and_then(::serde_json::Value::as_str).map(::std::borrow::ToOwned::to_owned)
+                }
+                fn text(source: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::string::String, ::std::string::String> {
+                    optional(source, key).ok_or_else(|| ::std::format!("a content block holds no `{key}`"))
+                }
+                fn bytes(source: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::vec::Vec<u8>, ::std::string::String> {
+                    base64_decoded(&text(source, key)?).ok_or_else(|| ::std::format!("`{key}` is not base64"))
+                }
+                match optional(block, "type").as_deref() {
+                    ::core::option::Option::Some("text") => ::core::result::Result::Ok(Self::Text { text: text(block, "text")? }),
+                    ::core::option::Option::Some("image") => ::core::result::Result::Ok(Self::Image {
+                        data: bytes(block, "data")?,
+                        mime_type: text(block, "mimeType")?,
+                    }),
+                    ::core::option::Option::Some("audio") => ::core::result::Result::Ok(Self::Audio {
+                        data: bytes(block, "data")?,
+                        mime_type: text(block, "mimeType")?,
+                    }),
+                    ::core::option::Option::Some("resource_link") => ::core::result::Result::Ok(Self::ResourceLink {
+                        uri: text(block, "uri")?,
+                        name: text(block, "name")?,
+                        title: optional(block, "title"),
+                        description: optional(block, "description"),
+                        mime_type: optional(block, "mimeType"),
+                    }),
+                    ::core::option::Option::Some("resource") => {
+                        let resource = block.get("resource").ok_or_else(|| ::std::string::String::from("a resource block holds no `resource`"))?;
+                        let contents = if resource.get("text").is_some() {
+                            McpResourceContents::Text(text(resource, "text")?)
+                        } else {
+                            McpResourceContents::Blob(bytes(resource, "blob")?)
+                        };
+                        ::core::result::Result::Ok(Self::Resource {
+                            uri: text(resource, "uri")?,
+                            mime_type: optional(resource, "mimeType"),
+                            contents,
+                        })
+                    }
+                    ::core::option::Option::Some(other) => ::core::result::Result::Err(::std::format!("`{other}` is no content block")),
+                    ::core::option::Option::None => ::core::result::Result::Err(::std::string::String::from("a content block holds no `type`")),
+                }
+            }
+        }
     }
 }
 
@@ -255,7 +390,8 @@ fn content_types() -> TokenStream {
 fn prompt_types() -> TokenStream {
     quote! {
         /// Who a prompt's message is from.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
         pub enum McpRole {
             /// The user.
             User,
@@ -264,12 +400,12 @@ fn prompt_types() -> TokenStream {
         }
 
         /// One message of a prompt: who it is from, and the block it holds.
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
         pub struct McpPromptMessage {
-            /// Who the message is from.
-            pub role: McpRole,
             /// What the message holds.
             pub content: McpContent,
+            /// Who the message is from.
+            pub role: McpRole,
         }
     }
 }
