@@ -245,7 +245,7 @@ fn input(requests: &[Row], http: &[HttpRow]) -> Value {
 }
 
 fn module() -> String {
-    let literal = kotlin_text(&input(&rows(true), &http_rows()).to_string());
+    let literal = kotlin_text(&input(&rows(), &http_rows()).to_string());
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
     parts.push(HANDLERS.replace(
@@ -282,7 +282,7 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
     let Some(report) = driven() else {
         return;
     };
-    let rows = rows(true);
+    let rows = rows();
     assert_answers(
         "endpoint",
         workspace_answer,

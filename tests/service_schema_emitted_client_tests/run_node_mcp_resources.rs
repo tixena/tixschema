@@ -9,8 +9,9 @@ use super::mcp_library_rows::{
 };
 use super::mcp_library_service::MirrorServiceSchema;
 use super::mcp_library_service::{BookError, BookInfo, BookRequest};
+use super::mcp_shelf_service::{ShelfLabel, assert_faults, fault_requests};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
-use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema};
+use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, ShelfServiceSchema};
 use serde_json::{Value, json};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -113,6 +114,38 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "##;
 
+/// Answers the fault table's requests through the dispatcher of `ShelfService` alone and through its route.
+const FAULT_DRIVER: &str = r#"
+const shelfImpl = {
+  async getSlot(ctx, req) {
+    return { ok: true, value: `${req.aisle}/${req.slot}` };
+  },
+  async getCount(ctx, bin) {
+    return { ok: true, value: String(bin) };
+  },
+  async suggestSlots(ctx, req) {
+    return { ok: true, value: [req.typed] };
+  },
+};
+
+async function main() {
+  const requests = JSON.parse(INPUT);
+  const host = { writer: async () => {}, inFlight: new ShelfServiceMcpInFlight() };
+  const alone = createShelfServiceMcpDispatcher(shelfImpl);
+  const route = createShelfServiceMcpRoute(shelfImpl);
+  const endpoint = shelfServiceMcpEndpoint(shelfServiceMcpPart);
+  const served = (text) => shelfServiceMcpServe(text, "Workspace", undefined, endpoint, () => ({}), host,
+    async (ctx, part, method, params) => route(ctx, method, params));
+  const answers = (ask) => Promise.all(requests.map(async (text) => (await ask(text)) ?? null));
+  console.log(JSON.stringify({
+    alone: await answers((text) => alone(text, () => ({}), host.writer, host.inFlight)),
+    endpoint: await answers(served),
+  }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
 /// An endpoint whose two parts both name `resource:guide://library`.
 const SHARED_NAME_CALLER: &str = r#"import {
   libraryServiceMcpEndpoint,
@@ -173,6 +206,45 @@ fn bundle() -> String {
     .join("\n\n")
 }
 
+fn fault_bundle() -> String {
+    [
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
+        ShelfLabel::ts_definition(),
+        ShelfLabel::zod_schema(),
+        BookError::ts_definition(),
+        BookError::zod_schema(),
+        ShelfServiceSchema::ts_definition(),
+        ShelfServiceSchema::ts_service(),
+        ShelfServiceSchema::ts_mcp_service(),
+    ]
+    .join("\n\n")
+}
+
+/// The report of the fault run; `None` where no node toolchain was reachable.
+fn faulted() -> Option<Value> {
+    let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
+        stand_down_modules(
+            REQUIRED_PACKAGES,
+            "the emitted TypeScript MCP server over resource faults",
+        );
+        return None;
+    };
+    let literal = Value::String(json!(fault_requests()).to_string());
+    let source = format!(
+        "{}\n\nconst INPUT = {literal};\n{FAULT_DRIVER}",
+        fault_bundle()
+    );
+    let wrote = ran_with_modules(
+        "mcp-resource-faults",
+        RUNTIME_VAR,
+        "node",
+        "mcp-resource-faults.mts",
+        &source,
+        &modules,
+    )?;
+    Some(serde_json::from_str(wrote.trim()).unwrap())
+}
+
 fn input(requests: &[Row], http: &[HttpRow]) -> Value {
     json!({
         "origin": ORIGIN,
@@ -193,7 +265,7 @@ fn driven() -> Option<Value> {
         );
         return None;
     };
-    let literal = Value::String(input(&rows(false), &http_rows()).to_string());
+    let literal = Value::String(input(&rows(), &http_rows()).to_string());
     let source = format!("{}\n\nconst INPUT = {literal};\n{DRIVER}", bundle());
     let wrote = ran_with_modules(
         "mcp-resources",
@@ -220,7 +292,7 @@ fn the_typescript_server_answers_the_bytes_the_rust_dispatcher_answers() {
     let Some(report) = driven() else {
         return;
     };
-    let rows = rows(false);
+    let rows = rows();
     assert_answers(
         "endpoint",
         workspace_answer,
@@ -336,4 +408,14 @@ fn the_resource_text_type_checks_under_strict() {
         complaint.contains("twoServicesShare") && complaint.contains("resource:guide://library"),
         "tsc does not name the shared name:\n{complaint}"
     );
+}
+
+#[test]
+fn a_resource_read_and_a_completion_the_zod_reads_refuse_answer_the_fault_the_rust_dispatcher_answers()
+ {
+    let Some(report) = faulted() else {
+        return;
+    };
+    assert_faults("alone", &texts(&report["alone"]));
+    assert_faults("endpoint", &texts(&report["endpoint"]));
 }
