@@ -7,8 +7,8 @@ use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
-    kotlin_quoted, kotlin_typename,
+    TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
+    kotlin_property_name, kotlin_quoted, kotlin_tuple_naming, kotlin_typename,
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -28,6 +28,7 @@ pub(super) struct HeaderElement {
 }
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Named);
     let methods_apart = noted(left_to_http_rest(declared, "method", on_one_line));
     let handlers_apart = noted(left_to_http_rest(declared, "handler", on_one_line));
     let service = &declared.enveloped();

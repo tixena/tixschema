@@ -2,7 +2,7 @@
 
 mod amqp_rpc;
 pub mod http_rest;
-mod mcp;
+pub mod mcp;
 mod ws_rpc;
 
 use super::parse::ServiceDef;

@@ -8,7 +8,7 @@
 use super::mcp_asking_rows::{
     asking_confirmation_kotlin, asking_error_kotlin, asking_link_error_kotlin,
     asking_linked_kotlin, asking_miss_kotlin, asking_priority_kotlin, asking_report_request_kotlin,
-    asking_shipping_kotlin, assert_client, assert_matches_except, client_input,
+    asking_shipping_kotlin, assert_client, assert_matches, client_input,
     delete_document_request_kotlin, input, ship_document_request_kotlin,
 };
 use super::mcp_mobile_rows::kotlin_text;
@@ -89,17 +89,32 @@ object AskingHandlers : AskingServiceHandlers {
     }
 }
 
+object PreviewHandlers : PreviewServiceHandlers {
+    override suspend fun documentPreview(req: String): PreviewServiceDocumentPreviewResult {
+        note(JsonPrimitive("document-preview"), JsonPrimitive(req))
+        return when (req) {
+            "doc-1" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(0x89u, 0x50u, 0x4eu, 0x47u), "image/png"))
+            "voice" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(1u, 2u, 3u, 4u, 5u), "audio/mpeg"))
+            "plain" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(37u, 80u, 68u, 70u, 45u), "application/pdf"))
+            else -> PreviewServiceDocumentPreviewResult.Declared(AskingMissNotFound)
+        }
+    }
+}
+
 suspend fun serverReport(input: JsonObject): JsonObject {
     val dispatch = createAskingServiceMcpDispatcher { _ -> AskingHandlers }
+    val previewing = createPreviewServiceMcpDispatcher { _ -> PreviewHandlers }
     val inFlight = AskingServiceMcpInFlight()
+    val previewFlight = PreviewServiceMcpInFlight()
     val nowhere: AskingServiceMcpWriter = { }
+    val previewNowhere: PreviewServiceMcpWriter = { }
     val answers = mutableMapOf<String, JsonElement>()
     val calls = mutableMapOf<String, JsonElement>()
-    val skipped = input.getValue("previews").jsonArray.map { it.jsonPrimitive.content }
+    val previews = input.getValue("previews").jsonArray.map { it.jsonPrimitive.content }
     for ((name, text) in input.getValue("requests").jsonObject) {
-        if (name in skipped) continue
         reached.clear()
-        val reply = dispatch(text.jsonPrimitive.content, nowhere, inFlight)
+        val reply = if (name in previews) previewing(text.jsonPrimitive.content, previewNowhere, previewFlight)
+        else dispatch(text.jsonPrimitive.content, nowhere, inFlight)
         answers[name] = if (reply == null) JsonNull else JsonPrimitive(reply)
         calls[name] = JsonArray(reached.toList())
     }
@@ -219,15 +234,28 @@ fn definitions() -> Vec<String> {
         preview_service_schema::preview_service_fault_fields_kotlin::kotlin_definition(),
         preview_service_schema::preview_service_fault_kind_kotlin::kotlin_definition(),
         PreviewServiceSchema::kotlin_http_client(),
+        PreviewServiceSchema::kotlin_ws_client(),
+        PreviewServiceSchema::kotlin_mcp_service(),
         PreviewServiceSchema::kotlin_mcp_client(),
     ]
+}
+
+/// The name of the class `text` declares for a byte array and its content type.
+fn wrapper_of_bytes(text: &str) -> String {
+    let shape = "(val slot0: List<UByte>, val slot1: String)";
+    let before = &text[..text.find(shape).unwrap()];
+    let start = before.rfind("data class ").unwrap() + "data class ".len();
+    before[start..].to_owned()
 }
 
 fn module() -> String {
     let literal = kotlin_text(&json!({ "server": input(), "client": client_input() }).to_string());
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
-    parts.push(HANDLERS.to_owned());
+    parts.push(HANDLERS.replace(
+        "%TUPLE%",
+        &wrapper_of_bytes(&PreviewServiceSchema::kotlin_http_client()),
+    ));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(CLIENT_DRIVER.to_owned());
     parts.join("\n\n")
@@ -249,14 +277,7 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
     let Some(report) = driven() else {
         return;
     };
-    let previews = input()["previews"].clone();
-    let skipped: Vec<&str> = previews
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|name| name.as_str().unwrap())
-        .collect();
-    assert_matches_except(&report["server"], &skipped);
+    assert_matches(&report["server"]);
 }
 
 #[test]

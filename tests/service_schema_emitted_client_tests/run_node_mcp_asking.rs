@@ -176,7 +176,7 @@ declare const transport: AskingServiceMcpTransport;
 declare const previewTransport: PreviewServiceMcpTransport;
 
 export const dispatcher = createAskingServiceMcpDispatcher(impl);
-export const kinds: ReadonlyArray<string> = askingServiceMcpOperations.map((operation) => operation.tool);
+export const kinds: ReadonlyArray<string> = askingServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
 export const blocks: ReadonlyArray<McpContent> = [
   { type: "text", text: "a chart" },
   { type: "image", data: new Uint8Array(), mimeType: "image/png" },

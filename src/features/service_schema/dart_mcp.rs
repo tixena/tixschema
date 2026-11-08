@@ -11,15 +11,17 @@ use super::dart_ws_client::{
     message_dart_typename, message_decode, message_encode, split_reply_record,
     success_decode_block,
 };
+use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
-use crate::features::dart::{dart_json_decode, quoted};
+use crate::features::dart::{dart_json_decode, dart_json_encode, quoted};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{answers_key, is_content_list, is_content_pair};
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
-    option_inner, wire_key, written,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -165,6 +167,8 @@ const TOOLS_MARKER: &str = "@TOOLS@";
 const NAMES_MARKER: &str = "@NAMES@";
 const INSTRUCTIONS_MARKER: &str = "@INSTRUCTIONS@";
 const VERSION_MARKER: &str = "@VERSION@";
+const RESOURCES_MARKER: &str = "@RESOURCES@";
+const TEMPLATES_MARKER: &str = "@TEMPLATES@";
 
 const SERVER_HEAD: &str = r#"/// The name `server/discover` reports this service under.
 const @P@McpServerName = @NAMEQ@;
@@ -190,11 +194,11 @@ typedef @N@McpCatalog = ({
 
 const @N@McpCatalog @P@McpCatalog = (
   tools: <String>[@TOOLS@],
-  resources: <String>[],
-  resourceTemplates: <String>[],
+  resources: <String>[@RESOURCES@],
+  resourceTemplates: <String>[@TEMPLATES@],
   prompts: <String>[],
   skills: <String>[],
-  capabilities: <String>['{"tools":{}}'],
+  capabilities: <String>[@CAPABILITIES@],
 );
 
 /// What a route answers: the `result` object of a message, or its JSON-RPC `error` object.
@@ -443,12 +447,12 @@ Future<({String? text, int status})> _@P@McpRespond(
   final given = parsed['params'];
   final params = given is Map<String, dynamic> ? given : <String, dynamic>{};
   final meta = params['_meta'];
-  final version = meta is Map ? meta['io.modelcontextprotocol/protocolVersion'] : null;
-  final held = meta is Map ? meta['io.modelcontextprotocol/clientCapabilities'] : null;
-  if (version == null || held == null) {
-    return failed(id, 400, -32602,
-        'Missing _meta.io.modelcontextprotocol/protocolVersion or clientCapabilities');
+  for (final key in const ['io.modelcontextprotocol/protocolVersion', 'io.modelcontextprotocol/clientCapabilities']) {
+    if (meta is! Map || !meta.containsKey(key)) {
+      return failed(id, 400, -32602, 'Missing required _meta key: $key');
+    }
   }
+  final version = meta['io.modelcontextprotocol/protocolVersion'];
   if (version != '2026-07-28') {
     return failed(id, 400, -32022, 'Unsupported protocol version',
         <String, dynamic>{'requested': version, 'supported': <String>['2026-07-28']});
@@ -519,10 +523,9 @@ Future<({String? text, int status})> _@P@McpRespond(
     if (cursor != null) {
       if (cursor is! String) return failed(id, 200, -32602, 'Invalid cursor');
       final colon = cursor.indexOf(':');
-      final at = colon < 0 ? null : int.tryParse(cursor.substring(0, colon));
-      if (at == null || at < 0 || at >= catalogs.length) {
-        return failed(id, 200, -32602, 'Invalid cursor');
-      }
+      final written = colon < 0 ? '' : cursor.substring(0, colon);
+      final at = RegExp(r'^\+?[0-9]+$').hasMatch(written) ? int.tryParse(written) : null;
+      if (at == null || at >= catalogs.length) return failed(id, 200, -32602, 'Invalid cursor');
       place = at;
       final rest = cursor.substring(colon + 1);
       inner = rest.isEmpty ? null : rest;
@@ -530,33 +533,39 @@ Future<({String? text, int status})> _@P@McpRespond(
     final items = <String>[
       if (cursor == null) for (final catalog in catalogs) ...catalog.resources,
     ];
+    var ttl = 0;
+    var scope = 'private';
     String? next;
-    if (catalogs.isNotEmpty) {
-      final page = await route(place, 'resources/list', <String, dynamic>{if (inner != null) 'cursor': inner});
-      if (page != null) {
-        if (page.error != null) {
-          return (
-            text: _@P@McpJson(<String, dynamic>{'error': page.error, 'id': id, 'jsonrpc': '2.0'}),
-            status: 200,
-          );
-        }
-        final result = page.result;
-        if (result is Map) {
-          final resources = result['resources'];
-          if (resources is List) items.addAll(resources.map(_@P@McpJson));
-          final following = result['nextCursor'];
-          if (following is String) next = '$place:$following';
-        }
+    for (var part = place; part < catalogs.length; part += 1) {
+      final page = await route(part, 'resources/list', <String, dynamic>{
+        if (part == place && inner != null) 'cursor': inner,
+      });
+      if (page == null) continue;
+      if (page.error != null) {
+        return (
+          text: _@P@McpJson(<String, dynamic>{'error': page.error, 'id': id, 'jsonrpc': '2.0'}),
+          status: 200,
+        );
       }
-      if (next == null && place + 1 < catalogs.length) next = '${place + 1}:';
+      final result = page.result;
+      if (result is Map) {
+        final resources = result['resources'];
+        if (resources is List) items.addAll(resources.map(_@P@McpJson));
+        if (result['ttlMs'] is int) ttl = result['ttlMs'] as int;
+        if (result['cacheScope'] is String) scope = result['cacheScope'] as String;
+        final following = result['nextCursor'];
+        if (following is String && following.isNotEmpty) next = '$part:$following';
+      }
+      if (next == null && part + 1 < catalogs.length) next = '${part + 1}:';
+      break;
     }
     return answered(_@P@McpObject(<String, String>{
       '_meta': info,
-      'cacheScope': '"private"',
+      'cacheScope': '"$scope"',
       if (next != null) 'nextCursor': _@P@McpJson(next),
       'resultType': '"complete"',
       'resources': '[${items.join(',')}]',
-      'ttlMs': '0',
+      'ttlMs': '$ttl',
     }));
   }
 
@@ -571,6 +580,24 @@ Future<({String? text, int status})> _@P@McpRespond(
     'skills/get',
   };
   if (!routed.contains(method)) return failed(id, 404, -32601, 'Method not found: $method');
+  final String? named;
+  switch (method) {
+    case 'tools/call':
+      named = params['name'] is String ? params['name'] as String : null;
+    case 'resources/read':
+      named = params['uri'] is String ? params['uri'] as String : null;
+    case 'completion/complete':
+      final argument = params['argument'];
+      final reference = params['ref'];
+      named = argument is Map && argument['name'] is String && reference is Map && reference['uri'] is String
+          ? reference['uri'] as String
+          : null;
+    default:
+      named = null;
+  }
+  if (named == null && (method == 'tools/call' || method == 'resources/read' || method == 'completion/complete')) {
+    return failed(id, 200, -32602, 'Invalid params: $method names nothing to answer');
+  }
   for (var part = 0; part < catalogs.length; part += 1) {
     final reply = await route(part, method, params);
     if (reply == null) continue;
@@ -586,12 +613,18 @@ Future<({String? text, int status})> _@P@McpRespond(
     members.putIfAbsent('_meta', () => jsonDecode(info));
     return answered(_@P@McpJson(members));
   }
-  final asked = params['name'] ?? params['uri'] ?? method;
+  final asked = named ?? params['name'] ?? params['uri'] ?? method;
+  final unknown = switch (method) {
+    'tools/call' => 'Unknown tool',
+    'resources/read' => 'Resource not found',
+    'completion/complete' => 'Unknown completion',
+    _ => null,
+  };
   return failed(
     id,
     200,
     -32602,
-    method == 'tools/call' ? 'Unknown tool: $asked' : '$method: nothing on this endpoint answers it',
+    unknown == null ? '$method: nothing on this endpoint answers it' : '$unknown: $asked',
     _@P@McpUnknownOperation('$asked'),
   );
 }
@@ -1043,6 +1076,42 @@ const MEDIA_HELPER: &str =
   ]);
 }";
 
+const CAPTURED: &str =
+    "/// What each placeholder of `segments` captures in `uri`: one non-empty run of text up to the
+/// next `/`.
+List<String>? _@P@McpCaptured(List<(String, bool)> segments, String uri) {
+  var rest = uri;
+  final captured = <String>[];
+  for (final (text, placeholder) in segments) {
+    if (placeholder) {
+      final slash = rest.indexOf('/');
+      final end = slash < 0 ? rest.length : slash;
+      if (end == 0) return null;
+      captured.add(rest.substring(0, end));
+      rest = rest.substring(end);
+    } else {
+      if (!rest.startsWith(text)) return null;
+      rest = rest.substring(text.length);
+    }
+  }
+  return rest.isEmpty ? captured : null;
+}";
+
+const UNREAD: &str = "/// A request that would not read, or a handler that refused it: a `-32602`.
+@N@McpAnswer _@P@McpUnread(@F@ fault) => (
+      result: null,
+      error: <String, dynamic>{
+        'code': -32602,
+        'data': <String, dynamic>{'fault': fault.toJson(), 'isServiceFault': true},
+        'message': 'Invalid params',
+      },
+    );
+
+@N@McpAnswer _@P@McpRefused(Object? error, String refusal) => (
+      result: null,
+      error: <String, dynamic>{'code': -32602, 'data': error, 'message': refusal},
+    );";
+
 /// What of the answer helpers the operations of a service call, so none is left unused.
 struct Calls {
     declared: bool,
@@ -1057,7 +1126,7 @@ impl Calls {
             empty: false,
             ok: false,
         };
-        for operation in &service.operations {
+        for operation in tools_of(service) {
             match &operation.outcome {
                 OperationOutcome::OneWay => calls.empty = true,
                 OperationOutcome::Reply {
@@ -1088,6 +1157,14 @@ struct MethodHead {
     wire: String,
 }
 
+/// The operations of `service` that are tools.
+fn tools_of(service: &ServiceDef) -> impl Iterator<Item = &OperationDef> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+}
+
 /// Whether the message sits under `value`, where it does not depend on the type the operation
 /// names: `None` where `wrapped_{operation}()` answers it when the accessor runs.
 const fn wrapped_at_expansion(operation: &OperationDef, shape: &HttpShape) -> Option<bool> {
@@ -1103,9 +1180,7 @@ fn wrapped_marker(operation: &OperationDef) -> String {
 }
 
 fn wrapped_table(prefix: &str, side: &str, service: &ServiceDef) -> String {
-    let entries: Vec<String> = service
-        .operations
-        .iter()
+    let entries: Vec<String> = tools_of(service)
         .filter(|operation| wrapped_at_expansion(operation, &HttpShape::of(operation)).is_none())
         .map(|operation| {
             format!(
@@ -1138,14 +1213,18 @@ pub fn service_text(declared: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let calls = Calls::of(service);
+    let held = Resourced::of(service);
     let mut published = vec![
-        filled(SERVER_HEAD, &named, &prefix).replace("@SCOPES@\n", &scopes_table(service)),
+        filled(SERVER_HEAD, &named, &prefix)
+            .replace("@CAPABILITIES@", &capabilities_literal(&held))
+            .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
+        page_types(service),
         wrapped_table(&prefix, "Server", service)
             .trim_end()
             .to_owned(),
     ];
     if !service.operations.is_empty() {
-        published.push(answer_helpers(&named, &prefix, &calls));
+        published.push(answer_helpers(&named, &prefix, &calls, &held, service));
     }
     if service
         .operations
@@ -1164,13 +1243,9 @@ pub fn service_text(declared: &ServiceDef) -> String {
     if service.operations.iter().any(is_content_pair) {
         published.push(filled(MEDIA_HELPER, &named, &prefix));
     }
-    published.extend(
-        service
-            .operations
-            .iter()
-            .map(|operation| server_call(&named, &prefix, operation)),
-    );
-    published.push(route_fn(service, &named, &prefix));
+    published.extend(tools_of(service).map(|operation| server_call(&named, &prefix, operation)));
+    published.extend(resource_functions(service, &held, &named, &prefix));
+    published.push(route_fn(service, &held, &named, &prefix));
     published.push(filled(SERVER_ALONE, &named, &prefix));
     published
         .into_iter()
@@ -1179,35 +1254,109 @@ pub fn service_text(declared: &ServiceDef) -> String {
         .join("\n\n")
 }
 
-fn scopes_table(service: &ServiceDef) -> String {
-    let cases: Vec<String> = service
-        .operations
-        .iter()
-        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
-        .map(|operation| {
-            let needed: Vec<String> = operation
-                .mcp
-                .scopes
+fn scopes_table(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "const <String>[{}]",
+            scopes
                 .iter()
-                .map(|(scope, _)| quoted(scope))
-                .collect();
-            format!(
-                "      case {}:\n        return const <String>[{}];\n",
-                quoted(operation.mcp_tool_name()),
-                needed.join(", ")
-            )
-        })
-        .collect();
-    if cases.is_empty() {
-        return String::new();
+                .map(|scope| quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut text = String::new();
+    if table.has_templates() {
+        text.push_str(
+            "  bool matches(String uri, List<(String, bool)> template) {\n    \
+             var rest = uri;\n    \
+             for (final (text, placeholder) in template) {\n      \
+             if (placeholder) {\n        \
+             final end = rest.indexOf('/');\n        \
+             final stop = end < 0 ? rest.length : end;\n        \
+             if (stop == 0) return false;\n        \
+             rest = rest.substring(stop);\n      \
+             } else if (rest.startsWith(text)) {\n        \
+             rest = rest.substring(text.length);\n      \
+             } else {\n        \
+             return false;\n      \
+             }\n    \
+             }\n    \
+             return rest.isEmpty;\n  \
+             }\n\n",
+        );
     }
-    format!(
-        "  if (method == 'tools/call') {{\n    switch (name) {{\n{}    }}\n  }}\n",
-        cases.concat()
-    )
+    if !table.tools.is_empty() {
+        text.push_str("  if (method == 'tools/call') {\n    switch (name) {\n");
+        for (tool, scopes) in &table.tools {
+            let _ = writeln!(
+                text,
+                "      case {}:\n        return {};",
+                quoted(tool),
+                list(scopes)
+            );
+        }
+        text.push_str("    }\n  }\n");
+    }
+    if !table.reads.is_empty() {
+        text.push_str("  if (method == 'resources/read' && name != null) {\n");
+        for (uri, scopes) in &table.reads {
+            match uri {
+                ReadUri::Fixed(fixed) => {
+                    let _ = writeln!(
+                        text,
+                        "    if (name == {}) return {};",
+                        quoted(fixed),
+                        list(scopes)
+                    );
+                }
+                ReadUri::Template(parts) => {
+                    let pairs: Vec<String> = parts
+                        .iter()
+                        .map(|(part, placeholder)| format!("({}, {placeholder})", quoted(part)))
+                        .collect();
+                    let _ = writeln!(
+                        text,
+                        "    if (matches(name, const <(String, bool)>[{}])) return {};",
+                        pairs.join(", "),
+                        list(scopes)
+                    );
+                }
+            }
+        }
+        text.push_str("    return const <String>[];\n  }\n");
+    }
+    if let Some(scopes) = &table.listing {
+        let _ = writeln!(
+            text,
+            "  if (method == 'resources/list') return {};",
+            list(scopes)
+        );
+    }
+    if !table.completions.is_empty() {
+        text.push_str("  if (method == 'completion/complete' && name != null) {\n");
+        for (uri, scopes) in &table.completions {
+            let _ = writeln!(
+                text,
+                "    if (name == {}) return {};",
+                quoted(uri),
+                list(scopes)
+            );
+        }
+        text.push_str("  }\n");
+    }
+    text
 }
 
-fn answer_helpers(named: &str, prefix: &str, calls: &Calls) -> String {
+fn answer_helpers(
+    named: &str,
+    prefix: &str,
+    calls: &Calls,
+    held: &Resourced<'_>,
+    service: &ServiceDef,
+) -> String {
+    let tools = tools_of(service).next().is_some();
+    let panics = calls.declared || held.any();
     let fields = fault_fields_typescript_name(named);
     let mut text = format!(
         "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail, {{String? field}}) =>\n    \
@@ -1216,17 +1365,22 @@ fn answer_helpers(named: &str, prefix: &str, calls: &Calls) -> String {
          if (!message.startsWith(\"'\")) return null;\n  \
          final end = message.indexOf(\"'\", 1);\n  \
          return end < 0 ? null : message.substring(1, end);\n\
-         }}\n\n\
-         {named}McpAnswer _{prefix}McpFailed(String text) => (\n  \
-         result: <String, dynamic>{{\n    \
-         'content': <Object>[<String, dynamic>{{'text': text, 'type': 'text'}}],\n    \
-         'isError': true,\n  \
-         }},\n  \
-         error: null,\n\
-         );\n\n\
-         {named}McpAnswer _{prefix}McpFaultResult({fields} fault) =>\n    \
-         _{prefix}McpFailed(_{prefix}McpJson(<String, dynamic>{{'fault': fault.toJson(), 'isServiceFault': true}}));"
+         }}"
     );
+    if tools {
+        let _ = write!(
+            text,
+            "\n\n{named}McpAnswer _{prefix}McpFailed(String text) => (\n  \
+             result: <String, dynamic>{{\n    \
+             'content': <Object>[<String, dynamic>{{'text': text, 'type': 'text'}}],\n    \
+             'isError': true,\n  \
+             }},\n  \
+             error: null,\n\
+             );\n\n\
+             {named}McpAnswer _{prefix}McpFaultResult({fields} fault) =>\n    \
+             _{prefix}McpFailed(_{prefix}McpJson(<String, dynamic>{{'fault': fault.toJson(), 'isServiceFault': true}}));"
+        );
+    }
     if calls.empty {
         let _ = write!(
             text,
@@ -1252,8 +1406,13 @@ fn answer_helpers(named: &str, prefix: &str, calls: &Calls) -> String {
     if calls.declared {
         let _ = write!(
             text,
-            "\n\n{named}McpAnswer _{prefix}McpDeclared(Object? error) => _{prefix}McpFailed(_{prefix}McpJson(error));\n\n\
-             {named}McpAnswer _{prefix}McpPanic(String tool, String operation, String detail) => (\n  \
+            "\n\n{named}McpAnswer _{prefix}McpDeclared(Object? error) => _{prefix}McpFailed(_{prefix}McpJson(error));"
+        );
+    }
+    if panics {
+        let _ = write!(
+            text,
+            "\n\n{named}McpAnswer _{prefix}McpPanic(String tool, String operation, String detail) => (\n  \
              result: null,\n  \
              error: <String, dynamic>{{\n    \
              'code': -32603,\n    \
@@ -1528,37 +1687,460 @@ fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (Strin
     (asking, "declaredBody".to_owned())
 }
 
-/// `create{Service}McpRoute`: answers `tools/call` for the tool each operation names.
-fn route_fn(service: &ServiceDef, named: &str, prefix: &str) -> String {
-    let head = format!(
+/// `create{Service}McpRoute`: answers `tools/call` for the tool each operation names, and the
+/// resource, listing and completion requests for the operations that are those.
+fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &str) -> String {
+    let preamble = format!(
         "/// Answers the requests of this service on an endpoint shared by several, and `null` for a\n\
          /// request it does not own.\n\
          Future<{named}McpAnswer?> Function(Ctx ctx, String method, Map<String, dynamic> params)\n    \
          create{named}McpRoute<Ctx>({named}Handlers<Ctx> handlers) =>"
     );
     if service.operations.is_empty() {
-        return format!("{head}\n        (ctx, method, params) async => null;");
+        return format!("{preamble}\n        (ctx, method, params) async => null;");
     }
-    let mut arms = String::new();
-    for operation in &service.operations {
-        let _ = writeln!(
-            arms,
-            "        case {}:\n          return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']);",
-            quoted(operation.mcp_tool_name()),
-            pascal(operation)
+    let mut cases = String::new();
+    let tools: Vec<&OperationDef> = tools_of(service).collect();
+    if !tools.is_empty() {
+        let mut arms = String::new();
+        for operation in tools {
+            let _ = writeln!(
+                arms,
+                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']);",
+                quoted(operation.mcp_tool_name()),
+                pascal(operation)
+            );
+        }
+        let _ = write!(
+            cases,
+            "        case 'tools/call':\n          switch (params['name']) {{\n{arms}            \
+             default:\n              return null;\n          }}\n"
+        );
+    }
+    if held.reads().next().is_some() {
+        let _ = write!(
+            cases,
+            "        case 'resources/read':\n          final uri = params['uri'];\n          \
+             return uri is String ? _{prefix}McpRead<Ctx>(handlers, ctx, uri) : null;\n"
+        );
+    }
+    if held.listing.is_some() {
+        let _ = write!(
+            cases,
+            "        case 'resources/list':\n          \
+             return _{prefix}McpList<Ctx>(handlers, ctx, params['cursor']);\n"
+        );
+    }
+    if !held.completions.is_empty() {
+        let _ = write!(
+            cases,
+            "        case 'completion/complete':\n          \
+             return _{prefix}McpComplete<Ctx>(handlers, ctx, params);\n"
         );
     }
     format!(
-        "{head}\n        \
+        "{preamble}\n        \
          (ctx, method, params) async {{\n      \
-         if (method != 'tools/call') return null;\n      \
-         switch (params['name']) {{\n\
-{arms}        \
+         switch (method) {{\n\
+{cases}        \
          default:\n          \
          return null;\n      \
          }}\n    \
          }};"
     )
+}
+
+/// The `capabilities` the catalog lists, as the literals of their JSON text.
+fn capabilities_literal(held: &Resourced<'_>) -> String {
+    let mut capabilities = vec![quoted("{\"tools\":{}}")];
+    if held.is_served() {
+        capabilities.push(quoted("{\"resources\":{}}"));
+    }
+    if !held.completions.is_empty() {
+        capabilities.push(quoted("{\"completions\":{}}"));
+    }
+    capabilities.join(", ")
+}
+
+/// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
+/// declares.
+fn page_types(service: &ServiceDef) -> String {
+    if !service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.list_resources)
+    {
+        return String::new();
+    }
+    "/// One resource of a listing, as `resources/list` writes it.
+class McpResource {
+  McpResource({required this.uri, required this.name, this.title, this.description, this.mimeType, this.size});
+
+  factory McpResource.fromJson(Map<String, dynamic> json) => McpResource(
+        uri: json['uri'] as String,
+        name: json['name'] as String,
+        title: json['title'] as String?,
+        description: json['description'] as String?,
+        mimeType: json['mimeType'] as String?,
+        size: json['size'] as int?,
+      );
+
+  final String uri;
+  final String name;
+  final String? title;
+  final String? description;
+  final String? mimeType;
+  final int? size;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'uri': uri,
+        'name': name,
+        if (title != null) 'title': title,
+        if (description != null) 'description': description,
+        if (mimeType != null) 'mimeType': mimeType,
+        if (size != null) 'size': size,
+      };
+}
+
+/// One page of `resources/list`, with the cursor of the next where there is one.
+class McpResourcePage {
+  McpResourcePage({required this.resources, this.nextCursor});
+
+  factory McpResourcePage.fromJson(Map<String, dynamic> json) => McpResourcePage(
+        resources: [
+          for (final resource in json['resources'] as List<dynamic>)
+            McpResource.fromJson(resource as Map<String, dynamic>),
+        ],
+        nextCursor: json['nextCursor'] as String?,
+      );
+
+  final List<McpResource> resources;
+  final String? nextCursor;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'resources': [for (final resource in resources) resource.toJson()],
+        if (nextCursor != null) 'nextCursor': nextCursor,
+      };
+}"
+    .to_owned()
+}
+
+/// The pieces of the resource requests, one function for each operation that answers one.
+fn resource_functions(
+    service: &ServiceDef,
+    held: &Resourced<'_>,
+    named: &str,
+    prefix: &str,
+) -> Vec<String> {
+    if !held.any() {
+        return Vec::new();
+    }
+    let fields = fault_fields_typescript_name(named);
+    let mut published = vec![filled(UNREAD, named, prefix).replace("@F@", &fields)];
+    if held.reads().next().is_some() {
+        published.push(filled(CAPTURED, named, prefix));
+        published.extend(
+            held.reads()
+                .map(|operation| resource_read(named, prefix, operation)),
+        );
+        published.push(read_dispatch(held, named, prefix));
+    }
+    if let Some(operation) = held.listing {
+        published.push(resource_listing(named, prefix, operation));
+    }
+    published.extend(
+        held.completions
+            .iter()
+            .filter_map(|operation| resource_completion(named, prefix, operation)),
+    );
+    if !held.completions.is_empty() {
+        published.push(complete_dispatch(service, held, named, prefix));
+    }
+    published
+}
+
+/// The statements that read the message of `operation` from `source`, answering the request with
+/// a fault where it does not read, and the call of its handler, ending in `success`, the declared
+/// error `refusal` or a panic.
+fn resource_body(
+    named: &str,
+    prefix: &str,
+    operation: &OperationDef,
+    source: &str,
+    refusal: &str,
+    answer: &str,
+) -> String {
+    let OperationOutcome::Reply { error, success: ty } = &operation.outcome else {
+        return String::new();
+    };
+    let wire = quoted(&operation.wire_name);
+    let call = dart_call(operation);
+    let req_ty = message_dart_typename(operation);
+    let decode = message_decode(operation, "source");
+    let kind = format!("{named}FaultKind");
+    let error_ty = dart_type_of(error);
+    let declared = dart_json_encode(error, "declared", true);
+    let encoded = dart_json_encode(ty, "answered", true);
+    let success = answer.replace("@ENCODED@", &encoded);
+    format!(
+        "  final dynamic source = {source};\n  \
+         final {req_ty} decoded;\n  \
+         try {{\n    \
+         decoded = {decode};\n  \
+         }} on FormatException catch (rejected) {{\n    \
+         return _{prefix}McpUnread(\n      \
+         _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
+         );\n  \
+         }} catch (rejected) {{\n    \
+         return _{prefix}McpUnread(_{prefix}McpFault({kind}.undeserializablePayload, {wire}, '$rejected'));\n  \
+         }}\n  \
+         try {{\n    \
+         final answered = await handlers.{call}(ctx, decoded);\n    \
+         {success}\n  \
+         }} on {error_ty} catch (declared) {{\n    \
+         return _{prefix}McpRefused({declared}, {refusal});\n  \
+         }} catch (unexpected) {{\n    \
+         return _{prefix}McpPanic({wire}, {wire}, '$unexpected');\n  \
+         }}\n\
+         }}"
+    )
+}
+
+fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let Some(resource) = operation.mcp.resource.as_ref() else {
+        return String::new();
+    };
+    let slots = resource.placeholder_names();
+    let uses_captured = !slots.is_empty() && !matches!(operation.inputs, OperationInputs::Empty);
+    let source = match &operation.inputs {
+        OperationInputs::Empty => "<String, dynamic>{}".to_owned(),
+        OperationInputs::Named(_) if slots.is_empty() => "null".to_owned(),
+        OperationInputs::Named(_) => "captured[0]".to_owned(),
+        OperationInputs::Generated(fields) => {
+            let members = slots
+                .iter()
+                .enumerate()
+                .filter_map(|(at, name)| {
+                    let (field, _) = fields.iter().find(|(field, _)| written(field) == *name)?;
+                    Some(format!("{}: captured[{at}]", quoted(&wire_key(field))))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("<String, dynamic>{{{members}}}")
+        }
+    };
+    let ttl = operation.mcp.ttl_ms.unwrap_or(0);
+    let scope = operation.mcp.cache_scope.as_deref().unwrap_or("private");
+    let mime = operation
+        .mcp
+        .mime_type
+        .as_ref()
+        .map(|mime| format!("'mimeType': {}, ", quoted(mime)))
+        .unwrap_or_default();
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), syn::Type::Tuple(_))
+    );
+    let content = if blob {
+        "<String, dynamic>{'uri': uri, 'mimeType': answered.$2, 'blob': base64Encode(answered.$1)}"
+            .to_owned()
+    } else {
+        format!("<String, dynamic>{{'uri': uri, {mime}'text': @ENCODED@}}")
+    };
+    let success = format!(
+        "return (\n      result: <String, dynamic>{{\n        \
+         'cacheScope': {scope},\n        \
+         'contents': <Object>[{content}],\n        \
+         'resultType': 'complete',\n        \
+         'ttlMs': {ttl},\n      }},\n      error: null,\n    );",
+        scope = quoted(scope),
+    );
+    let captured = if uses_captured {
+        ", List<String> captured"
+    } else {
+        ""
+    };
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpRead{op}<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         String uri{captured},\n\
+         ) async {{\n",
+        op = pascal(operation),
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            named,
+            prefix,
+            operation,
+            &source,
+            "'Resource not found'",
+            &success,
+        )
+    )
+}
+
+fn read_dispatch(held: &Resourced<'_>, named: &str, prefix: &str) -> String {
+    let mut text = format!(
+        "Future<{named}McpAnswer?> _{prefix}McpRead<Ctx>({named}Handlers<Ctx> handlers, Ctx ctx, String uri) async {{\n"
+    );
+    for operation in held.reads() {
+        let Some(resource) = operation.mcp.resource.as_ref() else {
+            continue;
+        };
+        let segments = if resource.is_template() {
+            resource
+                .segments
+                .iter()
+                .map(|segment| match segment {
+                    PathSegment::Literal(literal) => format!("({}, false)", quoted(literal)),
+                    PathSegment::Placeholder(name) => format!("({}, true)", quoted(name)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            format!("({}, false)", quoted(&resource.uri))
+        };
+        let slots = resource.placeholder_names();
+        let uses_captured =
+            !slots.is_empty() && !matches!(operation.inputs, OperationInputs::Empty);
+        let arguments = if uses_captured {
+            "handlers, ctx, uri, captured"
+        } else {
+            "handlers, ctx, uri"
+        };
+        let _ = write!(
+            text,
+            "  {{\n    final {local} = _{prefix}McpCaptured(<(String, bool)>[{segments}], uri);\n    \
+             if ({local} != null) return _{prefix}McpRead{op}<Ctx>({arguments});\n  }}\n",
+            local = if uses_captured { "captured" } else { "matched" },
+            op = pascal(operation),
+        );
+    }
+    text.push_str("  return null;\n}");
+    text
+}
+
+fn resource_listing(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let source = if matches!(operation.inputs, OperationInputs::Named(_)) {
+        "cursor is String ? cursor : null"
+    } else {
+        "<String, dynamic>{}"
+    };
+    let ttl = operation.mcp.ttl_ms.unwrap_or(0);
+    let scope = operation.mcp.cache_scope.as_deref().unwrap_or("private");
+    let success = format!(
+        "return (\n      result: <String, dynamic>{{\n        \
+         ...(@ENCODED@),\n        \
+         'cacheScope': {scope},\n        \
+         'resultType': 'complete',\n        \
+         'ttlMs': {ttl},\n      }},\n      error: null,\n    );",
+        scope = quoted(scope),
+    );
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpList<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         Object? cursor,\n\
+         ) async {{\n"
+    );
+    format!(
+        "{head}{}",
+        resource_body(
+            named,
+            prefix,
+            operation,
+            source,
+            "'Resources could not be listed'",
+            &success,
+        )
+    )
+}
+
+fn resource_completion(named: &str, prefix: &str, operation: &OperationDef) -> Option<String> {
+    let OperationInputs::Generated(fields) = &operation.inputs else {
+        return None;
+    };
+    let typed_key = quoted(&wire_key(&fields.first()?.0));
+    let chosen_key = quoted(&wire_key(&fields.get(1)?.0));
+    let source = format!("<String, dynamic>{{{typed_key}: typed, {chosen_key}: chosen}}");
+    let success = "final suggested = <Object>[...answered];\n    \
+         return (\n      result: <String, dynamic>{\n        \
+         'completion': <String, dynamic>{\n          \
+         'hasMore': suggested.length > 100,\n          \
+         if (suggested.length > 100) 'total': suggested.length,\n          \
+         'values': suggested.take(100).toList(),\n        },\n        \
+         'resultType': 'complete',\n      },\n      error: null,\n    );"
+        .to_owned();
+    let head = format!(
+        "Future<{named}McpAnswer> _{prefix}McpComplete{op}<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         String typed,\n  \
+         Object? chosen,\n\
+         ) async {{\n",
+        op = pascal(operation),
+    );
+    Some(format!(
+        "{head}{}",
+        resource_body(
+            named,
+            prefix,
+            operation,
+            &source,
+            "'Completion refused'",
+            &success,
+        )
+    ))
+}
+
+fn complete_dispatch(
+    service: &ServiceDef,
+    held: &Resourced<'_>,
+    named: &str,
+    prefix: &str,
+) -> String {
+    let mut text = format!(
+        "Future<{named}McpAnswer?> _{prefix}McpComplete<Ctx>(\n  \
+         {named}Handlers<Ctx> handlers,\n  \
+         Ctx ctx,\n  \
+         Map<String, dynamic> params,\n\
+         ) async {{\n  \
+         final reference = params['ref'];\n  \
+         final argument = params['argument'];\n  \
+         if (reference is! Map || reference['type'] != 'ref/resource') return null;\n  \
+         final uri = reference['uri'];\n  \
+         final parameter = argument is Map ? argument['name'] : null;\n  \
+         if (uri is! String || parameter is! String) return null;\n  \
+         final typed = argument is Map && argument['value'] is String ? argument['value'] as String : '';\n  \
+         final context = params['context'];\n  \
+         final chosen = context is Map && context.containsKey('arguments') ? context['arguments'] : <String, dynamic>{{}};\n"
+    );
+    for operation in &held.completions {
+        let Some(completes) = operation.mcp.completes.as_ref() else {
+            continue;
+        };
+        let Some(target) = service
+            .operations
+            .iter()
+            .find(|candidate| written(&candidate.ident) == completes.resource)
+        else {
+            continue;
+        };
+        let Some(resource) = target.mcp.resource.as_ref() else {
+            continue;
+        };
+        let _ = writeln!(
+            text,
+            "  if (uri == {} && parameter == {}) return _{prefix}McpComplete{}<Ctx>(handlers, ctx, typed, chosen);",
+            quoted(&resource.uri),
+            quoted(&completes.parameter),
+            pascal(operation),
+        );
+    }
+    text.push_str("  return null;\n}");
+    text
 }
 
 /// The client text: the transport a consumer implements with one `send`, and the client with a
@@ -1582,7 +2164,7 @@ pub fn client_text(declared: &ServiceDef) -> String {
              }}"
         ));
     }
-    if service.operations.is_empty() {
+    if tools_of(service).next().is_none() {
         published.push(format!(
             "/// A `{named}` caller over `mcp`.\n\
              class {named}McpClient {{\n  \
@@ -1606,9 +2188,7 @@ pub fn client_text(declared: &ServiceDef) -> String {
     if has_one_way(service) {
         published.push(with_fields(CLIENT_FAULT_OF));
     }
-    let methods = service
-        .operations
-        .iter()
+    let methods = tools_of(service)
         .map(|operation| client_method(&named, &prefix, operation))
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -1807,6 +2387,30 @@ fn reply_method(
     )
 }
 
+/// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
+fn form_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
+    declared
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .interview
+                .as_ref()
+                .is_some_and(|interview| interview.answers.is_some())
+        })
+        .map(|operation| {
+            let marker = form_marker(operation);
+            let method = format_ident!(
+                "mcp_form_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! { .replace(#marker, &literal(&Self::#method().to_string())) }
+        })
+        .collect()
+}
+
 /// `dart_mcp_service()` and `dart_mcp_client()`, for a service that asks for `mcp`. They write the
 /// tool list, the names, the instructions, the version and each `wrapped_{operation}()` over the
 /// markers when they run, since only the compiled types know them.
@@ -1828,26 +2432,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
         })
         .collect();
     let wrapped_server = wrapped.clone();
-    let forms: Vec<TokenStream> = declared
-        .operations
-        .iter()
-        .filter(|operation| {
-            operation
-                .mcp
-                .interview
-                .as_ref()
-                .is_some_and(|interview| interview.answers.is_some())
-        })
-        .map(|operation| {
-            let marker = form_marker(operation);
-            let method = format_ident!(
-                "mcp_form_{}",
-                written(&operation.ident),
-                span = operation.ident.span()
-            );
-            quote! { .replace(#marker, &literal(&Self::#method().to_string())) }
-        })
-        .collect();
+    let forms = form_replacements(declared);
     let content = declared.operations.iter().any(is_content_list).then(|| {
         quote! {
             #[doc = " The `McpContent` types a `List<McpContent>` success of an `mcp(content)`"]
@@ -1881,6 +2466,16 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|(kind, name)| literal(&format!("{kind}:{name}")))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let resources = Self::mcp_resources()
+                .iter()
+                .map(|resource| literal(&resource.to_string()))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
+            let templates = Self::mcp_resource_templates()
+                .iter()
+                .map(|template| literal(&template.to_string()))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
                 ::core::option::Option::None => ::std::string::String::from("null"),
@@ -1888,6 +2483,8 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
             #server
                 .replace(#TOOLS_MARKER, &tools)
                 .replace(#NAMES_MARKER, &names)
+                .replace(#RESOURCES_MARKER, &resources)
+                .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*

@@ -24,6 +24,12 @@ mod kotlin_mcp_client;
 mod kotlin_mcp_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    all(feature = "typescript", feature = "zod")
+))]
+mod mcp_scopes;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod mcp_ts_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -648,34 +654,12 @@ fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
     TokenStream::new()
 }
 
-/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
-/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+/// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
 #[cfg(all(feature = "typescript", feature = "zod"))]
-fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
-    use crate::service_schema::parse::{OperationInputs, written};
+fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
 
-    let server = mcp_ts_service::emit(service).join("\n\n");
-    let client = mcp_ts_client::emit(service).join("\n\n");
-    let version = mcp_ts_service::VERSION_MARKER;
-    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
-    let tools = mcp_ts_service::TOOLS_MARKER;
-    let wrapped: Vec<TokenStream> = service
-        .operations
-        .iter()
-        .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
-        .map(|operation| {
-            let marker = mcp_ts_service::wrapped_marker(operation);
-            let method = format_ident!(
-                "wrapped_{}",
-                written(&operation.ident),
-                span = operation.ident.span()
-            );
-            quote! {
-                .replace(#marker, if Self::#method() { "true" } else { "false" })
-            }
-        })
-        .collect();
-    let forms: Vec<TokenStream> = service
+    service
         .operations
         .iter()
         .filter(|operation| {
@@ -699,7 +683,39 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                 )
             }
         })
+        .collect()
+}
+
+/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
+/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+    use crate::service_schema::parse::{OperationInputs, written};
+
+    let server = mcp_ts_service::emit(service).join("\n\n");
+    let client = mcp_ts_client::emit(service).join("\n\n");
+    let version = mcp_ts_service::VERSION_MARKER;
+    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
+    let tools = mcp_ts_service::TOOLS_MARKER;
+    let resources = mcp_ts_service::RESOURCES_MARKER;
+    let templates = mcp_ts_service::TEMPLATES_MARKER;
+    let wrapped: Vec<TokenStream> = service
+        .operations
+        .iter()
+        .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
+        .map(|operation| {
+            let marker = mcp_ts_service::wrapped_marker(operation);
+            let method = format_ident!(
+                "wrapped_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! {
+                .replace(#marker, if Self::#method() { "true" } else { "false" })
+            }
+        })
         .collect();
+    let forms = mcp_ts_form_replacements(service);
     let content = mcp_content_accessor(service, "ts_mcp_content", mcp_ts_service::CONTENT_TYPE);
     quote! {
         #content
@@ -726,6 +742,22 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                     &Self::mcp_tools()
                         .iter()
                         .map(|tool| ::serde_json::Value::String(tool.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #resources,
+                    &Self::mcp_resources()
+                        .iter()
+                        .map(|resource| ::serde_json::Value::String(resource.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #templates,
+                    &Self::mcp_resource_templates()
+                        .iter()
+                        .map(|template| ::serde_json::Value::String(template.to_string()).to_string())
                         .collect::<::std::vec::Vec<_>>()
                         .join(", "),
                 )

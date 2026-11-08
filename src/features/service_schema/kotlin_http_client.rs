@@ -7,8 +7,9 @@
 use super::result::result_name;
 use super::{on_one_line, text_types};
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
-    kotlin_quoted, kotlin_read_serializer, kotlin_typename,
+    TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
+    kotlin_property_name, kotlin_quoted, kotlin_read_serializer, kotlin_tuple_naming,
+    kotlin_typename,
 };
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -100,6 +101,8 @@ struct HeaderOutField {
 }
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Declared);
+    kotlin_tuple_naming(TupleNaming::Declared);
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_stream = service_declares_a_stream(service);
