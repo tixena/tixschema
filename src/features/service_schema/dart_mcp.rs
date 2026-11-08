@@ -68,12 +68,43 @@ class @N@McpEndpoint {
   final List<@N@McpCatalog> catalogs;
 }
 
-/// An HTTP request in plain terms.
+/// An HTTP request in plain terms. `path` is the request's path, with or without its query.
 class @N@McpHttpRequest {
-  const @N@McpHttpRequest({required this.method, required this.headers, required this.body});
+  const @N@McpHttpRequest({required this.method, required this.path, required this.headers, required this.body});
   final String method;
+  final String path;
   final List<(String, String)> headers;
   final List<int> body;
+
+  /// The value of the header called `name`, whatever its case.
+  String? header(String name) {
+    final wanted = name.toLowerCase();
+    for (final (key, value) in headers) {
+      if (key.toLowerCase() == wanted) return value;
+    }
+    return null;
+  }
+
+  /// The token of an `Authorization: Bearer` header, whatever the case of the scheme.
+  String? get bearerToken {
+    final value = header('authorization');
+    if (value == null) return null;
+    final at = value.indexOf(' ');
+    if (at < 0) return null;
+    final token = value.substring(at + 1).trim();
+    return value.substring(0, at).toLowerCase() == 'bearer' && token.isNotEmpty ? token : null;
+  }
+
+  /// The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so.
+  String? get mcpName {
+    final value = header('mcp-name');
+    if (value == null || !value.startsWith('=?base64?') || !value.endsWith('?=')) return value;
+    try {
+      return utf8.decode(base64.decode(value.substring(9, value.length - 2)));
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// An HTTP response in plain terms.
@@ -82,6 +113,67 @@ class @N@McpHttpResponse {
   final int status;
   final List<(String, String)> headers;
   final List<int> body;
+}
+
+/// The protected-resource metadata of a server that authorizes by OAuth.
+class @N@McpOAuth {
+  const @N@McpOAuth({
+    required this.authorizationServers,
+    required this.resource,
+    required this.resourceMetadataUrl,
+    required this.scopesSupported,
+  });
+  final List<String> authorizationServers;
+  final String resource;
+  final String resourceMetadataUrl;
+  final List<String> scopesSupported;
+}
+
+/// What an HTTP server of this endpoint is configured with. Without `oauth` it serves no metadata
+/// document and writes no challenge.
+class @N@McpHttpSettings {
+  const @N@McpHttpSettings({required this.allowedOrigins, this.oauth});
+  final List<String> allowedOrigins;
+  final @N@McpOAuth? oauth;
+}
+
+/// Why `admit` refused a request.
+sealed class @N@McpDenied {
+  const @N@McpDenied();
+}
+
+/// `401`: no credentials, or credentials that do not hold. `scope` names what the called operation needs.
+class @N@McpNoValidCredentials extends @N@McpDenied {
+  const @N@McpNoValidCredentials({this.scope});
+  final String? scope;
+}
+
+/// `403` with a challenge: the credentials hold, but not the scopes `scope` names.
+class @N@McpInsufficientScope extends @N@McpDenied {
+  const @N@McpInsufficientScope({required this.scope});
+  final String scope;
+}
+
+/// `403` with no challenge.
+class @N@McpForbidden extends @N@McpDenied {
+  const @N@McpForbidden();
+}
+
+/// What a handler reaches beside its arguments.
+class @N@McpCall {
+  const @N@McpCall();
+}
+
+/// What `admit` answers: the context the handlers run with in `ctx`, or why the request is refused in `denied`.
+typedef @N@McpAdmit<Ctx> = Future<({Ctx? ctx, @N@McpDenied? denied})> Function(
+  @N@McpHttpRequest request,
+  @N@McpCall call,
+);
+
+/// The scopes a caller needs for the request `method` and `name` name, none for any other.
+List<String> @P@McpScopes(String method, String? name) {
+@SCOPES@
+  return const <String>[];
 }
 
 Object? _@P@McpSorted(Object? value) {
@@ -317,35 +409,85 @@ Future<String?> @P@McpServe(
 ) async =>
     (await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint, route)).text;
 
-/// The Streamable HTTP rules around `@P@McpServe`.
-Future<@N@McpHttpResponse> @P@McpServeHttp(
+String _@P@McpUrlPath(String url) {
+  final separator = url.indexOf('://');
+  final after = separator < 0 ? url : url.substring(separator + 3);
+  final at = after.indexOf('/');
+  final fromPath = at < 0 ? '/' : after.substring(at);
+  return fromPath.split(RegExp('[?#]')).first;
+}
+
+@N@McpHttpResponse _@P@McpReplied(int status, {String? body, List<(String, String)> headers = const <(String, String)>[]}) =>
+    @N@McpHttpResponse(
+      status: status,
+      headers: body == null ? headers : const [('Content-Type', 'application/json')],
+      body: body == null ? const <int>[] : utf8.encode(body),
+    );
+
+@N@McpHttpResponse _@P@McpDenial(@N@McpDenied denied, @N@McpHttpSettings settings, @N@McpHttpRequest request) {
+  final oauth = settings.oauth;
+  String? challenge;
+  var status = 403;
+  if (denied is @N@McpNoValidCredentials) {
+    status = 401;
+    if (oauth != null) {
+      final scope = denied.scope;
+      final parts = <String>[
+        'resource_metadata="${oauth.resourceMetadataUrl}"',
+        if (scope != null) 'scope="$scope"',
+        if (request.bearerToken != null) 'error="invalid_token"',
+      ];
+      challenge = 'Bearer ${parts.join(', ')}';
+    }
+  } else if (denied is @N@McpInsufficientScope && oauth != null) {
+    challenge =
+        'Bearer error="insufficient_scope", scope="${denied.scope}", resource_metadata="${oauth.resourceMetadataUrl}"';
+  }
+  return _@P@McpReplied(status, headers: challenge == null ? const [] : [('WWW-Authenticate', challenge)]);
+}
+
+@N@McpHttpResponse _@P@McpMetadata(@N@McpOAuth oauth) => _@P@McpReplied(200, body: _@P@McpJson(<String, dynamic>{
+      'authorization_servers': oauth.authorizationServers,
+      'bearer_methods_supported': <String>['header'],
+      'resource': oauth.resource,
+      if (oauth.scopesSupported.isNotEmpty) 'scopes_supported': oauth.scopesSupported,
+    }));
+
+/// The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
+/// `admit`, the body and the headers that must agree with it. `route` also receives the `Ctx` that
+/// `admit` answered.
+Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   @N@McpHttpRequest request,
-  List<String> allowedOrigins,
+  @N@McpHttpSettings settings,
   String serverName,
   String? instructions,
   @N@McpEndpoint endpoint,
-  Future<@N@McpAnswer?> Function(int part, String method, Map<String, dynamic> params) route,
+  @N@McpAdmit<Ctx> admit,
+  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route,
 ) async {
-  @N@McpHttpResponse respond(int status, [String? body]) => @N@McpHttpResponse(
-        status: status,
-        headers: body == null ? const <(String, String)>[] : const [('content-type', 'application/json')],
-        body: body == null ? const <int>[] : utf8.encode(body),
-      );
-  String? header(String name) {
-    for (final (key, value) in request.headers) {
-      if (key.toLowerCase() == name) return value;
-    }
-    return null;
-  }
+  @N@McpHttpResponse respond(int status, [String? body]) => _@P@McpReplied(status, body: body);
+  String? header(String name) => request.header(name);
 
   String error(Object? id, int code, String message) => _@P@McpJson(<String, dynamic>{
         'error': <String, dynamic>{'code': code, 'message': message},
         if (id != null) 'id': id,
         'jsonrpc': '2.0',
       });
-  if (request.method.toUpperCase() != 'POST') return respond(405);
+  final oauth = settings.oauth;
+  if (oauth != null &&
+      request.method == 'GET' &&
+      request.path.split(RegExp('[?#]')).first == _@P@McpUrlPath(oauth.resourceMetadataUrl)) {
+    return _@P@McpMetadata(oauth);
+  }
+  if (request.method.toUpperCase() != 'POST') {
+    return _@P@McpReplied(405, headers: const [('Allow', 'POST')]);
+  }
   final origin = header('origin');
-  if (origin != null && !allowedOrigins.contains(origin)) return respond(403);
+  if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
+  final admitted = await admit(request, const @N@McpCall());
+  final denied = admitted.denied;
+  if (denied != null) return _@P@McpDenial(denied, settings, request);
+  final ctx = admitted.ctx as Ctx;
   final Object? parsed;
   try {
     parsed = jsonDecode(utf8.decode(request.body));
@@ -374,20 +516,13 @@ Future<@N@McpHttpResponse> @P@McpServeHttp(
           ? params['uri']
           : null;
   if (method == 'tools/call' || method == 'prompts/get' || method == 'resources/read') {
-    var asked = header('mcp-name');
-    if (asked != null && asked.startsWith('=?base64?') && asked.endsWith('?=')) {
-      try {
-        asked = utf8.decode(base64.decode(asked.substring(9, asked.length - 2)));
-      } catch (_) {
-        return respond(400, error(id, -32020, 'Header mismatch: Mcp-Name'));
-      }
-    }
+    final asked = request.mcpName;
     if (asked == null || asked != named) {
       return respond(400, error(id, -32020, 'Header mismatch: Mcp-Name'));
     }
   }
-  final answered = await _@P@McpRespond(
-    utf8.decode(request.body), serverName, @P@McpServerVersion, instructions, endpoint, route);
+  final answered = await _@P@McpRespond(utf8.decode(request.body), serverName, @P@McpServerVersion, instructions,
+      endpoint, (part, method, params) => route(ctx, part, method, params));
   return respond(answered.status, answered.text);
 }
 "#;
@@ -513,21 +648,22 @@ Future<String?> Function(Ctx ctx, String text) create@N@McpDispatcher<Ctx>(
       );
 }
 
-/// Answers the HTTP requests of this service alone. `allowedOrigins` holds every `Origin` it
-/// accepts.
+/// Answers the HTTP requests of this service alone. `admit` answers the `Ctx` of a request, or why
+/// it is refused.
 Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
-  Ctx ctx,
-  List<String> allowedOrigins,
+  @N@McpHttpSettings settings,
+  @N@McpAdmit<Ctx> admit,
 ) {
   final route = create@N@McpRoute(handlers);
-  return (request) => @P@McpServeHttp(
+  return (request) => @P@McpServeHttp<Ctx>(
         request,
-        allowedOrigins,
+        settings,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,
-        (part, method, params) => route(ctx, method, params),
+        admit,
+        (ctx, part, method, params) => route(ctx, method, params),
       );
 }";
 
@@ -627,7 +763,7 @@ pub fn service_text(declared: &ServiceDef) -> String {
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let calls = Calls::of(service);
     let mut published = vec![
-        filled(SERVER_HEAD, &named, &prefix),
+        filled(SERVER_HEAD, &named, &prefix).replace("@SCOPES@\n", &scopes_table(service)),
         wrapped_table(&prefix, "Server", service)
             .trim_end()
             .to_owned(),
@@ -648,6 +784,34 @@ pub fn service_text(declared: &ServiceDef) -> String {
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn scopes_table(service: &ServiceDef) -> String {
+    let cases: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let needed: Vec<String> = operation
+                .mcp
+                .scopes
+                .iter()
+                .map(|(scope, _)| quoted(scope))
+                .collect();
+            format!(
+                "      case {}:\n        return const <String>[{}];\n",
+                quoted(operation.mcp_tool_name()),
+                needed.join(", ")
+            )
+        })
+        .collect();
+    if cases.is_empty() {
+        return String::new();
+    }
+    format!(
+        "  if (method == 'tools/call') {{\n    switch (name) {{\n{}    }}\n  }}\n",
+        cases.concat()
+    )
 }
 
 fn answer_helpers(named: &str, prefix: &str, calls: &Calls) -> String {
