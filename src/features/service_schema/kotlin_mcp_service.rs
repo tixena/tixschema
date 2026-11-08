@@ -61,6 +61,10 @@ private const val @P@McpProtocolKey = "io.modelcontextprotocol/protocolVersion"
 private const val @P@McpCapabilitiesKey = "io.modelcontextprotocol/clientCapabilities"
 private const val @P@McpInfoKey = "io.modelcontextprotocol/serverInfo"
 private const val @P@McpListedForMs = 300000
+private val @P@McpMethods: Set<String> = setOf(
+  "completion/complete", "resources/list", "resources/read", "resources/templates/list",
+  "server/discover", "tools/call", "tools/list",
+)
 
 private fun @P@McpServeText(element: JsonElement): String {
   val into = StringBuilder()
@@ -262,16 +266,55 @@ private fun @P@McpDiscovered(instructions: String?, endpoint: @N@McpEndpoint): J
   }
 }
 
-private fun @P@McpListedTools(endpoint: @N@McpEndpoint): JsonObject =
+private fun @P@McpListedItems(endpoint: @N@McpEndpoint, key: String): JsonObject =
   buildJsonObject {
     put("cacheScope", "public")
     put("resultType", "complete")
-    putJsonArray("tools") {
+    putJsonArray(key) {
       for (catalog in endpoint.catalogs) {
-        for (text in catalog["tools"].orEmpty()) add(Json.parseToJsonElement(text))
+        for (text in catalog[key].orEmpty()) add(Json.parseToJsonElement(text))
       }
     }
     put("ttlMs", @P@McpListedForMs)
+  }
+
+private fun @P@McpNamed(params: JsonObject, method: String): String? {
+  val written = when (method) {
+    "tools/call" -> params["name"]
+    "resources/read" -> params["uri"]
+    else -> if (((params["argument"] as? JsonObject)?.get("name") as? JsonPrimitive)?.isString == true) {
+      (params["ref"] as? JsonObject)?.get("uri")
+    } else {
+      null
+    }
+  }
+  return (written as? JsonPrimitive)?.takeIf { it.isString }?.content
+}
+
+private fun @P@McpListingStart(request: JsonObject, services: Int): Result<Boolean> {
+  val invalid = Result.failure<Boolean>(IllegalArgumentException("Invalid cursor"))
+  val cursor = @P@McpParams(request)["cursor"]
+  if (cursor == null || cursor is JsonNull) return Result.success(true)
+  if (cursor !is JsonPrimitive || !cursor.isString) return invalid
+  val written = cursor.content
+  val colon = written.indexOf(':')
+  if (colon < 0) return invalid
+  val part = written.substring(0, colon).toIntOrNull()?.takeIf { it >= 0 } ?: return invalid
+  return if (part >= services) invalid else Result.success(false)
+}
+
+private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint): JsonObject =
+  buildJsonObject {
+    put("cacheScope", "private")
+    put("resultType", "complete")
+    putJsonArray("resources") {
+      if (first) {
+        for (catalog in endpoint.catalogs) {
+          for (text in catalog["resources"].orEmpty()) add(Json.parseToJsonElement(text))
+        }
+      }
+    }
+    put("ttlMs", 0)
   }"#;
 
 const SERVING: &str = r#"private sealed interface @P@McpBegun {
@@ -305,11 +348,12 @@ private fun @P@McpBegin(
   val method = (request["method"] as JsonPrimitive).content
   val answered: @N@McpAnswer = when (method) {
     "server/discover" -> @N@McpAnswer.Answered(@P@McpDiscovered(instructions, endpoint))
-    "tools/list" -> @N@McpAnswer.Answered(@P@McpListedTools(endpoint))
-    "tools/call" -> {
-      val named = @P@McpParams(request)["name"]
-      if (named is JsonPrimitive && named.isString) return @P@McpBegun.Routed(request)
-      @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: tools/call names no tool", null))
+    "tools/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "tools"))
+    "resources/templates/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "resourceTemplates"))
+    "resources/list" -> return @P@McpBegun.Routed(request)
+    "tools/call", "resources/read", "completion/complete" -> {
+      if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
+      @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
     else -> @N@McpAnswer.Refused(@P@McpErrorObject(-32601, "Method not found: $method", null))
   }
@@ -317,11 +361,17 @@ private fun @P@McpBegin(
 }
 
 private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serverName: String): String {
-  val name = ((@P@McpParams(request)["name"]) as JsonPrimitive).content
+  val method = (request["method"] as JsonPrimitive).content
+  val name = @P@McpNamed(@P@McpParams(request), method).orEmpty()
+  val unknown = when (method) {
+    "tools/call" -> "Unknown tool"
+    "resources/read" -> "Resource not found"
+    else -> "Unknown completion"
+  }
   val resolved = answered ?: @N@McpAnswer.Refused(
     @P@McpErrorObject(
       -32602,
-      "Unknown tool: $name",
+      "$unknown: $name",
       buildJsonObject {
         put("fault", @P@McpFaultObject("unknown-operation", name, "the service answers to no operation by that name"))
         put("isServiceFault", true)
@@ -342,9 +392,17 @@ suspend fun @P@McpServe(
     is @P@McpBegun.Answered -> return begun.text
     is @P@McpBegun.Routed -> begun.request
   }
+  val method = (request["method"] as JsonPrimitive).content
+  if (method == "resources/list") {
+    val listed: @N@McpAnswer = @P@McpListingStart(request, endpoint.catalogs.size).fold(
+      { @N@McpAnswer.Answered(@P@McpListedResources(it, endpoint)) },
+      { @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid cursor", null)) },
+    )
+    return @P@McpResponseText(request["id"] ?: JsonNull, listed, serverName)
+  }
   var answered: @N@McpAnswer? = null
   for (part in endpoint.catalogs.indices) {
-    answered = route(part, "tools/call", @P@McpParams(request))
+    answered = route(part, method, @P@McpParams(request))
     if (answered != null) break
   }
   return @P@McpRoutedText(request, answered, serverName)
@@ -500,7 +558,7 @@ private fun @P@McpAdmitted(request: @N@McpHttpRequest, allowedOrigins: List<Stri
   val unchecked = @P@McpChecked(message)
   if (unchecked != null) return null to @P@McpJsonResponse(400, unchecked)
   val method = (message["method"] as JsonPrimitive).content
-  if (method != "server/discover" && method != "tools/call" && method != "tools/list") {
+  if (method !in @P@McpMethods) {
     return null to @P@McpJsonResponse(
       404,
       @P@McpFailed(message["id"], @P@McpErrorObject(-32601, "Method not found: $method", null)),

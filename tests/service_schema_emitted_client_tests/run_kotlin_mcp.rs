@@ -19,8 +19,8 @@ use super::mcp_mobile_service::{
     version_error_kotlin, version_response_kotlin,
 };
 use super::runtime::ran_kotlin;
-use super::{BillingServiceSchema, DocumentServiceSchema};
-use super::{billing_service_schema, document_service_schema};
+use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
+use super::{mobile_billing_service_schema, mobile_document_service_schema};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -34,43 +34,43 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
 
 /// The handlers of both services: the logic `Archive` answers with.
 const HANDLERS: &str = r#"
-object DocumentHandlers : DocumentServiceHandlers {
+object DocumentHandlers : MobileDocumentServiceHandlers {
     private fun versionOf(id: String): VersionResponse? = when (id) {
         "doc-1" -> VersionResponse(7u)
         "panic" -> throw IllegalStateException("the handler came apart")
         else -> null
     }
 
-    override suspend fun getTagged(req: String, knownTag: String?): DocumentServiceGetTaggedResult {
+    override suspend fun getTagged(req: String, knownTag: String?): MobileDocumentServiceGetTaggedResult {
         val found = versionOf(req)
         return if (found != null) {
-            DocumentServiceGetTaggedResult.Ok(DocumentServiceGetTaggedResultValue(found, "\"v7\""))
+            MobileDocumentServiceGetTaggedResult.Ok(MobileDocumentServiceGetTaggedResultValue(found, "\"v7\""))
         } else {
-            DocumentServiceGetTaggedResult.Declared(
-                DocumentServiceGetTaggedResultDeclared(VersionErrorNotFound, "no such document"),
+            MobileDocumentServiceGetTaggedResult.Declared(
+                MobileDocumentServiceGetTaggedResultDeclared(VersionErrorNotFound, "no such document"),
             )
         }
     }
 
-    override suspend fun getVersion(req: GetVersionRequest): DocumentServiceGetVersionResult {
+    override suspend fun getVersion(req: GetVersionRequest): MobileDocumentServiceGetVersionResult {
         val found = versionOf(req.documentId)
-        return if (found != null) DocumentServiceGetVersionResult.Ok(found)
-        else DocumentServiceGetVersionResult.Declared(VersionErrorNotFound)
+        return if (found != null) MobileDocumentServiceGetVersionResult.Ok(found)
+        else MobileDocumentServiceGetVersionResult.Declared(VersionErrorNotFound)
     }
 
-    override suspend fun lookup(req: DocumentId): DocumentServiceLookupResult {
+    override suspend fun lookup(req: DocumentId): MobileDocumentServiceLookupResult {
         val found = versionOf(req.value)
-        return if (found != null) DocumentServiceLookupResult.Ok(found)
-        else DocumentServiceLookupResult.Declared(VersionErrorNotFound)
+        return if (found != null) MobileDocumentServiceLookupResult.Ok(found)
+        else MobileDocumentServiceLookupResult.Declared(VersionErrorNotFound)
     }
 
-    override suspend fun renameDocument(req: RenameDocumentRequest): DocumentServiceRenameDocumentResult =
-        if (versionOf(req.documentId) != null) DocumentServiceRenameDocumentResult.Ok
-        else DocumentServiceRenameDocumentResult.Declared(VersionErrorNotFound)
+    override suspend fun renameDocument(req: RenameDocumentRequest): MobileDocumentServiceRenameDocumentResult =
+        if (versionOf(req.documentId) != null) MobileDocumentServiceRenameDocumentResult.Ok
+        else MobileDocumentServiceRenameDocumentResult.Declared(VersionErrorNotFound)
 
-    override suspend fun archiveDocument(req: ArchiveDocumentRequest, exchange: String): DocumentServiceArchiveDocumentResult =
-        if (versionOf(req.documentId) != null) DocumentServiceArchiveDocumentResult.Ok
-        else DocumentServiceArchiveDocumentResult.Declared(VersionErrorNotFound)
+    override suspend fun archiveDocument(req: ArchiveDocumentRequest, exchange: String): MobileDocumentServiceArchiveDocumentResult =
+        if (versionOf(req.documentId) != null) MobileDocumentServiceArchiveDocumentResult.Ok
+        else MobileDocumentServiceArchiveDocumentResult.Declared(VersionErrorNotFound)
 
     override suspend fun tagDocument(
         req: String,
@@ -78,7 +78,7 @@ object DocumentHandlers : DocumentServiceHandlers {
         message: String,
         outcome: String,
         members: String,
-    ): DocumentServiceTagDocumentResult = DocumentServiceTagDocumentResult.Ok(VersionResponse(9u))
+    ): MobileDocumentServiceTagDocumentResult = MobileDocumentServiceTagDocumentResult.Ok(VersionResponse(9u))
 
     override suspend fun labelDocument(
         req: String,
@@ -86,42 +86,42 @@ object DocumentHandlers : DocumentServiceHandlers {
         nextId: String,
         mcpSource: String,
         carried: String,
-    ): DocumentServiceLabelDocumentResult = DocumentServiceLabelDocumentResult.Ok(VersionResponse(10u))
+    ): MobileDocumentServiceLabelDocumentResult = MobileDocumentServiceLabelDocumentResult.Ok(VersionResponse(10u))
 
     override suspend fun touchDocument(req: TouchDocumentRequest) {
         if (req.reader == "panic") throw IllegalStateException("the handler came apart")
     }
 }
 
-object BillingHandlers : BillingServiceHandlers {
-    override suspend fun getBalance(req: String, ledger: String): BillingServiceGetBalanceResult =
-        if (req == "acct-1") BillingServiceGetBalanceResult.Ok(BalanceResponse(1250L))
-        else BillingServiceGetBalanceResult.Declared(BalanceErrorUnknownAccount)
+object BillingHandlers : MobileBillingServiceHandlers {
+    override suspend fun getBalance(req: String, ledger: String): MobileBillingServiceGetBalanceResult =
+        if (req == "acct-1") MobileBillingServiceGetBalanceResult.Ok(BalanceResponse(1250L))
+        else MobileBillingServiceGetBalanceResult.Declared(BalanceErrorUnknownAccount)
 }
 
 fun nullable(text: String?): JsonElement = if (text == null) JsonNull else JsonPrimitive(text)
 
-fun kind(fault: DocumentServiceFaultFields): String =
+fun kind(fault: MobileDocumentServiceFaultFields): String =
     fault.kind.name.replace(Regex("([a-z])([A-Z])"), "$1-$2").lowercase()
 "#;
 
 const SERVER_DRIVER: &str = r#"
 suspend fun serverReport(input: JsonObject): JsonObject {
-    val workspace = DocumentServiceMcpEndpoint(documentServiceMcpCatalog, billingServiceMcpCatalog)
-    val documentRoute = createDocumentServiceMcpRoute(DocumentHandlers)
-    val billingRoute = createBillingServiceMcpRoute(BillingHandlers)
-    val alone = createDocumentServiceMcpDispatcher(DocumentHandlers)
-    val billingAlone = createBillingServiceMcpDispatcher(BillingHandlers)
-    val http = createDocumentServiceMcpHttpDispatcher(DocumentHandlers, listOf(input.getValue("origin").jsonPrimitive.content))
+    val workspace = MobileDocumentServiceMcpEndpoint(mobileDocumentServiceMcpCatalog, mobileBillingServiceMcpCatalog)
+    val documentRoute = createMobileDocumentServiceMcpRoute(DocumentHandlers)
+    val billingRoute = createMobileBillingServiceMcpRoute(BillingHandlers)
+    val alone = createMobileDocumentServiceMcpDispatcher(DocumentHandlers)
+    val billingAlone = createMobileBillingServiceMcpDispatcher(BillingHandlers)
+    val http = createMobileDocumentServiceMcpHttpDispatcher(DocumentHandlers, listOf(input.getValue("origin").jsonPrimitive.content))
     val requests = input.getValue("requests").jsonArray.map { it.jsonPrimitive.content }
     val workspaceAnswers = requests.map { text ->
-        nullable(documentServiceMcpServe(text, "Workspace", null, workspace) { part, method, params ->
+        nullable(mobileDocumentServiceMcpServe(text, "Workspace", null, workspace) { part, method, params ->
             when (part) {
                 0 -> documentRoute(method, params)
                 1 -> billingRoute(method, params)?.let { answered ->
                     when (answered) {
-                        is BillingServiceMcpAnswer.Answered -> DocumentServiceMcpAnswer.Answered(answered.result)
-                        is BillingServiceMcpAnswer.Refused -> DocumentServiceMcpAnswer.Refused(answered.error)
+                        is MobileBillingServiceMcpAnswer.Answered -> MobileDocumentServiceMcpAnswer.Answered(answered.result)
+                        is MobileBillingServiceMcpAnswer.Refused -> MobileDocumentServiceMcpAnswer.Refused(answered.error)
                     }
                 }
                 else -> null
@@ -134,7 +134,7 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
         val answered = http(
-            DocumentServiceMcpHttpRequest(
+            MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 headers,
                 given.getValue("body").jsonPrimitive.content.encodeToByteArray(),
@@ -147,7 +147,7 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         }
     }
     val shared = try {
-        DocumentServiceMcpEndpoint(
+        MobileDocumentServiceMcpEndpoint(
             mapOf("names" to listOf("tool:get-version")),
             mapOf("names" to listOf("prompt:get-version", "tool:get-version")),
         )
@@ -156,7 +156,7 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         refused.message ?: ""
     }
     val kept = try {
-        DocumentServiceMcpEndpoint(
+        MobileDocumentServiceMcpEndpoint(
             mapOf("names" to listOf("tool:get-version")),
             mapOf("names" to listOf("prompt:get-version")),
         )
@@ -176,20 +176,20 @@ suspend fun serverReport(input: JsonObject): JsonObject {
 "#;
 
 const CLIENT_DRIVER: &str = r#"
-class Canned(private val replies: Map<Long, String?>) : DocumentServiceMcpTransport {
-    val sent = mutableListOf<DocumentServiceMcpMessage>()
+class Canned(private val replies: Map<Long, String?>) : MobileDocumentServiceMcpTransport {
+    val sent = mutableListOf<MobileDocumentServiceMcpMessage>()
 
-    override suspend fun send(message: DocumentServiceMcpMessage): String {
+    override suspend fun send(message: MobileDocumentServiceMcpMessage): String {
         sent.add(message)
         val id = Json.parseToJsonElement(message.text).jsonObject.getValue("id").jsonPrimitive.long
         return replies[id] ?: throw IllegalStateException("the connection is down")
     }
 }
 
-fun describedVersion(result: DocumentServiceGetVersionResult): String = when (result) {
-    is DocumentServiceGetVersionResult.Ok -> "ok version=${result.value.version}"
-    is DocumentServiceGetVersionResult.Declared -> "declared not-found"
-    is DocumentServiceGetVersionResult.Fault -> "fault ${kind(result.fault)}"
+fun describedVersion(result: MobileDocumentServiceGetVersionResult): String = when (result) {
+    is MobileDocumentServiceGetVersionResult.Ok -> "ok version=${result.value.version}"
+    is MobileDocumentServiceGetVersionResult.Declared -> "declared not-found"
+    is MobileDocumentServiceGetVersionResult.Fault -> "fault ${kind(result.fault)}"
 }
 
 suspend fun clientReport(input: JsonObject): JsonObject {
@@ -197,7 +197,7 @@ suspend fun clientReport(input: JsonObject): JsonObject {
         it.key.toLong() to (it.value as? JsonPrimitive)?.takeIf { text -> text.isString }?.content
     }
     val canned = Canned(replies)
-    val client = DocumentServiceMcpClient(canned)
+    val client = MobileDocumentServiceMcpClient(canned)
     val lines = mutableListOf<String>()
     lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
     lines.add(describedVersion(client.getVersion(GetVersionRequest("missing"))))
@@ -208,53 +208,53 @@ suspend fun clientReport(input: JsonObject): JsonObject {
     lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
     lines.add(
         when (val looked = client.lookup(DocumentId("doc-1"))) {
-            is DocumentServiceLookupResult.Ok -> "ok version=${looked.value.version}"
-            is DocumentServiceLookupResult.Declared -> "declared not-found"
-            is DocumentServiceLookupResult.Fault -> "fault ${kind(looked.fault)}"
+            is MobileDocumentServiceLookupResult.Ok -> "ok version=${looked.value.version}"
+            is MobileDocumentServiceLookupResult.Declared -> "declared not-found"
+            is MobileDocumentServiceLookupResult.Fault -> "fault ${kind(looked.fault)}"
         },
     )
     lines.add(
         when (val tagged = client.getTagged("doc-1", "\"v6\"")) {
-            is DocumentServiceGetTaggedResult.Ok -> "ok version=${tagged.value.value.version} etag=${tagged.value.headerOut0}"
-            is DocumentServiceGetTaggedResult.Declared -> "declared not-found"
-            is DocumentServiceGetTaggedResult.Fault -> "fault ${kind(tagged.fault)}"
+            is MobileDocumentServiceGetTaggedResult.Ok -> "ok version=${tagged.value.value.version} etag=${tagged.value.headerOut0}"
+            is MobileDocumentServiceGetTaggedResult.Declared -> "declared not-found"
+            is MobileDocumentServiceGetTaggedResult.Fault -> "fault ${kind(tagged.fault)}"
         },
     )
     lines.add(
         when (val tagged = client.getTagged("missing", null)) {
-            is DocumentServiceGetTaggedResult.Ok -> "ok"
-            is DocumentServiceGetTaggedResult.Declared -> "declared not-found reason=${tagged.error.errorHeaderOut0}"
-            is DocumentServiceGetTaggedResult.Fault -> "fault ${kind(tagged.fault)}"
+            is MobileDocumentServiceGetTaggedResult.Ok -> "ok"
+            is MobileDocumentServiceGetTaggedResult.Declared -> "declared not-found reason=${tagged.error.errorHeaderOut0}"
+            is MobileDocumentServiceGetTaggedResult.Fault -> "fault ${kind(tagged.fault)}"
         },
     )
     lines.add(
         when (val renamed = client.renameDocument(RenameDocumentRequest("doc-1", "New"))) {
-            is DocumentServiceRenameDocumentResult.Ok -> "ok unit"
-            is DocumentServiceRenameDocumentResult.Declared -> "declared"
-            is DocumentServiceRenameDocumentResult.Fault -> "fault ${kind(renamed.fault)}"
+            is MobileDocumentServiceRenameDocumentResult.Ok -> "ok unit"
+            is MobileDocumentServiceRenameDocumentResult.Declared -> "declared"
+            is MobileDocumentServiceRenameDocumentResult.Fault -> "fault ${kind(renamed.fault)}"
         },
     )
     lines.add(
         when (val archived = client.archiveDocument(ArchiveDocumentRequest("doc-1", "stale"), "reviewer-7")) {
-            is DocumentServiceArchiveDocumentResult.Ok -> "ok unit"
-            is DocumentServiceArchiveDocumentResult.Declared -> "declared"
-            is DocumentServiceArchiveDocumentResult.Fault -> "fault ${kind(archived.fault)}"
+            is MobileDocumentServiceArchiveDocumentResult.Ok -> "ok unit"
+            is MobileDocumentServiceArchiveDocumentResult.Declared -> "declared"
+            is MobileDocumentServiceArchiveDocumentResult.Fault -> "fault ${kind(archived.fault)}"
         },
     )
     client.touchDocument(TouchDocumentRequest("doc-1", "reviewer-7"))
     lines.add("ok sent")
     lines.add(
         when (val tagged = client.tagDocument("t", "a", "m", "o", "s")) {
-            is DocumentServiceTagDocumentResult.Ok -> "ok version=${tagged.value.version}"
-            is DocumentServiceTagDocumentResult.Declared -> "declared"
-            is DocumentServiceTagDocumentResult.Fault -> "fault ${kind(tagged.fault)}"
+            is MobileDocumentServiceTagDocumentResult.Ok -> "ok version=${tagged.value.version}"
+            is MobileDocumentServiceTagDocumentResult.Declared -> "declared"
+            is MobileDocumentServiceTagDocumentResult.Fault -> "fault ${kind(tagged.fault)}"
         },
     )
     lines.add(
         when (val labelled = client.labelDocument("l", "s", "n", "m", "c")) {
-            is DocumentServiceLabelDocumentResult.Ok -> "ok version=${labelled.value.version}"
-            is DocumentServiceLabelDocumentResult.Declared -> "declared"
-            is DocumentServiceLabelDocumentResult.Fault -> "fault ${kind(labelled.fault)}"
+            is MobileDocumentServiceLabelDocumentResult.Ok -> "ok version=${labelled.value.version}"
+            is MobileDocumentServiceLabelDocumentResult.Declared -> "declared"
+            is MobileDocumentServiceLabelDocumentResult.Fault -> "fault ${kind(labelled.fault)}"
         },
     )
     for (reason in 0..1) {
@@ -262,7 +262,7 @@ suspend fun clientReport(input: JsonObject): JsonObject {
             try {
                 client.touchDocument(TouchDocumentRequest("doc-1", "reviewer-7"))
                 "ok sent"
-            } catch (refused: DocumentServiceMcpRefusal) {
+            } catch (refused: MobileDocumentServiceMcpRefusal) {
                 "refused ${kind(refused.fault)}"
             },
         )
@@ -297,17 +297,17 @@ fn definitions() -> Vec<String> {
         super::mcp_mobile_service::rename_document_request_kotlin::kotlin_definition(),
         super::mcp_mobile_service::touch_document_request_kotlin::kotlin_definition(),
         super::mcp_mobile_service::archive_document_request_kotlin::kotlin_definition(),
-        document_service_schema::document_service_fault_fields_kotlin::kotlin_definition(),
-        document_service_schema::document_service_fault_kind_kotlin::kotlin_definition(),
-        billing_service_schema::billing_service_fault_fields_kotlin::kotlin_definition(),
-        billing_service_schema::billing_service_fault_kind_kotlin::kotlin_definition(),
-        DocumentServiceSchema::kotlin_http_client(),
-        DocumentServiceSchema::kotlin_ws_client(),
-        DocumentServiceSchema::kotlin_mcp_service(),
-        DocumentServiceSchema::kotlin_mcp_client(),
-        BillingServiceSchema::kotlin_http_client(),
-        BillingServiceSchema::kotlin_ws_client(),
-        BillingServiceSchema::kotlin_mcp_service(),
+        mobile_document_service_schema::mobile_document_service_fault_fields_kotlin::kotlin_definition(),
+        mobile_document_service_schema::mobile_document_service_fault_kind_kotlin::kotlin_definition(),
+        mobile_billing_service_schema::mobile_billing_service_fault_fields_kotlin::kotlin_definition(),
+        mobile_billing_service_schema::mobile_billing_service_fault_kind_kotlin::kotlin_definition(),
+        MobileDocumentServiceSchema::kotlin_http_client(),
+        MobileDocumentServiceSchema::kotlin_ws_client(),
+        MobileDocumentServiceSchema::kotlin_mcp_service(),
+        MobileDocumentServiceSchema::kotlin_mcp_client(),
+        MobileBillingServiceSchema::kotlin_http_client(),
+        MobileBillingServiceSchema::kotlin_ws_client(),
+        MobileBillingServiceSchema::kotlin_mcp_service(),
     ]
 }
 

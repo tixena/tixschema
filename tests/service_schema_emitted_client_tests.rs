@@ -1483,6 +1483,11 @@ use run_node_http_service::{
     catalog_client_service_schema, scale_client_service_schema,
 };
 #[cfg(test)]
+use run_node_mcp::{
+    ArchiveService, BillingService, DocumentService, archive_service_schema,
+    billing_service_schema, document_service_schema,
+};
+#[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,
     wharf_filing_client_service_schema,
@@ -1608,8 +1613,32 @@ mod run_swift_member_named;
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
 
-/// `DocumentService` and `BillingService`, both asking for `mcp`: the Rust twins the emitted
-/// Kotlin server and the Kotlin and Swift clients are measured against.
+/// The emitted `mcp` server and client run by node: the requests of the design, every answer held
+/// to the 2026-07-28 schema, and two services behind one endpoint.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
+mod run_node_mcp;
+
+/// The services the Dart `mcp` server and client are run on.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/mcp_dart_services.rs"]
+mod mcp_dart_services;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp.rs"]
+mod run_dart_mcp;
+
+// What a service generates reaches the trait and its module through `$crate`, this binary's root.
+#[cfg(all(test, feature = "dart"))]
+use mcp_dart_services::{
+    AuditService, DartBillingService, DartDocumentService, TaggingService, audit_service_schema,
+    dart_billing_service_schema, dart_document_service_schema, tagging_service_schema,
+};
+
+/// `MobileDocumentService` and `MobileBillingService`, both asking for `mcp`: the Rust twins the
+/// emitted Kotlin server and the Kotlin and Swift clients are measured against.
 #[cfg(test)]
 #[cfg(any(feature = "kotlin", feature = "swift"))]
 #[macro_use]
@@ -1642,8 +1671,8 @@ mod mcp_mobile_server_rows;
 #[cfg(test)]
 #[cfg(any(feature = "kotlin", feature = "swift"))]
 use mcp_mobile_service::{
-    BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema,
-    billing_service_schema, document_service_schema,
+    MobileBillingService, MobileBillingServiceSchema, MobileDocumentService,
+    MobileDocumentServiceSchema, mobile_billing_service_schema, mobile_document_service_schema,
 };
 
 /// The emitted Kotlin `mcp` server and client, run beside the Rust dispatcher and client.

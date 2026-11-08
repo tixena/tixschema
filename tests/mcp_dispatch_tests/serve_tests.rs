@@ -83,7 +83,7 @@ fn server_discover_answers_the_name_the_instructions_and_the_capabilities() {
             "result": {
                 "resultType": "complete",
                 "supportedVersions": ["2026-07-28"],
-                "capabilities": { "tools": {} },
+                "capabilities": { "completions": {}, "resources": {}, "tools": {} },
                 "instructions": "Reads and renames documents in the caller's workspace.",
                 "_meta": server_info("DocumentService"),
                 "ttlMs": LISTED_FOR_MS,
@@ -618,7 +618,9 @@ fn a_tool_and_a_prompt_of_one_name_share_an_endpoint() {
 
 #[test]
 fn a_second_service_answers_alone_over_stdio_and_over_http() {
-    use crate::billing_mcp::{self, McpEndpoint as BillingEndpoint, McpHttpRequest};
+    use crate::billing_mcp::{
+        self, McpEndpoint as BillingEndpoint, McpHttpRequest, McpHttpSettings,
+    };
     use crate::{BillingServiceSchema, DocumentServiceSchema};
     static ALONE: BillingEndpoint =
         BillingEndpoint::new(&[BillingServiceSchema::MCP_NAMES], &[billing_mcp::catalog]);
@@ -657,17 +659,34 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             ("Mcp-Name".to_owned(), "get-balance".to_owned()),
         ],
         method: "POST".to_owned(),
+        path: "/mcp".to_owned(),
     };
-    let response = block_on(billing_mcp::answer_http(&over_http, &[], &archive, &()));
+    let settings = McpHttpSettings {
+        allowed_origins: &[],
+        oauth: None,
+    };
+    let response = block_on(billing_mcp::answer_http(
+        &over_http,
+        &settings,
+        &archive,
+        async |_request, _call| Ok(()),
+    ));
     assert_eq!(response.status, 200);
     let served = block_on(billing_mcp::serve_http(
         &over_http,
-        &[],
+        &settings,
         billing_mcp::SERVER_NAME,
         None,
         &ALONE,
-        async |_part, method, params| billing_mcp::route(method, params, &archive, &()).await,
+        async |_request, _call| Ok(()),
+        async |ctx: &(), _part, method, params| {
+            billing_mcp::route(method, params, &archive, ctx).await
+        },
     ));
     assert_eq!(served, response);
-    assert_eq!(DocumentServiceSchema::MCP_NAMES.len(), 5);
+    assert_eq!(
+        DocumentServiceSchema::MCP_NAMES.len(),
+        7,
+        "five tools, one resource and one template"
+    );
 }

@@ -5,6 +5,8 @@ mod client;
 #[cfg(feature = "dart")]
 mod dart_http_client;
 #[cfg(feature = "dart")]
+mod dart_mcp;
+#[cfg(feature = "dart")]
 mod dart_result;
 #[cfg(feature = "dart")]
 mod dart_ws_client;
@@ -22,6 +24,10 @@ mod kotlin_mcp_client;
 mod kotlin_mcp_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+mod mcp_ts_client;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+mod mcp_ts_service;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod message;
 mod result;
@@ -552,12 +558,20 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
 pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
+    let typescript = mcp_ts_seam(service);
+    let dart = dart_mcp_seam(service);
     let kotlin = kotlin_mcp_seam(service);
     let swift = swift_mcp_seam(service);
     quote! {
         impl #registry {
             #items
+
+            #typescript
+
+            #dart
+
             #kotlin
+
             #swift
         }
     }
@@ -587,6 +601,91 @@ fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
 
 #[cfg(not(feature = "swift"))]
 fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
+/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+    use crate::service_schema::parse::{OperationInputs, written};
+
+    let server = mcp_ts_service::emit(service).join("\n\n");
+    let client = mcp_ts_client::emit(service).join("\n\n");
+    let version = mcp_ts_service::VERSION_MARKER;
+    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
+    let tools = mcp_ts_service::TOOLS_MARKER;
+    let wrapped: Vec<TokenStream> = service
+        .operations
+        .iter()
+        .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
+        .map(|operation| {
+            let marker = mcp_ts_service::wrapped_marker(operation);
+            let method = format_ident!(
+                "wrapped_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! {
+                .replace(#marker, if Self::#method() { "true" } else { "false" })
+            }
+        })
+        .collect();
+    quote! {
+        #[doc = " The service's generated MCP server for TypeScript: the part it puts on an"]
+        #[doc = " endpoint, the endpoint with its shared-name check, `serve` and `serveHttp`,"]
+        #[doc = " and the factories that drive `create{Service}Dispatcher`."]
+        pub fn ts_mcp_service() -> ::std::string::String {
+            #server
+                .replace(
+                    #version,
+                    &::serde_json::Value::String(::core::env!("CARGO_PKG_VERSION").to_owned())
+                        .to_string(),
+                )
+                .replace(
+                    #instructions,
+                    &Self::MCP_INSTRUCTIONS.map_or_else(
+                        || "undefined".to_owned(),
+                        |text| ::serde_json::Value::String(text.to_owned()).to_string(),
+                    ),
+                )
+                .replace(
+                    #tools,
+                    &Self::mcp_tools()
+                        .iter()
+                        .map(|tool| ::serde_json::Value::String(tool.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                #(#wrapped)*
+        }
+
+        #[doc = " The service's generated MCP client for TypeScript: the transport seam and"]
+        #[doc = " the client with one method per operation."]
+        pub fn ts_mcp_client() -> ::std::string::String {
+            #client
+                .replace(
+                    #version,
+                    &::serde_json::Value::String(::core::env!("CARGO_PKG_VERSION").to_owned())
+                        .to_string(),
+                )
+                #(#wrapped)*
+        }
+    }
+}
+
+#[cfg(not(all(feature = "typescript", feature = "zod")))]
+fn mcp_ts_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(feature = "dart")]
+fn dart_mcp_seam(service: &ServiceDef) -> TokenStream {
+    dart_mcp::seam(service)
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_mcp_seam(_service: &ServiceDef) -> TokenStream {
     TokenStream::new()
 }
 

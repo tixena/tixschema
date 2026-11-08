@@ -97,6 +97,8 @@ pub fn assert_answer_valid(method: &str, answer: &str) {
     let definition = match method {
         "server/discover" => "DiscoverResult",
         "tools/list" => "ListToolsResult",
+        "resources/list" => "ListResourcesResult",
+        "resources/templates/list" => "ListResourceTemplatesResult",
         _ => "CallToolResult",
     };
     assert_valid(definition, &parsed["result"]);
@@ -125,7 +127,7 @@ pub fn call(request_id: u64, tool: &str, arguments: &Value) -> Value {
     asked
 }
 
-/// What the Rust dispatcher of `DocumentService` alone answers to `text`.
+/// What the Rust dispatcher of `MobileDocumentService` alone answers to `text`.
 pub fn alone_answer(text: &str) -> Option<String> {
     block_on(mcp_mobile_document::answer(text, &Archive, &()))
 }
@@ -245,7 +247,10 @@ pub fn assert_client_request(number: u64, sent: &str) {
     let called = &client_calls()[usize::try_from(number).unwrap() - 1];
     let mut written: Value = serde_json::from_str(sent).unwrap();
     let info = written["params"]["_meta"]["io.modelcontextprotocol/clientInfo"].clone();
-    assert_eq!(info["name"], "DocumentServiceMcpClient", "got: {info}");
+    assert_eq!(
+        info["name"], "MobileDocumentServiceMcpClient",
+        "got: {info}"
+    );
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"), "got: {info}");
     written["params"]["_meta"]
         .as_object_mut()

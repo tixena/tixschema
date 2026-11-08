@@ -13,36 +13,36 @@ use super::mcp_mobile_service::{
     version_error_swift, version_response_swift,
 };
 use super::runtime::ran;
-use super::{DocumentServiceSchema, document_service_schema};
+use super::{MobileDocumentServiceSchema, mobile_document_service_schema};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 const DRIVER: &str = r#"
-func described(_ failure: DocumentServiceGetVersionFailure) -> String {
+func described(_ failure: MobileDocumentServiceGetVersionFailure) -> String {
   switch failure {
   case .declared: return "declared not-found"
   case .fault(let fault): return "fault \(fault.kind.rawValue)"
   }
 }
 
-final class Canned: DocumentServiceMcpTransport, @unchecked Sendable {
+final class Canned: MobileDocumentServiceMcpTransport, @unchecked Sendable {
   struct Down: Error {}
 
   private let lock = NSLock()
-  private var recorded: [DocumentServiceMcpMessage] = []
+  private var recorded: [MobileDocumentServiceMcpMessage] = []
   private let replies: [Int: String?]
 
   init(replies: [Int: String?]) { self.replies = replies }
 
-  var sent: [DocumentServiceMcpMessage] {
+  var sent: [MobileDocumentServiceMcpMessage] {
     lock.lock()
     defer { lock.unlock() }
     return recorded
   }
 
-  func send(_ message: DocumentServiceMcpMessage) async throws -> String {
+  func send(_ message: MobileDocumentServiceMcpMessage) async throws -> String {
     lock.lock()
     recorded.append(message)
     lock.unlock()
@@ -59,7 +59,7 @@ for (key, value) in input["replies"] as! [String: Any] {
   replies[Int(key)!] = value as? String
 }
 let canned = Canned(replies: replies)
-let client = DocumentServiceMcpClient(transport: canned)
+let client = MobileDocumentServiceMcpClient(transport: canned)
 var lines: [String] = []
 
 switch await client.getVersion(GetVersionRequest(documentId: "doc-1")) {
@@ -134,7 +134,7 @@ for _ in 0..<2 {
   do {
     try await client.touchDocument(TouchDocumentRequest(documentId: "doc-1", reader: "reviewer-7"))
     lines.append("ok sent")
-  } catch let refusal as DocumentServiceRefusal {
+  } catch let refusal as MobileDocumentServiceRefusal {
     lines.append("refused \(refusal.fault.kind.rawValue)")
   }
 }
@@ -163,10 +163,10 @@ fn emitted() -> String {
         rename_document_request_swift::swift_definition(),
         touch_document_request_swift::swift_definition(),
         archive_document_request_swift::swift_definition(),
-        document_service_schema::document_service_fault_fields_swift::swift_definition(),
-        document_service_schema::document_service_fault_kind_swift::swift_definition(),
-        DocumentServiceSchema::swift_http_client(),
-        DocumentServiceSchema::swift_mcp_client(),
+        mobile_document_service_schema::mobile_document_service_fault_fields_swift::swift_definition(),
+        mobile_document_service_schema::mobile_document_service_fault_kind_swift::swift_definition(),
+        MobileDocumentServiceSchema::swift_http_client(),
+        MobileDocumentServiceSchema::swift_mcp_client(),
     ]
     .join("\n\n")
 }

@@ -1,7 +1,7 @@
 //! `serve_http` and `answer_http`: one request per rule, in the order the rules are applied.
 
 use crate::billing_mcp;
-use crate::document_mcp::{self, McpHttpRequest, McpHttpResponse};
+use crate::document_mcp::{self, McpHttpRequest, McpHttpResponse, McpHttpSettings};
 use crate::support::{
     CENTS, HEADER_MISMATCH, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, UNSUPPORTED_VERSION,
     VERSION_NUMBER, WORKSPACE, assert_error, assert_result, assert_valid, block_on, call, id,
@@ -10,7 +10,11 @@ use crate::support::{
 use crate::tests::Archive;
 use serde_json::{Value, json};
 
-const ORIGIN: &str = "https://app.example.com";
+pub const ORIGIN: &str = "https://app.example.com";
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
+    allowed_origins: &[ORIGIN],
+    oauth: None,
+};
 
 fn headers_for(message: &Value) -> Vec<(String, String)> {
     let method = message["method"].as_str().unwrap().to_owned();
@@ -25,31 +29,38 @@ fn headers_for(message: &Value) -> Vec<(String, String)> {
             message["params"]["name"].as_str().unwrap().to_owned(),
         ));
     }
+    if method == "resources/read" {
+        headers.push((
+            "Mcp-Name".to_owned(),
+            message["params"]["uri"].as_str().unwrap().to_owned(),
+        ));
+    }
     headers
 }
 
-fn post(message: &Value) -> McpHttpRequest {
+pub fn post(message: &Value) -> McpHttpRequest {
     McpHttpRequest {
         body: message.to_string().into_bytes(),
         headers: headers_for(message),
         method: "POST".to_owned(),
+        path: "/mcp".to_owned(),
     }
 }
 
 fn respond(asked: &McpHttpRequest) -> McpHttpResponse {
     block_on(document_mcp::answer_http(
         asked,
-        &[ORIGIN],
+        &SETTINGS,
         &Archive::default(),
-        &(),
+        async |_request, _call| Ok(()),
     ))
 }
 
-fn body_of(response: &McpHttpResponse) -> Value {
+pub fn body_of(response: &McpHttpResponse) -> Value {
     serde_json::from_slice(&response.body).unwrap()
 }
 
-fn get_version() -> Value {
+pub fn get_version() -> Value {
     call(&id(1), "get-version", &json!({ "document_id": "doc-1" }))
 }
 
@@ -227,13 +238,14 @@ fn an_endpoint_of_two_services_is_served_over_http_too() {
     ));
     let response = block_on(document_mcp::serve_http(
         &asked,
-        &[ORIGIN],
+        &SETTINGS,
         "Workspace",
         None,
         &WORKSPACE,
-        async |part, method, params| match part {
-            0 => document_mcp::route(method, params, &archive, &()).await,
-            1 => billing_mcp::route(method, params, &archive, &()).await,
+        async |_request, _call| Ok(()),
+        async |ctx: &(), part, method, params| match part {
+            0 => document_mcp::route(method, params, &archive, ctx).await,
+            1 => billing_mcp::route(method, params, &archive, ctx).await,
             _ => None,
         },
     ));

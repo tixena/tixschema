@@ -1,6 +1,7 @@
 //! The dispatcher half of the `mcp` transport: `serve` and `serve_http` around one `route` per
 //! service, and the `answer` and `answer_http` of a service that stands alone.
 
+use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
@@ -38,14 +39,18 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let constants = constants(&schema, &contract_name);
     let types = types();
     let endpoint_fns = endpoint_fns();
-    let catalog = catalog(&schema);
-    let route = route(service, &module, &schema, contract);
+    let held = Resourced::of(service);
+    let catalog = catalog(&schema, &held);
+    let route = route(service, &module, &schema, contract, &held);
+    let listing = resources::listing_fns();
     let protocol = protocol();
     let answers = answers();
     let serving = serving(&module);
+    let serve_fn = serve_fn();
     let answer = answer(contract);
     let http_fns = http_fns();
     let http_rules = http_rules();
+    let http_authorization = http_authorization();
     let http_entry = http_entry();
     quote! {
         #[doc = #macro_doc]
@@ -58,32 +63,50 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #route
                 #endpoint_fns
                 #protocol
+                #listing
                 #answers
                 #serving
+                #serve_fn
                 #answer
                 #http_fns
                 #http_rules
+                #http_authorization
                 #http_entry
             };
         }
     }
 }
 
-fn catalog(schema: &Ident) -> TokenStream {
+fn catalog(schema: &Ident, held: &Resourced<'_>) -> TokenStream {
+    let parts = resources::catalog_parts(held);
+    let capabilities = parts.capabilities;
+    let (resources, templates) = (parts.resources, parts.templates);
     quote! {
         /// Everything the list methods answer for this service, fixed at compile time.
         pub fn catalog() -> ::serde_json::Value {
             ::serde_json::json!({
-                "capabilities": { "tools": {} },
+                "capabilities": { "tools": {} #capabilities },
                 "tools": $crate::#schema::mcp_tools(),
+                "resources": [#(#resources),*],
+                "resourceTemplates": [#(#templates),*],
             })
         }
     }
 }
 
-fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident) -> TokenStream {
-    let arms = service
+fn route(
+    service: &ServiceDef,
+    module: &Ident,
+    schema: &Ident,
+    contract: &Ident,
+    held: &Resourced<'_>,
+) -> TokenStream {
+    let tools: Vec<&OperationDef> = service
         .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .collect();
+    let arms = tools
         .iter()
         .map(|operation| route_arm(module, schema, operation));
     let (implementation, context, guard) = if service.operations.is_empty() {
@@ -94,10 +117,56 @@ fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident)
     let replies = declares_a_reply(service)
         .then(|| replying_helpers(module))
         .into_iter();
+    let tool_results = (!tools.is_empty()).then(|| tool_results(module));
+    let tool_call = (!tools.is_empty()).then(|| {
+        quote! {
+            "tools/call" => {
+                let name = params.get("name")?.as_str()?;
+                match name {
+                    #(#arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
+        }
+    });
+    let resource_helpers = held.any().then(|| resources::helpers(held));
+    let reads = resources::read_arm(held, module);
+    let listing = resources::list_arm(held, module);
+    let completing = resources::complete_arm(held, service, module);
     quote! {
         #guard
         #(#replies)*
+        #tool_results
+        #resource_helpers
 
+        /// One request this service owns: `tools/call`, `resources/read`, its own page of
+        /// `resources/list` and `completion/complete`. `None` for a request it does not own,
+        /// otherwise the `result` object of the answer (`Ok`) or its JSON-RPC `error` object
+        /// (`Err`).
+        pub async fn route<Svc, Ctx>(
+            method: &str,
+            params: &::serde_json::Value,
+            #implementation: &Svc,
+            #context: &Ctx,
+        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
+        where
+            Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
+            Ctx: ::core::marker::Sync,
+        {
+            match method {
+                #tool_call
+                #reads
+                #listing
+                #completing
+                _ => ::core::option::Option::None,
+            }
+        }
+    }
+}
+
+/// The result of a tool call, and a fault as the text of a tool execution error.
+fn tool_results(module: &Ident) -> TokenStream {
+    quote! {
         /// The result of a tool call: its structured value, or the text of its failure.
         fn completed(structured: ::core::option::Option<::serde_json::Value>, failure: ::core::option::Option<::std::string::String>) -> ::serde_json::Value {
             let (content, is_error) = match failure {
@@ -124,29 +193,6 @@ fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident)
                 ::core::option::Option::None,
                 ::core::option::Option::Some(canonical(&::serde_json::json!({ "isServiceFault": true, "fault": fault }))),
             )
-        }
-
-        /// One request this service owns: `tools/call`. `None` for a request it does not own,
-        /// otherwise the `result` object of the answer (`Ok`) or its JSON-RPC `error` object
-        /// (`Err`).
-        pub async fn route<Svc, Ctx>(
-            method: &str,
-            params: &::serde_json::Value,
-            #implementation: &Svc,
-            #context: &Ctx,
-        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
-        where
-            Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
-            Ctx: ::core::marker::Sync,
-        {
-            if method != "tools/call" {
-                return ::core::option::Option::None;
-            }
-            let name = params.get("name")?.as_str()?;
-            match name {
-                #(#arms)*
-                _ => ::core::option::Option::None,
-            }
         }
     }
 }
@@ -530,6 +576,35 @@ fn protocol() -> TokenStream {
 /// of the server beside each result.
 fn answers() -> TokenStream {
     quote! {
+        /// What a routed request asks for: the tool, the URI, or the URI of the template a
+        /// completion is for.
+        fn named<'params>(params: &'params ::serde_json::Value, method: &str) -> ::core::option::Option<&'params str> {
+            match method {
+                "tools/call" => params["name"].as_str(),
+                "resources/read" => params["uri"].as_str(),
+                _ => params["argument"]["name"]
+                    .as_str()
+                    .and(params["ref"]["uri"].as_str()),
+            }
+        }
+
+        /// The text of the response to `id`: the result with the server's name beside it, or the
+        /// error.
+        fn response_text(
+            id: &::serde_json::Value,
+            answered: ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+            server_name: &str,
+        ) -> ::std::string::String {
+            canonical(&match answered {
+                ::core::result::Result::Ok(result) => ::serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": with_server_info(result, server_name),
+                }),
+                ::core::result::Result::Err(error) => failed(id, error),
+            })
+        }
+
         fn with_server_info(mut result: ::serde_json::Value, server_name: &str) -> ::serde_json::Value {
             if let ::serde_json::Value::Object(members) = &mut result {
                 members
@@ -577,16 +652,17 @@ fn answers() -> TokenStream {
             result
         }
 
-        fn listed_tools(endpoint: &McpEndpoint) -> ::serde_json::Value {
-            let mut tools = ::std::vec::Vec::new();
+        /// What the catalogs hold under `key`, one after the other, as a list result.
+        fn listed(endpoint: &McpEndpoint, key: &str) -> ::serde_json::Value {
+            let mut items = ::std::vec::Vec::new();
             for catalog in endpoint.catalogs {
-                if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get("tools") {
-                    tools.extend(offered.iter().cloned());
+                if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get(key) {
+                    items.extend(offered.iter().cloned());
                 }
             }
             ::serde_json::json!({
                 "resultType": "complete",
-                "tools": tools,
+                key: items,
                 "ttlMs": LISTED_FOR_MS,
                 "cacheScope": "public",
             })
@@ -611,14 +687,18 @@ fn serving(module: &Ident) -> TokenStream {
             }
             let answered = match request["method"].as_str().unwrap_or_default() {
                 "server/discover" => ::core::result::Result::Ok(discovered(instructions, endpoint)),
-                "tools/list" => ::core::result::Result::Ok(listed_tools(endpoint)),
-                "tools/call" => {
-                    if request["params"]["name"].is_string() {
+                "tools/list" => ::core::result::Result::Ok(listed(endpoint, "tools")),
+                "resources/templates/list" => {
+                    ::core::result::Result::Ok(listed(endpoint, "resourceTemplates"))
+                }
+                "resources/list" => return Begun::Routed(request),
+                method @ ("tools/call" | "resources/read" | "completion/complete") => {
+                    if named(&request["params"], method).is_some() {
                         return Begun::Routed(request);
                     }
                     ::core::result::Result::Err(error_object(
                         -32602,
-                        "Invalid params: tools/call names no tool",
+                        &format!("Invalid params: {method} names nothing to answer"),
                         ::core::option::Option::None,
                     ))
                 }
@@ -631,34 +711,23 @@ fn serving(module: &Ident) -> TokenStream {
             Begun::Answered(::core::option::Option::Some(response_text(id, answered, server_name)))
         }
 
-        /// The text of the response to `id`: the result with the server's name beside it, or the
-        /// error.
-        fn response_text(
-            id: &::serde_json::Value,
-            answered: ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            server_name: &str,
-        ) -> ::std::string::String {
-            canonical(&match answered {
-                ::core::result::Result::Ok(result) => ::serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": with_server_info(result, server_name),
-                }),
-                ::core::result::Result::Err(error) => failed(id, error),
-            })
-        }
-
         /// What a routed `tools/call` answers once its services have been asked.
         fn routed_text(
             request: &::serde_json::Value,
             answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
             server_name: &str,
         ) -> ::core::option::Option<::std::string::String> {
-            let name = request["params"]["name"].as_str().unwrap_or_default();
+            let method = request["method"].as_str().unwrap_or_default();
+            let name = named(&request["params"], method).unwrap_or_default();
             let answered = answered.unwrap_or_else(|| {
+                let unknown = match method {
+                    "tools/call" => "Unknown tool",
+                    "resources/read" => "Resource not found",
+                    _ => "Unknown completion",
+                };
                 ::core::result::Result::Err(error_object(
                     -32602,
-                    &format!("Unknown tool: {name}"),
+                    &format!("{unknown}: {name}"),
                     ::core::option::Option::Some(::serde_json::json!({
                         "isServiceFault": true,
                         "fault": $crate::#module::ServiceFault::unknown_operation(name),
@@ -667,7 +736,12 @@ fn serving(module: &Ident) -> TokenStream {
             });
             ::core::option::Option::Some(response_text(&request["id"], answered, server_name))
         }
+    }
+}
 
+/// `serve`, the loop over the services of an endpoint.
+fn serve_fn() -> TokenStream {
+    quote! {
         /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
         /// answers for the service at that place in the endpoint. A notification answers `None`.
         pub async fn serve<R>(
@@ -686,9 +760,31 @@ fn serving(module: &Ident) -> TokenStream {
                 Begun::Answered(text) => return text,
                 Begun::Routed(request) => request,
             };
+            let method = request["method"].as_str().unwrap_or_default();
+            if method == "resources/list" {
+                let (start, own, first) = match listing_start(&request, endpoint.catalogs.len()) {
+                    ::core::result::Result::Ok(start) => start,
+                    ::core::result::Result::Err(refused) => {
+                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), server_name));
+                    }
+                };
+                let mut answered = ::core::option::Option::None;
+                for part in start..endpoint.catalogs.len() {
+                    let params = listing_params(if part == start { own.as_ref() } else { ::core::option::Option::None });
+                    if let ::core::option::Option::Some(page) = route(part, "resources/list", &params).await {
+                        answered = ::core::option::Option::Some((part, page));
+                        break;
+                    }
+                }
+                return ::core::option::Option::Some(response_text(
+                    &request["id"],
+                    listed_resources(first, endpoint, answered),
+                    server_name,
+                ));
+            }
             let mut answered = ::core::option::Option::None;
             for part in 0..endpoint.catalogs.len() {
-                answered = route(part, "tools/call", &request["params"]).await;
+                answered = route(part, method, &request["params"]).await;
                 if answered.is_some() {
                     break;
                 }
@@ -718,25 +814,50 @@ fn answer(contract: &Ident) -> TokenStream {
                 Begun::Answered(text) => return text,
                 Begun::Routed(request) => request,
             };
-            let answered = route("tools/call", &request["params"], svc, ctx).await;
+            let method = request["method"].as_str().unwrap_or_default();
+            if method == "resources/list" {
+                let (_start, own, first) = match listing_start(&request, ALONE.catalogs.len()) {
+                    ::core::result::Result::Ok(start) => start,
+                    ::core::result::Result::Err(refused) => {
+                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), SERVER_NAME));
+                    }
+                };
+                let answered = route("resources/list", &listing_params(own.as_ref()), svc, ctx)
+                    .await
+                    .map(|page| (0, page));
+                return ::core::option::Option::Some(response_text(
+                    &request["id"],
+                    listed_resources(first, &ALONE, answered),
+                    SERVER_NAME,
+                ));
+            }
+            let answered = route(method, &request["params"], svc, ctx).await;
             routed_text(&request, answered, SERVER_NAME)
         }
 
         /// `serve_http` for this service alone.
-        pub async fn answer_http<Svc, Ctx>(
+        pub async fn answer_http<Svc, Ctx, Admit>(
             request: &McpHttpRequest,
-            allowed_origins: &[&str],
+            settings: &McpHttpSettings<'_>,
             svc: &Svc,
-            ctx: &Ctx,
+            admit: Admit,
         ) -> McpHttpResponse
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
-            Ctx: ::core::marker::Sync,
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
         {
-            match admitted(request, allowed_origins) {
+            if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
+                return refused;
+            }
+            let ctx = match admit(request, McpCall::new()).await {
+                ::core::result::Result::Ok(ctx) => ctx,
+                ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
+            };
+            match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
                 ::core::result::Result::Ok(text) => {
-                    http_response(answer(&text, svc, ctx).await)
+                    http_response(answer(text, svc, &ctx).await)
                 }
             }
         }
@@ -778,6 +899,48 @@ fn types() -> TokenStream {
             pub body: ::std::vec::Vec<u8>,
             pub headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             pub method: ::std::string::String,
+            /// The request's path, with or without its query.
+            pub path: ::std::string::String,
+        }
+
+        /// What an HTTP server of this endpoint is configured with.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpHttpSettings<'settings> {
+            pub allowed_origins: &'settings [&'settings str],
+            /// `None` where the server authorizes by other means: no metadata document and no
+            /// challenge.
+            pub oauth: ::core::option::Option<McpOAuth<'settings>>,
+        }
+
+        /// The protected-resource metadata of a server that authorizes by OAuth.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpOAuth<'oauth> {
+            pub authorization_servers: &'oauth [&'oauth str],
+            pub resource: &'oauth str,
+            pub resource_metadata_url: &'oauth str,
+            pub scopes_supported: &'oauth [&'oauth str],
+        }
+
+        /// Why `admit` refused a request.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub enum McpDenied {
+            /// `401`: no credentials, or credentials that do not hold. `scope` names what the
+            /// called operation needs, where it is known.
+            NoValidCredentials { scope: ::core::option::Option<::std::string::String> },
+            /// `403` with a challenge: the credentials hold, but not the scopes `scope` names.
+            InsufficientScope { scope: ::std::string::String },
+            /// `403` with no challenge.
+            Forbidden,
+        }
+
+        /// The request in flight, handed to `admit`.
+        #[derive(Clone, Debug, Default)]
+        pub struct McpCall(());
+
+        impl McpCall {
+            const fn new() -> Self {
+                Self(())
+            }
         }
 
         /// An HTTP response in plain terms.
@@ -789,12 +952,25 @@ fn types() -> TokenStream {
         }
 
         impl McpHttpRequest {
+            /// The token of an `Authorization: Bearer` header, whatever the case of the scheme.
+            pub fn bearer_token(&self) -> ::core::option::Option<&str> {
+                let value = self.header("authorization")?;
+                let (scheme, token) = value.split_once(' ')?;
+                let token = token.trim();
+                (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
+            }
+
             /// The value of the header called `name`, whatever its case.
             pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
                 self.headers
                     .iter()
                     .find(|(held, _)| held.eq_ignore_ascii_case(name))
                     .map(|(_, value)| value.as_str())
+            }
+
+            /// The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so.
+            pub fn mcp_name(&self) -> ::core::option::Option<::std::string::String> {
+                decoded_header(self.header("mcp-name")?)
             }
         }
     }
@@ -812,7 +988,15 @@ fn constants(schema: &Ident, contract_name: &str) -> TokenStream {
         const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
         const LISTED_FOR_MS: u64 = 300_000;
         /// The methods `serve` answers itself or asks `route` for.
-        const METHODS: [&str; 3] = ["server/discover", "tools/call", "tools/list"];
+        const METHODS: [&str; 7] = [
+            "completion/complete",
+            "resources/list",
+            "resources/read",
+            "resources/templates/list",
+            "server/discover",
+            "tools/call",
+            "tools/list",
+        ];
         const PROTOCOL_KEY: &str = "io.modelcontextprotocol/protocolVersion";
         const PROTOCOL_VERSION: &str = "2026-07-28";
         const SERVER_INFO_KEY: &str = "io.modelcontextprotocol/serverInfo";
@@ -888,25 +1072,100 @@ fn http_rules() -> TokenStream {
     }
 }
 
-/// The rules a request meets before any service is asked, and the entry that applies them.
-fn http_entry() -> TokenStream {
+/// The rules a request meets before `admit`, and the denials `admit` answers with.
+fn http_authorization() -> TokenStream {
     quote! {
-        /// The rules a request meets before any service is asked: the text of its body where
-        /// they let it through, and the response that refuses it where they do not.
-        fn admitted<'request>(
-            request: &'request McpHttpRequest,
-            allowed_origins: &[&str],
-        ) -> ::core::result::Result<&'request str, McpHttpResponse> {
+        /// The path of `url`, without its query or fragment.
+        fn url_path(url: &str) -> &str {
+            let after = url.split_once("://").map_or(url, |(_, rest)| rest);
+            let from_path = after.find('/').and_then(|at| after.get(at..)).unwrap_or("/");
+            from_path.split(['?', '#']).next().unwrap_or(from_path)
+        }
+
+        /// The response to a denial: its status, and the challenge where the server uses OAuth.
+        fn denial_response(
+            denied: &McpDenied,
+            settings: &McpHttpSettings<'_>,
+            request: &McpHttpRequest,
+        ) -> McpHttpResponse {
+            let (status, challenge) = match (denied, settings.oauth.as_ref()) {
+                (McpDenied::NoValidCredentials { scope }, oauth) => {
+                    let challenge = oauth.map(|oauth| {
+                        let mut parts = ::std::vec![format!("resource_metadata=\"{}\"", oauth.resource_metadata_url)];
+                        if let ::core::option::Option::Some(scope) = scope {
+                            parts.push(format!("scope=\"{scope}\""));
+                        }
+                        if request.bearer_token().is_some() {
+                            parts.push("error=\"invalid_token\"".to_owned());
+                        }
+                        format!("Bearer {}", parts.join(", "))
+                    });
+                    (401, challenge)
+                }
+                (McpDenied::InsufficientScope { scope }, oauth) => (
+                    403,
+                    oauth.map(|oauth| {
+                        format!(
+                            "Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{}\"",
+                            oauth.resource_metadata_url
+                        )
+                    }),
+                ),
+                (McpDenied::Forbidden, _) => (403, ::core::option::Option::None),
+            };
+            let mut response = without_body(status);
+            if let ::core::option::Option::Some(challenge) = challenge {
+                response.headers.push(("WWW-Authenticate".to_owned(), challenge));
+            }
+            response
+        }
+
+        /// The protected-resource metadata document of `oauth`.
+        fn metadata_response(oauth: &McpOAuth<'_>) -> McpHttpResponse {
+            let mut document = ::serde_json::json!({
+                "authorization_servers": oauth.authorization_servers,
+                "bearer_methods_supported": ["header"],
+                "resource": oauth.resource,
+            });
+            if !oauth.scopes_supported.is_empty() {
+                document["scopes_supported"] = ::serde_json::json!(oauth.scopes_supported);
+            }
+            json_response(200, &document)
+        }
+
+        /// The rules a request meets before `admit`: the metadata document, the method and the
+        /// `Origin`.
+        fn before_admit(
+            request: &McpHttpRequest,
+            settings: &McpHttpSettings<'_>,
+        ) -> ::core::result::Result<(), McpHttpResponse> {
+            if let ::core::option::Option::Some(oauth) = settings.oauth.as_ref() {
+                let path = request.path.split(['?', '#']).next().unwrap_or_default();
+                if request.method == "GET" && path == url_path(oauth.resource_metadata_url) {
+                    return ::core::result::Result::Err(metadata_response(oauth));
+                }
+            }
             if request.method != "POST" {
                 let mut refused = without_body(405);
                 refused.headers.push(("Allow".to_owned(), "POST".to_owned()));
                 return ::core::result::Result::Err(refused);
             }
             if let ::core::option::Option::Some(origin) = request.header("origin") {
-                if !allowed_origins.contains(&origin) {
+                if !settings.allowed_origins.contains(&origin) {
                     return ::core::result::Result::Err(without_body(403));
                 }
             }
+            ::core::result::Result::Ok(())
+        }
+    }
+}
+
+/// The rules a request meets after `admit`, and the entry that applies them all.
+fn http_entry() -> TokenStream {
+    quote! {
+        /// The rules a request meets once `admit` let it through: the text of its body where they
+        /// let it through, and the response that refuses it where they do not.
+        fn admitted(request: &McpHttpRequest) -> ::core::result::Result<&str, McpHttpResponse> {
             let ::core::result::Result::Ok(text) = ::core::str::from_utf8(&request.body) else {
                 return ::core::result::Result::Err(json_response(
                     400,
@@ -954,25 +1213,41 @@ fn http_entry() -> TokenStream {
             }
         }
 
-        /// The Streamable HTTP rules around `serve`.
-        pub async fn serve_http<R>(
+        /// The Streamable HTTP rules around `serve`. `route` also receives the `Ctx` that
+        /// `admit` answered.
+        pub async fn serve_http<Ctx, Admit, R>(
             request: &McpHttpRequest,
-            allowed_origins: &[&str],
+            settings: &McpHttpSettings<'_>,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
+            admit: Admit,
             route: R,
         ) -> McpHttpResponse
         where
-            R: ::core::ops::AsyncFn(usize, &str, &::serde_json::Value) -> ::core::option::Option<
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::marker::Send + ::core::marker::Sync,
+            R: ::core::marker::Send + ::core::marker::Sync,
+            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
                 ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
             >,
         {
-            match admitted(request, allowed_origins) {
+            if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
+                return refused;
+            }
+            let ctx = match admit(request, McpCall::new()).await {
+                ::core::result::Result::Ok(ctx) => ctx,
+                ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
+            };
+            match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
-                ::core::result::Result::Ok(text) => {
-                    http_response(serve(text, server_name, instructions, endpoint, route).await)
-                }
+                ::core::result::Result::Ok(text) => http_response(
+                    serve(text, server_name, instructions, endpoint, async |part, method, params| {
+                        route(&ctx, part, method, params).await
+                    })
+                    .await,
+                ),
             }
         }
     }

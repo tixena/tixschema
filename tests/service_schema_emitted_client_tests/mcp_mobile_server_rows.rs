@@ -2,19 +2,30 @@
 //! JSON-RPC texts, and the answers the Rust dispatcher gives them.
 
 use super::mcp_mobile_billing;
-use super::mcp_mobile_document::{self, McpEndpoint, McpHttpRequest};
+use super::mcp_mobile_document::{self, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use super::mcp_mobile_rows::{VERSION, block_on, call, request};
 use super::mcp_mobile_service::Archive;
-use super::{BillingServiceSchema, DocumentServiceSchema};
+use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
 use serde_json::{Value, json};
 
 pub const ORIGIN: &str = "https://app.example.com";
 
+const DOCUMENT_SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
+    allowed_origins: &[ORIGIN],
+    oauth: None,
+};
+
+const BILLING_SETTINGS: mcp_mobile_billing::McpHttpSettings<'static> =
+    mcp_mobile_billing::McpHttpSettings {
+        allowed_origins: &[ORIGIN],
+        oauth: None,
+    };
+
 /// Two services behind one endpoint, built in a `const` so a shared name would stop the build.
 pub const WORKSPACE: McpEndpoint = McpEndpoint::new(
     &[
-        DocumentServiceSchema::MCP_NAMES,
-        BillingServiceSchema::MCP_NAMES,
+        MobileDocumentServiceSchema::MCP_NAMES,
+        MobileBillingServiceSchema::MCP_NAMES,
     ],
     &[mcp_mobile_document::catalog, mcp_mobile_billing::catalog],
 );
@@ -73,7 +84,7 @@ fn without_meta_key(mut asked: Value, key: &str) -> Value {
     asked
 }
 
-/// The twelve requests of the document's run.
+/// The requests of the document's run.
 fn documented_rows() -> Vec<ServerRow> {
     let mut unsupported = call(7, "get-version", &json!({ "document_id": "doc-1" }));
     unsupported["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!("2025-11-25");
@@ -129,6 +140,29 @@ fn documented_rows() -> Vec<ServerRow> {
         row(
             "resource templates",
             &request(&Value::from(10_u64), "resources/templates/list", json!({})),
+        ),
+        row(
+            "resources",
+            &request(&Value::from(29_u64), "resources/list", json!({})),
+        ),
+        row(
+            "resources from a cursor that names no service",
+            &request(
+                &Value::from(30_u64),
+                "resources/list",
+                json!({ "cursor": "5:" }),
+            ),
+        ),
+        row(
+            "a completion",
+            &request(
+                &Value::from(31_u64),
+                "completion/complete",
+                json!({
+                    "argument": { "name": "invoice", "value": "inv" },
+                    "ref": { "type": "ref/resource", "uri": "billing://invoices/{invoice}" },
+                }),
+            ),
         ),
     ]
 }
@@ -304,7 +338,7 @@ pub fn workspace_answer(text: &str) -> Option<String> {
     ))
 }
 
-/// What the Rust dispatcher of `BillingService` alone answers to `text`.
+/// What the Rust dispatcher of `MobileBillingService` alone answers to `text`.
 pub fn billing_answer(text: &str) -> Option<String> {
     block_on(mcp_mobile_billing::answer(text, &Archive, &()))
 }
@@ -446,16 +480,17 @@ fn plain_terms(row: &HttpRow) -> McpHttpRequest {
         body: row.body.clone().into_bytes(),
         headers: row.headers.clone(),
         method: row.method.to_owned(),
+        path: "/mcp".to_owned(),
     }
 }
 
-/// What the Rust dispatcher of `DocumentService` alone answers to the request in plain terms.
+/// What the Rust dispatcher of `MobileDocumentService` alone answers to the request in plain terms.
 pub fn rust_http(row: &HttpRow) -> (u16, Vec<(String, String)>, String) {
     let answered = block_on(mcp_mobile_document::answer_http(
         &plain_terms(row),
-        &[ORIGIN],
+        &DOCUMENT_SETTINGS,
         &Archive,
-        &(),
+        async |_request, _call| Ok(()),
     ));
     (
         answered.status,
@@ -469,6 +504,7 @@ fn billing_terms(row: &HttpRow) -> mcp_mobile_billing::McpHttpRequest {
         body: row.body.clone().into_bytes(),
         headers: row.headers.clone(),
         method: row.method.to_owned(),
+        path: "/mcp".to_owned(),
     }
 }
 
@@ -476,7 +512,7 @@ fn billing_terms(row: &HttpRow) -> mcp_mobile_billing::McpHttpRequest {
 fn the_second_service_answers_alone_and_beside_the_first() {
     let asked = http_rows().remove(0);
     let endpoint = mcp_mobile_billing::McpEndpoint::new(
-        &[BillingServiceSchema::MCP_NAMES],
+        &[MobileBillingServiceSchema::MCP_NAMES],
         &[mcp_mobile_billing::catalog],
     );
     let listed = request(&Value::from(1_u64), "tools/list", json!({})).to_string();
@@ -498,33 +534,95 @@ fn the_second_service_answers_alone_and_beside_the_first() {
     );
     let over_http = block_on(mcp_mobile_billing::answer_http(
         &billing_terms(&asked),
-        &[ORIGIN],
+        &BILLING_SETTINGS,
         &Archive,
-        &(),
+        async |_request, _call| Ok(()),
     ));
     let served_over_http = block_on(mcp_mobile_billing::serve_http(
         &billing_terms(&asked),
-        &[ORIGIN],
+        &BILLING_SETTINGS,
         mcp_mobile_billing::SERVER_NAME,
         None,
         &endpoint,
-        async |_part, method, params| {
-            mcp_mobile_billing::route(method, params, &Archive, &()).await
+        async |_request, _call| Ok(()),
+        async |ctx: &(), _part, method, params| {
+            mcp_mobile_billing::route(method, params, &Archive, ctx).await
         },
     ));
     assert_eq!(over_http.status, 200);
     assert_eq!(over_http.status, served_over_http.status);
     let workspace = block_on(mcp_mobile_document::serve_http(
         &plain_terms(&asked),
-        &[ORIGIN],
+        &DOCUMENT_SETTINGS,
         "Workspace",
         None,
         &WORKSPACE,
-        async |part, method, params| match part {
-            0 => mcp_mobile_document::route(method, params, &Archive, &()).await,
-            1 => mcp_mobile_billing::route(method, params, &Archive, &()).await,
+        async |_request, _call| Ok(()),
+        async |ctx: &(), part, method, params| match part {
+            0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
+            1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
             _ => None,
         },
     ));
     assert_eq!(workspace.status, rust_http(&asked).0);
+}
+
+#[test]
+fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
+    let asked = http_rows().remove(0);
+    let written = asked
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("mcp-name"))
+        .map(|(_, value)| value.clone());
+    assert_eq!(plain_terms(&asked).mcp_name(), written);
+    assert_eq!(billing_terms(&asked).mcp_name(), written);
+    for (denied, status) in [
+        (
+            mcp_mobile_document::McpDenied::NoValidCredentials { scope: None },
+            401,
+        ),
+        (
+            mcp_mobile_document::McpDenied::InsufficientScope {
+                scope: "documents:write".to_owned(),
+            },
+            403,
+        ),
+        (mcp_mobile_document::McpDenied::Forbidden, 403),
+    ] {
+        let response = block_on(mcp_mobile_document::answer_http(
+            &plain_terms(&asked),
+            &DOCUMENT_SETTINGS,
+            &Archive,
+            async |_request: &McpHttpRequest,
+                   _call: mcp_mobile_document::McpCall|
+                   -> Result<(), mcp_mobile_document::McpDenied> {
+                Err(denied.clone())
+            },
+        ));
+        assert_eq!(response.status, status, "{denied:?}");
+    }
+    for (denied, status) in [
+        (
+            mcp_mobile_billing::McpDenied::NoValidCredentials { scope: None },
+            401,
+        ),
+        (
+            mcp_mobile_billing::McpDenied::InsufficientScope {
+                scope: "billing:read".to_owned(),
+            },
+            403,
+        ),
+        (mcp_mobile_billing::McpDenied::Forbidden, 403),
+    ] {
+        let response = block_on(mcp_mobile_billing::answer_http(
+            &billing_terms(&asked),
+            &BILLING_SETTINGS,
+            &Archive,
+            async |_request: &mcp_mobile_billing::McpHttpRequest,
+                   _call: mcp_mobile_billing::McpCall|
+                   -> Result<(), mcp_mobile_billing::McpDenied> { Err(denied.clone()) },
+        ));
+        assert_eq!(response.status, status, "{denied:?}");
+    }
 }

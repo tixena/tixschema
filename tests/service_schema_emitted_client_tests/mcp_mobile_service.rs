@@ -1,4 +1,4 @@
-//! `DocumentService` and `BillingService`, both asking for `mcp`, and the stand-in that answers
+//! `MobileDocumentService` and `MobileBillingService`, both asking for `mcp`, and the stand-in that answers
 //! them: the Rust twins the Kotlin server and the Kotlin and Swift clients are measured against.
 
 use core::future::{Future, ready};
@@ -46,7 +46,7 @@ pub struct VersionResponse {
 
 /// Answers what a caller owes.
 #[service_schema(transports = ["mcp"])]
-pub trait BillingService<Ctx> {
+pub trait MobileBillingService<Ctx> {
     /// Answers the balance of one account in one ledger.
     #[service_schema_op(http(
         method = "POST",
@@ -63,7 +63,7 @@ pub trait BillingService<Ctx> {
 
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
-pub trait DocumentService<Ctx> {
+pub trait MobileDocumentService<Ctx> {
     /// Archives one document, with an argument named after a local the generated code writes.
     #[service_schema_op(http(
         method = "POST",
@@ -172,7 +172,7 @@ impl Archive {
 
 // Every method below is synchronous work wrapped in an already-ready `Future`: nothing here waits
 // on anything.
-impl BillingService<()> for Archive {
+impl MobileBillingService<()> for Archive {
     fn get_balance(
         &self,
         _ctx: &(),
@@ -187,7 +187,7 @@ impl BillingService<()> for Archive {
     }
 }
 
-impl DocumentService<()> for Archive {
+impl MobileDocumentService<()> for Archive {
     fn archive_document(
         &self,
         _ctx: &(),

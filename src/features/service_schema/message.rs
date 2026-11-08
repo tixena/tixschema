@@ -41,18 +41,21 @@ const TAKEN_BY_A_DISPATCHER: [&str; 25] = [
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's, the client's over a transport, and the dispatcher's.
-const TAKEN_BY_A_METHOD: [&str; 29] = [
+const TAKEN_BY_A_METHOD: [&str; 32] = [
     "answer",
     "answered",
     "body",
+    "called",
     "contentRange",
     "contentType",
     "ctx",
     "declared",
     "error",
+    "extra",
     "headers",
     "held",
     "impl",
+    "next",
     "operation",
     "outcome",
     "parsed",
