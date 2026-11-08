@@ -18,6 +18,37 @@ use serde_json::{Value, json};
 /// The five tools of `DocumentService`, as the document writes them.
 fn expected_tools() -> Value {
     json!([
+        { "name": "check-many",
+          "title": "Versions Of Many",
+          "description": "Answers the versions of several documents, one request for each.",
+          "inputSchema": { "additionalProperties": false,
+                           "properties": { "value": { "items": { "additionalProperties": false,
+                                                      "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
+                                                      "required": ["document_id"], "type": "object" }, "type": "array" } },
+                           "required": ["value"], "type": "object" },
+          "outputSchema": { "additionalProperties": false,
+                            "properties": { "version": { "type": "integer" } },
+                            "required": ["version"], "type": "object" } },
+        { "name": "check-maybe",
+          "title": "Version Of Maybe One",
+          "description": "Answers the version of a document, if one is asked for.",
+          "inputSchema": { "additionalProperties": false,
+                           "properties": { "value": { "anyOf": [{ "additionalProperties": false,
+                                                      "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
+                                                      "required": ["document_id"], "type": "object" }, { "type": "null" }] } },
+                           "required": ["value"], "type": "object" },
+          "outputSchema": { "additionalProperties": false,
+                            "properties": { "version": { "type": "integer" } },
+                            "required": ["version"], "type": "object" } },
+        { "name": "check-named",
+          "title": "Versions By Name",
+          "description": "Answers the versions of documents asked for by name.",
+          "inputSchema": { "additionalProperties": { "additionalProperties": false,
+                                                      "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
+                                                      "required": ["document_id"], "type": "object" }, "type": "object" },
+          "outputSchema": { "additionalProperties": false,
+                            "properties": { "version": { "type": "integer" } },
+                            "required": ["version"], "type": "object" } },
         { "name": "get-tagged",
           "title": "Get Tagged",
           "description": "Answers the current version of one document, unless it still carries the tag the caller knows.",
@@ -517,6 +548,9 @@ fn an_endpoint_of_two_services_lists_their_tools_one_after_the_other() {
     assert_eq!(
         names,
         [
+            "check-many",
+            "check-maybe",
+            "check-named",
             "get-tagged",
             "get-version",
             "lookup-document",
@@ -736,8 +770,8 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
     assert_eq!(served, response);
     assert_eq!(
         DocumentServiceSchema::MCP_NAMES.len(),
-        7,
-        "five tools, one resource and one template"
+        10,
+        "eight tools, one resource and one template"
     );
 }
 

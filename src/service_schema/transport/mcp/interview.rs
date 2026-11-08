@@ -1,7 +1,6 @@
 //! Elicitation in the dispatcher: an arm of an operation's declared error that asks the user, with
 //! a form or with a link, and the retried call that carries the answer.
 
-use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::answers_key;
 use crate::service_schema::parse::{OperationDef, ServiceDef, written};
 use proc_macro2::TokenStream;
@@ -141,19 +140,10 @@ pub(super) fn asking(
             }
         }
     } else {
-        let fallback = RenameRule::KebabCase.apply_to_variant(&interview.arm.to_string());
+        let wire = format_ident!("mcp_arm_wire_{name}", span = operation.ident.span());
         quote! {
             if let ::core::option::Option::Some((url, message)) = $crate::#schema::#asks(&carried_value_0) {
-                let said = match encoded(#tool, &carried_value_0) {
-                    ::core::result::Result::Ok(said) => said,
-                    ::core::result::Result::Err(refused) => {
-                        return ::core::option::Option::Some(::core::result::Result::Err(refused));
-                    }
-                };
-                let key = said
-                    .get("errorCode")
-                    .and_then(::serde_json::Value::as_str)
-                    .unwrap_or(#fallback);
+                let key = $crate::#schema::#wire();
                 if !dismissed(params, key) && declared_elicitation(params, "url") {
                     return ::core::option::Option::Some(::core::result::Result::Ok(input_required(
                         key,

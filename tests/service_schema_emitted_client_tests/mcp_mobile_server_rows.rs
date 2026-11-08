@@ -324,41 +324,6 @@ fn refused_rows() -> Vec<ServerRow> {
     ]
 }
 
-/// The messages whose bound is broken inside a list, a map or an optional of a model, with the
-/// tool the Kotlin server answers `failed-validation` for, naming `document_id`. The Rust
-/// dispatcher answers them `undeserializable-payload`, so only the Kotlin run holds them.
-pub fn wrapped_refusal_requests() -> Vec<(&'static str, String)> {
-    vec![
-        (
-            "check-many",
-            call(
-                32,
-                "check-many",
-                &json!({ "value": [{ "document_id": "" }] }),
-            )
-            .to_string(),
-        ),
-        (
-            "check-named",
-            call(
-                34,
-                "check-named",
-                &json!({ "first": { "document_id": "" } }),
-            )
-            .to_string(),
-        ),
-        (
-            "check-maybe",
-            call(
-                36,
-                "check-maybe",
-                &json!({ "value": { "document_id": "" } }),
-            )
-            .to_string(),
-        ),
-    ]
-}
-
 /// The messages whose type is a list, a map or an optional of a model, and the lists that read.
 fn wrapped_model_rows() -> Vec<ServerRow> {
     let looser = |name, asked: Value| ServerRow {
@@ -367,6 +332,30 @@ fn wrapped_model_rows() -> Vec<ServerRow> {
         text: asked.to_string(),
     };
     vec![
+        row(
+            "a list whose item breaks a bound",
+            &call(
+                32,
+                "check-many",
+                &json!({ "value": [{ "document_id": "" }] }),
+            ),
+        ),
+        row(
+            "a map whose value breaks a bound",
+            &call(
+                34,
+                "check-named",
+                &json!({ "first": { "document_id": "" } }),
+            ),
+        ),
+        row(
+            "an optional message that breaks a bound",
+            &call(
+                36,
+                "check-maybe",
+                &json!({ "value": { "document_id": "" } }),
+            ),
+        ),
         looser(
             "a list whose item does not read",
             call(

@@ -667,11 +667,7 @@ export async function __p__McpServe<Ctx>(
   }
 }"#;
 
-const INTERVIEW: &str = r#"function __p__McpPlain(text: string): string {
-  return text.replace(/[-_ ]/g, "").toLowerCase();
-}
-
-/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
+const INTERVIEW: &str = r#"/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
 function __p__McpElicits(call: Record<string, unknown>, mode: "form" | "url"): boolean {
   const held = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.elicitation);
   if (held === undefined) return false;
@@ -697,11 +693,9 @@ function __p__McpAsking(
   call: Record<string, unknown>,
   declined: boolean,
 ): Record<string, unknown> | undefined {
-  const arm = __p__McpObject(error);
-  const code = arm?.errorCode;
-  if (arm === undefined || typeof code !== "string" || __p__McpPlain(code) !== __p__McpPlain(interview.arm)) {
-    return undefined;
-  }
+  const written = __p__McpObject(error);
+  const arm = interview.tag === "" ? __p__McpObject(written?.[interview.wire]) : written?.[interview.tag] === interview.wire ? written : undefined;
+  if (arm === undefined) return undefined;
   const message = typeof arm.message === "string" ? arm.message : undefined;
   if (interview.answers !== undefined) {
     if (declined || !__p__McpElicits(call, "form")) return undefined;
@@ -712,8 +706,8 @@ function __p__McpAsking(
     });
   }
   if (typeof arm.url !== "string" || message === undefined) return undefined;
-  if (__p__McpDismissed(call, code) || !__p__McpElicits(call, "url")) return undefined;
-  return __p__McpInputRequired(code, { message, mode: "url", url: arm.url });
+  if (__p__McpDismissed(call, interview.wire) || !__p__McpElicits(call, "url")) return undefined;
+  return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
 }"#;
 
 const CONTENT: &str = r#"/** One block of `content`, as the result writes it. */
@@ -834,6 +828,7 @@ function __p__McpDeclined(error: unknown, refusal: string): __N__McpAnswer {
  */
 export function create__N__McpRoute<Ctx>(
   impl: __DRIVEN__,
+  onFault: (fault: __N__Fault) => void = (fault) => console.error(fault),
 ): (ctx: Ctx, method: string, params: unknown) => Promise<__N__McpAnswer | undefined> {
   const dispatch = create__N__Dispatcher(impl);
   const attempted = (ctx: Ctx, operation: string, payload: unknown, headers: Array<readonly [string, string]>) =>
@@ -863,8 +858,11 @@ __ANSWERS__      payload = operation.wrapped ? held.value : rest;
         ? await attempted(ctx, operation.operation, payload, headers)
         : { dispatched: __p__Framed(unread) };
     if ("thrown" in attempt) {
-      if (operation.oneWay) return { result: __p__McpEmpty };
       const detail = attempt.thrown instanceof Error ? attempt.thrown.message : String(attempt.thrown);
+      if (operation.oneWay) {
+        onFault(__FAULT__("handler-panic", operation.tool, detail));
+        return { result: __p__McpEmpty };
+      }
       return {
         error: {
           code: -32603,
@@ -1490,6 +1488,7 @@ const FACTORIES: &str = "/**
  */
 export function create__N__McpDispatcher<Ctx>(
   impl: __DRIVEN__,
+  onFault?: (fault: __N__Fault) => void,
 ): (
   text: string,
   ctx: (call: __N__McpCall) => Ctx,
@@ -1497,7 +1496,7 @@ export function create__N__McpDispatcher<Ctx>(
   inFlight: __N__McpInFlight,
   changes?: __N__McpChanges,
 ) => Promise<string | undefined> {
-  const route = create__N__McpRoute(impl);
+  const route = create__N__McpRoute(impl, onFault);
   const endpoint = __p__McpEndpoint(__p__McpPart);
   return (text, ctx, writer, inFlight, changes) =>
     __p__McpServe(
@@ -1518,8 +1517,9 @@ export function create__N__McpHttpDispatcher<Ctx>(
   settings: __N__McpHttpSettings,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   changes?: __N__McpChanges,
+  onFault?: (fault: __N__Fault) => void,
 ): (request: __N__McpHttpRequest, stream: __N__McpHttpStream) => Promise<__N__McpHttpResponse | undefined> {
-  const route = create__N__McpRoute(impl);
+  const route = create__N__McpRoute(impl, onFault);
   const endpoint = __p__McpEndpoint(__p__McpPart);
   return (request, stream) =>
     __p__McpServeHttp(
@@ -1811,23 +1811,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
     );
     rows.extend(service.operations.iter().filter_map(skill_row));
     format!(
-        "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
-         wire key of the argument that carries a form's answers and the JSON text of the form, \
-         and the message to ask with where the arm holds none. */\n\
-         export type {named}McpInterview = {{\n  \
-         readonly arm: string;\n  \
-         readonly answers: string | undefined;\n  \
-         readonly form: string | undefined;\n  \
-         readonly doc: string;\n\
-         }};\n\n\
-         /** What a tool that starts a task is told: the tools that answer `tasks/get`, \
-         `tasks/cancel` and `tasks/update`, and the wire keys of the update's message. */\n\
-         export type {named}McpTask = {{\n  \
-         readonly get: string;\n  \
-         readonly cancel: string | undefined;\n  \
-         readonly update: string | undefined;\n  \
-         readonly keys: ReadonlyArray<string>;\n\
-         }};\n\n\
+        "{interview_types}\n\n\
          /** What the route reads of each operation: the tool, resource, listing or completion it \
          answers, the operation it calls, and how its arguments, success and error are carried. */\n\
          export type {named}McpOperation =\n  \
@@ -1896,7 +1880,32 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly doc: string;\n    \
          }};\n\n\
          export const {prefix}McpOperations: ReadonlyArray<{named}McpOperation> = [\n{rows}\n];",
+        interview_types = interview_types(named),
         rows = rows.join("\n"),
+    )
+}
+
+fn interview_types(named: &str) -> String {
+    format!(
+        "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
+         wire key of the argument that carries a form's answers and the JSON text of the form, \
+         and the message to ask with where the arm holds none. */\n\
+         export type {named}McpInterview = {{\n  \
+         readonly arm: string;\n  \
+         readonly tag: string;\n  \
+         readonly wire: string;\n  \
+         readonly answers: string | undefined;\n  \
+         readonly form: string | undefined;\n  \
+         readonly doc: string;\n\
+         }};\n\n\
+         /** What a tool that starts a task is told: the tools that answer `tasks/get`, \
+         `tasks/cancel` and `tasks/update`, and the wire keys of the update's message. */\n\
+         export type {named}McpTask = {{\n  \
+         readonly get: string;\n  \
+         readonly cancel: string | undefined;\n  \
+         readonly update: string | undefined;\n  \
+         readonly keys: ReadonlyArray<string>;\n\
+         }};"
     )
 }
 
@@ -2153,6 +2162,15 @@ pub fn form_marker(operation: &OperationDef) -> String {
     format!("/*__TIXSCHEMA_MCP_FORM:{}__*/", written(&operation.ident))
 }
 
+/// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
+/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+pub fn arm_marker(operation: &OperationDef, part: &str) -> String {
+    format!(
+        "/*__TIXSCHEMA_MCP_ARM_{part}:{}__*/",
+        written(&operation.ident)
+    )
+}
+
 /// What the route writes of an `mcp(content)` operation.
 fn content_kind(operation: &OperationDef) -> &'static str {
     if is_content_pair(operation) {
@@ -2214,8 +2232,10 @@ fn interview_literal(operation: &OperationDef) -> String {
         "undefined".to_owned()
     };
     format!(
-        "{{ arm: {}, answers: {answers}, form: {form}, doc: {} }}",
+        "{{ arm: {}, tag: {}, wire: {}, answers: {answers}, form: {form}, doc: {} }}",
         ts_quoted(&interview.arm.to_string()),
+        arm_marker(operation, "TAG"),
+        arm_marker(operation, "WIRE"),
         ts_quoted(operation.doc.as_deref().unwrap_or_default()),
     )
 }
