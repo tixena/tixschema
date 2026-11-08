@@ -95,6 +95,7 @@ fn module() -> String {
         book_error_dart::dart_definition(),
         StacksServiceSchema::dart_definition(),
         StacksServiceSchema::dart_ws_client(),
+        StacksServiceSchema::dart_mcp_content(),
         StacksServiceSchema::dart_mcp_service(),
         format!("const INPUT = {dollar_safe};"),
         DRIVER.to_owned(),

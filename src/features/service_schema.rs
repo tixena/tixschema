@@ -600,6 +600,7 @@ fn mcp_content_accessor(
     service: &ServiceDef,
     accessor: &str,
     text: &'static str,
+    pages: String,
 ) -> Option<TokenStream> {
     use crate::service_schema::mcp_tools::{is_content_list, is_prompt_messages};
 
@@ -607,13 +608,19 @@ fn mcp_content_accessor(
         .operations
         .iter()
         .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
+    let written = [listed.then(|| text.to_owned()), Some(pages)]
+        .into_iter()
+        .flatten()
+        .filter(|held| !held.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
     let name = format_ident!("{accessor}");
-    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in.";
-    listed.then(|| {
+    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in, and the `{Service}McpResource` and `{Service}McpResourcePage` types a listing answers.";
+    (!written.is_empty()).then(|| {
         quote! {
             #[doc = #doc]
             pub fn #name() -> ::std::string::String {
-                #text.to_owned()
+                #written.to_owned()
             }
         }
     })
@@ -628,6 +635,7 @@ fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
         service,
         "kotlin_mcp_content",
         kotlin_mcp_service::CONTENT_TYPE,
+        kotlin_mcp_service::page_types(service),
     );
     quote! {
         #content
@@ -645,8 +653,12 @@ fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
 #[cfg(feature = "swift")]
 fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
     let client = swift_mcp_client::accessor(service);
-    let content =
-        mcp_content_accessor(service, "swift_mcp_content", swift_mcp_client::CONTENT_TYPE);
+    let content = mcp_content_accessor(
+        service,
+        "swift_mcp_content",
+        swift_mcp_client::CONTENT_TYPE,
+        swift_mcp_client::page_types(service),
+    );
     quote! {
         #content
         #client
@@ -755,7 +767,12 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
         })
         .collect();
     let forms = mcp_ts_form_replacements(service);
-    let content = mcp_content_accessor(service, "ts_mcp_content", mcp_ts_service::CONTENT_TYPE);
+    let content = mcp_content_accessor(
+        service,
+        "ts_mcp_content",
+        mcp_ts_service::CONTENT_TYPE,
+        mcp_ts_service::page_types(service),
+    );
     quote! {
         #content
 

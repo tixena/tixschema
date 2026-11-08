@@ -1466,7 +1466,6 @@ pub fn service_text(declared: &ServiceDef) -> String {
                 &capabilities_literal(service, &held, skilled(service)),
             )
             .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
-        page_types(service),
         wrapped_table(&prefix, "Server", service)
             .trim_end()
             .to_owned(),
@@ -2099,7 +2098,7 @@ fn skill_files_declaration(service: &ServiceDef, prefix: &str) -> String {
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
 /// declares.
-fn page_types(service: &ServiceDef) -> String {
+pub fn page_types(service: &ServiceDef) -> String {
     if !service
         .operations
         .iter()
@@ -3058,6 +3057,32 @@ fn skill_literals() -> TokenStream {
     }
 }
 
+/// `dart_mcp_content()`: the value types of the service's blocks and messages, and its page types.
+fn content_accessor(declared: &ServiceDef) -> Option<TokenStream> {
+    let listed = declared
+        .operations
+        .iter()
+        .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
+    let pages = page_types(declared);
+    (listed || !pages.is_empty()).then(|| {
+        let written = [listed.then(|| CONTENT_TYPE.to_owned()), Some(pages)]
+            .into_iter()
+            .flatten()
+            .filter(|held| !held.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        quote! {
+            #[doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a `List<McpContent>`"]
+            #[doc = " success of an `mcp(content)` operation and a prompt's messages are written in."]
+            #[doc = " A bundle names them once, and imports"]
+            #[doc = " `dart:convert` and `dart:typed_data`."]
+            pub fn dart_mcp_content() -> ::std::string::String {
+                #written.to_owned()
+            }
+        }
+    })
+}
+
 /// `dart_mcp_service()` and `dart_mcp_client()`, for a service that asks for `mcp`. They write the
 /// tool list, the names, the instructions, the version and each `wrapped_{operation}()` over the
 /// markers when they run, since only the compiled types know them.
@@ -3081,21 +3106,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
     let wrapped_server = wrapped.clone();
     let forms = form_replacements(declared);
     let skill_literals = skill_literals();
-    let content = declared
-        .operations
-        .iter()
-        .any(|operation| is_content_list(operation) || is_prompt_messages(operation))
-        .then(|| {
-        quote! {
-            #[doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a `List<McpContent>`"]
-            #[doc = " success of an `mcp(content)` operation and a prompt's messages are written in."]
-            #[doc = " A bundle names them once, and imports"]
-            #[doc = " `dart:convert` and `dart:typed_data`."]
-            pub fn dart_mcp_content() -> ::std::string::String {
-                #CONTENT_TYPE.to_owned()
-            }
-        }
-    });
+    let content = content_accessor(declared);
     quote! {
         #content
 

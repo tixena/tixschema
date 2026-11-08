@@ -153,9 +153,11 @@ fn bundle() -> String {
         BookError::zod_schema(),
         LibraryServiceSchema::ts_definition(),
         LibraryServiceSchema::ts_service(),
+        LibraryServiceSchema::ts_mcp_content(),
         LibraryServiceSchema::ts_mcp_service(),
         DepotServiceSchema::ts_definition(),
         DepotServiceSchema::ts_service(),
+        DepotServiceSchema::ts_mcp_content(),
         DepotServiceSchema::ts_mcp_service(),
     ]
     .join("\n\n")

@@ -137,6 +137,7 @@ fn definitions() -> Vec<String> {
         stacks_service_schema::stacks_service_fault_kind_kotlin::kotlin_definition(),
         StacksServiceSchema::kotlin_http_client(),
         StacksServiceSchema::kotlin_ws_client(),
+        StacksServiceSchema::kotlin_mcp_content(),
         StacksServiceSchema::kotlin_mcp_service(),
     ]
 }
