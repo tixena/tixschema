@@ -6,6 +6,11 @@
 
 #![cfg(feature = "kotlin")]
 
+use super::mcp_auth_rows::{
+    AUTHORIZATION_SERVER, METADATA_URL, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED, auth_rows,
+};
+use super::mcp_mobile_document;
+use super::mcp_mobile_rows::block_on;
 use super::mcp_mobile_rows::{
     CLIENT_LINES, alone_answer, assert_answer_valid, assert_client_request, client_calls,
     client_replies, kotlin_text,
@@ -14,6 +19,7 @@ use super::mcp_mobile_server_rows::{
     HttpRow, ORIGIN, ServerRow, billing_answer, expected, http_rows, observed, rust_http,
     server_rows, workspace_answer,
 };
+use super::mcp_mobile_service::Archive;
 use super::mcp_mobile_service::{
     balance_error_kotlin, balance_response_kotlin, document_id_kotlin, get_version_request_kotlin,
     version_error_kotlin, version_response_kotlin,
@@ -112,7 +118,9 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     val billingRoute = createMobileBillingServiceMcpRoute(BillingHandlers)
     val alone = createMobileDocumentServiceMcpDispatcher(DocumentHandlers)
     val billingAlone = createMobileBillingServiceMcpDispatcher(BillingHandlers)
-    val http = createMobileDocumentServiceMcpHttpDispatcher(DocumentHandlers, listOf(input.getValue("origin").jsonPrimitive.content))
+    val http = createMobileDocumentServiceMcpHttpDispatcher(
+        MobileDocumentServiceMcpHttpSettings(listOf(input.getValue("origin").jsonPrimitive.content)),
+    ) { _, _ -> MobileDocumentServiceMcpAdmitted.Caller(DocumentHandlers) }
     val requests = input.getValue("requests").jsonArray.map { it.jsonPrimitive.content }
     val workspaceAnswers = requests.map { text ->
         nullable(mobileDocumentServiceMcpServe(text, "Workspace", null, workspace) { part, method, params ->
@@ -136,6 +144,7 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         val answered = http(
             MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
+                "/mcp",
                 headers,
                 given.getValue("body").jsonPrimitive.content.encodeToByteArray(),
             ),
@@ -171,6 +180,105 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         put("http", JsonArray(httpAnswers))
         put("shared", shared)
         put("kept", kept)
+    }
+}
+"#;
+
+/// Authorization: every request of `auth_rows()` through the server with the `admit` of its scheme,
+/// and every scope query through `mobileDocumentServiceMcpScopes`.
+const AUTH_DRIVER: &str = r#"
+suspend fun authReport(input: JsonObject): JsonObject {
+    var reached = 0
+    val counted = object : MobileDocumentServiceHandlers by DocumentHandlers {
+        override suspend fun getVersion(req: GetVersionRequest): MobileDocumentServiceGetVersionResult {
+            reached += 1
+            return DocumentHandlers.getVersion(req)
+        }
+
+        override suspend fun renameDocument(req: RenameDocumentRequest): MobileDocumentServiceRenameDocumentResult {
+            reached += 1
+            return DocumentHandlers.renameDocument(req)
+        }
+
+        override suspend fun touchDocument(req: TouchDocumentRequest) {
+            reached += 1
+            DocumentHandlers.touchDocument(req)
+        }
+    }
+    val tokens = mapOf("read-token" to "documents:read", "write-token" to "documents:read documents:write")
+    val admits = mapOf<String, suspend (MobileDocumentServiceMcpHttpRequest, MobileDocumentServiceMcpCall) -> MobileDocumentServiceMcpAdmitted>(
+        "oauth" to { request, _ ->
+            val needed = mobileDocumentServiceMcpScopes(request.header("mcp-method") ?: "", request.mcpName())
+            val token = request.bearerToken()
+            val held = tokens[token]
+            val scope = needed.joinToString(" ")
+            when {
+                token == null -> MobileDocumentServiceMcpAdmitted.Denied(
+                    MobileDocumentServiceMcpDenied.NoValidCredentials(if (needed.isEmpty()) null else scope),
+                )
+                token == "forbidden-token" -> MobileDocumentServiceMcpAdmitted.Denied(MobileDocumentServiceMcpDenied.Forbidden)
+                held == null -> MobileDocumentServiceMcpAdmitted.Denied(MobileDocumentServiceMcpDenied.NoValidCredentials())
+                needed.any { it !in held.split(" ") } -> MobileDocumentServiceMcpAdmitted.Denied(
+                    MobileDocumentServiceMcpDenied.InsufficientScope(scope),
+                )
+                else -> MobileDocumentServiceMcpAdmitted.Caller(counted)
+            }
+        },
+        "keys" to { request, _ ->
+            val key = request.header("x-api-key")
+            val secret = request.header("x-api-secret")
+            when {
+                key == null || secret == null -> MobileDocumentServiceMcpAdmitted.Denied(
+                    MobileDocumentServiceMcpDenied.NoValidCredentials(),
+                )
+                key == "admin-key" && secret == "admin-secret" -> MobileDocumentServiceMcpAdmitted.Caller(counted)
+                else -> MobileDocumentServiceMcpAdmitted.Denied(MobileDocumentServiceMcpDenied.Forbidden)
+            }
+        },
+    )
+    val oauth = input.getValue("oauth").jsonObject
+    val strings = { name: String -> oauth.getValue(name).jsonArray.map { it.jsonPrimitive.content } }
+    val origin = input.getValue("origin").jsonPrimitive.content
+    val settings = mapOf(
+        "oauth" to MobileDocumentServiceMcpHttpSettings(
+            listOf(origin),
+            MobileDocumentServiceMcpOAuth(
+                strings("authorizationServers"),
+                oauth.getValue("resource").jsonPrimitive.content,
+                oauth.getValue("resourceMetadataUrl").jsonPrimitive.content,
+                strings("scopesSupported"),
+            ),
+        ),
+        "keys" to MobileDocumentServiceMcpHttpSettings(listOf(origin)),
+    )
+    val answers = input.getValue("rows").jsonArray.map { row ->
+        val given = row.jsonObject
+        val scheme = given.getValue("scheme").jsonPrimitive.content
+        val serve = createMobileDocumentServiceMcpHttpDispatcher(settings.getValue(scheme), admits.getValue(scheme))
+        val before = reached
+        val response = serve(
+            MobileDocumentServiceMcpHttpRequest(
+                given.getValue("method").jsonPrimitive.content,
+                given.getValue("path").jsonPrimitive.content,
+                given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content },
+                given.getValue("body").jsonPrimitive.content.encodeToByteArray(),
+            ),
+        )
+        buildJsonObject {
+            put("status", response.status)
+            put("headers", JsonArray(response.headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))
+            put("body", response.body.decodeToString())
+            put("reached", reached - before)
+        }
+    }
+    val scopes = input.getValue("queries").jsonArray.map { query ->
+        val asked = query.jsonArray
+        val name = asked[1].let { if (it is JsonNull) null else it.jsonPrimitive.content }
+        JsonArray(mobileDocumentServiceMcpScopes(asked[0].jsonPrimitive.content, name).map { JsonPrimitive(it) })
+    }
+    return buildJsonObject {
+        put("answers", JsonArray(answers))
+        put("scopes", JsonArray(scopes))
     }
 }
 "#;
@@ -281,6 +389,7 @@ fun main() = runBlocking {
     val report = buildJsonObject {
         put("server", serverReport(input))
         put("client", clientReport(input))
+        put("auth", authReport(input))
     }
     println(report.toString())
 }
@@ -336,6 +445,20 @@ fn input() -> Value {
         "requests": server_rows().iter().map(|row| row.text.clone()).collect::<Vec<_>>(),
         "http": http_rows().iter().map(http_input).collect::<Vec<_>>(),
         "replies": replies,
+        "oauth": {
+            "authorizationServers": [AUTHORIZATION_SERVER],
+            "resource": RESOURCE,
+            "resourceMetadataUrl": METADATA_URL,
+            "scopesSupported": [SCOPES_SUPPORTED],
+        },
+        "rows": auth_rows().iter().map(|row| json!({
+            "body": row.body,
+            "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            "method": row.method,
+            "path": row.path,
+            "scheme": row.scheme.word(),
+        })).collect::<Vec<_>>(),
+        "queries": SCOPE_QUERIES.iter().map(|(method, name)| json!([method, name])).collect::<Vec<_>>(),
     })
 }
 
@@ -346,6 +469,7 @@ fn module() -> String {
     parts.push(HANDLERS.to_owned());
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(SERVER_DRIVER.to_owned());
+    parts.push(AUTH_DRIVER.to_owned());
     parts.push(CLIENT_DRIVER.to_owned());
     parts.join("\n\n")
 }
@@ -490,5 +614,63 @@ fn the_kotlin_client_reads_the_outcomes_the_design_lists() {
         assert_eq!(client["methods"][at], "tools/call");
         assert_eq!(client["versions"][at], "2026-07-28");
         assert_eq!(client["names"][at], client_calls()[at].tool);
+    }
+}
+
+#[test]
+fn the_kotlin_server_answers_every_authorization_case_as_the_rust_dispatcher_does() {
+    let Some(report) = driven() else {
+        return;
+    };
+    let rows = auth_rows();
+    let answers = report["auth"]["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), rows.len());
+    for (row, kotlin) in rows.iter().zip(answers) {
+        let (status, headers, body) = rust_auth_answer!(
+            mcp_mobile_document,
+            MobileDocumentServiceSchema,
+            Archive,
+            row,
+            block_on
+        );
+        assert_eq!(
+            kotlin["status"].as_u64().unwrap(),
+            u64::from(status),
+            "{}: {kotlin}",
+            row.name
+        );
+        let kotlin_headers: Vec<(String, String)> = kotlin["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pair| {
+                (
+                    pair[0].as_str().unwrap().to_owned(),
+                    pair[1].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(kotlin_headers, headers, "{}", row.name);
+        assert_eq!(kotlin["body"].as_str().unwrap(), body, "{}", row.name);
+        if status != 200 {
+            assert_eq!(
+                kotlin["reached"], 0_i32,
+                "{}: no handler is called",
+                row.name
+            );
+        }
+    }
+}
+
+#[test]
+fn the_scopes_function_answers_what_the_rust_registry_answers() {
+    let Some(report) = driven() else {
+        return;
+    };
+    let kotlin = report["auth"]["scopes"].as_array().unwrap();
+    assert_eq!(kotlin.len(), SCOPE_QUERIES.len());
+    for ((method, name), held) in SCOPE_QUERIES.iter().zip(kotlin) {
+        let rust = MobileDocumentServiceSchema::mcp_scopes(method, *name);
+        assert_eq!(*held, json!(rust), "{method} {name:?}");
     }
 }

@@ -64,7 +64,7 @@ pub trait DartDocumentService<Ctx> {
     ) -> Result<(McpVersionResponse, String), McpVersionError>;
 
     /// Answers the current version of one document.
-    #[service_schema_op(mcp(title = "Current Document Version"))]
+    #[service_schema_op(mcp(title = "Current Document Version", scopes = ["documents:read"]))]
     async fn get_version(
         &self,
         ctx: &Ctx,
@@ -80,6 +80,7 @@ pub trait DartDocumentService<Ctx> {
     ) -> Result<McpVersionResponse, McpVersionError>;
 
     /// Renames one document.
+    #[service_schema_op(mcp(scopes = ["documents:write"]))]
     async fn rename_document(
         &self,
         ctx: &Ctx,
@@ -88,7 +89,7 @@ pub trait DartDocumentService<Ctx> {
     ) -> Result<(), McpVersionError>;
 
     /// Marks one document as read.
-    #[service_schema_op(one_way)]
+    #[service_schema_op(one_way, mcp(scopes = ["documents:read", "documents:touch"]))]
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 

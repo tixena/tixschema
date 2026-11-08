@@ -487,11 +487,62 @@ const DISPATCHERS: &str = "fun create@N@McpDispatcher(handlers: @N@Handlers): su
   }
 }";
 
-const HTTP: &str = r#"data class @N@McpHttpRequest(val method: String, val headers: List<Pair<String, String>>, val body: ByteArray) {
+const HTTP: &str = r#"/** An HTTP request in plain terms. `path` is the request's path, with or without its query. */
+data class @N@McpHttpRequest(val method: String, val path: String, val headers: List<Pair<String, String>>, val body: ByteArray) {
+  /** The value of the header called [name], whatever its case. */
   fun header(name: String): String? = headers.firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
+
+  /** The token of an `Authorization: Bearer` header, whatever the case of the scheme. */
+  fun bearerToken(): String? {
+    val value = header("authorization") ?: return null
+    val at = value.indexOf(' ')
+    if (at < 0) return null
+    val token = value.substring(at + 1).trim()
+    return if (value.substring(0, at).equals("bearer", ignoreCase = true) && token.isNotEmpty()) token else null
+  }
+
+  /** The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so. */
+  fun mcpName(): String? = header("mcp-name")?.let { @P@McpDecodedHeader(it) }
 }
 
 data class @N@McpHttpResponse(val status: Int, val headers: List<Pair<String, String>>, val body: ByteArray)
+
+/** The protected-resource metadata of a server that authorizes by OAuth. */
+data class @N@McpOAuth(
+  val authorizationServers: List<String>,
+  val resource: String,
+  val resourceMetadataUrl: String,
+  val scopesSupported: List<String>,
+)
+
+/** What an HTTP server of this endpoint is configured with. Without [oauth] it serves no metadata document and writes no challenge. */
+data class @N@McpHttpSettings(val allowedOrigins: List<String>, val oauth: @N@McpOAuth? = null)
+
+/** Why `admit` refused a request. */
+sealed interface @N@McpDenied {
+  /** `401`: no credentials, or credentials that do not hold. [scope] names what the called operation needs. */
+  data class NoValidCredentials(val scope: String? = null) : @N@McpDenied
+
+  /** `403` with a challenge: the credentials hold, but not the scopes [scope] names. */
+  data class InsufficientScope(val scope: String) : @N@McpDenied
+
+  /** `403` with no challenge. */
+  object Forbidden : @N@McpDenied
+}
+
+/** What a handler reaches beside its arguments. */
+class @N@McpCall
+
+/** What `admit` answers: the handlers built for the caller, or why the request is refused. */
+sealed interface @N@McpAdmitted {
+  data class Caller(val handlers: @N@Handlers) : @N@McpAdmitted
+  data class Denied(val denied: @N@McpDenied) : @N@McpAdmitted
+}
+
+/** The scopes a caller needs for the request [method] and [name] name, none for any other. */
+fun @P@McpScopes(method: String, name: String?): List<String> {
+@SCOPES@  return emptyList()
+}
 
 private fun @P@McpWithoutBody(status: Int, headers: List<Pair<String, String>> = emptyList()): @N@McpHttpResponse =
   @N@McpHttpResponse(status, headers, ByteArray(0))
@@ -541,10 +592,57 @@ private fun @P@McpHeaderMismatch(request: @N@McpHttpRequest, message: JsonObject
   return null
 }
 
-private fun @P@McpAdmitted(request: @N@McpHttpRequest, allowedOrigins: List<String>): Pair<String?, @N@McpHttpResponse?> {
-  if (request.method != "POST") return null to @P@McpWithoutBody(405, listOf("Allow" to "POST"))
+private fun @P@McpUrlPath(url: String): String {
+  val after = url.substringAfter("://", url)
+  val at = after.indexOf('/')
+  val fromPath = if (at < 0) "/" else after.substring(at)
+  return fromPath.split('?', '#').first()
+}
+
+private fun @P@McpDenial(denied: @N@McpDenied, settings: @N@McpHttpSettings, request: @N@McpHttpRequest): @N@McpHttpResponse {
+  val oauth = settings.oauth
+  val (status, challenge) = when (denied) {
+    is @N@McpDenied.NoValidCredentials -> 401 to oauth?.let {
+      val parts = mutableListOf("resource_metadata=\"${it.resourceMetadataUrl}\"")
+      denied.scope?.let { scope -> parts.add("scope=\"$scope\"") }
+      if (request.bearerToken() != null) parts.add("error=\"invalid_token\"")
+      "Bearer ${parts.joinToString(", ")}"
+    }
+    is @N@McpDenied.InsufficientScope -> 403 to oauth?.let {
+      "Bearer error=\"insufficient_scope\", scope=\"${denied.scope}\", resource_metadata=\"${it.resourceMetadataUrl}\""
+    }
+    is @N@McpDenied.Forbidden -> 403 to null
+  }
+  return @P@McpWithoutBody(status, if (challenge == null) emptyList() else listOf("WWW-Authenticate" to challenge))
+}
+
+private fun @P@McpMetadata(oauth: @N@McpOAuth): @N@McpHttpResponse =
+  @P@McpJsonResponse(
+    200,
+    buildJsonObject {
+      put("authorization_servers", JsonArray(oauth.authorizationServers.map { JsonPrimitive(it) }))
+      put("bearer_methods_supported", JsonArray(listOf(JsonPrimitive("header"))))
+      put("resource", oauth.resource)
+      if (oauth.scopesSupported.isNotEmpty()) {
+        put("scopes_supported", JsonArray(oauth.scopesSupported.map { JsonPrimitive(it) }))
+      }
+    },
+  )
+
+private fun @P@McpBeforeAdmit(request: @N@McpHttpRequest, settings: @N@McpHttpSettings): @N@McpHttpResponse? {
+  val oauth = settings.oauth
+  if (oauth != null && request.method == "GET" &&
+    request.path.split('?', '#').first() == @P@McpUrlPath(oauth.resourceMetadataUrl)
+  ) {
+    return @P@McpMetadata(oauth)
+  }
+  if (request.method != "POST") return @P@McpWithoutBody(405, listOf("Allow" to "POST"))
   val origin = request.header("origin")
-  if (origin != null && origin !in allowedOrigins) return null to @P@McpWithoutBody(403)
+  if (origin != null && origin !in settings.allowedOrigins) return @P@McpWithoutBody(403)
+  return null
+}
+
+private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHttpResponse?> {
   val text = try {
     Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(request.body)).toString()
   } catch (rejected: Exception) {
@@ -574,28 +672,42 @@ private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
     @N@McpHttpResponse(200, listOf("Content-Type" to "application/json"), answered.encodeToByteArray())
   }
 
+/**
+ * The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
+ * `admit`, the body and the headers that must agree with it. [route] also receives the handlers
+ * that `admit` built for the caller.
+ */
 suspend fun @P@McpServeHttp(
   request: @N@McpHttpRequest,
-  allowedOrigins: List<String>,
+  settings: @N@McpHttpSettings,
   serverName: String,
   instructions: String?,
   endpoint: @N@McpEndpoint,
-  route: suspend (part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
+  route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
 ): @N@McpHttpResponse {
-  val (text, refused) = @P@McpAdmitted(request, allowedOrigins)
+  val before = @P@McpBeforeAdmit(request, settings)
+  if (before != null) return before
+  val caller = when (val admitted = admit(request, @N@McpCall())) {
+    is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
+    is @N@McpAdmitted.Caller -> admitted.handlers
+  }
+  val (text, refused) = @P@McpAfterAdmit(request)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
-  return @P@McpHttpAnswer(@P@McpServe(text, serverName, instructions, endpoint, route))
+  return @P@McpHttpAnswer(@P@McpServe(text, serverName, instructions, endpoint) { part, method, params ->
+    route(caller, part, method, params)
+  })
 }
 
+/** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
 fun create@N@McpHttpDispatcher(
-  handlers: @N@Handlers,
-  allowedOrigins: List<String>,
+  settings: @N@McpHttpSettings,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
 ): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse {
-  val route = create@N@McpRoute(handlers)
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
   return { request ->
-    @P@McpServeHttp(request, allowedOrigins, @P@McpServerName, @P@McpInstructions, endpoint) { _, method, params ->
-      route(method, params)
+    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit) { caller, _, method, params ->
+      create@N@McpRoute(caller)(method, params)
     }
   }
 }"#;
@@ -622,10 +734,38 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(RECEIVING, &prefix, &named, &fields),
         route(service, &prefix, &named, &fields),
         fill(DISPATCHERS, &prefix, &named, &fields),
-        fill(HTTP, &prefix, &named, &fields),
+        fill(HTTP, &prefix, &named, &fields).replace("@SCOPES@", &scopes_table(service)),
     ];
     published.extend(kotlin_declarations());
     published
+}
+
+fn scopes_table(service: &ServiceDef) -> String {
+    let cases: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let needed: Vec<String> = operation
+                .mcp
+                .scopes
+                .iter()
+                .map(|(scope, _)| kotlin_quoted(scope))
+                .collect();
+            format!(
+                "      {} -> return listOf({})\n",
+                kotlin_quoted(operation.mcp_tool_name()),
+                needed.join(", ")
+            )
+        })
+        .collect();
+    if cases.is_empty() {
+        return String::new();
+    }
+    format!(
+        "  if (method == \"tools/call\") {{\n    when (name) {{\n{}    }}\n  }}\n",
+        cases.concat()
+    )
 }
 
 /// One `"tool" to <marker>,` entry per tool: the accessor writes `true` or `false` over each

@@ -2,6 +2,11 @@
 //! bytes it records, every answer held to the official 2026-07-28 schema, two services behind one
 //! endpoint, a schema's digits kept, and the client reading each outcome.
 
+use super::mcp_auth_rows::{
+    AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
+    auth_rows,
+};
+use super::mcp_node_document as document_mcp;
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
@@ -94,9 +99,9 @@ main().catch((error) => { console.error(error); process.exit(1); });
 /// The HTTP rules in the order the design lists them, one request for each.
 const HTTP_DRIVER: &str = r#"
 async function main() {
-  const dispatch = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: ["https://app.example.com"] });
+  const dispatch = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: ["https://app.example.com"] }, async () => ({ ctx: {} }));
   const encode = (text) => new TextEncoder().encode(text);
-  const post = (text, headers = [], method = "POST") => ({ method, headers, body: encode(text) });
+  const post = (text, headers = [], method = "POST") => ({ method, path: "/mcp", headers, body: encode(text) });
   const agreeing = (text, method, name) => {
     const headers = [["MCP-Protocol-Version", "2026-07-28"], ["Mcp-Method", method]];
     if (name !== undefined) headers.push(["mcp-name", name]);
@@ -107,7 +112,7 @@ async function main() {
     ["tools/call", post(toolCall, [], "GET")],
     ["tools/call", post(toolCall, [["Origin", "https://elsewhere.example.com"]])],
     ["tools/call", post("not json")],
-    ["tools/call", { method: "POST", headers: [], body: new Uint8Array([0xff, 0xfe]) }],
+    ["tools/call", { method: "POST", path: "/mcp", headers: [], body: new Uint8Array([0xff, 0xfe]) }],
     ["tools/call", post(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }))],
     ["tools/call", post(toolCall, [["Mcp-Method", "tools/call"], ["Mcp-Name", "get-version"]])],
     ["tools/call", agreeing(toolCall, "tools/list", "get-version")],
@@ -123,10 +128,55 @@ async function main() {
   ];
   const answers = [];
   for (const [method, input] of requests) {
-    const response = await dispatch({}, input);
+    const response = await dispatch(input);
     answers.push({ method, status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
   }
   console.log(JSON.stringify(answers));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// Authorization: every request of `auth_rows()` through the server with the `admit` of its scheme,
+/// and every scope query through `documentServiceMcpScopes`.
+const AUTH_DRIVER: &str = r#"
+async function main() {
+  const input = JSON.parse(INPUT);
+  let reached = 0;
+  const answering = { ...impl, async renameDocument() { return { ok: false, error: { errorCode: "not-found" } }; } };
+  const counted = Object.fromEntries(Object.entries(answering).map(([name, handler]) => [name, (...given) => { reached += 1; return handler(...given); }]));
+  const tokens = new Map([["read-token", "documents:read"], ["write-token", "documents:read documents:write"]]);
+  const admits = {
+    oauth: async (request) => {
+      const needed = documentServiceMcpScopes(documentServiceMcpHeader(request, "mcp-method") ?? "", documentServiceMcpName(request));
+      const token = documentServiceMcpBearerToken(request);
+      if (token === undefined) return { denied: needed.length === 0 ? { kind: "noValidCredentials" } : { kind: "noValidCredentials", scope: needed.join(" ") } };
+      if (token === "forbidden-token") return { denied: { kind: "forbidden" } };
+      const held = tokens.get(token);
+      if (held === undefined) return { denied: { kind: "noValidCredentials" } };
+      if (needed.some((scope) => !held.split(" ").includes(scope))) return { denied: { kind: "insufficientScope", scope: needed.join(" ") } };
+      return { ctx: {} };
+    },
+    keys: async (request) => {
+      const key = documentServiceMcpHeader(request, "x-api-key");
+      const secret = documentServiceMcpHeader(request, "x-api-secret");
+      if (key === undefined || secret === undefined) return { denied: { kind: "noValidCredentials" } };
+      return key === "admin-key" && secret === "admin-secret" ? { ctx: {} } : { denied: { kind: "forbidden" } };
+    },
+  };
+  const settings = {
+    oauth: { allowedOrigins: [input.origin], oauth: input.oauth },
+    keys: { allowedOrigins: [input.origin] },
+  };
+  const answers = [];
+  for (const row of input.rows) {
+    const dispatch = createDocumentServiceMcpHttpDispatcher(counted, settings[row.scheme], admits[row.scheme]);
+    const before = reached;
+    const response = await dispatch({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    answers.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body), reached: reached - before });
+  }
+  const scopes = input.queries.map(([method, name]) => documentServiceMcpScopes(method, name ?? undefined));
+  console.log(JSON.stringify({ answers, scopes }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -202,7 +252,14 @@ const USAGE_CALLER: &str = r#"import {
   documentServiceMcpPart,
   documentServiceMcpServe,
   documentServiceMcpServeHttp,
+  documentServiceMcpName,
+  documentServiceMcpScopes,
+  DocumentServiceMcpCall,
   type DocumentServiceImpl,
+  type DocumentServiceMcpAdmitted,
+  type DocumentServiceMcpDenied,
+  type DocumentServiceMcpHttpRequest,
+  type DocumentServiceMcpHttpSettings,
   type DocumentServiceMcpTransport,
 } from "./bundle.js";
 
@@ -210,7 +267,30 @@ declare const impl: DocumentServiceImpl<number>;
 declare const transport: DocumentServiceMcpTransport;
 
 export const dispatcher: (ctx: number, text: string) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
-export const http = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: [] });
+export const http = createDocumentServiceMcpHttpDispatcher(
+  impl,
+  { allowedOrigins: [] },
+  async (request: DocumentServiceMcpHttpRequest, call: DocumentServiceMcpCall) =>
+    call instanceof DocumentServiceMcpCall && request.path === "/mcp"
+      ? { ctx: 1 }
+      : ({ denied: { kind: "forbidden" } } satisfies DocumentServiceMcpAdmitted<number>),
+);
+export const settings: DocumentServiceMcpHttpSettings = {
+  allowedOrigins: [],
+  oauth: {
+    authorizationServers: [],
+    resource: "",
+    resourceMetadataUrl: "",
+    scopesSupported: [],
+  },
+};
+export const denied: ReadonlyArray<DocumentServiceMcpDenied> = [
+  { kind: "noValidCredentials" },
+  { kind: "noValidCredentials", scope: "documents:read" },
+  { kind: "insufficientScope", scope: "documents:write" },
+  { kind: "forbidden" },
+];
+export const needed: ReadonlyArray<string> = documentServiceMcpScopes("tools/call", documentServiceMcpName({ method: "POST", path: "/", headers: [], body: new Uint8Array() }));
 export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
@@ -358,7 +438,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<(VersionResponse, String), VersionError>;
 
     /// Answers the current version of one document.
-    #[service_schema_op(mcp(title = "Current Document Version"))]
+    #[service_schema_op(mcp(title = "Current Document Version", scopes = ["documents:read"]))]
     async fn get_version(
         &self,
         ctx: &Ctx,
@@ -370,6 +450,7 @@ pub trait DocumentService<Ctx> {
     async fn lookup(&self, ctx: &Ctx, id: DocumentId) -> Result<VersionResponse, VersionError>;
 
     /// Renames one document.
+    #[service_schema_op(mcp(scopes = ["documents:write"]))]
     async fn rename_document(
         &self,
         ctx: &Ctx,
@@ -378,7 +459,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<(), VersionError>;
 
     /// Marks one document as read.
-    #[service_schema_op(one_way)]
+    #[service_schema_op(one_way, mcp(scopes = ["documents:read", "documents:touch"]))]
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 
@@ -835,8 +916,13 @@ fn the_http_server_applies_the_rules_in_the_order_the_design_gives() {
         let status = held["status"].as_u64().unwrap();
         let body = held["body"].as_str().unwrap();
         if matches!(status, 405 | 403 | 202) {
+            let allowed = if status == 405 {
+                json!([["Allow", "POST"]])
+            } else {
+                json!([])
+            };
             assert_eq!(body, "", "{held:#}");
-            assert_eq!(held["headers"], json!([]), "{held:#}");
+            assert_eq!(held["headers"], allowed, "{held:#}");
             continue;
         }
         assert_eq!(
@@ -1195,4 +1281,109 @@ fn the_published_text_holds_no_marker_the_accessor_left_unreplaced() {
             "a marker is left in the text"
         );
     }
+}
+
+/// What the Rust dispatcher of `DocumentService` answers to `row`.
+fn rust_answer(row: &AuthRow) -> (u16, Vec<(String, String)>, String) {
+    rust_auth_answer!(document_mcp, DocumentServiceSchema, Stand, row, answered)
+}
+
+fn auth_input() -> Value {
+    json!({
+        "origin": ORIGIN,
+        "oauth": {
+            "authorizationServers": [AUTHORIZATION_SERVER],
+            "resource": RESOURCE,
+            "resourceMetadataUrl": METADATA_URL,
+            "scopesSupported": [SCOPES_SUPPORTED],
+        },
+        "rows": auth_rows().iter().map(|row| json!({
+            "body": row.body,
+            "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            "method": row.method,
+            "path": row.path,
+            "scheme": row.scheme.word(),
+        })).collect::<Vec<_>>(),
+        "queries": SCOPE_QUERIES.iter().map(|(method, name)| json!([method, name])).collect::<Vec<_>>(),
+    })
+}
+
+fn auth_report() -> Option<Value> {
+    let driver = format!(
+        "{REQUESTS}\nconst INPUT = {};\n{AUTH_DRIVER}",
+        Value::String(auth_input().to_string())
+    );
+    run("mcp-auth", &driver)
+}
+
+#[test]
+fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let rows = auth_rows();
+    let answers = report["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), rows.len());
+    for (row, node) in rows.iter().zip(answers) {
+        let (status, headers, body) = rust_answer(row);
+        assert_eq!(
+            node["status"].as_u64().unwrap(),
+            u64::from(status),
+            "{}: {node}",
+            row.name
+        );
+        let node_headers: Vec<(String, String)> = node["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pair| {
+                (
+                    pair[0].as_str().unwrap().to_owned(),
+                    pair[1].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(node_headers, headers, "{}", row.name);
+        assert_eq!(node["body"].as_str().unwrap(), body, "{}", row.name);
+        if status != 200 {
+            assert_eq!(node["reached"], 0_i32, "{}: no handler is called", row.name);
+        }
+    }
+    let statuses: Vec<u64> = answers
+        .iter()
+        .map(|held| held["status"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            200, 200, 405, 401, 401, 401, 401, 401, 200, 200, 403, 403, 403, 403, 403, 200, 400,
+            401, 405, 401, 401, 403, 403, 200, 200, 403
+        ]
+    );
+}
+
+#[test]
+fn the_scopes_function_answers_what_the_rust_registry_answers() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let node = report["scopes"].as_array().unwrap();
+    assert_eq!(node.len(), SCOPE_QUERIES.len());
+    for ((method, name), held) in SCOPE_QUERIES.iter().zip(node) {
+        let rust = DocumentServiceSchema::mcp_scopes(method, *name);
+        assert_eq!(*held, json!(rust), "{method} {name:?}");
+    }
+    assert_eq!(
+        DocumentServiceSchema::mcp_scopes("tools/call", Some("touch-document")),
+        ["documents:read", "documents:touch"]
+    );
+}
+
+#[test]
+fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike() {
+    let (alone, served, status) =
+        rust_serves_alike!(document_mcp, DocumentServiceSchema, Stand, answered);
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+    assert_eq!(status, 200);
 }

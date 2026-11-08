@@ -1484,7 +1484,7 @@ use run_node_http_service::{
 };
 #[cfg(test)]
 use run_node_mcp::{
-    ArchiveService, BillingService, DocumentService, archive_service_schema,
+    ArchiveService, BillingService, DocumentService, DocumentServiceSchema, archive_service_schema,
     billing_service_schema, document_service_schema,
 };
 #[cfg(test)]
@@ -1613,17 +1613,36 @@ mod run_swift_member_named;
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
 
+/// The requests every emitted `mcp` server's authorization is measured with.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_auth_rows.rs"]
+mod mcp_auth_rows;
+
 /// The emitted `mcp` server and client run by node: the requests of the design, every answer held
 /// to the 2026-07-28 schema, and two services behind one endpoint.
 #[cfg(test)]
+#[macro_use]
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
+
+/// The `DocumentService` dispatcher the emitted TypeScript server is measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]
+mod mcp_node_document;
 
 /// The services the Dart `mcp` server and client are run on.
 #[cfg(test)]
 #[cfg(feature = "dart")]
+#[macro_use]
 #[path = "service_schema_emitted_client_tests/mcp_dart_services.rs"]
 mod mcp_dart_services;
+
+/// The `DartDocumentService` dispatcher the emitted Dart server is measured against.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/mcp_dart_document.rs"]
+mod mcp_dart_document;
 
 #[cfg(test)]
 #[cfg(feature = "dart")]
@@ -1633,8 +1652,9 @@ mod run_dart_mcp;
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
 #[cfg(all(test, feature = "dart"))]
 use mcp_dart_services::{
-    AuditService, DartBillingService, DartDocumentService, TaggingService, audit_service_schema,
-    dart_billing_service_schema, dart_document_service_schema, tagging_service_schema,
+    AuditService, DartBillingService, DartDocumentService, DartDocumentServiceSchema,
+    TaggingService, audit_service_schema, dart_billing_service_schema,
+    dart_document_service_schema, tagging_service_schema,
 };
 
 /// `MobileDocumentService` and `MobileBillingService`, both asking for `mcp`: the Rust twins the

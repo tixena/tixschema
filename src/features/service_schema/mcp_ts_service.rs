@@ -352,11 +352,34 @@ const HTTP_TYPES: &str = "/** What the HTTP endpoint checks of a request before 
 export type __N__McpHttpSettings = {
   /** The `Origin` values a browser may send; a request carrying another is refused. */
   readonly allowedOrigins: ReadonlyArray<string>;
+  /** Absent where the server authorizes by other means: no metadata document and no challenge. */
+  readonly oauth?: __N__McpOAuth;
 };
 
-/** An HTTP request in plain terms. */
+/** The protected-resource metadata of a server that authorizes by OAuth. */
+export type __N__McpOAuth = {
+  readonly authorizationServers: ReadonlyArray<string>;
+  readonly resource: string;
+  readonly resourceMetadataUrl: string;
+  readonly scopesSupported: ReadonlyArray<string>;
+};
+
+/** Why `admit` refused a request. */
+export type __N__McpDenied =
+  /** `401`: no credentials, or credentials that do not hold. `scope` names what the called operation needs. */
+  | { readonly kind: \"noValidCredentials\"; readonly scope?: string | undefined }
+  /** `403` with a challenge: the credentials hold, but not the scopes `scope` names. */
+  | { readonly kind: \"insufficientScope\"; readonly scope: string }
+  /** `403` with no challenge. */
+  | { readonly kind: \"forbidden\" };
+
+/** What a handler reaches beside its arguments. */
+export class __N__McpCall {}
+
+/** An HTTP request in plain terms. `path` is the request's path, with or without its query. */
 export type __N__McpHttpRequest = {
   readonly method: string;
+  readonly path: string;
   readonly headers: ReadonlyArray<readonly [string, string]>;
   readonly body: Uint8Array;
 };
@@ -366,7 +389,10 @@ export type __N__McpHttpResponse = {
   readonly status: number;
   readonly headers: ReadonlyArray<readonly [string, string]>;
   readonly body: Uint8Array;
-};";
+};
+
+/** What `admit` answers: the context the handlers run with, or why the request is refused. */
+export type __N__McpAdmitted<Ctx> = { readonly ctx: Ctx } | { readonly denied: __N__McpDenied };";
 
 const SERVE_HTTP: &str = r#"const __p__McpNamedBy = new Map<string, string>([
   ["tools/call", "name"],
@@ -374,8 +400,26 @@ const SERVE_HTTP: &str = r#"const __p__McpNamedBy = new Map<string, string>([
   ["prompts/get", "name"],
 ]);
 
-function __p__McpHeader(request: __N__McpHttpRequest, name: string): string | undefined {
-  return request.headers.find(([candidate]) => candidate.toLowerCase() === name)?.[1];
+/** The value of the header called `name`, whatever its case. */
+export function __p__McpHeader(request: __N__McpHttpRequest, name: string): string | undefined {
+  const wanted = name.toLowerCase();
+  return request.headers.find(([candidate]) => candidate.toLowerCase() === wanted)?.[1];
+}
+
+/** The token of an `Authorization: Bearer` header, whatever the case of the scheme. */
+export function __p__McpBearerToken(request: __N__McpHttpRequest): string | undefined {
+  const value = __p__McpHeader(request, "authorization");
+  if (value === undefined) return undefined;
+  const at = value.indexOf(" ");
+  if (at < 0) return undefined;
+  const token = value.slice(at + 1).trim();
+  return value.slice(0, at).toLowerCase() === "bearer" && token !== "" ? token : undefined;
+}
+
+/** The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so. */
+export function __p__McpName(request: __N__McpHttpRequest): string | undefined {
+  const value = __p__McpHeader(request, "mcp-name");
+  return value === undefined ? undefined : __p__McpHeaderText(value);
 }
 
 /** A header value that may be written `=?base64?...?=`, read as the text it stands for. */
@@ -399,21 +443,78 @@ function __p__McpHttpReplied(handled: __N__McpHandled | number): __N__McpHttpRes
   };
 }
 
+function __p__McpUrlPath(url: string): string {
+  const separator = url.indexOf("://");
+  const after = separator < 0 ? url : url.slice(separator + 3);
+  const at = after.indexOf("/");
+  const fromPath = at < 0 ? "/" : after.slice(at);
+  return fromPath.split(/[?#]/)[0] ?? fromPath;
+}
+
+function __p__McpDenial(
+  denied: __N__McpDenied,
+  settings: __N__McpHttpSettings,
+  request: __N__McpHttpRequest,
+): __N__McpHttpResponse {
+  const oauth = settings.oauth;
+  let status = 403;
+  let challenge: string | undefined;
+  if (denied.kind === "noValidCredentials") {
+    status = 401;
+    if (oauth !== undefined) {
+      const parts = [`resource_metadata="${oauth.resourceMetadataUrl}"`];
+      if (denied.scope !== undefined) parts.push(`scope="${denied.scope}"`);
+      if (__p__McpBearerToken(request) !== undefined) parts.push('error="invalid_token"');
+      challenge = `Bearer ${parts.join(", ")}`;
+    }
+  } else if (denied.kind === "insufficientScope" && oauth !== undefined) {
+    challenge = `Bearer error="insufficient_scope", scope="${denied.scope}", resource_metadata="${oauth.resourceMetadataUrl}"`;
+  }
+  const response = __p__McpHttpReplied(status);
+  return challenge === undefined ? response : { ...response, headers: [["WWW-Authenticate", challenge]] };
+}
+
+function __p__McpMetadata(oauth: __N__McpOAuth): __N__McpHttpResponse {
+  return {
+    status: 200,
+    headers: [["Content-Type", "application/json"]],
+    body: new TextEncoder().encode(
+      __p__McpText({
+        authorization_servers: oauth.authorizationServers,
+        bearer_methods_supported: ["header"],
+        resource: oauth.resource,
+        scopes_supported: oauth.scopesSupported.length === 0 ? undefined : oauth.scopesSupported,
+      }),
+    ),
+  };
+}
+
 /**
- * The Streamable HTTP rules around `__p__McpServe`: the method, the `Origin`, the body, the headers
- * that must agree with it, and the status each refusal travels under.
+ * The Streamable HTTP rules around `__p__McpServe`: the metadata document, the method, the `Origin`,
+ * `admit`, the body, the headers that must agree with it, and the status each refusal travels
+ * under. `route` also receives the `Ctx` that `admit` answered.
  */
-export async function __p__McpServeHttp(
+export async function __p__McpServeHttp<Ctx>(
   request: __N__McpHttpRequest,
   settings: __N__McpHttpSettings,
   serverName: string,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
-  route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
+  admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
+  route: (ctx: Ctx, part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
 ): Promise<__N__McpHttpResponse> {
-  if (request.method !== "POST") return __p__McpHttpReplied(405);
+  if (settings.oauth !== undefined) {
+    const path = request.path.split(/[?#]/)[0];
+    if (request.method === "GET" && path === __p__McpUrlPath(settings.oauth.resourceMetadataUrl)) {
+      return __p__McpMetadata(settings.oauth);
+    }
+  }
+  if (request.method !== "POST") return { ...__p__McpHttpReplied(405), headers: [["Allow", "POST"]] };
   const origin = __p__McpHeader(request, "origin");
   if (origin !== undefined && !settings.allowedOrigins.includes(origin)) return __p__McpHttpReplied(403);
+  const admitted = await admit(request, new __N__McpCall());
+  if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
+  const { ctx } = admitted;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(request.body);
@@ -428,20 +529,24 @@ export async function __p__McpServeHttp(
   if (typeof method === "string") {
     const params = __p__McpObject(message.params);
     const expected: Array<readonly [string, unknown]> = [
-      ["mcp-protocol-version", __p__McpObject(params?._meta)?.[__p__McpMetaProtocol]],
-      ["mcp-method", method],
+      ["MCP-Protocol-Version", __p__McpObject(params?._meta)?.[__p__McpMetaProtocol]],
+      ["Mcp-Method", method],
     ];
     const named = __p__McpNamedBy.get(method);
-    if (named !== undefined) expected.push(["mcp-name", params?.[named]]);
+    if (named !== undefined) expected.push(["Mcp-Name", params?.[named]]);
     for (const [header, wanted] of expected) {
       const carried = __p__McpHeader(request, header);
-      const read = carried === undefined ? undefined : header === "mcp-name" ? __p__McpHeaderText(carried) : carried;
+      const read = carried === undefined ? undefined : header === "Mcp-Name" ? __p__McpHeaderText(carried) : carried;
       if (read === undefined || read !== wanted) {
         return __p__McpHttpReplied(__p__McpRefused(message.id, 400, -32020, `Header mismatch: ${header}`));
       }
     }
   }
-  return __p__McpHttpReplied(await __p__McpHandle(message, serverName, instructions, endpoint, route));
+  return __p__McpHttpReplied(
+    await __p__McpHandle(message, serverName, instructions, endpoint, (part, called, given) =>
+      route(ctx, part, called, given),
+    ),
+  );
 }"#;
 
 const FACTORIES: &str = "/**
@@ -463,17 +568,19 @@ export function create__N__McpDispatcher<Ctx>(
 export function create__N__McpHttpDispatcher<Ctx>(
   impl: __DRIVEN__,
   settings: __N__McpHttpSettings,
-): (ctx: Ctx, request: __N__McpHttpRequest) => Promise<__N__McpHttpResponse> {
+  admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
+): (request: __N__McpHttpRequest) => Promise<__N__McpHttpResponse> {
   const route = create__N__McpRoute(impl);
   const endpoint = __p__McpEndpoint(__p__McpPart);
-  return (ctx, request) =>
+  return (request) =>
     __p__McpServeHttp(
       request,
       settings,
       __p__McpServerName,
       __p__McpInstructions,
       endpoint,
-      (part, method, params) => (part === 0 ? route(ctx, method, params) : Promise.resolve(undefined)),
+      admit,
+      (ctx, part, method, params) => (part === 0 ? route(ctx, method, params) : Promise.resolve(undefined)),
     );
 }";
 
@@ -508,6 +615,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(SERVE),
         route(service, &named, &prefix),
         fill(HTTP_TYPES),
+        scopes(service, &prefix),
         fill(SERVE_HTTP),
         factories(service, &named, &prefix),
     ]
@@ -602,6 +710,41 @@ fn operation_row(operation: &OperationDef) -> String {
         headers_in = quoted(&headers_in),
         headers_out = quoted(&shape.header_out),
         error_headers_out = quoted(&shape.error_header_out),
+    )
+}
+
+fn scopes(service: &ServiceDef, prefix: &str) -> String {
+    let cases: Vec<String> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let needed: Vec<String> = operation
+                .mcp
+                .scopes
+                .iter()
+                .map(|(scope, _)| ts_quoted(scope))
+                .collect();
+            format!(
+                "      case {}:\n        return [{}];",
+                ts_quoted(operation.mcp_tool_name()),
+                needed.join(", ")
+            )
+        })
+        .collect();
+    let table = if cases.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "  if (method === \"tools/call\") {{\n    switch (name) {{\n{}\n      default:\n        return [];\n    }}\n  }}\n",
+            cases.join("\n")
+        )
+    };
+    format!(
+        "/** The scopes a caller needs for the request `method` and `name` name, none for any other. */\n\
+         export function {prefix}McpScopes(method: string, name: string | undefined): ReadonlyArray<string> {{\n\
+         {table}  return [];\n\
+         }}"
     )
 }
 
