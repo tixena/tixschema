@@ -7,14 +7,17 @@ use super::mcp_bare_dispatcher;
 use super::mcp_depot_dispatcher;
 use super::mcp_library_dispatcher::{self, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use super::mcp_library_service::{Sink, Stand};
+use super::mcp_shelf_dispatcher;
+use super::mcp_shelf_service::Shelves;
 use super::tests::poll_once;
 use super::{
-    BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorService, MirrorServiceSchema,
+    BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorService,
+    MirrorServiceSchema, ShelfServiceSchema,
 };
 use serde_json::{Value, json};
 
 macro_rules! exercised {
-    ($name:ident, $module:ident, $schema:ident) => {
+    ($name:ident, $module:ident, $schema:ident, $stand:expr) => {
         /// Serves the row over HTTP alone and on an endpoint of one, and answers each denial.
         fn $name(row: &HttpRow) {
             let terms = $module::McpHttpRequest {
@@ -31,7 +34,7 @@ macro_rules! exercised {
             let alone = poll_once($module::answer_http(
                 &terms,
                 &settings,
-                &Stand,
+                &$stand,
                 async |_request, _call| Ok(()),
             ))
             .unwrap();
@@ -43,7 +46,7 @@ macro_rules! exercised {
                 &endpoint,
                 async |_request, _call| Ok(()),
                 &|ctx: &(), _part, method: &str, params: &Value| {
-                    Box::pin(async move { $module::route(method, params, &Stand, ctx).await })
+                    Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
                 },
             ))
             .unwrap();
@@ -58,7 +61,7 @@ macro_rules! exercised {
                     writer: &Sink,
                 },
                 &|ctx: &(), _part, method: &str, params: &Value| {
-                    Box::pin(async move { $module::route(method, params, &Stand, ctx).await })
+                    Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
                 },
             ))
             .flatten();
@@ -90,7 +93,7 @@ macro_rules! exercised {
                 let response = poll_once($module::answer_http(
                     &terms,
                     &settings,
-                    &Stand,
+                    &$stand,
                     async |_request: &$module::McpHttpRequest,
                            _call: $module::McpCall|
                            -> Result<(), $module::McpDenied> { Err(denied.clone()) },
@@ -133,9 +136,6 @@ pub enum Match {
     /// The same bytes, once the `detail` of the fault in the answer is left out: it is the words
     /// of the library that refused the value.
     WithoutDetail,
-    /// The same bytes, once the `detail`, the `kind` and the `field` of the fault are left out: a
-    /// server whose schema library classifies a refusal differently names it by another kind.
-    WithoutKind,
 }
 
 pub struct Row {
@@ -315,13 +315,9 @@ fn read_rows() -> Vec<Row> {
 }
 
 /// The requests that complete the parameter of a template.
-fn completion_rows(same_kinds: bool) -> Vec<Row> {
+fn completion_rows() -> Vec<Row> {
     let unread = Row {
-        matches: if same_kinds {
-            Match::WithoutDetail
-        } else {
-            Match::WithoutKind
-        },
+        matches: Match::WithoutDetail,
         ..row(
             "a completion whose chosen values are not text",
             41,
@@ -467,12 +463,11 @@ fn other_rows() -> Vec<Row> {
     ]
 }
 
-/// The requests of a run, in order. Where `same_kinds` is false the server judges a message with a
-/// schema library that names a refusal by another kind than Rust does.
-pub fn rows(same_kinds: bool) -> Vec<Row> {
+/// The requests of a run, in order.
+pub fn rows() -> Vec<Row> {
     let mut every = listing_rows();
     every.extend(read_rows());
-    every.extend(completion_rows(same_kinds));
+    every.extend(completion_rows());
     every.extend(other_rows());
     every
 }
@@ -672,9 +667,7 @@ pub fn assert_answer_valid(method: &str, answer: &str) {
 pub fn expected(matches: Match, text: &str) -> String {
     match matches {
         Match::Exact => text.to_owned(),
-        Match::WithoutDetail | Match::WithoutKind => {
-            without_detail(&serde_json::from_str(text).unwrap(), matches).to_string()
-        }
+        Match::WithoutDetail => without_detail(&serde_json::from_str(text).unwrap()).to_string(),
     }
 }
 
@@ -682,21 +675,17 @@ pub fn expected(matches: Match, text: &str) -> String {
 pub fn observed(matches: Match, answered: &str) -> String {
     match matches {
         Match::Exact => answered.to_owned(),
-        Match::WithoutDetail | Match::WithoutKind => {
-            without_detail(&serde_json::from_str(answered).unwrap(), matches).to_string()
+        Match::WithoutDetail => {
+            without_detail(&serde_json::from_str(answered).unwrap()).to_string()
         }
     }
 }
 
 /// An answer whose fault, in a tool execution error or in the data of an error, is left without
 /// its `detail`.
-fn without_detail(answer: &Value, matches: Match) -> Value {
+fn without_detail(answer: &Value) -> Value {
     let strip = |fault: &mut serde_json::Map<String, Value>| {
         fault.remove("detail");
-        if matches == Match::WithoutKind {
-            fault.remove("kind");
-            fault.remove("field");
-        }
     };
     let mut stripped = answer.clone();
     if let Some(fault) = stripped["error"]["data"]["fault"].as_object_mut() {
@@ -775,10 +764,27 @@ pub fn assert_http(which: &str, rows: &[HttpRow], answers: &[HttpAnswer]) {
 exercised!(
     library_exercised,
     mcp_library_dispatcher,
-    LibraryServiceSchema
+    LibraryServiceSchema,
+    Stand
 );
-exercised!(depot_exercised, mcp_depot_dispatcher, DepotServiceSchema);
-exercised!(bare_exercised, mcp_bare_dispatcher, BareServiceSchema);
+exercised!(
+    depot_exercised,
+    mcp_depot_dispatcher,
+    DepotServiceSchema,
+    Stand
+);
+exercised!(
+    bare_exercised,
+    mcp_bare_dispatcher,
+    BareServiceSchema,
+    Stand
+);
+exercised!(
+    shelf_exercised,
+    mcp_shelf_dispatcher,
+    ShelfServiceSchema,
+    Shelves
+);
 
 #[test]
 fn every_dispatcher_serves_a_read_over_http_alone_and_on_an_endpoint_and_answers_a_denial() {
@@ -786,6 +792,7 @@ fn every_dispatcher_serves_a_read_over_http_alone_and_on_an_endpoint_and_answers
     library_exercised(&row);
     depot_exercised(&row);
     bare_exercised(&row);
+    shelf_exercised(&row);
 }
 
 #[test]

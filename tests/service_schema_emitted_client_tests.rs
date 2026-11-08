@@ -1619,6 +1619,10 @@ mod run_kotlin_member_named;
 #[path = "service_schema_emitted_client_tests/mcp_auth_rows.rs"]
 mod mcp_auth_rows;
 
+#[cfg(test)]
+#[path = "mcp_fault_cases/cases.rs"]
+mod cases;
+
 /// The emitted `mcp` server and client run by node: the requests of the design, every answer held
 /// to the 2026-07-28 schema, and two services behind one endpoint.
 #[cfg(test)]
@@ -1682,6 +1686,24 @@ mod mcp_listen_rows;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_mcp_listen.rs"]
 mod run_node_mcp_listen;
+
+/// `ShelfService`, whose template and completion a request can fail to read or the validator can
+/// refuse, and its Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_service.rs"]
+mod mcp_shelf_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_dispatcher.rs"]
+mod mcp_shelf_dispatcher;
+
+#[cfg(test)]
+use mcp_shelf_service::{ShelfService, ShelfServiceSchema, shelf_service_schema};
+
+#[cfg(test)]
+#[path = "mcp_fault_cases/resource_cases.rs"]
+mod resource_cases;
 
 /// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, templates,
 /// a listing and a completion.

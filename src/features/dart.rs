@@ -1859,6 +1859,13 @@ pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
 }
 
+/// [`dart_json_decode`] reading each declared type by its `fromJsonUnjudged`, which throws for what
+/// does not read and never for what `validate()` refuses.
+#[cfg(feature = "serde")]
+pub fn dart_json_decode_unjudged(ty: &syn::Type, expr: &str) -> String {
+    dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Unjudged)
+}
+
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
 #[cfg(feature = "serde")]

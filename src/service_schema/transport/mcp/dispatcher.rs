@@ -539,9 +539,13 @@ fn protocol() -> TokenStream {
     quote! {
         #canonical
 
-        /// A JSON-RPC error response.
+        /// A JSON-RPC error response; a `null` id is left out, which the official schema requires.
         fn failed(id: &::serde_json::Value, error: ::serde_json::Value) -> ::serde_json::Value {
-            ::serde_json::json!({ "jsonrpc": "2.0", "id": id, "error": error })
+            if id.is_null() {
+                ::serde_json::json!({ "jsonrpc": "2.0", "error": error })
+            } else {
+                ::serde_json::json!({ "jsonrpc": "2.0", "id": id, "error": error })
+            }
         }
 
         /// The error object of a JSON-RPC error response.

@@ -18,6 +18,10 @@ use tixschema::{model_schema, service_schema};
 /// The official 2026-07-28 schema of the Model Context Protocol.
 const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-07-28.json");
 
+/// The row whose fault carries the words of each language's own reader, so its `detail` is left
+/// out of the comparison.
+const WORDED_BY_THE_LANGUAGE: usize = 4;
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WriterVersionRequest {
@@ -267,8 +271,8 @@ fn posted(body: String, tool: &str) -> HttpRow {
     }
 }
 
-/// An export with a token, an export without one, a version call with a token, and an unknown
-/// tool with a token.
+/// An export with a token, an export without one, a version call with a token, an unknown tool
+/// with a token, and a version call with a token whose argument the validator refuses.
 pub fn http_rows() -> Vec<HttpRow> {
     let docs = json!({ "value": "docs" });
     let version = json!({ "document_id": "doc-1" });
@@ -285,6 +289,15 @@ pub fn http_rows() -> Vec<HttpRow> {
         posted(
             tool_call(4, "delete-everything", &json!({}), Some("export-1")),
             "delete-everything",
+        ),
+        posted(
+            tool_call(
+                5,
+                "get-version",
+                &json!({ "document_id": "" }),
+                Some("version-2"),
+            ),
+            "get-version",
         ),
     ]
 }
@@ -420,6 +433,17 @@ fn read(text: &str) -> Value {
     floats(&parsed(text))
 }
 
+fn without_detail(mut message: Value) -> Value {
+    if let Some(text) = message["result"]["content"][0]["text"].as_str() {
+        let mut carried = parsed(text);
+        if let Some(fault) = carried["fault"].as_object_mut() {
+            fault.remove("detail");
+        }
+        message["result"]["content"][0]["text"] = Value::String(carried.to_string());
+    }
+    message
+}
+
 fn event_texts(body: &str) -> Vec<&str> {
     body.split_terminator("\n\n")
         .map(|event| event.strip_prefix("event: message\ndata: ").unwrap())
@@ -458,7 +482,14 @@ pub fn assert_matches(report: &Value) {
     let http = report["http"].as_array().unwrap();
     let expected_http = rust["http"].as_array().unwrap();
     assert_eq!(http.len(), expected_http.len(), "{report:#}");
-    for (answered, rust_answered) in http.iter().zip(expected_http) {
+    for (at, (answered, rust_answered)) in http.iter().zip(expected_http).enumerate() {
+        let worded = |text: &str| {
+            if at == WORDED_BY_THE_LANGUAGE {
+                without_detail(read(text))
+            } else {
+                read(text)
+            }
+        };
         assert_eq!(answered["status"], rust_answered["status"], "{answered:#}");
         assert_eq!(
             answered["headers"], rust_answered["headers"],
@@ -470,7 +501,13 @@ pub fn assert_matches(report: &Value) {
             rust_answered["body"].as_str().unwrap(),
         );
         if streamed {
-            assert_eq!(events_of(body), events_of(rust_body), "{answered:#}");
+            let events = |text| {
+                event_texts(text)
+                    .into_iter()
+                    .map(worded)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(events(body), events(rust_body), "{answered:#}");
             for event in &raw_events_of(body) {
                 held_to(
                     if event["method"] == "notifications/progress" {
@@ -484,7 +521,7 @@ pub fn assert_matches(report: &Value) {
                 );
             }
         } else {
-            assert_eq!(read(body), read(rust_body), "{answered:#}");
+            assert_eq!(worded(body), worded(rust_body), "{answered:#}");
         }
     }
     let kinds: Vec<(u64, bool)> = http
@@ -498,7 +535,13 @@ pub fn assert_matches(report: &Value) {
         .collect();
     assert_eq!(
         kinds,
-        [(200, true), (200, false), (200, true), (200, true)],
+        [
+            (200, true),
+            (200, false),
+            (200, true),
+            (200, true),
+            (200, true)
+        ],
         "{report:#}"
     );
     assert_eq!(events_of(http[0]["body"].as_str().unwrap()).len(), 2);
