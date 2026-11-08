@@ -4,6 +4,8 @@
 
 use super::mcp_library_rows::{assert_answer_valid, request};
 use super::mcp_library_service::{BookError, Sink};
+use super::mcp_shelf_dispatcher;
+use super::mcp_writer_rows::ready_output;
 use super::resource_cases::RESOURCE_FAULT_CASES;
 use super::tests::poll_once;
 use core::future::{Future, ready};
@@ -117,4 +119,16 @@ fn the_rust_dispatcher_answers_every_fault_of_the_table() {
         .map(|text| shelf_answer(text))
         .collect();
     assert_faults("rust", &answers);
+}
+
+#[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        mcp_shelf_dispatcher,
+        ShelfServiceSchema,
+        Shelves,
+        ready_output
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
 }

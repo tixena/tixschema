@@ -74,6 +74,15 @@ mod resource_tests;
 mod writer_tests;
 
 #[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/listens_through.rs"]
+mod listens_through;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/listen_tests.rs"]
+mod listen_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/client_tests.rs"]
 mod client_tests;
 

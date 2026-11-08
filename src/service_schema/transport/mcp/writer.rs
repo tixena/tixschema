@@ -18,6 +18,12 @@ pub(super) fn types() -> TokenStream {
         /// Where the transport writes a message beyond the answer: one line on stdio, one event of
         /// an event-stream answer on HTTP. A failed write means the client has gone.
         pub trait McpEventWriter {
+            /// Writes the comment line `:` that keeps an event stream open. Nothing on stdio, which
+            /// is what this default does.
+            fn keep_alive(&self) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send {
+                ::core::future::ready(::core::result::Result::Ok(()))
+            }
+
             fn write(&self, message: ::std::string::String) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send;
         }
 
@@ -73,10 +79,17 @@ fn call() -> TokenStream {
             state: ::std::sync::Arc<McpCallState>,
         }
 
+        /// What a call has queued for the writer.
+        #[derive(Debug)]
+        enum Queued {
+            KeepAlive,
+            Message(::std::string::String),
+        }
+
         #[derive(Debug)]
         struct McpCallState {
             cancelled: ::core::sync::atomic::AtomicBool,
-            queued: ::std::sync::Mutex<::std::collections::VecDeque<::std::string::String>>,
+            queued: ::std::sync::Mutex<::std::collections::VecDeque<Queued>>,
             token: ::core::option::Option<::serde_json::Value>,
             waiting: ::std::sync::Mutex<::core::option::Option<::core::task::Waker>>,
         }
@@ -111,7 +124,7 @@ fn call() -> TokenStream {
                 }
             }
 
-            fn next_queued(&self) -> ::core::option::Option<::std::string::String> {
+            fn next_queued(&self) -> ::core::option::Option<Queued> {
                 held(&self.state.queued).pop_front()
             }
 
@@ -145,11 +158,15 @@ fn call() -> TokenStream {
                 if let ::core::option::Option::Some(message) = message {
                     params["message"] = ::serde_json::Value::from(message);
                 }
-                held(&self.state.queued).push_back(canonical(&::serde_json::json!({
+                self.queue(Queued::Message(canonical(&::serde_json::json!({
                     "jsonrpc": "2.0",
                     "method": "notifications/progress",
                     "params": params,
-                })));
+                }))));
+            }
+
+            fn queue(&self, queued: Queued) {
+                held(&self.state.queued).push_back(queued);
                 self.wake();
             }
 
@@ -225,6 +242,11 @@ fn event_stream_type() -> TokenStream {
         }
 
         impl McpEventWriter for EventStream {
+            fn keep_alive(&self) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send {
+                held(&self.events).push_str(":\n\n");
+                ::core::future::ready(::core::result::Result::Ok(()))
+            }
+
             fn write(&self, message: ::std::string::String) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send {
                 held(&self.events).push_str(&event_text(&message));
                 ::core::future::ready(::core::result::Result::Ok(()))
@@ -273,8 +295,11 @@ fn driven() -> TokenStream {
                     if this.call.cancelled() {
                         this.call.discard();
                     }
-                    if let ::core::option::Option::Some(message) = this.call.next_queued() {
-                        this.writing = ::core::option::Option::Some(::std::boxed::Box::pin(this.writer.write(message)));
+                    if let ::core::option::Option::Some(queued) = this.call.next_queued() {
+                        this.writing = ::core::option::Option::Some(match queued {
+                            Queued::Message(message) => ::std::boxed::Box::pin(this.writer.write(message)),
+                            Queued::KeepAlive => ::std::boxed::Box::pin(this.writer.keep_alive()),
+                        });
                         continue;
                     }
                     if let ::core::option::Option::Some(answered) = this.finished.take() {

@@ -2,12 +2,14 @@
 //! time, and the stand-in and the requests the TypeScript, Dart and Kotlin servers are measured
 //! against.
 
+use super::mcp_lesson_dispatcher;
 use super::mcp_library_rows::{
     HttpAnswer, HttpRow, Match, ORIGIN, Row, assert_answer_valid, request,
 };
 use super::mcp_library_service::{
     BookError, BookInfo, BookRequest, Sink, book_info_schema, book_request_schema,
 };
+use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
 use core::future::{Future, ready};
 use serde_json::{Value, json};
@@ -316,4 +318,16 @@ fn the_rust_dispatcher_answers_every_row_and_every_answer_passes_the_schema() {
         let answered = lesson_answer(&row.text).unwrap();
         assert_answer_valid(&super::mcp_library_rows::method_of(&row.text), &answered);
     }
+}
+
+#[test]
+fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
+    let (alone, served) = rust_listens_alike!(
+        mcp_lesson_dispatcher,
+        LessonServiceSchema,
+        Lessons,
+        ready_output
+    );
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
 }

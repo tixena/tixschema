@@ -1690,6 +1690,17 @@ mod mcp_lesson_dispatcher;
 #[cfg(test)]
 use mcp_lesson_service::{LessonService, LessonServiceSchema, lesson_service_schema};
 
+/// The requests `subscriptions/listen` is held to on every server, and the Rust dispatcher's
+/// answers to them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_listen_rows.rs"]
+mod mcp_listen_rows;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_listen.rs"]
+mod run_node_mcp_listen;
+
 /// `ShelfService`, whose template and completion a request can fail to read or the validator can
 /// refuse, and its Rust dispatcher.
 #[cfg(test)]
@@ -1725,6 +1736,12 @@ mod run_node_mcp_skills;
 #[path = "service_schema_emitted_client_tests/run_node_mcp_scopes.rs"]
 mod run_node_mcp_scopes;
 
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_listen.rs"]
+mod run_dart_mcp_listen;
+
 /// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
 #[cfg(test)]
@@ -1744,6 +1761,12 @@ mod run_dart_mcp_skills;
 #[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/run_dart_mcp_scopes.rs"]
 mod run_dart_mcp_scopes;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_listen.rs"]
+mod run_kotlin_mcp_listen;
 
 /// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
 /// listing and a completion.
