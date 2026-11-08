@@ -618,6 +618,8 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
     let version = mcp_ts_service::VERSION_MARKER;
     let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
     let tools = mcp_ts_service::TOOLS_MARKER;
+    let resources = mcp_ts_service::RESOURCES_MARKER;
+    let templates = mcp_ts_service::TEMPLATES_MARKER;
     let wrapped: Vec<TokenStream> = service
         .operations
         .iter()
@@ -657,6 +659,22 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                     &Self::mcp_tools()
                         .iter()
                         .map(|tool| ::serde_json::Value::String(tool.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #resources,
+                    &Self::mcp_resources()
+                        .iter()
+                        .map(|resource| ::serde_json::Value::String(resource.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #templates,
+                    &Self::mcp_resource_templates()
+                        .iter()
+                        .map(|template| ::serde_json::Value::String(template.to_string()).to_string())
                         .collect::<::std::vec::Vec<_>>()
                         .join(", "),
                 )

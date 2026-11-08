@@ -6,6 +6,7 @@ use super::parse::{
     PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements, wire_key, written,
 };
 use super::transport::http_rest::openapi::message_type;
+use super::transport::mcp::resource_entries;
 use crate::features::jsonschema::in_flight_type;
 use crate::model_schema::needs_wrapper;
 use crate::model_schema::type_json_schema_value;
@@ -38,8 +39,14 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
     });
     let (kinds, names): (Vec<_>, Vec<_>) = listed.unzip();
     let scopes = scopes_method(service);
+    let listed_resources = resources_methods(service);
+    let sorted = sorted_fn();
     quote! {
+        #sorted
+
         #tools
+
+        #listed_resources
 
         #scopes
 
@@ -52,6 +59,48 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
 
         #[doc = " Every tool, resource and resource template the service lists, as `(<kind>, <name>)`."]
         pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#((#kinds, #names)),*];
+    }
+}
+
+/// `mcp_sorted(value)`: `value` with the members of every object in key order, whatever order the
+/// `serde_json` of the invoking crate keeps them in, so each server writes the bytes Rust does.
+fn sorted_fn() -> TokenStream {
+    quote! {
+        fn mcp_sorted(value: ::serde_json::Value) -> ::serde_json::Value {
+            match value {
+                ::serde_json::Value::Object(members) => {
+                    let mut held: ::std::vec::Vec<(::std::string::String, ::serde_json::Value)> =
+                        members.into_iter().collect();
+                    held.sort_by(|left, right| left.0.cmp(&right.0));
+                    ::serde_json::Value::Object(
+                        held.into_iter()
+                            .map(|(key, member)| (key, Self::mcp_sorted(member)))
+                            .collect(),
+                    )
+                }
+                ::serde_json::Value::Array(items) => ::serde_json::Value::Array(
+                    items.into_iter().map(Self::mcp_sorted).collect(),
+                ),
+                other => other,
+            }
+        }
+    }
+}
+
+/// `mcp_resources()` and `mcp_resource_templates()`: the entries `resources/list` and
+/// `resources/templates/list` answer for the service, as the servers in other languages write them.
+fn resources_methods(service: &ServiceDef) -> TokenStream {
+    let (resources, templates) = resource_entries(service);
+    quote! {
+        #[doc = " The service's resources with a fixed URI, in the order the trait declares them."]
+        pub fn mcp_resources() -> ::std::vec::Vec<::serde_json::Value> {
+            ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#resources))),*]
+        }
+
+        #[doc = " The service's resource templates, in the order the trait declares them."]
+        pub fn mcp_resource_templates() -> ::std::vec::Vec<::serde_json::Value> {
+            ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#templates))),*]
+        }
     }
 }
 
@@ -359,7 +408,7 @@ fn tools_method(service: &ServiceDef) -> TokenStream {
         #[doc = " The service's tools, one per operation in the order the trait declares them."]
         pub fn mcp_tools() -> ::std::vec::Vec<::serde_json::Value> {
             #helpers
-            ::std::vec![#(#tools),*]
+            ::std::vec![#(Self::mcp_sorted(#tools)),*]
         }
     }
 }

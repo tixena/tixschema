@@ -1619,6 +1619,58 @@ mod run_kotlin_member_named;
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
 
+/// `LibraryService` and `DepotService`, which declare resources, templates, a listing and a
+/// completion, and `BareService`, which declares none: the Rust twins the TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_library_service.rs"]
+mod mcp_library_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_dispatcher.rs"]
+mod mcp_library_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_depot_dispatcher.rs"]
+mod mcp_depot_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_bare_dispatcher.rs"]
+mod mcp_bare_dispatcher;
+
+/// The requests the resource runs send, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_rows.rs"]
+mod mcp_library_rows;
+
+#[cfg(test)]
+use mcp_library_service::{
+    BareService, BareServiceSchema, DepotService, DepotServiceSchema, LibraryService,
+    LibraryServiceSchema, MirrorService, MirrorServiceSchema, bare_service_schema,
+    depot_service_schema, library_service_schema, mirror_service_schema,
+};
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, templates,
+/// a listing and a completion.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_resources.rs"]
+mod run_node_mcp_resources;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_resources.rs"]
+mod run_dart_mcp_resources;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_resources.rs"]
+mod run_kotlin_mcp_resources;
+
 /// The services the Dart `mcp` server and client are run on.
 #[cfg(test)]
 #[cfg(feature = "dart")]
