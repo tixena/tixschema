@@ -96,6 +96,7 @@ void main() async {
     return null;
   }
 
+  final host = LibraryServiceMcpHost(writer: (message) async {}, inFlight: LibraryServiceMcpInFlight());
   final aloneLibrary = createLibraryServiceMcpDispatcher<void>(libraryHandlers);
   final aloneDepot = createDepotServiceMcpDispatcher<void>(depotHandlers);
   final aloneBare = createBareServiceMcpDispatcher<void>(bareHandlers);
@@ -103,13 +104,18 @@ void main() async {
   Future<List<String?>> answers(Future<String?> Function(String text) ask) async =>
       [for (final text in requests) await ask(text)];
 
-  final over = createLibraryServiceMcpHttpDispatcher<void>(libraryHandlers, null, [input['origin'] as String]);
+  final over = createLibraryServiceMcpHttpDispatcher<void>(
+    libraryHandlers,
+    LibraryServiceMcpHttpSettings(allowedOrigins: [input['origin'] as String]),
+    (request, call) async => (ctx: null, denied: null),
+  );
   final http = <Map<String, dynamic>>[];
   for (final held in input['http'] as List<dynamic>) {
     final row = held as Map<String, dynamic>;
     final response = await over(
       LibraryServiceMcpHttpRequest(
         method: 'POST',
+        path: '/mcp',
         headers: [for (final pair in row['headers'] as List<dynamic>) ((pair as List<dynamic>)[0] as String, pair[1] as String)],
         body: utf8.encode(row['body'] as String),
       ),
@@ -126,10 +132,10 @@ void main() async {
       depotServiceMcpNames.toList(),
       bareServiceMcpNames.toList(),
     ],
-    'workspace': await answers((text) => libraryServiceMcpServe(text, 'Workspace', null, workspace, route)),
-    'library': await answers((text) => aloneLibrary(null, text)),
-    'depot': await answers((text) => aloneDepot(null, text)),
-    'bare': await answers((text) => aloneBare(null, text)),
+    'workspace': await answers((text) => libraryServiceMcpServe<void>(text, 'Workspace', null, workspace, (call) {}, host, (ctx, part, method, params) => route(part, method, params))),
+    'library': await answers((text) => aloneLibrary(text, (call) {}, host.writer, host.inFlight)),
+    'depot': await answers((text) => aloneDepot(text, (call) {}, host.writer, DepotServiceMcpInFlight())),
+    'bare': await answers((text) => aloneBare(text, (call) {}, host.writer, BareServiceMcpInFlight())),
     'http': http,
   }));
 }

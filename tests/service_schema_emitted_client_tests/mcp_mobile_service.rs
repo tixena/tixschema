@@ -112,7 +112,7 @@ pub trait MobileDocumentService<Ctx> {
     ) -> Result<(VersionResponse, String), (VersionError, Option<String>)>;
 
     /// Answers the current version of one document.
-    #[service_schema_op(mcp(title = "Current Document Version"))]
+    #[service_schema_op(mcp(title = "Current Document Version", scopes = ["documents:read"]))]
     async fn get_version(
         &self,
         ctx: &Ctx,
@@ -143,6 +143,7 @@ pub trait MobileDocumentService<Ctx> {
     async fn lookup(&self, ctx: &Ctx, id: DocumentId) -> Result<VersionResponse, VersionError>;
 
     /// Renames one document.
+    #[service_schema_op(mcp(scopes = ["documents:write"]))]
     async fn rename_document(
         &self,
         ctx: &Ctx,
@@ -170,7 +171,7 @@ pub trait MobileDocumentService<Ctx> {
     ) -> Result<VersionResponse, VersionError>;
 
     /// Marks one document as read.
-    #[service_schema_op(one_way)]
+    #[service_schema_op(one_way, mcp(scopes = ["documents:read", "documents:touch"]))]
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 

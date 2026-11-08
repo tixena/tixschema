@@ -2,6 +2,15 @@
 //! bytes it records, every answer held to the official 2026-07-28 schema, two services behind one
 //! endpoint, a schema's digits kept, and the client reading each outcome.
 
+use super::WriterServiceSchema;
+use super::mcp_auth_rows::{
+    AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
+    auth_rows,
+};
+use super::mcp_node_document as document_mcp;
+use super::mcp_writer_rows::{
+    WriterRefusal, WriterVersion, WriterVersionRequest, assert_matches, input as writer_input,
+};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
@@ -29,6 +38,8 @@ const meta = {
 const request = (id, method, params) => JSON.stringify({ jsonrpc: "2.0", id, method, params: { ...params, _meta: meta } });
 const call = (id, name, args) => request(id, "tools/call", { name, arguments: args });
 
+const nowhere = async () => {};
+
 const impl = {
   async getTagged(ctx, id, knownTag) {
     if (knownTag === "\"v7\"") return { ok: false, error: { errorCode: "not-found" } };
@@ -55,7 +66,9 @@ const impl = {
 /// below read their answers.
 const WIRE_DRIVER: &str = r#"
 async function main() {
-  const dispatch = createDocumentServiceMcpDispatcher(impl);
+  const served = createDocumentServiceMcpDispatcher(impl);
+  const inFlight = new DocumentServiceMcpInFlight();
+  const dispatch = (text) => served(text, () => ({}), nowhere, inFlight);
   const requests = [
     ["server/discover", JSON.stringify({ jsonrpc: "2.0", id: "discover-1", method: "server/discover", params: { _meta: meta } })],
     ["tools/list", request(1, "tools/list", {})],
@@ -82,7 +95,7 @@ async function main() {
   ];
   const answers = [];
   for (const [method, text] of requests) {
-    const reply = await dispatch({}, text);
+    const reply = await dispatch(text);
     answers.push({ method, reply: reply === undefined ? null : reply });
   }
   console.log(JSON.stringify(answers));
@@ -94,9 +107,9 @@ main().catch((error) => { console.error(error); process.exit(1); });
 /// The HTTP rules in the order the design lists them, one request for each.
 const HTTP_DRIVER: &str = r#"
 async function main() {
-  const dispatch = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: ["https://app.example.com"] });
+  const dispatch = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: ["https://app.example.com"] }, async () => ({ ctx: {} }));
   const encode = (text) => new TextEncoder().encode(text);
-  const post = (text, headers = [], method = "POST") => ({ method, headers, body: encode(text) });
+  const post = (text, headers = [], method = "POST") => ({ method, path: "/mcp", headers, body: encode(text) });
   const agreeing = (text, method, name) => {
     const headers = [["MCP-Protocol-Version", "2026-07-28"], ["Mcp-Method", method]];
     if (name !== undefined) headers.push(["mcp-name", name]);
@@ -107,7 +120,7 @@ async function main() {
     ["tools/call", post(toolCall, [], "GET")],
     ["tools/call", post(toolCall, [["Origin", "https://elsewhere.example.com"]])],
     ["tools/call", post("not json")],
-    ["tools/call", { method: "POST", headers: [], body: new Uint8Array([0xff, 0xfe]) }],
+    ["tools/call", { method: "POST", path: "/mcp", headers: [], body: new Uint8Array([0xff, 0xfe]) }],
     ["tools/call", post(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }))],
     ["tools/call", post(toolCall, [["Mcp-Method", "tools/call"], ["Mcp-Name", "get-version"]])],
     ["tools/call", agreeing(toolCall, "tools/list", "get-version")],
@@ -123,10 +136,55 @@ async function main() {
   ];
   const answers = [];
   for (const [method, input] of requests) {
-    const response = await dispatch({}, input);
+    const response = await dispatch(input);
     answers.push({ method, status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
   }
   console.log(JSON.stringify(answers));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// Authorization: every request of `auth_rows()` through the server with the `admit` of its scheme,
+/// and every scope query through `documentServiceMcpScopes`.
+const AUTH_DRIVER: &str = r#"
+async function main() {
+  const input = JSON.parse(INPUT);
+  let reached = 0;
+  const answering = { ...impl, async renameDocument() { return { ok: false, error: { errorCode: "not-found" } }; } };
+  const counted = Object.fromEntries(Object.entries(answering).map(([name, handler]) => [name, (...given) => { reached += 1; return handler(...given); }]));
+  const tokens = new Map([["read-token", "documents:read"], ["write-token", "documents:read documents:write"]]);
+  const admits = {
+    oauth: async (request) => {
+      const needed = documentServiceMcpScopes(documentServiceMcpHeader(request, "mcp-method") ?? "", documentServiceMcpName(request));
+      const token = documentServiceMcpBearerToken(request);
+      if (token === undefined) return { denied: needed.length === 0 ? { kind: "noValidCredentials" } : { kind: "noValidCredentials", scope: needed.join(" ") } };
+      if (token === "forbidden-token") return { denied: { kind: "forbidden" } };
+      const held = tokens.get(token);
+      if (held === undefined) return { denied: { kind: "noValidCredentials" } };
+      if (needed.some((scope) => !held.split(" ").includes(scope))) return { denied: { kind: "insufficientScope", scope: needed.join(" ") } };
+      return { ctx: {} };
+    },
+    keys: async (request) => {
+      const key = documentServiceMcpHeader(request, "x-api-key");
+      const secret = documentServiceMcpHeader(request, "x-api-secret");
+      if (key === undefined || secret === undefined) return { denied: { kind: "noValidCredentials" } };
+      return key === "admin-key" && secret === "admin-secret" ? { ctx: {} } : { denied: { kind: "forbidden" } };
+    },
+  };
+  const settings = {
+    oauth: { allowedOrigins: [input.origin], oauth: input.oauth },
+    keys: { allowedOrigins: [input.origin] },
+  };
+  const answers = [];
+  for (const row of input.rows) {
+    const dispatch = createDocumentServiceMcpHttpDispatcher(counted, settings[row.scheme], admits[row.scheme]);
+    const before = reached;
+    const response = await dispatch({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    answers.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body), reached: reached - before });
+  }
+  const scopes = input.queries.map(([method, name]) => documentServiceMcpScopes(method, name ?? undefined));
+  console.log(JSON.stringify({ answers, scopes }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -144,8 +202,9 @@ async function main() {
   const documents = createDocumentServiceMcpRoute(impl);
   const billing = createBillingServiceMcpRoute(billingImpl);
   const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
-  const serve = (text) => documentServiceMcpServe(text, "Workspace", undefined, workspace,
-    async (part, method, params) => (part === 0 ? documents({}, method, params) : part === 1 ? billing({}, method, params) : undefined));
+  const host = { writer: nowhere, inFlight: new DocumentServiceMcpInFlight() };
+  const serve = (text) => documentServiceMcpServe(text, "Workspace", undefined, workspace, () => ({}), host,
+    async (ctx, part, method, params) => (part === 0 ? documents(ctx, method, params) : part === 1 ? billing(ctx, method, params) : undefined));
   const replies = [
     await serve(JSON.stringify({ jsonrpc: "2.0", id: "d", method: "server/discover", params: { _meta: meta } })),
     await serve(request(1, "tools/list", {})),
@@ -202,15 +261,56 @@ const USAGE_CALLER: &str = r#"import {
   documentServiceMcpPart,
   documentServiceMcpServe,
   documentServiceMcpServeHttp,
+  documentServiceMcpName,
+  documentServiceMcpScopes,
+  DocumentServiceMcpCall,
+  DocumentServiceMcpInFlight,
   type DocumentServiceImpl,
+  type DocumentServiceMcpAdmitted,
+  type DocumentServiceMcpDenied,
+  type DocumentServiceMcpHttpRequest,
+  type DocumentServiceMcpHttpSettings,
   type DocumentServiceMcpTransport,
+  type DocumentServiceMcpWriter,
 } from "./bundle.js";
 
 declare const impl: DocumentServiceImpl<number>;
 declare const transport: DocumentServiceMcpTransport;
 
-export const dispatcher: (ctx: number, text: string) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
-export const http = createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins: [] });
+declare const writer: DocumentServiceMcpWriter;
+
+export const dispatcher: (
+  text: string,
+  ctx: (call: DocumentServiceMcpCall) => number,
+  writer: DocumentServiceMcpWriter,
+  inFlight: DocumentServiceMcpInFlight,
+) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
+export const reported: Promise<void> = new DocumentServiceMcpCall("token", writer).progress(1, 3, "one of three");
+export const cancelled: boolean = new DocumentServiceMcpCall().cancelled;
+export const http = createDocumentServiceMcpHttpDispatcher(
+  impl,
+  { allowedOrigins: [] },
+  async (request: DocumentServiceMcpHttpRequest, call: DocumentServiceMcpCall) =>
+    call instanceof DocumentServiceMcpCall && request.path === "/mcp"
+      ? { ctx: 1 }
+      : ({ denied: { kind: "forbidden" } } satisfies DocumentServiceMcpAdmitted<number>),
+);
+export const settings: DocumentServiceMcpHttpSettings = {
+  allowedOrigins: [],
+  oauth: {
+    authorizationServers: [],
+    resource: "",
+    resourceMetadataUrl: "",
+    scopesSupported: [],
+  },
+};
+export const denied: ReadonlyArray<DocumentServiceMcpDenied> = [
+  { kind: "noValidCredentials" },
+  { kind: "noValidCredentials", scope: "documents:read" },
+  { kind: "insufficientScope", scope: "documents:write" },
+  { kind: "forbidden" },
+];
+export const needed: ReadonlyArray<string> = documentServiceMcpScopes("tools/call", documentServiceMcpName({ method: "POST", path: "/", headers: [], body: new Uint8Array() }));
 export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
@@ -270,8 +370,9 @@ async function main() {
   outcomes.oneWayThrows = thrown;
 
   const served = createDocumentServiceMcpDispatcher(impl);
+  const inFlight = new DocumentServiceMcpInFlight();
   const round = createDocumentServiceMcpClient({
-    send: async (message) => (await served({}, message.text)) ?? "",
+    send: async (message) => (await served(message.text, () => ({}), nowhere, inFlight)) ?? "",
   });
   outcomes.roundTrip = {
     success: await round.getVersion({ document_id: "doc-1" }),
@@ -284,6 +385,79 @@ async function main() {
     oneWay: (await round.touchDocument({ documentId: "doc-1", reader: "reviewer-7" })) ?? "void",
   };
   console.log(JSON.stringify({ outcomes, seen }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// The three lines of a stdio host that starts each line's answer without waiting for the one
+/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
+/// the event it waits for.
+const WRITER_DRIVER: &str = r#"
+const input = JSON.parse(INPUT);
+
+function stdioHost() {
+  const written = [];
+  const waiting = [];
+  const stdout = async (message) => {
+    written.push(message);
+    for (const wake of waiting.splice(0)) wake();
+  };
+  const until = async (done) => {
+    while (!done()) await new Promise((resolve) => waiting.push(resolve));
+  };
+  return { written, stdout, until };
+}
+
+async function main() {
+  const host = stdioHost();
+  const inFlight = new WriterServiceMcpInFlight();
+  let release;
+  const released = new Promise((resolve) => { release = resolve; });
+  let observed = false;
+  const impl = {
+    async exportFolder(ctx, folder) {
+      await ctx.call.progress(1, 3, "exported 1 of 3 files");
+      if (folder === "forever") {
+        await released;
+        observed = ctx.call.cancelled;
+      }
+      return { ok: true };
+    },
+    async getVersion(ctx, req) {
+      return { ok: true, value: { version: 7 } };
+    },
+  };
+  const dispatch = createWriterServiceMcpDispatcher(impl);
+  const running = [];
+  const start = (line) => running.push(
+    dispatch(line, (call) => ({ call }), host.stdout, inFlight).then(async (reply) => {
+      if (reply !== undefined) await host.stdout(reply);
+    }),
+  );
+  const [exported, version, cancelled] = input.lines;
+  start(exported);
+  await host.until(() => host.written.length >= 1);
+  start(version);
+  await host.until(() => host.written.length >= 2);
+  const stopped = await dispatch(cancelled, (call) => ({ call }), host.stdout, inFlight);
+  if (stopped !== undefined) throw new Error("a notification was answered");
+  release();
+  await Promise.all(running);
+
+  const gone = { cancelled: false, written: [] };
+  let seen;
+  const reply = await dispatch(input.failed, (call) => { seen = call; return { call }; }, async () => { throw new Error("the client has gone"); }, inFlight);
+  gone.reply = reply === undefined ? null : reply;
+  gone.cancelled = seen.cancelled;
+
+  const http = [];
+  const serve = createWriterServiceMcpHttpDispatcher(impl, { allowedOrigins: [] }, async (request, call) => ({ ctx: { call } }));
+  for (const row of input.http) {
+    const response = await serve({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    http.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
+  }
+  console.log(JSON.stringify({ written: host.written, observed, failed: gone, http }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -358,7 +532,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<(VersionResponse, String), VersionError>;
 
     /// Answers the current version of one document.
-    #[service_schema_op(mcp(title = "Current Document Version"))]
+    #[service_schema_op(mcp(title = "Current Document Version", scopes = ["documents:read"]))]
     async fn get_version(
         &self,
         ctx: &Ctx,
@@ -370,6 +544,7 @@ pub trait DocumentService<Ctx> {
     async fn lookup(&self, ctx: &Ctx, id: DocumentId) -> Result<VersionResponse, VersionError>;
 
     /// Renames one document.
+    #[service_schema_op(mcp(scopes = ["documents:write"]))]
     async fn rename_document(
         &self,
         ctx: &Ctx,
@@ -378,7 +553,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<(), VersionError>;
 
     /// Marks one document as read.
-    #[service_schema_op(one_way)]
+    #[service_schema_op(one_way, mcp(scopes = ["documents:read", "documents:touch"]))]
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 
@@ -519,6 +694,32 @@ fn bundle() -> String {
     .join("\n\n")
 }
 
+/// The models and the service the writer driver runs against.
+fn writer_bundle() -> String {
+    [
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
+        WriterVersionRequest::ts_definition(),
+        WriterVersionRequest::zod_schema(),
+        WriterVersion::ts_definition(),
+        WriterVersion::zod_schema(),
+        WriterRefusal::ts_definition(),
+        WriterRefusal::zod_schema(),
+        WriterServiceSchema::ts_definition(),
+        WriterServiceSchema::ts_service(),
+        WriterServiceSchema::ts_mcp_service(),
+    ]
+    .join("\n\n")
+}
+
+/// The bundle the run called `named` imports: the writer's own, or the documents'.
+fn bundle_of(named: &str) -> String {
+    if named == "mcp-writer" {
+        writer_bundle()
+    } else {
+        bundle()
+    }
+}
+
 /// Runs `driver` after the bundle under node, or stands down naming `TIXSCHEMA_NODE_MODULES`.
 fn run(named: &str, driver: &str) -> Option<Value> {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
@@ -528,7 +729,7 @@ fn run(named: &str, driver: &str) -> Option<Value> {
         );
         return None;
     };
-    let source = format!("{}\n\n{driver}", bundle());
+    let source = format!("{}\n\n{driver}", bundle_of(named));
     let wrote = ran_with_modules(
         named,
         RUNTIME_VAR,
@@ -835,8 +1036,13 @@ fn the_http_server_applies_the_rules_in_the_order_the_design_gives() {
         let status = held["status"].as_u64().unwrap();
         let body = held["body"].as_str().unwrap();
         if matches!(status, 405 | 403 | 202) {
+            let allowed = if status == 405 {
+                json!([["Allow", "POST"]])
+            } else {
+                json!([])
+            };
             assert_eq!(body, "", "{held:#}");
-            assert_eq!(held["headers"], json!([]), "{held:#}");
+            assert_eq!(held["headers"], allowed, "{held:#}");
             continue;
         }
         assert_eq!(
@@ -1195,4 +1401,121 @@ fn the_published_text_holds_no_marker_the_accessor_left_unreplaced() {
             "a marker is left in the text"
         );
     }
+}
+
+/// What the Rust dispatcher of `DocumentService` answers to `row`.
+fn rust_answer(row: &AuthRow) -> (u16, Vec<(String, String)>, String) {
+    rust_auth_answer!(document_mcp, DocumentServiceSchema, Stand, row, answered)
+}
+
+fn auth_input() -> Value {
+    json!({
+        "origin": ORIGIN,
+        "oauth": {
+            "authorizationServers": [AUTHORIZATION_SERVER],
+            "resource": RESOURCE,
+            "resourceMetadataUrl": METADATA_URL,
+            "scopesSupported": [SCOPES_SUPPORTED],
+        },
+        "rows": auth_rows().iter().map(|row| json!({
+            "body": row.body,
+            "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            "method": row.method,
+            "path": row.path,
+            "scheme": row.scheme.word(),
+        })).collect::<Vec<_>>(),
+        "queries": SCOPE_QUERIES.iter().map(|(method, name)| json!([method, name])).collect::<Vec<_>>(),
+    })
+}
+
+fn auth_report() -> Option<Value> {
+    let driver = format!(
+        "{REQUESTS}\nconst INPUT = {};\n{AUTH_DRIVER}",
+        Value::String(auth_input().to_string())
+    );
+    run("mcp-auth", &driver)
+}
+
+#[test]
+fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let rows = auth_rows();
+    let answers = report["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), rows.len());
+    for (row, node) in rows.iter().zip(answers) {
+        let (status, headers, body) = rust_answer(row);
+        assert_eq!(
+            node["status"].as_u64().unwrap(),
+            u64::from(status),
+            "{}: {node}",
+            row.name
+        );
+        let node_headers: Vec<(String, String)> = node["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pair| {
+                (
+                    pair[0].as_str().unwrap().to_owned(),
+                    pair[1].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(node_headers, headers, "{}", row.name);
+        assert_eq!(node["body"].as_str().unwrap(), body, "{}", row.name);
+        if status != 200 {
+            assert_eq!(node["reached"], 0_i32, "{}: no handler is called", row.name);
+        }
+    }
+    let statuses: Vec<u64> = answers
+        .iter()
+        .map(|held| held["status"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            200, 200, 405, 401, 401, 401, 401, 401, 200, 200, 403, 403, 403, 403, 403, 200, 400,
+            401, 405, 401, 401, 403, 403, 200, 200, 403
+        ]
+    );
+}
+
+#[test]
+fn the_scopes_function_answers_what_the_rust_registry_answers() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let node = report["scopes"].as_array().unwrap();
+    assert_eq!(node.len(), SCOPE_QUERIES.len());
+    for ((method, name), held) in SCOPE_QUERIES.iter().zip(node) {
+        let rust = DocumentServiceSchema::mcp_scopes(method, *name);
+        assert_eq!(*held, json!(rust), "{method} {name:?}");
+    }
+    assert_eq!(
+        DocumentServiceSchema::mcp_scopes("tools/call", Some("touch-document")),
+        ["documents:read", "documents:touch"]
+    );
+}
+
+#[test]
+fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike() {
+    let (alone, served, status) =
+        rust_serves_alike!(document_mcp, DocumentServiceSchema, Stand, answered);
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+    assert_eq!(status, 200);
+}
+
+#[test]
+fn the_typescript_host_writes_the_messages_the_rust_host_writes() {
+    let driver = format!(
+        "const INPUT = {};\n{WRITER_DRIVER}",
+        Value::String(writer_input().to_string())
+    );
+    let Some(report) = run("mcp-writer", &driver) else {
+        return;
+    };
+    assert_matches(&report);
 }

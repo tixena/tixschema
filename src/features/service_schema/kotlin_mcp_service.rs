@@ -5,6 +5,7 @@
 
 use super::kotlin_http_client::{kotlin_held, read_serializer};
 use super::kotlin_ws_client::{HeaderElement, body_type, header_elements, message_serializer};
+use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
 use crate::features::kotlin::{
     TupleNaming, kotlin_declarations, kotlin_name, kotlin_quoted, kotlin_tuple_naming,
@@ -342,8 +343,90 @@ private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page
   return @N@McpAnswer.Answered(JsonObject(members))
 }"#;
 
+const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that throws means the client has gone. */
+typealias @N@McpWriter = suspend (message: String) -> Unit
+
+/**
+ * The request in flight, handed to `admit` and to the function that builds the handlers, so that a
+ * handler reaches it. [token] is the request's `progressToken`, and [writer] takes what it writes
+ * beyond its answer.
+ */
+class @N@McpCall(private val token: JsonPrimitive? = null, private val writer: @N@McpWriter? = null) {
+  @Volatile
+  private var gone = false
+
+  /** Whether the client cancelled this request, or went away. */
+  val cancelled: Boolean
+    get() = gone
+
+  /** Writes `notifications/progress` where the request carries a `progressToken`, and does nothing otherwise. A write that fails cancels the call. */
+  suspend fun progress(done: Double, total: Double? = null, message: String? = null) {
+    val sink = writer
+    val reported = token
+    if (sink == null || reported == null || gone) return
+    try {
+      sink(
+        @P@McpServeText(
+          buildJsonObject {
+            put("jsonrpc", "2.0")
+            put("method", "notifications/progress")
+            put(
+              "params",
+              buildJsonObject {
+                put("progress", done)
+                put("progressToken", reported)
+                if (total != null) put("total", total)
+                if (message != null) put("message", message)
+              },
+            )
+          },
+        ),
+      )
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      gone = true
+    }
+  }
+
+  internal fun cancel() {
+    gone = true
+  }
+}
+
+/** The requests a stdio host has in flight, so that `notifications/cancelled` reaches the right one. */
+class @N@McpInFlight {
+  private val calls = java.util.concurrent.ConcurrentHashMap<String, @N@McpCall>()
+
+  internal fun cancel(id: JsonElement?) {
+    if (id != null) calls[id.toString()]?.cancel()
+  }
+
+  internal fun enter(id: JsonElement, call: @N@McpCall): () -> Unit {
+    val key = id.toString()
+    calls[key] = call
+    return { calls.remove(key, call) }
+  }
+}
+
+/** What [@P@McpServe] writes to, and the requests it has in flight. */
+class @N@McpHost(val writer: @N@McpWriter, val inFlight: @N@McpInFlight)
+
+private fun @P@McpToken(message: JsonObject): JsonPrimitive? {
+  val token = (@P@McpParams(message)["_meta"] as? JsonObject)?.get("progressToken") as? JsonPrimitive
+  return token?.takeIf { it.isString || @P@McpIsNumber(it) }
+}
+
+private fun @P@McpBodyToken(request: @N@McpHttpRequest): JsonPrimitive? =
+  try {
+    (Json.parseToJsonElement(request.body.decodeToString()) as? JsonObject)?.let { @P@McpToken(it) }
+  } catch (rejected: Exception) {
+    null
+  }"#;
+
 const SERVING: &str = r#"private sealed interface @P@McpBegun {
   class Answered(val text: String?) : @P@McpBegun
+  class Notified(val notice: JsonObject) : @P@McpBegun
   class Routed(val request: JsonObject) : @P@McpBegun
 }
 
@@ -367,7 +450,7 @@ private fun @P@McpBegin(
 ): @P@McpBegun {
   val (request, refusal) = @P@McpReadRequest(text)
   if (request == null) return @P@McpBegun.Answered(@P@McpServeText(refusal ?: JsonNull))
-  val id = request["id"] ?: return @P@McpBegun.Answered(null)
+  val id = request["id"] ?: return @P@McpBegun.Notified(request)
   val unchecked = @P@McpChecked(request)
   if (unchecked != null) return @P@McpBegun.Answered(@P@McpServeText(unchecked))
   val method = (request["method"] as JsonPrimitive).content
@@ -406,17 +489,13 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
   return @P@McpResponseText(request["id"] ?: JsonNull, resolved, serverName)
 }
 
-suspend fun @P@McpServe(
-  text: String,
-  serverName: String,
-  instructions: String?,
+/** Asks the services of the endpoint for what the routed [request] wants, and answers its text. */
+private suspend fun @P@McpAsk(
+  request: JsonObject,
   endpoint: @N@McpEndpoint,
+  serverName: String,
   route: suspend (part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
-): String? {
-  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
-    is @P@McpBegun.Answered -> return begun.text
-    is @P@McpBegun.Routed -> begun.request
-  }
+): String {
   val method = (request["method"] as JsonPrimitive).content
   if (method == "resources/list") {
     val start = @P@McpListingStart(request, endpoint.catalogs.size)
@@ -446,6 +525,40 @@ suspend fun @P@McpServe(
     if (answered != null) break
   }
   return @P@McpRoutedText(request, answered, serverName)
+}
+
+/**
+ * One JSON-RPC message in, one out, for the services of [endpoint]. [route] answers for the
+ * service at that place in the endpoint, and receives the [@N@McpCall] of the request in flight
+ * to build its handlers from. A notification answers `null`, `notifications/cancelled` marks the
+ * request it names in [host], and the answer of a cancelled request is dropped.
+ */
+suspend fun @P@McpServe(
+  text: String,
+  serverName: String,
+  instructions: String?,
+  endpoint: @N@McpEndpoint,
+  host: @N@McpHost,
+  route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+): String? {
+  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+    is @P@McpBegun.Answered -> return begun.text
+    is @P@McpBegun.Notified -> {
+      if ((begun.notice["method"] as JsonPrimitive).content == "notifications/cancelled") {
+        host.inFlight.cancel(@P@McpParams(begun.notice)["requestId"])
+      }
+      return null
+    }
+    is @P@McpBegun.Routed -> begun.request
+  }
+  val call = @N@McpCall(@P@McpToken(request), host.writer)
+  val leave = host.inFlight.enter(request["id"] ?: JsonNull, call)
+  try {
+    val answered = @P@McpAsk(request, endpoint, serverName) { part, method, params -> route(call, part, method, params) }
+    return if (call.cancelled) null else answered
+  } finally {
+    leave()
+  }
 }"#;
 
 const RECEIVING: &str = r#"private class @P@McpRefused(val answer: @N@McpAnswer) : Exception()
@@ -592,19 +705,75 @@ private fun @P@McpFaultedRequest(fault: JsonElement): @N@McpAnswer =
     ),
   )"#;
 
-const DISPATCHERS: &str = "fun create@N@McpDispatcher(handlers: @N@Handlers): suspend (text: String) -> String? {
-  val route = create@N@McpRoute(handlers)
+const DISPATCHERS: &str = "/**
+ * Answers the requests of this service alone, one text in and one out. [handlers] builds the
+ * handlers from the request in flight, [writer] takes what the request writes beyond its answer,
+ * and [inFlight] lists the requests `notifications/cancelled` can reach.
+ */
+fun create@N@McpDispatcher(
+  handlers: (@N@McpCall) -> @N@Handlers,
+): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
-  return { text ->
-    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint) { _, method, params -> route(method, params) }
+  return { text, writer, inFlight ->
+    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint, @N@McpHost(writer, inFlight)) { call, _, method, params ->
+      create@N@McpRoute(handlers(call))(method, params)
+    }
   }
 }";
 
-const HTTP: &str = r#"data class @N@McpHttpRequest(val method: String, val headers: List<Pair<String, String>>, val body: ByteArray) {
+const HTTP: &str = r#"/** An HTTP request in plain terms. `path` is the request's path, with or without its query. */
+data class @N@McpHttpRequest(val method: String, val path: String, val headers: List<Pair<String, String>>, val body: ByteArray) {
+  /** The value of the header called [name], whatever its case. */
   fun header(name: String): String? = headers.firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
+
+  /** The token of an `Authorization: Bearer` header, whatever the case of the scheme. */
+  fun bearerToken(): String? {
+    val value = header("authorization") ?: return null
+    val at = value.indexOf(' ')
+    if (at < 0) return null
+    val token = value.substring(at + 1).trim()
+    return if (value.substring(0, at).equals("bearer", ignoreCase = true) && token.isNotEmpty()) token else null
+  }
+
+  /** The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so. */
+  fun mcpName(): String? = header("mcp-name")?.let { @P@McpDecodedHeader(it) }
 }
 
 data class @N@McpHttpResponse(val status: Int, val headers: List<Pair<String, String>>, val body: ByteArray)
+
+/** The protected-resource metadata of a server that authorizes by OAuth. */
+data class @N@McpOAuth(
+  val authorizationServers: List<String>,
+  val resource: String,
+  val resourceMetadataUrl: String,
+  val scopesSupported: List<String>,
+)
+
+/** What an HTTP server of this endpoint is configured with. Without [oauth] it serves no metadata document and writes no challenge. */
+data class @N@McpHttpSettings(val allowedOrigins: List<String>, val oauth: @N@McpOAuth? = null)
+
+/** Why `admit` refused a request. */
+sealed interface @N@McpDenied {
+  /** `401`: no credentials, or credentials that do not hold. [scope] names what the called operation needs. */
+  data class NoValidCredentials(val scope: String? = null) : @N@McpDenied
+
+  /** `403` with a challenge: the credentials hold, but not the scopes [scope] names. */
+  data class InsufficientScope(val scope: String) : @N@McpDenied
+
+  /** `403` with no challenge. */
+  object Forbidden : @N@McpDenied
+}
+
+/** What `admit` answers: the handlers built for the caller, or why the request is refused. */
+sealed interface @N@McpAdmitted {
+  data class Caller(val handlers: @N@Handlers) : @N@McpAdmitted
+  data class Denied(val denied: @N@McpDenied) : @N@McpAdmitted
+}
+
+/** The scopes a caller needs for the request [method] and [name] name, none for any other. */
+fun @P@McpScopes(method: String, name: String?): List<String> {
+@SCOPES@  return emptyList()
+}
 
 private fun @P@McpWithoutBody(status: Int, headers: List<Pair<String, String>> = emptyList()): @N@McpHttpResponse =
   @N@McpHttpResponse(status, headers, ByteArray(0))
@@ -654,10 +823,57 @@ private fun @P@McpHeaderMismatch(request: @N@McpHttpRequest, message: JsonObject
   return null
 }
 
-private fun @P@McpAdmitted(request: @N@McpHttpRequest, allowedOrigins: List<String>): Pair<String?, @N@McpHttpResponse?> {
-  if (request.method != "POST") return null to @P@McpWithoutBody(405, listOf("Allow" to "POST"))
+private fun @P@McpUrlPath(url: String): String {
+  val after = url.substringAfter("://", url)
+  val at = after.indexOf('/')
+  val fromPath = if (at < 0) "/" else after.substring(at)
+  return fromPath.split('?', '#').first()
+}
+
+private fun @P@McpDenial(denied: @N@McpDenied, settings: @N@McpHttpSettings, request: @N@McpHttpRequest): @N@McpHttpResponse {
+  val oauth = settings.oauth
+  val (status, challenge) = when (denied) {
+    is @N@McpDenied.NoValidCredentials -> 401 to oauth?.let {
+      val parts = mutableListOf("resource_metadata=\"${it.resourceMetadataUrl}\"")
+      denied.scope?.let { scope -> parts.add("scope=\"$scope\"") }
+      if (request.bearerToken() != null) parts.add("error=\"invalid_token\"")
+      "Bearer ${parts.joinToString(", ")}"
+    }
+    is @N@McpDenied.InsufficientScope -> 403 to oauth?.let {
+      "Bearer error=\"insufficient_scope\", scope=\"${denied.scope}\", resource_metadata=\"${it.resourceMetadataUrl}\""
+    }
+    is @N@McpDenied.Forbidden -> 403 to null
+  }
+  return @P@McpWithoutBody(status, if (challenge == null) emptyList() else listOf("WWW-Authenticate" to challenge))
+}
+
+private fun @P@McpMetadata(oauth: @N@McpOAuth): @N@McpHttpResponse =
+  @P@McpJsonResponse(
+    200,
+    buildJsonObject {
+      put("authorization_servers", JsonArray(oauth.authorizationServers.map { JsonPrimitive(it) }))
+      put("bearer_methods_supported", JsonArray(listOf(JsonPrimitive("header"))))
+      put("resource", oauth.resource)
+      if (oauth.scopesSupported.isNotEmpty()) {
+        put("scopes_supported", JsonArray(oauth.scopesSupported.map { JsonPrimitive(it) }))
+      }
+    },
+  )
+
+private fun @P@McpBeforeAdmit(request: @N@McpHttpRequest, settings: @N@McpHttpSettings): @N@McpHttpResponse? {
+  val oauth = settings.oauth
+  if (oauth != null && request.method == "GET" &&
+    request.path.split('?', '#').first() == @P@McpUrlPath(oauth.resourceMetadataUrl)
+  ) {
+    return @P@McpMetadata(oauth)
+  }
+  if (request.method != "POST") return @P@McpWithoutBody(405, listOf("Allow" to "POST"))
   val origin = request.header("origin")
-  if (origin != null && origin !in allowedOrigins) return null to @P@McpWithoutBody(403)
+  if (origin != null && origin !in settings.allowedOrigins) return @P@McpWithoutBody(403)
+  return null
+}
+
+private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHttpResponse?> {
   val text = try {
     Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(request.body)).toString()
   } catch (rejected: Exception) {
@@ -680,6 +896,13 @@ private fun @P@McpAdmitted(request: @N@McpHttpRequest, allowedOrigins: List<Stri
   return text to null
 }
 
+private fun @P@McpEventStream(events: Collection<String>, answered: String?): @N@McpHttpResponse =
+  @N@McpHttpResponse(
+    200,
+    listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no"),
+    (events + listOfNotNull(answered)).joinToString("") { "event: message\ndata: $it\n\n" }.encodeToByteArray(),
+  )
+
 private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
   if (answered == null) {
     @P@McpWithoutBody(202)
@@ -687,28 +910,49 @@ private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
     @N@McpHttpResponse(200, listOf("Content-Type" to "application/json"), answered.encodeToByteArray())
   }
 
+/**
+ * The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
+ * `admit`, the body and the headers that must agree with it. [route] also receives the handlers
+ * that `admit` built for the caller.
+ */
 suspend fun @P@McpServeHttp(
   request: @N@McpHttpRequest,
-  allowedOrigins: List<String>,
+  settings: @N@McpHttpSettings,
   serverName: String,
   instructions: String?,
   endpoint: @N@McpEndpoint,
-  route: suspend (part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
+  route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
 ): @N@McpHttpResponse {
-  val (text, refused) = @P@McpAdmitted(request, allowedOrigins)
+  val before = @P@McpBeforeAdmit(request, settings)
+  if (before != null) return before
+  val events = java.util.concurrent.ConcurrentLinkedQueue<String>()
+  val call = @N@McpCall(@P@McpBodyToken(request)) { event -> events.add(event) }
+  val caller = when (val admitted = admit(request, call)) {
+    is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
+    is @N@McpAdmitted.Caller -> admitted.handlers
+  }
+  val (text, refused) = @P@McpAfterAdmit(request)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
-  return @P@McpHttpAnswer(@P@McpServe(text, serverName, instructions, endpoint, route))
+  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+    is @P@McpBegun.Answered -> return @P@McpHttpAnswer(begun.text)
+    is @P@McpBegun.Notified -> return @P@McpHttpAnswer(null)
+    is @P@McpBegun.Routed -> begun.request
+  }
+  val answered = @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
+  val written = if (call.cancelled) null else answered
+  return if (@P@McpToken(asked) != null) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
 }
 
+/** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
 fun create@N@McpHttpDispatcher(
-  handlers: @N@Handlers,
-  allowedOrigins: List<String>,
+  settings: @N@McpHttpSettings,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
 ): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse {
-  val route = create@N@McpRoute(handlers)
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
   return { request ->
-    @P@McpServeHttp(request, allowedOrigins, @P@McpServerName, @P@McpInstructions, endpoint) { _, method, params ->
-      route(method, params)
+    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit) { caller, _, method, params ->
+      create@N@McpRoute(caller)(method, params)
     }
   }
 }"#;
@@ -742,11 +986,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
+        fill(WRITER, &prefix, &named, &fields),
         fill(SERVING, &prefix, &named, &fields),
         fill(RECEIVING, &prefix, &named, &fields),
         route(service, &held, &prefix, &named, &fields),
         fill(DISPATCHERS, &prefix, &named, &fields),
-        fill(HTTP, &prefix, &named, &fields),
+        fill(HTTP, &prefix, &named, &fields)
+            .replace("@SCOPES@", &scopes_table(&ScopeTable::of(service))),
     ];
     published.extend(kotlin_declarations());
     published.retain(|text| !text.is_empty());
@@ -756,6 +1002,101 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
 /// `wrapped_entries` for the operations that are tools.
 fn tool_entries(service: &ServiceDef) -> String {
     wrapped_entries_of(service, true)
+}
+
+fn scopes_table(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "listOf({})",
+            scopes
+                .iter()
+                .map(|scope| kotlin_quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut text = String::new();
+    if table.has_templates() {
+        text.push_str(
+            "  fun matches(uri: String, template: List<Pair<String, Boolean>>): Boolean {\n    \
+             var rest = uri\n    \
+             for ((text, placeholder) in template) {\n      \
+             if (placeholder) {\n        \
+             val slash = rest.indexOf('/')\n        \
+             val end = if (slash < 0) rest.length else slash\n        \
+             if (end == 0) return false\n        \
+             rest = rest.substring(end)\n      \
+             } else {\n        \
+             if (!rest.startsWith(text)) return false\n        \
+             rest = rest.substring(text.length)\n      \
+             }\n    \
+             }\n    \
+             return rest.isEmpty()\n  \
+             }\n\n",
+        );
+    }
+    if !table.tools.is_empty() {
+        text.push_str("  if (method == \"tools/call\") {\n    when (name) {\n");
+        for (tool, scopes) in &table.tools {
+            let _ = writeln!(
+                text,
+                "      {} -> return {}",
+                kotlin_quoted(tool),
+                list(scopes)
+            );
+        }
+        text.push_str("    }\n  }\n");
+    }
+    if !table.reads.is_empty() {
+        text.push_str("  if (method == \"resources/read\" && name != null) {\n");
+        for (uri, scopes) in &table.reads {
+            match uri {
+                ReadUri::Fixed(fixed) => {
+                    let _ = writeln!(
+                        text,
+                        "    if (name == {}) return {}",
+                        kotlin_quoted(fixed),
+                        list(scopes)
+                    );
+                }
+                ReadUri::Template(parts) => {
+                    let pairs: Vec<String> = parts
+                        .iter()
+                        .map(|(part, placeholder)| {
+                            format!("{} to {placeholder}", kotlin_quoted(part))
+                        })
+                        .collect();
+                    let _ = writeln!(
+                        text,
+                        "    if (matches(name, listOf({}))) return {}",
+                        pairs.join(", "),
+                        list(scopes)
+                    );
+                }
+            }
+        }
+        text.push_str("    return emptyList()\n  }\n");
+    }
+    if let Some(scopes) = &table.listing {
+        let _ = writeln!(
+            text,
+            "  if (method == \"resources/list\") return {}",
+            list(scopes)
+        );
+    }
+    if !table.completions.is_empty() {
+        text.push_str("  if (method == \"completion/complete\" && name != null) {\n");
+        for (uri, scopes) in &table.completions {
+            let _ = writeln!(
+                text,
+                "    if (name == {}) return {}",
+                kotlin_quoted(uri),
+                list(scopes)
+            );
+        }
+        text.push_str("  }\n");
+    }
+    text
 }
 
 /// One `"tool" to <marker>,` entry per tool: the accessor writes `true` or `false` over each

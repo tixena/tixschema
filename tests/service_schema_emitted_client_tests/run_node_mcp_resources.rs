@@ -80,16 +80,17 @@ async function main() {
   const library = createLibraryServiceMcpRoute(libraryImpl);
   const depot = createDepotServiceMcpRoute(depotImpl);
   const workspace = libraryServiceMcpEndpoint(libraryServiceMcpPart, depotServiceMcpPart);
-  const served = (text) => libraryServiceMcpServe(text, "Workspace", undefined, workspace,
-    async (part, method, params) => (part === 0 ? library({}, method, params) : part === 1 ? depot({}, method, params) : undefined));
+  const host = { writer: async () => {}, inFlight: new LibraryServiceMcpInFlight() };
+  const served = (text) => libraryServiceMcpServe(text, "Workspace", undefined, workspace, () => ({}), host,
+    async (ctx, part, method, params) => (part === 0 ? library(ctx, method, params) : part === 1 ? depot(ctx, method, params) : undefined));
   const aloneLibrary = createLibraryServiceMcpDispatcher(libraryImpl);
   const aloneDepot = createDepotServiceMcpDispatcher(depotImpl);
   const aloneBare = createBareServiceMcpDispatcher(bareImpl);
-  const over = createLibraryServiceMcpHttpDispatcher(libraryImpl, { allowedOrigins: [input.origin] });
+  const over = createLibraryServiceMcpHttpDispatcher(libraryImpl, { allowedOrigins: [input.origin] }, async () => ({ ctx: {} }));
   const answers = (ask) => Promise.all(input.requests.map(async (text) => (await ask(text)) ?? null));
   const http = [];
   for (const row of input.http) {
-    const response = await over({}, { method: "POST", headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await over({ method: "POST", path: "/mcp", headers: row.headers, body: new TextEncoder().encode(row.body) });
     http.push({ status: response.status, headers: response.headers.map(([name, value]) => [name, value]), body: new TextDecoder().decode(response.body) });
   }
   let shared = null;
@@ -102,9 +103,9 @@ async function main() {
     names: [libraryServiceMcpPart.names, depotServiceMcpPart.names, bareServiceMcpPart.names, mirrorServiceMcpPart.names],
     shared,
     workspace: await answers(served),
-    library: await answers((text) => aloneLibrary({}, text)),
-    depot: await answers((text) => aloneDepot({}, text)),
-    bare: await answers((text) => aloneBare({}, text)),
+    library: await answers((text) => aloneLibrary(text, () => ({}), host.writer, host.inFlight)),
+    depot: await answers((text) => aloneDepot(text, () => ({}), host.writer, host.inFlight)),
+    bare: await answers((text) => aloneBare(text, () => ({}), host.writer, host.inFlight)),
     http,
   }));
   process.exit(0);
@@ -128,12 +129,20 @@ const USAGE_CALLER: &str = r#"import {
   libraryServiceMcpOperations,
   libraryServiceMcpPart,
   type LibraryServiceImpl,
+  type LibraryServiceMcpCall,
+  type LibraryServiceMcpInFlight,
+  type LibraryServiceMcpWriter,
   type McpResourcePage,
 } from "./bundle.js";
 
 declare const impl: LibraryServiceImpl<number>;
 
-export const dispatcher: (ctx: number, text: string) => Promise<string | undefined> = createLibraryServiceMcpDispatcher(impl);
+export const dispatcher: (
+  text: string,
+  ctx: (call: LibraryServiceMcpCall) => number,
+  writer: LibraryServiceMcpWriter,
+  inFlight: LibraryServiceMcpInFlight,
+) => Promise<string | undefined> = createLibraryServiceMcpDispatcher(impl);
 export const kinds: ReadonlyArray<string> = libraryServiceMcpOperations.map((operation) => operation.kind);
 export const names: readonly ["resource template:library://covers/{book_id}", "tool:get-book", "resource:guide://library"] = libraryServiceMcpPart.names;
 export const page: McpResourcePage = { resources: [{ uri: "library://covers/book-1", name: "cover-1.pdf" }], nextCursor: "page-2" };

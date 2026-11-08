@@ -105,13 +105,17 @@ suspend fun report(input: JsonObject): JsonObject {
     val workspace = LibraryServiceMcpEndpoint(libraryServiceMcpCatalog, depotServiceMcpCatalog)
     val libraryRoute = createLibraryServiceMcpRoute(LibraryHandlers)
     val depotRoute = createDepotServiceMcpRoute(DepotHandlers)
-    val aloneLibrary = createLibraryServiceMcpDispatcher(LibraryHandlers)
-    val aloneDepot = createDepotServiceMcpDispatcher(DepotHandlers)
-    val aloneBare = createBareServiceMcpDispatcher(BareHandlers)
-    val http = createLibraryServiceMcpHttpDispatcher(LibraryHandlers, listOf(input.getValue("origin").jsonPrimitive.content))
+    val aloneLibrary = createLibraryServiceMcpDispatcher { LibraryHandlers }
+    val aloneDepot = createDepotServiceMcpDispatcher { DepotHandlers }
+    val aloneBare = createBareServiceMcpDispatcher { BareHandlers }
+    val nowhere: LibraryServiceMcpWriter = { }
+    val host = LibraryServiceMcpHost(nowhere, LibraryServiceMcpInFlight())
+    val http = createLibraryServiceMcpHttpDispatcher(
+        LibraryServiceMcpHttpSettings(listOf(input.getValue("origin").jsonPrimitive.content)),
+    ) { _, _ -> LibraryServiceMcpAdmitted.Caller(LibraryHandlers) }
     val requests = input.getValue("requests").jsonArray.map { it.jsonPrimitive.content }
     val workspaceAnswers = requests.map { text ->
-        nullable(libraryServiceMcpServe(text, "Workspace", null, workspace) { part, method, params ->
+        nullable(libraryServiceMcpServe(text, "Workspace", null, workspace, host) { _, part, method, params ->
             when (part) {
                 0 -> libraryRoute(method, params)
                 1 -> depotRoute(method, params)?.let { answered ->
@@ -130,6 +134,7 @@ suspend fun report(input: JsonObject): JsonObject {
         val answered = http(
             LibraryServiceMcpHttpRequest(
                 "POST",
+                "/mcp",
                 headers,
                 given.getValue("body").jsonPrimitive.content.encodeToByteArray(),
             ),
@@ -165,9 +170,9 @@ suspend fun report(input: JsonObject): JsonObject {
         put("shared", shared)
         put("kept", kept)
         put("workspace", JsonArray(workspaceAnswers))
-        put("library", JsonArray(requests.map { nullable(aloneLibrary(it)) }))
-        put("depot", JsonArray(requests.map { nullable(aloneDepot(it)) }))
-        put("bare", JsonArray(requests.map { nullable(aloneBare(it)) }))
+        put("library", JsonArray(requests.map { nullable(aloneLibrary(it, nowhere, LibraryServiceMcpInFlight())) }))
+        put("depot", JsonArray(requests.map { nullable(aloneDepot(it, nowhere, DepotServiceMcpInFlight())) }))
+        put("bare", JsonArray(requests.map { nullable(aloneBare(it, nowhere, BareServiceMcpInFlight())) }))
         put("http", JsonArray(httpAnswers))
     }
 }

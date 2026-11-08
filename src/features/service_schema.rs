@@ -24,6 +24,12 @@ mod kotlin_mcp_client;
 mod kotlin_mcp_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    all(feature = "typescript", feature = "zod")
+))]
+mod mcp_scopes;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod mcp_ts_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
