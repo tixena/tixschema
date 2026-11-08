@@ -3752,6 +3752,17 @@ let client = DocumentServiceClient::new(HttpMcpTransport::new(url, api_key));
 let version = client.get_version(GetVersionRequest { document_id: "doc-1".into() }).await;
 ```
 
+**TypeScript server and client.** A service that asks for `mcp` also publishes `<Service>Schema::ts_mcp_service()` and `ts_mcp_client()`, beside `ts_http_service()` and `ts_http_client()`. The server takes the `{Service}Impl<Ctx>` that `create{Service}Dispatcher` takes and calls that dispatcher, so the generated Zod reads judge every message. It answers `server/discover`, `tools/list` and `tools/call` with the bytes the Rust server answers: keys in order, and each tool kept as the JSON text Rust wrote, so a schema keeps its digits.
+
+```ts
+const route = createDocumentServiceMcpRoute(impl);
+const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
+const reply = await documentServiceMcpServe(line, "Workspace", undefined, workspace,
+  async (part, method, params) => (part === 0 ? route(ctx, method, params) : undefined));
+```
+
+`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, and `createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins })` applies the Streamable HTTP rules around it. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
+
 #### The `ws_rpc` Transport
 
 `#[service_schema(transports = ["ws_rpc"])]` serves a service over one WebSocket as JSON text frames -- the same request, notify and reply terms `amqp_rpc` already answers through, carried over a socket instead of a queue. A service that only answers calls asks for it alone; a service the server calls instead -- pushing an event to whichever connection wants it -- asks for it too, notify travelling either direction over the same wire. The pair below is what a browser dashboard and its backend actually share: the browser calls `Ledger`, and the server pushes `LedgerEvents` back down the same connection.

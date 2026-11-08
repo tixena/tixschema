@@ -1483,6 +1483,11 @@ use run_node_http_service::{
     catalog_client_service_schema, scale_client_service_schema,
 };
 #[cfg(test)]
+use run_node_mcp::{
+    ArchiveService, BillingService, DocumentService, archive_service_schema,
+    billing_service_schema, document_service_schema,
+};
+#[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,
     wharf_filing_client_service_schema,
@@ -1607,3 +1612,9 @@ mod run_swift_member_named;
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
+
+/// The emitted `mcp` server and client run by node: the requests of the design, every answer held
+/// to the 2026-07-28 schema, and two services behind one endpoint.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
+mod run_node_mcp;
