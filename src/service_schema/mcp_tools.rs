@@ -23,10 +23,19 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         || quote! { ::core::option::Option::None },
         |text| quote! { ::core::option::Option::Some(#text) },
     );
-    let names = service
-        .operations
-        .iter()
-        .map(|operation| operation.mcp_tool_name().to_owned());
+    let listed = service.operations.iter().filter_map(|operation| {
+        if operation.is_mcp_tool() {
+            return Some(("tool", operation.mcp_tool_name().to_owned()));
+        }
+        let resource = operation.mcp.resource.as_ref()?;
+        let kind = if resource.is_template() {
+            "resource template"
+        } else {
+            "resource"
+        };
+        Some((kind, resource.uri.clone()))
+    });
+    let (kinds, names): (Vec<_>, Vec<_>) = listed.unzip();
     quote! {
         #tools
 
@@ -35,8 +44,8 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         #[doc = " The trait's rustdoc, which the server answers as its `instructions`."]
         pub const MCP_INSTRUCTIONS: ::core::option::Option<&'static str> = #instructions;
 
-        #[doc = " Every tool the service lists, as `(\"tool\", <name>)`."]
-        pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#(("tool", #names)),*];
+        #[doc = " Every tool, resource and resource template the service lists, as `(<kind>, <name>)`."]
+        pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#((#kinds, #names)),*];
     }
 }
 
@@ -73,7 +82,11 @@ fn wrapped_method(operation: &OperationDef) -> TokenStream {
 }
 
 fn tools_method(service: &ServiceDef) -> TokenStream {
-    let tools = service.operations.iter().map(tool_value);
+    let tools = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .map(tool_value);
     let helpers = helpers();
     quote! {
         #[doc = " The service's tools, one per operation in the order the trait declares them."]

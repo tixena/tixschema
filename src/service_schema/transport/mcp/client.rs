@@ -25,6 +25,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let methods = service
         .operations
         .iter()
+        .filter(|operation| operation.is_mcp_tool())
         .map(|operation| method(operation, &generated, &schema));
     let placement = placement_doc(
         &published,

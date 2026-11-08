@@ -35,6 +35,10 @@ mod serve_tests;
 mod http_tests;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/resource_tests.rs"]
+mod resource_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/client_tests.rs"]
 mod client_tests;
 

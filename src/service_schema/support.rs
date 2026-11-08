@@ -164,6 +164,12 @@ pub fn emit(
     } else {
         TokenStream::new()
     };
+    let resource_page = (asked.contains(&Transport::Mcp)
+        && service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.list_resources))
+    .then(resource_page_types);
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -185,6 +191,40 @@ pub fn emit(
             #http_completeness
             #body_source
             #streamed_answer
+            #resource_page
+        }
+    }
+}
+
+/// What an `mcp(list_resources)` operation answers: one page of resources.
+fn resource_page_types() -> TokenStream {
+    quote! {
+        /// One resource of a listing, as `resources/list` writes it.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct McpResource {
+            /// The URI `resources/read` reads it by.
+            pub uri: ::std::string::String,
+            /// The name a host shows.
+            pub name: ::std::string::String,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub title: ::core::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub description: ::core::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub mime_type: ::core::option::Option<::std::string::String>,
+            /// The size in bytes, where it is known.
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub size: ::core::option::Option<u64>,
+        }
+
+        /// One page of `resources/list`, with the cursor of the next where there is one.
+        #[derive(Clone, Debug, Default, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct McpResourcePage {
+            pub resources: ::std::vec::Vec<McpResource>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub next_cursor: ::core::option::Option<::std::string::String>,
         }
     }
 }

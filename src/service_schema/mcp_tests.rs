@@ -3,7 +3,7 @@
 #![cfg(feature = "serde")]
 
 use super::mcp_refusals::refusals;
-use super::parse::{ServiceDef, parse_service};
+use super::parse::{OperationDef, ServiceDef, parse_service};
 use super::transport::Transport;
 use super::{exec_service_schema, stream_envelope_refusal};
 use proc_macro2::TokenStream;
@@ -23,6 +23,33 @@ const DOCUMENTED: &str = r#"
         /// Renames one document.
         async fn rename_document(&self, ctx: &Ctx, document_id: String, title: String)
             -> Result<(), VersionError>;
+    }
+"#;
+
+const RESOURCES: &str = r#"
+    pub trait DocumentService<Ctx> {
+        /// The guide.
+        #[service_schema_op(mcp(resource = "guide://configure", mime_type = "text/markdown", ttl_ms = 5, cache_scope = "public"))]
+        async fn configuration_guide(&self, ctx: &Ctx) -> Result<String, VersionError>;
+
+        /// Lists the documents.
+        #[service_schema_op(mcp(list_resources))]
+        async fn list_documents(&self, ctx: &Ctx, cursor: Option<String>)
+            -> Result<McpResourcePage, VersionError>;
+
+        /// The file of one document.
+        #[service_schema_op(mcp(resource = "workspace://documents/{document_id}"))]
+        async fn document_file(&self, ctx: &Ctx, document_id: String)
+            -> Result<(Vec<u8>, String), VersionError>;
+
+        /// Suggests documents.
+        #[service_schema_op(mcp(completes(resource = "document_file", parameter = "document_id")))]
+        async fn suggest_documents(&self, ctx: &Ctx, typed: String, chosen: HashMap<String, String>)
+            -> Result<Vec<String>, VersionError>;
+
+        /// Answers the version.
+        async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+            -> Result<VersionResponse, VersionError>;
     }
 "#;
 
@@ -159,7 +186,7 @@ fn an_empty_title_name_or_icon_is_refused_naming_the_operation() {
 
 #[test]
 fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
-    for key in ["resource = \"guide://x\"", "prompt", "content", "scopes(a)"] {
+    for key in ["prompt", "content", "scopes(a)"] {
         let reported = parse_refusals(&format!(
             "pub trait DocumentService<Ctx> {{
                 #[service_schema_op(mcp({key}))]
@@ -172,7 +199,9 @@ fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
             [
                 "service_schema: operation `get_version` writes a key `mcp(...)` does not take\n       \
                  the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
-                 `open_world` and `header(<argument> = \"<Header-Name>\")`"
+                 `open_world`, `header(<argument> = \"<Header-Name>\")`, `resource`, `mime_type`, \
+                 `list_resources`, `completes(resource = \"<operation>\", parameter = \"<argument>\")`, \
+                 `ttl_ms` and `cache_scope`"
                     .to_owned()
             ]
         );
@@ -518,4 +547,235 @@ fn a_message_lists_jsonschema_on_a_service_that_asks_for_mcp_as_it_does_for_open
 fn the_mcp_transport_is_known_by_name() {
     assert_eq!(Transport::Mcp.name(), "mcp");
     assert!(Transport::KNOWN.contains(&Transport::Mcp));
+}
+
+#[test]
+fn the_resource_keys_are_read() {
+    let read = service(RESOURCES);
+    let guide = &read.operations[0].mcp;
+    let resource = guide.resource.as_ref().unwrap();
+    assert_eq!(resource.uri, "guide://configure");
+    assert!(!resource.is_template());
+    assert_eq!(guide.mime_type.as_deref(), Some("text/markdown"));
+    assert_eq!(guide.ttl_ms, Some(5));
+    assert_eq!(guide.cache_scope.as_deref(), Some("public"));
+    assert!(read.operations[1].mcp.list_resources);
+    let file = read.operations[2].mcp.resource.as_ref().unwrap();
+    assert!(file.is_template());
+    assert_eq!(file.placeholder_names(), ["document_id"]);
+    let completes = read.operations[3].mcp.completes.as_ref().unwrap();
+    assert_eq!(completes.resource, "document_file");
+    assert_eq!(completes.parameter, "document_id");
+    let tools: Vec<_> = read
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .map(OperationDef::mcp_tool_name)
+        .collect();
+    assert_eq!(tools, ["get-version"]);
+    assert_eq!(mcp_refusals_of(RESOURCES), Vec::<String>::new());
+}
+
+#[test]
+fn a_placeholder_that_names_no_argument_is_refused() {
+    let reported = parse_refusals(
+        r#"pub trait DocumentService<Ctx> {
+            /// The file of one document.
+            #[service_schema_op(mcp(resource = "workspace://documents/{missing}"))]
+            async fn document_file(&self, ctx: &Ctx, document_id: String)
+                -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `document_file` writes the placeholder `{missing}` in \
+             `mcp(resource = \"workspace://documents/{missing}\")`, and `missing` is no argument \
+             of it\n       name an argument of the operation between the braces"
+        ]
+    );
+}
+
+#[test]
+fn an_unterminated_placeholder_in_a_uri_is_refused() {
+    let reported = parse_refusals(
+        r#"pub trait DocumentService<Ctx> {
+            /// The file of one document.
+            #[service_schema_op(mcp(resource = "workspace://documents/{document_id"))]
+            async fn document_file(&self, ctx: &Ctx, document_id: String)
+                -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: `mcp(resource = ...)`'s URI opens `{` with no matching `}`\n       \
+             write `{field}`, closed before the URI ends"
+        ]
+    );
+}
+
+#[test]
+fn two_operations_with_one_uri_are_refused_whatever_the_placeholders_are_called() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// The file of one document.
+            #[service_schema_op(mcp(resource = "workspace://documents/{document_id}"))]
+            async fn document_file(&self, ctx: &Ctx, document_id: String)
+                -> Result<String, VersionError>;
+
+            /// The text of one document.
+            #[service_schema_op(mcp(resource = "workspace://documents/{id}"))]
+            async fn document_text(&self, ctx: &Ctx, id: String)
+                -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        ["service_schema: operation `document_text` is the resource \
+             `workspace://documents/{id}`, which `document_file` already is, and this service \
+             asks for `mcp`\n       \
+             a server reads each URI through one operation; write another URI on one of them"]
+    );
+}
+
+#[test]
+fn a_success_a_resource_cannot_answer_is_refused() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// The guide.
+            #[service_schema_op(mcp(resource = "guide://configure"))]
+            async fn configuration_guide(&self, ctx: &Ctx) -> Result<VersionResponse, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `configuration_guide` is the resource `guide://configure` \
+             and answers a success a resource cannot, and this service asks for `mcp`\n       \
+             answer a `String` for text, or a `(Vec<u8>, String)` of bytes and their content type"
+        ]
+    );
+}
+
+#[test]
+fn a_completes_that_names_no_operation_or_no_placeholder_is_refused() {
+    let source = |resource: &str, parameter: &str| {
+        format!(
+            r#"pub trait DocumentService<Ctx> {{
+                /// The file of one document.
+                #[service_schema_op(mcp(resource = "workspace://documents/{{document_id}}"))]
+                async fn document_file(&self, ctx: &Ctx, document_id: String)
+                    -> Result<String, VersionError>;
+
+                /// Suggests documents.
+                #[service_schema_op(mcp(completes(resource = "{resource}", parameter = "{parameter}")))]
+                async fn suggest_documents(&self, ctx: &Ctx, typed: String, chosen: HashMap<String, String>)
+                    -> Result<Vec<String>, VersionError>;
+            }}"#
+        )
+    };
+    assert_eq!(
+        mcp_refusals_of(&source("nothing", "document_id")),
+        [
+            "service_schema: operation `suggest_documents` completes `nothing`, which is no \
+             resource template of the service, and this service asks for `mcp`\n       \
+             name an operation of this service that writes `mcp(resource = \"...{placeholder}...\")`"
+        ]
+    );
+    assert_eq!(
+        mcp_refusals_of(&source("document_file", "page")),
+        [
+            "service_schema: operation `suggest_documents` completes `document_file` for `page`, \
+             and the URI `workspace://documents/{document_id}` holds no such placeholder, and \
+             this service asks for `mcp`\n       name a placeholder of the template"
+        ]
+    );
+}
+
+#[test]
+fn a_listing_and_a_completion_are_held_to_their_shapes() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// The file of one document.
+            #[service_schema_op(mcp(resource = "workspace://documents/{document_id}"))]
+            async fn document_file(&self, ctx: &Ctx, document_id: String)
+                -> Result<String, VersionError>;
+
+            /// Lists the documents.
+            #[service_schema_op(mcp(list_resources))]
+            async fn list_documents(&self, ctx: &Ctx, cursor: String, limit: u32)
+                -> Result<Vec<String>, VersionError>;
+
+            /// Suggests documents.
+            #[service_schema_op(mcp(completes(resource = "document_file", parameter = "document_id")))]
+            async fn suggest_documents(&self, ctx: &Ctx, typed: String)
+                -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(reported.len(), 4, "{reported:?}");
+    assert!(reported[0].contains("lists resources and answers a success a listing cannot"));
+    assert!(reported[1].contains("lists resources and takes more than a cursor"));
+    assert!(reported[2].contains("answers a success a completion cannot"));
+    assert!(reported[3].contains("does not take two arguments"));
+}
+
+#[test]
+fn an_operation_that_is_two_things_is_refused() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// The guide.
+            #[service_schema_op(mcp(resource = "guide://configure", list_resources))]
+            async fn configuration_guide(&self, ctx: &Ctx) -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `configuration_guide` is more than one of `resource`, \
+             `list_resources` and `completes` in `mcp(...)`, and this service asks for \
+             `mcp`\n       an operation is one of them; split it into one operation each"
+        ]
+    );
+}
+
+#[test]
+fn a_service_lists_its_resources_through_one_operation() {
+    let reported = mcp_refusals_of(
+        "pub trait DocumentService<Ctx> {
+            /// Lists the documents.
+            #[service_schema_op(mcp(list_resources))]
+            async fn list_documents(&self, ctx: &Ctx) -> Result<McpResourcePage, VersionError>;
+
+            /// Lists the drafts.
+            #[service_schema_op(mcp(list_resources))]
+            async fn list_drafts(&self, ctx: &Ctx) -> Result<McpResourcePage, VersionError>;
+        }",
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `list_drafts` lists resources, which `list_documents` \
+             already does, and this service asks for `mcp`\n       \
+             a service lists its resources through one operation"
+        ]
+    );
+}
+
+#[test]
+fn a_cache_scope_other_than_public_or_private_is_refused() {
+    let reported = parse_refusals(
+        r#"pub trait DocumentService<Ctx> {
+            #[service_schema_op(mcp(cache_scope = "shared"))]
+            async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+                -> Result<VersionResponse, VersionError>;
+        }"#,
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `get_version` writes `cache_scope = \"shared\"` in \
+             `mcp(...)`\n       the scope is \"public\" or \"private\""
+        ]
+    );
 }

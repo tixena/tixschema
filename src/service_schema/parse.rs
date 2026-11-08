@@ -64,20 +64,9 @@ const HTTP_ERROR_STATUS_SHAPE_MESSAGE: &str = concat!(
     "       write `error_status(NotFound = 404, ...)`"
 );
 
-const UNTERMINATED_PLACEHOLDER_MESSAGE: &str = concat!(
-    "service_schema: `http(...)`'s path opens `{` with no matching `}`\n",
-    "       write `{field}`, closed before the path ends"
-);
-
-const EMPTY_PLACEHOLDER_MESSAGE: &str = concat!(
-    "service_schema: `http(...)`'s path has an empty `{}`\n",
-    "       name the field it binds: `{field}`"
-);
-
-const UNMATCHED_CLOSING_BRACE_MESSAGE: &str = concat!(
-    "service_schema: `http(...)`'s path has a `}` with no matching `{`\n",
-    "       write `{field}`, or escape a literal brace some other way"
-);
+/// What a template is called in a refusal, and what ends it.
+const HTTP_PATH: (&str, &str) = ("`http(...)`'s path", "path");
+const RESOURCE_URI: (&str, &str) = ("`mcp(resource = ...)`'s URI", "URI");
 
 /// The status a declared error answers at when its operation named no `http(...)` group at all, and
 /// so declared no `error_status` table to read a code from.
@@ -183,6 +172,12 @@ impl OperationDef {
                 span = self.ident.span()
             )),
         }
+    }
+
+    /// Whether the operation is a tool: one that no `mcp(resource = ...)`, `mcp(list_resources)`
+    /// or `mcp(completes(...))` made something else.
+    pub const fn is_mcp_tool(&self) -> bool {
+        self.mcp.resource.is_none() && !self.mcp.list_resources && self.mcp.completes.is_none()
     }
 
     /// The name of the operation's tool: the `mcp(name = "...")` written, or the wire name.
@@ -478,6 +473,11 @@ impl HttpShape {
 /// is written, whatever transports the service asks for.
 #[derive(Clone, Default)]
 pub struct McpDirective {
+    /// `cache_scope = "public" | "private"`: the `cacheScope` a resource read or listing answers.
+    pub cache_scope: Option<String>,
+    /// `completes(resource = "<operation>", parameter = "<argument>")`: the operation suggests
+    /// values for one placeholder of a resource template.
+    pub completes: Option<McpCompletes>,
     /// `destructive = <bool>`: the tool's `destructiveHint`.
     pub destructive: Option<bool>,
     /// `header(<argument> = "<Header-Name>")`: each argument marked `x-mcp-header`, with the
@@ -487,14 +487,69 @@ pub struct McpDirective {
     pub icon: Option<String>,
     /// `idempotent`: the tool's `idempotentHint`.
     pub idempotent: bool,
+    /// `list_resources`: the operation lists the resources that change, a page at a time.
+    pub list_resources: bool,
+    /// `mime_type = "..."`: the MIME type of a resource whose success is text.
+    pub mime_type: Option<String>,
     /// `name = "..."`: the tool's name, where the wire name is not it.
     pub name: Option<String>,
     /// `open_world = <bool>`: the tool's `openWorldHint`.
     pub open_world: Option<bool>,
     /// `read_only`: the tool's `readOnlyHint`.
     pub read_only: bool,
+    /// `resource = "<uri>"`: the operation is one resource, or a template where the URI holds a
+    /// `{placeholder}`.
+    pub resource: Option<McpResourceUri>,
     /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
     pub title: Option<String>,
+    /// `ttl_ms = <number>`: the `ttlMs` a resource read or listing answers.
+    pub ttl_ms: Option<u64>,
+}
+
+/// The operation and the placeholder a `completes(...)` names.
+#[derive(Clone)]
+pub struct McpCompletes {
+    pub parameter: String,
+    pub resource: String,
+}
+
+/// The URI an operation is a resource at, as written and split at its placeholders.
+#[derive(Clone)]
+pub struct McpResourceUri {
+    pub segments: Vec<PathSegment>,
+    pub uri: String,
+}
+
+impl McpResourceUri {
+    /// Whether the URI holds a placeholder, which makes the operation a template.
+    pub fn is_template(&self) -> bool {
+        self.segments
+            .iter()
+            .any(|segment| matches!(segment, PathSegment::Placeholder(_)))
+    }
+
+    /// Every placeholder's name, in the URI's own order.
+    pub fn placeholder_names(&self) -> Vec<&str> {
+        self.segments
+            .iter()
+            .filter_map(|segment| match segment {
+                PathSegment::Placeholder(name) => Some(name.as_str()),
+                PathSegment::Literal(_) => None,
+            })
+            .collect()
+    }
+
+    /// The URI with every placeholder's name dropped, so two templates that match the same URIs
+    /// read alike.
+    pub fn shape(&self) -> String {
+        self.segments
+            .iter()
+            .map(|segment| match segment {
+                PathSegment::Literal(text) => text.as_str(),
+                PathSegment::Placeholder(_) => "{}",
+            })
+            .collect()
+    }
 }
 
 /// What `http(...)` said, before it is checked against the operation's signature and outcome.
@@ -868,6 +923,57 @@ fn read_mcp_directive(
             read.open_world = Some(mcp_bool(&inner, operation, "open_world")?);
             return Ok(());
         }
+        if inner.path.is_ident("resource") {
+            let uri = inner.value()?.parse::<LitStr>()?;
+            if uri.value().is_empty() {
+                return Err(syn::Error::new(
+                    uri.span(),
+                    empty_mcp_text_message(operation, "resource"),
+                ));
+            }
+            read.resource = Some(McpResourceUri {
+                segments: parse_path_template(&uri, RESOURCE_URI)?,
+                uri: uri.value(),
+            });
+            return Ok(());
+        }
+        if inner.path.is_ident("mime_type") {
+            read.mime_type = Some(non_empty_mcp_text(&inner, operation, "mime_type")?);
+            return Ok(());
+        }
+        if inner.path.is_ident("list_resources") {
+            mcp_bare_flag(&inner, operation, "list_resources")?;
+            read.list_resources = true;
+            return Ok(());
+        }
+        if inner.path.is_ident("ttl_ms") {
+            read.ttl_ms = Some(
+                inner
+                    .value()?
+                    .parse::<syn::LitInt>()?
+                    .base10_parse::<u64>()?,
+            );
+            return Ok(());
+        }
+        if inner.path.is_ident("cache_scope") {
+            let scope = inner.value()?.parse::<LitStr>()?;
+            if !matches!(scope.value().as_str(), "public" | "private") {
+                return Err(syn::Error::new(
+                    scope.span(),
+                    format!(
+                        "service_schema: operation `{operation}` writes `cache_scope = \"{}\"` in \
+                         `mcp(...)`\n       the scope is \"public\" or \"private\"",
+                        scope.value()
+                    ),
+                ));
+            }
+            read.cache_scope = Some(scope.value());
+            return Ok(());
+        }
+        if inner.path.is_ident("completes") {
+            read.completes = Some(read_mcp_completes(&inner, operation)?);
+            return Ok(());
+        }
         if inner.path.is_ident("header") {
             inner.parse_nested_meta(|bound| {
                 let argument = bound.path.require_ident()?.clone();
@@ -890,13 +996,50 @@ fn non_empty_mcp_text(
     if written.value().is_empty() {
         return Err(syn::Error::new(
             written.span(),
-            format!(
-                "service_schema: operation `{operation}` writes an empty `{key}` in `mcp(...)`\n       \
-                 write the text, or leave `{key}` out"
-            ),
+            empty_mcp_text_message(operation, key),
         ));
     }
     Ok(written.value())
+}
+
+fn empty_mcp_text_message(operation: &Ident, key: &str) -> String {
+    format!(
+        "service_schema: operation `{operation}` writes an empty `{key}` in `mcp(...)`\n       \
+         write the text, or leave `{key}` out"
+    )
+}
+
+/// Reads `completes(resource = "<operation>", parameter = "<argument>")`.
+fn read_mcp_completes(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+) -> Result<McpCompletes, syn::Error> {
+    let mut resource_written = None;
+    let mut parameter_written = None;
+    inner.parse_nested_meta(|key| {
+        if key.path.is_ident("resource") {
+            resource_written = Some(non_empty_mcp_text(&key, operation, "completes(resource)")?);
+            return Ok(());
+        }
+        if key.path.is_ident("parameter") {
+            parameter_written = Some(non_empty_mcp_text(&key, operation, "completes(parameter)")?);
+            return Ok(());
+        }
+        Err(key.error(format!(
+            "service_schema: operation `{operation}` writes a key `completes(...)` does not take\n       \
+             the keys are `resource = \"<operation>\"` and `parameter = \"<argument>\"`"
+        )))
+    })?;
+    match (resource_written, parameter_written) {
+        (Some(resource), Some(parameter)) => Ok(McpCompletes {
+            parameter,
+            resource,
+        }),
+        _ => Err(inner.error(format!(
+            "service_schema: operation `{operation}` writes `completes(...)` without both keys\n       \
+             write `completes(resource = \"<operation>\", parameter = \"<argument>\")`"
+        ))),
+    }
 }
 
 fn mcp_bare_flag(
@@ -927,7 +1070,9 @@ fn unknown_mcp_key_message(operation: &Ident) -> String {
     format!(
         "service_schema: operation `{operation}` writes a key `mcp(...)` does not take\n       \
          the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
-         `open_world` and `header(<argument> = \"<Header-Name>\")`"
+         `open_world`, `header(<argument> = \"<Header-Name>\")`, `resource`, `mime_type`, \
+         `list_resources`, `completes(resource = \"<operation>\", parameter = \"<argument>\")`, \
+         `ttl_ms` and `cache_scope`"
     )
 }
 
@@ -1239,6 +1384,7 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
     let declared = written(&ident);
     let mcp = directive.mcp;
     mcp_header_refusals(&ident, &mcp, &inputs, http.as_ref())?;
+    mcp_placeholder_refusals(&ident, &mcp, &extra_arguments(operation))?;
     Ok(OperationDef {
         doc: doc_text(&operation.attrs),
         http,
@@ -1329,6 +1475,32 @@ fn mcp_header_refusals(
                     "service_schema: operation `{operation}` marks `{name}` with `header({name} = \
                      \"{header}\")` in `mcp(...)`, and `{name}` is no property of the tool's input\n       \
                      name an argument of a message the macro declares, or one a `header_in` binds"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Refuses a `{placeholder}` of an `mcp(resource = ...)` URI that names no argument of the
+/// operation.
+fn mcp_placeholder_refusals(
+    operation: &Ident,
+    mcp: &McpDirective,
+    arguments: &HashMap<String, Type>,
+) -> Result<(), syn::Error> {
+    let Some(resource) = &mcp.resource else {
+        return Ok(());
+    };
+    for name in resource.placeholder_names() {
+        if !arguments.contains_key(name) {
+            return Err(syn::Error::new(
+                operation.span(),
+                format!(
+                    "service_schema: operation `{operation}` writes the placeholder `{{{name}}}` in \
+                     `mcp(resource = \"{}\")`, and `{name}` is no argument of it\n       \
+                     name an argument of the operation between the braces",
+                    resource.uri
                 ),
             ));
         }
@@ -2267,7 +2439,7 @@ fn build_http_binding(
         refusals = Some(combined(refusals.take(), refusal));
     }
 
-    let path = parse_path_template(&raw.path)?;
+    let path = parse_path_template(&raw.path, HTTP_PATH)?;
     if let Some(refusal) =
         placeholder_refusals(operation_ident, &raw.path, raw.method.0, &path, inputs)
     {
@@ -2354,8 +2526,32 @@ fn build_http_binding(
     })
 }
 
+fn unterminated_placeholder_message((subject, end): (&str, &str)) -> String {
+    format!(
+        "service_schema: {subject} opens `{{` with no matching `}}`\n       \
+         write `{{field}}`, closed before the {end} ends"
+    )
+}
+
+fn empty_placeholder_message((subject, _end): (&str, &str)) -> String {
+    format!(
+        "service_schema: {subject} has an empty `{{}}`\n       \
+         name the field it binds: `{{field}}`"
+    )
+}
+
+fn unmatched_closing_brace_message((subject, _end): (&str, &str)) -> String {
+    format!(
+        "service_schema: {subject} has a `}}` with no matching `{{`\n       \
+         write `{{field}}`, or escape a literal brace some other way"
+    )
+}
+
 /// Splits a path template into its literal runs and `{field}` placeholders, left to right.
-fn parse_path_template(path: &LitStr) -> Result<Vec<PathSegment>, syn::Error> {
+fn parse_path_template(
+    path: &LitStr,
+    subject: (&str, &str),
+) -> Result<Vec<PathSegment>, syn::Error> {
     let written = path.value();
     let mut segments = Vec::new();
     let mut literal = String::new();
@@ -2375,20 +2571,23 @@ fn parse_path_template(path: &LitStr) -> Result<Vec<PathSegment>, syn::Error> {
                         None => {
                             return Err(syn::Error::new(
                                 path.span(),
-                                UNTERMINATED_PLACEHOLDER_MESSAGE,
+                                unterminated_placeholder_message(subject),
                             ));
                         }
                     }
                 }
                 if name.is_empty() {
-                    return Err(syn::Error::new(path.span(), EMPTY_PLACEHOLDER_MESSAGE));
+                    return Err(syn::Error::new(
+                        path.span(),
+                        empty_placeholder_message(subject),
+                    ));
                 }
                 segments.push(PathSegment::Placeholder(name));
             }
             '}' => {
                 return Err(syn::Error::new(
                     path.span(),
-                    UNMATCHED_CLOSING_BRACE_MESSAGE,
+                    unmatched_closing_brace_message(subject),
                 ));
             }
             other => literal.push(other),
