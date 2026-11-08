@@ -600,48 +600,32 @@ fn mcp_content_accessor(
     service: &ServiceDef,
     accessor: &str,
     text: &'static str,
+    pages: String,
+    tasks: &'static str,
 ) -> Option<TokenStream> {
-    use crate::service_schema::mcp_tools::{is_content_list, is_prompt_messages};
+    use crate::service_schema::mcp_tools::{has_tasks, is_content_list, is_prompt_messages};
 
     let listed = service
         .operations
         .iter()
         .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
+    let written = [
+        listed.then(|| text.to_owned()),
+        Some(pages),
+        has_tasks(service).then(|| tasks.to_owned()),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|held| !held.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     let name = format_ident!("{accessor}");
-    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in.";
-    listed.then(|| {
+    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in, the `{Service}McpResource` and `{Service}McpResourcePage` types a listing answers, and the `McpTask` and `McpTaskState` types a task is written in.";
+    (!written.is_empty()).then(|| {
         quote! {
             #[doc = #doc]
             pub fn #name() -> ::std::string::String {
-                #text.to_owned()
-            }
-        }
-    })
-}
-
-/// `{accessor}()` on the service's registry, which publishes the `McpTask` and `McpTaskState` types
-/// of the language where an operation starts a task: the types a bundle names once, beside the
-/// service's own accessors.
-#[cfg(any(
-    all(feature = "typescript", feature = "zod"),
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
-pub fn mcp_task_accessor(
-    service: &ServiceDef,
-    accessor: &str,
-    text: &'static str,
-) -> Option<TokenStream> {
-    use crate::service_schema::mcp_tools::has_tasks;
-
-    let name = format_ident!("{accessor}");
-    let doc = " The `McpTask` and `McpTaskState` types an `mcp(task(...))` operation and the operation that reports its state are written in.";
-    has_tasks(service).then(|| {
-        quote! {
-            #[doc = #doc]
-            pub fn #name() -> ::std::string::String {
-                #text.to_owned()
+                #written.to_owned()
             }
         }
     })
@@ -656,11 +640,11 @@ fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
         service,
         "kotlin_mcp_content",
         kotlin_mcp_service::CONTENT_TYPE,
+        kotlin_mcp_service::page_types(service),
+        kotlin_mcp_service::TASK_TYPE,
     );
-    let tasks = mcp_task_accessor(service, "kotlin_mcp_task", kotlin_mcp_service::TASK_TYPE);
     quote! {
         #content
-        #tasks
         #server
         #client
     }
@@ -675,12 +659,15 @@ fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
 #[cfg(feature = "swift")]
 fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
     let client = swift_mcp_client::accessor(service);
-    let content =
-        mcp_content_accessor(service, "swift_mcp_content", swift_mcp_client::CONTENT_TYPE);
-    let tasks = mcp_task_accessor(service, "swift_mcp_task", swift_mcp_client::TASK_TYPE);
+    let content = mcp_content_accessor(
+        service,
+        "swift_mcp_content",
+        swift_mcp_client::CONTENT_TYPE,
+        swift_mcp_client::page_types(service),
+        swift_mcp_client::TASK_TYPE,
+    );
     quote! {
         #content
-        #tasks
         #client
     }
 }
@@ -784,22 +771,11 @@ fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
-/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
-/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
 #[cfg(all(feature = "typescript", feature = "zod"))]
-fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+fn mcp_ts_wrapped_replacements(service: &ServiceDef) -> Vec<TokenStream> {
     use crate::service_schema::parse::{OperationInputs, written};
 
-    let server = mcp_ts_service::emit(service).join("\n\n");
-    let client = mcp_ts_client::emit(service).join("\n\n");
-    let version = mcp_ts_service::VERSION_MARKER;
-    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
-    let tools = mcp_ts_service::TOOLS_MARKER;
-    let resources = mcp_ts_service::RESOURCES_MARKER;
-    let templates = mcp_ts_service::TEMPLATES_MARKER;
-    let prompts = mcp_ts_service::PROMPTS_MARKER;
-    let skill_replacements = ts_skill_replacements();
-    let wrapped: Vec<TokenStream> = service
+    service
         .operations
         .iter()
         .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
@@ -814,14 +790,34 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                 .replace(#marker, if Self::#method() { "true" } else { "false" })
             }
         })
-        .collect();
+        .collect()
+}
+
+/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
+/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+    let server = mcp_ts_service::emit(service).join("\n\n");
+    let client = mcp_ts_client::emit(service).join("\n\n");
+    let version = mcp_ts_service::VERSION_MARKER;
+    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
+    let tools = mcp_ts_service::TOOLS_MARKER;
+    let resources = mcp_ts_service::RESOURCES_MARKER;
+    let templates = mcp_ts_service::TEMPLATES_MARKER;
+    let prompts = mcp_ts_service::PROMPTS_MARKER;
+    let skill_replacements = ts_skill_replacements();
+    let wrapped = mcp_ts_wrapped_replacements(service);
     let forms = mcp_ts_form_replacements(service);
     let arms = mcp_ts_arm_replacements(service);
-    let content = mcp_content_accessor(service, "ts_mcp_content", mcp_ts_service::CONTENT_TYPE);
-    let tasks = mcp_task_accessor(service, "ts_mcp_task", mcp_ts_service::TASK_TYPE);
+    let content = mcp_content_accessor(
+        service,
+        "ts_mcp_content",
+        mcp_ts_service::CONTENT_TYPE,
+        mcp_ts_service::page_types(service),
+        mcp_ts_service::TASK_TYPE,
+    );
     quote! {
         #content
-        #tasks
 
         #[doc = " The service's generated MCP server for TypeScript: the part it puts on an"]
         #[doc = " endpoint, the endpoint with its shared-name check, `serve` and `serveHttp`,"]

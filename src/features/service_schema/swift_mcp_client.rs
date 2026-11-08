@@ -580,6 +580,42 @@ extension McpTaskState: Decodable where Result: Decodable {
 /// Where the accessor writes the version of the crate that declares the service.
 const VERSION_MARKER: &str = "@MCP_VERSION@";
 
+/// `{Service}McpResource` and `{Service}McpResourcePage`, which a listing answers on every transport
+/// and `swift_mcp_content()` declares.
+pub fn page_types(service: &ServiceDef) -> String {
+    if !service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.list_resources)
+    {
+        return String::new();
+    }
+    "/// One resource of a listing, as `resources/list` writes it.
+public struct @N@McpResource: Sendable, Equatable, Codable {
+  public let uri: String
+  public let name: String
+  public let title: String?
+  public let description: String?
+  public let mimeType: String?
+  public let size: Int64?
+
+  public init(uri: String, name: String, title: String? = nil, description: String? = nil, mimeType: String? = nil, size: Int64? = nil) {
+    self.uri = uri; self.name = name; self.title = title; self.description = description; self.mimeType = mimeType; self.size = size
+  }
+}
+
+/// One page of `resources/list`, with the cursor of the next where there is one.
+public struct @N@McpResourcePage: Sendable, Equatable, Codable {
+  public let resources: [@N@McpResource]
+  public let nextCursor: String?
+
+  public init(resources: [@N@McpResource], nextCursor: String? = nil) {
+    self.resources = resources; self.nextCursor = nextCursor
+  }
+}"
+    .replace("@N@", &service.ident.to_string())
+}
+
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let service = &declared.enveloped();
     let named = service.ident.to_string();

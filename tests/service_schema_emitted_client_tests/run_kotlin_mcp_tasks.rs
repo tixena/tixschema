@@ -240,7 +240,7 @@ fn definitions() -> Vec<String> {
         job_service_schema::job_service_fault_kind_kotlin::kotlin_definition(),
         JobServiceSchema::kotlin_http_client(),
         JobServiceSchema::kotlin_ws_client(),
-        JobServiceSchema::kotlin_mcp_task(),
+        JobServiceSchema::kotlin_mcp_content(),
         JobServiceSchema::kotlin_mcp_service(),
         JobServiceSchema::kotlin_mcp_client(),
     ]

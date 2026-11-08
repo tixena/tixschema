@@ -196,7 +196,7 @@ fn module(driver: &str, given: &Value) -> String {
         export_request_dart::dart_definition(),
         export_report_dart::dart_definition(),
         JobServiceSchema::dart_definition(),
-        JobServiceSchema::dart_mcp_task(),
+        JobServiceSchema::dart_mcp_content(),
         JobServiceSchema::dart_ws_client(),
         JobServiceSchema::dart_mcp_service(),
         JobServiceSchema::dart_mcp_client(),

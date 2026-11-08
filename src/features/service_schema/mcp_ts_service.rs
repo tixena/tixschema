@@ -710,19 +710,9 @@ function __p__McpAsking(
   return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
 }"#;
 
-const CONTENT: &str = r#"/** One block of `content`, as the result writes it. */
+const CONTENT: &str = r#"/** One block of `content`, which the dispatcher has already written as the specification writes it. */
 function __p__McpBlock(block: unknown): Record<string, unknown> {
-  const held = __p__McpObject(block) ?? {};
-  if (held.type === "image" || held.type === "audio") {
-    return { data: __p__McpBase64(held.data), mimeType: held.mimeType, type: held.type };
-  }
-  if (held.type === "resource") {
-    const resource: Record<string, unknown> = { mimeType: held.mimeType, uri: held.uri };
-    if (typeof held.text === "string") resource.text = held.text;
-    else resource.blob = __p__McpBase64(held.blob);
-    return { resource, type: "resource" };
-  }
-  return held;
+  return __p__McpObject(block) ?? {};
 }
 
 /**
@@ -1537,14 +1527,13 @@ export function create__N__McpHttpDispatcher<Ctx>(
 
 /// The type an `mcp(content)` operation answers a list of, as the service module declares it in
 /// Rust: one block of a tool's `content`, in the form the specification writes it.
-pub const CONTENT_TYPE: &str =
-    "/** One block of a tool's `content`: what an `mcp(content)` operation answers a list of. */
+pub const CONTENT_TYPE: &str = r#"/** One block of a tool's `content`: what an `mcp(content)` operation answers a list of. */
 export type McpContent =
-  | { readonly type: \"text\"; readonly text: string }
-  | { readonly type: \"image\"; readonly data: Uint8Array; readonly mimeType: string }
-  | { readonly type: \"audio\"; readonly data: Uint8Array; readonly mimeType: string }
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image"; readonly data: Uint8Array; readonly mimeType: string }
+  | { readonly type: "audio"; readonly data: Uint8Array; readonly mimeType: string }
   | {
-      readonly type: \"resource_link\";
+      readonly type: "resource_link";
       readonly uri: string;
       readonly name: string;
       readonly title?: string | undefined;
@@ -1552,23 +1541,106 @@ export type McpContent =
       readonly mimeType?: string | undefined;
     }
   | {
-      readonly type: \"resource\";
+      readonly type: "resource";
       readonly uri: string;
       readonly mimeType?: string | undefined;
       readonly text: string;
     }
   | {
-      readonly type: \"resource\";
+      readonly type: "resource";
       readonly uri: string;
       readonly mimeType?: string | undefined;
       readonly blob: Uint8Array;
     };
 
 /** Who a prompt's message is from. */
-export type McpRole = \"user\" | \"assistant\";
+export type McpRole = "user" | "assistant";
 
 /** One message of a prompt: who it is from, and the block it holds. */
-export type McpPromptMessage = { readonly role: McpRole; readonly content: McpContent };";
+export type McpPromptMessage = { readonly role: McpRole; readonly content: McpContent };
+
+/** `value` in base64. */
+function McpBytes$Base64(value: Uint8Array): string {
+  let binary = "";
+  for (let at = 0; at < value.length; at += 4096) binary += String.fromCharCode(...value.subarray(at, at + 4096));
+  return btoa(binary);
+}
+
+/** `block` as the specification writes it, which is how every transport of the service carries it. */
+export function McpContent$Wire(block: McpContent): Record<string, unknown> {
+  switch (block.type) {
+    case "text":
+      return { text: block.text, type: "text" };
+    case "image":
+    case "audio":
+      return { data: McpBytes$Base64(block.data), mimeType: block.mimeType, type: block.type };
+    case "resource_link":
+      return {
+        ...(block.description === undefined ? {} : { description: block.description }),
+        ...(block.mimeType === undefined ? {} : { mimeType: block.mimeType }),
+        name: block.name,
+        ...(block.title === undefined ? {} : { title: block.title }),
+        type: "resource_link",
+        uri: block.uri,
+      };
+    case "resource":
+      return {
+        resource: {
+          ...("blob" in block ? { blob: McpBytes$Base64(block.blob) } : {}),
+          ...(block.mimeType === undefined ? {} : { mimeType: block.mimeType }),
+          ...("text" in block ? { text: block.text } : {}),
+          uri: block.uri,
+        },
+        type: "resource",
+      };
+  }
+}
+
+/** `message` as the specification writes it. */
+export function McpPromptMessage$Wire(message: McpPromptMessage): Record<string, unknown> {
+  return { content: McpContent$Wire(message.content), role: message.role };
+}
+
+const McpBytes$Schema = z.string().transform((text, ctx): Uint8Array => {
+  try {
+    return Uint8Array.from(atob(text), (letter) => letter.charCodeAt(0));
+  } catch {
+    ctx.addIssue({ code: "custom", message: "not base64" });
+    return z.NEVER;
+  }
+});
+
+const McpOptionalText$Schema = z.string().optional();
+
+/** One block, read as the specification writes it. */
+export const McpContent$Schema: ZodType<McpContent> = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("image"), data: McpBytes$Schema, mimeType: z.string() }),
+  z.object({ type: z.literal("audio"), data: McpBytes$Schema, mimeType: z.string() }),
+  z.object({
+    type: z.literal("resource_link"),
+    uri: z.string(),
+    name: z.string(),
+    title: McpOptionalText$Schema,
+    description: McpOptionalText$Schema,
+    mimeType: McpOptionalText$Schema,
+  }),
+  z
+    .object({
+      type: z.literal("resource"),
+      resource: z.union([
+        z.object({ uri: z.string(), mimeType: McpOptionalText$Schema, text: z.string() }),
+        z.object({ uri: z.string(), mimeType: McpOptionalText$Schema, blob: McpBytes$Schema }),
+      ]),
+    })
+    .transform((block): McpContent => ({ type: "resource", ...block.resource })),
+]);
+
+/** One message, read as the specification writes it. */
+export const McpPromptMessage$Schema: ZodType<McpPromptMessage> = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: McpContent$Schema,
+});"#;
 
 /// The types an `mcp(task(...))` operation answers, as the service module declares them in Rust:
 /// the handle of a task, and where a task stands.
@@ -1640,14 +1712,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let fill = |template: &str| filled(template, &named, &prefix);
-    let lists = service
-        .operations
-        .iter()
-        .any(|operation| operation.mcp.list_resources);
     let mut published = vec![constants(&named, &prefix), fill(TYPES)];
-    if lists {
-        published.push(page_types(service));
-    }
     published.extend([
         part(service, &named, &prefix),
         operations(service, &named, &prefix),
@@ -1774,9 +1839,17 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
     )
 }
 
-/// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module declares.
-/// Interfaces, so two services of one bundle that both list declare them without a clash.
-fn page_types(service: &ServiceDef) -> String {
+/// `{Service}McpResource` and `{Service}McpResourcePage`, which a listing answers on every transport and
+/// `ts_mcp_content()` declares. Interfaces, named after their service, so two listing services of one bundle
+/// declare them without a clash.
+pub fn page_types(service: &ServiceDef) -> String {
+    if !service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.list_resources)
+    {
+        return String::new();
+    }
     "/** One resource of a listing, as `resources/list` writes it. */\n\
      export interface @N@McpResource {\n  \
      uri: string;\n  \
@@ -1790,7 +1863,21 @@ fn page_types(service: &ServiceDef) -> String {
      export interface @N@McpResourcePage {\n  \
      resources: Array<@N@McpResource>;\n  \
      nextCursor?: string;\n\
-     }"
+     }\n\n\
+     /** One resource of a listing, read as `resources/list` writes it. */\n\
+     export const @N@McpResource$Schema: ZodType<@N@McpResource> = z.object({\n  \
+     uri: z.string(),\n  \
+     name: z.string(),\n  \
+     title: z.string().optional(),\n  \
+     description: z.string().optional(),\n  \
+     mimeType: z.string().optional(),\n  \
+     size: z.number().optional(),\n\
+     });\n\n\
+     /** One page of `resources/list`, read as it is written. */\n\
+     export const @N@McpResourcePage$Schema: ZodType<@N@McpResourcePage> = z.object({\n  \
+     resources: z.array(@N@McpResource$Schema),\n  \
+     nextCursor: z.string().optional(),\n\
+     });"
     .replace("@N@", &service.ident.to_string())
 }
 

@@ -187,7 +187,7 @@ fn bundle() -> String {
         ExportReport::ts_definition(),
         ExportReport::zod_schema(),
         JobServiceSchema::ts_definition(),
-        JobServiceSchema::ts_mcp_task(),
+        JobServiceSchema::ts_mcp_content(),
         JobServiceSchema::ts_service(),
         JobServiceSchema::ts_mcp_service(),
         JobServiceSchema::ts_mcp_client(),

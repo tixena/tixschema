@@ -140,7 +140,7 @@ fn emitted() -> String {
         job_service_schema::job_service_fault_fields_swift::swift_definition(),
         job_service_schema::job_service_fault_kind_swift::swift_definition(),
         JobServiceSchema::swift_http_client(),
-        JobServiceSchema::swift_mcp_task(),
+        JobServiceSchema::swift_mcp_content(),
         JobServiceSchema::swift_mcp_client(),
     ]
     .join("\n\n")

@@ -16,10 +16,9 @@ use super::result::result_name;
 use crate::features::dart::{
     dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
 };
-use crate::features::service_schema::mcp_task_accessor;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
-    answers_key, is_content_list, is_content_pair, is_prompt_messages,
+    answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages,
 };
 use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
@@ -1697,7 +1696,6 @@ pub fn service_text(declared: &ServiceDef) -> String {
                 &capabilities_literal(service, &held, skilled(service)),
             )
             .replace("@SCOPES@\n", &scopes_table(&ScopeTable::of(service))),
-        page_types(service),
         wrapped_table(&prefix, "Server", service)
             .trim_end()
             .to_owned(),
@@ -2597,7 +2595,7 @@ fn skill_files_declaration(service: &ServiceDef, prefix: &str) -> String {
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
 /// declares.
-fn page_types(service: &ServiceDef) -> String {
+pub fn page_types(service: &ServiceDef) -> String {
     if !service
         .operations
         .iter()
@@ -3556,20 +3554,32 @@ fn skill_literals() -> TokenStream {
     }
 }
 
-/// `dart_mcp_content()`, where an operation answers a list of blocks or a prompt's messages.
+/// `dart_mcp_content()`: the value types of the service's blocks, messages, tasks and pages.
 fn content_accessor(declared: &ServiceDef) -> Option<TokenStream> {
-    declared
+    let listed = declared
         .operations
         .iter()
-        .any(|operation| is_content_list(operation) || is_prompt_messages(operation))
-        .then(|| {
+        .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
+    let pages = page_types(declared);
+    let tasked = has_tasks(declared);
+    (listed || tasked || !pages.is_empty()).then(|| {
+        let written = [
+            listed.then(|| CONTENT_TYPE.to_owned()),
+            Some(pages),
+            tasked.then(|| TASK_TYPE.to_owned()),
+        ]
+            .into_iter()
+            .flatten()
+            .filter(|held| !held.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         quote! {
             #[doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a `List<McpContent>`"]
             #[doc = " success of an `mcp(content)` operation and a prompt's messages are written in."]
             #[doc = " A bundle names them once, and imports"]
             #[doc = " `dart:convert` and `dart:typed_data`."]
             pub fn dart_mcp_content() -> ::std::string::String {
-                #CONTENT_TYPE.to_owned()
+                #written.to_owned()
             }
         }
     })
@@ -3600,11 +3610,8 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
     let arms = arm_replacements(declared);
     let skill_literals = skill_literals();
     let content = content_accessor(declared);
-    let tasks = mcp_task_accessor(declared, "dart_mcp_task", TASK_TYPE);
     quote! {
         #content
-
-        #tasks
 
         #[doc = " The service's generated Dart `mcp` server: its catalog and names, the route"]
         #[doc = " for the endpoint it sits on, the function that serves an endpoint, and the"]
