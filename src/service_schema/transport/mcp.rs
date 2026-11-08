@@ -3,6 +3,7 @@
 
 mod client;
 mod dispatcher;
+mod resources;
 mod writer;
 
 use super::Transport;

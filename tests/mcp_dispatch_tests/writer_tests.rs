@@ -3,7 +3,7 @@
 
 use crate::export_mcp::{self, McpCall, McpEndpoint, McpHttpRequest, McpHttpSettings, McpInFlight};
 use crate::http_tests;
-use crate::support::{Lines, Tasks, assert_valid, block_on, call, id};
+use crate::support::{Lines, Tasks, assert_result, assert_valid, block_on, call, id, request};
 use crate::tests::{Archive, Reporting};
 use crate::{DocumentServiceSchema, ExportServiceSchema, billing_mcp, document_mcp};
 use serde_json::{Value, json};
@@ -93,6 +93,23 @@ fn progress_is_written_ahead_of_the_answer_where_the_request_carries_a_token() {
     );
     assert_eq!(answered["id"], 1_u64);
     assert_eq!(answered["result"]["isError"], false);
+}
+
+#[test]
+fn a_resource_read_writes_its_progress_ahead_of_the_answer() {
+    let mut asked = request(
+        &id(1),
+        "resources/read",
+        json!({ "uri": "export://reports/docs" }),
+    );
+    asked["params"]["_meta"]["progressToken"] = json!("export-1");
+    assert_valid("ReadResourceRequest", &asked);
+    let lines = Lines::default();
+    let answered = answer_export(&asked, &lines).unwrap();
+    assert_eq!(lines.written(), vec![PROGRESS_FIRST.to_owned()]);
+    assert_eq!(answered["id"], 1_u64);
+    assert_result("ReadResourceResult", &answered);
+    assert_eq!(answered["result"]["contents"][0]["text"], "report of docs");
 }
 
 #[test]

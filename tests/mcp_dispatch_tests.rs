@@ -45,6 +45,10 @@ mod http_tests;
 mod auth_tests;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/resource_tests.rs"]
+mod resource_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/writer_tests.rs"]
 mod writer_tests;
 

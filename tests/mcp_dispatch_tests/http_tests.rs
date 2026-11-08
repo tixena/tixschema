@@ -29,6 +29,12 @@ fn headers_for(message: &Value) -> Vec<(String, String)> {
             message["params"]["name"].as_str().unwrap().to_owned(),
         ));
     }
+    if method == "resources/read" {
+        headers.push((
+            "Mcp-Name".to_owned(),
+            message["params"]["uri"].as_str().unwrap().to_owned(),
+        ));
+    }
     headers
 }
 

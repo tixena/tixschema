@@ -91,7 +91,7 @@ use crate::document_mcp::{
     self, McpCall, McpDenied, McpHttpRequest, McpHttpResponse, McpHttpSettings, McpOAuth,
 };
 use crate::http_tests::{ORIGIN, body_of, get_version, post};
-use crate::support::{HEADER_MISMATCH, assert_error, block_on, call, id, request};
+use crate::support::{HEADER_MISMATCH, assert_error, assert_valid, block_on, call, id, request};
 use crate::tests::Archive;
 use crate::{DocumentServiceSchema, billing_mcp};
 use serde_json::{Value, json};
@@ -124,6 +124,9 @@ fn verify_token(token: &str) -> Result<Claims, McpDenied> {
         }),
         "write-token" => Ok(Claims {
             scope: "documents:read documents:write",
+        }),
+        "file-token" => Ok(Claims {
+            scope: "documents:read files:read",
         }),
         _ => Err(McpDenied::NoValidCredentials { scope: None }),
     }
@@ -482,6 +485,92 @@ fn mcp_scopes_answers_what_serve_routes() {
     assert_eq!(scopes("tools/call", None), [] as [&str; 0]);
     assert_eq!(scopes("tools/list", None), [] as [&str; 0]);
     assert_eq!(scopes("tools/list", Some("get-version")), [] as [&str; 0]);
+}
+
+#[test]
+fn mcp_scopes_answers_the_scopes_of_a_resource_for_a_fixed_uri_and_a_template_uri() {
+    let scopes = DocumentServiceSchema::mcp_scopes;
+    assert_eq!(
+        scopes("resources/read", Some("guide://configure-workspace")),
+        ["guides:read"]
+    );
+    for uri in ["workspace://documents/doc-1", "workspace://documents/a b"] {
+        assert_eq!(
+            scopes("resources/read", Some(uri)),
+            ["documents:read", "files:read"],
+            "{uri}"
+        );
+    }
+    for uri in [
+        "workspace://documents/",
+        "workspace://documents/doc-1/pages",
+        "workspace://other/doc-1",
+        "guide://configure-workspace/more",
+    ] {
+        assert_eq!(
+            scopes("resources/read", Some(uri)),
+            [] as [&str; 0],
+            "{uri}"
+        );
+    }
+    assert_eq!(scopes("resources/read", None), [] as [&str; 0]);
+}
+
+#[test]
+fn mcp_scopes_answers_none_for_the_listings_and_the_completion_that_declare_none() {
+    let scopes = DocumentServiceSchema::mcp_scopes;
+    for method in [
+        "resources/list",
+        "resources/templates/list",
+        "completion/complete",
+    ] {
+        assert_eq!(scopes(method, None), [] as [&str; 0], "{method}");
+        assert_eq!(
+            scopes(method, Some("workspace://documents/{document_id}")),
+            [] as [&str; 0],
+            "{method}"
+        );
+    }
+}
+
+#[test]
+fn a_resource_read_without_the_scope_answers_403_insufficient_scope() {
+    let read = |uri: &str| post(&request(&id(1), "resources/read", json!({ "uri": uri })));
+    for (uri, needed) in [
+        ("guide://configure-workspace", "guides:read"),
+        ("workspace://documents/doc-1", "documents:read files:read"),
+    ] {
+        let response = respond(&bearing("read-token", read(uri)));
+        assert_eq!(response.status, 403, "{uri}");
+        assert_eq!(
+            challenge(&response),
+            Some(&*format!(
+                "Bearer error=\"insufficient_scope\", scope=\"{needed}\", \
+                 resource_metadata=\"{METADATA_URL}\""
+            )),
+            "{uri}"
+        );
+    }
+    let encoded = with_header(
+        without_name(read("guide://configure-workspace")),
+        "Mcp-Name",
+        "=?base64?Z3VpZGU6Ly9jb25maWd1cmUtd29ya3NwYWNl?=",
+    );
+    assert_eq!(respond(&bearing("read-token", encoded)).status, 403);
+}
+
+#[test]
+fn a_resource_read_with_the_scopes_reaches_the_handler() {
+    let read = post(&request(
+        &id(1),
+        "resources/read",
+        json!({ "uri": "workspace://documents/doc-1" }),
+    ));
+    let response = respond(&bearing("file-token", read));
+    assert_eq!(response.status, 200);
+    let sent = body_of(&response);
+    assert_valid("JSONRPCResultResponse", &sent);
+    assert_eq!(sent["result"]["contents"][0]["blob"], "JVBERi0=");
 }
 
 #[test]
