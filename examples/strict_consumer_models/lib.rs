@@ -10,10 +10,10 @@ pub mod desk_dispatcher;
 pub mod desk_writer;
 mod shelving;
 
+extern crate bson2 as bson;
+
 use desk::{DeskService, DeskServiceSchema, desk_service_schema};
 use shelving::manifest_schema::DecodeWith as _;
-
-extern crate bson2 as bson;
 
 tixschema::decode_with_foundation!();
 tixschema::mongodb_foundation!();

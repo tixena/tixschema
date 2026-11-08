@@ -169,7 +169,7 @@ pub fn read_folder(named: &LitStr) -> Result<SkillsFolder, syn::Error> {
         if name.starts_with('.') || !directory.path().is_dir() {
             continue;
         }
-        skills.push(read_skill(&directory.path(), &name, &written).map_err(&refuse)?);
+        skills.push(read_skill(&directory.path(), &name, &written).map_err(refuse)?);
     }
     if skills.is_empty() {
         return Err(refuse(format!(
