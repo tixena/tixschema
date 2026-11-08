@@ -67,9 +67,14 @@ mod over_http {
                     assert_eq!(request.header("content-type"), Some("application/json"));
                     Err::<(), _>(denied.clone())
                 },
-                async |ctx: &(), part, method, params| match part {
-                    0 => approval_mcp::route(method, params, &approvals, ctx).await,
-                    _ => None,
+                &|ctx: &(), part, method: &str, params: &Value| {
+                    let held = approvals.clone();
+                    Box::pin(async move {
+                        match part {
+                            0 => approval_mcp::route(method, params, &held, ctx).await,
+                            _ => None,
+                        }
+                    })
                 },
             ));
             assert!(matches!(response.status, 401 | 403), "{denied:?}");
@@ -94,9 +99,14 @@ mod over_http {
                 in_flight: &approval_mcp::McpInFlight::default(),
                 writer: &Lines::default(),
             },
-            async |ctx: &(), part, method, params| match part {
-                0 => approval_mcp::route(method, params, &approvals, ctx).await,
-                _ => None,
+            &|ctx: &(), part, method: &str, params: &Value| {
+                let held = approvals.clone();
+                Box::pin(async move {
+                    match part {
+                        0 => approval_mcp::route(method, params, &held, ctx).await,
+                        _ => None,
+                    }
+                })
             },
         ))
         .unwrap();
@@ -138,9 +148,13 @@ mod with_progress {
                 in_flight: &McpInFlight::default(),
                 writer: lines,
             },
-            async |_ctx: &(), part, method, params| match part {
-                0 => approval_mcp::route(method, params, &Approvals::default(), &()).await,
-                _ => None,
+            &|_ctx: &(), part, method: &str, params: &Value| {
+                Box::pin(async move {
+                    match part {
+                        0 => approval_mcp::route(method, params, &Approvals::default(), &()).await,
+                        _ => None,
+                    }
+                })
             },
         ))
     }

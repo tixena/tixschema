@@ -3746,13 +3746,20 @@ const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
 );
 
 let host = document_mcp::McpHost { writer: &stdout, in_flight: &in_flight };
-let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, async |ctx: &RequestContext, part, method, params| match part {
-    0 => document_mcp::route(method, params, &documents, ctx).await,
-    1 => billing_mcp::route(method, params, &billing, ctx).await,
-    _ => None,
+let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, &|ctx: &RequestContext, part, method: &str, params: &Value| {
+    let (documents, billing) = (documents.clone(), billing.clone());
+    Box::pin(async move {
+        match part {
+            0 => document_mcp::route(method, params, &documents, ctx).await,
+            1 => billing_mcp::route(method, params, &billing, ctx).await,
+            _ => None,
+        }
+    })
 })
 .await;
 ```
+
+`route` is a `&dyn Fn` that answers a boxed `Send` future, so the future of `serve` and `serve_http` can be spawned on a multi-threaded runtime (a function bounded `Future + Send + 'static`). The boxed future may borrow only its arguments, so it owns what it routes to: `documents` and `billing` here are handles that clone cheaply (an `Arc`, or a pool), and a store borrowed from the caller's stack is refused with `borrowed for 'static`. `answer` and `answer_http` take the store by reference and need no clone.
 
 `tools/list` concatenates the catalogs in the endpoint's order, `server/discover` answers the union of their capabilities with the extensions under `capabilities.extensions`, and a `tools/call` asks each service's `route` in turn. A tool name two services share fails the build when the endpoint is a `const`: `McpEndpoint::new` panics on a name of one kind two services share (a tool and a prompt of one name do not collide), and rustc prints `error[E0080]: evaluation panicked: get-version`. Resolve it with `mcp(name = "...")` on one of the operations.
 

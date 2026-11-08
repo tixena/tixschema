@@ -795,18 +795,18 @@ fn routing() -> TokenStream {
 
         /// Asks the services of the endpoint for what the routed request wants. A `resources/list`
         /// pages across them, and any other method goes to the first service that answers.
-        async fn put_to_services<Ctx, R>(
+        async fn put_to_services<Ctx>(
             request: &::serde_json::Value,
             endpoint: &McpEndpoint,
             ctx: &Ctx,
-            route: &R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
         where
             Ctx: ::core::marker::Sync,
-            R: ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
@@ -850,23 +850,24 @@ fn routing() -> TokenStream {
         /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
         /// answers for the service at that place in the endpoint, and receives the `Ctx` that
         /// `ctx` built from the request in flight. A notification answers `None`, and
-        /// `notifications/cancelled` marks the request it names in `in_flight`.
-        pub async fn serve<Ctx, W, R>(
+        /// `notifications/cancelled` marks the request it names in `in_flight`. `route` boxes a
+        /// `Send` future that owns what it routes to, so the future of `serve` can be spawned.
+        pub async fn serve<Ctx, W>(
             text: &str,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
             ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             host: McpHost<'_, W>,
-            route: R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> ::core::option::Option<::std::string::String>
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
-            R: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             let request = match started(text, server_name, instructions, endpoint, ::core::option::Option::Some(host.in_flight)) {
                 ::core::result::Result::Ok(request) => request,
@@ -875,7 +876,7 @@ fn routing() -> TokenStream {
             let call = McpCall::of(&request);
             let ctx = ctx(call.clone());
             let _entered = host.in_flight.enter(&request["id"], &call);
-            let answered = Driven::new(&call, host.writer, put_to_services(&request, endpoint, &ctx, &route)).await;
+            let answered = Driven::new(&call, host.writer, put_to_services(&request, endpoint, &ctx, route)).await;
             finished(&request, &call, answered, server_name)
         }
     }
@@ -1338,23 +1339,23 @@ fn http_serving() -> TokenStream {
 
         /// The Streamable HTTP rules around `serve`. `route` also receives the `Ctx` that
         /// `admit` answered.
-        pub async fn serve_http<Ctx, Admit, R>(
+        pub async fn serve_http<Ctx, Admit>(
             request: &McpHttpRequest,
             settings: &McpHttpSettings<'_>,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
             admit: Admit,
-            route: R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> McpHttpResponse
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
             Admit: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
                 return refused;
@@ -1371,7 +1372,7 @@ fn http_serving() -> TokenStream {
                         ::core::result::Result::Err(answered) => http_response(answered),
                         ::core::result::Result::Ok(asked_request) => {
                             let stream = EventStream::default();
-                            let asking = put_to_services(&asked_request, endpoint, &ctx, &route);
+                            let asking = put_to_services(&asked_request, endpoint, &ctx, route);
                             let answered = Driven::new(&call, &stream, asking).await;
                             http_finished(&asked_request, &call, &stream, answered, server_name)
                         }

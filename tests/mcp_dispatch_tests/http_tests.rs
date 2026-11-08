@@ -243,10 +243,15 @@ fn an_endpoint_of_two_services_is_served_over_http_too() {
         None,
         &WORKSPACE,
         async |_request, _call| Ok(()),
-        async |ctx: &(), part, method, params| match part {
-            0 => document_mcp::route(method, params, &archive, ctx).await,
-            1 => billing_mcp::route(method, params, &archive, ctx).await,
-            _ => None,
+        &|ctx: &(), part, method: &str, params: &Value| {
+            let held = archive.clone();
+            Box::pin(async move {
+                match part {
+                    0 => document_mcp::route(method, params, &held, ctx).await,
+                    1 => billing_mcp::route(method, params, &held, ctx).await,
+                    _ => None,
+                }
+            })
         },
     ));
     assert_eq!(response.status, 200);

@@ -236,10 +236,15 @@ pub fn answer_workspace(archive: &Archive, asked: &Value) -> Option<Value> {
             in_flight: &document_mcp::McpInFlight::default(),
             writer: &Lines::default(),
         },
-        async |ctx: &(), part, method, params| match part {
-            0 => document_mcp::route(method, params, archive, ctx).await,
-            1 => billing_mcp::route(method, params, archive, ctx).await,
-            _ => None,
+        &|ctx: &(), part, method: &str, params: &Value| {
+            let held = archive.clone();
+            Box::pin(async move {
+                match part {
+                    0 => document_mcp::route(method, params, &held, ctx).await,
+                    1 => billing_mcp::route(method, params, &held, ctx).await,
+                    _ => None,
+                }
+            })
         },
     ))
     .map(|text| serde_json::from_str(&text).unwrap())

@@ -1,6 +1,7 @@
 //! `ApprovalService`: operations that ask the user with a form or a link, and operations that
 //! answer content blocks, and the stand-in that answers them.
 
+use alloc::sync::Arc;
 use core::future::{Future, ready};
 use core::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
@@ -114,10 +115,10 @@ pub trait ApprovalService<Ctx> {
 }
 
 /// Answers every operation, and writes down what reached it.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Approvals {
-    pub connected: AtomicBool,
-    pub reached: Mutex<Vec<String>>,
+    pub connected: Arc<AtomicBool>,
+    pub reached: Arc<Mutex<Vec<String>>>,
 }
 
 impl Approvals {
