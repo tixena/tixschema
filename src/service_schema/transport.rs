@@ -2,6 +2,7 @@
 
 mod amqp_rpc;
 pub mod http_rest;
+mod mcp;
 mod ws_rpc;
 
 use super::parse::ServiceDef;
@@ -157,7 +158,7 @@ pub fn emit(
         .map(|known| match *known {
             Transport::AmqpRpc => amqp_rpc::emit(service, *known),
             Transport::HttpRest => http_rest::emit(service, *known, openapi),
-            Transport::Mcp => TokenStream::new(),
+            Transport::Mcp => mcp::emit(service, *known),
             Transport::WsRpc => ws_rpc::emit(service, *known),
         })
         .collect()
