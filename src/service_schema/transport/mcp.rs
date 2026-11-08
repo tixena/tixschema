@@ -5,7 +5,7 @@ mod client;
 mod content;
 mod dispatcher;
 mod interview;
-mod resources;
+pub mod resources;
 mod writer;
 
 use super::Transport;
@@ -34,6 +34,12 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
         #dispatcher
         #client
     }
+}
+
+/// The resources and the resource templates a service lists, each as the members of its entry.
+pub fn resource_entries(service: &ServiceDef) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    let parts = resources::catalog_parts(&resources::Resourced::of(service));
+    (parts.resources, parts.templates)
 }
 
 /// The success of a request-and-reply operation, split into its value and its headers.

@@ -15,7 +15,7 @@ const DEFAULT_TTL_MS: u64 = 0;
 const DEFAULT_SCOPE: &str = "private";
 
 /// The operations of a service that are not tools.
-pub(super) struct Resourced<'service> {
+pub struct Resourced<'service> {
     pub completions: Vec<&'service OperationDef>,
     pub fixed: Vec<&'service OperationDef>,
     pub listing: Option<&'service OperationDef>,
@@ -62,7 +62,7 @@ impl<'service> Resourced<'service> {
     }
 
     /// The operations that answer a `resources/read`, a fixed URI ahead of a template.
-    fn reads(&self) -> impl Iterator<Item = &'service OperationDef> {
+    pub fn reads(&self) -> impl Iterator<Item = &'service OperationDef> {
         self.fixed.iter().chain(self.templates.iter()).copied()
     }
 }

@@ -154,6 +154,32 @@ pub const SCOPE_QUERIES: [(&str, Option<&str>); 7] = [
     ("tools/list", Some("get-version")),
 ];
 
+/// The method and name pairs `mcp_scopes` of the stacks service is asked.
+pub const STACKS_QUERIES: [(&str, Option<&str>); 17] = [
+    ("resources/read", Some("stacks://index")),
+    ("resources/read", Some("stacks://items/pinned")),
+    ("resources/read", Some("stacks://items/other")),
+    ("resources/read", Some("stacks://items/a b")),
+    ("resources/read", Some("stacks://items/")),
+    ("resources/read", Some("stacks://items/a/b")),
+    ("resources/read", Some("stacks://open")),
+    ("resources/read", Some("stacks://elsewhere")),
+    ("resources/read", None),
+    ("resources/list", None),
+    ("resources/list", Some("stacks://index")),
+    ("completion/complete", Some("stacks://items/{item_id}")),
+    ("completion/complete", Some("stacks://items/other")),
+    ("completion/complete", None),
+    ("resources/templates/list", None),
+    ("tools/call", Some("count-items")),
+    ("tools/call", Some("get-item")),
+];
+
+/// The status each row of `stacks_rows()` is answered with.
+pub const STACKS_STATUSES: [u16; 16] = [
+    401, 200, 200, 403, 200, 403, 200, 200, 200, 401, 403, 200, 403, 200, 200, 403,
+];
+
 const EVIL: &str = "https://evil.example.com";
 
 pub struct AuthRow {
@@ -275,7 +301,12 @@ fn headers_of(message: &Value, tool: Option<&str>) -> Vec<(String, String)> {
             message["method"].as_str().unwrap().to_owned(),
         ),
     ];
-    if let Some(named) = tool.or_else(|| message["params"]["name"].as_str()) {
+    let carried = if message["method"] == "resources/read" {
+        message["params"]["uri"].as_str()
+    } else {
+        message["params"]["name"].as_str()
+    };
+    if let Some(named) = tool.or(carried) {
         headers.push(("Mcp-Name".to_owned(), named.to_owned()));
     }
     headers
@@ -439,6 +470,115 @@ fn key_rows() -> Vec<AuthRow> {
             ),
             "Origin",
             EVIL,
+        ),
+    ]
+}
+
+fn read_resource(number: u64, uri: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": number,
+        "method": "resources/read",
+        "params": { "uri": uri, "_meta": meta() },
+    })
+}
+
+fn list_resources() -> Value {
+    json!({ "jsonrpc": "2.0", "id": 20, "method": "resources/list", "params": { "_meta": meta() } })
+}
+
+fn complete_item() -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "completion/complete",
+        "params": {
+            "ref": { "type": "ref/resource", "uri": "stacks://items/{item_id}" },
+            "argument": { "name": "item_id", "value": "item" },
+            "_meta": meta(),
+        },
+    })
+}
+
+/// The requests the stacks service, whose resources, listing and completion declare scopes, is
+/// sent over HTTP under OAuth.
+pub fn stacks_rows() -> Vec<AuthRow> {
+    let oauth = Scheme::Oauth;
+    let read = |name, uri: &str| row(name, oauth, &read_resource(10, uri));
+    vec![
+        read("no credentials for a fixed resource", "stacks://index"),
+        bearing(
+            read("enough scopes for a fixed resource", "stacks://index"),
+            "read-token",
+        ),
+        bearing(
+            read(
+                "a fixed URI the template also matches",
+                "stacks://items/pinned",
+            ),
+            "read-token",
+        ),
+        bearing(
+            read("too few scopes for a template", "stacks://items/other"),
+            "read-token",
+        ),
+        bearing(
+            read("a write token for a template", "stacks://items/other"),
+            "write-token",
+        ),
+        bearing(
+            named(
+                read("too few scopes, a base64 name", "stacks://items/other"),
+                "=?base64?c3RhY2tzOi8vaXRlbXMvb3RoZXI=?=",
+            ),
+            "read-token",
+        ),
+        bearing(
+            read("a resource with no scopes", "stacks://open"),
+            "read-token",
+        ),
+        bearing(
+            read("a URI nothing declares", "stacks://elsewhere"),
+            "read-token",
+        ),
+        bearing(
+            read("a template with an empty placeholder", "stacks://items/"),
+            "read-token",
+        ),
+        row("no credentials for a listing", oauth, &list_resources()),
+        bearing(
+            row("too few scopes for a listing", oauth, &list_resources()),
+            "read-token",
+        ),
+        bearing(
+            row("a write token for a listing", oauth, &list_resources()),
+            "write-token",
+        ),
+        bearing(
+            named(
+                row("too few scopes for a completion", oauth, &complete_item()),
+                "stacks://items/{item_id}",
+            ),
+            "read-token",
+        ),
+        bearing(
+            named(
+                row("a write token for a completion", oauth, &complete_item()),
+                "stacks://items/{item_id}",
+            ),
+            "write-token",
+        ),
+        bearing(
+            row("a completion that names nothing", oauth, &complete_item()),
+            "read-token",
+        ),
+        bearing(
+            row(
+                "too few scopes for a tool",
+                oauth,
+                &call(11, "count-items", &json!({ "book_id": "book-1" })),
+            ),
+            "read-token",
         ),
     ]
 }

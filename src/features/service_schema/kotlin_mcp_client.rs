@@ -9,7 +9,8 @@ use super::kotlin_ws_client::{
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
-    kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
+    TupleNaming, kotlin_declarations, kotlin_name, kotlin_property_name, kotlin_quoted,
+    kotlin_tuple_naming,
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -126,6 +127,7 @@ private fun @P@McpCallReported(tool: String, tagged: JsonObject): @P@McpCalled.F
   }"#;
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Named);
     let service = &declared.enveloped();
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);

@@ -1630,6 +1630,103 @@ mod cases;
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
 
+/// `LibraryService` and `DepotService`, which declare resources, templates, a listing and a
+/// completion, and `BareService`, which declares none: the Rust twins the TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_library_service.rs"]
+mod mcp_library_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_dispatcher.rs"]
+mod mcp_library_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_depot_dispatcher.rs"]
+mod mcp_depot_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_bare_dispatcher.rs"]
+mod mcp_bare_dispatcher;
+
+/// The requests the resource runs send, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_rows.rs"]
+mod mcp_library_rows;
+
+#[cfg(test)]
+use mcp_library_service::{
+    BareService, BareServiceSchema, DepotService, DepotServiceSchema, LibraryService,
+    LibraryServiceSchema, MirrorService, MirrorServiceSchema, bare_service_schema,
+    depot_service_schema, library_service_schema, mirror_service_schema,
+};
+
+/// `StacksService`, whose resources, template, listing and completion declare scopes, and its
+/// Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_stacks_service.rs"]
+mod mcp_stacks_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_stacks_dispatcher.rs"]
+mod mcp_stacks_dispatcher;
+
+#[cfg(test)]
+use mcp_stacks_service::{StacksService, StacksServiceSchema, stacks_service_schema};
+
+/// `ShelfService`, whose template and completion a request can fail to read or the validator can
+/// refuse, and its Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_service.rs"]
+mod mcp_shelf_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_dispatcher.rs"]
+mod mcp_shelf_dispatcher;
+
+#[cfg(test)]
+use mcp_shelf_service::{ShelfService, ShelfServiceSchema, shelf_service_schema};
+
+#[cfg(test)]
+#[path = "mcp_fault_cases/resource_cases.rs"]
+mod resource_cases;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, templates,
+/// a listing and a completion.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_resources.rs"]
+mod run_node_mcp_resources;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, a template,
+/// a listing and a completion that declare scopes.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_scopes.rs"]
+mod run_node_mcp_scopes;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_resources.rs"]
+mod run_dart_mcp_resources;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, a template, a
+/// listing and a completion that declare scopes.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_scopes.rs"]
+mod run_dart_mcp_scopes;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_resources.rs"]
+mod run_kotlin_mcp_resources;
+
 /// `WriterService`, whose handler reports progress, and the rows the emitted TypeScript, Dart and
 /// Kotlin servers are measured against.
 #[cfg(test)]
@@ -1649,6 +1746,13 @@ use mcp_writer_rows::{WriterService, WriterServiceSchema, writer_service_schema}
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]
 mod mcp_node_document;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, a template, a
+/// listing and a completion that declare scopes.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_scopes.rs"]
+mod run_kotlin_mcp_scopes;
 
 /// The services the Dart `mcp` server and client are run on.
 #[cfg(test)]
