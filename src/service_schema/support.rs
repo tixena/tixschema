@@ -184,8 +184,8 @@ pub fn emit(
                 .any(|operation| operation.mcp.content.is_some())))
     .then(content_types);
     let prompt_types = prompting.then(prompt_types);
-    let task_types =
-        (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service)).then(task_types);
+    let task_types = (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service))
+        .then(|| task_types(non_exhaustive));
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -279,11 +279,13 @@ fn prompt_types() -> TokenStream {
 
 /// What an `mcp(task(...))` operation answers: the handle of a task, and the state `tasks/get`
 /// reports. The application keeps the task; the times are the application's own text.
-fn task_types() -> TokenStream {
+fn task_types(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
     quote! {
         /// The handle of a task: the id the application keeps it under, and when it started.
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
         #[serde(rename_all = "camelCase")]
+        #sealed
         pub struct McpTask {
             /// The id the application keeps the task under; the transport adds the tool's name.
             pub task_id: ::std::string::String,
@@ -301,6 +303,7 @@ fn task_types() -> TokenStream {
 
         /// Why a task failed, as the specification writes an error.
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #sealed
         pub struct McpTaskError {
             pub code: i64,
             pub message: ::std::string::String,
@@ -311,6 +314,7 @@ fn task_types() -> TokenStream {
         /// Where a task stands, as `tasks/get` and the operation named in `task(get = ...)` answer.
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
         #[serde(tag = "status", rename_all = "snake_case")]
+        #sealed
         pub enum McpTaskState<T> {
             /// The work goes on.
             Working {
@@ -342,6 +346,31 @@ fn task_types() -> TokenStream {
                 #[serde(flatten)]
                 task: McpTask,
             },
+        }
+
+        impl McpTask {
+            /// A task started at `created_at` and last changed at `last_updated_at`, kept for
+            /// `ttl_ms` milliseconds and polled every `poll_interval_ms`.
+            pub const fn new(
+                task_id: ::std::string::String,
+                created_at: ::std::string::String,
+                last_updated_at: ::std::string::String,
+                ttl_ms: ::core::option::Option<u64>,
+                poll_interval_ms: ::core::option::Option<u64>,
+            ) -> Self {
+                Self { task_id, created_at, last_updated_at, ttl_ms, poll_interval_ms }
+            }
+        }
+
+        impl McpTaskError {
+            /// An error of `code` saying `message`, with the `data` it carries.
+            pub const fn new(
+                code: i64,
+                message: ::std::string::String,
+                data: ::core::option::Option<::serde_json::Value>,
+            ) -> Self {
+                Self { code, message, data }
+            }
         }
 
         impl<T> McpTaskState<T> {

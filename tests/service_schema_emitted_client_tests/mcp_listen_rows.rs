@@ -26,10 +26,7 @@ const VERSION: &str = "2026-07-28";
 const WATCHED: &str = "library://covers/book-1";
 const OTHER: &str = "library://covers/book-2";
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[],
-    oauth: None,
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
 /// One request to `LibraryService` and the changes its source is handed.
 pub struct Listen {
@@ -65,7 +62,7 @@ impl McpEventWriter for Recorder {
         if kept {
             self.written.lock().unwrap().push(message);
         }
-        ready(kept.then_some(()).ok_or(McpClientGone))
+        ready(kept.then_some(()).ok_or(McpClientGone::new()))
     }
 }
 
@@ -283,11 +280,7 @@ fn workspace(request: &str, script: &[Value]) -> Value {
             mcp_depot_dispatcher::catalog,
         ],
     );
-    let server = McpServer {
-        endpoint: &endpoint,
-        instructions: None,
-        name: "Workspace",
-    };
+    let server = McpServer::new(&endpoint, None, "Workspace");
     let lines = Recorder::default();
     let mut queue = queue_of(script);
     let mut source = async || queue.pop_front();
@@ -295,10 +288,7 @@ fn workspace(request: &str, script: &[Value]) -> Value {
         request,
         &server,
         |_call| (),
-        McpHost {
-            in_flight: &McpInFlight::default(),
-            writer: &lines,
-        },
+        McpHost::new(&McpInFlight::default(), &lines),
         &|ctx: &(), part, method: &str, params: &Value| {
             Box::pin(async move {
                 match part {
@@ -314,26 +304,26 @@ fn workspace(request: &str, script: &[Value]) -> Value {
 }
 
 fn http_terms(row: &ListenRow) -> McpHttpRequest {
-    McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: row.method.to_owned(),
-        path: row.path.to_owned(),
-    }
+    McpHttpRequest::new(
+        row.method.to_owned(),
+        row.path.to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    )
 }
 
-fn http_json(response: mcp_library_dispatcher::McpHttpResponse) -> Value {
+fn http_json(response: &mcp_library_dispatcher::McpHttpResponse) -> Value {
     json!({
-        "body": String::from_utf8(response.body).unwrap(),
-        "headers": response.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
-        "status": response.status,
+        "body": String::from_utf8(response.body().to_vec()).unwrap(),
+        "headers": response.headers().iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+        "status": response.status(),
     })
 }
 
 fn http(row: &ListenRow, script: &[Value]) -> Value {
     let mut queue = queue_of(script);
     let mut source = async || queue.pop_front();
-    http_json(through(|stream| {
+    http_json(&through(|stream| {
         ready_output(mcp_library_dispatcher::answer_http_listening(
             &http_terms(row),
             &SETTINGS,
@@ -348,7 +338,7 @@ fn http(row: &ListenRow, script: &[Value]) -> Value {
 }
 
 fn plain_http(row: &ListenRow) -> Value {
-    http_json(through(|stream| {
+    http_json(&through(|stream| {
         ready_output(mcp_library_dispatcher::answer_http(
             &http_terms(row),
             &SETTINGS,

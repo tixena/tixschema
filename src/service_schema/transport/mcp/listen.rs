@@ -9,6 +9,7 @@ pub(super) fn types() -> TokenStream {
     quote! {
         /// What the application's source of changes hands to a `subscriptions/listen` stream.
         #[derive(Clone, Debug, Eq, PartialEq)]
+        #[non_exhaustive]
         pub enum McpChange {
             /// The list of resources changed.
             ResourcesListChanged,
@@ -62,7 +63,7 @@ pub(super) fn functions() -> TokenStream {
         fn honored(filter: &::serde_json::Value, endpoint: &McpEndpoint) -> ::serde_json::Value {
             let mut agreed = ::serde_json::Map::new();
             let offers_resources = endpoint
-                .catalogs
+                .catalogs()
                 .iter()
                 .any(|catalog| catalog()["capabilities"].get("resources").is_some());
             if offers_resources {

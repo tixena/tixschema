@@ -11,24 +11,21 @@ mod over_http {
     use crate::job_mcp::{McpCall, McpDenied, McpEndpoint, McpHttpRequest, McpHttpSettings};
     use crate::support::{call, request};
 
-    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
     fn asking(message: &Value, named: Option<&str>) -> McpHttpRequest {
         let from = post(message);
-        let mut headers = from.headers;
+        let mut headers = from.headers().to_vec();
         headers.retain(|(held, _)| !held.eq_ignore_ascii_case("mcp-name"));
         if let Some(written) = named {
             headers.push(("Mcp-Name".to_owned(), written.to_owned()));
         }
-        McpHttpRequest {
-            body: from.body,
+        McpHttpRequest::new(
+            from.method().to_owned(),
+            from.path().to_owned(),
             headers,
-            method: from.method,
-            path: from.path,
-        }
+            from.body().to_vec(),
+        )
     }
 
     fn started(tokened: bool) -> Value {
@@ -59,8 +56,8 @@ mod over_http {
                 async |_request, _call| Ok(()),
             ))
         });
-        assert_eq!(answered.status, 200);
-        assert_result("Result", &serde_json::from_slice(&answered.body).unwrap());
+        assert_eq!(answered.status(), 200);
+        assert_result("Result", &serde_json::from_slice(answered.body()).unwrap());
         let stream = Recorded::default();
         let streamed = block_on(job_mcp::answer_http(
             &asking(&started(true), Some("start-export")),
@@ -96,8 +93,8 @@ mod over_http {
                 async |_request, _call| Ok(()),
             ))
         });
-        assert_eq!(mismatched.status, 400);
-        let body: Value = serde_json::from_slice(&mismatched.body).unwrap();
+        assert_eq!(mismatched.status(), 400);
+        let body: Value = serde_json::from_slice(mismatched.body()).unwrap();
         assert_eq!(body["error"]["code"], HEADER_MISMATCH);
         let matched = through(|stream| {
             block_on(job_mcp::answer_http(
@@ -108,7 +105,7 @@ mod over_http {
                 async |_request, _call| Ok(()),
             ))
         });
-        assert_eq!(matched.status, 200);
+        assert_eq!(matched.status(), 200);
     }
 
     #[test]
@@ -133,11 +130,7 @@ mod over_http {
                     &asking(&tasks, Some("start-export")),
                     &SETTINGS,
                     stream,
-                    &job_mcp::McpServer {
-                        endpoint,
-                        instructions: None,
-                        name: "Jobs",
-                    },
+                    &job_mcp::McpServer::new(endpoint, None, "Jobs"),
                     async |request: &job_mcp::McpHttpRequest, call: McpCall| {
                         assert_eq!(request.mcp_name().as_deref(), Some("start-export"));
                         call.progress(1.0_f64, None, None);
@@ -154,7 +147,7 @@ mod over_http {
                     },
                 ))
             });
-            assert!(matches!(response.status, 401 | 403), "{denied:?}");
+            assert!(matches!(response.status(), 401 | 403), "{denied:?}");
         }
         assert!(jobs.reached.lock().unwrap().is_empty());
     }
@@ -186,17 +179,17 @@ struct Dispatching {
 
 impl Transport for Dispatching {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
-        let asked: Value = serde_json::from_str(&message.text).unwrap();
-        assert_eq!(message.protocol_version, "2026-07-28");
+        let asked: Value = serde_json::from_str(message.text()).unwrap();
+        assert_eq!(message.protocol_version(), "2026-07-28");
         self.sent.lock().unwrap().push((
-            message.method,
-            message.name.clone(),
+            message.method(),
+            message.name().map(str::to_owned),
             asked["params"]["arguments"].clone(),
         ));
         let jobs = JOBS.with(Clone::clone);
         async move {
             Ok(block_on(job_mcp::answer(
-                &message.text,
+                message.text(),
                 &jobs,
                 |_call| (),
                 &Lines::default(),
@@ -495,29 +488,26 @@ fn tasks_update_hands_each_answer_to_the_update_operation() {
 fn over_http_a_task_method_of_a_service_with_no_task_is_a_method_not_found() {
     let asked = task_request("tasks/get", "start-export:7f3a");
     let posted = post(&asked);
-    let request = counsel_mcp::McpHttpRequest {
-        body: posted.body,
-        headers: vec![
+    let request = counsel_mcp::McpHttpRequest::new(
+        posted.method().to_owned(),
+        posted.path().to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "tasks/get".to_owned()),
         ],
-        method: posted.method,
-        path: posted.path,
-    };
+        posted.body().to_vec(),
+    );
     let response = through(|stream| {
         block_on(counsel_mcp::answer_http(
             &request,
-            &counsel_mcp::McpHttpSettings {
-                allowed_origins: &[],
-                oauth: None,
-            },
+            &counsel_mcp::McpHttpSettings::new(&[], None),
             stream,
             &Counsels::default(),
             async |_request, _call| Ok(()),
         ))
     });
-    assert_eq!(response.status, 404);
-    let body: Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(response.status(), 404);
+    let body: Value = serde_json::from_slice(response.body()).unwrap();
     assert_eq!(body["error"]["code"], METHOD_NOT_FOUND);
 }
 
@@ -572,10 +562,7 @@ fn an_endpoint_routes_the_task_methods_and_refuses_them_where_no_service_offers_
             None,
             &ENDPOINT,
             |_call| (),
-            McpHost {
-                in_flight: &McpInFlight::default(),
-                writer: &Lines::default(),
-            },
+            McpHost::new(&McpInFlight::default(), &Lines::default()),
             &|_ctx: &(), part, method: &str, params: &Value| {
                 Box::pin(async move {
                     match part {

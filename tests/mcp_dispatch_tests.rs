@@ -136,3 +136,20 @@ use tests::{
     BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema, ExportService,
     ExportServiceSchema, billing_service_schema, document_service_schema, export_service_schema,
 };
+
+#[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/published_structs.rs"]
+mod published_structs;
+
+#[cfg(test)]
+mod published {
+    built_and_read_back!(
+        approval_mcp,
+        billing_mcp,
+        counsel_mcp,
+        document_mcp,
+        export_mcp,
+        job_mcp
+    );
+}

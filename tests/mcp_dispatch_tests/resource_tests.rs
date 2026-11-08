@@ -9,10 +9,7 @@ use crate::support::{
 use crate::tests::Archive;
 use serde_json::{Value, json};
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[],
-    oauth: None,
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
 const GUIDE: &str = "guide://configure-workspace";
 
@@ -372,9 +369,10 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
         "resources/read",
         json!({ "uri": "workspace://documents/doc-1" }),
     );
-    let mut asked = McpHttpRequest {
-        body: message.to_string().into_bytes(),
-        headers: vec![
+    let asked = McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        vec![
             ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
             ("Mcp-Method".to_owned(), "resources/read".to_owned()),
             (
@@ -382,9 +380,8 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
                 "workspace://documents/doc-1".to_owned(),
             ),
         ],
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    };
+        message.to_string().into_bytes(),
+    );
     let response = through(|stream| {
         block_on(document_mcp::answer_http(
             &asked,
@@ -394,24 +391,33 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
             async |_request, _call| Ok(()),
         ))
     });
-    assert_eq!(response.status, 200);
-    let sent: Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(response.status(), 200);
+    let sent: Value = serde_json::from_slice(response.body()).unwrap();
     assert_eq!(sent["result"]["contents"][0]["blob"], "JVBERi0=");
-    asked.headers.pop();
-    asked.headers.push((
-        "Mcp-Name".to_owned(),
-        "workspace://documents/doc-2".to_owned(),
-    ));
+    let mismatch = {
+        let mut headers = asked.headers().to_vec();
+        headers.pop();
+        headers.push((
+            "Mcp-Name".to_owned(),
+            "workspace://documents/doc-2".to_owned(),
+        ));
+        McpHttpRequest::new(
+            asked.method().to_owned(),
+            asked.path().to_owned(),
+            headers,
+            asked.body().to_vec(),
+        )
+    };
     let mismatched = through(|stream| {
         block_on(document_mcp::answer_http(
-            &asked,
+            &mismatch,
             &SETTINGS,
             stream,
             &Archive::default(),
             async |_request, _call| Ok(()),
         ))
     });
-    assert_eq!(mismatched.status, 400);
+    assert_eq!(mismatched.status(), 400);
 }
 
 #[test]

@@ -32,34 +32,24 @@ macro_rules! rust_serves_alike {
             $module::INSTRUCTIONS,
             &endpoint,
             |call| call.progress(0.0_f64, None, None),
-            $module::McpHost {
-                in_flight: &$module::McpInFlight::default(),
-                writer: &Sink,
-            },
+            $module::McpHost::new(&$module::McpInFlight::default(), &Sink),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
             },
         ));
-        let asked = $module::McpHttpRequest {
-            body: row.body.clone().into_bytes(),
-            headers: row.headers.clone(),
-            method: row.method.to_owned(),
-            path: row.path.to_owned(),
-        };
-        let settings = $module::McpHttpSettings {
-            allowed_origins: &[],
-            oauth: None,
-        };
+        let asked = $module::McpHttpRequest::new(
+            row.method.to_owned(),
+            row.path.to_owned(),
+            row.headers.clone(),
+            row.body.clone().into_bytes(),
+        );
+        let settings = $module::McpHttpSettings::new(&[], None);
         let over_http = crate::mcp_streams::through(|stream| {
             $drive($module::serve_http(
                 &asked,
                 &settings,
                 stream,
-                &$module::McpServer {
-                    endpoint: &endpoint,
-                    instructions: $module::INSTRUCTIONS,
-                    name: $module::SERVER_NAME,
-                },
+                &$module::McpServer::new(&endpoint, $module::INSTRUCTIONS, $module::SERVER_NAME),
                 async |_request: &$module::McpHttpRequest,
                        _call: $module::McpCall|
                        -> Result<(), $module::McpDenied> { Ok(()) },
@@ -68,7 +58,7 @@ macro_rules! rust_serves_alike {
                 },
             ))
         });
-        (alone, served, over_http.status)
+        (alone, served, over_http.status())
     }};
 }
 
@@ -103,11 +93,7 @@ macro_rules! rust_listens_alike {
         };
         let row = $crate::mcp_listen_rows::alike_row();
         let endpoint = $module::McpEndpoint::new(&[<$schema>::MCP_NAMES], &[$module::catalog]);
-        let server = $module::McpServer {
-            endpoint: &endpoint,
-            instructions: $module::INSTRUCTIONS,
-            name: $module::SERVER_NAME,
-        };
+        let server = $module::McpServer::new(&endpoint, $module::INSTRUCTIONS, $module::SERVER_NAME);
         let mut queue = script();
         let mut source = async || queue.pop_front();
         let alone = $drive($module::answer_listening(
@@ -124,25 +110,14 @@ macro_rules! rust_listens_alike {
             &row.body,
             &server,
             |call| call.progress(0.0_f64, None, None),
-            $module::McpHost {
-                in_flight: &$module::McpInFlight::default(),
-                writer: &Sink,
-            },
+            $module::McpHost::new(&$module::McpInFlight::default(), &Sink),
             &|ctx: &(), _part, method: &str, params: &::serde_json::Value| {
                 Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
             },
             &mut source,
         ));
-        let asked = $module::McpHttpRequest {
-            body: row.body.clone().into_bytes(),
-            headers: row.headers.clone(),
-            method: row.method.to_owned(),
-            path: row.path.to_owned(),
-        };
-        let settings = $module::McpHttpSettings {
-            allowed_origins: &[],
-            oauth: None,
-        };
+        let asked = $module::McpHttpRequest::new(row.method.to_owned(), row.path.to_owned(), row.headers.clone(), row.body.clone().into_bytes());
+        let settings = $module::McpHttpSettings::new(&[], None);
         let mut queue = script();
         let mut source = async || queue.pop_front();
         let over_alone = crate::mcp_streams::through(|stream| $drive($module::answer_http_listening(
@@ -168,10 +143,10 @@ macro_rules! rust_listens_alike {
             },
             &mut source,
         )));
-        assert_eq!(over_alone.status, 200);
-        assert_eq!(over_alone.body, over_served.body);
+        assert_eq!(over_alone.status(), 200);
+        assert_eq!(over_alone.body(), over_served.body());
         assert!(
-            String::from_utf8(over_alone.body)
+            String::from_utf8(over_alone.body().to_vec())
                 .unwrap()
                 .starts_with("event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/subscriptions/acknowledged\"")
         );
@@ -188,22 +163,22 @@ macro_rules! rust_auth_answer {
             Scheme, decide_keys, decide_oauth,
         };
         let row: &$crate::mcp_auth_rows::AuthRow = $row;
-        let asked = $module::McpHttpRequest {
-            body: row.body.clone().into_bytes(),
-            headers: row.headers.clone(),
-            method: row.method.to_owned(),
-            path: row.path.to_owned(),
-        };
-        let oauth = $module::McpOAuth {
-            authorization_servers: &[AUTHORIZATION_SERVER],
-            resource: RESOURCE,
-            resource_metadata_url: METADATA_URL,
-            scopes_supported: &[SCOPES_SUPPORTED],
-        };
-        let settings = $module::McpHttpSettings {
-            allowed_origins: &[ORIGIN],
-            oauth: (row.scheme == Scheme::Oauth).then_some(oauth),
-        };
+        let asked = $module::McpHttpRequest::new(
+            row.method.to_owned(),
+            row.path.to_owned(),
+            row.headers.clone(),
+            row.body.clone().into_bytes(),
+        );
+        let oauth = $module::McpOAuth::new(
+            &[AUTHORIZATION_SERVER],
+            RESOURCE,
+            METADATA_URL,
+            &[SCOPES_SUPPORTED],
+        );
+        let settings = $module::McpHttpSettings::new(
+            &[ORIGIN],
+            (row.scheme == Scheme::Oauth).then_some(oauth),
+        );
         let denied = |decision: Decision| -> Result<(), $module::McpDenied> {
             match decision {
                 Decision::Admit => Ok(()),
@@ -247,9 +222,9 @@ macro_rules! rust_auth_answer {
             }),
         };
         (
-            answered.status,
-            answered.headers,
-            String::from_utf8(answered.body).unwrap(),
+            answered.status(),
+            answered.headers().to_vec(),
+            String::from_utf8(answered.body().to_vec()).unwrap(),
         )
     }};
 }

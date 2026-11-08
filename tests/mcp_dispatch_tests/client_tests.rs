@@ -68,7 +68,7 @@ impl Canned {
 
 impl Transport for Canned {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
-        written_down(&self.sent, message);
+        written_down(&self.sent, &message);
         let answer = self.answer.clone();
         async move { answer }
     }
@@ -76,7 +76,7 @@ impl Transport for Canned {
 
 impl Transport for Dispatching<'_> {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
-        let text = written_down(&self.sent, message);
+        let text = written_down(&self.sent, &message);
         let archive = self.archive;
         async move {
             let answered = document_mcp::answer(
@@ -92,13 +92,13 @@ impl Transport for Dispatching<'_> {
     }
 }
 
-fn written_down(sent: &Mutex<Vec<Sent>>, message: McpMessage) -> String {
-    let McpMessage {
-        method,
-        name,
-        protocol_version,
-        text,
-    } = message;
+fn written_down(sent: &Mutex<Vec<Sent>>, message: &McpMessage) -> String {
+    let (method, name, protocol_version, text) = (
+        message.method(),
+        message.name().map(str::to_owned),
+        message.protocol_version(),
+        message.text().to_owned(),
+    );
     assert_valid("CallToolRequest", &serde_json::from_str(&text).unwrap());
     sent.lock().unwrap().push(Sent {
         method,

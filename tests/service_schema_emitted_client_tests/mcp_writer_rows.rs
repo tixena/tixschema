@@ -24,10 +24,8 @@ const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-
 /// out of the comparison.
 const WORDED_BY_THE_LANGUAGE: usize = 4;
 
-const STREAM_SETTINGS: dispatcher::McpHttpSettings<'static> = dispatcher::McpHttpSettings {
-    allowed_origins: &[],
-    oauth: None,
-};
+const STREAM_SETTINGS: dispatcher::McpHttpSettings<'static> =
+    dispatcher::McpHttpSettings::new(&[], None);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
@@ -186,7 +184,7 @@ impl dispatcher::McpEventWriter for Lines {
         if kept {
             self.written.lock().unwrap().push(message);
         }
-        ready(kept.then_some(()).ok_or(dispatcher::McpClientGone))
+        ready(kept.then_some(()).ok_or(dispatcher::McpClientGone::new()))
     }
 }
 
@@ -419,16 +417,13 @@ fn failed_write() -> Value {
 }
 
 fn http_answer(row: &HttpRow) -> Value {
-    let settings = dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
-    let asked = dispatcher::McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: row.method.to_owned(),
-        path: "/mcp".to_owned(),
-    };
+    let settings = dispatcher::McpHttpSettings::new(&[], None);
+    let asked = dispatcher::McpHttpRequest::new(
+        row.method.to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    );
     let response = through(|stream| {
         ready_output(dispatcher::answer_http(
             &asked,
@@ -441,19 +436,19 @@ fn http_answer(row: &HttpRow) -> Value {
         ))
     });
     json!({
-        "body": String::from_utf8(response.body).unwrap(),
-        "headers": response.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
-        "status": response.status,
+        "body": String::from_utf8(response.body().to_vec()).unwrap(),
+        "headers": response.headers().iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+        "status": response.status(),
     })
 }
 
 fn streamed_request(row: &HttpRow) -> dispatcher::McpHttpRequest {
-    dispatcher::McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: row.method.to_owned(),
-        path: "/mcp".to_owned(),
-    }
+    dispatcher::McpHttpRequest::new(
+        row.method.to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    )
 }
 
 fn held_row() -> HttpRow {
@@ -577,7 +572,7 @@ fn streamed_plain() -> Value {
         },
     ))
     .unwrap();
-    json!({ "returned": true, "seen": stream.report(), "status": answered.status })
+    json!({ "returned": true, "seen": stream.report(), "status": answered.status() })
 }
 
 /// What an HTTP host sees of a request that answers an event stream while its handler is held, and
@@ -841,20 +836,17 @@ fn the_rust_dispatcher_answers_alone_beside_an_endpoint_and_over_http_alike() {
 
 #[test]
 fn an_admit_that_denies_by_name_stops_the_request_before_any_handler_runs() {
-    let settings = dispatcher::McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = dispatcher::McpHttpSettings::new(&[], None);
     let base = &http_rows()[0];
     for (name, status) in [("forbidden", 403_u16), ("scoped", 403), ("anonymous", 401)] {
         let mut headers = base.headers.clone();
         headers[2].1 = name.to_owned();
-        let asked = dispatcher::McpHttpRequest {
-            body: base.body.clone().into_bytes(),
+        let asked = dispatcher::McpHttpRequest::new(
+            base.method.to_owned(),
+            "/mcp".to_owned(),
             headers,
-            method: base.method.to_owned(),
-            path: "/mcp".to_owned(),
-        };
+            base.body.clone().into_bytes(),
+        );
         let response = through(|stream| {
             ready_output(dispatcher::answer_http(
                 &asked,
@@ -872,8 +864,8 @@ fn an_admit_that_denies_by_name_stops_the_request_before_any_handler_runs() {
                 },
             ))
         });
-        assert_eq!(response.status, status, "{name}");
-        assert!(response.body.is_empty(), "{name}");
+        assert_eq!(response.status(), status, "{name}");
+        assert!(response.body().is_empty(), "{name}");
     }
 }
 
