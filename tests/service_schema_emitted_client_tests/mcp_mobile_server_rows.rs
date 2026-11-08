@@ -335,10 +335,14 @@ pub fn workspace_answer(text: &str) -> Option<String> {
             in_flight: &mcp_mobile_document::McpInFlight::default(),
             writer: &Sink,
         },
-        async |ctx: &(), part, method, params| match part {
-            0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
-            1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
-            _ => None,
+        &|ctx: &(), part, method: &str, params: &Value| {
+            Box::pin(async move {
+                match part {
+                    0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
+                    1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
+                    _ => None,
+                }
+            })
         },
     ))
 }
@@ -538,8 +542,8 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             in_flight: &mcp_mobile_billing::McpInFlight::default(),
             writer: &Sink,
         },
-        async |ctx: &(), _part, method, params| {
-            mcp_mobile_billing::route(method, params, &Archive, ctx).await
+        &|ctx: &(), _part, method: &str, params: &Value| {
+            Box::pin(async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await })
         },
     ))
     .unwrap();
@@ -561,8 +565,8 @@ fn the_second_service_answers_alone_and_beside_the_first() {
         None,
         &endpoint,
         async |_request, _call| Ok(()),
-        async |ctx: &(), _part, method, params| {
-            mcp_mobile_billing::route(method, params, &Archive, ctx).await
+        &|ctx: &(), _part, method: &str, params: &Value| {
+            Box::pin(async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await })
         },
     ));
     assert_eq!(over_http.status, 200);
@@ -574,10 +578,14 @@ fn the_second_service_answers_alone_and_beside_the_first() {
         None,
         &WORKSPACE,
         async |_request, _call| Ok(()),
-        async |ctx: &(), part, method, params| match part {
-            0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
-            1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
-            _ => None,
+        &|ctx: &(), part, method: &str, params: &Value| {
+            Box::pin(async move {
+                match part {
+                    0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
+                    1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
+                    _ => None,
+                }
+            })
         },
     ));
     assert_eq!(workspace.status, rust_http(&asked).0);

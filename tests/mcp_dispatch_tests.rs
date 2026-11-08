@@ -13,6 +13,19 @@ extern crate alloc;
 mod tests;
 
 #[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/approval.rs"]
+mod approval;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/approval_mcp.rs"]
+mod approval_mcp;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/approval_client.rs"]
+mod approval_client;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/document_mcp.rs"]
 mod document_mcp;
 
@@ -56,7 +69,13 @@ mod writer_tests;
 #[path = "mcp_dispatch_tests/client_tests.rs"]
 mod client_tests;
 
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/elicitation_tests.rs"]
+mod elicitation_tests;
+
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
+#[cfg(test)]
+use approval::{ApprovalService, ApprovalServiceSchema, approval_service_schema};
 #[cfg(test)]
 use tests::{
     BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema, ExportService,

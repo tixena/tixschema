@@ -1,0 +1,43 @@
+error[E0433]: cannot find module or crate `shipping_form_schema` in this scope
+  --> tests/foundation_refusals/mcp_form_not_a_model.rs:27:26
+   |
+27 |         shipping: Option<ShippingForm>,
+   |                          ^^^^^^^^^^^^ use of unresolved module or unlinked crate `shipping_form_schema`
+   |
+   = help: if you wanted to use a crate named `shipping_form_schema`, use `cargo add shipping_form_schema` to add it to your `Cargo.toml`
+   = help: consider importing one of these structs:
+           crate::ship_document_request_schema::Schema
+           crate::ship_error_schema::Schema
+           crate::shipping_service_schema::shipping_service_fault_fields_schema::Schema
+           crate::shipping_service_schema::shipping_service_fault_kind_schema::Schema
+
+error[E0433]: cannot find module or crate `shipping_form_schema` in this scope
+  --> tests/foundation_refusals/mcp_form_not_a_model.rs:27:26
+   |
+27 |         shipping: Option<ShippingForm>,
+   |                          ^^^^^^^^^^^^ use of unresolved module or unlinked crate `shipping_form_schema`
+   |
+help: there is a crate or module with a similar name
+   |
+27 -         shipping: Option<ShippingForm>,
+27 +         shipping: Option<shipping_service_schema>,
+   |
+help: consider importing one of these structs
+   |
+ 4 + use crate::ship_document_request_schema::Schema;
+   |
+ 4 + use crate::ship_error_schema::Schema;
+   |
+ 4 + use crate::shipping_service_schema::shipping_service_fault_fields_schema::Schema;
+   |
+ 4 + use crate::shipping_service_schema::shipping_service_fault_kind_schema::Schema;
+   |
+
+error[E0599]: no associated function or constant named `mcp_form_flat` found for struct `ShippingForm` in the current scope
+  --> tests/foundation_refusals/mcp_form_not_a_model.rs:23:14
+   |
+ 8 | pub struct ShippingForm {
+   | ----------------------- associated function or constant `mcp_form_flat` not found for this struct
+...
+23 |     async fn ship_document(
+   |              ^^^^^^^^^^^^^ associated function or constant not found in `ShippingForm`

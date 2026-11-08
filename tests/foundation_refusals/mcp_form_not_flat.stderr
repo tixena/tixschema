@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `ship_document` asks with `shipping`, whose type `ShippingForm` is not a flat form: MCP takes text, numbers, yes or no, and choices
+  --> tests/foundation_refusals/mcp_form_not_flat.rs:30:14
+   |
+30 |     async fn ship_document(
+   |              ^^^^^^^^^^^^^ evaluation of `_` failed here

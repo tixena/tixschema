@@ -3746,13 +3746,20 @@ const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
 );
 
 let host = document_mcp::McpHost { writer: &stdout, in_flight: &in_flight };
-let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, async |ctx: &RequestContext, part, method, params| match part {
-    0 => document_mcp::route(method, params, &documents, ctx).await,
-    1 => billing_mcp::route(method, params, &billing, ctx).await,
-    _ => None,
+let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, &|ctx: &RequestContext, part, method: &str, params: &Value| {
+    let (documents, billing) = (documents.clone(), billing.clone());
+    Box::pin(async move {
+        match part {
+            0 => document_mcp::route(method, params, &documents, ctx).await,
+            1 => billing_mcp::route(method, params, &billing, ctx).await,
+            _ => None,
+        }
+    })
 })
 .await;
 ```
+
+`route` is a `&dyn Fn` that answers a boxed `Send` future, so the future of `serve` and `serve_http` can be spawned on a multi-threaded runtime (a function bounded `Future + Send + 'static`). The boxed future may borrow only its arguments, so it owns what it routes to: `documents` and `billing` here are handles that clone cheaply (an `Arc`, or a pool), and a store borrowed from the caller's stack is refused with `borrowed for 'static`. `answer` and `answer_http` take the store by reference and need no clone.
 
 `tools/list` concatenates the catalogs in the endpoint's order, `server/discover` answers the union of their capabilities with the extensions under `capabilities.extensions`, and a `tools/call` asks each service's `route` in turn. A tool name two services share fails the build when the endpoint is a `const`: `McpEndpoint::new` panics on a name of one kind two services share (a tool and a prompt of one name do not collide), and rustc prints `error[E0080]: evaluation panicked: get-version`. Resolve it with `mcp(name = "...")` on one of the operations.
 
@@ -3782,6 +3789,26 @@ async fn suggest_documents(&self, ctx: &Ctx, typed: String, chosen: HashMap<Stri
 - `completion/complete` finds the operation by the template's URI and the placeholder's name, calls it with `typed` from `argument.value` and `chosen` from `context.arguments` (the operation takes those two, in that order), and answers at most 100 values; a longer list answers its first 100 with `total` and `hasMore: true`.
 - `server/discover` adds `"resources": {}` where a service declares a resource, a template or a listing, and `"completions": {}` where it declares a completion. The Rust client has no method for these operations, which are not tools.
 - The macro refuses, naming the operation: a placeholder that names no argument, two operations with one URI (templates that differ only in their placeholders' names included), a success a resource cannot answer (anything but a `String` or a `(Vec<u8>, String)`), a `completes` that names no resource template of the service or a placeholder it lacks, a listing or a completion of the wrong shape, an operation that is more than one of the three, and a `cache_scope` other than `"public"` or `"private"`.
+
+**Asking the user.** A handler asks by answering an arm of its declared error, and the operation names the arm with `interview(...)`, for a form or for a link. The service macro cannot read the enum, so the generated match on `DeleteError::NeedsConfirmation { .. }` fails to compile where no such arm exists:
+
+```rust
+/// Deletes one document after the user confirms it.
+#[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
+async fn delete_document(&self, ctx: &Ctx, document_id: String, confirmation: Option<DeleteConfirmation>)
+    -> Result<(), DeleteError>;
+
+/// Imports one file from the caller's Drive.
+#[service_schema_op(mcp(interview(arm = "NeedsDriveConnection", url)))]
+async fn import_from_drive(&self, ctx: &Ctx, file_id: String) -> Result<ImportedDocument, ImportError>;
+```
+
+- **A form.** `answers` names an argument of the operation, of type `Option<Form>`, where `Form` lists `enable = ["jsonschema"]`; `tools/list` leaves it out of `inputSchema`. The first call runs the handler with `None`. When the handler answers the arm and the client declared `elicitation`, the call answers `input_required` keyed by the argument's wire name, with the form's exported schema (an `Option` field is a property that is not required) and the `message` key of the arm's JSON, or the operation's rustdoc where the arm has none. The retried call carries `inputResponses`: an `accept` is read as the form type (an answer that does not read answers the `failed-validation` fault as a tool execution error), judged with the message and passed to the handler as `Some`; a `decline` or `cancel` runs the handler with `None`, and its arm answers as a tool execution error. A client that did not declare `elicitation` receives the arm as the declared error, and so does a generated client, which declares no capabilities and calls again with the answer among its arguments.
+- **A link.** The arm holds `url` and `message` as `String`, and `interview(arm = "...", url)` is for a secret or a sign-in to another service, which the specification keeps out of a form. A client that declared `elicitation.url` receives `input_required` in URL mode, keyed by the arm's `errorCode` (or the arm's name in kebab-case where the error has none); the retried call runs the handler again, and an arm answered again asks again. A `decline` or `cancel` of the link, and a client without `elicitation.url`, receive the arm as the declared error, whose text holds the link and the message. The page behind the link and the token store are the application's.
+- `interview` takes `answers` or `url`, not both, and is refused on a one way operation, on an operation that binds `error_header_out`, and for an `answers` that is no argument of the operation or is no `Option`.
+- **A form that is not flat does not build.** `#[model_schema]` writes `mcp_form_value()` (true for an enum whose variants hold no data) and `mcp_form_flat()` (true for a struct whose every field is a `String`, a `bool`, an integer, a float, a `mcp_form_value()` type, a `Vec` of such a type, or an `Option` of any of these; false with a `#[serde(flatten)]` field) on every struct and enum. The service macro asserts `mcp_form_flat()` for the form's type, and rustc prints `error[E0080]: evaluation panicked: `ship_document` asks with `shipping`, whose type `ShippingForm` is not a flat form: MCP takes text, numbers, yes or no, and choices`. A type that is no model type has no `mcp_form_flat()` and fails as well. A field's type is read as the answer recorded when that type was expanded, so declare a form's enums above the form.
+
+**Content.** `mcp(content)` makes a tool answer `content` blocks, with no `outputSchema` and no `structuredContent`. A `(Vec<u8>, String)` success answers an `image` block where the content type starts with `image/` and an `audio` block where it starts with `audio/`; any other content type answers the pair as an operation with no flag does. A `Vec<McpContent>` success answers its blocks in order; `McpContent` (`Text`, `Image`, `Audio`, `ResourceLink`, `Resource`) and `McpResourceContents` (`Text`, `Blob`) are written into the service module, on a service that declares such an operation. The Rust client reads the blocks back into the pair or the list. The macro refuses a `content` operation that is one way, that answers anything else, that binds `header_out`, or that is also a resource, a listing or a completion.
 
 **Calling tools.** `{service}_mcp_client!()` emits `Transport`, `McpMessage` and `{Service}Client<T>`, with one method per tool answering what the other Rust clients answer (`Result<Success, CallError<Error>>`, and `Result<(), ServiceFault>` for a one-way operation). `Transport::send` is handed the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` an HTTP seam writes as headers; it answers the server's text, or `Err` for a call that did not travel. A message the validator refuses is refused before `send` is called. The client reads each answer as follows: a result with `isError: false` is the success (from `structuredContent`, or its `value` and the `header_out` properties beside it); `isError: true` with `"isServiceFault": true` is that fault; any other `isError: true` is the declared error; a JSON-RPC error that carries the fault envelope is that fault; any other JSON-RPC error and a failing `send` are a `transport-failure` fault; text that is no JSON, or a value its read refuses, is an `undeserializable-payload` fault.
 
