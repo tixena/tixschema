@@ -2,7 +2,9 @@
 //! and nothing compiled where the service is declared.
 
 mod client;
+mod content;
 mod dispatcher;
+mod interview;
 mod resources;
 
 use super::Transport;

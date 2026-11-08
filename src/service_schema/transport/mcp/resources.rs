@@ -146,32 +146,8 @@ pub(super) fn helpers(held: &Resourced<'_>) -> TokenStream {
             }
         }
     });
-    let blobs = held.reads().any(is_blob).then(|| {
-        quote! {
-            /// `bytes` in base64, with the standard alphabet and padding.
-            fn base64_encoded(bytes: &[u8]) -> ::std::string::String {
-                const ALPHABET: &[u8] =
-                    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                let letter = |group: u32, shift: u32| -> char {
-                    let at = usize::try_from((group >> shift) & 63).unwrap_or(0);
-                    ALPHABET.get(at).copied().map_or('=', char::from)
-                };
-                let mut text = ::std::string::String::new();
-                for chunk in bytes.chunks(3) {
-                    let byte = |at: usize| u32::from(chunk.get(at).copied().unwrap_or(0));
-                    let group = (byte(0) << 16_u32) | (byte(1) << 8_u32) | byte(2);
-                    text.push(letter(group, 18));
-                    text.push(letter(group, 12));
-                    text.push(if chunk.len() > 1 { letter(group, 6) } else { '=' });
-                    text.push(if chunk.len() > 2 { letter(group, 0) } else { '=' });
-                }
-                text
-            }
-        }
-    });
     quote! {
         #matching
-        #blobs
 
         /// A fault as the `-32602` error of a request that would not read.
         fn faulted(fault: impl ::serde::Serialize) -> ::serde_json::Value {
@@ -181,6 +157,36 @@ pub(super) fn helpers(held: &Resourced<'_>) -> TokenStream {
             )
         }
     }
+}
+
+/// `base64_encoded`, for a resource of bytes and for a content block of bytes.
+pub(super) fn base64_helper() -> TokenStream {
+    quote! {
+        /// `bytes` in base64, with the standard alphabet and padding.
+        fn base64_encoded(bytes: &[u8]) -> ::std::string::String {
+            const ALPHABET: &[u8] =
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let letter = |group: u32, shift: u32| -> char {
+                let at = usize::try_from((group >> shift) & 63).unwrap_or(0);
+                ALPHABET.get(at).copied().map_or('=', char::from)
+            };
+            let mut text = ::std::string::String::new();
+            for chunk in bytes.chunks(3) {
+                let byte = |at: usize| u32::from(chunk.get(at).copied().unwrap_or(0));
+                let group = (byte(0) << 16_u32) | (byte(1) << 8_u32) | byte(2);
+                text.push(letter(group, 18));
+                text.push(letter(group, 12));
+                text.push(if chunk.len() > 1 { letter(group, 6) } else { '=' });
+                text.push(if chunk.len() > 2 { letter(group, 0) } else { '=' });
+            }
+            text
+        }
+    }
+}
+
+/// Whether any resource the service reads answers bytes.
+pub(super) fn reads_bytes(held: &Resourced<'_>) -> bool {
+    held.reads().any(is_blob)
 }
 
 fn is_blob(operation: &OperationDef) -> bool {
