@@ -40,7 +40,7 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
     }
 }
 
-fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
+pub fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
     format_ident!(
         "wrapped_{}",
         written(&operation.ident),

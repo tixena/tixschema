@@ -15,11 +15,15 @@ mod http_service_tests;
 #[cfg(feature = "kotlin")]
 mod kotlin_http_client_tests;
 #[cfg(feature = "kotlin")]
+mod kotlin_mcp_tests;
+#[cfg(feature = "kotlin")]
 mod kotlin_ws_client_tests;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod service_tests;
 #[cfg(feature = "swift")]
 mod swift_http_client_tests;
+#[cfg(feature = "swift")]
+mod swift_mcp_client_tests;
 #[cfg(feature = "swift")]
 mod swift_ws_client_tests;
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -45,6 +49,10 @@ use super::http_service;
 #[cfg(feature = "kotlin")]
 use super::kotlin_http_client;
 #[cfg(feature = "kotlin")]
+use super::kotlin_mcp_client;
+#[cfg(feature = "kotlin")]
+use super::kotlin_mcp_service;
+#[cfg(feature = "kotlin")]
 use super::kotlin_ws_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use super::message;
@@ -54,6 +62,8 @@ use super::result;
 use super::service;
 #[cfg(feature = "swift")]
 use super::swift_http_client;
+#[cfg(feature = "swift")]
+use super::swift_mcp_client;
 #[cfg(feature = "swift")]
 use super::swift_ws_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -1278,6 +1288,33 @@ const NOTING_HTTP_DOC: &str = "  /// Calls `no*/te\\n\\` over `POST /no*/te\\n\\
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 const NOTING_WS_DOC: &str = "  /// Calls `no*/te\\n\\` over `ws_rpc`.\n";
 
+/// Arguments named after the locals the `mcp` server and clients write around them.
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+const MCP_SHADOWED_SERVICE: &str = "
+    pub trait ShadowService<Ctx> {
+        #[service_schema_op(http(
+            method = \"POST\",
+            path = \"/shadow\",
+            header_in(\"x-arguments\" = arguments),
+            header_in(\"x-outcome\" = outcome),
+            header_in(\"x-carried\" = carried),
+            header_in(\"x-trace\" = trace),
+        ))]
+        async fn shadow(
+            &self,
+            ctx: &Ctx,
+            label: String,
+            arguments: String,
+            outcome: String,
+            carried: String,
+            trace: Option<u32>,
+        ) -> Result<Found, FindError>;
+
+        #[service_schema_op(one_way)]
+        async fn touch(&self, ctx: &Ctx, label: String, reader: String);
+    }
+";
+
 /// `ConversationId` is a wire-scalar newtype throughout the fixtures this parses, and the
 /// registry recording that is thread-local and reset per test — see [`record_wire_scalar`].
 #[cfg(feature = "swift")]
@@ -1347,6 +1384,21 @@ fn kotlin_http_client_of(source: &str) -> String {
 fn kotlin_ws_client_of(source: &str) -> String {
     record_wire_scalar("ConversationId");
     kotlin_ws_client::emit(&parsed(source)).join("\n\n")
+}
+
+#[cfg(feature = "kotlin")]
+fn kotlin_mcp_service_of(source: &str) -> String {
+    kotlin_mcp_service::emit(&parsed(source)).join("\n\n")
+}
+
+#[cfg(feature = "kotlin")]
+fn kotlin_mcp_client_of(source: &str) -> String {
+    kotlin_mcp_client::emit(&parsed(source)).join("\n\n")
+}
+
+#[cfg(feature = "swift")]
+fn swift_mcp_client_of(source: &str) -> String {
+    swift_mcp_client::emit(&parsed(source)).join("\n\n")
 }
 
 fn parsed(source: &str) -> ServiceDef {

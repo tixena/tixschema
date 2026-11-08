@@ -17,6 +17,10 @@ mod http_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_http_client;
 #[cfg(feature = "kotlin")]
+mod kotlin_mcp_client;
+#[cfg(feature = "kotlin")]
+mod kotlin_mcp_service;
+#[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod message;
@@ -25,6 +29,8 @@ mod result;
 mod service;
 #[cfg(feature = "swift")]
 mod swift_http_client;
+#[cfg(feature = "swift")]
+mod swift_mcp_client;
 #[cfg(feature = "swift")]
 mod swift_type;
 #[cfg(feature = "swift")]
@@ -546,11 +552,42 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
 pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
+    let kotlin = kotlin_mcp_seam(service);
+    let swift = swift_mcp_seam(service);
     quote! {
         impl #registry {
             #items
+            #kotlin
+            #swift
         }
     }
+}
+
+/// The Kotlin server and client of an `mcp` service, published where the `kotlin` feature is on.
+#[cfg(feature = "kotlin")]
+fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
+    let server = kotlin_mcp_service::accessor(service);
+    let client = kotlin_mcp_client::accessor(service);
+    quote! {
+        #server
+        #client
+    }
+}
+
+#[cfg(not(feature = "kotlin"))]
+fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The Swift client of an `mcp` service, published where the `swift` feature is on.
+#[cfg(feature = "swift")]
+fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
+    swift_mcp_client::accessor(service)
+}
+
+#[cfg(not(feature = "swift"))]
+fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
 }
 
 /// `<Service>Schema`, the type every surface of the service is published on.

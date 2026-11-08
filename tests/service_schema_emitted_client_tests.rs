@@ -1607,3 +1607,53 @@ mod run_swift_member_named;
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
+
+/// `DocumentService` and `BillingService`, both asking for `mcp`: the Rust twins the emitted
+/// Kotlin server and the Kotlin and Swift clients are measured against.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_service.rs"]
+mod mcp_mobile_service;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_document.rs"]
+mod mcp_mobile_document;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_billing.rs"]
+mod mcp_mobile_billing;
+
+/// The rows both `mcp` runs read: the requests a client sends, the answers the Rust dispatcher
+/// gives them, and the check of every message against the official schema.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_rows.rs"]
+mod mcp_mobile_rows;
+
+/// The requests the Kotlin `mcp` server is sent, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_server_rows.rs"]
+mod mcp_mobile_server_rows;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+use mcp_mobile_service::{
+    BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema,
+    billing_service_schema, document_service_schema,
+};
+
+/// The emitted Kotlin `mcp` server and client, run beside the Rust dispatcher and client.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp.rs"]
+mod run_kotlin_mcp;
+
+/// The emitted Swift `mcp` client, run beside the Rust dispatcher.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp.rs"]
+mod run_swift_mcp;

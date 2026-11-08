@@ -20,10 +20,12 @@ use super::swift_type::swift_typename_of;
 use super::{on_one_line, text_types};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
-/// REST client's and the `ws_rpc` client's.
-const TAKEN_BY_A_METHOD: [&str; 24] = [
+/// REST client's, the `ws_rpc` client's and the `mcp` client's.
+const TAKEN_BY_A_METHOD: [&str; 28] = [
     "answer",
+    "arguments",
     "body",
+    "carried",
     "contentRange",
     "contentType",
     "declared",
@@ -31,6 +33,7 @@ const TAKEN_BY_A_METHOD: [&str; 24] = [
     "decoded",
     "error",
     "errorHeaderValues",
+    "exchange",
     "fault",
     "headerValues",
     "headers",
@@ -43,6 +46,7 @@ const TAKEN_BY_A_METHOD: [&str; 24] = [
     "rendered",
     "req",
     "response",
+    "sentHeader",
     "status",
     "transport",
     "value",
@@ -1432,7 +1436,7 @@ fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
 
 /// The message's Swift type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors the Dart client's own `message_dart_typename`.
-fn message_swift_typename(operation: &OperationDef) -> String {
+pub(super) fn message_swift_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => swift_typename_of(declared),
         OperationInputs::Empty | OperationInputs::Generated(_) => {

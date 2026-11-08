@@ -3752,6 +3752,21 @@ let client = DocumentServiceClient::new(HttpMcpTransport::new(url, api_key));
 let version = client.get_version(GetVersionRequest { document_id: "doc-1".into() }).await;
 ```
 
+**On Kotlin and Swift.** On a service that asks for `mcp`, `<Service>Schema::kotlin_mcp_service()`, `kotlin_mcp_client()` and `swift_mcp_client()` publish the Kotlin server and the Kotlin and Swift clients, behind the `kotlin` and `swift` features. They read `mcp_tools()` and `wrapped_{operation}()` when the accessor runs in your program, so a tool list keeps the digits Rust wrote. A bundle names the accessor that holds the result types first: `kotlin_http_client()` and `swift_http_client()`, and for the server `kotlin_ws_client()`, which holds the `DocumentServiceHandlers` the server takes.
+
+The Kotlin server answers the bytes the Rust dispatcher answers, with the keys of every object in order. It takes the `DocumentServiceHandlers` the WebSocket attachment takes, so a handler answers its declared error as `Declared`; a message is read with the read that attachment uses, which judges it. A message that does not read answers the `undeserializable-payload` fault, and one the validator refuses answers `failed-validation` naming the field. A message that is not a JSON-RPC request answers `-32600` with no `id`, because the official schema allows an `id` that is a string or an integer and nothing else.
+
+```kotlin
+val workspace = DocumentServiceMcpEndpoint(documentServiceMcpCatalog, billingServiceMcpCatalog)
+val reply = documentServiceMcpServe(line, "Workspace", null, workspace) { part, method, params ->
+    when (part) { 0 -> documents(method, params); 1 -> billing(method, params); else -> null }
+}
+```
+
+`createDocumentServiceMcpDispatcher(handlers)` serves one service from text, `createDocumentServiceMcpHttpDispatcher(handlers, allowedOrigins)` from `DocumentServiceMcpHttpRequest` and `DocumentServiceMcpHttpResponse` under the Streamable HTTP rules above, and `createDocumentServiceMcpRoute(handlers)` answers the requests of one service on an endpoint shared by several. The answer a route gives is that service's own `DocumentServiceMcpAnswer`, so a `route` over two services converts the second one's answer to the first one's. Kotlin compares no list at compile time, because a `const val` holds only a primitive or a `String`: `DocumentServiceMcpEndpoint(a, b)` throws `IllegalStateException("two services share the MCP name tool:get-version")` when it is built.
+
+The Kotlin and Swift clients write only `send`. `DocumentServiceMcpTransport.send` is handed a `DocumentServiceMcpMessage` holding the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` values, and answers the server's text. Each method answers the sealed result `kotlin_http_client()` declares, or `Result<Success, {Service}{Operation}Failure>` in Swift: a result with `isError: false` is the success, the declared error is `Declared` (`.declared`), a fault in the answer, a text that is no JSON and a failing `send` are the `Fault` arm (`.fault`) with the `undeserializable-payload` or `transport-failure` kind, and a one-way method throws `DocumentServiceMcpRefusal` in Kotlin and `DocumentServiceRefusal` in Swift. The Kotlin client numbers its requests under `synchronized`, and the Swift client is an actor that numbers them in its own state. `_meta` names the client as `DocumentServiceMcpClient`, with the version of the crate that declares the service.
+
 #### The `ws_rpc` Transport
 
 `#[service_schema(transports = ["ws_rpc"])]` serves a service over one WebSocket as JSON text frames -- the same request, notify and reply terms `amqp_rpc` already answers through, carried over a socket instead of a queue. A service that only answers calls asks for it alone; a service the server calls instead -- pushing an event to whichever connection wants it -- asks for it too, notify travelling either direction over the same wire. The pair below is what a browser dashboard and its backend actually share: the browser calls `Ledger`, and the server pushes `LedgerEvents` back down the same connection.
