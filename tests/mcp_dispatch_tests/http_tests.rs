@@ -107,8 +107,8 @@ fn an_unreadable_body_is_refused_with_400_and_32600() {
         assert_eq!(response.status, 400);
         let sent = body_of(&response);
         assert_eq!(sent["error"]["code"], INVALID_REQUEST);
-        assert_eq!(sent["id"], Value::Null);
-        assert_valid("Error", &sent["error"]);
+        assert!(sent.get("id").is_none());
+        assert_valid("JSONRPCErrorResponse", &sent);
     }
 }
 

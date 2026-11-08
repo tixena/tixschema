@@ -3,6 +3,7 @@
 //! endpoint, a schema's digits kept, and the client reading each outcome.
 
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
+use crate::cases;
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
 use core::pin::pin;
@@ -40,6 +41,7 @@ const impl = {
     return { ok: true, value: { version: 7 } };
   },
   async lookup(ctx, id) {
+    if (id === "panic") throw new Error("the handler came apart");
     return { ok: true, value: { version: 7 } };
   },
   async renameDocument(ctx, req) {
@@ -54,6 +56,8 @@ const impl = {
 /// The requests of the design's wire section, and the refusals around them, in the order the tests
 /// below read their answers.
 const WIRE_DRIVER: &str = r#"
+const faulted = /*FAULT_CASES*/;
+
 async function main() {
   const dispatch = createDocumentServiceMcpDispatcher(impl);
   const requests = [
@@ -62,8 +66,6 @@ async function main() {
     ["tools/call", call(2, "get-version", { document_id: "doc-1" })],
     ["tools/call", call(3, "rename-document", { documentId: "doc-1", title: "Plan" })],
     ["tools/call", call(4, "get-version", { document_id: "missing" })],
-    ["tools/call", call(5, "get-version", { document_id: 5 })],
-    ["tools/call", call(6, "get-version", { document_id: "" })],
     ["tools/call", call(7, "delete-everything", {})],
     ["tools/call", JSON.stringify({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "get-version", arguments: { document_id: "doc-1" }, _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": "2025-11-25" } } })],
     ["tools/call", call(9, "get-version", { document_id: "boom" })],
@@ -73,13 +75,12 @@ async function main() {
     ["tools/call", call(13, "get-tagged", { value: "doc-1" })],
     ["tools/call", call(14, "get-tagged", { "if-none-match": "\"v7\"", value: "doc-1" })],
     ["tools/call", call(15, "touch-document", { documentId: "doc-1", reader: "boom" })],
-    ["tools/call", call(16, "lookup-document", { value: 5 })],
-    ["tools/call", call(17, "get-tagged", { value: "doc-1", "if-none-match": 5 })],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })],
     ["tools/list", "not json"],
     ["tools/list", request(18, "resources/list", {})],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", id: 19, method: "tools/list", params: {} })],
   ];
+  requests.splice(requests.length - 4, 0, ...faulted.map((held, at) => ["tools/call", call(100 + at, held.tool, held.arguments)]));
   const answers = [];
   for (const [method, text] of requests) {
     const reply = await dispatch({}, text);
@@ -519,6 +520,15 @@ fn bundle() -> String {
     .join("\n\n")
 }
 
+/// The cases as the JSON array a driver reads: `tool` and `arguments` of each.
+pub fn cases_json() -> String {
+    let cases: Vec<Value> = cases::FAULT_CASES
+        .iter()
+        .map(|case| json!({ "tool": case.tool, "arguments": case.arguments() }))
+        .collect();
+    Value::Array(cases).to_string()
+}
+
 /// Runs `driver` after the bundle under node, or stands down naming `TIXSCHEMA_NODE_MODULES`.
 fn run(named: &str, driver: &str) -> Option<Value> {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
@@ -528,7 +538,11 @@ fn run(named: &str, driver: &str) -> Option<Value> {
         );
         return None;
     };
-    let source = format!("{}\n\n{driver}", bundle());
+    let source = format!(
+        "{}\n\n{}",
+        bundle(),
+        driver.replace("/*FAULT_CASES*/", &cases_json())
+    );
     let wrote = ran_with_modules(
         named,
         RUNTIME_VAR,
@@ -584,17 +598,10 @@ fn held_to(definition: &str, message: &Value) {
 }
 
 /// Holds an answer to the definition its request names: the result definition of that request, or
-/// the error definition of the code. The schema's request id is a string or an integer, so the
-/// `null` an unreadable request is answered under is held without one.
-fn held_as_answer(request_method: &str, answer: &Value) {
-    let mut held = answer.clone();
-    if held["id"].is_null()
-        && let Some(members) = held.as_object_mut()
-    {
-        members.remove("id");
-    }
+/// the error definition of the code.
+fn held_as_answer(request_method: &str, held: &Value) {
     if let Some(code) = held["error"]["code"].as_i64() {
-        held_to("JSONRPCErrorResponse", &held);
+        held_to("JSONRPCErrorResponse", held);
         let error = held["error"].clone();
         let specific = match code {
             -32600 => "InvalidRequestError",
@@ -612,7 +619,7 @@ fn held_as_answer(request_method: &str, answer: &Value) {
         held_to(
             specific,
             if matches!(code, -32020 | -32022) {
-                &held
+                held
             } else {
                 &error
             },
@@ -629,7 +636,7 @@ fn held_as_answer(request_method: &str, answer: &Value) {
         !definition.is_empty(),
         "a method this group does not answer: {request_method}"
     );
-    held_to(definition, &held);
+    held_to(definition, held);
 }
 
 /// Holds every answer of the wire driver to the official schema.
@@ -770,28 +777,13 @@ fn the_server_answers_the_bytes_the_design_records() {
 }
 
 #[test]
-fn a_message_the_zod_reads_refuse_answers_the_failed_validation_fault() {
+fn a_message_the_zod_reads_refuse_answers_the_fault_the_rust_dispatcher_answers() {
     let Some(answers) = wire_answers() else {
         return;
     };
-    for (id, field, operation) in [
-        (5, Some("document_id"), "get-version"),
-        (6, Some("document_id"), "get-version"),
-        (16, None, "lookup"),
-        (17, Some("if-none-match"), "get-tagged"),
-    ] {
-        let (_, reply) = answer_to(&answers, id);
-        let result = &reply["result"];
-        assert_eq!(result["isError"], true, "request {id}: {reply:#}");
-        assert!(result.get("structuredContent").is_none(), "{reply:#}");
-        let text: Value =
-            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(text["isServiceFault"], true, "request {id}: {text:#}");
-        assert_eq!(text["fault"]["kind"], "failed-validation", "{text:#}");
-        assert_eq!(text["fault"]["operation"], operation, "{text:#}");
-        if let Some(named) = field {
-            assert_eq!(text["fault"]["field"], named, "request {id}: {text:#}");
-        }
+    for (at, case) in cases::FAULT_CASES.iter().enumerate() {
+        let (_, reply) = answer_to(&answers, 100 + at as u64);
+        case.holds(&reply);
     }
 }
 
@@ -806,7 +798,7 @@ fn a_notification_a_broken_text_and_an_unknown_method_are_answered_as_serve_orde
     let unreadable: Value = serde_json::from_str(last(3).as_str().unwrap()).unwrap();
     assert_eq!(
         unreadable,
-        json!({ "error": { "code": -32_600_i32, "message": "Invalid Request" }, "id": null, "jsonrpc": "2.0" })
+        json!({ "error": { "code": -32_600_i32, "message": "Invalid Request" }, "jsonrpc": "2.0" })
     );
     let unknown: Value = serde_json::from_str(last(2).as_str().unwrap()).unwrap();
     assert_eq!(unknown["error"]["code"], -32_601_i32, "{unknown:#}");

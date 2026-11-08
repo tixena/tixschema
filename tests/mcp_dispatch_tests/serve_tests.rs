@@ -1,6 +1,7 @@
 //! `serve` and `answer`: the samples of the wire, the order of the checks, the routing of a call,
 //! and an endpoint shared by two services.
 
+use crate::cases::FAULT_CASES;
 use crate::document_mcp::{self, McpEndpoint};
 use crate::support::{
     CENTS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, LISTED_FOR_MS, Lines, METHOD_NOT_FOUND,
@@ -389,6 +390,13 @@ fn a_wrapped_message_is_read_from_its_value_property() {
 }
 
 #[test]
+fn a_fault_names_the_tool_the_caller_called_and_the_kind_the_read_or_the_validator_gives() {
+    for case in FAULT_CASES {
+        case.holds(&ask(case.tool, &case.arguments()));
+    }
+}
+
+#[test]
 fn arguments_that_are_no_object_answer_the_undeserializable_payload_fault() {
     let mut asked = call(&id(13), "get-version", &json!({}));
     asked["params"]["arguments"] = json!([1_u8]);
@@ -397,7 +405,7 @@ fn arguments_that_are_no_object_answer_the_undeserializable_payload_fault() {
 }
 
 #[test]
-fn text_that_is_no_message_answers_32600_with_a_null_id() {
+fn text_that_is_no_message_answers_32600_with_no_id() {
     for text in [
         "",
         "not json",
@@ -418,8 +426,8 @@ fn text_that_is_no_message_answers_32600_with_a_null_id() {
         )
         .unwrap();
         assert_eq!(answered["error"]["code"], INVALID_REQUEST, "{text}");
-        assert_eq!(answered["id"], Value::Null, "{text}");
-        assert_valid("Error", &answered["error"]);
+        assert!(answered.get("id").is_none(), "{text}");
+        assert_valid("JSONRPCErrorResponse", &answered);
     }
 }
 

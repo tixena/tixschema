@@ -8,12 +8,14 @@ use super::mcp_dart_services::{
     Archive, AuditService, AuditServiceSchema, DartBillingService as _, DartBillingServiceSchema,
     DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequest,
     McpVersionError, McpVersionRequest, TaggingService as _, TaggingServiceSchema,
-    mcp_document_id_dart, mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_version_error_dart,
-    mcp_version_request_dart, mcp_version_response_dart,
+    mcp_document_id_dart, mcp_format_dart, mcp_invoice_list_dart, mcp_invoice_request_dart,
+    mcp_version_error_dart, mcp_version_request_dart, mcp_version_response_dart,
 };
 use super::run_dart_validate::{analyzed, dart};
+use super::run_node_mcp::cases_json;
 use super::runtime::ran;
 use super::tests::poll_once;
+use crate::cases;
 use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -43,6 +45,8 @@ String request(Object? id, String method, [Map<String, dynamic> params = const <
       'params': <String, dynamic>{...params, '_meta': meta},
     });
 
+const faulted = /*FAULT_CASES*/;
+
 void main() async {
   final touched = <String>[];
   final tags = <String?>[];
@@ -56,7 +60,10 @@ void main() async {
       if (req.document_id == 'panic') throw 'the handler came apart';
       return McpVersionResponse(version: 7);
     },
-    lookup: (ctx, req) async => McpVersionResponse(version: req.value.length),
+    lookup: (ctx, req) async {
+      if (req.value == 'panic') throw 'the handler came apart';
+      return McpVersionResponse(version: req.value.length);
+    },
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async {
       touched.add('${req.document_id}:${req.reader}');
@@ -143,6 +150,11 @@ void main() async {
   await ask('resources_last', request(23, 'resources/list', {'cursor': '1:'}));
   await ask('resources_invalid', request(24, 'resources/list', {'cursor': '7:'}));
   await ask('prompts', request(25, 'prompts/list'));
+  await ask('unknown_variant', request(40, 'tools/call', {'name': 'get-version', 'arguments': {'document_id': 'doc-1', 'format': 'rtf'}}));
+  for (var at = 0; at < faulted.length; at++) {
+    final held = faulted[at] as Map<String, dynamic>;
+    await ask('fault_$at', request(100 + at, 'tools/call', {'name': held['tool'], 'arguments': held['arguments']}));
+  }
   await ask('no_arguments', request(26, 'tools/call', {'name': 'get-version'}));
 
   final alone = createDartDocumentServiceMcpDispatcher<void>(documents);
@@ -379,6 +391,7 @@ fn module(driver: &str) -> String {
     [
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
+        mcp_format_dart::dart_definition(),
         mcp_version_request_dart::dart_definition(),
         mcp_version_response_dart::dart_definition(),
         mcp_version_error_dart::dart_definition(),
@@ -397,7 +410,7 @@ fn module(driver: &str) -> String {
         TaggingServiceSchema::dart_ws_client(),
         TaggingServiceSchema::dart_mcp_service(),
         TaggingServiceSchema::dart_mcp_client(),
-        driver.to_owned(),
+        driver.replace("/*FAULT_CASES*/", &cases_json()),
     ]
     .join("\n\n")
 }
@@ -774,6 +787,30 @@ fn a_message_that_does_not_read_answers_the_fault_of_what_went_wrong() {
 }
 
 #[test]
+fn the_faults_of_the_server_carry_the_kind_field_and_tool_the_rust_dispatcher_writes() {
+    let Some(driven) = driven("mcp_server_kinds", SERVER_DRIVER) else {
+        return;
+    };
+    for (at, case) in cases::FAULT_CASES.iter().enumerate() {
+        let message: Value =
+            serde_json::from_str(driven["answers"][format!("fault_{at}")].as_str().unwrap())
+                .unwrap();
+        valid(
+            if case.kind == "handler-panic" {
+                "InternalError"
+            } else {
+                "CallToolResultResponse"
+            },
+            &message,
+        );
+        case.holds(&message);
+    }
+    let unknown_variant = fault_of(&driven, "unknown_variant");
+    assert_eq!(unknown_variant["kind"], "undeserializable-payload");
+    assert_eq!(unknown_variant["operation"], "get-version");
+}
+
+#[test]
 fn a_request_missing_its_meta_or_unreadable_answers_the_error_the_design_names() {
     let Some(driven) = driven("mcp_server_meta", SERVER_DRIVER) else {
         return;
@@ -1019,6 +1056,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         [
             "import 'dart:async';".to_owned(),
             "import 'dart:convert';".to_owned(),
+            mcp_format_dart::dart_definition(),
             mcp_version_request_dart::dart_definition(),
             mcp_version_response_dart::dart_definition(),
             mcp_version_error_dart::dart_definition(),
@@ -1070,6 +1108,7 @@ fn the_dart_mcp_server_and_client_have_no_issue() {
 fn the_archive_answers_every_operation_of_every_service() {
     let version = || McpVersionRequest {
         document_id: "doc-1".to_owned(),
+        format: None,
     };
     let answered = poll_once(DartDocumentService::get_version(&Archive, &(), version())).unwrap();
     assert_eq!(answered.unwrap().version, 5);

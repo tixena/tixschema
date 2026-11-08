@@ -111,7 +111,7 @@ function __p__McpRefused(
   message: string,
   data?: unknown,
 ): __N__McpHandled {
-  return __p__McpReplied(status, { id, error: { code, data, message } });
+  return __p__McpReplied(status, { id: id ?? undefined, error: { code, data, message } });
 }
 
 function __p__McpParse(
@@ -268,6 +268,16 @@ export async function __p__McpServe(
 
 const ROUTE: &str = r#"const __p__McpEmpty = { content: [], isError: false, resultType: "complete" };
 
+/** The Zod issue codes that mean the arguments do not read as the message; any other is a validator's refusal. */
+const __p__McpUnreadable: ReadonlySet<string> = new Set([
+  "invalid_type",
+  "invalid_union",
+  "invalid_value",
+  "invalid_key",
+  "invalid_element",
+  "unrecognized_keys",
+]);
+
 /**
  * The route of `__N__`: answers a `tools/call` of one of its tools through `create__N__Dispatcher`,
  * so the Zod reads judge every message, and answers `undefined` for any other request.
@@ -294,17 +304,33 @@ export function create__N__McpRoute<Ctx>(
       }
       payload = operation.wrapped ? held.value : rest;
     }
-    const attempt = await dispatch(ctx, operation.operation, payload, headers).then(
-      (dispatched) => ({ dispatched }),
-      (thrown: unknown) => ({ thrown }),
-    );
+    const read = operation.schema.safeParse(payload);
+    const issues = read.success ? [] : read.error.issues;
+    const attempt = issues.some((issue) => __p__McpUnreadable.has(issue.code))
+      ? {
+          dispatched: __p__Framed(
+            __FAULT__(
+              "undeserializable-payload",
+              operation.tool,
+              issues
+                .map((issue) =>
+                  issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`,
+                )
+                .join("; "),
+            ),
+          ),
+        }
+      : await dispatch(ctx, operation.operation, payload, headers).then(
+          (dispatched) => ({ dispatched }),
+          (thrown: unknown) => ({ thrown }),
+        );
     if ("thrown" in attempt) {
       if (operation.oneWay) return { result: __p__McpEmpty };
       const detail = attempt.thrown instanceof Error ? attempt.thrown.message : String(attempt.thrown);
       return {
         error: {
           code: -32603,
-          data: { fault: __FAULT__("handler-panic", operation.operation, detail), isServiceFault: true },
+          data: { fault: __FAULT__("handler-panic", operation.tool, detail), isServiceFault: true },
           message: `${operation.tool}: ${detail}`,
         },
       };
@@ -338,10 +364,12 @@ export function create__N__McpRoute<Ctx>(
     }
     const error = answered.error;
     const fault = typeof error === "object" && error !== null && "isServiceFault" in error;
+    const faulted = error as { fault: object };
+    const named = fault ? { ...faulted, fault: { ...faulted.fault, operation: operation.tool } } : error;
     const body =
       !fault && operation.errorHeadersOut.length > 0
         ? { value: error, ...beside(operation.errorHeadersOut) }
-        : error;
+        : named;
     return {
       result: { content: [{ text: __p__McpText(body), type: "text" }], isError: true, resultType: "complete" },
     };
@@ -556,6 +584,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          export type {named}McpOperation = {{\n  \
          readonly tool: string;\n  \
          readonly operation: string;\n  \
+         readonly schema: ZodType;\n  \
          readonly wrapped: boolean;\n  \
          readonly oneWay: boolean;\n  \
          readonly unit: boolean;\n  \
@@ -594,10 +623,11 @@ fn operation_row(operation: &OperationDef) -> String {
         .map(|bound| bound.name.clone())
         .collect();
     format!(
-        "  {{ tool: {tool}, operation: {wire}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
+        "  {{ tool: {tool}, operation: {wire}, schema: {schema}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
          headersIn: [{headers_in}], headersOut: [{headers_out}], errorHeadersOut: \
          [{error_headers_out}] }},",
         tool = ts_quoted(operation.mcp_tool_name()),
+        schema = message::schema(operation),
         wire = ts_quoted(&operation.wire_name),
         headers_in = quoted(&headers_in),
         headers_out = quoted(&shape.header_out),

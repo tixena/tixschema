@@ -33,6 +33,10 @@ mod document_client;
 mod support;
 
 #[cfg(test)]
+#[path = "mcp_fault_cases/cases.rs"]
+mod cases;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/serve_tests.rs"]
 mod serve_tests;
 

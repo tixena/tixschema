@@ -10,9 +10,19 @@ use tixschema::{model_schema, service_schema};
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum McpFormat {
+    Pdf,
+    Text,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct McpVersionRequest {
     #[model_schema_prop(minLength = 1)]
     pub document_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<McpFormat>,
 }
 
 #[model_schema(enable = ["jsonschema"])]

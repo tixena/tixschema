@@ -5,14 +5,14 @@
 //! Neither text names a tool list or whether a message sits under `value`: the accessors in
 //! [`seam`] write those over the markers below when they run in the consuming program.
 
-use super::dart_http_client::{dart_call, dart_parameter};
+use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, has_one_way, header_call_args, header_out_push_stmt,
     message_dart_typename, message_decode, message_encode, split_reply_record,
     success_decode_block,
 };
 use super::result::result_name;
-use crate::features::dart::{dart_json_decode, quoted};
+use crate::features::dart::{dart_json_decode, dart_json_decode_unjudged, quoted};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type, written,
@@ -738,13 +738,24 @@ fn source_expr(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> Str
     }
 }
 
+/// The message read by its `fromJsonUnjudged`: what throws here does not read, and a read that
+/// answers where the judged one threw was refused by `validate()`.
+fn unjudged_decode(operation: &OperationDef, payload: &str) -> String {
+    let req_ty = message_dart_typename(operation);
+    message_type(operation).map_or_else(
+        || format!("{req_ty}.fromJsonUnjudged({payload} as Map<String, dynamic>)"),
+        |ty| dart_json_decode_unjudged(&ty, payload),
+    )
+}
+
 fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
-    let wire = quoted(&operation.wire_name);
+    let tool = quoted(operation.mcp_tool_name());
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let source = source_expr(prefix, operation, &shape);
     let decode = message_decode(operation, "source");
+    let unjudged = unjudged_decode(operation, "source");
     let kind = format!("{named}FaultKind");
     let mut text = format!(
         "Future<{named}McpAnswer> _{prefix}McpCall{op}<Ctx>(\n  \
@@ -759,7 +770,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          members = <String, dynamic>{{}};\n  \
          }} else {{\n    \
          return _{prefix}McpFaultResult(\n      \
-         _{prefix}McpFault({kind}.undeserializablePayload, {wire}, 'the arguments are not an object'),\n    \
+         _{prefix}McpFault({kind}.undeserializablePayload, {tool}, 'the arguments are not an object'),\n    \
          );\n  \
          }}\n  \
          final dynamic source = {source};\n  \
@@ -767,11 +778,18 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          try {{\n    \
          decoded = {decode};\n  \
          }} on FormatException catch (rejected) {{\n    \
+         try {{\n      \
+         {unjudged};\n    \
+         }} on FormatException catch (unread) {{\n      \
+         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, unread.message));\n    \
+         }} catch (unread) {{\n      \
+         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, '$unread'));\n    \
+         }}\n    \
          return _{prefix}McpFaultResult(\n      \
-         _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
+         _{prefix}McpFault({kind}.failedValidation, {tool}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {wire}, '$rejected'));\n  \
+         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, '$rejected'));\n  \
          }}\n",
         op = pascal(operation),
     );
@@ -788,7 +806,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
              {parameter} = {decoded};\n  \
              }} catch (rejected) {{\n    \
              return _{prefix}McpFaultResult(\n      \
-             _{prefix}McpFault({kind}.failedValidation, {wire}, '$rejected', field: {name}),\n    \
+             _{prefix}McpFault({kind}.failedValidation, {tool}, '$rejected', field: {name}),\n    \
              );\n  \
              }}\n"
         );
@@ -830,7 +848,6 @@ fn reply_tail(
         return String::new();
     };
     let tool = quoted(operation.mcp_tool_name());
-    let wire = quoted(&operation.wire_name);
     let call = dart_call(operation);
     let error_ty = dart_type_of(error);
     let unit = is_unit_type(success);
@@ -877,7 +894,7 @@ fn reply_tail(
 {error_pre}    \
          return _{prefix}McpDeclared({declared});\n  \
          }} catch (unexpected) {{\n    \
-         return _{prefix}McpPanic({tool}, {wire}, '$unexpected');\n  \
+         return _{prefix}McpPanic({tool}, {tool}, '$unexpected');\n  \
          }}\n\
          }}"
     )

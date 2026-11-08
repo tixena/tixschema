@@ -1616,6 +1616,10 @@ mod run_kotlin_member_named;
 /// The emitted `mcp` server and client run by node: the requests of the design, every answer held
 /// to the 2026-07-28 schema, and two services behind one endpoint.
 #[cfg(test)]
+#[path = "mcp_fault_cases/cases.rs"]
+mod cases;
+
+#[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
 
