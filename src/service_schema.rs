@@ -5,6 +5,8 @@ mod mcp_refusals;
 #[cfg(feature = "serde")]
 pub mod mcp_tools;
 #[cfg(feature = "serde")]
+pub mod message_shape;
+#[cfg(feature = "serde")]
 mod messages;
 #[cfg(feature = "serde")]
 pub mod parse;

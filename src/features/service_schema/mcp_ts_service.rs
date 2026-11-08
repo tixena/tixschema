@@ -627,11 +627,7 @@ export async function __p__McpServe<Ctx>(
   }
 }"#;
 
-const INTERVIEW: &str = r#"function __p__McpPlain(text: string): string {
-  return text.replace(/[-_ ]/g, "").toLowerCase();
-}
-
-/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
+const INTERVIEW: &str = r#"/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
 function __p__McpElicits(call: Record<string, unknown>, mode: "form" | "url"): boolean {
   const held = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.elicitation);
   if (held === undefined) return false;
@@ -657,11 +653,9 @@ function __p__McpAsking(
   call: Record<string, unknown>,
   declined: boolean,
 ): Record<string, unknown> | undefined {
-  const arm = __p__McpObject(error);
-  const code = arm?.errorCode;
-  if (arm === undefined || typeof code !== "string" || __p__McpPlain(code) !== __p__McpPlain(interview.arm)) {
-    return undefined;
-  }
+  const written = __p__McpObject(error);
+  const arm = interview.tag === "" ? __p__McpObject(written?.[interview.wire]) : written?.[interview.tag] === interview.wire ? written : undefined;
+  if (arm === undefined) return undefined;
   const message = typeof arm.message === "string" ? arm.message : undefined;
   if (interview.answers !== undefined) {
     if (declined || !__p__McpElicits(call, "form")) return undefined;
@@ -672,8 +666,8 @@ function __p__McpAsking(
     });
   }
   if (typeof arm.url !== "string" || message === undefined) return undefined;
-  if (__p__McpDismissed(call, code) || !__p__McpElicits(call, "url")) return undefined;
-  return __p__McpInputRequired(code, { message, mode: "url", url: arm.url });
+  if (__p__McpDismissed(call, interview.wire) || !__p__McpElicits(call, "url")) return undefined;
+  return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
 }"#;
 
 const CONTENT: &str = r#"/** One block of `content`, which the dispatcher has already written as the specification writes it. */
@@ -784,6 +778,7 @@ function __p__McpDeclined(error: unknown, refusal: string): __N__McpAnswer {
  */
 export function create__N__McpRoute<Ctx>(
   impl: __DRIVEN__,
+  onFault: (fault: __N__Fault) => void = (fault) => console.error(fault),
 ): (ctx: Ctx, method: string, params: unknown) => Promise<__N__McpAnswer | undefined> {
   const dispatch = create__N__Dispatcher(impl);
   const attempted = (ctx: Ctx, operation: string, payload: unknown, headers: Array<readonly [string, string]>) =>
@@ -813,8 +808,11 @@ __ANSWERS__      payload = operation.wrapped ? held.value : rest;
         ? await attempted(ctx, operation.operation, payload, headers)
         : { dispatched: __p__Framed(unread) };
     if ("thrown" in attempt) {
-      if (operation.oneWay) return { result: __p__McpEmpty };
       const detail = attempt.thrown instanceof Error ? attempt.thrown.message : String(attempt.thrown);
+      if (operation.oneWay) {
+        onFault(__FAULT__("handler-panic", operation.tool, detail));
+        return { result: __p__McpEmpty };
+      }
       return {
         error: {
           code: -32603,
@@ -1103,6 +1101,17 @@ export type __N__McpHttpResponse = {
   readonly body: Uint8Array;
 };
 
+/**
+ * Where an HTTP server writes an event-stream answer. `begin` is called once, before the first
+ * event, with the status and headers of the answer; `write` then takes the text of each event, or
+ * of the comment line that keeps the stream open. A call that rejects means the client has gone.
+ * The host ends its response when the server returns `undefined`.
+ */
+export type __N__McpHttpStream = {
+  begin(status: number, headers: ReadonlyArray<readonly [string, string]>): Promise<void>;
+  write(event: string): Promise<void>;
+};
+
 /** What `admit` answers: the context the handlers run with, or why the request is refused. */
 export type __N__McpAdmitted<Ctx> = { readonly ctx: Ctx } | { readonly denied: __N__McpDenied };";
 
@@ -1146,19 +1155,14 @@ function __p__McpHeaderText(value: string): string | undefined {
   }
 }
 
-/** The `200` event-stream answer: each event written, then the answer. */
-function __p__McpEventStream(events: ReadonlyArray<string | null>, answered: string | undefined): __N__McpHttpResponse {
-  const written = answered === undefined ? events : [...events, answered];
-  return {
-    status: 200,
-    headers: [
-      ["Content-Type", "text/event-stream"],
-      ["X-Accel-Buffering", "no"],
-    ],
-    body: new TextEncoder().encode(
-      written.map((event) => (event === null ? ":\n\n" : `event: message\ndata: ${event}\n\n`)).join(""),
-    ),
-  };
+const __p__McpEventHeaders: ReadonlyArray<readonly [string, string]> = [
+  ["Content-Type", "text/event-stream"],
+  ["X-Accel-Buffering", "no"],
+];
+
+/** One event of an event stream, carrying one JSON-RPC message. */
+function __p__McpFrame(message: string): string {
+  return `event: message\ndata: ${message}\n\n`;
 }
 
 function __p__McpHttpReplied(handled: __N__McpHandled | number): __N__McpHttpResponse {
@@ -1230,19 +1234,22 @@ function __p__McpMetadata(oauth: __N__McpOAuth): __N__McpHttpResponse {
  * The Streamable HTTP rules around `__p__McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body, the headers that must agree with it, and the status each refusal travels
  * under. `route` also receives the `Ctx` that `admit` answered. A routed request that carries a
- * `progressToken` answers an event stream: each notification, then the answer. So does a
- * `subscriptions/listen`, where `changes` is handed in: it ends when `changes` answers `undefined`.
+ * `progressToken` answers an event stream written to `stream` as it happens: `begin`, each
+ * notification, then the answer, and this answers `undefined`. So does a `subscriptions/listen`,
+ * where `changes` is handed in: it ends when `changes` answers `undefined`. Any other request
+ * answers the response, and `stream` is never begun.
  */
 export async function __p__McpServeHttp<Ctx>(
   request: __N__McpHttpRequest,
   settings: __N__McpHttpSettings,
+  stream: __N__McpHttpStream,
   serverName: string,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   route: (ctx: Ctx, part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
   changes?: __N__McpChanges,
-): Promise<__N__McpHttpResponse> {
+): Promise<__N__McpHttpResponse | undefined> {
   if (settings.oauth !== undefined) {
     const path = request.path.split(/[?#]/)[0];
     if (request.method === "GET" && path === __p__McpUrlPath(settings.oauth.resourceMetadataUrl)) {
@@ -1252,17 +1259,17 @@ export async function __p__McpServeHttp<Ctx>(
   if (request.method !== "POST") return { ...__p__McpHttpReplied(405), headers: [["Allow", "POST"]] };
   const origin = __p__McpHeader(request, "origin");
   if (origin !== undefined && !settings.allowedOrigins.includes(origin)) return __p__McpHttpReplied(403);
-  const events: Array<string | null> = [];
+  const held: Array<string> = [];
+  let live = false;
+  const give = (text: string): Promise<void> => {
+    if (live) return stream.write(text);
+    held.push(text);
+    return Promise.resolve();
+  };
   const call = new __N__McpCall(
     __p__McpBodyToken(request),
-    (event) => {
-      events.push(event);
-      return Promise.resolve();
-    },
-    () => {
-      events.push(null);
-      return Promise.resolve();
-    },
+    (event) => give(__p__McpFrame(event)),
+    () => give(":\n\n"),
   );
   const admitted = await admit(request, call);
   if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
@@ -1294,12 +1301,28 @@ export async function __p__McpServeHttp<Ctx>(
       }
     }
   }
+  const streams = __p__McpToken(message) !== undefined || method === "subscriptions/listen";
+  let beginning: Promise<void> | undefined;
+  const begin = (): Promise<void> => {
+    if (!streams) return Promise.resolve();
+    beginning ??= (async () => {
+      try {
+        await stream.begin(200, __p__McpEventHeaders);
+        live = true;
+        for (const text of held.splice(0)) await stream.write(text);
+      } catch {
+        call.cancel();
+      }
+    })();
+    return beginning;
+  };
   const asked = { routed: false };
   const listening =
     changes === undefined
       ? undefined
-      : (id: unknown, given: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
+      : async (id: unknown, given: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
           asked.routed = true;
+          await begin();
           return __p__McpListen(id, given, info, endpoint, call, changes);
         };
   const handled = await __p__McpHandle(
@@ -1307,16 +1330,24 @@ export async function __p__McpServeHttp<Ctx>(
     serverName,
     instructions,
     endpoint,
-    (part, called, given) => {
+    async (part, called, given) => {
       asked.routed = true;
-      return route(ctx, part, called, given);
+      await begin();
+      return call.cancelled && streams ? undefined : route(ctx, part, called, given);
     },
     listening,
   );
   if (!asked.routed) return __p__McpHttpReplied(handled);
   const answered = call.cancelled ? undefined : handled.text;
-  if (__p__McpToken(message) !== undefined || method === "subscriptions/listen") return __p__McpEventStream(events, answered);
-  return __p__McpHttpReplied(answered === undefined ? 202 : handled);
+  if (!streams) return __p__McpHttpReplied(answered === undefined ? 202 : handled);
+  if (answered !== undefined) {
+    try {
+      await stream.write(__p__McpFrame(answered));
+    } catch {
+      call.cancel();
+    }
+  }
+  return undefined;
 }"#;
 
 const FACTORIES: &str = "/**
@@ -1328,6 +1359,7 @@ const FACTORIES: &str = "/**
  */
 export function create__N__McpDispatcher<Ctx>(
   impl: __DRIVEN__,
+  onFault?: (fault: __N__Fault) => void,
 ): (
   text: string,
   ctx: (call: __N__McpCall) => Ctx,
@@ -1335,7 +1367,7 @@ export function create__N__McpDispatcher<Ctx>(
   inFlight: __N__McpInFlight,
   changes?: __N__McpChanges,
 ) => Promise<string | undefined> {
-  const route = create__N__McpRoute(impl);
+  const route = create__N__McpRoute(impl, onFault);
   const endpoint = __p__McpEndpoint(__p__McpPart);
   return (text, ctx, writer, inFlight, changes) =>
     __p__McpServe(
@@ -1350,19 +1382,21 @@ export function create__N__McpDispatcher<Ctx>(
     );
 }
 
-/** `create__N__McpDispatcher` over Streamable HTTP. */
+/** `create__N__McpDispatcher` over Streamable HTTP. The function it answers writes an event-stream answer to the `stream` it is handed and answers `undefined`. */
 export function create__N__McpHttpDispatcher<Ctx>(
   impl: __DRIVEN__,
   settings: __N__McpHttpSettings,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   changes?: __N__McpChanges,
-): (request: __N__McpHttpRequest) => Promise<__N__McpHttpResponse> {
-  const route = create__N__McpRoute(impl);
+  onFault?: (fault: __N__Fault) => void,
+): (request: __N__McpHttpRequest, stream: __N__McpHttpStream) => Promise<__N__McpHttpResponse | undefined> {
+  const route = create__N__McpRoute(impl, onFault);
   const endpoint = __p__McpEndpoint(__p__McpPart);
-  return (request) =>
+  return (request, stream) =>
     __p__McpServeHttp(
       request,
       settings,
+      stream,
       __p__McpServerName,
       __p__McpInstructions,
       endpoint,
@@ -1689,6 +1723,8 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          and the message to ask with where the arm holds none. */\n\
          export type {named}McpInterview = {{\n  \
          readonly arm: string;\n  \
+         readonly tag: string;\n  \
+         readonly wire: string;\n  \
          readonly answers: string | undefined;\n  \
          readonly form: string | undefined;\n  \
          readonly doc: string;\n\
@@ -2016,6 +2052,15 @@ pub fn form_marker(operation: &OperationDef) -> String {
     format!("/*__TIXSCHEMA_MCP_FORM:{}__*/", written(&operation.ident))
 }
 
+/// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
+/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+pub fn arm_marker(operation: &OperationDef, part: &str) -> String {
+    format!(
+        "/*__TIXSCHEMA_MCP_ARM_{part}:{}__*/",
+        written(&operation.ident)
+    )
+}
+
 /// What the route writes of an `mcp(content)` operation.
 fn content_kind(operation: &OperationDef) -> &'static str {
     if is_content_pair(operation) {
@@ -2039,8 +2084,10 @@ fn interview_literal(operation: &OperationDef) -> String {
         "undefined".to_owned()
     };
     format!(
-        "{{ arm: {}, answers: {answers}, form: {form}, doc: {} }}",
+        "{{ arm: {}, tag: {}, wire: {}, answers: {answers}, form: {form}, doc: {} }}",
         ts_quoted(&interview.arm.to_string()),
+        arm_marker(operation, "TAG"),
+        arm_marker(operation, "WIRE"),
         ts_quoted(operation.doc.as_deref().unwrap_or_default()),
     )
 }

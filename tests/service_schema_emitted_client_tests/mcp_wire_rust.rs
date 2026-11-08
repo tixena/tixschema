@@ -3,6 +3,7 @@
 //! the `mcp` transport writes. Nothing here waits on a clock.
 
 use super::ShelfWireServiceSchema;
+use super::mcp_streams::through;
 use super::mcp_wire_service::{ShelfWireError, shelf_wire_service_schema};
 use super::mcp_wire_service::{ShelfWireRequest, Stand, blocks, messages, page};
 use super::{
@@ -429,18 +430,21 @@ fn an_admit_that_denies_stops_a_call_before_its_handler_runs() {
             401,
         ),
     ] {
-        let response = once(mcp_wire_mcp_transport::answer_http(
-            &asked,
-            &settings,
-            &Stand,
-            async |request: &mcp_wire_mcp_transport::McpHttpRequest,
-                   _call: mcp_wire_mcp_transport::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("describe-shelf"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            once(mcp_wire_mcp_transport::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &Stand,
+                async |request: &mcp_wire_mcp_transport::McpHttpRequest,
+                       _call: mcp_wire_mcp_transport::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("describe-shelf"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("tools/call"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
 }

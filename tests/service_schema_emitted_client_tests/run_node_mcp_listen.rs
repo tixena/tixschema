@@ -7,6 +7,7 @@ use super::mcp_library_service::{BookError, BookInfo, BookRequest};
 use super::mcp_listen_rows::{assert_matches, input};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use super::{DepotServiceSchema, LibraryServiceSchema};
+use crate::mcp_streams::NODE_RESPOND;
 use serde_json::Value;
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -55,13 +56,13 @@ async function main() {
   const http = [];
   for (const row of input.http) {
     const over = createLibraryServiceMcpHttpDispatcher(nothing, { allowedOrigins: [] }, async () => ({ ctx: {} }), changesOf(row.script));
-    const response = await over({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(over, { method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
     http.push({ status: response.status, headers: response.headers.map(([name, value]) => [name, value]), body: new TextDecoder().decode(response.body) });
   }
 
   const first = input.http[0];
   const plainOver = createLibraryServiceMcpHttpDispatcher(nothing, { allowedOrigins: [] }, async () => ({ ctx: {} }));
-  const plainResponse = await plainOver({ method: first.method, path: first.path, headers: first.headers, body: new TextEncoder().encode(first.body) });
+  const plainResponse = await respond(plainOver, { method: first.method, path: first.path, headers: first.headers, body: new TextEncoder().encode(first.body) });
   const plainOut = lines();
   const plainReply = await dispatch(input.listens[0].request, open, plainOut.write, new LibraryServiceMcpInFlight());
 
@@ -87,7 +88,95 @@ async function main() {
   const goneOut = lines();
   const goneReply = await dispatch(input.gone.request, open, async () => { throw new Error("the client has gone"); }, new LibraryServiceMcpInFlight(), changesOf(input.gone.script));
 
+  const asRequest = (row) => ({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+  const recording = (goneAfter) => {
+    const seen = [];
+    const changed = [];
+    const stream = {
+      attempts: 0,
+      seen,
+      until: async (done) => {
+        while (!done()) await new Promise((resolve) => changed.push(resolve));
+      },
+      take() {
+        stream.attempts += 1;
+        const refused = goneAfter !== undefined && seen.length >= goneAfter;
+        for (const wake of changed.splice(0)) wake();
+        if (refused) throw new Error("the client has gone");
+      },
+      async begin(status, headers) {
+        stream.take();
+        seen.push({ began: [status, headers.map(([name, value]) => [name, value])] });
+        for (const wake of changed.splice(0)) wake();
+      },
+      async write(event) {
+        stream.take();
+        seen.push({ wrote: event });
+        for (const wake of changed.splice(0)) wake();
+      },
+    };
+    return stream;
+  };
+  const makeFeed = () => {
+    const pending = [];
+    let waiting;
+    let closed = false;
+    const settle = () => {
+      if (waiting === undefined) return;
+      if (pending.length > 0) {
+        const resolve = waiting;
+        waiting = undefined;
+        resolve(pending.shift());
+      } else if (closed) {
+        const resolve = waiting;
+        waiting = undefined;
+        resolve(undefined);
+      }
+    };
+    return {
+      next: () => new Promise((resolve) => { waiting = resolve; settle(); }),
+      push(change) { pending.push(change); settle(); },
+      close() { closed = true; settle(); },
+    };
+  };
+  const streams = {};
+  {
+    const stream = recording();
+    const feed = makeFeed();
+    const over = createLibraryServiceMcpHttpDispatcher(nothing, { allowedOrigins: [] }, async () => ({ ctx: {} }), () => feed.next());
+    let ended = false;
+    const running = over(asRequest(input.streamed), stream).then((answered) => {
+      ended = true;
+      return answered;
+    });
+    const snapshots = [];
+    await stream.until(() => stream.seen.length >= 2);
+    snapshots.push(stream.seen.slice());
+    let expected = 2;
+    for (const change of [{ kind: "resourcesListChanged" }, { kind: "resourceUpdated", uri: "library://covers/book-1" }, { kind: "keepAlive" }]) {
+      feed.push(change);
+      expected += 1;
+      await stream.until(() => stream.seen.length >= expected);
+      snapshots.push(stream.seen.slice());
+    }
+    const endedWhileOpen = ended;
+    feed.close();
+    const answered = await running;
+    streams.ordered = { endedWhileOpen, full: stream.seen.slice(), returned: answered !== undefined, snapshots };
+  }
+  {
+    const stream = recording(1);
+    let taken;
+    const over = createLibraryServiceMcpHttpDispatcher(nothing, { allowedOrigins: [] }, async (request, call) => {
+      taken = call;
+      return { ctx: {} };
+    }, () => new Promise(() => {}));
+    const answered = await over(asRequest(input.streamed), stream);
+    streams.gone = { cancelled: taken.cancelled, returned: answered !== undefined, seen: stream.seen.slice() };
+  }
+
   console.log(JSON.stringify({
+    streams,
     stdio,
     workspace: workspaceReport,
     http,
@@ -173,7 +262,11 @@ fn driven() -> Option<Value> {
         return None;
     };
     let literal = Value::String(input().to_string());
-    let source = format!("{}\n\nconst INPUT = {literal};\n{DRIVER}", bundle());
+    let source = format!(
+        "{}\n\n{}\nconst INPUT = {literal};\n{DRIVER}",
+        bundle(),
+        NODE_RESPOND
+    );
     let wrote = ran_with_modules(
         "mcp-listen",
         RUNTIME_VAR,

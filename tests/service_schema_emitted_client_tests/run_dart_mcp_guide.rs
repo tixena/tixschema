@@ -11,6 +11,7 @@ use super::mcp_guide_rows::{
 };
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
+use crate::mcp_streams::dart_respond;
 use serde_json::Value;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -91,7 +92,7 @@ void main() async {
   }
   final answered = <String, dynamic>{};
   for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
-    final response = await http(GuideServiceMcpHttpRequest(
+    final response = await respondGuideService(http, GuideServiceMcpHttpRequest(
       method: 'POST',
       path: '/mcp',
       headers: [for (final pair in row['headers'] as List) ((pair as List)[0] as String, pair[1] as String)],
@@ -175,6 +176,7 @@ fn module(driver: &str, given: &Value) -> String {
         GuideServiceSchema::dart_ws_client(),
         GuideServiceSchema::dart_mcp_service(),
         GuideServiceSchema::dart_mcp_client(),
+        dart_respond("GuideService"),
         format!("const inputText = r'''{given}''';"),
         driver.to_owned(),
     ]

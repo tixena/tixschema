@@ -5,7 +5,7 @@ use crate::document_mcp::{self, McpHttpRequest, McpHttpResponse, McpHttpSettings
 use crate::support::{
     CENTS, HEADER_MISMATCH, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, UNSUPPORTED_VERSION,
     VERSION_NUMBER, WORKSPACE, assert_error, assert_result, assert_valid, block_on, call, id,
-    request,
+    request, through,
 };
 use crate::tests::Archive;
 use serde_json::{Value, json};
@@ -48,12 +48,15 @@ pub fn post(message: &Value) -> McpHttpRequest {
 }
 
 fn respond(asked: &McpHttpRequest) -> McpHttpResponse {
-    block_on(document_mcp::answer_http(
-        asked,
-        &SETTINGS,
-        &Archive::default(),
-        async |_request, _call| Ok(()),
-    ))
+    through(|stream| {
+        block_on(document_mcp::answer_http(
+            asked,
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request, _call| Ok(()),
+        ))
+    })
 }
 
 pub fn body_of(response: &McpHttpResponse) -> Value {
@@ -236,24 +239,29 @@ fn an_endpoint_of_two_services_is_served_over_http_too() {
         "get-balance",
         &json!({ "value": "acct-1", "x-ledger": "main" }),
     ));
-    let response = block_on(document_mcp::serve_http(
-        &asked,
-        &SETTINGS,
-        "Workspace",
-        None,
-        &WORKSPACE,
-        async |_request, _call| Ok(()),
-        &|ctx: &(), part, method: &str, params: &Value| {
-            let held = archive.clone();
-            Box::pin(async move {
-                match part {
-                    0 => document_mcp::route(method, params, &held, ctx).await,
-                    1 => billing_mcp::route(method, params, &held, ctx).await,
-                    _ => None,
-                }
-            })
-        },
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::serve_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &document_mcp::McpServer {
+                endpoint: &WORKSPACE,
+                instructions: None,
+                name: "Workspace",
+            },
+            async |_request, _call| Ok(()),
+            &|ctx: &(), part, method: &str, params: &Value| {
+                let held = archive.clone();
+                Box::pin(async move {
+                    match part {
+                        0 => document_mcp::route(method, params, &held, ctx).await,
+                        1 => billing_mcp::route(method, params, &held, ctx).await,
+                        _ => None,
+                    }
+                })
+            },
+        ))
+    });
     assert_eq!(response.status, 200);
     assert_eq!(
         body_of(&response)["result"]["structuredContent"],

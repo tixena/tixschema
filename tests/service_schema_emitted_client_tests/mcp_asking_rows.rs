@@ -4,6 +4,7 @@
 
 use super::mcp_asking_dispatcher as dispatcher;
 use super::mcp_preview_dispatcher as preview_dispatcher;
+use crate::mcp_streams::through;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::future::{Future, ready};
@@ -63,6 +64,24 @@ pub enum AskingLinkError {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "errorCode")]
+pub enum AskingRenamedError {
+    #[serde(rename = "connect-first")]
+    NeedsConnection { message: String, url: String },
+    #[serde(rename = "gone")]
+    NotFound,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum AskingKindError {
+    NeedsConnection { message: String, url: String },
+    NotFound,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum AskingMiss {
     NotFound,
@@ -108,6 +127,22 @@ pub trait AskingService<Ctx> {
         ctx: &Ctx,
         req: AskingReportRequest,
     ) -> Result<Vec<asking_service_schema::McpContent>, AskingMiss>;
+
+    /// Imports one file from a Drive whose error is tagged by a key of its own.
+    #[service_schema_op(mcp(interview(arm = "NeedsConnection", url)))]
+    async fn connect_by_kind(
+        &self,
+        ctx: &Ctx,
+        file_id: String,
+    ) -> Result<AskingLinked, AskingKindError>;
+
+    /// Imports one file from a Drive whose connection arm is renamed on the wire.
+    #[service_schema_op(mcp(interview(arm = "NeedsConnection", url)))]
+    async fn connect_renamed(
+        &self,
+        ctx: &Ctx,
+        file_id: String,
+    ) -> Result<AskingLinked, AskingRenamedError>;
 
     /// Deletes one document after the user confirms it.
     #[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
@@ -200,6 +235,30 @@ impl AskingService<()> for Stand {
                 contents: McpResourceContents::Blob(vec![9, 8, 7]),
             },
         ]))
+    }
+
+    fn connect_by_kind(
+        &self,
+        _ctx: &(),
+        file_id: String,
+    ) -> impl Future<Output = Result<AskingLinked, AskingKindError>> {
+        self.reach(json!(["connect-by-kind", file_id]));
+        ready(Err(AskingKindError::NeedsConnection {
+            url: LINK.to_owned(),
+            message: LINK_MESSAGE.to_owned(),
+        }))
+    }
+
+    fn connect_renamed(
+        &self,
+        _ctx: &(),
+        file_id: String,
+    ) -> impl Future<Output = Result<AskingLinked, AskingRenamedError>> {
+        self.reach(json!(["connect-renamed", file_id]));
+        ready(Err(AskingRenamedError::NeedsConnection {
+            url: LINK.to_owned(),
+            message: LINK_MESSAGE.to_owned(),
+        }))
     }
 
     fn delete_document(
@@ -491,6 +550,39 @@ fn link_requests() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The requests that ask by a link whose arm is renamed or tagged by a key of its own.
+fn renamed_requests() -> Vec<(&'static str, String)> {
+    let link = json!({ "value": "1A2b3C" });
+    vec![
+        (
+            "renamed_first",
+            tool_call("connect-renamed", &link, LINK_CAPABLE, None),
+        ),
+        (
+            "renamed_dismissed",
+            tool_call(
+                "connect-renamed",
+                &link,
+                LINK_CAPABLE,
+                Some(json!({ "connect-first": { "action": "decline" } })),
+            ),
+        ),
+        (
+            "kind_first",
+            tool_call("connect-by-kind", &link, LINK_CAPABLE, None),
+        ),
+        (
+            "kind_dismissed",
+            tool_call(
+                "connect-by-kind",
+                &link,
+                LINK_CAPABLE,
+                Some(json!({ "needs_connection": { "action": "cancel" } })),
+            ),
+        ),
+    ]
+}
+
 /// The requests of the content tools, by name.
 fn content_requests() -> Vec<(&'static str, String)> {
     vec![
@@ -548,6 +640,7 @@ pub fn requests() -> Vec<(&'static str, String)> {
         form_requests(),
         ship_requests(),
         link_requests(),
+        renamed_requests(),
         content_requests(),
     ]
     .concat()
@@ -889,17 +982,20 @@ fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
             401,
         ),
     ] {
-        let response = ready_output(dispatcher::answer_http(
-            &asked,
-            &settings,
-            &stand,
-            async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("delete-document"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &stand,
+                async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("delete-document"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("tools/call"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
@@ -964,18 +1060,21 @@ fn an_admit_that_denies_stops_a_preview_before_its_handler_runs() {
             401,
         ),
     ] {
-        let response = ready_output(preview_dispatcher::answer_http(
-            &asked,
-            &settings,
-            &stand,
-            async |request: &preview_dispatcher::McpHttpRequest,
-                   _call: preview_dispatcher::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(preview_dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &stand,
+                async |request: &preview_dispatcher::McpHttpRequest,
+                       _call: preview_dispatcher::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("tools/call"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
@@ -995,4 +1094,29 @@ where
         Poll::Pending => None,
     }
     .unwrap()
+}
+
+#[test]
+fn an_arm_asks_under_the_name_and_the_tag_serde_gives_it() {
+    let report = rust_report();
+    let answer = |name: &str| -> Value {
+        serde_json::from_str(report["answers"][name].as_str().unwrap()).unwrap()
+    };
+    for (request, key) in [
+        ("renamed_first", "connect-first"),
+        ("kind_first", "needs_connection"),
+    ] {
+        let asked = answer(request);
+        assert_eq!(asked["result"]["resultType"], "input_required", "{asked:#}");
+        let keys: Vec<&String> = asked["result"]["inputRequests"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
+        assert_eq!(keys, [key], "{asked:#}");
+    }
+    for request in ["renamed_dismissed", "kind_dismissed"] {
+        let declined = answer(request);
+        assert_eq!(declined["result"]["isError"], true, "{declined:#}");
+    }
 }

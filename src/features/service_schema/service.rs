@@ -8,6 +8,7 @@ use super::result::{result_arm, result_name, stream_success_ts_type, writes_an_i
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{is_content_list, is_prompt_messages};
+use crate::service_schema::message_shape::collection_depth;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
     written,
@@ -618,10 +619,19 @@ fn payload_check(service: &ServiceDef, operation: &OperationDef) -> String {
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let wire = ts_quoted(&operation.wire_name);
     let schema = message::schema(operation);
+    let wrapping = collection_depth(operation);
+    let issues = if wrapping == 0 {
+        "received.error.issues".to_owned()
+    } else {
+        format!(
+            "received.error.issues.map((issue) => ({{ message: issue.message, path: \
+             issue.path.slice({wrapping}) }}))"
+        )
+    };
     format!(
         "        const received = {schema}.safeParse(payload);\n        \
          if (!received.success) {{\n          \
-         return {prefix}Framed({prefix}InboundFault({wire}, received.error.issues));\n        \
+         return {prefix}Framed({prefix}InboundFault({wire}, {issues}));\n        \
          }}\n"
     )
 }

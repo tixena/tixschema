@@ -2177,6 +2177,37 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
 }
 
 #[test]
+fn a_list_a_map_and_an_optional_message_are_read_element_by_element_and_validated_element_by_element()
+ {
+    let emitted = expanded_over_amqp_rpc(
+        "
+        pub trait BatchService<Ctx> {
+            async fn check_many(&self, ctx: &Ctx, req: Vec<Item>) -> Result<Done, BatchError>;
+            async fn check_named(&self, ctx: &Ctx, req: HashMap<String, Item>) -> Result<Done, BatchError>;
+            async fn check_maybe(&self, ctx: &Ctx, req: Option<Item>) -> Result<Done, BatchError>;
+            async fn check_one(&self, ctx: &Ctx, req: Item) -> Result<Done, BatchError>;
+        }
+    ",
+    );
+    for written in [
+        "struct Held (Item) ;",
+        "< Item > :: model_schema_read_unjudged (deserializer) . map (Held)",
+        "let read : Vec < Held > =",
+        "let read : HashMap < String , Held > =",
+        "let read : Option < Held > =",
+        "for item in received . iter () { if let :: core :: result :: Result :: Err (found) = item . validate ()",
+        "for item in received . values () {",
+        "if let :: core :: option :: Option :: Some (item) = received . as_ref () {",
+        "< CheckOneMessage > :: model_schema_read_unjudged (deserializer)",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}`, got: {emitted}"
+        );
+    }
+}
+
+#[test]
 fn every_kind_the_fault_publishes_is_one_the_generated_code_has_a_caller_for() {
     // Read with a transport asked for: `transport_failure` reports a call that never landed, which
     // only the client half is in a position to say.

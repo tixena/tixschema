@@ -4,8 +4,8 @@
 //! A type that names another reads the answer recorded when that one was expanded, and takes
 //! `false` for one it has not met, so a field never fails the build of the type that holds it.
 
-use super::{Item, Tagging, type_parameters_in_scope};
-use crate::features::serde::parse_serde_field_attributes;
+use super::{Item, Tagging, type_parameters_in_scope, variant_wire_names};
+use crate::features::serde::{parse_serde_field_attributes, variant_on_the_wire};
 use crate::utils::{record_mcp_form_value, recorded_mcp_form_value};
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -48,6 +48,11 @@ pub fn items(item: &Item) -> TokenStream {
         | _ => return TokenStream::new(),
     };
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let variant_tag = if let Item::Enum(declared) = item {
+        Some(variant_tag(declared))
+    } else {
+        None
+    };
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             pub const fn mcp_form_value() -> bool {
@@ -57,6 +62,58 @@ pub fn items(item: &Item) -> TokenStream {
             pub const fn mcp_form_flat() -> bool {
                 #flat
             }
+
+            #variant_tag
+        }
+    }
+}
+
+/// `mcp_variant_tag`: the key serde tags an enum's variant with and the name it writes the variant
+/// under, for a variant serde writes. The key is empty for an enum with no tag, and no variant of
+/// an untagged enum has a name.
+fn variant_tag(declared: &syn::ItemEnum) -> TokenStream {
+    let key = match Tagging::of(declared) {
+        Tagging::Adjacent {
+            content: _content,
+            tag,
+        } => Some(tag),
+        Tagging::Internal { tag } => Some(tag),
+        Tagging::External | Tagging::Plain => Some(String::new()),
+        Tagging::Untagged => None,
+    };
+    let arms = key.into_iter().flat_map(|tag| {
+        declared
+            .variants
+            .iter()
+            .filter(|variant| variant_on_the_wire(variant))
+            .filter_map(move |variant| {
+                let (_, wire) = variant_wire_names(declared, variant).into_iter().next()?;
+                let ident = variant.ident.to_string();
+                Some(quote! {
+                    if same(variant.as_bytes(), #ident.as_bytes()) {
+                        return ::core::option::Option::Some((#tag, #wire));
+                    }
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+    quote! {
+        pub const fn mcp_variant_tag(variant: &str) -> ::core::option::Option<(&'static str, &'static str)> {
+            const fn same(left: &[u8], right: &[u8]) -> bool {
+                if left.len() != right.len() {
+                    return false;
+                }
+                let mut at = 0;
+                while at < left.len() {
+                    if left[at] != right[at] {
+                        return false;
+                    }
+                    at += 1;
+                }
+                true
+            }
+            #(#arms)*
+            ::core::option::Option::None
         }
     }
 }
@@ -143,4 +200,62 @@ fn is_scalar(ty: &Type) -> bool {
         && path.path.segments.len() == 1
         && path.path.segments[0].arguments.is_none()
         && SCALARS.iter().any(|scalar| path.path.segments[0].ident == scalar))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::items;
+    use syn::{Item, parse_quote};
+
+    fn written(declared: syn::ItemEnum) -> String {
+        items(&Item::Enum(declared)).to_string()
+    }
+
+    #[test]
+    fn a_variant_is_answered_under_the_key_and_the_name_serde_writes_it_with() {
+        let renamed = written(parse_quote! {
+            #[serde(rename_all = "kebab-case", tag = "kind")]
+            enum Asked {
+                NeedsConfirmation { message: ::std::string::String },
+                #[serde(rename = "gone-for-good")]
+                NotFound,
+            }
+        });
+        for expected in [
+            "same (variant . as_bytes () , \"NeedsConfirmation\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"needs-confirmation\")) ; }",
+            "same (variant . as_bytes () , \"NotFound\" . as_bytes ()) { return :: core :: option :: Option :: Some ((\"kind\" , \"gone-for-good\")) ; }",
+        ] {
+            assert!(
+                renamed.contains(expected),
+                "missing `{expected}` in {renamed}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_enum_with_no_tag_answers_an_empty_key_and_a_skipped_variant_none() {
+        let external = written(parse_quote! {
+            enum Asked {
+                Wanted { message: ::std::string::String },
+                #[serde(skip)]
+                Hidden,
+            }
+        });
+        assert!(
+            external.contains("Some ((\"\" , \"Wanted\"))"),
+            "got: {external}"
+        );
+        assert!(!external.contains("\"Hidden\""), "got: {external}");
+    }
+
+    #[test]
+    fn no_variant_of_an_untagged_enum_has_a_name() {
+        let untagged = written(parse_quote! {
+            #[serde(untagged)]
+            enum Asked {
+                Wanted { message: ::std::string::String },
+            }
+        });
+        assert!(!untagged.contains("\"Wanted\""), "got: {untagged}");
+    }
 }

@@ -8,6 +8,7 @@ use super::mcp_guide_rows::{
     GuideError, GuideVersion, assert_client, assert_matches, client_input, input,
 };
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
+use crate::mcp_streams::NODE_RESPOND;
 use serde_json::Value;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
@@ -69,7 +70,7 @@ async function main() {
   }
   const answered = {};
   for (const row of input.http) {
-    const response = await http({
+    const response = await respond(http, {
       method: 'POST',
       path: '/mcp',
       headers: row.headers,
@@ -206,7 +207,7 @@ fn run(named: &str, body: &str, given: &Value) -> Option<Value> {
         return None;
     };
     let source = format!(
-        "{}\n\nconst INPUT = {};\n{IMPL}\n{body}",
+        "{}\n\nconst INPUT = {};\n{IMPL}\n{NODE_RESPOND}\n{body}",
         bundle(),
         Value::String(given.to_string())
     );

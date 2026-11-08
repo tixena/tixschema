@@ -292,6 +292,15 @@ class @N@McpHttpResponse {
   final List<int> body;
 }
 
+/// Where an HTTP server writes an event-stream answer. `begin` is called once, before the first
+/// event, with the status and headers of the answer; `write` then takes the text of each event, or
+/// of the comment line that keeps the stream open. A call that throws means the client has gone. The
+/// host ends its response when the server answers `null`.
+abstract interface class @N@McpHttpStream {
+  Future<void> begin(int status, List<(String, String)> headers);
+  Future<void> write(String event);
+}
+
 /// The protected-resource metadata of a server that authorizes by OAuth.
 class @N@McpOAuth {
   const @N@McpOAuth({
@@ -895,15 +904,10 @@ Object? _@P@McpBodyToken(@N@McpHttpRequest request) {
   }
 }
 
-/// The `200` event-stream answer: each event written, then the answer.
-@N@McpHttpResponse _@P@McpEventStream(List<String?> events, String? answered) => @N@McpHttpResponse(
-      status: 200,
-      headers: const [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')],
-      body: utf8.encode([
-        for (final event in [...events, if (answered != null) answered])
-          event == null ? ':\n\n' : 'event: message\ndata: $event\n\n',
-      ].join()),
-    );
+const _@P@McpEventHeaders = [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')];
+
+/// One event of an event stream, carrying one JSON-RPC message.
+String _@P@McpFrame(String message) => 'event: message\ndata: $message\n\n';
 
 String _@P@McpUrlPath(String url) {
   final separator = url.indexOf('://');
@@ -951,11 +955,14 @@ String _@P@McpUrlPath(String url) {
 
 /// The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
 /// `admit`, the body and the headers that must agree with it. `route` also receives the `Ctx` that
-/// `admit` answered. A `subscriptions/listen` answers an event stream where `changes` is handed in:
-/// it ends when `changes` answers `null`.
-Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
+/// `admit` answered. A routed request that carries a `progressToken` answers an event stream written
+/// to `stream` as it happens (`begin`, each notification, then the answer) and the server answers
+/// `null`. So does a `subscriptions/listen` where `changes` is handed in: it ends when `changes`
+/// answers `null`. Any other request answers the response, and `stream` is never begun.
+Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   @N@McpHttpRequest request,
   @N@McpHttpSettings settings,
+  @N@McpHttpStream stream,
   String serverName,
   String? instructions,
   @N@McpEndpoint endpoint,
@@ -982,11 +989,17 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   }
   final origin = header('origin');
   if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
-  final events = <String?>[];
+  final held = <String>[];
+  var live = false;
+  Future<void> give(String text) async {
+    if (live) return stream.write(text);
+    held.add(text);
+  }
+
   final call = @N@McpCall(
     token: _@P@McpBodyToken(request),
-    writer: (event) async => events.add(event),
-    comment: () async => events.add(null),
+    writer: (event) => give(_@P@McpFrame(event)),
+    comment: () => give(':\n\n'),
   );
   final admitted = await admit(request, call);
   final denied = admitted.denied;
@@ -1025,21 +1038,48 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
       return respond(400, error(id, -32020, 'Header mismatch: Mcp-Name'));
     }
   }
+  final streams = _@P@McpToken(parsed) != null || method == 'subscriptions/listen';
+  Future<void>? beginning;
+  Future<void> begin() {
+    if (!streams) return Future<void>.value();
+    return beginning ??= () async {
+      try {
+        await stream.begin(200, _@P@McpEventHeaders);
+        live = true;
+        for (final text in held.toList()) {
+          await stream.write(text);
+        }
+        held.clear();
+      } catch (_) {
+        call._cancel();
+      }
+    }();
+  }
+
   var routed = false;
   final answered = await _@P@McpRespond(utf8.decode(request.body), serverName, @P@McpServerVersion, instructions,
-      endpoint, (part, method, params) {
+      endpoint, (part, method, params) async {
     routed = true;
-    return route(ctx, part, method, params);
+    await begin();
+    return call.cancelled && streams ? null : route(ctx, part, method, params);
   }, changes == null
       ? null
-      : (id, params, info) {
+      : (id, params, info) async {
           routed = true;
+          await begin();
           return _@P@McpListen(id, params, info, endpoint, call, changes);
         });
   if (!routed) return respond(answered.status, answered.text);
   final written = call.cancelled ? null : answered.text;
-  if (_@P@McpToken(parsed) != null || method == 'subscriptions/listen') return _@P@McpEventStream(events, written);
-  return written == null ? respond(202) : respond(answered.status, written);
+  if (!streams) return written == null ? respond(202) : respond(answered.status, written);
+  if (written != null) {
+    try {
+      await stream.write(_@P@McpFrame(written));
+    } catch (_) {
+      call._cancel();
+    }
+  }
+  return null;
 }
 "#;
 
@@ -1202,9 +1242,10 @@ Future<String?> Function(
   @N@McpInFlight inFlight, [
   @N@McpChanges? changes,
 ]) create@N@McpDispatcher<Ctx>(
-  @N@Handlers<Ctx> handlers,
-) {
-  final route = create@N@McpRoute(handlers);
+  @N@Handlers<Ctx> handlers, [
+  void Function(@N@FaultFields fault)? onFault,
+]) {
+  final route = create@N@McpRoute(handlers, onFault);
   return (text, ctx, writer, inFlight, [changes]) => @P@McpServe<Ctx>(
         text,
         @P@McpServerName,
@@ -1217,17 +1258,19 @@ Future<String?> Function(
 }
 
 /// Answers the HTTP requests of this service alone. `admit` answers the `Ctx` of a request, or why
-/// it is refused.
-Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatcher<Ctx>(
+/// it is refused. An event-stream answer is written to the stream it is handed and answers `null`.
+Future<@N@McpHttpResponse?> Function(@N@McpHttpRequest, @N@McpHttpStream) create@N@McpHttpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
   @N@McpHttpSettings settings,
   @N@McpAdmit<Ctx> admit, [
   @N@McpChanges? changes,
+  void Function(@N@FaultFields fault)? onFault,
 ]) {
-  final route = create@N@McpRoute(handlers);
-  return (request) => @P@McpServeHttp<Ctx>(
+  final route = create@N@McpRoute(handlers, onFault);
+  return (request, stream) => @P@McpServeHttp<Ctx>(
         request,
         settings,
+        stream,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,
@@ -1237,9 +1280,7 @@ Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatche
       );
 }";
 
-const INTERVIEW_HELPERS: &str = "String _@P@McpPlain(String text) => text.replaceAll(RegExp('[-_ ]'), '').toLowerCase();
-
-/// Whether the client declared the elicitation `mode`: an empty `elicitation` is a form.
+const INTERVIEW_HELPERS: &str = "/// Whether the client declared the elicitation `mode`: an empty `elicitation` is a form.
 bool _@P@McpElicits(Map<String, dynamic> params, String mode) {
   final meta = params['_meta'];
   final capabilities = meta is Map ? meta['io.modelcontextprotocol/clientCapabilities'] : null;
@@ -1271,7 +1312,8 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
 /// The result that asks the user where `error` is the arm that asks and the client can be asked,
 /// `null` otherwise.
 @N@McpAnswer? _@P@McpAsking(
-  String arm,
+  String tag,
+  String wire,
   String? answers,
   String? form,
   String doc,
@@ -1280,9 +1322,9 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
   bool declined,
 ) {
   if (error is! Map<String, dynamic>) return null;
-  final code = error['errorCode'];
-  if (code is! String || _@P@McpPlain(code) != _@P@McpPlain(arm)) return null;
-  final message = error['message'];
+  final Object? held = tag.isEmpty ? error[wire] : (error[tag] == wire ? error : null);
+  if (held is! Map<String, dynamic>) return null;
+  final message = held['message'];
   if (answers != null) {
     if (declined || !_@P@McpElicits(params, 'form')) return null;
     return _@P@McpInputRequired(answers, <String, dynamic>{
@@ -1291,10 +1333,10 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
       'requestedSchema': jsonDecode(form ?? '{}'),
     });
   }
-  final url = error['url'];
+  final url = held['url'];
   if (url is! String || message is! String) return null;
-  if (_@P@McpDismissed(params, code) || !_@P@McpElicits(params, 'url')) return null;
-  return _@P@McpInputRequired(code, <String, dynamic>{'message': message, 'mode': 'url', 'url': url});
+  if (_@P@McpDismissed(params, wire) || !_@P@McpElicits(params, 'url')) return null;
+  return _@P@McpInputRequired(wire, <String, dynamic>{'message': message, 'mode': 'url', 'url': url});
 }";
 
 const CONTENT_HELPERS: &str = "/// The result of a tool that answers blocks.
@@ -1661,6 +1703,12 @@ fn answer_helpers(
              );"
         );
     }
+    if tools_of(service).any(|operation| matches!(operation.outcome, OperationOutcome::OneWay)) {
+        let _ = write!(
+            text,
+            "\n\nvoid _{prefix}McpToStderr({named}FaultFields fault) => stderr.writeln(_{prefix}McpJson(fault.toJson()));"
+        );
+    }
     if calls.ok {
         let _ = write!(
             text,
@@ -1749,7 +1797,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          {named}Handlers<Ctx> handlers,\n  \
          Ctx ctx,\n  \
          Map<String, dynamic> params,\n  \
-         Object? arguments,\n\
+         Object? arguments,{fault_param}\n\
          ) async {{\n  \
          final Map<String, dynamic> members;\n  \
          if (arguments is Map<String, dynamic>) {{\n    \
@@ -1782,6 +1830,11 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          }}\n",
         op = pascal(operation),
         answers = answers_stmt(named, prefix, operation),
+        fault_param = if matches!(operation.outcome, OperationOutcome::OneWay) {
+            format!("\n  void Function({named}FaultFields fault)? onFault,")
+        } else {
+            String::new()
+        },
     );
     let mut locals = Vec::new();
     for header in &shape.header_in {
@@ -1810,7 +1863,9 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
                 "  try {{\n    \
              await handlers.{call}(ctx, decoded{header_args});\n  \
              }} catch (unexpected) {{\n    \
-             return _{prefix}McpEmpty();\n  \
+             (onFault ?? _{prefix}McpToStderr)(\n      \
+             _{prefix}McpFault({kind}.handlerPanic, {tool}, '$unexpected'),\n    \
+             );\n  \
              }}\n  \
              return _{prefix}McpEmpty();\n\
              }}"
@@ -1901,6 +1956,32 @@ fn reply_tail(
     )
 }
 
+/// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
+/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+fn arm_marker(operation: &OperationDef, part: &str) -> String {
+    format!("@ARM_{part}:{}@", written(&operation.ident))
+}
+
+/// One `.replace` for the tag key and one for the wire name of the arm each interview operation asks with.
+fn arm_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
+    declared
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+                let marker = arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! { .replace(#marker, &literal(Self::#method())) }
+            })
+        })
+        .collect()
+}
+
 /// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
 fn form_marker(operation: &OperationDef) -> String {
     format!("@FORM:{}@", written(&operation.ident))
@@ -1967,9 +2048,10 @@ fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (Strin
     };
     let asking = format!(
         "    final Object? declaredBody = {declared};\n    \
-         final asking = _{prefix}McpAsking({}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
+         final asking = _{prefix}McpAsking({}, {}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
          if (asking != null) return asking;\n",
-        quoted(&interview.arm.to_string()),
+        arm_marker(operation, "TAG"),
+        arm_marker(operation, "WIRE"),
         quoted(operation.doc.as_deref().unwrap_or_default()),
     );
     (asking, "declaredBody".to_owned())
@@ -1982,7 +2064,7 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
         "/// Answers the requests of this service on an endpoint shared by several, and `null` for a\n\
          /// request it does not own.\n\
          Future<{named}McpAnswer?> Function(Ctx ctx, String method, Map<String, dynamic> params)\n    \
-         create{named}McpRoute<Ctx>({named}Handlers<Ctx> handlers) =>"
+         create{named}McpRoute<Ctx>({named}Handlers<Ctx> handlers, [void Function({named}FaultFields fault)? onFault]) =>"
     );
     if service.operations.is_empty() {
         return format!("{preamble}\n        (ctx, method, params) async => null;");
@@ -1992,9 +2074,14 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
     if !tools.is_empty() {
         let mut arms = String::new();
         for operation in tools {
+            let fault_argument = if matches!(operation.outcome, OperationOutcome::OneWay) {
+                ", onFault"
+            } else {
+                ""
+            };
             let _ = writeln!(
                 arms,
-                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']);",
+                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']{fault_argument});",
                 quoted(operation.mcp_tool_name()),
                 pascal(operation)
             );
@@ -3105,6 +3192,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
         .collect();
     let wrapped_server = wrapped.clone();
     let forms = form_replacements(declared);
+    let arms = arm_replacements(declared);
     let skill_literals = skill_literals();
     let content = content_accessor(declared);
     quote! {
@@ -3162,6 +3250,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*
                 #(#forms)*
+                #(#arms)*
         }
 
         #[doc = " The service's generated Dart `mcp` client: the transport a consumer implements"]

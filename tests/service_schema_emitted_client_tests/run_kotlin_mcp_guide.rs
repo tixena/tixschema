@@ -14,6 +14,7 @@ use super::mcp_guide_rows::{
 };
 use super::mcp_mobile_rows::kotlin_text;
 use super::runtime::ran_kotlin;
+use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -91,7 +92,8 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     for (row in input.getValue("http").jsonArray) {
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
-        val response = http(
+        val response = respondGuideService(
+            http,
             GuideServiceMcpHttpRequest("POST", "/mcp", headers, given.getValue("body").jsonPrimitive.content.encodeToByteArray()),
         )
         answered[given.getValue("name").jsonPrimitive.content] = buildJsonObject {
@@ -204,6 +206,7 @@ fn module() -> String {
     let literal = kotlin_text(&json!({ "server": input(), "client": client_input() }).to_string());
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
+    parts.push(kotlin_respond("GuideService"));
     parts.push(HANDLERS.to_owned());
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(CLIENT_DRIVER.to_owned());

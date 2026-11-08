@@ -735,22 +735,40 @@ fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
-/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
-/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+/// One `.replace` for the tag key and one for the wire name of the arm each interview operation
+/// asks with, writing `mcp_arm_tag_{operation}()` and `mcp_arm_wire_{operation}()` over their markers.
 #[cfg(all(feature = "typescript", feature = "zod"))]
-fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+                let marker = mcp_ts_service::arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! {
+                    .replace(
+                        #marker,
+                        &::serde_json::Value::String(Self::#method().to_owned()).to_string(),
+                    )
+                }
+            })
+        })
+        .collect()
+}
+
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_wrapped_replacements(service: &ServiceDef) -> Vec<TokenStream> {
     use crate::service_schema::parse::{OperationInputs, written};
 
-    let server = mcp_ts_service::emit(service).join("\n\n");
-    let client = mcp_ts_client::emit(service).join("\n\n");
-    let version = mcp_ts_service::VERSION_MARKER;
-    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
-    let tools = mcp_ts_service::TOOLS_MARKER;
-    let resources = mcp_ts_service::RESOURCES_MARKER;
-    let templates = mcp_ts_service::TEMPLATES_MARKER;
-    let prompts = mcp_ts_service::PROMPTS_MARKER;
-    let skill_replacements = ts_skill_replacements();
-    let wrapped: Vec<TokenStream> = service
+    service
         .operations
         .iter()
         .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
@@ -765,8 +783,25 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                 .replace(#marker, if Self::#method() { "true" } else { "false" })
             }
         })
-        .collect();
+        .collect()
+}
+
+/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
+/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+    let server = mcp_ts_service::emit(service).join("\n\n");
+    let client = mcp_ts_client::emit(service).join("\n\n");
+    let version = mcp_ts_service::VERSION_MARKER;
+    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
+    let tools = mcp_ts_service::TOOLS_MARKER;
+    let resources = mcp_ts_service::RESOURCES_MARKER;
+    let templates = mcp_ts_service::TEMPLATES_MARKER;
+    let prompts = mcp_ts_service::PROMPTS_MARKER;
+    let skill_replacements = ts_skill_replacements();
+    let wrapped = mcp_ts_wrapped_replacements(service);
     let forms = mcp_ts_form_replacements(service);
+    let arms = mcp_ts_arm_replacements(service);
     let content = mcp_content_accessor(
         service,
         "ts_mcp_content",
@@ -828,6 +863,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                 #skill_replacements
                 #(#wrapped)*
                 #(#forms)*
+                #(#arms)*
         }
 
         #[doc = " The service's generated MCP client for TypeScript: the transport seam and"]

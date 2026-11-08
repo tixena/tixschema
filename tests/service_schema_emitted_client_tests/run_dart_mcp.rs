@@ -23,9 +23,10 @@ use super::mcp_writer_rows::{
 };
 use super::run_dart_validate::{analyzed, dart};
 use super::run_node_mcp::cases_json;
-use super::runtime::ran;
+use super::runtime::{ran, ran_with_stderr};
 use super::tests::poll_once;
 use crate::cases;
+use crate::mcp_streams::dart_respond;
 use core::future::Future;
 use serde_json::{Value, json};
 
@@ -62,6 +63,9 @@ void main() async {
   final touched = <String>[];
   final tags = <String?>[];
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       tags.add(known_tag);
       return (McpVersionResponse(version: 7), '"v7"');
@@ -211,6 +215,9 @@ const proper = <String, String>{
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
     getVersion: (ctx, req) async => McpVersionResponse(version: 7),
     lookup: (ctx, req) async => McpVersionResponse(version: 7),
@@ -224,7 +231,7 @@ void main() async {
   );
   final answers = <String, Map<String, dynamic>>{};
   Future<void> ask(String name, DartDocumentServiceMcpHttpRequest request) async {
-    final response = await serve(request);
+    final response = await respondDartDocumentService(serve, request);
     answers[name] = {
       'status': response.status,
       'headers': [for (final (key, value) in response.headers) '$key: $value'],
@@ -282,6 +289,9 @@ void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   var reached = 0;
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       reached += 1;
       return (McpVersionResponse(version: 7), '"v7"');
@@ -345,7 +355,7 @@ void main() async {
     final scheme = given['scheme'] as String;
     final serve = createDartDocumentServiceMcpHttpDispatcher<void>(documents, settings[scheme]!, admits[scheme]!);
     final before = reached;
-    final response = await serve(DartDocumentServiceMcpHttpRequest(
+    final response = await respondDartDocumentService(serve, DartDocumentServiceMcpHttpRequest(
       method: given['method'] as String,
       path: given['path'] as String,
       headers: [for (final pair in given['headers'] as List) ((pair as List)[0] as String, pair[1] as String)],
@@ -500,6 +510,53 @@ void main() async {
 /// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
 /// the event it waits for.
 const WRITER_DRIVER: &str = "
+class RecordingStream implements WriterServiceMcpHttpStream {
+  RecordingStream([this.goneAfter]);
+  final int? goneAfter;
+  int attempts = 0;
+  final List<Map<String, dynamic>> seen = <Map<String, dynamic>>[];
+  final List<Completer<void>> waiting = <Completer<void>>[];
+
+  void wake() {
+    final woken = waiting.toList();
+    waiting.clear();
+    for (final one in woken) {
+      one.complete();
+    }
+  }
+
+  Future<void> until(bool Function() done) async {
+    while (!done()) {
+      final next = Completer<void>();
+      waiting.add(next);
+      await next.future;
+    }
+  }
+
+  void take() {
+    attempts += 1;
+    final refused = goneAfter != null && seen.length >= goneAfter!;
+    wake();
+    if (refused) throw StateError('the client has gone');
+  }
+
+  @override
+  Future<void> begin(int status, List<(String, String)> headers) async {
+    take();
+    seen.add({
+      'began': [status, [for (final (name, value) in headers) [name, value]]],
+    });
+    wake();
+  }
+
+  @override
+  Future<void> write(String event) async {
+    take();
+    seen.add({'wrote': event});
+    wake();
+  }
+}
+
 void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   final written = <String>[];
@@ -566,7 +623,7 @@ void main() async {
   );
   final http = <Map<String, dynamic>>[];
   for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
-    final response = await serve(WriterServiceMcpHttpRequest(
+    final response = await respondWriterService(serve, WriterServiceMcpHttpRequest(
       method: row['method'] as String,
       path: row['path'] as String,
       headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
@@ -578,15 +635,140 @@ void main() async {
       'body': utf8.decode(response.body),
     });
   }
-  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http}));
+  final rows = input['streams'] as Map<String, dynamic>;
+  WriterServiceMcpHttpRequest asRequest(String name) {
+    final row = rows[name] as Map<String, dynamic>;
+    return WriterServiceMcpHttpRequest(
+      method: row['method'] as String,
+      path: row['path'] as String,
+      headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
+      body: utf8.encode(row['body'] as String),
+    );
+  }
+
+  WriterServiceHandlers<WriterServiceMcpCall> heldHandlers(Future<void> opened, List<int> reached) =>
+      WriterServiceHandlers<WriterServiceMcpCall>(
+        exportFolder: (ctx, folder) async {
+          reached[0] += 1;
+          await ctx.progress(1, total: 3, message: 'exported 1 of 3 files');
+          if (folder == 'held') await opened;
+        },
+        getVersion: (ctx, req) async => WriterVersion(version: 7),
+      );
+
+  Future<WriterServiceMcpHttpResponse?> Function(WriterServiceMcpHttpRequest, WriterServiceMcpHttpStream) serving(
+    WriterServiceHandlers<WriterServiceMcpCall> held,
+    List<WriterServiceMcpCall?> taken,
+  ) =>
+      createWriterServiceMcpHttpDispatcher<WriterServiceMcpCall>(
+        held,
+        const WriterServiceMcpHttpSettings(allowedOrigins: []),
+        (request, call) async {
+          taken[0] = call;
+          return (ctx: call, denied: null);
+        },
+      );
+
+  final streams = <String, dynamic>{};
+  {
+    final gate = Completer<void>();
+    final stream = RecordingStream();
+    var ended = false;
+    final running = serving(heldHandlers(gate.future, [0]), [null])(asRequest('held'), stream).then((answered) {
+      ended = true;
+      return answered;
+    });
+    await stream.until(() => stream.seen.length >= 2);
+    final held = stream.seen.toList();
+    final endedWhileHeld = ended;
+    gate.complete();
+    final answered = await running;
+    streams['progress'] = {
+      'endedWhileHeld': endedWhileHeld,
+      'full': stream.seen.toList(),
+      'held': held,
+      'returned': answered != null,
+    };
+  }
+  {
+    final gate = Completer<void>();
+    final stream = RecordingStream(1);
+    final taken = <WriterServiceMcpCall?>[null];
+    final running = serving(heldHandlers(gate.future, [0]), taken)(asRequest('held'), stream);
+    await stream.until(() => stream.attempts >= 2);
+    gate.complete();
+    final answered = await running;
+    streams['failed'] = {'cancelled': taken[0]!.cancelled, 'returned': answered != null, 'seen': stream.seen.toList()};
+  }
+  {
+    final stream = RecordingStream(0);
+    final taken = <WriterServiceMcpCall?>[null];
+    final reached = [0];
+    final answered = await serving(heldHandlers(Future<void>.value(), reached), taken)(asRequest('docs'), stream);
+    streams['refused'] = {
+      'cancelled': taken[0]!.cancelled,
+      'reached': reached[0],
+      'returned': answered != null,
+      'seen': stream.seen.toList(),
+    };
+  }
+  {
+    final stream = RecordingStream();
+    final answered = await serving(heldHandlers(Future<void>.value(), [0]), [null])(asRequest('plain'), stream);
+    streams['plain'] = {'returned': answered != null, 'seen': stream.seen.toList(), 'status': answered!.status};
+  }
+  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http, 'streams': streams}));
 }
 ";
+
+/// A one-way handler that throws, served with a callback and without one, and a replying handler
+/// that throws beside them.
+const ONE_WAY_DRIVER: &str = r#"
+const meta = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
+};
+
+String call(int id, String name, Map<String, dynamic> arguments) => jsonEncode({
+      'jsonrpc': '2.0',
+      'id': id,
+      'method': 'tools/call',
+      'params': {'name': name, 'arguments': arguments, '_meta': meta},
+    });
+
+void main() async {
+  final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
+    getVersion: (ctx, req) async => throw 'the handler came apart',
+    lookup: (ctx, req) async => McpVersionResponse(version: 7),
+    renameDocument: (ctx, req) async {},
+    touchDocument: (ctx, req) async => throw 'the handler came apart',
+  );
+  final faults = <Map<String, dynamic>>[];
+  final touch = call(1, 'touch-document', {'documentId': 'doc-1', 'reader': 'boom'});
+  Future<String?> serve(DartDocumentServiceHandlers<void> held, String text, [void Function(DartDocumentServiceFaultFields)? onFault]) =>
+      createDartDocumentServiceMcpDispatcher<void>(held, onFault)(text, (call) {}, (message) async {}, DartDocumentServiceMcpInFlight());
+  final heard = await serve(documents, touch, (fault) => faults.add(fault.toJson()));
+  final replying = await serve(documents, call(2, 'get-version', {'document_id': 'doc-1'}), (fault) => faults.add(fault.toJson()));
+  final routed = await createDartDocumentServiceMcpRoute<void>(documents, (fault) => faults.add(fault.toJson()))(
+    null,
+    'tools/call',
+    {'name': 'touch-document', 'arguments': {'documentId': 'doc-1', 'reader': 'boom'}},
+  );
+  final silent = await serve(documents, touch);
+  print(jsonEncode({'faults': faults, 'heard': heard, 'replying': replying, 'routed': routed?.result, 'silent': silent}));
+}
+"#;
 
 /// The imports, the models, the document and billing services and their clients, and `driver`.
 fn module(driver: &str) -> String {
     [
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
+        "import 'dart:io';".to_owned(),
         mcp_format_dart::dart_definition(),
         mcp_version_request_dart::dart_definition(),
         mcp_version_response_dart::dart_definition(),
@@ -612,6 +794,8 @@ fn module(driver: &str) -> String {
         WriterServiceSchema::dart_definition(),
         WriterServiceSchema::dart_ws_client(),
         WriterServiceSchema::dart_mcp_service(),
+        dart_respond("DartDocumentService"),
+        dart_respond("WriterService"),
         driver.replace("/*FAULT_CASES*/", &cases_json()),
     ]
     .join("\n\n")
@@ -1090,6 +1274,51 @@ fn resources_are_listed_a_page_at_a_time_across_the_services_of_an_endpoint() {
 }
 
 #[test]
+fn a_one_way_handler_that_throws_reaches_the_callback_or_standard_error() {
+    let Some((written, standard_error)) = ran_with_stderr(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "mcp_one_way.dart",
+        &module(ONE_WAY_DRIVER),
+    ) else {
+        return;
+    };
+    let report: Value = serde_json::from_str(written.trim()).unwrap();
+    let empty = |reply: &Value| {
+        let parsed: Value = serde_json::from_str(reply.as_str().unwrap()).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed:#}");
+        assert_eq!(parsed["result"]["content"], json!([]), "{parsed:#}");
+    };
+    empty(&report["heard"]);
+    empty(&report["silent"]);
+    assert_eq!(report["routed"]["isError"], false, "{report:#}");
+    let faults = report["faults"].as_array().unwrap();
+    assert_eq!(
+        faults.len(),
+        2,
+        "one for the dispatcher, one for the route: {report:#}"
+    );
+    for fault in faults {
+        assert_eq!(fault["kind"], "handler-panic", "{fault:#}");
+        assert_eq!(fault["operation"], "touch-document", "{fault:#}");
+        assert_eq!(fault["detail"], "the handler came apart", "{fault:#}");
+    }
+    let replying: Value = serde_json::from_str(report["replying"].as_str().unwrap()).unwrap();
+    assert_eq!(replying["error"]["code"], -32_603_i32, "{replying:#}");
+    let printed: Vec<Value> = standard_error
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(printed.len(), 1, "{standard_error}");
+    assert_eq!(printed[0]["kind"], "handler-panic", "{standard_error}");
+    assert_eq!(
+        printed[0]["operation"], "touch-document",
+        "{standard_error}"
+    );
+}
+
+#[test]
 fn a_service_served_alone_answers_its_own_tools() {
     let Some(driven) = driven("mcp_server_alone", SERVER_DRIVER) else {
         return;
@@ -1259,6 +1488,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         [
             "import 'dart:async';".to_owned(),
             "import 'dart:convert';".to_owned(),
+            "import 'dart:io';".to_owned(),
             mcp_format_dart::dart_definition(),
             mcp_version_request_dart::dart_definition(),
             mcp_version_response_dart::dart_definition(),
@@ -1288,7 +1518,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         return;
     };
     assert!(distinct, "{said}");
-    assert_eq!(said.trim(), "6");
+    assert_eq!(said.trim(), "9");
     let (shared, refused) = dart("endpoint-shared", &[], &endpoint("audit")).unwrap();
     assert!(!shared, "{refused}");
     assert!(

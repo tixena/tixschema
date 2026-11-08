@@ -12,6 +12,7 @@ use super::mcp_library_service::{BookError, BookInfo, BookRequest};
 use super::mcp_shelf_service::{ShelfLabel, assert_faults, fault_requests};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, ShelfServiceSchema};
+use crate::mcp_streams::NODE_RESPOND;
 use serde_json::{Value, json};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -95,7 +96,7 @@ async function main() {
   const answers = (ask) => Promise.all(input.requests.map(async (text) => (await ask(text)) ?? null));
   const http = [];
   for (const row of input.http) {
-    const response = await over({ method: "POST", path: "/mcp", headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(over, { method: "POST", path: "/mcp", headers: row.headers, body: new TextEncoder().encode(row.body) });
     http.push({ status: response.status, headers: response.headers.map(([name, value]) => [name, value]), body: new TextDecoder().decode(response.body) });
   }
   let shared = null;
@@ -272,7 +273,11 @@ fn driven() -> Option<Value> {
         return None;
     };
     let literal = Value::String(input(&rows(), &http_rows()).to_string());
-    let source = format!("{}\n\nconst INPUT = {literal};\n{DRIVER}", bundle());
+    let source = format!(
+        "{}\n\n{}\nconst INPUT = {literal};\n{DRIVER}",
+        bundle(),
+        NODE_RESPOND
+    );
     let wrote = ran_with_modules(
         "mcp-resources",
         RUNTIME_VAR,

@@ -2,6 +2,7 @@
 //! module: the fault a caller can receive but no implementation can answer with, and the client's
 //! call-error enum.
 
+use super::message_shape::Shape;
 use super::parse::{
     HttpBinding, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, error_declared_type, path_reads_a_named_field, service_declares_a_stream,
@@ -11,7 +12,7 @@ use super::transport::Transport;
 use crate::rename_rule::RenameRule;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
-use syn::Ident;
+use syn::{Ident, Type, parse_quote};
 
 /// The service's own module, holding everything either half of a service reads and nothing that
 /// belongs to one of them.
@@ -1028,7 +1029,8 @@ pub fn message_alias_ident(operation: &OperationDef) -> Ident {
 /// One reader per operation: the operation's message read with no judgement of its own, at the
 /// concrete type an inherent `model_schema_read_unjudged` needs to win at. A dispatcher reads a
 /// request through it and then asks the message to validate itself, so a broken bound is the
-/// validator's to report, with its field.
+/// validator's to report, with its field. A list, a map or an optional of a model is read element
+/// by element the same way.
 fn message_readers(service: &ServiceDef) -> TokenStream {
     let declared = service.operations.iter().map(|operation| {
         let named = message_reader_ident(operation);
@@ -1037,25 +1039,55 @@ fn message_readers(service: &ServiceDef) -> TokenStream {
             "The message of operation `{}`, read with no judgement of its own.",
             operation.wire_name
         );
+        let fallback = quote! {
+            /// How a message that publishes no `validate()` is read: as serde reads it. An
+            /// inherent function is found ahead of this one, so a message that publishes one
+            /// answers with its own unjudged read.
+            trait ReadUnjudged<'de>: ::serde::Deserialize<'de> {
+                fn model_schema_read_unjudged<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                where
+                    D: ::serde::Deserializer<'de>,
+                {
+                    <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
+                }
+            }
+            impl<'de, T: ::serde::Deserialize<'de>> ReadUnjudged<'de> for T {}
+        };
+        let body = collection_shape(operation).map_or_else(
+            || {
+                quote! {
+                    #fallback
+                    <#message>::model_schema_read_unjudged(deserializer)
+                }
+            },
+            |shape| {
+                let leaf = shape.leaf();
+                let held: Type = parse_quote! { Held };
+                let read_as = shape.held_type(&held);
+                let unwrapped = shape.unwrapped(&quote! { read });
+                quote! {
+                    #fallback
+                    struct Held(#leaf);
+                    impl<'de> ::serde::Deserialize<'de> for Held {
+                        fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                        where
+                            D: ::serde::Deserializer<'de>,
+                        {
+                            <#leaf>::model_schema_read_unjudged(deserializer).map(Held)
+                        }
+                    }
+                    let read: #read_as = <#read_as as ::serde::Deserialize<'de>>::deserialize(deserializer)?;
+                    ::core::result::Result::Ok(#unwrapped)
+                }
+            },
+        );
         quote! {
             #[doc = #doc]
             pub fn #named<'de, D>(deserializer: D) -> ::core::result::Result<#message, D::Error>
             where
                 D: ::serde::Deserializer<'de>,
             {
-                /// How a message that publishes no `validate()` is read: as serde reads it. An
-                /// inherent function is found ahead of this one, so a message that publishes one
-                /// answers with its own unjudged read.
-                trait ReadUnjudged<'de>: ::serde::Deserialize<'de> {
-                    fn model_schema_read_unjudged<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
-                    where
-                        D: ::serde::Deserializer<'de>,
-                    {
-                        <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
-                    }
-                }
-                impl<'de, T: ::serde::Deserialize<'de>> ReadUnjudged<'de> for T {}
-                <#message>::model_schema_read_unjudged(deserializer)
+                #body
             }
         }
     });
@@ -1064,8 +1096,17 @@ fn message_readers(service: &ServiceDef) -> TokenStream {
     }
 }
 
-/// One validator per operation: the operation's message asked to validate itself, at the concrete
-/// type an inherent `validate()` needs to win at.
+/// The collections an operation's message is, when it is a list, a map or an optional.
+fn collection_shape(operation: &OperationDef) -> Option<Shape> {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return None;
+    };
+    Shape::of(declared)
+}
+
+/// One validator per operation: the operation's message asked to validate itself, at the
+/// concrete type an inherent `validate()` needs to win at. A list, a map or an optional of a model
+/// asks each element.
 fn message_validators(service: &ServiceDef) -> TokenStream {
     let declared = service.operations.iter().map(|operation| {
         let named = message_validator_ident(operation);
@@ -1075,11 +1116,26 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
             operation.wire_name
         );
         let in_scope = message_validation_in_scope();
+        let body = collection_shape(operation).map_or_else(
+            || quote! { received.validate() },
+            |shape| {
+                let walked = shape.validated(&quote! { received });
+                quote! {
+                    let mut violations = ::std::vec::Vec::new();
+                    #walked
+                    if violations.is_empty() {
+                        ::core::result::Result::Ok(())
+                    } else {
+                        ::core::result::Result::Err(violations)
+                    }
+                }
+            },
+        );
         quote! {
             #[doc = #doc]
             pub fn #named(received: &#message) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 #in_scope
-                received.validate()
+                #body
             }
         }
     });

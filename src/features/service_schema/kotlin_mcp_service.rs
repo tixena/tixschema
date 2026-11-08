@@ -781,9 +781,7 @@ private fun <T : Any> @P@McpOptionalHeader(
   raw: JsonElement?,
 ): T? = if (raw == null || raw is JsonNull) null else @P@McpHeader(tool, name, serializer, raw)"#;
 
-const INTERVIEW: &str = r#"private fun @P@McpPlain(text: String): String = text.replace(Regex("[-_ ]"), "").lowercase()
-
-/** Whether the client declared the elicitation [mode]: an empty `elicitation` is a form. */
+const INTERVIEW: &str = r#"/** Whether the client declared the elicitation [mode]: an empty `elicitation` is a form. */
 private fun @P@McpElicits(params: JsonObject, mode: String): Boolean {
   val meta = params["_meta"] as? JsonObject
   val held = (meta?.get(@P@McpCapabilitiesKey) as? JsonObject)?.get("elicitation") as? JsonObject ?: return false
@@ -814,7 +812,8 @@ private fun @P@McpInputRequired(key: String, request: JsonObject): JsonObject =
 
 /** The result that asks the user where [error] is the arm that asks and the client can be asked, `null` otherwise. */
 private fun @P@McpAsking(
-  arm: String,
+  tag: String,
+  wire: String,
   answers: String?,
   form: String?,
   doc: String,
@@ -822,9 +821,9 @@ private fun @P@McpAsking(
   params: JsonObject,
   declined: Boolean,
 ): JsonObject? {
-  val body = error as? JsonObject ?: return null
-  val code = (body["errorCode"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
-  if (@P@McpPlain(code) != @P@McpPlain(arm)) return null
+  val written = error as? JsonObject ?: return null
+  val body = if (tag.isEmpty()) written[wire] as? JsonObject else written.takeIf { (it[tag] as? JsonPrimitive)?.takeIf { held -> held.isString }?.content == wire }
+  if (body == null) return null
   val message = (body["message"] as? JsonPrimitive)?.takeIf { it.isString }?.content
   if (answers != null) {
     if (declined || !@P@McpElicits(params, "form")) return null
@@ -839,8 +838,8 @@ private fun @P@McpAsking(
   }
   val url = (body["url"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
   if (message == null) return null
-  if (@P@McpDismissed(params, code) || !@P@McpElicits(params, "url")) return null
-  return @P@McpInputRequired(code, buildJsonObject { put("message", message); put("mode", "url"); put("url", url) })
+  if (@P@McpDismissed(params, wire) || !@P@McpElicits(params, "url")) return null
+  return @P@McpInputRequired(wire, buildJsonObject { put("message", message); put("mode", "url"); put("url", url) })
 }"#;
 
 const CONTENT: &str = r#"/** The result of a tool that answers blocks. */
@@ -860,10 +859,13 @@ private fun @P@McpMedia(bytes: List<UByte>, contentType: String): JsonObject? {
   return @P@McpBlocks(listOf(buildJsonObject { put("data", data); put("mimeType", contentType); put("type", kind) }))
 }"#;
 
-const ROUTE_HEAD: &str = "fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> JsonObject? =
-  { mcpMethod, mcpParams -> @P@McpCall(handlers, mcpMethod, mcpParams) }
+const ROUTE_HEAD: &str = "private fun @P@McpToStderr(fault: @F@) = System.err.println(Json.encodeToString(serializer<@F@>(), fault))
 
-private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpParams: JsonObject): JsonObject? {
+/** Answers the requests of this service on an endpoint shared by several. [onFault] takes the fault of a one-way handler that threw. */
+fun create@N@McpRoute(handlers: @N@Handlers, onFault: (@F@) -> Unit = ::@P@McpToStderr): suspend (method: String, params: JsonObject) -> JsonObject? =
+  { mcpMethod, mcpParams -> @P@McpCall(handlers, mcpMethod, mcpParams@FAULT_PUBLIC@) }
+
+private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpParams: JsonObject@FAULT_PARAM@): JsonObject? {
   try {
     return when (mcpMethod) {
 @DISPATCH@      else -> null
@@ -875,7 +877,7 @@ private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpPara
 ";
 
 const TOOL_HEAD: &str = r#"
-private suspend fun @P@McpTool(handlers: @N@Handlers, mcpParams: JsonObject): JsonObject? {
+private suspend fun @P@McpTool(handlers: @N@Handlers, mcpParams: JsonObject@FAULT_PARAM@): JsonObject? {
   val mcpNamed = mcpParams["name"]
   if (mcpNamed !is JsonPrimitive || !mcpNamed.isString) return null
   return when (mcpNamed.content) {
@@ -961,11 +963,22 @@ fun create@N@McpDispatcher(
 fun create@N@McpDispatcher(
   changes: @N@McpChanges?,
   handlers: (@N@McpCall) -> @N@Handlers,
+): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? =
+  create@N@McpDispatcher(changes, ::@P@McpToStderr, handlers)
+
+/**
+ * [create@N@McpDispatcher] for an application that takes the faults of a one-way handler that
+ * threw: [onFault] is called once for each, and the answer is the empty success.
+ */
+fun create@N@McpDispatcher(
+  changes: @N@McpChanges?,
+  onFault: (@F@) -> Unit,
+  handlers: (@N@McpCall) -> @N@Handlers,
 ): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
   return { text, writer, inFlight ->
     @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint, @N@McpHost(writer, inFlight, changes)) { call, _, method, params ->
-      create@N@McpRoute(handlers(call))(method, params)
+      create@N@McpRoute(handlers(call), onFault)(method, params)
     }
   }
 }";
@@ -989,6 +1002,18 @@ data class @N@McpHttpRequest(val method: String, val path: String, val headers: 
 }
 
 data class @N@McpHttpResponse(val status: Int, val headers: List<Pair<String, String>>, val body: ByteArray)
+
+/**
+ * Where an HTTP server writes an event-stream answer. [begin] is called once, before the first
+ * event, with the status and headers of the answer; [write] then takes the text of each event, or
+ * of the comment line that keeps the stream open. A call that throws means the client has gone. The
+ * host ends its response when the server answers `null`.
+ */
+interface @N@McpHttpStream {
+  suspend fun begin(status: Int, headers: List<Pair<String, String>>)
+
+  suspend fun write(event: String)
+}
 
 /** The protected-resource metadata of a server that authorizes by OAuth. */
 data class @N@McpOAuth(
@@ -1145,17 +1170,10 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean): Pair
   return text to null
 }
 
-/** One event of an event stream, or the comment line that keeps it open where [text] is `null`. */
-private class @P@McpEvent(val text: String?)
+private val @P@McpEventHeaders = listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no")
 
-private fun @P@McpEventStream(events: Collection<@P@McpEvent>, answered: String?): @N@McpHttpResponse =
-  @N@McpHttpResponse(
-    200,
-    listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no"),
-    (events + listOfNotNull(answered?.let { @P@McpEvent(it) }))
-      .joinToString("") { if (it.text == null) ":\n\n" else "event: message\ndata: ${it.text}\n\n" }
-      .encodeToByteArray(),
-  )
+/** One event of an event stream, carrying one JSON-RPC message. */
+private fun @P@McpFrame(message: String): String = "event: message\ndata: $message\n\n"
 
 private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
   if (answered == null) {
@@ -1167,23 +1185,31 @@ private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
 /**
  * The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body and the headers that must agree with it. [route] also receives the handlers
- * that `admit` built for the caller. A `subscriptions/listen` answers an event stream where
- * [changes] is handed in: it ends when [changes] answers `null`.
+ * that `admit` built for the caller. A routed request that carries a `progressToken` answers an
+ * event stream written to [stream] as it happens ([@N@McpHttpStream.begin], each notification, then
+ * the answer), and this answers `null`. So does a `subscriptions/listen` where [changes] is handed
+ * in: it ends when [changes] answers `null`. Any other request answers the response, and [stream]
+ * is never begun.
  */
 suspend fun @P@McpServeHttp(
   request: @N@McpHttpRequest,
   settings: @N@McpHttpSettings,
+  stream: @N@McpHttpStream,
   serverName: String,
   instructions: String?,
   endpoint: @N@McpEndpoint,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
   changes: @N@McpChanges? = null,
   route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> JsonObject?,
-): @N@McpHttpResponse {
+): @N@McpHttpResponse? {
   val before = @P@McpBeforeAdmit(request, settings)
   if (before != null) return before
-  val events = java.util.concurrent.ConcurrentLinkedQueue<@P@McpEvent>()
-  val call = @N@McpCall(@P@McpBodyToken(request), { event -> events.add(@P@McpEvent(event)) }, { events.add(@P@McpEvent(null)) })
+  val held = java.util.concurrent.ConcurrentLinkedQueue<String>()
+  val live = java.util.concurrent.atomic.AtomicBoolean(false)
+  suspend fun give(text: String) {
+    if (live.get()) stream.write(text) else held.add(text)
+  }
+  val call = @N@McpCall(@P@McpBodyToken(request), { event -> give(@P@McpFrame(event)) }, { give(":\n\n") })
   val caller = when (val admitted = admit(request, call)) {
     is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
     is @N@McpAdmitted.Caller -> admitted.handlers
@@ -1196,20 +1222,47 @@ suspend fun @P@McpServeHttp(
     is @P@McpBegun.Routed -> begun.request
   }
   val listens = changes != null && (asked["method"] as JsonPrimitive).content == "subscriptions/listen"
+  val streams = @P@McpToken(asked) != null || listens
+  if (streams) {
+    try {
+      stream.begin(200, @P@McpEventHeaders)
+      live.set(true)
+      while (true) stream.write(held.poll() ?: break)
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      call.cancel()
+      return null
+    }
+  }
   val answered = if (changes != null && listens) {
     @P@McpResponseText(asked["id"] ?: JsonNull, @P@McpListen(asked, endpoint, call, changes), serverName)
   } else {
     @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
   }
   val written = if (call.cancelled) null else answered
-  return if (@P@McpToken(asked) != null || listens) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
+  if (!streams) return @P@McpHttpAnswer(written)
+  if (written != null) {
+    try {
+      stream.write(@P@McpFrame(written))
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      call.cancel()
+    }
+  }
+  return null
 }
 
-/** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
+/**
+ * Answers the HTTP requests of this service alone. [admit] answers the handlers built for a
+ * request, or why it is refused. An event-stream answer is written to the stream it is handed, and
+ * the function answers `null`.
+ */
 fun create@N@McpHttpDispatcher(
   settings: @N@McpHttpSettings,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
-): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse = create@N@McpHttpDispatcher(settings, null, admit)
+): suspend (@N@McpHttpRequest, @N@McpHttpStream) -> @N@McpHttpResponse? = create@N@McpHttpDispatcher(settings, null, admit)
 
 /**
  * [create@N@McpHttpDispatcher] for an application that hands in its source of changes: [changes]
@@ -1219,11 +1272,23 @@ fun create@N@McpHttpDispatcher(
   settings: @N@McpHttpSettings,
   changes: @N@McpChanges?,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
-): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse {
+): suspend (@N@McpHttpRequest, @N@McpHttpStream) -> @N@McpHttpResponse? =
+  create@N@McpHttpDispatcher(settings, changes, ::@P@McpToStderr, admit)
+
+/**
+ * [create@N@McpHttpDispatcher] for an application that takes the faults of a one-way handler that
+ * threw: [onFault] is called once for each, and the answer is the empty success.
+ */
+fun create@N@McpHttpDispatcher(
+  settings: @N@McpHttpSettings,
+  changes: @N@McpChanges?,
+  onFault: (@F@) -> Unit,
+  admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
+): suspend (@N@McpHttpRequest, @N@McpHttpStream) -> @N@McpHttpResponse? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
-  return { request ->
-    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
-      create@N@McpRoute(caller)(method, params)
+  return { request, stream ->
+    @P@McpServeHttp(request, settings, stream, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
+      create@N@McpRoute(caller, onFault)(method, params)
     }
   }
 }"#;
@@ -1441,6 +1506,12 @@ fn blocks_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) ->
     texts.join("\n\n")
 }
 
+/// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
+/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+fn arm_marker(operation: &OperationDef, part: &str) -> String {
+    format!("@MCP_ARM_{part}_{}@", written(&operation.ident))
+}
+
 /// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
 pub fn form_marker(operation: &OperationDef) -> String {
     format!("@MCP_FORM_{}@", written(&operation.ident))
@@ -1636,14 +1707,9 @@ fn fill(template: &str, prefix: &str, named: &str, fields: &str) -> String {
         .replace("@F@", fields)
 }
 
-/// `kotlin_mcp_service()` on the service's registry: the text above, with the tools, the names and
-/// the instructions, which only the compiled service can give, written over their markers when it
-/// runs in the consuming program.
-pub fn accessor(service: &ServiceDef) -> TokenStream {
-    let text = emit(service).join("\n\n");
-    let wrapped = wrapped_replacements(service);
-    let literal = literal_fn();
-    let forms: Vec<TokenStream> = service
+/// One statement per interview whose answers are a form, writing its form over its marker.
+fn form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    service
         .operations
         .iter()
         .filter(|operation| {
@@ -1662,7 +1728,38 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
             );
             quote! { text = text.replace(#marker, &literal(&Self::#method().to_string())); }
         })
-        .collect();
+        .collect()
+}
+
+/// One statement per interview and part, writing the tag key and the wire name of its arm.
+fn arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+                let marker = arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! { text = text.replace(#marker, &literal(Self::#method())); }
+            })
+        })
+        .collect()
+}
+
+/// `kotlin_mcp_service()` on the service's registry: the text above, with the tools, the names and
+/// the instructions, which only the compiled service can give, written over their markers when it
+/// runs in the consuming program.
+pub fn accessor(service: &ServiceDef) -> TokenStream {
+    let text = emit(service).join("\n\n");
+    let wrapped = wrapped_replacements(service);
+    let literal = literal_fn();
+    let forms = form_replacements(service);
+    let arms = arm_replacements(service);
     quote! {
         #[doc = " The service's generated Kotlin `mcp` server: its catalog, the route that answers"]
         #[doc = " its `tools/call`, the function that answers one message for the services of an"]
@@ -1723,6 +1820,7 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"));
             #(#wrapped)*
             #(#forms)*
+            #(#arms)*
             text
         }
     }
@@ -1782,7 +1880,7 @@ fn route(
         .collect();
     let mut dispatch = String::new();
     if !tools.is_empty() {
-        dispatch.push_str("      \"tools/call\" -> @P@McpTool(handlers, mcpParams)\n");
+        dispatch.push_str("      \"tools/call\" -> @P@McpTool(handlers, mcpParams@FAULT_ARG@)\n");
     }
     if held.reads().next().is_some() || skilled(service) {
         dispatch.push_str("      \"resources/read\" -> @P@McpRead(handlers, mcpParams)\n");
@@ -1799,15 +1897,34 @@ fn route(
     if !held.completions.is_empty() {
         dispatch.push_str("      \"completion/complete\" -> @P@McpComplete(handlers, mcpParams)\n");
     }
-    let mut text = fill(ROUTE_HEAD, prefix, named, fields)
-        .replace("@DISPATCH@", &fill(&dispatch, prefix, named, fields));
+    let one_way = tools
+        .iter()
+        .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay));
+    let carried = |text: String| {
+        if one_way {
+            text.replace("@FAULT_PUBLIC@", ", onFault")
+                .replace("@FAULT_ARG@", ", mcpOnFault")
+                .replace(
+                    "@FAULT_PARAM@",
+                    &format!(", mcpOnFault: ({fields}) -> Unit"),
+                )
+        } else {
+            text.replace("@FAULT_PUBLIC@", "")
+                .replace("@FAULT_ARG@", "")
+                .replace("@FAULT_PARAM@", "")
+        }
+    };
+    let mut text = carried(
+        fill(ROUTE_HEAD, prefix, named, fields)
+            .replace("@DISPATCH@", &fill(&dispatch, prefix, named, fields)),
+    );
     if !tools.is_empty() {
         let arms = tools
             .iter()
             .map(|operation| arm(operation, prefix, named, fields))
             .collect::<Vec<_>>()
             .join("\n");
-        text.push_str(&fill(TOOL_HEAD, prefix, named, fields));
+        text.push_str(&carried(fill(TOOL_HEAD, prefix, named, fields)));
         text.push_str(&arms);
         text.push('\n');
         text.push_str(TOOL_TAIL);
@@ -2455,7 +2572,8 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
             let _ = write!(
                 text,
                 "      try {{\n        {call}\n      }} catch (unexpected: Throwable) {{\n        \
-                 if (unexpected is CancellationException) throw unexpected\n      }}\n      \
+                 if (unexpected is CancellationException) throw unexpected\n        \
+                 mcpOnFault(Json.decodeFromJsonElement(serializer<{fields}>(), {prefix}McpFaultObject(\"handler-panic\", {tool}, unexpected.message ?: unexpected.toString())))\n      }}\n      \
                  {prefix}McpDone(null, null)\n    }}\n"
             );
         }
@@ -2542,9 +2660,10 @@ fn declared_arm(
         return format!(
             "          is {result}.Declared -> {{\n            \
              val mcpBody = Json.encodeToJsonElement({written}, answered.error)\n            \
-             {prefix}McpAsking({}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
+             {prefix}McpAsking({}, {}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
              ?: {prefix}McpDone(null, {prefix}McpServeText(mcpBody))\n          }}\n",
-            kotlin_quoted(&interview.arm.to_string()),
+            arm_marker(operation, "TAG"),
+            arm_marker(operation, "WIRE"),
             kotlin_quoted(operation.doc.as_deref().unwrap_or_default()),
         );
     }

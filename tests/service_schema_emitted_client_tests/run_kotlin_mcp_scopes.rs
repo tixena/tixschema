@@ -11,6 +11,7 @@ use super::mcp_stacks_service::{
 };
 use super::runtime::ran_kotlin;
 use super::{StacksServiceSchema, stacks_service_schema};
+use crate::mcp_streams::kotlin_respond;
 use serde_json::Value;
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
@@ -93,7 +94,8 @@ suspend fun report(input: JsonObject): JsonObject {
     val answers = input.getValue("rows").jsonArray.map { row ->
         val given = row.jsonObject
         val before = reached
-        val response = serve(
+        val response = respondStacksService(
+            serve,
             StacksServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 given.getValue("path").jsonPrimitive.content,
@@ -162,6 +164,7 @@ fn module() -> String {
     let literal = kotlin_text(&input().to_string());
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
+    parts.push(kotlin_respond("StacksService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(DRIVER.to_owned());
     parts.join("\n\n")

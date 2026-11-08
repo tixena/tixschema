@@ -18,6 +18,7 @@ use super::mcp_library_service::{
 use super::runtime::ran_kotlin;
 use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema};
 use super::{bare_service_schema, depot_service_schema, library_service_schema};
+use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -137,7 +138,8 @@ suspend fun report(input: JsonObject): JsonObject {
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
-        val answered = http(
+        val answered = respondLibraryService(
+            http,
             LibraryServiceMcpHttpRequest(
                 "POST",
                 "/mcp",
@@ -260,6 +262,7 @@ fn module() -> String {
         "%TUPLE%",
         &wrapper_of_bytes(&LibraryServiceSchema::kotlin_http_client()),
     ));
+    parts.push(kotlin_respond("LibraryService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(DRIVER.to_owned());
     parts.join("\n\n")

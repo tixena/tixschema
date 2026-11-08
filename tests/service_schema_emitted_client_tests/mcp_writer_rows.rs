@@ -3,12 +3,14 @@
 //! against: the three lines of a stdio host, a write that fails, and the HTTP requests that
 //! answer an event stream. Nothing here waits on a clock.
 
+use super::mcp_streams::Recorded;
 use super::mcp_writer_dispatcher as dispatcher;
+use crate::mcp_streams::through;
 use alloc::sync::Arc;
 use alloc::task::Wake;
 use core::future::{Future, poll_fn, ready};
 use core::pin::{Pin, pin};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -21,6 +23,11 @@ const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-
 /// The row whose fault carries the words of each language's own reader, so its `detail` is left
 /// out of the comparison.
 const WORDED_BY_THE_LANGUAGE: usize = 4;
+
+const STREAM_SETTINGS: dispatcher::McpHttpSettings<'static> = dispatcher::McpHttpSettings {
+    allowed_origins: &[],
+    oauth: None,
+};
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
@@ -61,25 +68,63 @@ type ProgressFn = dyn Fn(f64, Option<f64>, Option<&str>) + Send + Sync;
 /// What a handler reaches of the request in flight.
 pub struct Reporting {
     cancelled: Box<dyn Fn() -> bool + Send + Sync>,
+    gate: Arc<Gate>,
     progress: Box<ProgressFn>,
 }
 
 impl Reporting {
-    fn of(call: &dispatcher::McpCall) -> Self {
+    fn gated(call: &dispatcher::McpCall, gate: Arc<Gate>) -> Self {
         let (reporter, watcher) = (call.clone(), call.clone());
         Self {
             cancelled: Box::new(move || watcher.cancelled()),
+            gate,
             progress: Box::new(move |done, total, message| reporter.progress(done, total, message)),
         }
     }
+
+    fn of(call: &dispatcher::McpCall) -> Self {
+        Self::gated(call, Arc::new(Gate::default()))
+    }
 }
 
-/// Reports one step, and for the folder `forever` waits for the cancellation.
+/// What the folder `held` waits for: the test opens it.
+#[derive(Default)]
+pub struct Gate {
+    open: AtomicBool,
+    waiting: Mutex<Option<Waker>>,
+}
+
+impl Gate {
+    fn open(&self) {
+        self.open.store(true, Ordering::SeqCst);
+        let waiting = self.waiting.lock().unwrap().take();
+        if let Some(waker) = waiting {
+            waker.wake();
+        }
+    }
+
+    async fn opened(&self) {
+        poll_fn(|cx| {
+            if self.open.load(Ordering::SeqCst) {
+                return Poll::Ready(());
+            }
+            *self.waiting.lock().unwrap() = Some(cx.waker().clone());
+            Poll::Pending
+        })
+        .await;
+    }
+}
+
+/// Reports one step, and for the folder `forever` waits for the cancellation, for the folder `held`
+/// waits for the test to open its gate.
 struct Stand;
 
 impl WriterService<Reporting> for Stand {
     async fn export_folder(&self, ctx: &Reporting, folder: String) -> Result<(), WriterRefusal> {
         (ctx.progress)(1.0_f64, Some(3.0_f64), Some("exported 1 of 3 files"));
+        if folder == "held" {
+            ctx.gate.opened().await;
+        }
         if folder == "forever" {
             poll_fn(|_cx| {
                 if (ctx.cancelled)() {
@@ -302,11 +347,25 @@ pub fn http_rows() -> Vec<HttpRow> {
     ]
 }
 
+fn request_row(row: &HttpRow) -> Value {
+    json!({
+        "body": row.body,
+        "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+        "method": row.method,
+        "path": "/mcp",
+    })
+}
+
 /// What the Rust side hands each language's program.
 pub fn input() -> Value {
     json!({
         "lines": lines(),
         "failed": failed_line(),
+        "streams": json!({
+            "held": request_row(&posted(tool_call(1, "export-folder", &json!({ "value": "held" }), Some("export-1")), "export-folder")),
+            "docs": request_row(&posted(tool_call(2, "export-folder", &json!({ "value": "docs" }), Some("export-1")), "export-folder")),
+            "plain": request_row(&posted(tool_call(3, "export-folder", &json!({ "value": "docs" }), None), "export-folder")),
+        }),
         "http": http_rows().iter().map(|row| json!({
             "body": row.body,
             "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
@@ -370,14 +429,17 @@ fn http_answer(row: &HttpRow) -> Value {
         method: row.method.to_owned(),
         path: "/mcp".to_owned(),
     };
-    let response = ready_output(dispatcher::answer_http(
-        &asked,
-        &settings,
-        &Stand,
-        async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
-            Ok::<_, dispatcher::McpDenied>(Reporting::of(&call))
-        },
-    ));
+    let response = through(|stream| {
+        ready_output(dispatcher::answer_http(
+            &asked,
+            &settings,
+            stream,
+            &Stand,
+            async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
+                Ok::<_, dispatcher::McpDenied>(Reporting::of(&call))
+            },
+        ))
+    });
     json!({
         "body": String::from_utf8(response.body).unwrap(),
         "headers": response.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
@@ -385,9 +447,154 @@ fn http_answer(row: &HttpRow) -> Value {
     })
 }
 
+fn streamed_request(row: &HttpRow) -> dispatcher::McpHttpRequest {
+    dispatcher::McpHttpRequest {
+        body: row.body.clone().into_bytes(),
+        headers: row.headers.clone(),
+        method: row.method.to_owned(),
+        path: "/mcp".to_owned(),
+    }
+}
+
+fn held_row() -> HttpRow {
+    posted(
+        tool_call(
+            1,
+            "export-folder",
+            &json!({ "value": "held" }),
+            Some("export-1"),
+        ),
+        "export-folder",
+    )
+}
+
+/// A request with a token whose handler is held: what the stream has received while it is held,
+/// and when it ends.
+fn streamed_progress() -> Value {
+    let stream = Recorded::default();
+    let gate = Arc::new(Gate::default());
+    let asked = streamed_request(&held_row());
+    let returned = Mutex::new(None);
+    let mut tasks = Tasks::default();
+    tasks.spawn(async {
+        let answered = dispatcher::answer_http(
+            &asked,
+            &STREAM_SETTINGS,
+            &stream,
+            &Stand,
+            async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
+                Ok::<_, dispatcher::McpDenied>(Reporting::gated(&call, Arc::clone(&gate)))
+            },
+        )
+        .await;
+        *returned.lock().unwrap() = Some(answered.is_some());
+    });
+    tasks.run_until_idle();
+    let held = stream.report();
+    let ended_while_held = returned.lock().unwrap().is_some();
+    gate.open();
+    tasks.run_until_idle();
+    let answered = returned.lock().unwrap().unwrap();
+    json!({
+        "endedWhileHeld": ended_while_held,
+        "full": stream.report(),
+        "held": held,
+        "returned": answered,
+    })
+}
+
+/// A request with a token whose stream goes away after it began: the first event is refused.
+fn streamed_failure() -> Value {
+    let stream = Recorded::gone_after(1);
+    let gate = Arc::new(Gate::default());
+    let asked = streamed_request(&held_row());
+    let seen_call = Mutex::new(None);
+    let returned = Mutex::new(None);
+    let mut tasks = Tasks::default();
+    tasks.spawn(async {
+        let answered = dispatcher::answer_http(
+            &asked,
+            &STREAM_SETTINGS,
+            &stream,
+            &Stand,
+            async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
+                *seen_call.lock().unwrap() = Some(call.clone());
+                Ok::<_, dispatcher::McpDenied>(Reporting::gated(&call, Arc::clone(&gate)))
+            },
+        )
+        .await;
+        *returned.lock().unwrap() = Some(answered.is_some());
+    });
+    tasks.run_until_idle();
+    gate.open();
+    tasks.run_until_idle();
+    let cancelled = seen_call.lock().unwrap().as_ref().unwrap().cancelled();
+    let answered = returned.lock().unwrap().unwrap();
+    json!({ "cancelled": cancelled, "returned": answered, "seen": stream.report() })
+}
+
+/// A request with a token whose stream cannot begin: its handler is never reached.
+fn streamed_refusal() -> Value {
+    let stream = Recorded::gone_after(0);
+    let seen_call = Mutex::new(None);
+    let reached = Arc::new(AtomicUsize::new(0));
+    let answered = ready_output(dispatcher::answer_http(
+        &streamed_request(&http_rows()[0]),
+        &STREAM_SETTINGS,
+        &stream,
+        &Stand,
+        async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
+            *seen_call.lock().unwrap() = Some(call);
+            let counter = Arc::clone(&reached);
+            Ok::<_, dispatcher::McpDenied>(Reporting {
+                cancelled: Box::new(|| false),
+                gate: Arc::new(Gate::default()),
+                progress: Box::new(move |_, _, _| {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }),
+            })
+        },
+    ));
+    let cancelled = seen_call.lock().unwrap().as_ref().unwrap().cancelled();
+    json!({
+        "cancelled": cancelled,
+        "reached": reached.load(Ordering::SeqCst),
+        "returned": answered.is_some(),
+        "seen": stream.report(),
+    })
+}
+
+/// A request without a token: one JSON object is returned and the stream is never begun.
+fn streamed_plain() -> Value {
+    let stream = Recorded::default();
+    let answered = ready_output(dispatcher::answer_http(
+        &streamed_request(&http_rows()[1]),
+        &STREAM_SETTINGS,
+        &stream,
+        &Stand,
+        async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
+            Ok::<_, dispatcher::McpDenied>(Reporting::of(&call))
+        },
+    ))
+    .unwrap();
+    json!({ "returned": true, "seen": stream.report(), "status": answered.status })
+}
+
+/// What an HTTP host sees of a request that answers an event stream while its handler is held, and
+/// of the three ways a stream and a request can end otherwise.
+fn streams_report() -> Value {
+    json!({
+        "failed": streamed_failure(),
+        "plain": streamed_plain(),
+        "progress": streamed_progress(),
+        "refused": streamed_refusal(),
+    })
+}
+
 /// What the Rust dispatcher writes for the rows above, in the shape each language reports.
 pub fn rust_report() -> Value {
     json!({
+        "streams": streams_report(),
         "failed": failed_write(),
         "http": http_rows().iter().map(http_answer).collect::<Vec<_>>(),
         "written": stdio_written(),
@@ -458,10 +665,85 @@ fn raw_events_of(body: &str) -> Vec<Value> {
     event_texts(body).into_iter().map(parsed).collect()
 }
 
+/// `scenario` with every text a stream received read as the JSON message it carries.
+fn read_streamed(scenario: &Value) -> Value {
+    let mut read_all = scenario.clone();
+    for key in ["held", "full", "seen"] {
+        if let Some(entries) = scenario.get(key).and_then(Value::as_array) {
+            read_all[key] = Value::Array(
+                entries
+                    .iter()
+                    .map(|entry| match entry.get("wrote").and_then(Value::as_str) {
+                        Some(":\n\n") => json!({ "wrote": ":" }),
+                        Some(text) => json!({ "wrote": read(
+                            text.strip_prefix("event: message\ndata: ")
+                                .and_then(|rest| rest.strip_suffix("\n\n"))
+                                .unwrap(),
+                        ) }),
+                        None => entry.clone(),
+                    })
+                    .collect(),
+            );
+        }
+    }
+    read_all
+}
+
+/// Holds what a language's stream received to what the Rust stream received, and every message
+/// to the official schema.
+fn assert_streams(report: &Value, rust: &Value) {
+    for scenario in ["progress", "failed", "refused", "plain"] {
+        assert_eq!(
+            read_streamed(&report["streams"][scenario]),
+            read_streamed(&rust["streams"][scenario]),
+            "{scenario}: {report:#}"
+        );
+    }
+    let progress = &report["streams"]["progress"];
+    assert_eq!(progress["endedWhileHeld"], false, "{report:#}");
+    assert_eq!(progress["returned"], false, "{report:#}");
+    assert_eq!(progress["held"].as_array().unwrap().len(), 2, "{report:#}");
+    assert_eq!(progress["full"].as_array().unwrap().len(), 3, "{report:#}");
+    assert_eq!(progress["held"][0]["began"][0], 200_u64, "{report:#}");
+    assert_eq!(
+        progress["held"][0]["began"][1],
+        json!([
+            ["Content-Type", "text/event-stream"],
+            ["X-Accel-Buffering", "no"]
+        ]),
+        "{report:#}"
+    );
+    for (at, definition) in [(1, "ProgressNotification"), (2, "JSONRPCResultResponse")] {
+        let text = progress["full"][at]["wrote"].as_str().unwrap();
+        held_to(
+            definition,
+            &parsed(
+                text.strip_prefix("event: message\ndata: ")
+                    .and_then(|rest| rest.strip_suffix("\n\n"))
+                    .unwrap(),
+            ),
+        );
+    }
+    let failed = &report["streams"]["failed"];
+    assert_eq!(failed["cancelled"], true, "{report:#}");
+    assert_eq!(failed["returned"], false, "{report:#}");
+    assert_eq!(failed["seen"].as_array().unwrap().len(), 1, "{report:#}");
+    let refused = &report["streams"]["refused"];
+    assert_eq!(refused["cancelled"], true, "{report:#}");
+    assert_eq!(refused["reached"], 0_u64, "{report:#}");
+    assert_eq!(refused["returned"], false, "{report:#}");
+    assert_eq!(refused["seen"], json!([]), "{report:#}");
+    let plain = &report["streams"]["plain"];
+    assert_eq!(plain["returned"], true, "{report:#}");
+    assert_eq!(plain["status"], 200_u64, "{report:#}");
+    assert_eq!(plain["seen"], json!([]), "{report:#}");
+}
+
 /// Holds the report of a language's program to what the Rust dispatcher wrote, and every message
 /// to the official schema.
 pub fn assert_matches(report: &Value) {
     let rust = rust_report();
+    assert_streams(report, &rust);
     assert_eq!(report["observed"], true, "{report:#}");
     let written: Vec<&str> = report["written"]
         .as_array()
@@ -573,21 +855,23 @@ fn an_admit_that_denies_by_name_stops_the_request_before_any_handler_runs() {
             method: base.method.to_owned(),
             path: "/mcp".to_owned(),
         };
-        let response = ready_output(dispatcher::answer_http(
-            &asked,
-            &settings,
-            &Stand,
-            async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| match request
-                .mcp_name()
-                .as_deref()
-            {
-                Some("forbidden") => Err::<(), _>(dispatcher::McpDenied::Forbidden),
-                Some("scoped") => Err(dispatcher::McpDenied::InsufficientScope {
-                    scope: "exports:write".to_owned(),
-                }),
-                _ => Err(dispatcher::McpDenied::NoValidCredentials { scope: None }),
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &Stand,
+                async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
+                    match request.mcp_name().as_deref() {
+                        Some("forbidden") => Err::<(), _>(dispatcher::McpDenied::Forbidden),
+                        Some("scoped") => Err(dispatcher::McpDenied::InsufficientScope {
+                            scope: "exports:write".to_owned(),
+                        }),
+                        _ => Err(dispatcher::McpDenied::NoValidCredentials { scope: None }),
+                    }
+                },
+            ))
+        });
         assert_eq!(response.status, status, "{name}");
         assert!(response.body.is_empty(), "{name}");
     }

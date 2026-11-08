@@ -4,7 +4,7 @@
 use crate::document_mcp::{self, McpHttpRequest, McpHttpSettings};
 use crate::support::{
     INTERNAL_ERROR, INVALID_PARAMS, LISTED_FOR_MS, answer, answer_workspace, assert_error,
-    assert_result, assert_valid, block_on, id, request, schema_errors, server_info,
+    assert_result, assert_valid, block_on, id, request, schema_errors, server_info, through,
 };
 use crate::tests::Archive;
 use serde_json::{Value, json};
@@ -385,12 +385,15 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
         method: "POST".to_owned(),
         path: "/mcp".to_owned(),
     };
-    let response = block_on(document_mcp::answer_http(
-        &asked,
-        &SETTINGS,
-        &Archive::default(),
-        async |_request, _call| Ok(()),
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request, _call| Ok(()),
+        ))
+    });
     assert_eq!(response.status, 200);
     let sent: Value = serde_json::from_slice(&response.body).unwrap();
     assert_eq!(sent["result"]["contents"][0]["blob"], "JVBERi0=");
@@ -399,12 +402,15 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
         "Mcp-Name".to_owned(),
         "workspace://documents/doc-2".to_owned(),
     ));
-    let mismatched = block_on(document_mcp::answer_http(
-        &asked,
-        &SETTINGS,
-        &Archive::default(),
-        async |_request, _call| Ok(()),
-    ));
+    let mismatched = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request, _call| Ok(()),
+        ))
+    });
     assert_eq!(mismatched.status, 400);
 }
 

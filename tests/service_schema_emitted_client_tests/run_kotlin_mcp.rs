@@ -17,7 +17,7 @@ use super::mcp_mobile_rows::{
 };
 use super::mcp_mobile_server_rows::{
     HttpRow, ORIGIN, ServerRow, billing_answer, expected, http_rows, observed, rust_http,
-    server_rows, workspace_answer, wrapped_refusal_requests,
+    server_rows, workspace_answer,
 };
 use super::mcp_mobile_service::Archive;
 use super::mcp_mobile_service::{
@@ -32,6 +32,7 @@ use super::runtime::ran_kotlin;
 use super::writer_service_schema;
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema, WriterServiceSchema};
 use super::{mobile_billing_service_schema, mobile_document_service_schema};
+use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -159,13 +160,13 @@ suspend fun serverReport(input: JsonObject): JsonObject {
             }
         })
     }
-    val wrappedAnswers = input.getValue("wrapped").jsonArray.map { nullable(alone(it.jsonPrimitive.content, nowhere, MobileDocumentServiceMcpInFlight())) }
     val aloneAnswers = requests.map { nullable(alone(it, nowhere, MobileDocumentServiceMcpInFlight())) }
     val billingAnswers = requests.map { nullable(billingAlone(it, nowhere, MobileBillingServiceMcpInFlight())) }
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
-        val answered = http(
+        val answered = respondMobileDocumentService(
+            http,
             MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 "/mcp",
@@ -205,10 +206,49 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     } catch (refused: IllegalStateException) {
         refused.message ?: ""
     }
+    val faultsOf = { held: MutableList<JsonElement> ->
+        { fault: MobileDocumentServiceFaultFields -> held.add(Json.encodeToJsonElement(serializer<MobileDocumentServiceFaultFields>(), fault)); Unit }
+    }
+    val touchPanic = requests.first { it.contains("\"reader\":\"panic\"") }
+    val heardFaults = mutableListOf<JsonElement>()
+    val heard = createMobileDocumentServiceMcpDispatcher(null, faultsOf(heardFaults)) { DocumentHandlers }(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+    val cancelling = object : MobileDocumentServiceHandlers by DocumentHandlers {
+        override suspend fun touchDocument(req: TouchDocumentRequest) { throw CancellationException("cancelled") }
+    }
+    val cancelledFaults = mutableListOf<JsonElement>()
+    val cancelled = try {
+        createMobileDocumentServiceMcpDispatcher(null, faultsOf(cancelledFaults)) { cancelling }(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+        "answered"
+    } catch (rethrown: CancellationException) {
+        "rethrown"
+    }
+    val routedFaults = mutableListOf<JsonElement>()
+    val routed = createMobileDocumentServiceMcpRoute(DocumentHandlers, faultsOf(routedFaults))(
+        "tools/call",
+        buildJsonObject { put("name", "touch-document"); put("arguments", buildJsonObject { put("documentId", "doc-1"); put("reader", "panic") }) },
+    )
+    val originalErr = System.err
+    val printed = java.io.ByteArrayOutputStream()
+    System.setErr(java.io.PrintStream(printed, true))
+    val silent = try {
+        alone(touchPanic, nowhere, MobileDocumentServiceMcpInFlight())
+    } finally {
+        System.setErr(originalErr)
+    }
+    val oneWay = buildJsonObject {
+        put("heard", nullable(heard))
+        put("heardFaults", JsonArray(heardFaults))
+        put("cancelled", cancelled)
+        put("cancelledFaults", JsonArray(cancelledFaults))
+        put("routed", routed ?: JsonNull)
+        put("routedFaults", JsonArray(routedFaults))
+        put("silent", nullable(silent))
+        put("printed", printed.toString())
+    }
     return buildJsonObject {
+        put("oneWay", oneWay)
         put("workspace", JsonArray(workspaceAnswers))
         put("alone", JsonArray(aloneAnswers))
-        put("wrapped", JsonArray(wrappedAnswers))
         put("billing", JsonArray(billingAnswers))
         put("badRoutes", JsonArray(badRoutes))
         put("http", JsonArray(httpAnswers))
@@ -290,7 +330,8 @@ suspend fun authReport(input: JsonObject): JsonObject {
         val scheme = given.getValue("scheme").jsonPrimitive.content
         val serve = createMobileDocumentServiceMcpHttpDispatcher(settings.getValue(scheme), admits.getValue(scheme))
         val before = reached
-        val response = serve(
+        val response = respondMobileDocumentService(
+            serve,
             MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 given.getValue("path").jsonPrimitive.content,
@@ -339,6 +380,55 @@ class WriterHandlers(
         WriterServiceGetVersionResult.Ok(WriterVersion(7u))
 }
 
+class HeldHandlers(
+    private val call: WriterServiceMcpCall,
+    private val opened: CompletableDeferred<Unit>,
+    private val reached: IntArray,
+) : WriterServiceHandlers {
+    override suspend fun exportFolder(req: String): WriterServiceExportFolderResult {
+        reached[0] += 1
+        call.progress(1.0, 3.0, "exported 1 of 3 files")
+        if (req == "held") opened.await()
+        return WriterServiceExportFolderResult.Ok
+    }
+
+    override suspend fun getVersion(req: WriterVersionRequest): WriterServiceGetVersionResult =
+        WriterServiceGetVersionResult.Ok(WriterVersion(7u))
+}
+
+class RecordingStream(private val goneAfter: Int? = null) : WriterServiceMcpHttpStream {
+    var attempts = 0
+    val seen = mutableListOf<JsonObject>()
+    private val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    suspend fun until(done: () -> Boolean) {
+        while (!done()) changed.receive()
+    }
+
+    private fun take() {
+        attempts += 1
+        val refused = goneAfter != null && seen.size >= goneAfter
+        changed.trySend(Unit)
+        if (refused) throw IllegalStateException("the client has gone")
+    }
+
+    override suspend fun begin(status: Int, headers: List<Pair<String, String>>) {
+        take()
+        seen.add(
+            buildJsonObject {
+                put("began", JsonArray(listOf(JsonPrimitive(status), JsonArray(headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))))
+            },
+        )
+        changed.trySend(Unit)
+    }
+
+    override suspend fun write(event: String) {
+        take()
+        seen.add(buildJsonObject { put("wrote", event) })
+        changed.trySend(Unit)
+    }
+}
+
 suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
     val written = java.util.concurrent.ConcurrentLinkedQueue<String>()
     val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
@@ -382,7 +472,8 @@ suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
     }
     val http = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
-        val response = serve(
+        val response = respondWriterService(
+            serve,
             WriterServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 given.getValue("path").jsonPrimitive.content,
@@ -396,7 +487,72 @@ suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
             put("body", response.body.decodeToString())
         }
     }
+    fun asRequest(name: String): WriterServiceMcpHttpRequest {
+        val row = input.getValue("streams").jsonObject.getValue(name).jsonObject
+        return WriterServiceMcpHttpRequest(
+            row.getValue("method").jsonPrimitive.content,
+            row.getValue("path").jsonPrimitive.content,
+            row.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content },
+            row.getValue("body").jsonPrimitive.content.encodeToByteArray(),
+        )
+    }
+    fun serving(opened: CompletableDeferred<Unit>, reached: IntArray, taken: Array<WriterServiceMcpCall?>) =
+        createWriterServiceMcpHttpDispatcher(WriterServiceMcpHttpSettings(emptyList())) { _, call ->
+            taken[0] = call
+            WriterServiceMcpAdmitted.Caller(HeldHandlers(call, opened, reached))
+        }
+
+    val progressGate = CompletableDeferred<Unit>()
+    val progressStream = RecordingStream()
+    val progressRunning = async { serving(progressGate, intArrayOf(0), arrayOfNulls(1))(asRequest("held"), progressStream) }
+    progressStream.until { progressStream.seen.size >= 2 }
+    val heldSeen = JsonArray(progressStream.seen.toList())
+    val endedWhileHeld = progressRunning.isCompleted
+    progressGate.complete(Unit)
+    val progressAnswered = progressRunning.await()
+
+    val failedGate = CompletableDeferred<Unit>()
+    val failedStream = RecordingStream(1)
+    val failedTaken = arrayOfNulls<WriterServiceMcpCall>(1)
+    val failedRunning = async { serving(failedGate, intArrayOf(0), failedTaken)(asRequest("held"), failedStream) }
+    failedStream.until { failedStream.attempts >= 2 }
+    failedGate.complete(Unit)
+    val failedAnswered = failedRunning.await()
+
+    val refusedStream = RecordingStream(0)
+    val refusedTaken = arrayOfNulls<WriterServiceMcpCall>(1)
+    val refusedReached = intArrayOf(0)
+    val refusedAnswered = serving(CompletableDeferred(Unit), refusedReached, refusedTaken)(asRequest("docs"), refusedStream)
+
+    val plainStream = RecordingStream()
+    val plainAnswered = serving(CompletableDeferred(Unit), intArrayOf(0), arrayOfNulls(1))(asRequest("plain"), plainStream)
+
+    val streams = buildJsonObject {
+        put("progress", buildJsonObject {
+            put("endedWhileHeld", endedWhileHeld)
+            put("full", JsonArray(progressStream.seen.toList()))
+            put("held", heldSeen)
+            put("returned", progressAnswered != null)
+        })
+        put("failed", buildJsonObject {
+            put("cancelled", failedTaken[0]!!.cancelled)
+            put("returned", failedAnswered != null)
+            put("seen", JsonArray(failedStream.seen.toList()))
+        })
+        put("refused", buildJsonObject {
+            put("cancelled", refusedTaken[0]!!.cancelled)
+            put("reached", refusedReached[0])
+            put("returned", refusedAnswered != null)
+            put("seen", JsonArray(refusedStream.seen.toList()))
+        })
+        put("plain", buildJsonObject {
+            put("returned", plainAnswered != null)
+            put("seen", JsonArray(plainStream.seen.toList()))
+            put("status", plainAnswered!!.status)
+        })
+    }
     buildJsonObject {
+        put("streams", streams)
         put("written", JsonArray(kept.map { JsonPrimitive(it) }))
         put("observed", observed)
         put("failed", buildJsonObject {
@@ -579,7 +735,6 @@ fn input() -> Value {
         "origin": ORIGIN,
         "writer": writer_input(),
         "requests": server_rows().iter().map(|row| row.text.clone()).collect::<Vec<_>>(),
-        "wrapped": wrapped_refusal_requests().iter().map(|(_, text)| text.clone()).collect::<Vec<_>>(),
         "http": http_rows().iter().map(http_input).collect::<Vec<_>>(),
         "replies": replies,
         "oauth": {
@@ -604,6 +759,8 @@ fn module() -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
     parts.push(HANDLERS.to_owned());
+    parts.push(kotlin_respond("MobileDocumentService"));
+    parts.push(kotlin_respond("WriterService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(SERVER_DRIVER.to_owned());
     parts.push(AUTH_DRIVER.to_owned());
@@ -681,20 +838,6 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         &rows,
     );
     assert_answers("billing", billing_answer, &texts(&server["billing"]), &rows);
-    for ((tool, _), answered) in wrapped_refusal_requests()
-        .iter()
-        .zip(texts(&server["wrapped"]))
-    {
-        let reply: Value = serde_json::from_str(&answered.unwrap()).unwrap();
-        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
-        let fault: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(
-            fault["fault"]["kind"], "failed-validation",
-            "{tool}: {reply}"
-        );
-        assert_eq!(fault["fault"]["field"], "document_id", "{tool}: {reply}");
-        assert_eq!(fault["fault"]["operation"], *tool, "{reply}");
-    }
     let bad_routes = texts(&server["badRoutes"]);
     assert_eq!(bad_routes.len(), 3);
     for answered in bad_routes {
@@ -712,6 +855,40 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         server["kept"], "built",
         "a tool and a prompt of one name do not collide"
     );
+}
+
+#[test]
+fn a_one_way_handler_that_throws_reaches_the_callback_or_standard_error() {
+    let Some(report) = driven() else {
+        return;
+    };
+    let one_way = &report["server"]["oneWay"];
+    let empty = |reply: &Value| {
+        let parsed: Value = serde_json::from_str(reply.as_str().unwrap()).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed:#}");
+        assert_eq!(parsed["result"]["content"], json!([]), "{parsed:#}");
+    };
+    empty(&one_way["heard"]);
+    empty(&one_way["silent"]);
+    assert_eq!(one_way["routed"]["result"]["isError"], false, "{one_way:#}");
+    for held in ["heardFaults", "routedFaults"] {
+        let faults = one_way[held].as_array().unwrap();
+        assert_eq!(faults.len(), 1, "{held}: {one_way:#}");
+        assert_eq!(faults[0]["kind"], "handler-panic", "{held}: {one_way:#}");
+        assert_eq!(
+            faults[0]["operation"], "touch-document",
+            "{held}: {one_way:#}"
+        );
+        assert_eq!(
+            faults[0]["detail"], "the handler came apart",
+            "{held}: {one_way:#}"
+        );
+    }
+    assert_eq!(one_way["cancelled"], "rethrown", "{one_way:#}");
+    assert_eq!(one_way["cancelledFaults"], json!([]), "{one_way:#}");
+    let printed: Value = serde_json::from_str(one_way["printed"].as_str().unwrap().trim()).unwrap();
+    assert_eq!(printed["kind"], "handler-panic", "{one_way:#}");
+    assert_eq!(printed["operation"], "touch-document", "{one_way:#}");
 }
 
 #[test]
