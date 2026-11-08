@@ -17,9 +17,10 @@ use crate::features::dart::{
     dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
 };
 use crate::rename_rule::RenameRule;
+use crate::service_schema::mcp_tools::{answers_key, is_content_list, is_content_pair};
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
-    is_unit_type, wire_key, written,
+    is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
@@ -27,6 +28,143 @@ use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+
+/// The type an `mcp(content)` operation answers a list of, as the service module declares it in
+/// Rust: one block of a tool's `content`, read and written as the specification writes it.
+const CONTENT_TYPE: &str = "/// One block of a tool's `content`: what an `mcp(content)` operation answers a list of.
+sealed class McpContent {
+  const McpContent();
+
+  /// Reads one block as the specification writes it.
+  factory McpContent.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) throw const FormatException('a block is not an object');
+    String text(Map<String, dynamic> from, String key) {
+      final held = from[key];
+      if (held is! String) throw FormatException('a block holds no `$key`');
+      return held;
+    }
+
+    switch (json['type']) {
+      case 'text':
+        return McpContentText(text(json, 'text'));
+      case 'image':
+        return McpContentImage(base64Decode(text(json, 'data')), text(json, 'mimeType'));
+      case 'audio':
+        return McpContentAudio(base64Decode(text(json, 'data')), text(json, 'mimeType'));
+      case 'resource_link':
+        return McpContentResourceLink(
+          uri: text(json, 'uri'),
+          name: text(json, 'name'),
+          title: json['title'] as String?,
+          description: json['description'] as String?,
+          mimeType: json['mimeType'] as String?,
+        );
+      case 'resource':
+        final resource = json['resource'];
+        if (resource is! Map<String, dynamic>) throw const FormatException('a resource block holds no resource');
+        final blob = resource['blob'];
+        return McpContentResource(
+          uri: text(resource, 'uri'),
+          mimeType: resource['mimeType'] as String?,
+          contents: blob is String ? McpResourceContentsBlob(base64Decode(blob)) : McpResourceContentsText(text(resource, 'text')),
+        );
+      default:
+        throw const FormatException('a block of a type this client does not read');
+    }
+  }
+
+  /// This block as the specification writes it.
+  Map<String, dynamic> toJson();
+}
+
+/// Text.
+final class McpContentText extends McpContent {
+  const McpContentText(this.text);
+  final String text;
+
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{'text': text, 'type': 'text'};
+}
+
+/// An image: its bytes and its content type.
+final class McpContentImage extends McpContent {
+  const McpContentImage(this.data, this.mimeType);
+  final Uint8List data;
+  final String mimeType;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      <String, dynamic>{'data': base64Encode(data), 'mimeType': mimeType, 'type': 'image'};
+}
+
+/// Audio: its bytes and its content type.
+final class McpContentAudio extends McpContent {
+  const McpContentAudio(this.data, this.mimeType);
+  final Uint8List data;
+  final String mimeType;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      <String, dynamic>{'data': base64Encode(data), 'mimeType': mimeType, 'type': 'audio'};
+}
+
+/// A link to a resource the client can read.
+final class McpContentResourceLink extends McpContent {
+  const McpContentResourceLink({required this.uri, required this.name, this.title, this.description, this.mimeType});
+  final String uri;
+  final String name;
+  final String? title;
+  final String? description;
+  final String? mimeType;
+
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'name': name,
+        'type': 'resource_link',
+        'uri': uri,
+        if (title != null) 'title': title,
+        if (description != null) 'description': description,
+        if (mimeType != null) 'mimeType': mimeType,
+      };
+}
+
+/// A resource carried in the result.
+final class McpContentResource extends McpContent {
+  const McpContentResource({required this.uri, this.mimeType, required this.contents});
+  final String uri;
+  final String? mimeType;
+  final McpResourceContents contents;
+
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'resource': <String, dynamic>{
+          'uri': uri,
+          if (mimeType != null) 'mimeType': mimeType,
+          ...switch (contents) {
+            McpResourceContentsText(:final text) => <String, dynamic>{'text': text},
+            McpResourceContentsBlob(:final bytes) => <String, dynamic>{'blob': base64Encode(bytes)},
+          },
+        },
+        'type': 'resource',
+      };
+}
+
+/// What an embedded resource holds.
+sealed class McpResourceContents {
+  const McpResourceContents();
+}
+
+/// Text.
+final class McpResourceContentsText extends McpResourceContents {
+  const McpResourceContentsText(this.text);
+  final String text;
+}
+
+/// Bytes.
+final class McpResourceContentsBlob extends McpResourceContents {
+  const McpResourceContentsBlob(this.bytes);
+  final Uint8List bytes;
+}";
 
 const TOOLS_MARKER: &str = "@TOOLS@";
 const NAMES_MARKER: &str = "@NAMES@";
@@ -730,6 +868,22 @@ const CLIENT_CALL: &str = "class _@N@McpCallFault implements Exception {
 @F@ _@P@McpReadFailed(String operation, String detail, {String? field}) =>
     _@P@McpClientFault(@N@FaultKind.undeserializablePayload, operation, detail, field: field);";
 
+const CLIENT_PAIR: &str =
+    "/// The bytes and the content type an answer's one image or audio block holds, written as the
+/// structured pair, `null` where it holds none.
+Object? _@P@McpPair(Object? content) {
+  final block = content is List && content.isNotEmpty ? content.first : null;
+  if (block is! Map<String, dynamic>) return null;
+  final data = block['data'];
+  final type = block['mimeType'];
+  if (data is! String || type is! String) return null;
+  try {
+    return <Object>[base64Decode(data), type];
+  } catch (_) {
+    return null;
+  }
+}";
+
 const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
 
   Future<Map<String, dynamic>> _call(
@@ -859,6 +1013,86 @@ Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatche
         admit,
         (ctx, part, method, params) => route(ctx, method, params),
       );
+}";
+
+const INTERVIEW_HELPERS: &str = "String _@P@McpPlain(String text) => text.replaceAll(RegExp('[-_ ]'), '').toLowerCase();
+
+/// Whether the client declared the elicitation `mode`: an empty `elicitation` is a form.
+bool _@P@McpElicits(Map<String, dynamic> params, String mode) {
+  final meta = params['_meta'];
+  final capabilities = meta is Map ? meta['io.modelcontextprotocol/clientCapabilities'] : null;
+  final held = capabilities is Map ? capabilities['elicitation'] : null;
+  if (held is! Map) return false;
+  if (mode == 'url') return held['url'] is Map;
+  return held['form'] is Map || !held.containsKey('url');
+}
+
+/// Whether the user declined or dismissed the request keyed `key`.
+bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
+  final responses = params['inputResponses'];
+  final response = responses is Map ? responses[key] : null;
+  final action = response is Map ? response['action'] : null;
+  return action == 'decline' || action == 'cancel';
+}
+
+/// The result that asks the client for the elicitation `request`, keyed `key`.
+@N@McpAnswer _@P@McpInputRequired(String key, Map<String, dynamic> request) => (
+      result: <String, dynamic>{
+        'inputRequests': <String, dynamic>{
+          key: <String, dynamic>{'method': 'elicitation/create', 'params': request},
+        },
+        'resultType': 'input_required',
+      },
+      error: null,
+    );
+
+/// The result that asks the user where `error` is the arm that asks and the client can be asked,
+/// `null` otherwise.
+@N@McpAnswer? _@P@McpAsking(
+  String arm,
+  String? answers,
+  String? form,
+  String doc,
+  Object? error,
+  Map<String, dynamic> params,
+  bool declined,
+) {
+  if (error is! Map<String, dynamic>) return null;
+  final code = error['errorCode'];
+  if (code is! String || _@P@McpPlain(code) != _@P@McpPlain(arm)) return null;
+  final message = error['message'];
+  if (answers != null) {
+    if (declined || !_@P@McpElicits(params, 'form')) return null;
+    return _@P@McpInputRequired(answers, <String, dynamic>{
+      'message': message is String ? message : doc,
+      'mode': 'form',
+      'requestedSchema': jsonDecode(form ?? '{}'),
+    });
+  }
+  final url = error['url'];
+  if (url is! String || message is! String) return null;
+  if (_@P@McpDismissed(params, code) || !_@P@McpElicits(params, 'url')) return null;
+  return _@P@McpInputRequired(code, <String, dynamic>{'message': message, 'mode': 'url', 'url': url});
+}";
+
+const CONTENT_HELPERS: &str = "/// The result of a tool that answers blocks.
+@N@McpAnswer _@P@McpBlocks(List<Object> content) => (
+      result: <String, dynamic>{'content': content, 'isError': false},
+      error: null,
+    );";
+
+const MEDIA_HELPER: &str =
+    "/// The image or audio block of `bytes`, where `contentType` says they are one.
+@N@McpAnswer? _@P@McpMedia(List<int> bytes, String contentType) {
+  final kind = contentType.startsWith('image/')
+      ? 'image'
+      : contentType.startsWith('audio/')
+          ? 'audio'
+          : null;
+  if (kind == null) return null;
+  return _@P@McpBlocks(<Object>[
+    <String, dynamic>{'data': base64Encode(bytes), 'mimeType': contentType, 'type': kind},
+  ]);
 }";
 
 const CAPTURED: &str =
@@ -1017,6 +1251,23 @@ pub fn service_text(declared: &ServiceDef) -> String {
     ];
     if !service.operations.is_empty() {
         published.push(answer_helpers(&named, &prefix, &calls, &held, service));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.interview.is_some())
+    {
+        published.push(filled(INTERVIEW_HELPERS, &named, &prefix));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.content.is_some())
+    {
+        published.push(filled(CONTENT_HELPERS, &named, &prefix));
+    }
+    if service.operations.iter().any(is_content_pair) {
+        published.push(filled(MEDIA_HELPER, &named, &prefix));
     }
     published.extend(tools_of(service).map(|operation| server_call(&named, &prefix, operation)));
     published.extend(resource_functions(service, &held, &named, &prefix));
@@ -1252,6 +1503,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
         "Future<{named}McpAnswer> _{prefix}McpCall{op}<Ctx>(\n  \
          {named}Handlers<Ctx> handlers,\n  \
          Ctx ctx,\n  \
+         Map<String, dynamic> params,\n  \
          Object? arguments,\n\
          ) async {{\n  \
          final Map<String, dynamic> members;\n  \
@@ -1263,7 +1515,8 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          return _{prefix}McpFaultResult(\n      \
          _{prefix}McpFault({kind}.undeserializablePayload, {tool}, 'the arguments are not an object'),\n    \
          );\n  \
-         }}\n  \
+         }}\n\
+         {answers}  \
          final dynamic source = {source};\n  \
          final {req_ty} decoded;\n  \
          try {{\n    \
@@ -1283,6 +1536,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, '$rejected'));\n  \
          }}\n",
         op = pascal(operation),
+        answers = answers_stmt(named, prefix, operation),
     );
     let mut locals = Vec::new();
     for header in &shape.header_in {
@@ -1358,7 +1612,9 @@ fn reply_tail(
             &shape.header_out,
         )
     };
-    let ok = if unit {
+    let ok = if is_content_list(operation) {
+        format!("_{prefix}McpBlocks(<Object>[for (final block in answered) block.toJson()])")
+    } else if unit {
         format!("_{prefix}McpEmpty()")
     } else if let Some(headers) = value_headers {
         format!("_{prefix}McpOk(<String, dynamic>{{'value': {value_expr}, ...{headers}}})")
@@ -1376,19 +1632,102 @@ fn reply_tail(
         || error_expr.clone(),
         |headers| format!("<String, dynamic>{{'value': {error_expr}, ...{headers}}}"),
     );
+    let (asking, declared_body) = asking_stmt(prefix, operation, &declared);
+    let media = if is_content_pair(operation) {
+        format!(
+            "    final media = _{prefix}McpMedia(answered.$1, answered.$2);\n    \
+             if (media != null) return media;\n"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "  try {{\n    \
          {call_stmt}\n\
-{value_pre}    \
+{value_pre}{media}    \
          return {ok};\n  \
          }} on {error_ty} catch (declared) {{\n\
-{error_pre}    \
-         return _{prefix}McpDeclared({declared});\n  \
+{error_pre}{asking}    \
+         return _{prefix}McpDeclared({declared_body});\n  \
          }} catch (unexpected) {{\n    \
          return _{prefix}McpPanic({tool}, {tool}, '$unexpected');\n  \
          }}\n\
          }}"
     )
+}
+
+/// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
+fn form_marker(operation: &OperationDef) -> String {
+    format!("@FORM:{}@", written(&operation.ident))
+}
+
+/// The statements that read the answers of a retried form call into the arguments, ahead of the
+/// message's own read.
+fn answers_stmt(named: &str, prefix: &str, operation: &OperationDef) -> String {
+    let Some(wire) = answers_key(operation) else {
+        return String::new();
+    };
+    let key = quoted(&wire);
+    let held = match &operation.inputs {
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .find(|(field, _)| wire_key(field) == wire)
+            .and_then(|(_, ty)| option_inner(ty)),
+        OperationInputs::Empty | OperationInputs::Named(_) => None,
+    };
+    let read = held.map_or_else(String::new, |form| {
+        format!(
+            "      try {{\n        \
+             {};\n      \
+             }} catch (rejected) {{\n        \
+             return _{prefix}McpFaultResult(\n          \
+             _{prefix}McpFault({named}FaultKind.failedValidation, {}, '$rejected', field: {key}),\n        );\n      \
+             }}\n",
+            dart_json_decode(form, "content"),
+            quoted(&operation.wire_name),
+        )
+    });
+    format!(
+        "  var declined = false;\n  \
+         final responses = params['inputResponses'];\n  \
+         final response = responses is Map<String, dynamic> ? responses[{key}] : null;\n  \
+         if (response is Map<String, dynamic>) {{\n    \
+         if (response['action'] == 'accept') {{\n      \
+         final content = response['content'] ?? <String, dynamic>{{}};\n{read}      \
+         members[{key}] = content;\n    \
+         }} else {{\n      \
+         members.remove({key});\n      \
+         declined = true;\n    \
+         }}\n  \
+         }}\n"
+    )
+}
+
+/// The statements that answer the result that asks, where the declared error is the arm that asks,
+/// and the body the declared error is answered with otherwise.
+fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (String, String) {
+    let Some(interview) = operation.mcp.interview.as_ref() else {
+        return (String::new(), declared.to_owned());
+    };
+    let answers = answers_key(operation).map_or_else(|| "null".to_owned(), |key| quoted(&key));
+    let form = if interview.answers.is_some() {
+        form_marker(operation)
+    } else {
+        "null".to_owned()
+    };
+    let declined = if interview.answers.is_some() {
+        "declined"
+    } else {
+        "false"
+    };
+    let asking = format!(
+        "    final Object? declaredBody = {declared};\n    \
+         final asking = _{prefix}McpAsking({}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
+         if (asking != null) return asking;\n",
+        quoted(&interview.arm.to_string()),
+        quoted(operation.doc.as_deref().unwrap_or_default()),
+    );
+    (asking, "declaredBody".to_owned())
 }
 
 /// `create{Service}McpRoute`: answers `tools/call` for the tool each operation names, and the
@@ -1410,7 +1749,7 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
         for operation in tools {
             let _ = writeln!(
                 arms,
-                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params['arguments']);",
+                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']);",
                 quoted(operation.mcp_tool_name()),
                 pascal(operation)
             );
@@ -2034,6 +2373,9 @@ pub fn client_text(declared: &ServiceDef) -> String {
         return published.join("\n\n");
     }
     published.push(with_fields(CLIENT_CALL));
+    if service.operations.iter().any(is_content_pair) {
+        published.push(with_fields(CLIENT_PAIR));
+    }
     let table = wrapped_table(&prefix, "Client", service);
     if !table.is_empty() {
         published.push(format!(
@@ -2173,7 +2515,14 @@ fn reply_method(
     let reply = if unit_ok {
         String::new()
     } else if shape.header_out.is_empty() {
-        "      final reply = <String, dynamic>{'value': result['structuredContent']};\n".to_owned()
+        let value = if is_content_list(operation) {
+            "result['content']".to_owned()
+        } else if is_content_pair(operation) {
+            format!("result['structuredContent'] ?? _{prefix}McpPair(result['content'])")
+        } else {
+            "result['structuredContent']".to_owned()
+        };
+        format!("      final reply = <String, dynamic>{{'value': {value}}};\n")
     } else {
         "      final structured = result['structuredContent'];\n      \
          final reply = <String, dynamic>{\n        \
@@ -2237,6 +2586,52 @@ fn reply_method(
     )
 }
 
+/// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
+fn form_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
+    declared
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .interview
+                .as_ref()
+                .is_some_and(|interview| interview.answers.is_some())
+        })
+        .map(|operation| {
+            let marker = form_marker(operation);
+            let method = format_ident!(
+                "mcp_form_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! { .replace(#marker, &literal(&Self::#method().to_string())) }
+        })
+        .collect()
+}
+
+/// The `skills` and `skill_files` literals `dart_mcp_service()` writes over their markers.
+fn skill_literals() -> TokenStream {
+    quote! {
+        let skills = Self::mcp_skills()
+            .iter()
+            .map(|skill| literal(&skill.to_string()))
+            .collect::<::std::vec::Vec<_>>()
+            .join(", ");
+        let skill_files = Self::mcp_skill_files()
+            .iter()
+            .map(|file| {
+                ::std::format!(
+                    "{}: {}",
+                    literal(file["uri"].as_str().unwrap_or_default()),
+                    literal(&file.to_string())
+                )
+            })
+            .collect::<::std::vec::Vec<_>>()
+            .join(", ");
+    }
+}
+
 /// `dart_mcp_service()` and `dart_mcp_client()`, for a service that asks for `mcp`. They write the
 /// tool list, the names, the instructions, the version and each `wrapped_{operation}()` over the
 /// markers when they run, since only the compiled types know them.
@@ -2258,7 +2653,21 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
         })
         .collect();
     let wrapped_server = wrapped.clone();
+    let forms = form_replacements(declared);
+    let skill_literals = skill_literals();
+    let content = declared.operations.iter().any(is_content_list).then(|| {
+        quote! {
+            #[doc = " The `McpContent` types a `List<McpContent>` success of an `mcp(content)`"]
+            #[doc = " operation is written in. A bundle names it once, and imports"]
+            #[doc = " `dart:convert` and `dart:typed_data`."]
+            pub fn dart_mcp_content() -> ::std::string::String {
+                #CONTENT_TYPE.to_owned()
+            }
+        }
+    });
     quote! {
+        #content
+
         #[doc = " The service's generated Dart `mcp` server: its catalog and names, the route"]
         #[doc = " for the endpoint it sits on, the function that serves an endpoint, and the"]
         #[doc = " dispatchers over stdio and HTTP. Takes the handlers `dart_ws_client()` declares,"]
@@ -2289,22 +2698,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|template| literal(&template.to_string()))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
-            let skills = Self::mcp_skills()
-                .iter()
-                .map(|skill| literal(&skill.to_string()))
-                .collect::<::std::vec::Vec<_>>()
-                .join(", ");
-            let skill_files = Self::mcp_skill_files()
-                .iter()
-                .map(|file| {
-                    ::std::format!(
-                        "{}: {}",
-                        literal(file["uri"].as_str().unwrap_or_default()),
-                        literal(&file.to_string())
-                    )
-                })
-                .collect::<::std::vec::Vec<_>>()
-                .join(", ");
+            #skill_literals
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
                 ::core::option::Option::None => ::std::string::String::from("null"),
@@ -2319,6 +2713,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*
+                #(#forms)*
         }
 
         #[doc = " The service's generated Dart `mcp` client: the transport a consumer implements"]

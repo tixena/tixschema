@@ -13,6 +13,7 @@ use crate::features::kotlin::{
     kotlin_tuple_naming,
 };
 use crate::rename_rule::RenameRule;
+use crate::service_schema::mcp_tools::{is_content_list, is_content_pair};
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, option_inner, written,
 };
@@ -35,7 +36,7 @@ const SUPPORT: &str = r#"private val @P@McpCallWrapped: Map<String, Boolean> = m
 )
 
 private sealed interface @P@McpCalled {
-  class Succeeded(val structured: JsonElement?) : @P@McpCalled
+  class Succeeded(val structured: JsonElement?, val content: JsonElement?) : @P@McpCalled
   class Declared(val error: JsonElement) : @P@McpCalled
   class Faulted(val fault: @F@) : @P@McpCalled
 }
@@ -103,7 +104,7 @@ private suspend fun @P@McpCallExchange(
     ?: return unreadable("the answer holds neither a result nor an error")
   val flagged = result["isError"]
   if (!(flagged is JsonPrimitive && !flagged.isString && flagged.content == "true")) {
-    return @P@McpCalled.Succeeded(result["structuredContent"])
+    return @P@McpCalled.Succeeded(result["structuredContent"], result["content"])
   }
   val text = (((result["content"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("text") as? JsonPrimitive)
     ?.takeIf { it.isString }?.content
@@ -126,6 +127,25 @@ private fun @P@McpCallReported(tool: String, tagged: JsonObject): @P@McpCalled.F
     )
   }"#;
 
+const PAIR: &str = r#"/** [element] read as the type the caller expects, which is the pair `kotlin_http_client()` declares. */
+private inline fun <reified Value> @P@McpCallDecode(element: JsonElement): Value = Json.decodeFromJsonElement(element)
+
+/** The bytes and the content type an answer's one image or audio block holds, written as the structured pair. */
+private fun @P@McpCallPair(content: JsonElement?): JsonElement? {
+  val block = (content as? JsonArray)?.firstOrNull() as? JsonObject ?: return null
+  val data = (block["data"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+  val type = (block["mimeType"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+  val bytes = try {
+    java.util.Base64.getDecoder().decode(data)
+  } catch (rejected: IllegalArgumentException) {
+    return null
+  }
+  return buildJsonArray {
+    add(buildJsonArray { for (byte in bytes) add(byte.toInt() and 0xff) })
+    add(type)
+  }
+}"#;
+
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     kotlin_tuple_naming(TupleNaming::Named);
     let service = &declared.enveloped();
@@ -143,6 +163,9 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.push(
         fill(SUPPORT, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &wrapped_entries(service)),
     );
+    if service.operations.iter().any(is_content_pair) {
+        published.push(fill(PAIR, &prefix, &named, &fields));
+    }
     published.push(client(service, &prefix, &named));
     published.extend(kotlin_declarations());
     published
@@ -317,10 +340,21 @@ fn succeeded_read(
         return format!("      is {prefix}McpCalled.Succeeded -> {result}.Ok\n");
     }
     let read = if shape.header_out.is_empty() {
-        format!(
-            "          {result}.Ok(Json.decodeFromJsonElement({}, outcome.structured ?: JsonNull))\n",
-            read_serializer(success)
-        )
+        if is_content_pair(operation) {
+            format!(
+                "          {result}.Ok({prefix}McpCallDecode(outcome.structured ?: {prefix}McpCallPair(outcome.content) ?: JsonNull))\n"
+            )
+        } else {
+            let source = if is_content_list(operation) {
+                "outcome.content"
+            } else {
+                "outcome.structured"
+            };
+            format!(
+                "          {result}.Ok(Json.decodeFromJsonElement({}, {source} ?: JsonNull))\n",
+                read_serializer(success)
+            )
+        }
     } else {
         let extra = header_elements(&shape.header_out, success, "headerOut");
         let mut text = format!(
