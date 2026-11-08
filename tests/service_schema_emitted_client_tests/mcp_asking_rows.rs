@@ -82,6 +82,16 @@ pub enum AskingKindError {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", tag = "kind", content = "data")]
+pub enum AskingAdjacentError {
+    NeedsConfirmation { message: String },
+    NeedsConnection { message: String, url: String },
+    NotFound,
+    Refused,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]
 pub enum AskingMiss {
     NotFound,
@@ -128,6 +138,14 @@ pub trait AskingService<Ctx> {
         req: AskingReportRequest,
     ) -> Result<Vec<asking_service_schema::McpContent>, AskingMiss>;
 
+    /// Imports one file from a Drive whose error holds its arm under a content key.
+    #[service_schema_op(mcp(interview(arm = "NeedsConnection", url)))]
+    async fn connect_adjacent(
+        &self,
+        ctx: &Ctx,
+        file_id: String,
+    ) -> Result<AskingLinked, AskingAdjacentError>;
+
     /// Imports one file from a Drive whose error is tagged by a key of its own.
     #[service_schema_op(mcp(interview(arm = "NeedsConnection", url)))]
     async fn connect_by_kind(
@@ -143,6 +161,16 @@ pub trait AskingService<Ctx> {
         ctx: &Ctx,
         file_id: String,
     ) -> Result<AskingLinked, AskingRenamedError>;
+
+    /// Deletes one document after the user confirms it, in an error that holds its arm under a
+    /// content key.
+    #[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
+    async fn delete_adjacent(
+        &self,
+        ctx: &Ctx,
+        document_id: String,
+        confirmation: Option<AskingConfirmation>,
+    ) -> Result<(), AskingAdjacentError>;
 
     /// Deletes one document after the user confirms it.
     #[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
@@ -237,6 +265,18 @@ impl AskingService<()> for Stand {
         ]))
     }
 
+    fn connect_adjacent(
+        &self,
+        _ctx: &(),
+        file_id: String,
+    ) -> impl Future<Output = Result<AskingLinked, AskingAdjacentError>> {
+        self.reach(json!(["connect-adjacent", file_id]));
+        ready(Err(AskingAdjacentError::NeedsConnection {
+            url: LINK.to_owned(),
+            message: LINK_MESSAGE.to_owned(),
+        }))
+    }
+
     fn connect_by_kind(
         &self,
         _ctx: &(),
@@ -259,6 +299,23 @@ impl AskingService<()> for Stand {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }))
+    }
+
+    fn delete_adjacent(
+        &self,
+        _ctx: &(),
+        document_id: String,
+        confirmation: Option<AskingConfirmation>,
+    ) -> impl Future<Output = Result<(), AskingAdjacentError>> {
+        self.reach(json!(["delete-adjacent", document_id, confirmation]));
+        ready(match (document_id.as_str(), confirmation) {
+            ("missing", _) => Err(AskingAdjacentError::NotFound),
+            (_, None) => Err(AskingAdjacentError::NeedsConfirmation {
+                message: CONFIRMATION_MESSAGE.to_owned(),
+            }),
+            (_, Some(AskingConfirmation { confirm: true })) => Ok(()),
+            (_, Some(AskingConfirmation { confirm: false })) => Err(AskingAdjacentError::Refused),
+        })
     }
 
     fn delete_document(
@@ -550,9 +607,11 @@ fn link_requests() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The requests that ask by a link whose arm is renamed or tagged by a key of its own.
+/// The requests that ask by a link whose arm is renamed, or by an error tagged by a key of its own
+/// or holding its arm under a content key.
 fn renamed_requests() -> Vec<(&'static str, String)> {
     let link = json!({ "value": "1A2b3C" });
+    let delete = json!({ "documentId": "doc-1" });
     vec![
         (
             "renamed_first",
@@ -565,6 +624,60 @@ fn renamed_requests() -> Vec<(&'static str, String)> {
                 &link,
                 LINK_CAPABLE,
                 Some(json!({ "connect-first": { "action": "decline" } })),
+            ),
+        ),
+        (
+            "adjacent_link_first",
+            tool_call("connect-adjacent", &link, LINK_CAPABLE, None),
+        ),
+        (
+            "adjacent_link_dismissed",
+            tool_call(
+                "connect-adjacent",
+                &link,
+                LINK_CAPABLE,
+                Some(json!({ "needs-connection": { "action": "decline" } })),
+            ),
+        ),
+        (
+            "adjacent_link_without_url_mode",
+            tool_call("connect-adjacent", &link, FORM, None),
+        ),
+        (
+            "adjacent_form_first",
+            tool_call("delete-adjacent", &delete, FORM, None),
+        ),
+        (
+            "adjacent_form_accepted",
+            tool_call(
+                "delete-adjacent",
+                &delete,
+                FORM,
+                Some(
+                    json!({ "confirmation": { "action": "accept", "content": { "confirm": true } } }),
+                ),
+            ),
+        ),
+        (
+            "adjacent_form_declined",
+            tool_call(
+                "delete-adjacent",
+                &delete,
+                FORM,
+                Some(json!({ "confirmation": { "action": "decline" } })),
+            ),
+        ),
+        (
+            "adjacent_form_without_elicitation",
+            tool_call("delete-adjacent", &delete, NO_CAPABILITIES, None),
+        ),
+        (
+            "adjacent_form_missing_document",
+            tool_call(
+                "delete-adjacent",
+                &json!({ "documentId": "missing" }),
+                FORM,
+                None,
             ),
         ),
         (
@@ -1099,6 +1212,8 @@ fn an_arm_asks_under_the_name_and_the_tag_serde_gives_it() {
     for (request, key) in [
         ("renamed_first", "connect-first"),
         ("kind_first", "needs_connection"),
+        ("adjacent_link_first", "needs-connection"),
+        ("adjacent_form_first", "confirmation"),
     ] {
         let asked = answer(request);
         assert_eq!(asked["result"]["resultType"], "input_required", "{asked:#}");
@@ -1109,7 +1224,12 @@ fn an_arm_asks_under_the_name_and_the_tag_serde_gives_it() {
             .collect();
         assert_eq!(keys, [key], "{asked:#}");
     }
-    for request in ["renamed_dismissed", "kind_dismissed"] {
+    for request in [
+        "renamed_dismissed",
+        "kind_dismissed",
+        "adjacent_link_dismissed",
+        "adjacent_form_declined",
+    ] {
         let declined = answer(request);
         assert_eq!(declined["result"]["isError"], true, "{declined:#}");
     }

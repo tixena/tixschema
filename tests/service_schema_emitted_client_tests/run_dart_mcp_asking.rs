@@ -5,10 +5,10 @@
 #![cfg(feature = "dart")]
 
 use super::mcp_asking_rows::{
-    asking_confirmation_dart, asking_error_dart, asking_kind_error_dart, asking_link_error_dart,
-    asking_linked_dart, asking_miss_dart, asking_priority_dart, asking_renamed_error_dart,
-    asking_report_request_dart, asking_shipping_dart, assert_client, assert_matches, client_input,
-    input,
+    asking_adjacent_error_dart, asking_confirmation_dart, asking_error_dart,
+    asking_kind_error_dart, asking_link_error_dart, asking_linked_dart, asking_miss_dart,
+    asking_priority_dart, asking_renamed_error_dart, asking_report_request_dart,
+    asking_shipping_dart, assert_client, assert_matches, client_input, input,
 };
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
@@ -50,6 +50,20 @@ final handlers = AskingServiceHandlers<void>(
       message: 'Connect your Google Drive so this server can import the file.',
       url: 'https://mcp.example.com/connect/drive?request=7f3a',
     );
+  },
+  connectAdjacent: (ctx, req) async {
+    reached.add(<Object?>['connect-adjacent', req]);
+    throw const AskingAdjacentErrorNeedsConnection(
+      message: 'Connect your Google Drive so this server can import the file.',
+      url: 'https://mcp.example.com/connect/drive?request=7f3a',
+    );
+  },
+  deleteAdjacent: (ctx, req) async {
+    reached.add(<Object?>['delete-adjacent', req.document_id, req.confirmation?.toJson()]);
+    if (req.document_id == 'missing') throw const AskingAdjacentErrorNotFound();
+    final confirmation = req.confirmation;
+    if (confirmation == null) throw const AskingAdjacentErrorNeedsConfirmation(message: 'Delete this document for good?');
+    if (!confirmation.confirm) throw const AskingAdjacentErrorRefused();
   },
   connectByKind: (ctx, req) async {
     reached.add(<Object?>['connect-by-kind', req]);
@@ -190,6 +204,7 @@ fn module(driver: &str, given: &Value) -> String {
         asking_priority_dart::dart_definition(),
         asking_shipping_dart::dart_definition(),
         asking_confirmation_dart::dart_definition(),
+        asking_adjacent_error_dart::dart_definition(),
         asking_error_dart::dart_definition(),
         asking_link_error_dart::dart_definition(),
         asking_renamed_error_dart::dart_definition(),

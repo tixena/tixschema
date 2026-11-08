@@ -592,12 +592,18 @@ fn method_ident(operation: &OperationDef, prefix: &str) -> Ident {
     )
 }
 
-/// `mcp_arm_tag_{operation}()` and `mcp_arm_wire_{operation}()`: the key serde tags the arm an
-/// operation asks with and the name it writes the arm under.
+/// `mcp_arm_tag_{operation}()`, `mcp_arm_wire_{operation}()` and `mcp_arm_content_{operation}()`:
+/// the key serde tags the arm an operation asks with, the name it writes the arm under and the key
+/// it holds the arm's members under.
 fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenStream {
-    let (tag_name, wire_name) = (
+    let (tag_name, wire_name, content_name) = (
         method_ident(operation, "mcp_arm_tag"),
         method_ident(operation, "mcp_arm_wire"),
+        method_ident(operation, "mcp_arm_content"),
+    );
+    let content_doc = format!(
+        " The key serde holds the members of the arm `{}` asks with under, empty where the enum has none.",
+        operation.mcp_tool_name()
     );
     let tag_doc = format!(
         " The key serde tags the arm `{}` asks with, empty where the enum has none.",
@@ -611,7 +617,7 @@ fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenSt
         #[doc = #tag_doc]
         pub const fn #tag_name() -> &'static str {
             match <#error>::mcp_variant_tag(#arm) {
-                ::core::option::Option::Some((tag, _)) => tag,
+                ::core::option::Option::Some((tag, _, _)) => tag,
                 ::core::option::Option::None => "",
             }
         }
@@ -619,7 +625,15 @@ fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenSt
         #[doc = #wire_doc]
         pub const fn #wire_name() -> &'static str {
             match <#error>::mcp_variant_tag(#arm) {
-                ::core::option::Option::Some((_, wire)) => wire,
+                ::core::option::Option::Some((_, wire, _)) => wire,
+                ::core::option::Option::None => "",
+            }
+        }
+
+        #[doc = #content_doc]
+        pub const fn #content_name() -> &'static str {
+            match <#error>::mcp_variant_tag(#arm) {
+                ::core::option::Option::Some((_, _, content)) => content,
                 ::core::option::Option::None => "",
             }
         }
