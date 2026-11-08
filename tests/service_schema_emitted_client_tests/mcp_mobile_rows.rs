@@ -3,7 +3,7 @@
 //! 2026-07-28 schema.
 
 use super::mcp_mobile_document;
-use super::mcp_mobile_service::Archive;
+use super::mcp_mobile_service::{Archive, Sink};
 use core::future::Future;
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
@@ -129,7 +129,13 @@ pub fn call(request_id: u64, tool: &str, arguments: &Value) -> Value {
 
 /// What the Rust dispatcher of `MobileDocumentService` alone answers to `text`.
 pub fn alone_answer(text: &str) -> Option<String> {
-    block_on(mcp_mobile_document::answer(text, &Archive, &()))
+    block_on(mcp_mobile_document::answer(
+        text,
+        &Archive,
+        |call| call.progress(0.0_f64, None, None),
+        &Sink,
+        &mcp_mobile_document::McpInFlight::default(),
+    ))
 }
 
 /// The calls of a run, numbered from 1 as a client numbers its requests.

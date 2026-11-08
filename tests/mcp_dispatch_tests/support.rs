@@ -2,11 +2,28 @@
 //! the official schema.
 
 use crate::tests::Archive;
-use crate::{BillingServiceSchema, DocumentServiceSchema, billing_mcp, document_mcp};
-use core::future::Future;
-use core::pin::pin;
+use crate::{BillingServiceSchema, DocumentServiceSchema, billing_mcp, document_mcp, export_mcp};
+use alloc::sync::Arc;
+use alloc::task::Wake;
+use core::future::{Future, ready};
+use core::pin::{Pin, pin};
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, Waker};
 use serde_json::{Value, json};
+use std::sync::Mutex;
+
+macro_rules! writes_to {
+    ($($module:ident),*) => {$(
+        impl $module::McpEventWriter for Lines {
+            fn write(
+                &self,
+                message: String,
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(self.keep(message).then_some(()).ok_or($module::McpClientGone))
+            }
+        }
+    )*};
+}
 
 /// The official 2026-07-28 schema of the Model Context Protocol.
 const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-07-28.json");
@@ -31,6 +48,82 @@ pub const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
     &[document_mcp::catalog, billing_mcp::catalog],
 );
 
+/// Where a stdio host writes: every message kept, or every write refused once the client is gone.
+#[derive(Default)]
+pub struct Lines {
+    gone: bool,
+    written: Mutex<Vec<String>>,
+}
+
+impl Lines {
+    pub fn gone() -> Self {
+        Self {
+            gone: true,
+            written: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn keep(&self, message: String) -> bool {
+        if self.gone {
+            return false;
+        }
+        self.written.lock().unwrap().push(message);
+        true
+    }
+
+    pub fn written(&self) -> Vec<String> {
+        self.written.lock().unwrap().clone()
+    }
+}
+
+writes_to!(document_mcp, billing_mcp, export_mcp);
+
+type Task<'task> = Pin<Box<dyn Future<Output = ()> + 'task>>;
+
+/// Tasks polled in turn, each only after something woke it, with no clock anywhere.
+#[derive(Default)]
+pub struct Tasks<'tasks> {
+    running: Vec<(Arc<Woken>, Task<'tasks>)>,
+}
+
+struct Woken(AtomicBool);
+
+impl Wake for Woken {
+    fn wake(self: Arc<Self>) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+impl<'tasks> Tasks<'tasks> {
+    /// Polls every task that was woken until none is, and drops the ones that finished.
+    pub fn run_until_idle(&mut self) {
+        loop {
+            let mut polled = false;
+            self.running.retain_mut(|(woken, task)| {
+                if !woken.0.swap(false, Ordering::SeqCst) {
+                    return true;
+                }
+                polled = true;
+                let waker = Waker::from(Arc::clone(woken));
+                task.as_mut()
+                    .poll(&mut Context::from_waker(&waker))
+                    .is_pending()
+            });
+            if !polled {
+                return;
+            }
+        }
+    }
+
+    pub fn running(&self) -> usize {
+        self.running.len()
+    }
+
+    pub fn spawn(&mut self, task: impl Future<Output = ()> + 'tasks) {
+        self.running
+            .push((Arc::new(Woken(AtomicBool::new(true))), Box::pin(task)));
+    }
+}
 /// The identifier of a request.
 pub fn id(number: u64) -> Value {
     Value::from(number)
@@ -118,8 +211,14 @@ pub fn call(request_id: &Value, tool: &str, arguments: &Value) -> Value {
 
 /// The answer of `DocumentService` alone to `asked`.
 pub fn answer(archive: &Archive, asked: &Value) -> Option<Value> {
-    block_on(document_mcp::answer(&asked.to_string(), archive, &()))
-        .map(|text| serde_json::from_str(&text).unwrap())
+    block_on(document_mcp::answer(
+        &asked.to_string(),
+        archive,
+        |_call| (),
+        &Lines::default(),
+        &document_mcp::McpInFlight::default(),
+    ))
+    .map(|text| serde_json::from_str(&text).unwrap())
 }
 
 /// The answer of the endpoint that holds both services to `asked`.
@@ -129,9 +228,14 @@ pub fn answer_workspace(archive: &Archive, asked: &Value) -> Option<Value> {
         "Workspace",
         None,
         &WORKSPACE,
-        async |part, method, params| match part {
-            0 => document_mcp::route(method, params, archive, &()).await,
-            1 => billing_mcp::route(method, params, archive, &()).await,
+        |_call| (),
+        document_mcp::McpHost {
+            in_flight: &document_mcp::McpInFlight::default(),
+            writer: &Lines::default(),
+        },
+        async |ctx: &(), part, method, params| match part {
+            0 => document_mcp::route(method, params, archive, ctx).await,
+            1 => billing_mcp::route(method, params, archive, ctx).await,
             _ => None,
         },
     ))

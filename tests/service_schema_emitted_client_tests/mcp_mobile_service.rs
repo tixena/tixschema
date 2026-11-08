@@ -6,6 +6,24 @@ use serde::{Deserialize, Serialize};
 use std::panic::resume_unwind;
 use tixschema::{model_schema, service_schema};
 
+macro_rules! sinks_to {
+    ($($module:ident),*) => {$(
+        impl super::$module::McpEventWriter for Sink {
+            fn write(
+                &self,
+                _message: String,
+            ) -> impl Future<Output = Result<(), super::$module::McpClientGone>> {
+                ready(Ok(()))
+            }
+        }
+    )*};
+}
+
+/// Where progress is written: nowhere, since these runs compare the answer alone.
+pub struct Sink;
+
+sinks_to!(mcp_mobile_document, mcp_mobile_billing);
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case", tag = "errorCode")]

@@ -4,6 +4,7 @@
 mod client;
 mod dispatcher;
 mod resources;
+mod writer;
 
 use super::Transport;
 use crate::service_schema::parse::{

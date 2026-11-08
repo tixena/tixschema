@@ -4,7 +4,7 @@
 use super::mcp_mobile_billing;
 use super::mcp_mobile_document::{self, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use super::mcp_mobile_rows::{VERSION, block_on, call, request};
-use super::mcp_mobile_service::Archive;
+use super::mcp_mobile_service::{Archive, Sink};
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
 use serde_json::{Value, json};
 
@@ -330,9 +330,14 @@ pub fn workspace_answer(text: &str) -> Option<String> {
         "Workspace",
         None,
         &WORKSPACE,
-        async |part, method, params| match part {
-            0 => mcp_mobile_document::route(method, params, &Archive, &()).await,
-            1 => mcp_mobile_billing::route(method, params, &Archive, &()).await,
+        |call| call.progress(0.0_f64, None, None),
+        mcp_mobile_document::McpHost {
+            in_flight: &mcp_mobile_document::McpInFlight::default(),
+            writer: &Sink,
+        },
+        async |ctx: &(), part, method, params| match part {
+            0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
+            1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
             _ => None,
         },
     ))
@@ -340,7 +345,13 @@ pub fn workspace_answer(text: &str) -> Option<String> {
 
 /// What the Rust dispatcher of `MobileBillingService` alone answers to `text`.
 pub fn billing_answer(text: &str) -> Option<String> {
-    block_on(mcp_mobile_billing::answer(text, &Archive, &()))
+    block_on(mcp_mobile_billing::answer(
+        text,
+        &Archive,
+        |call| call.progress(0.0_f64, None, None),
+        &Sink,
+        &mcp_mobile_billing::McpInFlight::default(),
+    ))
 }
 
 /// The answer a row expects, held to the form its match says.
@@ -522,8 +533,13 @@ fn the_second_service_answers_alone_and_beside_the_first() {
         mcp_mobile_billing::SERVER_NAME,
         mcp_mobile_billing::INSTRUCTIONS,
         &endpoint,
-        async |_part, method, params| {
-            mcp_mobile_billing::route(method, params, &Archive, &()).await
+        |call| call.progress(0.0_f64, None, None),
+        mcp_mobile_billing::McpHost {
+            in_flight: &mcp_mobile_billing::McpInFlight::default(),
+            writer: &Sink,
+        },
+        async |ctx: &(), _part, method, params| {
+            mcp_mobile_billing::route(method, params, &Archive, ctx).await
         },
     ))
     .unwrap();
