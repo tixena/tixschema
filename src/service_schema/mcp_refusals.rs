@@ -70,6 +70,109 @@ fn operation_refusals(operation: &OperationDef) -> Vec<syn::Error> {
     }
     refused.extend(header_refusals(operation));
     refused.extend(scope_refusals(operation));
+    refused.extend(interview_refusals(operation));
+    refused.extend(content_refusals(operation));
+    refused
+}
+
+fn interview_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(interview) = &operation.mcp.interview else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    if matches!(operation.outcome, OperationOutcome::OneWay) {
+        refused.push(refusal(
+            ident,
+            "is one way and writes `interview(...)` in `mcp(...)`",
+            "an interview is an arm of the declared error, and a one way operation declares none",
+        ));
+    }
+    if operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.error_header_out.is_empty())
+    {
+        refused.push(refusal(
+            ident,
+            "writes `interview(...)` in `mcp(...)` and binds `error_header_out`",
+            "the arm that asks is the whole declared error, so no header can ride beside it",
+        ));
+    }
+    if let Some(answers) = &interview.answers {
+        let held = match &operation.inputs {
+            OperationInputs::Generated(fields) => fields
+                .iter()
+                .find(|(field, _)| written(field) == written(answers)),
+            OperationInputs::Empty | OperationInputs::Named(_) => None,
+        };
+        match held {
+            None => refused.push(refusal(
+                ident,
+                &format!(
+                    "writes `interview(answers = {})` in `mcp(...)`, and `{}` is no argument of it",
+                    written(answers),
+                    written(answers)
+                ),
+                "name one of the operation's own arguments, which is not the message",
+            )),
+            Some((_, ty)) if option_inner(ty).is_none() => refused.push(refusal(
+                ident,
+                &format!(
+                    "asks with `{}` and its type `{}` is no `Option`",
+                    written(answers),
+                    type_text(ty)
+                ),
+                "the first call has no answer yet, so the argument is an `Option` of the form's type",
+            )),
+            Some(_) => {}
+        }
+    }
+    refused
+}
+
+fn content_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    if operation.mcp.content.is_none() {
+        return Vec::new();
+    }
+    let mut refused = Vec::new();
+    match &operation.outcome {
+        OperationOutcome::OneWay => refused.push(refusal(
+            ident,
+            "is one way and writes `content` in `mcp(...)`",
+            "a content tool answers blocks, and a one way operation answers none",
+        )),
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } => {
+            let text = type_text(success);
+            let blocks = text
+                .strip_prefix("Vec<")
+                .and_then(|rest| rest.strip_suffix('>'))
+                .is_some_and(|inner| inner.rsplit("::").next() == Some("McpContent"));
+            if text != "(Vec<u8>,String)" && !blocks {
+                refused.push(refusal(
+                    ident,
+                    "writes `content` in `mcp(...)` and answers a success it cannot write as blocks",
+                    "answer a `(Vec<u8>, String)` of bytes and their content type, or a \
+                     `Vec<McpContent>` of the type the service module declares",
+                ));
+            }
+        }
+    }
+    if operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.header_out.is_empty())
+    {
+        refused.push(refusal(
+            ident,
+            "writes `content` in `mcp(...)` and binds `header_out`",
+            "a content tool answers blocks, and no header rides beside them",
+        ));
+    }
     refused
 }
 
@@ -192,6 +295,13 @@ fn resource_refusals(
     let ident = &operation.ident;
     let mcp = &operation.mcp;
     let mut refused = Vec::new();
+    if !operation.is_mcp_tool() && (mcp.content.is_some() || mcp.interview.is_some()) {
+        refused.push(refusal(
+            ident,
+            "is a resource, a listing or a completion and writes `content` or `interview(...)`",
+            "only a tool answers blocks or asks the user",
+        ));
+    }
     let kinds = usize::from(mcp.resource.is_some())
         + usize::from(mcp.list_resources)
         + usize::from(mcp.completes.is_some());

@@ -791,6 +791,10 @@ thread_local! {
     /// value of it as something other than a JSON object. Kept in every build that reads
     /// `#[serde(flatten)]`.
     static NEEDS_WRAPPER: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    /// The names `#[model_schema]` has been written on so far, each with whether it is a choice
+    /// among plain names, which a form field may hold. Kept in every build that reads
+    /// `#[serde(flatten)]`.
+    static MCP_FORM_VALUES: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes as what
     /// fills their type parameter at the position held. Kept in every build that reads
     /// `#[serde(tag)]`.
@@ -1156,6 +1160,21 @@ pub fn recorded_needs_wrapper(rust_ident: &str) -> Option<bool> {
 pub fn record_needs_wrapper(rust_ident: &str, wrapped: bool) {
     NEEDS_WRAPPER.with(|names| {
         names.borrow_mut().insert(rust_ident.to_owned(), wrapped);
+    });
+}
+
+/// Whether `rust_ident` is a choice among plain names, where `#[model_schema]` has been written
+/// on it above.
+#[cfg(feature = "serde")]
+pub fn recorded_mcp_form_value(rust_ident: &str) -> Option<bool> {
+    MCP_FORM_VALUES.with(|names| names.borrow().get(rust_ident).copied())
+}
+
+/// Records whether `rust_ident` is a choice among plain names.
+#[cfg(feature = "serde")]
+pub fn record_mcp_form_value(rust_ident: &str, value: bool) {
+    MCP_FORM_VALUES.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), value);
     });
 }
 

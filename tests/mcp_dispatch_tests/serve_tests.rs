@@ -1,13 +1,17 @@
 //! `serve` and `answer`: the samples of the wire, the order of the checks, the routing of a call,
 //! and an endpoint shared by two services.
 
+use crate::billing_mcp;
 use crate::document_mcp::{self, McpEndpoint};
+use crate::http_tests::{ORIGIN, post};
 use crate::support::{
     CENTS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, LISTED_FOR_MS, Lines, METHOD_NOT_FOUND,
     UNSUPPORTED_VERSION, VERSION_NUMBER, WORKSPACE, answer, answer_workspace, assert_error,
     assert_result, assert_valid, block_on, call, id, request, server_info,
 };
 use crate::tests::Archive;
+use alloc::sync::Arc;
+use core::future::Future;
 use serde_json::{Value, json};
 
 /// The five tools of `DocumentService`, as the document writes them.
@@ -602,7 +606,7 @@ fn discover_answers_the_union_of_the_capabilities_with_the_extensions_inside_the
             in_flight: &document_mcp::McpInFlight::default(),
             writer: &Lines::default(),
         },
-        async |_ctx: &(), _part, _method, _params| None,
+        &|_ctx: &(), _part, _method: &str, _params: &Value| Box::pin(async { None }),
     ))
     .unwrap();
     let answered: Value = serde_json::from_str(&text).unwrap();
@@ -666,8 +670,9 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
                 in_flight: &billing_mcp::McpInFlight::default(),
                 writer: &Lines::default(),
             },
-            async |ctx: &(), _part, method, params| {
-                billing_mcp::route(method, params, &archive, ctx).await
+            &|ctx: &(), _part, method: &str, params: &Value| {
+                let held = archive.clone();
+                Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
             },
         ))
         .unwrap(),
@@ -707,8 +712,9 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         None,
         &ALONE,
         async |_request, _call| Ok(()),
-        async |ctx: &(), _part, method, params| {
-            billing_mcp::route(method, params, &archive, ctx).await
+        &|ctx: &(), _part, method: &str, params: &Value| {
+            let held = archive.clone();
+            Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
         },
     ));
     assert_eq!(served, response);
@@ -717,4 +723,76 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         7,
         "five tools, one resource and one template"
     );
+}
+
+fn spawned<Task>(task: Task) -> Task
+where
+    Task: Future + Send + 'static,
+{
+    task
+}
+
+#[test]
+fn the_futures_of_serve_and_serve_http_are_send() {
+    let text = request(&id(1), "tools/list", json!({})).to_string();
+    drop(spawned(async move {
+        let documents = Arc::new(Archive::default());
+        let billing = Arc::new(Archive::default());
+        let in_flight = document_mcp::McpInFlight::default();
+        let lines = Lines::default();
+        document_mcp::serve(
+            &text,
+            "Workspace",
+            None,
+            &WORKSPACE,
+            |_call| (),
+            document_mcp::McpHost {
+                in_flight: &in_flight,
+                writer: &lines,
+            },
+            &|ctx: &(), part, method: &str, params: &Value| {
+                let held_documents = Arc::clone(&documents);
+                let held_billing = Arc::clone(&billing);
+                Box::pin(async move {
+                    match part {
+                        0 => document_mcp::route(method, params, &*held_documents, ctx).await,
+                        1 => billing_mcp::route(method, params, &*held_billing, ctx).await,
+                        _ => None,
+                    }
+                })
+            },
+        )
+        .await
+    }));
+    let asked = post(&request(&id(1), "tools/list", json!({})));
+    drop(spawned(async move {
+        let documents = Arc::new(Archive::default());
+        let billing = Arc::new(Archive::default());
+        let settings = document_mcp::McpHttpSettings {
+            allowed_origins: &[ORIGIN],
+            oauth: None,
+        };
+        document_mcp::serve_http(
+            &asked,
+            &settings,
+            "Workspace",
+            None,
+            &WORKSPACE,
+            async |_request: &document_mcp::McpHttpRequest, _call: document_mcp::McpCall| {
+                Ok::<(), document_mcp::McpDenied>(())
+            },
+            &|ctx: &(), part, method: &str, params: &Value| {
+                let held_documents = Arc::clone(&documents);
+                let held_billing = Arc::clone(&billing);
+                Box::pin(async move {
+                    match part {
+                        0 => document_mcp::route(method, params, &*held_documents, ctx).await,
+                        1 => billing_mcp::route(method, params, &*held_billing, ctx).await,
+                        _ => None,
+                    }
+                })
+            },
+        )
+        .await
+    }));
 }

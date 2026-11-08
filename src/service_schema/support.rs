@@ -170,6 +170,12 @@ pub fn emit(
             .iter()
             .any(|operation| operation.mcp.list_resources))
     .then(resource_page_types);
+    let content_types = (asked.contains(&Transport::Mcp)
+        && service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.content.is_some()))
+    .then(content_types);
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -192,6 +198,46 @@ pub fn emit(
             #body_source
             #streamed_answer
             #resource_page
+            #content_types
+        }
+    }
+}
+
+/// What an `mcp(content)` operation answers a list of: one block of a tool's `content`.
+fn content_types() -> TokenStream {
+    quote! {
+        /// One block of a tool's `content`.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub enum McpContent {
+            /// Text.
+            Text { text: ::std::string::String },
+            /// An image: its bytes and its content type.
+            Image { data: ::std::vec::Vec<u8>, mime_type: ::std::string::String },
+            /// Audio: its bytes and its content type.
+            Audio { data: ::std::vec::Vec<u8>, mime_type: ::std::string::String },
+            /// A link to a resource the client can read.
+            ResourceLink {
+                uri: ::std::string::String,
+                name: ::std::string::String,
+                title: ::core::option::Option<::std::string::String>,
+                description: ::core::option::Option<::std::string::String>,
+                mime_type: ::core::option::Option<::std::string::String>,
+            },
+            /// A resource carried in the result.
+            Resource {
+                uri: ::std::string::String,
+                mime_type: ::core::option::Option<::std::string::String>,
+                contents: McpResourceContents,
+            },
+        }
+
+        /// What an embedded resource holds.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub enum McpResourceContents {
+            /// Text.
+            Text(::std::string::String),
+            /// Bytes.
+            Blob(::std::vec::Vec<u8>),
         }
     }
 }

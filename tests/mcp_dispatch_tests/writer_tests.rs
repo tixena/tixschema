@@ -257,10 +257,15 @@ fn the_stdio_host_drops_the_answer_of_an_export_the_client_cancelled() {
                     in_flight,
                     writer: stdout,
                 },
-                async |ctx: &Reporting, part, method, params| match part {
-                    0 => document_mcp_route(method, params, archive, ctx).await,
-                    1 => export_mcp::route(method, params, archive, ctx).await,
-                    _ => None,
+                &|ctx: &Reporting, part, method: &str, params: &Value| {
+                    let held = archive.clone();
+                    Box::pin(async move {
+                        match part {
+                            0 => document_mcp_route(method, params, &held, ctx).await,
+                            1 => export_mcp::route(method, params, &held, ctx).await,
+                            _ => None,
+                        }
+                    })
                 },
             )
             .await;
@@ -394,9 +399,14 @@ fn serve_http_streams_for_an_endpoint_and_its_admit_may_deny_by_name() {
                 Some("anonymous") => Err(export_mcp::McpDenied::NoValidCredentials { scope: None }),
                 _ => Ok(reporting(&call)),
             },
-            async |ctx: &Reporting, part, method, params| match part {
-                0 => export_mcp::route(method, params, &archive, ctx).await,
-                _ => None,
+            &|ctx: &Reporting, part, method: &str, params: &Value| {
+                let held = archive.clone();
+                Box::pin(async move {
+                    match part {
+                        0 => export_mcp::route(method, params, &held, ctx).await,
+                        _ => None,
+                    }
+                })
             },
         ))
     };

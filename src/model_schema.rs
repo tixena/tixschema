@@ -9,6 +9,8 @@ pub mod judged_read;
 #[cfg(all(feature = "serde", feature = "zod"))]
 pub mod literal_union;
 #[cfg(feature = "serde")]
+pub mod mcp_form;
+#[cfg(feature = "serde")]
 pub mod needs_wrapper;
 pub mod preprocess;
 pub mod ranges;
@@ -2351,6 +2353,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     record_item_functions(&item, &parsed_args);
     #[cfg(feature = "serde")]
     needs_wrapper::record(&item);
+    #[cfg(feature = "serde")]
+    mcp_form::record(&item);
     // Whether a filling satisfies the bounds its parameter declares, and whether a range written by
     // its bare name is the std one, are asked of the compiler: no proc macro can answer either.
     let filling_bound_checks = asked_of_the_compiler(&item, &parsed_args);
@@ -2377,7 +2381,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// The `needs_wrapper()` items `item` earns, which every build with serde writes.
 #[cfg(feature = "serde")]
 fn needs_wrapper_tokens(item: &Item) -> TokenStream {
-    needs_wrapper::items(item)
+    let wrapper = needs_wrapper::items(item);
+    let form = mcp_form::items(item);
+    quote! { #wrapper #form }
 }
 
 #[cfg(not(feature = "serde"))]
