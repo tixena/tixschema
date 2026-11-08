@@ -67,6 +67,112 @@ macro_rules! rust_serves_alike {
     }};
 }
 
+/// What the Rust dispatcher of a service, expanded into `$module`, answers to a
+/// `subscriptions/listen` through each of its four entry points, handed the same changes: the
+/// reply of `answer_listening` and of `serve_listening`, and the body of `answer_http_listening`
+/// and of `serve_http_listening`. `$drive` runs a future that is ready on its first poll.
+macro_rules! rust_listens_alike {
+    ($module:ident, $schema:ty, $svc:expr, $drive:path) => {{
+        struct Sink;
+        impl $module::McpEventWriter for Sink {
+            fn write(
+                &self,
+                _message: String,
+            ) -> impl ::core::future::Future<Output = Result<(), $module::McpClientGone>> + Send
+            {
+                ::core::future::ready(Ok(()))
+            }
+        }
+        let script = || {
+            ::alloc::collections::VecDeque::from([
+                $module::McpChange::ResourcesListChanged,
+                $module::McpChange::ResourceUpdated {
+                    uri: "library://covers/book-1".to_owned(),
+                },
+                $module::McpChange::Task {
+                    task_id: "export:1".to_owned(),
+                },
+                $module::McpChange::KeepAlive,
+            ])
+        };
+        let row = $crate::mcp_listen_rows::alike_row();
+        let endpoint = $module::McpEndpoint::new(&[<$schema>::MCP_NAMES], &[$module::catalog]);
+        let server = $module::McpServer {
+            endpoint: &endpoint,
+            instructions: $module::INSTRUCTIONS,
+            name: $module::SERVER_NAME,
+        };
+        let mut queue = script();
+        let mut source = async || queue.pop_front();
+        let alone = $drive($module::answer_listening(
+            &row.body,
+            &$svc,
+            |call| call.progress(0.0_f64, None, None),
+            &Sink,
+            &$module::McpInFlight::default(),
+            &mut source,
+        ));
+        let mut queue = script();
+        let mut source = async || queue.pop_front();
+        let served = $drive($module::serve_listening(
+            &row.body,
+            &server,
+            |call| call.progress(0.0_f64, None, None),
+            $module::McpHost {
+                in_flight: &$module::McpInFlight::default(),
+                writer: &Sink,
+            },
+            &|ctx: &(), _part, method: &str, params: &::serde_json::Value| {
+                Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
+            },
+            &mut source,
+        ));
+        let asked = $module::McpHttpRequest {
+            body: row.body.clone().into_bytes(),
+            headers: row.headers.clone(),
+            method: row.method.to_owned(),
+            path: row.path.to_owned(),
+        };
+        let settings = $module::McpHttpSettings {
+            allowed_origins: &[],
+            oauth: None,
+        };
+        let mut queue = script();
+        let mut source = async || queue.pop_front();
+        let over_alone = $drive($module::answer_http_listening(
+            &asked,
+            &settings,
+            &$svc,
+            async |_request: &$module::McpHttpRequest,
+                   _call: $module::McpCall|
+                   -> Result<(), $module::McpDenied> { Ok(()) },
+            &mut source,
+        ));
+        let mut queue = script();
+        let mut source = async || queue.pop_front();
+        let over_served = $drive($module::serve_http_listening(
+            &asked,
+            &settings,
+            &server,
+            async |_request: &$module::McpHttpRequest,
+                   _call: $module::McpCall|
+                   -> Result<(), $module::McpDenied> { Ok(()) },
+            &|ctx: &(), _part, method: &str, params: &::serde_json::Value| {
+                Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
+            },
+            &mut source,
+        ));
+        assert_eq!(over_alone.status, 200);
+        assert_eq!(over_alone.body, over_served.body);
+        assert!(
+            String::from_utf8(over_alone.body)
+                .unwrap()
+                .starts_with("event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/subscriptions/acknowledged\"")
+        );
+        (alone, served)
+    }};
+}
+
 /// What the Rust dispatcher of a service, expanded into `$module`, answers to `$row`: its status,
 /// its headers and its body. `$drive` runs a future that is ready on its first poll.
 macro_rules! rust_auth_answer {
