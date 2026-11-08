@@ -3709,6 +3709,26 @@ A tool takes its fields from the operation:
 
 On a service that asks for `mcp`, the macro refuses, naming the operation: a method without rustdoc, a tool name over 128 characters or holding a character outside `A-Z`, `a-z`, `0-9`, `_`, `-` and `.`, two tools of one name, a `header_out` or `error_header_out` named `value`, a `header_in` named `value` on an operation whose message is its one argument, a `header_in` named like a key of the generated message, and an operation only `http_rest` carries (a `body = "stream"` reply or a multipart file part). Every model type a message, a `header_in` argument, a `header_out` value or a success names lists `enable = ["jsonschema"]`, as for `openapi`; the macro lists it on the messages it generates. The tool list is built at the trait's scope, so a trait that names a type declared in another module imports that module's `{type}_schema` beside the type.
 
+##### The Dart server and client
+
+`<Service>Schema::dart_mcp_service()` writes the Dart server, and `dart_mcp_client()` the Dart client; a service publishes both only where it asks for `mcp`. The server takes the `{Service}Handlers<Ctx>` that `dart_ws_client()` declares, reads each message with the read that attachment uses (which judges it), and answers the bytes the Rust server answers; a bundle names `dart_definition()` and `dart_ws_client()` ahead of them. An endpoint of several services is a `const`, so a tool, prompt or resource name two services share does not compile:
+
+```dart
+const workspace = DocumentServiceMcpEndpoint(
+  {...documentServiceMcpNames, ...billingServiceMcpNames},
+  [documentServiceMcpCatalog, billingServiceMcpCatalog],
+);
+final reply = await documentServiceMcpServe(line, 'Workspace', null, workspace, (part, method, params) => switch (part) {
+      0 => documents(ctx, method, params),
+      1 => billing(ctx, method, params),
+      _ => Future.value(null),
+    });
+```
+
+`documentServiceMcpServe` answers one JSON-RPC text (or `null` for a notification), so any program that reads and writes lines hosts it over stdio; `documentServiceMcpServeHttp` adds the Streamable HTTP rules around it for a program that answers an HTTP `POST`. `createDocumentServiceMcpDispatcher(handlers)` and `createDocumentServiceMcpHttpDispatcher(handlers, ctx, allowedOrigins)` serve the one service. Declared `final` in place of `const`, an endpoint drops a repeated name without a word, so declare it `const`.
+
+The client is `DocumentServiceMcpClient(transport)`, with one method per operation answering the result type the other Dart clients answer. A consumer implements `DocumentServiceMcpTransport.send`, which is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers; the URL and the credentials live in it. A one-way method throws `DocumentServiceMcpRefusal`.
+
 #### The `ws_rpc` Transport
 
 `#[service_schema(transports = ["ws_rpc"])]` serves a service over one WebSocket as JSON text frames -- the same request, notify and reply terms `amqp_rpc` already answers through, carried over a socket instead of a queue. A service that only answers calls asks for it alone; a service the server calls instead -- pushing an event to whichever connection wants it -- asks for it too, notify travelling either direction over the same wire. The pair below is what a browser dashboard and its backend actually share: the browser calls `Ledger`, and the server pushes `LedgerEvents` back down the same connection.

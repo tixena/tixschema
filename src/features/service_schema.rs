@@ -5,6 +5,8 @@ mod client;
 #[cfg(feature = "dart")]
 mod dart_http_client;
 #[cfg(feature = "dart")]
+mod dart_mcp;
+#[cfg(feature = "dart")]
 mod dart_result;
 #[cfg(feature = "dart")]
 mod dart_ws_client;
@@ -546,11 +548,23 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
 pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
+    let dart = dart_mcp_seam(service);
     quote! {
         impl #registry {
             #items
+            #dart
         }
     }
+}
+
+#[cfg(feature = "dart")]
+fn dart_mcp_seam(service: &ServiceDef) -> TokenStream {
+    dart_mcp::seam(service)
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
 }
 
 /// `<Service>Schema`, the type every surface of the service is published on.

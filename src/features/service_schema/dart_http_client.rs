@@ -24,9 +24,10 @@ use syn::{Ident, Type};
 /// reads a name written after a local of that name as the local, without a word. `bool`,
 /// `double`, `int` and `num` are there because an argument of that name hides the type the method
 /// writes.
-const TAKEN_BY_A_METHOD: [&str; 38] = [
+const TAKEN_BY_A_METHOD: [&str; 46] = [
     "answer",
     "answered",
+    "arguments",
     "bool",
     "body",
     "contentRange",
@@ -38,6 +39,7 @@ const TAKEN_BY_A_METHOD: [&str; 38] = [
     "double",
     "e",
     "error",
+    "failure",
     "fault",
     "frame",
     "frames",
@@ -45,8 +47,10 @@ const TAKEN_BY_A_METHOD: [&str; 38] = [
     "headers",
     "headersIn",
     "int",
+    "members",
     "num",
     "onFault",
+    "parsed",
     "parts",
     "path",
     "query",
@@ -58,8 +62,12 @@ const TAKEN_BY_A_METHOD: [&str; 38] = [
     "replyId",
     "req",
     "response",
+    "result",
+    "source",
     "status",
+    "structured",
     "subscription",
+    "text",
     "uncarried",
     "unexpected",
     "value",

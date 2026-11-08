@@ -1607,3 +1607,21 @@ mod run_swift_member_named;
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
+
+/// The services the Dart `mcp` server and client are run on.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/mcp_dart_services.rs"]
+mod mcp_dart_services;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp.rs"]
+mod run_dart_mcp;
+
+// What a service generates reaches the trait and its module through `$crate`, this binary's root.
+#[cfg(all(test, feature = "dart"))]
+use mcp_dart_services::{
+    AuditService, BillingService, DocumentService, TaggingService, audit_service_schema,
+    billing_service_schema, document_service_schema, tagging_service_schema,
+};
