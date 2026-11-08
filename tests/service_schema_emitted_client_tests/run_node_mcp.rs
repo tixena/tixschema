@@ -90,7 +90,7 @@ async function main() {
     ["tools/call", call(15, "touch-document", { documentId: "doc-1", reader: "boom" })],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })],
     ["tools/list", "not json"],
-    ["tools/list", request(18, "prompts/list", {})],
+    ["tools/list", request(18, "tools/unheard", {})],
     ["tools/list", JSON.stringify({ jsonrpc: "2.0", id: 19, method: "tools/list", params: {} })],
   ];
   requests.splice(requests.length - 4, 0, ...faulted.map((held, at) => ["tools/call", call(100 + at, held.tool, held.arguments)]));
@@ -133,7 +133,7 @@ async function main() {
     ["tools/list", agreeing(request(3, "tools/list", {}), "tools/list")],
     ["tools/list", agreeing(JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/list", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } } }), "tools/list")],
     ["tools/list", post(JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": "2025-11-25" } } }), [["MCP-Protocol-Version", "2025-11-25"], ["Mcp-Method", "tools/list"]])],
-    ["tools/list", agreeing(request(6, "prompts/list", {}), "prompts/list")],
+    ["tools/list", agreeing(request(6, "tools/unheard", {}), "tools/unheard")],
   ];
   const answers = [];
   for (const [method, input] of requests) {

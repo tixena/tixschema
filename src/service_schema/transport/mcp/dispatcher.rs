@@ -1,6 +1,7 @@
 //! The dispatcher half of the `mcp` transport: `serve` and `serve_http` around one `route` per
 //! service, and the `answer` and `answer_http` of a service that stands alone.
 
+use super::prompts;
 use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried, writer};
 use super::{content, interview};
@@ -41,7 +42,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let types = types();
     let endpoint_fns = endpoint_fns();
     let held = Resourced::of(service);
-    let catalog = catalog(&schema, &held);
+    let catalog = catalog(service, &schema, &held);
     let route = route(service, &module, &schema, contract, &held);
     let listing = resources::listing_fns();
     let protocol = protocol();
@@ -84,16 +85,19 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     }
 }
 
-fn catalog(schema: &Ident, held: &Resourced<'_>) -> TokenStream {
+fn catalog(service: &ServiceDef, schema: &Ident, held: &Resourced<'_>) -> TokenStream {
     let parts = resources::catalog_parts(held);
     let capabilities = parts.capabilities;
+    let prompt_capability = prompts::capability(service);
+    let listed_prompts = prompts::catalog_prompts(service);
     let (resources, templates) = (parts.resources, parts.templates);
     quote! {
         /// Everything the list methods answer for this service, fixed at compile time.
         pub fn catalog() -> ::serde_json::Value {
             ::serde_json::json!({
-                "capabilities": { "tools": {} #capabilities },
+                "capabilities": { "tools": {} #capabilities #prompt_capability },
                 "tools": $crate::#schema::mcp_tools(),
+                #listed_prompts
                 "resources": [#(#resources),*],
                 "resourceTemplates": [#(#templates),*],
             })
@@ -126,9 +130,12 @@ fn route(
         .into_iter();
     let tool_results = (!tools.is_empty()).then(|| tool_results(module));
     let asking = interview::any(service).then(interview::helpers);
-    let blocks = content::any(service).then(|| content::helpers(service, module));
-    let base64 =
-        (resources::reads_bytes(held) || content::any(service)).then(resources::base64_helper);
+    let blocks = (content::any(service) || content::prompt_messages(service))
+        .then(|| content::helpers(service, module));
+    let base64 = (resources::reads_bytes(held)
+        || content::any(service)
+        || content::prompt_messages(service))
+    .then(resources::base64_helper);
     let tool_call = (!tools.is_empty()).then(|| {
         quote! {
             "tools/call" => {
@@ -140,8 +147,9 @@ fn route(
             }
         }
     });
-    let resource_helpers = held.any().then(|| resources::helpers(held));
+    let resource_helpers = (held.any() || prompts::any(service)).then(|| resources::helpers(held));
     let reads = resources::read_arm(held, module);
+    let getting = prompts::get_arm(service, module);
     let listing = resources::list_arm(held, module);
     let completing = resources::complete_arm(held, service, module);
     quote! {
@@ -153,8 +161,8 @@ fn route(
         #blocks
         #resource_helpers
 
-        /// One request this service owns: `tools/call`, `resources/read`, its own page of
-        /// `resources/list` and `completion/complete`. `None` for a request it does not own,
+        /// One request this service owns: `tools/call`, `resources/read`, `prompts/get`, its own
+        /// page of `resources/list` and `completion/complete`. `None` for a request it does not own,
         /// otherwise the `result` object of the answer (`Ok`) or its JSON-RPC `error` object
         /// (`Err`).
         pub async fn route<Svc, Ctx>(
@@ -170,6 +178,7 @@ fn route(
             match method {
                 #tool_call
                 #reads
+                #getting
                 #listing
                 #completing
                 _ => ::core::option::Option::None,
@@ -613,9 +622,14 @@ fn answers() -> TokenStream {
             match method {
                 "tools/call" => params["name"].as_str(),
                 "resources/read" => params["uri"].as_str(),
-                _ => params["argument"]["name"]
-                    .as_str()
-                    .and(params["ref"]["uri"].as_str()),
+                "prompts/get" => params["name"].as_str(),
+                _ => params["argument"]["name"].as_str().and(
+                    if params["ref"]["type"] == "ref/prompt" {
+                        params["ref"]["name"].as_str()
+                    } else {
+                        params["ref"]["uri"].as_str()
+                    },
+                ),
             }
         }
 
@@ -722,8 +736,9 @@ fn serving(module: &Ident) -> TokenStream {
                 "resources/templates/list" => {
                     ::core::result::Result::Ok(listed(endpoint, "resourceTemplates"))
                 }
+                "prompts/list" => ::core::result::Result::Ok(listed(endpoint, "prompts")),
                 "resources/list" => return Begun::Routed(request),
-                method @ ("tools/call" | "resources/read" | "completion/complete") => {
+                method @ ("tools/call" | "resources/read" | "prompts/get" | "completion/complete") => {
                     if named(&request["params"], method).is_some() {
                         return Begun::Routed(request);
                     }
@@ -754,6 +769,7 @@ fn serving(module: &Ident) -> TokenStream {
                 let unknown = match method {
                     "tools/call" => "Unknown tool",
                     "resources/read" => "Resource not found",
+                    "prompts/get" => "Unknown prompt",
                     _ => "Unknown completion",
                 };
                 ::core::result::Result::Err(error_object(
@@ -1093,8 +1109,10 @@ fn constants(schema: &Ident, contract_name: &str) -> TokenStream {
         const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
         const LISTED_FOR_MS: u64 = 300_000;
         /// The methods `serve` answers itself or asks `route` for.
-        const METHODS: [&str; 7] = [
+        const METHODS: [&str; 9] = [
             "completion/complete",
+            "prompts/get",
+            "prompts/list",
             "resources/list",
             "resources/read",
             "resources/templates/list",

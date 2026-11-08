@@ -5,6 +5,7 @@ mod client;
 mod content;
 mod dispatcher;
 mod interview;
+pub mod prompts;
 pub mod resources;
 mod writer;
 

@@ -44,7 +44,7 @@ impl<'service> Resourced<'service> {
         for operation in service
             .operations
             .iter()
-            .filter(|operation| !operation.is_mcp_tool())
+            .filter(|operation| !operation.is_mcp_tool() && !operation.is_mcp_prompt())
         {
             if let Some(resource) = &operation.mcp.resource {
                 if resource.is_template() {
@@ -271,7 +271,7 @@ pub(super) fn list_arm(held: &Resourced<'_>, module: &Ident) -> Option<TokenStre
     })
 }
 
-/// The `route` arm of `completion/complete`.
+/// The `route` arm of `completion/complete`: a resource template's parameter or a prompt's argument.
 pub(super) fn complete_arm(
     held: &Resourced<'_>,
     service: &ServiceDef,
@@ -280,25 +280,44 @@ pub(super) fn complete_arm(
     if held.completions.is_empty() {
         return None;
     }
-    let blocks = held
+    let resource_blocks: Vec<TokenStream> = held
         .completions
         .iter()
-        .filter_map(|operation| complete_block(operation, service, module));
+        .filter_map(|operation| complete_block(operation, service, module))
+        .collect();
+    let prompt_blocks = super::prompts::complete_blocks(service, module);
+    let resources = (!resource_blocks.is_empty()).then(|| {
+        quote! {
+            "ref/resource" => {
+                let uri = reference["uri"].as_str()?;
+                #(#resource_blocks)*
+                ::core::option::Option::None
+            }
+        }
+    });
+    let prompts = (!prompt_blocks.is_empty()).then(|| {
+        quote! {
+            "ref/prompt" => {
+                let prompt = reference["name"].as_str()?;
+                #(#prompt_blocks)*
+                ::core::option::Option::None
+            }
+        }
+    });
     Some(quote! {
         "completion/complete" => {
             let reference = params.get("ref")?;
-            if reference["type"] != "ref/resource" {
-                return ::core::option::Option::None;
-            }
-            let uri = reference["uri"].as_str()?;
             let parameter = params.get("argument")?["name"].as_str()?;
             let typed = params["argument"]["value"].as_str().unwrap_or_default();
             let chosen = match params["context"].get("arguments") {
                 ::core::option::Option::Some(held) => held.clone(),
                 ::core::option::Option::None => ::serde_json::json!({}),
             };
-            #(#blocks)*
-            ::core::option::Option::None
+            match reference["type"].as_str()? {
+                #resources
+                #prompts
+                _ => ::core::option::Option::None,
+            }
         }
     })
 }
@@ -312,7 +331,7 @@ fn complete_block(
     let target = service
         .operations
         .iter()
-        .find(|candidate| written(&candidate.ident) == completes.resource)?;
+        .find(|candidate| written(&candidate.ident) == completes.operation)?;
     let uri = &target.mcp.resource.as_ref()?.uri;
     let parameter = &completes.parameter;
     let wire = &operation.wire_name;
@@ -367,7 +386,7 @@ fn complete_block(
 
 /// The statements that read and judge the message of `operation` from `source`, answering the
 /// request with a fault where either refuses it.
-fn reading(
+pub(super) fn reading(
     operation: &OperationDef,
     module: &Ident,
     source: &TokenStream,

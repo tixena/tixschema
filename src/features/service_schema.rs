@@ -599,12 +599,14 @@ fn mcp_content_accessor(
     accessor: &str,
     text: &'static str,
 ) -> Option<TokenStream> {
-    use crate::service_schema::mcp_tools::is_content_list;
+    use crate::service_schema::mcp_tools::{is_content_list, is_prompt_messages};
 
-    let listed = service.operations.iter().any(is_content_list);
+    let listed = service
+        .operations
+        .iter()
+        .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
     let name = format_ident!("{accessor}");
-    let doc =
-        " The `McpContent` type a list of blocks of an `mcp(content)` operation is written in.";
+    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in.";
     listed.then(|| {
         quote! {
             #[doc = #doc]
@@ -699,6 +701,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
     let tools = mcp_ts_service::TOOLS_MARKER;
     let resources = mcp_ts_service::RESOURCES_MARKER;
     let templates = mcp_ts_service::TEMPLATES_MARKER;
+    let prompts = mcp_ts_service::PROMPTS_MARKER;
     let wrapped: Vec<TokenStream> = service
         .operations
         .iter()
@@ -758,6 +761,14 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                     &Self::mcp_resource_templates()
                         .iter()
                         .map(|template| ::serde_json::Value::String(template.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #prompts,
+                    &Self::mcp_prompts()
+                        .iter()
+                        .map(|prompt| ::serde_json::Value::String(prompt.to_string()).to_string())
                         .collect::<::std::vec::Vec<_>>()
                         .join(", "),
                 )

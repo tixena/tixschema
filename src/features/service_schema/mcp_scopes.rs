@@ -2,7 +2,7 @@
 //! answer in TypeScript, Dart and Kotlin.
 
 use crate::service_schema::parse::{
-    McpResourceUri, OperationDef, PathSegment, ServiceDef, written,
+    McpCompletesKind, McpResourceUri, OperationDef, PathSegment, ServiceDef, written,
 };
 
 /// How a resource read names its URI.
@@ -15,6 +15,7 @@ pub enum ReadUri {
 pub struct ScopeTable {
     pub completions: Vec<(String, Vec<String>)>,
     pub listing: Option<Vec<String>>,
+    pub prompts: Vec<(String, Vec<String>)>,
     pub reads: Vec<(ReadUri, Vec<String>)>,
     pub tools: Vec<(String, Vec<String>)>,
 }
@@ -31,7 +32,7 @@ impl ScopeTable {
             service
                 .operations
                 .iter()
-                .filter(|operation| !operation.is_mcp_tool())
+                .filter(|operation| !operation.is_mcp_tool() && !operation.is_mcp_prompt())
         };
         let is_template = |operation: &OperationDef| {
             operation
@@ -44,6 +45,12 @@ impl ScopeTable {
             .operations
             .iter()
             .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
+            .map(|operation| (operation.mcp_tool_name().to_owned(), scopes_of(operation)))
+            .collect();
+        let prompts = service
+            .operations
+            .iter()
+            .filter(|operation| operation.is_mcp_prompt() && !operation.mcp.scopes.is_empty())
             .map(|operation| (operation.mcp_tool_name().to_owned(), scopes_of(operation)))
             .collect();
         let fixed = resourced()
@@ -80,14 +87,21 @@ impl ScopeTable {
                 let target = service
                     .operations
                     .iter()
-                    .find(|candidate| written(&candidate.ident) == completes.resource)?;
-                let uri = target.mcp.resource.as_ref()?.uri.clone();
+                    .find(|candidate| written(&candidate.ident) == completes.operation)?;
+                let uri = match completes.kind {
+                    McpCompletesKind::Resource => target.mcp.resource.as_ref()?.uri.clone(),
+                    McpCompletesKind::Prompt => {
+                        target.mcp.prompt.as_ref()?;
+                        target.mcp_tool_name().to_owned()
+                    }
+                };
                 Some((uri, scopes_of(operation)))
             })
             .collect();
         Self {
             completions,
             listing,
+            prompts,
             reads,
             tools,
         }

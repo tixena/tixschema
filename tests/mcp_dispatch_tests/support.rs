@@ -3,8 +3,8 @@
 
 use crate::tests::Archive;
 use crate::{
-    BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, document_mcp,
-    export_mcp,
+    BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, counsel_mcp,
+    document_mcp, export_mcp,
 };
 use alloc::sync::Arc;
 use alloc::task::Wake;
@@ -79,7 +79,13 @@ impl Lines {
     }
 }
 
-writes_to!(document_mcp, billing_mcp, export_mcp, approval_mcp);
+writes_to!(
+    document_mcp,
+    billing_mcp,
+    export_mcp,
+    approval_mcp,
+    counsel_mcp
+);
 
 type Task<'task> = Pin<Box<dyn Future<Output = ()> + 'task>>;
 

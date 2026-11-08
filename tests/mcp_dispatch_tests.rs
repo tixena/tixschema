@@ -26,6 +26,23 @@ mod approval_mcp;
 mod approval_client;
 
 #[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/counsel.rs"]
+mod counsel;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/counsel_mcp.rs"]
+mod counsel_mcp;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/counsel_client.rs"]
+mod counsel_client;
+
+#[cfg(test)]
+#[path = "mcp_dispatch_tests/prompt_tests.rs"]
+mod prompt_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/document_mcp.rs"]
 mod document_mcp;
 
@@ -80,6 +97,8 @@ mod elicitation_tests;
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
 #[cfg(test)]
 use approval::{ApprovalService, ApprovalServiceSchema, approval_service_schema};
+#[cfg(test)]
+use counsel::{CounselService, CounselServiceSchema, counsel_service_schema};
 #[cfg(test)]
 use tests::{
     BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema, ExportService,
