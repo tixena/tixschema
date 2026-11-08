@@ -1,7 +1,9 @@
 //! The Swift `http_rest` client: one transport seam the app implements, one `async` method per
 //! operation, mirroring the Dart client's request grammar statement for statement.
 
-use crate::features::swift::{forms, swift_field_member, swift_member, swift_quoted};
+use crate::features::swift::{
+    forms, swift_field_member, swift_member, swift_quoted, swift_reference_type,
+};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -79,6 +81,18 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
         if let Some(failure) = failure_enum(&named, operation) {
             published.push(failure);
         }
+        if let OperationOutcome::Reply {
+            success,
+            error: _error,
+        } = &operation.outcome
+            && is_plain_tuple(&HttpShape::of(operation), success)
+        {
+            let (_, declared) = swift_reference_type(
+                &get_field_def("value", success, ""),
+                &tuple_hint(&named, operation),
+            );
+            published.extend(declared);
+        }
     }
     if has_one_way(service) {
         published.push(refusal_struct(&named));
@@ -86,6 +100,21 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published.push(client_struct(service, &named, &fn_prefix, has_multipart));
     published.extend(fault_helpers(service, &named, &fn_prefix));
     published
+}
+
+/// Whether the success is a tuple read whole from the body: no bare Swift tuple is `Decodable`.
+pub(super) fn is_plain_tuple(shape: &HttpShape, success: &Type) -> bool {
+    shape.header_out.is_empty()
+        && !matches!(shape.body_kind, BodyKind::Bytes | BodyKind::Stream)
+        && matches!(success, Type::Tuple(tuple) if !tuple.elems.is_empty())
+}
+
+/// The name the struct that reads one operation's tuple success is hinted with.
+pub(super) fn tuple_hint(named: &str, operation: &OperationDef) -> String {
+    format!(
+        "{named}{}HttpSuccess",
+        RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
+    )
 }
 
 fn has_one_way(service: &ServiceDef) -> bool {
@@ -378,7 +407,14 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
         ),
         OperationOutcome::Reply { error, success } => (
             send_stmt_reply(named, fn_prefix, wire, method_str, has_multipart),
-            reply_decode_stmt(fn_prefix, &shape, wire, error, success),
+            reply_decode_stmt(
+                fn_prefix,
+                &shape,
+                wire,
+                error,
+                success,
+                &tuple_hint(named, operation),
+            ),
         ),
     };
     format!(
@@ -788,13 +824,14 @@ fn reply_decode_stmt(
     wire: &str,
     error: &Type,
     success: &Type,
+    hint: &str,
 ) -> String {
     if matches!(shape.body_kind, BodyKind::Stream) {
         return stream_reply_decode_stmt(fn_prefix, shape, wire, error, success);
     }
     let ok_status = shape.ok_status;
     let error_condition = error_condition_expr(shape);
-    let success_block = success_decode_block(fn_prefix, wire, shape, success);
+    let success_block = success_decode_block(fn_prefix, wire, shape, success, hint);
     let error_block = error_decode_block(fn_prefix, wire, shape, error);
     format!(
         "    let status = response.status\n    \
@@ -1131,13 +1168,34 @@ fn error_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, error: &Ty
 /// What one operation's method returns once its status has already matched `ok_status`: bytes and
 /// content type, nothing for a no-payload reply, the decoded body alone, or the body plus every
 /// `header_out` element. `body = "stream"` never reaches here — it has two success statuses.
-fn success_decode_block(fn_prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
+fn success_decode_block(
+    fn_prefix: &str,
+    wire: &str,
+    shape: &HttpShape,
+    success: &Type,
+    hint: &str,
+) -> String {
     if matches!(shape.body_kind, BodyKind::Bytes) {
         return bytes_success_decode_block(fn_prefix, wire, shape, success);
     }
     if shape.header_out.is_empty() {
         if is_unit_type(success) {
             return "      return .success(())\n".to_owned();
+        }
+        if is_plain_tuple(shape, success) {
+            let (carrier, _) = swift_reference_type(&get_field_def("value", success, ""), hint);
+            return format!(
+                "      let value: {carrier}\n      \
+                 do {{\n        \
+                 value = try {fn_prefix}DatedDecoder().decode({carrier}.self, from: \
+                 response.body)\n      \
+                 }} catch {{\n        \
+                 return .failure(.fault(\n          \
+                 {fn_prefix}UndeserializablePayload({wire}, \"\\(error)\")\n        \
+                 ))\n      \
+                 }}\n      \
+                 return .success((value.slot0, value.slot1))\n"
+            );
         }
         let success_ty = swift_typename_of(success);
         return format!(

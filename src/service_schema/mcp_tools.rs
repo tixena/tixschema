@@ -214,6 +214,26 @@ fn wrapped_method(operation: &OperationDef) -> TokenStream {
     }
 }
 
+/// A content tool's success is the pair of bytes and their content type.
+pub fn is_content_pair(operation: &OperationDef) -> bool {
+    operation.mcp.content.is_some()
+        && matches!(
+            &operation.outcome,
+            OperationOutcome::Reply { success, error: _error }
+                if matches!(success.as_ref(), Type::Tuple(_))
+        )
+}
+
+/// A content tool's success is a list of blocks.
+pub fn is_content_list(operation: &OperationDef) -> bool {
+    operation.mcp.content.is_some()
+        && matches!(
+            &operation.outcome,
+            OperationOutcome::Reply { success, error: _error }
+                if !matches!(success.as_ref(), Type::Tuple(_))
+        )
+}
+
 /// One `const` per form an operation asks with, held to `mcp_form_flat()` of the form's type: the
 /// service macro cannot read the type, so the compiler refuses a form that is not flat.
 pub fn form_assertions(service: &ServiceDef) -> TokenStream {

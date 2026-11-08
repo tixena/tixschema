@@ -25,7 +25,7 @@ use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's, the `ws_rpc` client's and dispatcher's, and the `mcp` client's and route's.
-const TAKEN_BY_A_METHOD: [&str; 49] = [
+const TAKEN_BY_A_METHOD: [&str; 53] = [
     "answered",
     "arguments",
     "assigned",
@@ -44,12 +44,16 @@ const TAKEN_BY_A_METHOD: [&str; 49] = [
     "incomingHeaders",
     "isServiceFault",
     "it",
+    "mcpAnswered",
     "mcpArguments",
+    "mcpBody",
+    "mcpDeclined",
     "mcpHeaders",
     "mcpMethod",
     "mcpNamed",
     "mcpParams",
     "mcpRefused",
+    "mcpResponse",
     "mcpSource",
     "members",
     "message",

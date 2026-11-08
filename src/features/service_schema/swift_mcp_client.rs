@@ -10,7 +10,7 @@ use super::swift_ws_client::{header_in_params, sent_forms, sent_payload};
 use super::{left_to_http_rest, on_one_line};
 use crate::features::swift::{forms, swift_quoted};
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::wrapped_ident;
+use crate::service_schema::mcp_tools::{is_content_list, is_content_pair, wrapped_ident};
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
     tuple_elements, written,
@@ -261,6 +261,144 @@ const ACTOR_HEAD: &str = r#"public actor @N@McpClient {
 
 "#;
 
+const BLOCKS: &str = "struct @N@McpBlocks<Payload: Decodable>: Decodable {
+  struct Inner: Decodable { let content: Payload }
+  let result: Inner
+}";
+
+const PAIR: &str = "struct @N@McpPair: Decodable {
+  struct Inner: Decodable {
+    struct Block: Decodable {
+      let data: Data?
+      let mimeType: String?
+    }
+    struct Structured: Decodable {
+      let bytes: [UInt8]
+      let contentType: String
+
+      init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        bytes = try container.decode([UInt8].self)
+        contentType = try container.decode(String.self)
+      }
+    }
+    let structuredContent: Structured?
+    let content: [Block]?
+  }
+  let result: Inner
+}";
+
+/// The type an `mcp(content)` operation answers a list of, as the service module declares it in
+/// Rust: one block of a tool's `content`, read and written as the specification writes it.
+pub const CONTENT_TYPE: &str = r#"/// One block of a tool's `content`: what an `mcp(content)` operation answers a list of.
+public enum McpContent: Sendable, Equatable, Codable {
+  /// Text.
+  case text(String)
+  /// An image: its bytes and its content type.
+  case image(data: [UInt8], mimeType: String)
+  /// Audio: its bytes and its content type.
+  case audio(data: [UInt8], mimeType: String)
+  /// A link to a resource the client can read.
+  case resourceLink(uri: String, name: String, title: String?, description: String?, mimeType: String?)
+  /// A resource carried in the result.
+  case resource(uri: String, mimeType: String?, contents: McpResourceContents)
+
+  private enum Keys: String, CodingKey {
+    case type, text, data, mimeType, uri, name, title, description, resource, blob
+  }
+
+  private enum ResourceKeys: String, CodingKey {
+    case uri, mimeType, text, blob
+  }
+
+  private static func bytes(_ text: String, _ container: KeyedDecodingContainer<some CodingKey>) throws -> [UInt8] {
+    guard let decoded = Data(base64Encoded: text) else {
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: container.codingPath, debugDescription: "expected base64, found \(text)"))
+    }
+    return [UInt8](decoded)
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: Keys.self)
+    switch try container.decode(String.self, forKey: .type) {
+    case "text":
+      self = .text(try container.decode(String.self, forKey: .text))
+    case "image":
+      self = .image(
+        data: try Self.bytes(try container.decode(String.self, forKey: .data), container),
+        mimeType: try container.decode(String.self, forKey: .mimeType))
+    case "audio":
+      self = .audio(
+        data: try Self.bytes(try container.decode(String.self, forKey: .data), container),
+        mimeType: try container.decode(String.self, forKey: .mimeType))
+    case "resource_link":
+      self = .resourceLink(
+        uri: try container.decode(String.self, forKey: .uri),
+        name: try container.decode(String.self, forKey: .name),
+        title: try container.decodeIfPresent(String.self, forKey: .title),
+        description: try container.decodeIfPresent(String.self, forKey: .description),
+        mimeType: try container.decodeIfPresent(String.self, forKey: .mimeType))
+    case "resource":
+      let resource = try container.nestedContainer(keyedBy: ResourceKeys.self, forKey: .resource)
+      let contents: McpResourceContents
+      if let blob = try resource.decodeIfPresent(String.self, forKey: .blob) {
+        contents = .blob(try Self.bytes(blob, resource))
+      } else {
+        contents = .text(try resource.decode(String.self, forKey: .text))
+      }
+      self = .resource(
+        uri: try resource.decode(String.self, forKey: .uri),
+        mimeType: try resource.decodeIfPresent(String.self, forKey: .mimeType),
+        contents: contents)
+    default:
+      throw DecodingError.dataCorruptedError(
+        forKey: .type, in: container, debugDescription: "a block of a type this client does not read")
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: Keys.self)
+    switch self {
+    case .text(let text):
+      try container.encode("text", forKey: .type)
+      try container.encode(text, forKey: .text)
+    case .image(let data, let mimeType):
+      try container.encode("image", forKey: .type)
+      try container.encode(Data(data).base64EncodedString(), forKey: .data)
+      try container.encode(mimeType, forKey: .mimeType)
+    case .audio(let data, let mimeType):
+      try container.encode("audio", forKey: .type)
+      try container.encode(Data(data).base64EncodedString(), forKey: .data)
+      try container.encode(mimeType, forKey: .mimeType)
+    case .resourceLink(let uri, let name, let title, let description, let mimeType):
+      try container.encode("resource_link", forKey: .type)
+      try container.encode(uri, forKey: .uri)
+      try container.encode(name, forKey: .name)
+      try container.encodeIfPresent(title, forKey: .title)
+      try container.encodeIfPresent(description, forKey: .description)
+      try container.encodeIfPresent(mimeType, forKey: .mimeType)
+    case .resource(let uri, let mimeType, let contents):
+      try container.encode("resource", forKey: .type)
+      var resource = container.nestedContainer(keyedBy: ResourceKeys.self, forKey: .resource)
+      try resource.encode(uri, forKey: .uri)
+      try resource.encodeIfPresent(mimeType, forKey: .mimeType)
+      switch contents {
+      case .text(let text): try resource.encode(text, forKey: .text)
+      case .blob(let data): try resource.encode(Data(data).base64EncodedString(), forKey: .blob)
+      }
+    }
+  }
+}
+
+/// What an embedded resource holds.
+public enum McpResourceContents: Sendable, Equatable {
+  /// Text.
+  case text(String)
+  /// Bytes.
+  case blob([UInt8])
+}"#;
+
 /// Where the accessor writes the version of the crate that declares the service.
 const VERSION_MARKER: &str = "@MCP_VERSION@";
 
@@ -272,6 +410,12 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(TRANSPORT, &prefix, &named),
         fill(SUPPORT, &prefix, &named),
     ];
+    if service.operations.iter().any(is_content_list) {
+        published.push(fill(BLOCKS, &prefix, &named));
+    }
+    if service.operations.iter().any(is_content_pair) {
+        published.push(fill(PAIR, &prefix, &named));
+    }
     for operation in &service.operations {
         published.extend(decoders(operation, &named));
     }
@@ -533,6 +677,30 @@ fn success_block(
     success: &Type,
 ) -> (String, String) {
     let fail = unreadable(prefix, tool);
+    if is_content_list(operation) {
+        let ty = swift_typename_of(success);
+        let block = format!(
+            "      do {{\n        \
+             let decoded = try {prefix}McpDatedDecoder().decode({named}McpBlocks<{ty}>.self, from: raw)\n        \
+             return .success(decoded.result.content)\n      \
+             }} catch {{\n        {fail}\n      }}\n"
+        );
+        return (ty, block);
+    }
+    if is_content_pair(operation) {
+        let ty = swift_typename_of(success);
+        let block = format!(
+            "      do {{\n        \
+             let decoded = try {prefix}McpDatedDecoder().decode({named}McpPair.self, from: raw)\n        \
+             if let structured = decoded.result.structuredContent {{\n          \
+             return .success((structured.bytes, structured.contentType))\n        }}\n        \
+             guard let block = decoded.result.content?.first, let data = block.data, let mimeType = block.mimeType else {{\n          \
+             throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: \"the answer holds no image or audio block\"))\n        }}\n        \
+             return .success(([UInt8](data), mimeType))\n      \
+             }} catch {{\n        {fail}\n      }}\n"
+        );
+        return (ty, block);
+    }
     if !shape.header_out.is_empty() {
         let ty = swift_typename_of(success);
         let type_name = format!("{named}Mcp{}Success", pascal(operation));
