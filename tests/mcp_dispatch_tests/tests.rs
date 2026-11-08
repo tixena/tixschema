@@ -3,7 +3,8 @@
 
 #![cfg(feature = "serde")]
 
-use core::future::{Future, ready};
+use core::future::{Future, poll_fn, ready};
+use core::task::Poll;
 use serde::{Deserialize, Serialize};
 use std::panic::resume_unwind;
 use std::sync::Mutex;
@@ -107,6 +108,33 @@ pub trait DocumentService<Ctx> {
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 
+/// Exports folders.
+#[service_schema(transports = ["mcp"])]
+pub trait ExportService<Ctx> {
+    /// Exports one folder, reporting one step of three.
+    async fn export_folder(&self, ctx: &Ctx, folder: String) -> Result<(), VersionError>;
+}
+
+/// What a handler reaches of the request in flight, whichever dispatcher's call it came from.
+pub struct Reporting {
+    cancelled: Box<dyn Fn() -> bool + Send + Sync>,
+    progress: Box<ProgressFn>,
+}
+
+type ProgressFn = dyn Fn(f64, Option<f64>, Option<&str>) + Send + Sync;
+
+impl Reporting {
+    pub fn new(
+        progress: impl Fn(f64, Option<f64>, Option<&str>) + Send + Sync + 'static,
+        cancelled: impl Fn() -> bool + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            progress: Box::new(progress),
+            cancelled: Box::new(cancelled),
+        }
+    }
+}
+
 /// Answers every operation of both services, and writes down what reached it.
 #[derive(Default)]
 pub struct Archive {
@@ -145,10 +173,10 @@ impl BillingService<()> for Archive {
     }
 }
 
-impl DocumentService<()> for Archive {
+impl<Ctx> DocumentService<Ctx> for Archive {
     fn get_tagged(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         id: String,
         known_tag: Option<String>,
     ) -> impl Future<Output = Result<(VersionResponse, String), VersionError>> {
@@ -158,7 +186,7 @@ impl DocumentService<()> for Archive {
 
     fn get_version(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         req: GetVersionRequest,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
         self.reach(format!("get-version {}", req.document_id));
@@ -167,7 +195,7 @@ impl DocumentService<()> for Archive {
 
     fn lookup(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         id: DocumentId,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
         self.reach(format!("lookup-document {}", id.0));
@@ -176,7 +204,7 @@ impl DocumentService<()> for Archive {
 
     fn rename_document(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         document_id: String,
         title: String,
     ) -> impl Future<Output = Result<(), VersionError>> {
@@ -186,7 +214,7 @@ impl DocumentService<()> for Archive {
 
     fn touch_document(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         document_id: String,
         reader: String,
     ) -> impl Future<Output = ()> {
@@ -195,6 +223,46 @@ impl DocumentService<()> for Archive {
             came_apart();
         }
         ready(())
+    }
+}
+
+impl ExportService<Reporting> for Archive {
+    fn export_folder(
+        &self,
+        ctx: &Reporting,
+        folder: String,
+    ) -> impl Future<Output = Result<(), VersionError>> {
+        self.reach(format!("export-folder {folder}"));
+        async move {
+            (ctx.progress)(1.0_f64, Some(3.0_f64), Some("exported 1 of 3 files"));
+            match folder.as_str() {
+                "forever" => {
+                    poll_fn(|_cx| {
+                        if (ctx.cancelled)() {
+                            Poll::Ready(())
+                        } else {
+                            Poll::Pending
+                        }
+                    })
+                    .await;
+                }
+                "steps" => {
+                    let mut yielded = false;
+                    poll_fn(|cx| {
+                        if yielded {
+                            return Poll::Ready(());
+                        }
+                        yielded = true;
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    })
+                    .await;
+                    (ctx.progress)(2.0_f64, Some(3.0_f64), None);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
     }
 }
 

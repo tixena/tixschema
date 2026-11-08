@@ -4,7 +4,7 @@
 use crate::document_client::{DocumentServiceClient, McpMessage, Transport};
 use crate::document_mcp;
 use crate::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
-use crate::support::{assert_valid, block_on};
+use crate::support::{Lines, assert_valid, block_on};
 use crate::tests::{Archive, DocumentId, GetVersionRequest, VersionError, VersionResponse};
 use core::fmt::Debug;
 use core::future::Future;
@@ -77,7 +77,17 @@ impl Transport for Dispatching<'_> {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
         let text = written_down(&self.sent, message);
         let archive = self.archive;
-        async move { Ok(document_mcp::answer(&text, archive, &()).await.unwrap()) }
+        async move {
+            let answered = document_mcp::answer(
+                &text,
+                archive,
+                |_call| (),
+                &Lines::default(),
+                &document_mcp::McpInFlight::default(),
+            )
+            .await;
+            Ok(answered.unwrap())
+        }
     }
 }
 
