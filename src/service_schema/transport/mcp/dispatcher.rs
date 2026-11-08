@@ -1,6 +1,7 @@
 //! The dispatcher half of the `mcp` transport: `serve` and `serve_http` around one `route` per
 //! service, and the `answer` and `answer_http` of a service that stands alone.
 
+use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
@@ -38,11 +39,14 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let constants = constants(&schema, &contract_name);
     let types = types();
     let endpoint_fns = endpoint_fns();
-    let catalog = catalog(&schema);
-    let route = route(service, &module, &schema, contract);
+    let held = Resourced::of(service);
+    let catalog = catalog(&schema, &held);
+    let route = route(service, &module, &schema, contract, &held);
+    let listing = resources::listing_fns();
     let protocol = protocol();
     let answers = answers();
     let serving = serving(&module);
+    let serve_fn = serve_fn();
     let answer = answer(contract);
     let http_fns = http_fns();
     let http_rules = http_rules();
@@ -59,8 +63,10 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #route
                 #endpoint_fns
                 #protocol
+                #listing
                 #answers
                 #serving
+                #serve_fn
                 #answer
                 #http_fns
                 #http_rules
@@ -71,21 +77,36 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     }
 }
 
-fn catalog(schema: &Ident) -> TokenStream {
+fn catalog(schema: &Ident, held: &Resourced<'_>) -> TokenStream {
+    let parts = resources::catalog_parts(held);
+    let capabilities = parts.capabilities;
+    let (resources, templates) = (parts.resources, parts.templates);
     quote! {
         /// Everything the list methods answer for this service, fixed at compile time.
         pub fn catalog() -> ::serde_json::Value {
             ::serde_json::json!({
-                "capabilities": { "tools": {} },
+                "capabilities": { "tools": {} #capabilities },
                 "tools": $crate::#schema::mcp_tools(),
+                "resources": [#(#resources),*],
+                "resourceTemplates": [#(#templates),*],
             })
         }
     }
 }
 
-fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident) -> TokenStream {
-    let arms = service
+fn route(
+    service: &ServiceDef,
+    module: &Ident,
+    schema: &Ident,
+    contract: &Ident,
+    held: &Resourced<'_>,
+) -> TokenStream {
+    let tools: Vec<&OperationDef> = service
         .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .collect();
+    let arms = tools
         .iter()
         .map(|operation| route_arm(module, schema, operation));
     let (implementation, context, guard) = if service.operations.is_empty() {
@@ -96,10 +117,56 @@ fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident)
     let replies = declares_a_reply(service)
         .then(|| replying_helpers(module))
         .into_iter();
+    let tool_results = (!tools.is_empty()).then(|| tool_results(module));
+    let tool_call = (!tools.is_empty()).then(|| {
+        quote! {
+            "tools/call" => {
+                let name = params.get("name")?.as_str()?;
+                match name {
+                    #(#arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
+        }
+    });
+    let resource_helpers = held.any().then(|| resources::helpers(held));
+    let reads = resources::read_arm(held, module);
+    let listing = resources::list_arm(held, module);
+    let completing = resources::complete_arm(held, service, module);
     quote! {
         #guard
         #(#replies)*
+        #tool_results
+        #resource_helpers
 
+        /// One request this service owns: `tools/call`, `resources/read`, its own page of
+        /// `resources/list` and `completion/complete`. `None` for a request it does not own,
+        /// otherwise the `result` object of the answer (`Ok`) or its JSON-RPC `error` object
+        /// (`Err`).
+        pub async fn route<Svc, Ctx>(
+            method: &str,
+            params: &::serde_json::Value,
+            #implementation: &Svc,
+            #context: &Ctx,
+        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
+        where
+            Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
+            Ctx: ::core::marker::Sync,
+        {
+            match method {
+                #tool_call
+                #reads
+                #listing
+                #completing
+                _ => ::core::option::Option::None,
+            }
+        }
+    }
+}
+
+/// The result of a tool call, and a fault as the text of a tool execution error.
+fn tool_results(module: &Ident) -> TokenStream {
+    quote! {
         /// The result of a tool call: its structured value, or the text of its failure.
         fn completed(structured: ::core::option::Option<::serde_json::Value>, failure: ::core::option::Option<::std::string::String>) -> ::serde_json::Value {
             let (content, is_error) = match failure {
@@ -126,29 +193,6 @@ fn route(service: &ServiceDef, module: &Ident, schema: &Ident, contract: &Ident)
                 ::core::option::Option::None,
                 ::core::option::Option::Some(canonical(&::serde_json::json!({ "isServiceFault": true, "fault": fault }))),
             )
-        }
-
-        /// One request this service owns: `tools/call`. `None` for a request it does not own,
-        /// otherwise the `result` object of the answer (`Ok`) or its JSON-RPC `error` object
-        /// (`Err`).
-        pub async fn route<Svc, Ctx>(
-            method: &str,
-            params: &::serde_json::Value,
-            #implementation: &Svc,
-            #context: &Ctx,
-        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
-        where
-            Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
-            Ctx: ::core::marker::Sync,
-        {
-            if method != "tools/call" {
-                return ::core::option::Option::None;
-            }
-            let name = params.get("name")?.as_str()?;
-            match name {
-                #(#arms)*
-                _ => ::core::option::Option::None,
-            }
         }
     }
 }
@@ -532,6 +576,35 @@ fn protocol() -> TokenStream {
 /// of the server beside each result.
 fn answers() -> TokenStream {
     quote! {
+        /// What a routed request asks for: the tool, the URI, or the URI of the template a
+        /// completion is for.
+        fn named<'params>(params: &'params ::serde_json::Value, method: &str) -> ::core::option::Option<&'params str> {
+            match method {
+                "tools/call" => params["name"].as_str(),
+                "resources/read" => params["uri"].as_str(),
+                _ => params["argument"]["name"]
+                    .as_str()
+                    .and(params["ref"]["uri"].as_str()),
+            }
+        }
+
+        /// The text of the response to `id`: the result with the server's name beside it, or the
+        /// error.
+        fn response_text(
+            id: &::serde_json::Value,
+            answered: ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+            server_name: &str,
+        ) -> ::std::string::String {
+            canonical(&match answered {
+                ::core::result::Result::Ok(result) => ::serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": with_server_info(result, server_name),
+                }),
+                ::core::result::Result::Err(error) => failed(id, error),
+            })
+        }
+
         fn with_server_info(mut result: ::serde_json::Value, server_name: &str) -> ::serde_json::Value {
             if let ::serde_json::Value::Object(members) = &mut result {
                 members
@@ -579,16 +652,17 @@ fn answers() -> TokenStream {
             result
         }
 
-        fn listed_tools(endpoint: &McpEndpoint) -> ::serde_json::Value {
-            let mut tools = ::std::vec::Vec::new();
+        /// What the catalogs hold under `key`, one after the other, as a list result.
+        fn listed(endpoint: &McpEndpoint, key: &str) -> ::serde_json::Value {
+            let mut items = ::std::vec::Vec::new();
             for catalog in endpoint.catalogs {
-                if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get("tools") {
-                    tools.extend(offered.iter().cloned());
+                if let ::core::option::Option::Some(::serde_json::Value::Array(offered)) = catalog().get(key) {
+                    items.extend(offered.iter().cloned());
                 }
             }
             ::serde_json::json!({
                 "resultType": "complete",
-                "tools": tools,
+                key: items,
                 "ttlMs": LISTED_FOR_MS,
                 "cacheScope": "public",
             })
@@ -613,14 +687,18 @@ fn serving(module: &Ident) -> TokenStream {
             }
             let answered = match request["method"].as_str().unwrap_or_default() {
                 "server/discover" => ::core::result::Result::Ok(discovered(instructions, endpoint)),
-                "tools/list" => ::core::result::Result::Ok(listed_tools(endpoint)),
-                "tools/call" => {
-                    if request["params"]["name"].is_string() {
+                "tools/list" => ::core::result::Result::Ok(listed(endpoint, "tools")),
+                "resources/templates/list" => {
+                    ::core::result::Result::Ok(listed(endpoint, "resourceTemplates"))
+                }
+                "resources/list" => return Begun::Routed(request),
+                method @ ("tools/call" | "resources/read" | "completion/complete") => {
+                    if named(&request["params"], method).is_some() {
                         return Begun::Routed(request);
                     }
                     ::core::result::Result::Err(error_object(
                         -32602,
-                        "Invalid params: tools/call names no tool",
+                        &format!("Invalid params: {method} names nothing to answer"),
                         ::core::option::Option::None,
                     ))
                 }
@@ -633,34 +711,23 @@ fn serving(module: &Ident) -> TokenStream {
             Begun::Answered(::core::option::Option::Some(response_text(id, answered, server_name)))
         }
 
-        /// The text of the response to `id`: the result with the server's name beside it, or the
-        /// error.
-        fn response_text(
-            id: &::serde_json::Value,
-            answered: ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            server_name: &str,
-        ) -> ::std::string::String {
-            canonical(&match answered {
-                ::core::result::Result::Ok(result) => ::serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": with_server_info(result, server_name),
-                }),
-                ::core::result::Result::Err(error) => failed(id, error),
-            })
-        }
-
         /// What a routed `tools/call` answers once its services have been asked.
         fn routed_text(
             request: &::serde_json::Value,
             answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
             server_name: &str,
         ) -> ::core::option::Option<::std::string::String> {
-            let name = request["params"]["name"].as_str().unwrap_or_default();
+            let method = request["method"].as_str().unwrap_or_default();
+            let name = named(&request["params"], method).unwrap_or_default();
             let answered = answered.unwrap_or_else(|| {
+                let unknown = match method {
+                    "tools/call" => "Unknown tool",
+                    "resources/read" => "Resource not found",
+                    _ => "Unknown completion",
+                };
                 ::core::result::Result::Err(error_object(
                     -32602,
-                    &format!("Unknown tool: {name}"),
+                    &format!("{unknown}: {name}"),
                     ::core::option::Option::Some(::serde_json::json!({
                         "isServiceFault": true,
                         "fault": $crate::#module::ServiceFault::unknown_operation(name),
@@ -669,7 +736,12 @@ fn serving(module: &Ident) -> TokenStream {
             });
             ::core::option::Option::Some(response_text(&request["id"], answered, server_name))
         }
+    }
+}
 
+/// `serve`, the loop over the services of an endpoint.
+fn serve_fn() -> TokenStream {
+    quote! {
         /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
         /// answers for the service at that place in the endpoint. A notification answers `None`.
         pub async fn serve<R>(
@@ -688,9 +760,31 @@ fn serving(module: &Ident) -> TokenStream {
                 Begun::Answered(text) => return text,
                 Begun::Routed(request) => request,
             };
+            let method = request["method"].as_str().unwrap_or_default();
+            if method == "resources/list" {
+                let (start, own, first) = match listing_start(&request, endpoint.catalogs.len()) {
+                    ::core::result::Result::Ok(start) => start,
+                    ::core::result::Result::Err(refused) => {
+                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), server_name));
+                    }
+                };
+                let mut answered = ::core::option::Option::None;
+                for part in start..endpoint.catalogs.len() {
+                    let params = listing_params(if part == start { own.as_ref() } else { ::core::option::Option::None });
+                    if let ::core::option::Option::Some(page) = route(part, "resources/list", &params).await {
+                        answered = ::core::option::Option::Some((part, page));
+                        break;
+                    }
+                }
+                return ::core::option::Option::Some(response_text(
+                    &request["id"],
+                    listed_resources(first, endpoint, answered),
+                    server_name,
+                ));
+            }
             let mut answered = ::core::option::Option::None;
             for part in 0..endpoint.catalogs.len() {
-                answered = route(part, "tools/call", &request["params"]).await;
+                answered = route(part, method, &request["params"]).await;
                 if answered.is_some() {
                     break;
                 }
@@ -720,7 +814,24 @@ fn answer(contract: &Ident) -> TokenStream {
                 Begun::Answered(text) => return text,
                 Begun::Routed(request) => request,
             };
-            let answered = route("tools/call", &request["params"], svc, ctx).await;
+            let method = request["method"].as_str().unwrap_or_default();
+            if method == "resources/list" {
+                let (_start, own, first) = match listing_start(&request, ALONE.catalogs.len()) {
+                    ::core::result::Result::Ok(start) => start,
+                    ::core::result::Result::Err(refused) => {
+                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), SERVER_NAME));
+                    }
+                };
+                let answered = route("resources/list", &listing_params(own.as_ref()), svc, ctx)
+                    .await
+                    .map(|page| (0, page));
+                return ::core::option::Option::Some(response_text(
+                    &request["id"],
+                    listed_resources(first, &ALONE, answered),
+                    SERVER_NAME,
+                ));
+            }
+            let answered = route(method, &request["params"], svc, ctx).await;
             routed_text(&request, answered, SERVER_NAME)
         }
 
@@ -877,7 +988,15 @@ fn constants(schema: &Ident, contract_name: &str) -> TokenStream {
         const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
         const LISTED_FOR_MS: u64 = 300_000;
         /// The methods `serve` answers itself or asks `route` for.
-        const METHODS: [&str; 3] = ["server/discover", "tools/call", "tools/list"];
+        const METHODS: [&str; 7] = [
+            "completion/complete",
+            "resources/list",
+            "resources/read",
+            "resources/templates/list",
+            "server/discover",
+            "tools/call",
+            "tools/list",
+        ];
         const PROTOCOL_KEY: &str = "io.modelcontextprotocol/protocolVersion";
         const PROTOCOL_VERSION: &str = "2026-07-28";
         const SERVER_INFO_KEY: &str = "io.modelcontextprotocol/serverInfo";

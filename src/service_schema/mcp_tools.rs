@@ -2,8 +2,8 @@
 //! `mcp` service, each tool built from its operation's message, success, headers and rustdoc.
 
 use super::parse::{
-    BodyKind, HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
-    option_inner, tuple_elements, wire_key, written,
+    BodyKind, HttpShape, McpResourceUri, OperationDef, OperationInputs, OperationOutcome,
+    PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements, wire_key, written,
 };
 use super::transport::http_rest::openapi::message_type;
 use crate::features::jsonschema::in_flight_type;
@@ -23,10 +23,19 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         || quote! { ::core::option::Option::None },
         |text| quote! { ::core::option::Option::Some(#text) },
     );
-    let names = service
-        .operations
-        .iter()
-        .map(|operation| operation.mcp_tool_name().to_owned());
+    let listed = service.operations.iter().filter_map(|operation| {
+        if operation.is_mcp_tool() {
+            return Some(("tool", operation.mcp_tool_name().to_owned()));
+        }
+        let resource = operation.mcp.resource.as_ref()?;
+        let kind = if resource.is_template() {
+            "resource template"
+        } else {
+            "resource"
+        };
+        Some((kind, resource.uri.clone()))
+    });
+    let (kinds, names): (Vec<_>, Vec<_>) = listed.unzip();
     let scopes = scopes_method(service);
     quote! {
         #tools
@@ -38,23 +47,95 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         #[doc = " The trait's rustdoc, which the server answers as its `instructions`."]
         pub const MCP_INSTRUCTIONS: ::core::option::Option<&'static str> = #instructions;
 
-        #[doc = " Every tool the service lists, as `(\"tool\", <name>)`."]
-        pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#(("tool", #names)),*];
+        #[doc = " Every tool, resource and resource template the service lists, as `(<kind>, <name>)`."]
+        pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#((#kinds, #names)),*];
     }
 }
 
 /// `mcp_scopes(method, name)`: the scopes the request `serve` routes to an operation needs.
 fn scopes_method(service: &ServiceDef) -> TokenStream {
-    let arms = service
+    let scopes_of = |operation: &OperationDef| {
+        let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
+        quote! { &[#(#scopes),*] }
+    };
+    let tools = service
         .operations
         .iter()
-        .filter(|operation| !operation.mcp.scopes.is_empty())
+        .filter(|operation| operation.is_mcp_tool() && !operation.mcp.scopes.is_empty())
         .map(|operation| {
             let name = operation.mcp_tool_name();
-            let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
-            quote! {
-                ("tools/call", ::core::option::Option::Some(#name)) => &[#(#scopes),*],
+            let scopes = scopes_of(operation);
+            quote! { ("tools/call", ::core::option::Option::Some(#name)) => #scopes, }
+        });
+    let resourced = || {
+        service
+            .operations
+            .iter()
+            .filter(|operation| !operation.is_mcp_tool())
+    };
+    let is_template = |operation: &OperationDef| {
+        operation
+            .mcp
+            .resource
+            .as_ref()
+            .is_some_and(McpResourceUri::is_template)
+    };
+    let fixed =
+        resourced().filter(|operation| operation.mcp.resource.is_some() && !is_template(operation));
+    let templates = resourced().filter(|operation| is_template(operation));
+    let checks: Vec<TokenStream> = fixed
+        .chain(templates)
+        .filter_map(|operation| {
+            let resource = operation.mcp.resource.as_ref()?;
+            let scopes = scopes_of(operation);
+            Some(if resource.is_template() {
+                let parts = resource.segments.iter().map(|segment| match segment {
+                    PathSegment::Literal(text) => quote! { (#text, false) },
+                    PathSegment::Placeholder(name) => quote! { (#name, true) },
+                });
+                quote! {
+                    if matches_template(&[#(#parts),*], uri) {
+                        return #scopes;
+                    }
+                }
+            } else {
+                let uri = &resource.uri;
+                quote! {
+                    if uri == #uri {
+                        return #scopes;
+                    }
+                }
+            })
+        })
+        .collect();
+    let matcher = resourced().any(is_template).then(uri_matcher);
+    let reads = (!checks.is_empty()).then(|| {
+        quote! {
+            ("resources/read", ::core::option::Option::Some(uri)) => {
+                #(#checks)*
+                &[]
             }
+        }
+    });
+    let listing = resourced()
+        .find(|operation| operation.mcp.list_resources && !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let scopes = scopes_of(operation);
+            quote! { ("resources/list", _) => #scopes, }
+        });
+    let completions = resourced()
+        .filter(|operation| !operation.mcp.scopes.is_empty())
+        .filter_map(|operation| {
+            let completes = operation.mcp.completes.as_ref()?;
+            let target = service
+                .operations
+                .iter()
+                .find(|candidate| written(&candidate.ident) == completes.resource)?;
+            let uri = &target.mcp.resource.as_ref()?.uri;
+            let scopes = scopes_of(operation);
+            Some(quote! {
+                ("completion/complete", ::core::option::Option::Some(#uri)) => #scopes,
+            })
         });
     quote! {
         #[doc = " The scopes a caller needs for the request `method` and `name` name, `[]` for none."]
@@ -62,10 +143,38 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             method: &str,
             name: ::core::option::Option<&str>,
         ) -> &'static [&'static str] {
+            #matcher
             match (method, name) {
-                #(#arms)*
+                #(#tools)*
+                #reads
+                #listing
+                #(#completions)*
                 _ => &[],
             }
+        }
+    }
+}
+
+/// `matches_template(template, uri)`: whether `uri` is the template, each placeholder one
+/// non-empty run of text up to the next `/` and the literal parts compared as written.
+fn uri_matcher() -> TokenStream {
+    quote! {
+        fn matches_template(template: &[(&str, bool)], uri: &str) -> bool {
+            let mut rest = uri;
+            for (text, placeholder) in template {
+                if *placeholder {
+                    let end = rest.find('/').unwrap_or(rest.len());
+                    if end == 0 {
+                        return false;
+                    }
+                    rest = &rest[end..];
+                } else if let ::core::option::Option::Some(remainder) = rest.strip_prefix(text) {
+                    rest = remainder;
+                } else {
+                    return false;
+                }
+            }
+            rest.is_empty()
         }
     }
 }
@@ -103,7 +212,11 @@ fn wrapped_method(operation: &OperationDef) -> TokenStream {
 }
 
 fn tools_method(service: &ServiceDef) -> TokenStream {
-    let tools = service.operations.iter().map(tool_value);
+    let tools = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .map(tool_value);
     let helpers = helpers();
     quote! {
         #[doc = " The service's tools, one per operation in the order the trait declares them."]

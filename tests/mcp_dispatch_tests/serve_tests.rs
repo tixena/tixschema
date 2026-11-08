@@ -83,7 +83,7 @@ fn server_discover_answers_the_name_the_instructions_and_the_capabilities() {
             "result": {
                 "resultType": "complete",
                 "supportedVersions": ["2026-07-28"],
-                "capabilities": { "tools": {} },
+                "capabilities": { "completions": {}, "resources": {}, "tools": {} },
                 "instructions": "Reads and renames documents in the caller's workspace.",
                 "_meta": server_info("DocumentService"),
                 "ttlMs": LISTED_FOR_MS,
@@ -684,5 +684,9 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         },
     ));
     assert_eq!(served, response);
-    assert_eq!(DocumentServiceSchema::MCP_NAMES.len(), 5);
+    assert_eq!(
+        DocumentServiceSchema::MCP_NAMES.len(),
+        7,
+        "five tools, one resource and one template"
+    );
 }
