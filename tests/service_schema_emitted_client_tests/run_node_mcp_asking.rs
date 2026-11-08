@@ -3,9 +3,9 @@
 //! gives, and the client reads the answers back into the pair, the list and the declared arm.
 
 use super::mcp_asking_rows::{
-    AskingConfirmation, AskingError, AskingKindError, AskingLinkError, AskingLinked, AskingMiss,
-    AskingPriority, AskingRenamedError, AskingReportRequest, AskingShipping, assert_client,
-    assert_matches, client_input, input,
+    AskingAdjacentError, AskingConfirmation, AskingError, AskingKindError, AskingLinkError,
+    AskingLinked, AskingMiss, AskingPriority, AskingRenamedError, AskingReportRequest,
+    AskingShipping, assert_client, assert_matches, client_input, input,
 };
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use super::{AskingServiceSchema, PreviewServiceSchema};
@@ -42,6 +42,27 @@ const impl = {
         message: "Connect your Google Drive so this server can import the file.",
       },
     };
+  },
+  async connectAdjacent(ctx, id) {
+    reached.push(["connect-adjacent", id]);
+    return {
+      ok: false,
+      error: {
+        kind: "needs-connection",
+        data: {
+          url: "https://mcp.example.com/connect/drive?request=7f3a",
+          message: "Connect your Google Drive so this server can import the file.",
+        },
+      },
+    };
+  },
+  async deleteAdjacent(ctx, req) {
+    reached.push(["delete-adjacent", req.documentId, req.confirmation ?? null]);
+    if (req.documentId === "missing") return { ok: false, error: { kind: "not-found" } };
+    if (req.confirmation === undefined) {
+      return { ok: false, error: { kind: "needs-confirmation", data: { message: "Delete this document for good?" } } };
+    }
+    return req.confirmation.confirm ? { ok: true } : { ok: false, error: { kind: "refused" } };
   },
   async connectByKind(ctx, id) {
     reached.push(["connect-by-kind", id]);
@@ -239,6 +260,8 @@ fn bundle() -> String {
         AskingShipping::zod_schema(),
         AskingConfirmation::ts_definition(),
         AskingConfirmation::zod_schema(),
+        AskingAdjacentError::ts_definition(),
+        AskingAdjacentError::zod_schema(),
         AskingError::ts_definition(),
         AskingError::zod_schema(),
         AskingLinkError::ts_definition(),

@@ -1314,6 +1314,7 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
 @N@McpAnswer? _@P@McpAsking(
   String tag,
   String wire,
+  String content,
   String? answers,
   String? form,
   String doc,
@@ -1322,7 +1323,9 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
   bool declined,
 ) {
   if (error is! Map<String, dynamic>) return null;
-  final Object? held = tag.isEmpty ? error[wire] : (error[tag] == wire ? error : null);
+  final Object? named = tag.isEmpty ? error[wire] : (error[tag] == wire ? error : null);
+  if (named is! Map<String, dynamic>) return null;
+  final Object? held = content.isEmpty ? named : named[content];
   if (held is! Map<String, dynamic>) return null;
   final message = held['message'];
   if (answers != null) {
@@ -1958,19 +1961,25 @@ fn reply_tail(
 }
 
 /// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
-/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+/// name it writes the arm under and the key it holds the arm's members under: `part` is `TAG`, `WIRE`
+/// or `CONTENT`.
 fn arm_marker(operation: &OperationDef, part: &str) -> String {
     format!("@ARM_{part}:{}@", written(&operation.ident))
 }
 
-/// One `.replace` for the tag key and one for the wire name of the arm each interview operation asks with.
+/// One `.replace` for the tag key, the wire name and the content key of the arm each interview operation asks with.
 fn arm_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
     declared
         .operations
         .iter()
         .filter(|operation| operation.mcp.interview.is_some())
         .flat_map(|operation| {
-            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+            [
+                ("TAG", "mcp_arm_tag"),
+                ("WIRE", "mcp_arm_wire"),
+                ("CONTENT", "mcp_arm_content"),
+            ]
+            .map(|(part, head)| {
                 let marker = arm_marker(operation, part);
                 let method = format_ident!(
                     "{head}_{}",
@@ -2049,10 +2058,11 @@ fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (Strin
     };
     let asking = format!(
         "    final Object? declaredBody = {declared};\n    \
-         final asking = _{prefix}McpAsking({}, {}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
+         final asking = _{prefix}McpAsking({}, {}, {}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
          if (asking != null) return asking;\n",
         arm_marker(operation, "TAG"),
         arm_marker(operation, "WIRE"),
+        arm_marker(operation, "CONTENT"),
         quoted(operation.doc.as_deref().unwrap_or_default()),
     );
     (asking, "declaredBody".to_owned())
