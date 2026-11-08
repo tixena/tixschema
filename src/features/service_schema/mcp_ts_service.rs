@@ -1113,6 +1113,17 @@ export type __N__McpHttpResponse = {
   readonly body: Uint8Array;
 };
 
+/**
+ * Where an HTTP server writes an event-stream answer. `begin` is called once, before the first
+ * event, with the status and headers of the answer; `write` then takes the text of each event, or
+ * of the comment line that keeps the stream open. A call that rejects means the client has gone.
+ * The host ends its response when the server returns `undefined`.
+ */
+export type __N__McpHttpStream = {
+  begin(status: number, headers: ReadonlyArray<readonly [string, string]>): Promise<void>;
+  write(event: string): Promise<void>;
+};
+
 /** What `admit` answers: the context the handlers run with, or why the request is refused. */
 export type __N__McpAdmitted<Ctx> = { readonly ctx: Ctx } | { readonly denied: __N__McpDenied };";
 
@@ -1156,19 +1167,14 @@ function __p__McpHeaderText(value: string): string | undefined {
   }
 }
 
-/** The `200` event-stream answer: each event written, then the answer. */
-function __p__McpEventStream(events: ReadonlyArray<string | null>, answered: string | undefined): __N__McpHttpResponse {
-  const written = answered === undefined ? events : [...events, answered];
-  return {
-    status: 200,
-    headers: [
-      ["Content-Type", "text/event-stream"],
-      ["X-Accel-Buffering", "no"],
-    ],
-    body: new TextEncoder().encode(
-      written.map((event) => (event === null ? ":\n\n" : `event: message\ndata: ${event}\n\n`)).join(""),
-    ),
-  };
+const __p__McpEventHeaders: ReadonlyArray<readonly [string, string]> = [
+  ["Content-Type", "text/event-stream"],
+  ["X-Accel-Buffering", "no"],
+];
+
+/** One event of an event stream, carrying one JSON-RPC message. */
+function __p__McpFrame(message: string): string {
+  return `event: message\ndata: ${message}\n\n`;
 }
 
 function __p__McpHttpReplied(handled: __N__McpHandled | number): __N__McpHttpResponse {
@@ -1240,19 +1246,22 @@ function __p__McpMetadata(oauth: __N__McpOAuth): __N__McpHttpResponse {
  * The Streamable HTTP rules around `__p__McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body, the headers that must agree with it, and the status each refusal travels
  * under. `route` also receives the `Ctx` that `admit` answered. A routed request that carries a
- * `progressToken` answers an event stream: each notification, then the answer. So does a
- * `subscriptions/listen`, where `changes` is handed in: it ends when `changes` answers `undefined`.
+ * `progressToken` answers an event stream written to `stream` as it happens: `begin`, each
+ * notification, then the answer, and this answers `undefined`. So does a `subscriptions/listen`,
+ * where `changes` is handed in: it ends when `changes` answers `undefined`. Any other request
+ * answers the response, and `stream` is never begun.
  */
 export async function __p__McpServeHttp<Ctx>(
   request: __N__McpHttpRequest,
   settings: __N__McpHttpSettings,
+  stream: __N__McpHttpStream,
   serverName: string,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   route: (ctx: Ctx, part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
   changes?: __N__McpChanges,
-): Promise<__N__McpHttpResponse> {
+): Promise<__N__McpHttpResponse | undefined> {
   if (settings.oauth !== undefined) {
     const path = request.path.split(/[?#]/)[0];
     if (request.method === "GET" && path === __p__McpUrlPath(settings.oauth.resourceMetadataUrl)) {
@@ -1262,17 +1271,17 @@ export async function __p__McpServeHttp<Ctx>(
   if (request.method !== "POST") return { ...__p__McpHttpReplied(405), headers: [["Allow", "POST"]] };
   const origin = __p__McpHeader(request, "origin");
   if (origin !== undefined && !settings.allowedOrigins.includes(origin)) return __p__McpHttpReplied(403);
-  const events: Array<string | null> = [];
+  const held: Array<string> = [];
+  let live = false;
+  const give = (text: string): Promise<void> => {
+    if (live) return stream.write(text);
+    held.push(text);
+    return Promise.resolve();
+  };
   const call = new __N__McpCall(
     __p__McpBodyToken(request),
-    (event) => {
-      events.push(event);
-      return Promise.resolve();
-    },
-    () => {
-      events.push(null);
-      return Promise.resolve();
-    },
+    (event) => give(__p__McpFrame(event)),
+    () => give(":\n\n"),
   );
   const admitted = await admit(request, call);
   if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
@@ -1304,12 +1313,28 @@ export async function __p__McpServeHttp<Ctx>(
       }
     }
   }
+  const streams = __p__McpToken(message) !== undefined || method === "subscriptions/listen";
+  let beginning: Promise<void> | undefined;
+  const begin = (): Promise<void> => {
+    if (!streams) return Promise.resolve();
+    beginning ??= (async () => {
+      try {
+        await stream.begin(200, __p__McpEventHeaders);
+        live = true;
+        for (const text of held.splice(0)) await stream.write(text);
+      } catch {
+        call.cancel();
+      }
+    })();
+    return beginning;
+  };
   const asked = { routed: false };
   const listening =
     changes === undefined
       ? undefined
-      : (id: unknown, given: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
+      : async (id: unknown, given: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
           asked.routed = true;
+          await begin();
           return __p__McpListen(id, given, info, endpoint, call, changes);
         };
   const handled = await __p__McpHandle(
@@ -1317,16 +1342,24 @@ export async function __p__McpServeHttp<Ctx>(
     serverName,
     instructions,
     endpoint,
-    (part, called, given) => {
+    async (part, called, given) => {
       asked.routed = true;
-      return route(ctx, part, called, given);
+      await begin();
+      return call.cancelled && streams ? undefined : route(ctx, part, called, given);
     },
     listening,
   );
   if (!asked.routed) return __p__McpHttpReplied(handled);
   const answered = call.cancelled ? undefined : handled.text;
-  if (__p__McpToken(message) !== undefined || method === "subscriptions/listen") return __p__McpEventStream(events, answered);
-  return __p__McpHttpReplied(answered === undefined ? 202 : handled);
+  if (!streams) return __p__McpHttpReplied(answered === undefined ? 202 : handled);
+  if (answered !== undefined) {
+    try {
+      await stream.write(__p__McpFrame(answered));
+    } catch {
+      call.cancel();
+    }
+  }
+  return undefined;
 }"#;
 
 const FACTORIES: &str = "/**
@@ -1360,19 +1393,20 @@ export function create__N__McpDispatcher<Ctx>(
     );
 }
 
-/** `create__N__McpDispatcher` over Streamable HTTP. */
+/** `create__N__McpDispatcher` over Streamable HTTP. The function it answers writes an event-stream answer to the `stream` it is handed and answers `undefined`. */
 export function create__N__McpHttpDispatcher<Ctx>(
   impl: __DRIVEN__,
   settings: __N__McpHttpSettings,
   admit: (request: __N__McpHttpRequest, call: __N__McpCall) => Promise<__N__McpAdmitted<Ctx>>,
   changes?: __N__McpChanges,
-): (request: __N__McpHttpRequest) => Promise<__N__McpHttpResponse> {
+): (request: __N__McpHttpRequest, stream: __N__McpHttpStream) => Promise<__N__McpHttpResponse | undefined> {
   const route = create__N__McpRoute(impl);
   const endpoint = __p__McpEndpoint(__p__McpPart);
-  return (request) =>
+  return (request, stream) =>
     __p__McpServeHttp(
       request,
       settings,
+      stream,
       __p__McpServerName,
       __p__McpInstructions,
       endpoint,

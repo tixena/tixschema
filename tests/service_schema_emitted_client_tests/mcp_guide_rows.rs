@@ -3,6 +3,7 @@
 //! measured against and the clients are read against. Nothing here waits on a clock.
 
 use super::mcp_guide_dispatcher as dispatcher;
+use crate::mcp_streams::through;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::future::{Future, ready};
@@ -17,6 +18,8 @@ use tixschema::{model_schema, service_schema};
 
 /// The official 2026-07-28 schema of the Model Context Protocol.
 const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-07-28.json");
+
+const EVENT_PREFIX: &str = "event: message\ndata: ";
 
 /// The requests whose validation fault is compared without its detail, which each language words
 /// in its own terms.
@@ -322,11 +325,18 @@ pub fn http_rows() -> Vec<HttpRow> {
         }
         held
     };
+    let mut tokened: Value = serde_json::from_str(&body).unwrap();
+    tokened["params"]["_meta"]["progressToken"] = json!("greet-1");
     vec![
         HttpRow {
             body: body.clone(),
             headers: headers(Some("greet")),
             name: "http_matching",
+        },
+        HttpRow {
+            body: tokened.to_string(),
+            headers: headers(Some("greet")),
+            name: "http_streamed",
         },
         HttpRow {
             body: body.clone(),
@@ -367,12 +377,15 @@ fn http_answered(headers: &[(String, String)], body: &str) -> Value {
         method: "POST".to_owned(),
         path: "/mcp".to_owned(),
     };
-    let response = ready_output(dispatcher::answer_http(
-        &asked,
-        &settings,
-        &Stand::default(),
-        async |_request, _call| Ok(()),
-    ));
+    let response = through(|stream| {
+        ready_output(dispatcher::answer_http(
+            &asked,
+            &settings,
+            stream,
+            &Stand::default(),
+            async |_request, _call| Ok(()),
+        ))
+    });
     json!({ "status": response.status, "body": String::from_utf8(response.body).unwrap() })
 }
 
@@ -447,6 +460,11 @@ fn floats(value: &Value) -> Value {
     }
 }
 
+/// The JSON text an answer carries, whether it is the body or the one event of a stream.
+fn event_data(body: &str) -> &str {
+    body.strip_prefix(EVENT_PREFIX).unwrap_or(body).trim_end()
+}
+
 fn read(text: &str) -> Value {
     floats(&serde_json::from_str(text).unwrap())
 }
@@ -508,11 +526,20 @@ pub fn assert_matches(report: &Value) {
             "{name}"
         );
         assert_eq!(
-            read(report["http"][name]["body"].as_str().unwrap()),
-            read(rust["http"][name]["body"].as_str().unwrap()),
+            read(event_data(report["http"][name]["body"].as_str().unwrap())),
+            read(event_data(rust["http"][name]["body"].as_str().unwrap())),
             "{name}"
         );
     }
+    let streamed = rust["http"]["http_streamed"]["body"].as_str().unwrap();
+    assert!(streamed.starts_with(EVENT_PREFIX), "{streamed}");
+    assert!(
+        !rust["http"]["http_matching"]["body"]
+            .as_str()
+            .unwrap()
+            .starts_with(EVENT_PREFIX)
+    );
+    assert_eq!(rust["http"]["http_streamed"]["status"], json!(200_u16));
     assert_eq!(rust["http"]["http_matching"]["status"], json!(200_u16));
     assert_eq!(rust["http"]["http_mismatched"]["status"], json!(400_u16));
     assert_eq!(rust["http"]["http_nameless"]["status"], json!(400_u16));
@@ -693,17 +720,20 @@ fn an_admit_that_denies_stops_a_prompt_before_its_handler_runs() {
             401,
         ),
     ] {
-        let response = ready_output(dispatcher::answer_http(
-            &asked,
-            &settings,
-            &stand,
-            async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("greet"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("prompts/get"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &stand,
+                async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("greet"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("prompts/get"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());

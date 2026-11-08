@@ -292,6 +292,15 @@ class @N@McpHttpResponse {
   final List<int> body;
 }
 
+/// Where an HTTP server writes an event-stream answer. `begin` is called once, before the first
+/// event, with the status and headers of the answer; `write` then takes the text of each event, or
+/// of the comment line that keeps the stream open. A call that throws means the client has gone. The
+/// host ends its response when the server answers `null`.
+abstract interface class @N@McpHttpStream {
+  Future<void> begin(int status, List<(String, String)> headers);
+  Future<void> write(String event);
+}
+
 /// The protected-resource metadata of a server that authorizes by OAuth.
 class @N@McpOAuth {
   const @N@McpOAuth({
@@ -895,15 +904,10 @@ Object? _@P@McpBodyToken(@N@McpHttpRequest request) {
   }
 }
 
-/// The `200` event-stream answer: each event written, then the answer.
-@N@McpHttpResponse _@P@McpEventStream(List<String?> events, String? answered) => @N@McpHttpResponse(
-      status: 200,
-      headers: const [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')],
-      body: utf8.encode([
-        for (final event in [...events, if (answered != null) answered])
-          event == null ? ':\n\n' : 'event: message\ndata: $event\n\n',
-      ].join()),
-    );
+const _@P@McpEventHeaders = [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')];
+
+/// One event of an event stream, carrying one JSON-RPC message.
+String _@P@McpFrame(String message) => 'event: message\ndata: $message\n\n';
 
 String _@P@McpUrlPath(String url) {
   final separator = url.indexOf('://');
@@ -951,11 +955,14 @@ String _@P@McpUrlPath(String url) {
 
 /// The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
 /// `admit`, the body and the headers that must agree with it. `route` also receives the `Ctx` that
-/// `admit` answered. A `subscriptions/listen` answers an event stream where `changes` is handed in:
-/// it ends when `changes` answers `null`.
-Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
+/// `admit` answered. A routed request that carries a `progressToken` answers an event stream written
+/// to `stream` as it happens (`begin`, each notification, then the answer) and the server answers
+/// `null`. So does a `subscriptions/listen` where `changes` is handed in: it ends when `changes`
+/// answers `null`. Any other request answers the response, and `stream` is never begun.
+Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   @N@McpHttpRequest request,
   @N@McpHttpSettings settings,
+  @N@McpHttpStream stream,
   String serverName,
   String? instructions,
   @N@McpEndpoint endpoint,
@@ -982,11 +989,17 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   }
   final origin = header('origin');
   if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
-  final events = <String?>[];
+  final held = <String>[];
+  var live = false;
+  Future<void> give(String text) async {
+    if (live) return stream.write(text);
+    held.add(text);
+  }
+
   final call = @N@McpCall(
     token: _@P@McpBodyToken(request),
-    writer: (event) async => events.add(event),
-    comment: () async => events.add(null),
+    writer: (event) => give(_@P@McpFrame(event)),
+    comment: () => give(':\n\n'),
   );
   final admitted = await admit(request, call);
   final denied = admitted.denied;
@@ -1025,21 +1038,48 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
       return respond(400, error(id, -32020, 'Header mismatch: Mcp-Name'));
     }
   }
+  final streams = _@P@McpToken(parsed) != null || method == 'subscriptions/listen';
+  Future<void>? beginning;
+  Future<void> begin() {
+    if (!streams) return Future<void>.value();
+    return beginning ??= () async {
+      try {
+        await stream.begin(200, _@P@McpEventHeaders);
+        live = true;
+        for (final text in held.toList()) {
+          await stream.write(text);
+        }
+        held.clear();
+      } catch (_) {
+        call._cancel();
+      }
+    }();
+  }
+
   var routed = false;
   final answered = await _@P@McpRespond(utf8.decode(request.body), serverName, @P@McpServerVersion, instructions,
-      endpoint, (part, method, params) {
+      endpoint, (part, method, params) async {
     routed = true;
-    return route(ctx, part, method, params);
+    await begin();
+    return call.cancelled && streams ? null : route(ctx, part, method, params);
   }, changes == null
       ? null
-      : (id, params, info) {
+      : (id, params, info) async {
           routed = true;
+          await begin();
           return _@P@McpListen(id, params, info, endpoint, call, changes);
         });
   if (!routed) return respond(answered.status, answered.text);
   final written = call.cancelled ? null : answered.text;
-  if (_@P@McpToken(parsed) != null || method == 'subscriptions/listen') return _@P@McpEventStream(events, written);
-  return written == null ? respond(202) : respond(answered.status, written);
+  if (!streams) return written == null ? respond(202) : respond(answered.status, written);
+  if (written != null) {
+    try {
+      await stream.write(_@P@McpFrame(written));
+    } catch (_) {
+      call._cancel();
+    }
+  }
+  return null;
 }
 "#;
 
@@ -1217,17 +1257,18 @@ Future<String?> Function(
 }
 
 /// Answers the HTTP requests of this service alone. `admit` answers the `Ctx` of a request, or why
-/// it is refused.
-Future<@N@McpHttpResponse> Function(@N@McpHttpRequest) create@N@McpHttpDispatcher<Ctx>(
+/// it is refused. An event-stream answer is written to the stream it is handed and answers `null`.
+Future<@N@McpHttpResponse?> Function(@N@McpHttpRequest, @N@McpHttpStream) create@N@McpHttpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
   @N@McpHttpSettings settings,
   @N@McpAdmit<Ctx> admit, [
   @N@McpChanges? changes,
 ]) {
   final route = create@N@McpRoute(handlers);
-  return (request) => @P@McpServeHttp<Ctx>(
+  return (request, stream) => @P@McpServeHttp<Ctx>(
         request,
         settings,
+        stream,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,

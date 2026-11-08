@@ -17,6 +17,7 @@ use super::{
     BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorServiceSchema,
     ShelfServiceSchema,
 };
+use crate::mcp_streams::dart_respond;
 use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -122,7 +123,8 @@ void main() async {
   final http = <Map<String, dynamic>>[];
   for (final held in input['http'] as List<dynamic>) {
     final row = held as Map<String, dynamic>;
-    final response = await over(
+    final response = await respondLibraryService(
+      over,
       LibraryServiceMcpHttpRequest(
         method: 'POST',
         path: '/mcp',
@@ -223,6 +225,7 @@ fn module() -> String {
         BareServiceSchema::dart_definition(),
         BareServiceSchema::dart_ws_client(),
         BareServiceSchema::dart_mcp_service(),
+        dart_respond("LibraryService"),
         format!("const INPUT = {dollar_safe};"),
         DRIVER.to_owned(),
     ]

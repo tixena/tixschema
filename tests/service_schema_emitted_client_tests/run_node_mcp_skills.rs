@@ -8,6 +8,7 @@ use super::mcp_lesson_service::{assert_http, http_rows, lesson_answer, rows};
 use super::mcp_library_rows::{HttpAnswer, assert_answers};
 use super::mcp_library_service::{BookError, BookInfo, BookRequest};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
+use crate::mcp_streams::NODE_RESPOND;
 use serde_json::{Value, json};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -52,7 +53,7 @@ async function main() {
   const answers = (ask) => Promise.all(input.requests.map(async (text) => (await ask(text)) ?? null));
   const http = [];
   for (const row of input.http) {
-    const response = await over({ method: "POST", path: "/mcp", headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(over, { method: "POST", path: "/mcp", headers: row.headers, body: new TextEncoder().encode(row.body) });
     http.push({ status: response.status, headers: response.headers.map(([name, value]) => [name, value]), body: new TextDecoder().decode(response.body) });
   }
   console.log(JSON.stringify({
@@ -111,7 +112,11 @@ fn driven() -> Option<Value> {
     let input =
         json!({ "origin": super::mcp_library_rows::ORIGIN, "requests": requests, "http": http });
     let literal = Value::String(input.to_string());
-    let source = format!("{}\n\nconst INPUT = {literal};\n{DRIVER}", bundle());
+    let source = format!(
+        "{}\n\n{}\nconst INPUT = {literal};\n{DRIVER}",
+        bundle(),
+        NODE_RESPOND
+    );
     let wrote = ran_with_modules(
         "mcp-skills",
         RUNTIME_VAR,

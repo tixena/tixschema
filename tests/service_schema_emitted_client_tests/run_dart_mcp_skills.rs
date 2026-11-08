@@ -11,6 +11,7 @@ use super::mcp_library_rows::{HttpAnswer, ORIGIN, assert_answers};
 use super::mcp_library_service::{book_error_dart, book_info_dart, book_request_dart};
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
+use crate::mcp_streams::dart_respond;
 use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -53,7 +54,8 @@ void main() async {
   final http = <Map<String, dynamic>>[];
   for (final held in input['http'] as List<dynamic>) {
     final row = held as Map<String, dynamic>;
-    final response = await over(
+    final response = await respondLessonService(
+      over,
       LessonServiceMcpHttpRequest(
         method: 'POST',
         path: '/mcp',
@@ -100,6 +102,7 @@ fn module() -> String {
         LessonServiceSchema::dart_definition(),
         LessonServiceSchema::dart_ws_client(),
         LessonServiceSchema::dart_mcp_service(),
+        dart_respond("LessonService"),
         format!("const INPUT = {dollar_safe};"),
         DRIVER.to_owned(),
     ]

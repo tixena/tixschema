@@ -6,6 +6,7 @@ use super::mcp_mobile_document::{self, McpEndpoint, McpHttpRequest, McpHttpSetti
 use super::mcp_mobile_rows::{VERSION, block_on, call, request};
 use super::mcp_mobile_service::{Archive, Sink};
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
+use crate::mcp_streams::through;
 use serde_json::{Value, json};
 
 pub const ORIGIN: &str = "https://app.example.com";
@@ -580,12 +581,15 @@ fn plain_terms(row: &HttpRow) -> McpHttpRequest {
 
 /// What the Rust dispatcher of `MobileDocumentService` alone answers to the request in plain terms.
 pub fn rust_http(row: &HttpRow) -> (u16, Vec<(String, String)>, String) {
-    let answered = block_on(mcp_mobile_document::answer_http(
-        &plain_terms(row),
-        &DOCUMENT_SETTINGS,
-        &Archive,
-        async |_request, _call| Ok(()),
-    ));
+    let answered = through(|stream| {
+        block_on(mcp_mobile_document::answer_http(
+            &plain_terms(row),
+            &DOCUMENT_SETTINGS,
+            stream,
+            &Archive,
+            async |_request, _call| Ok(()),
+        ))
+    });
     (
         answered.status,
         answered.headers,
@@ -631,42 +635,57 @@ fn the_second_service_answers_alone_and_beside_the_first() {
         mcp_mobile_billing::INSTRUCTIONS,
         Some("Answers what a caller owes.")
     );
-    let over_http = block_on(mcp_mobile_billing::answer_http(
-        &billing_terms(&asked),
-        &BILLING_SETTINGS,
-        &Archive,
-        async |_request, _call| Ok(()),
-    ));
-    let served_over_http = block_on(mcp_mobile_billing::serve_http(
-        &billing_terms(&asked),
-        &BILLING_SETTINGS,
-        mcp_mobile_billing::SERVER_NAME,
-        None,
-        &endpoint,
-        async |_request, _call| Ok(()),
-        &|ctx: &(), _part, method: &str, params: &Value| {
-            Box::pin(async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await })
-        },
-    ));
+    let over_http = through(|stream| {
+        block_on(mcp_mobile_billing::answer_http(
+            &billing_terms(&asked),
+            &BILLING_SETTINGS,
+            stream,
+            &Archive,
+            async |_request, _call| Ok(()),
+        ))
+    });
+    let served_over_http = through(|stream| {
+        block_on(mcp_mobile_billing::serve_http(
+            &billing_terms(&asked),
+            &BILLING_SETTINGS,
+            stream,
+            &mcp_mobile_billing::McpServer {
+                endpoint: &endpoint,
+                instructions: None,
+                name: mcp_mobile_billing::SERVER_NAME,
+            },
+            async |_request, _call| Ok(()),
+            &|ctx: &(), _part, method: &str, params: &Value| {
+                Box::pin(
+                    async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await },
+                )
+            },
+        ))
+    });
     assert_eq!(over_http.status, 200);
     assert_eq!(over_http.status, served_over_http.status);
-    let workspace = block_on(mcp_mobile_document::serve_http(
-        &plain_terms(&asked),
-        &DOCUMENT_SETTINGS,
-        "Workspace",
-        None,
-        &WORKSPACE,
-        async |_request, _call| Ok(()),
-        &|ctx: &(), part, method: &str, params: &Value| {
-            Box::pin(async move {
-                match part {
-                    0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
-                    1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
-                    _ => None,
-                }
-            })
-        },
-    ));
+    let workspace = through(|stream| {
+        block_on(mcp_mobile_document::serve_http(
+            &plain_terms(&asked),
+            &DOCUMENT_SETTINGS,
+            stream,
+            &mcp_mobile_document::McpServer {
+                endpoint: &WORKSPACE,
+                instructions: None,
+                name: "Workspace",
+            },
+            async |_request, _call| Ok(()),
+            &|ctx: &(), part, method: &str, params: &Value| {
+                Box::pin(async move {
+                    match part {
+                        0 => mcp_mobile_document::route(method, params, &Archive, ctx).await,
+                        1 => mcp_mobile_billing::route(method, params, &Archive, ctx).await,
+                        _ => None,
+                    }
+                })
+            },
+        ))
+    });
     assert_eq!(workspace.status, rust_http(&asked).0);
 }
 
@@ -693,16 +712,19 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
         ),
         (mcp_mobile_document::McpDenied::Forbidden, 403),
     ] {
-        let response = block_on(mcp_mobile_document::answer_http(
-            &plain_terms(&asked),
-            &DOCUMENT_SETTINGS,
-            &Archive,
-            async |_request: &McpHttpRequest,
-                   _call: mcp_mobile_document::McpCall|
-                   -> Result<(), mcp_mobile_document::McpDenied> {
-                Err(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            block_on(mcp_mobile_document::answer_http(
+                &plain_terms(&asked),
+                &DOCUMENT_SETTINGS,
+                stream,
+                &Archive,
+                async |_request: &McpHttpRequest,
+                       _call: mcp_mobile_document::McpCall|
+                       -> Result<(), mcp_mobile_document::McpDenied> {
+                    Err(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status, "{denied:?}");
     }
     for (denied, status) in [
@@ -718,14 +740,19 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
         ),
         (mcp_mobile_billing::McpDenied::Forbidden, 403),
     ] {
-        let response = block_on(mcp_mobile_billing::answer_http(
-            &billing_terms(&asked),
-            &BILLING_SETTINGS,
-            &Archive,
-            async |_request: &mcp_mobile_billing::McpHttpRequest,
-                   _call: mcp_mobile_billing::McpCall|
-                   -> Result<(), mcp_mobile_billing::McpDenied> { Err(denied.clone()) },
-        ));
+        let response = through(|stream| {
+            block_on(mcp_mobile_billing::answer_http(
+                &billing_terms(&asked),
+                &BILLING_SETTINGS,
+                stream,
+                &Archive,
+                async |_request: &mcp_mobile_billing::McpHttpRequest,
+                       _call: mcp_mobile_billing::McpCall|
+                       -> Result<(), mcp_mobile_billing::McpDenied> {
+                    Err(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status, "{denied:?}");
     }
 }

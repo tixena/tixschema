@@ -50,19 +50,24 @@ macro_rules! rust_serves_alike {
             allowed_origins: &[],
             oauth: None,
         };
-        let over_http = $drive($module::serve_http(
-            &asked,
-            &settings,
-            $module::SERVER_NAME,
-            $module::INSTRUCTIONS,
-            &endpoint,
-            async |_request: &$module::McpHttpRequest,
-                   _call: $module::McpCall|
-                   -> Result<(), $module::McpDenied> { Ok(()) },
-            &|ctx: &(), _part, method: &str, params: &Value| {
-                Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
-            },
-        ));
+        let over_http = crate::mcp_streams::through(|stream| {
+            $drive($module::serve_http(
+                &asked,
+                &settings,
+                stream,
+                &$module::McpServer {
+                    endpoint: &endpoint,
+                    instructions: $module::INSTRUCTIONS,
+                    name: $module::SERVER_NAME,
+                },
+                async |_request: &$module::McpHttpRequest,
+                       _call: $module::McpCall|
+                       -> Result<(), $module::McpDenied> { Ok(()) },
+                &|ctx: &(), _part, method: &str, params: &Value| {
+                    Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
+                },
+            ))
+        });
         (alone, served, over_http.status)
     }};
 }
@@ -139,20 +144,20 @@ macro_rules! rust_listens_alike {
         };
         let mut queue = script();
         let mut source = async || queue.pop_front();
-        let over_alone = $drive($module::answer_http_listening(
+        let over_alone = crate::mcp_streams::through(|stream| $drive($module::answer_http_listening(
             &asked,
-            &settings,
+            &settings, stream,
             &$svc,
             async |_request: &$module::McpHttpRequest,
                    _call: $module::McpCall|
                    -> Result<(), $module::McpDenied> { Ok(()) },
             &mut source,
-        ));
+        )));
         let mut queue = script();
         let mut source = async || queue.pop_front();
-        let over_served = $drive($module::serve_http_listening(
+        let over_served = crate::mcp_streams::through(|stream| $drive($module::serve_http_listening(
             &asked,
-            &settings,
+            &settings, stream,
             &server,
             async |_request: &$module::McpHttpRequest,
                    _call: $module::McpCall|
@@ -161,7 +166,7 @@ macro_rules! rust_listens_alike {
                 Box::pin(async move { $module::route(method, params, &$svc, ctx).await })
             },
             &mut source,
-        ));
+        )));
         assert_eq!(over_alone.status, 200);
         assert_eq!(over_alone.body, over_served.body);
         assert!(
@@ -211,28 +216,34 @@ macro_rules! rust_auth_answer {
             }
         };
         let answered = match row.scheme {
-            Scheme::Oauth => $drive($module::answer_http(
-                &asked,
-                &settings,
-                &$svc,
-                async |request: &$module::McpHttpRequest, _call: $module::McpCall| {
-                    let name = request.mcp_name();
-                    let method = request.header("mcp-method").unwrap_or_default();
-                    let needed = <$schema>::mcp_scopes(method, name.as_deref());
-                    denied(decide_oauth(request.bearer_token(), needed))
-                },
-            )),
-            Scheme::Keys => $drive($module::answer_http(
-                &asked,
-                &settings,
-                &$svc,
-                async |request: &$module::McpHttpRequest, _call: $module::McpCall| {
-                    denied(decide_keys(
-                        request.header("x-api-key"),
-                        request.header("x-api-secret"),
-                    ))
-                },
-            )),
+            Scheme::Oauth => crate::mcp_streams::through(|stream| {
+                $drive($module::answer_http(
+                    &asked,
+                    &settings,
+                    stream,
+                    &$svc,
+                    async |request: &$module::McpHttpRequest, _call: $module::McpCall| {
+                        let name = request.mcp_name();
+                        let method = request.header("mcp-method").unwrap_or_default();
+                        let needed = <$schema>::mcp_scopes(method, name.as_deref());
+                        denied(decide_oauth(request.bearer_token(), needed))
+                    },
+                ))
+            }),
+            Scheme::Keys => crate::mcp_streams::through(|stream| {
+                $drive($module::answer_http(
+                    &asked,
+                    &settings,
+                    stream,
+                    &$svc,
+                    async |request: &$module::McpHttpRequest, _call: $module::McpCall| {
+                        denied(decide_keys(
+                            request.header("x-api-key"),
+                            request.header("x-api-secret"),
+                        ))
+                    },
+                ))
+            }),
         };
         (
             answered.status,

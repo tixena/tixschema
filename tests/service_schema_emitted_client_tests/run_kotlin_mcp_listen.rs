@@ -12,10 +12,54 @@ use super::run_kotlin_mcp_resources::{
     HANDLERS, KOTLIN_IMPORTS, definitions, kotlin_text, wrapper_of_bytes,
 };
 use super::runtime::ran_kotlin;
+use crate::mcp_streams::kotlin_respond;
 use serde_json::Value;
 use std::sync::OnceLock;
 
 const DRIVER: &str = r#"
+class RecordingStream(private val goneAfter: Int? = null) : LibraryServiceMcpHttpStream {
+    val seen = mutableListOf<JsonObject>()
+    private val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    suspend fun until(done: () -> Boolean) {
+        while (!done()) changed.receive()
+    }
+
+    private fun take() {
+        if (goneAfter != null && seen.size >= goneAfter) throw IllegalStateException("the client has gone")
+    }
+
+    override suspend fun begin(status: Int, headers: List<Pair<String, String>>) {
+        take()
+        seen.add(
+            buildJsonObject {
+                put("began", JsonArray(listOf(JsonPrimitive(status), JsonArray(headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))))
+            },
+        )
+        changed.trySend(Unit)
+    }
+
+    override suspend fun write(event: String) {
+        take()
+        seen.add(buildJsonObject { put("wrote", event) })
+        changed.trySend(Unit)
+    }
+}
+
+class Feed {
+    private val channel = kotlinx.coroutines.channels.Channel<LibraryServiceMcpChange>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    suspend fun next(): LibraryServiceMcpChange? = channel.receiveCatching().getOrNull()
+
+    fun push(change: LibraryServiceMcpChange) {
+        channel.trySend(change)
+    }
+
+    fun close() {
+        channel.close()
+    }
+}
+
 fun changeOf(spec: JsonObject): LibraryServiceMcpChange = when (spec.getValue("kind").jsonPrimitive.content) {
     "resourcesListChanged" -> LibraryServiceMcpChange.ResourcesListChanged
     "resourceUpdated" -> LibraryServiceMcpChange.ResourceUpdated(spec.getValue("uri").jsonPrimitive.content)
@@ -83,12 +127,12 @@ suspend fun report(input: JsonObject): JsonObject = coroutineScope {
     val http = input.getValue("http").jsonArray.map { held ->
         val row = held.jsonObject
         val over = createLibraryServiceMcpHttpDispatcher(settings, changesOf(row.getValue("script").jsonArray), denied)
-        httpReport(over(httpRequest(row)))
+        httpReport(respondLibraryService(over, httpRequest(row)))
     }
 
     val firstHttp = input.getValue("http").jsonArray[0].jsonObject
     val plainOver = createLibraryServiceMcpHttpDispatcher(settings, null, denied)
-    val plainResponse = plainOver(httpRequest(firstHttp))
+    val plainResponse = respondLibraryService(plainOver, httpRequest(firstHttp))
     val plainDispatch = createLibraryServiceMcpDispatcher { LibraryHandlers }
     val plainReply = plainDispatch(first.getValue("request").jsonPrimitive.content, Lines().write, LibraryServiceMcpInFlight())
 
@@ -118,7 +162,52 @@ suspend fun report(input: JsonObject): JsonObject = coroutineScope {
         LibraryServiceMcpInFlight(),
     )
 
+    val streamedRow = input.getValue("streamed").jsonObject
+    val orderedStream = RecordingStream()
+    val feed = Feed()
+    val ordered = createLibraryServiceMcpHttpDispatcher(settings, { feed.next() }, denied)
+    val orderedRunning = async { ordered(httpRequest(streamedRow), orderedStream) }
+    val snapshots = mutableListOf<JsonElement>()
+    orderedStream.until { orderedStream.seen.size >= 2 }
+    snapshots.add(JsonArray(orderedStream.seen.toList()))
+    var expected = 2
+    for (change in listOf<LibraryServiceMcpChange>(
+        LibraryServiceMcpChange.ResourcesListChanged,
+        LibraryServiceMcpChange.ResourceUpdated("library://covers/book-1"),
+        LibraryServiceMcpChange.KeepAlive,
+    )) {
+        feed.push(change)
+        expected += 1
+        orderedStream.until { orderedStream.seen.size >= expected }
+        snapshots.add(JsonArray(orderedStream.seen.toList()))
+    }
+    val endedWhileOpen = orderedRunning.isCompleted
+    feed.close()
+    val orderedAnswered = orderedRunning.await()
+
+    val goneStream = RecordingStream(1)
+    var goneTaken: LibraryServiceMcpCall? = null
+    val goneOver = createLibraryServiceMcpHttpDispatcher(settings, { awaitCancellation() }) { _, call ->
+        goneTaken = call
+        LibraryServiceMcpAdmitted.Caller(LibraryHandlers)
+    }
+    val goneAnswered = goneOver(httpRequest(streamedRow), goneStream)
+    val streams = buildJsonObject {
+        put("ordered", buildJsonObject {
+            put("endedWhileOpen", endedWhileOpen)
+            put("full", JsonArray(orderedStream.seen.toList()))
+            put("returned", orderedAnswered != null)
+            put("snapshots", JsonArray(snapshots))
+        })
+        put("gone", buildJsonObject {
+            put("cancelled", goneTaken!!.cancelled)
+            put("returned", goneAnswered != null)
+            put("seen", JsonArray(goneStream.seen.toList()))
+        })
+    }
+
     buildJsonObject {
+        put("streams", streams)
         put("stdio", JsonArray(stdio))
         put("workspace", workspaceReport)
         put("http", JsonArray(http))
@@ -147,6 +236,7 @@ fn module() -> String {
         "%TUPLE%",
         &wrapper_of_bytes(&LibraryServiceSchema::kotlin_http_client()),
     ));
+    parts.push(kotlin_respond("LibraryService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(DRIVER.to_owned());
     parts.join("\n\n")

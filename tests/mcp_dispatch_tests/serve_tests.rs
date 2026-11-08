@@ -7,8 +7,8 @@ use crate::document_mcp::{self, McpEndpoint};
 use crate::http_tests::{ORIGIN, post};
 use crate::support::{
     CENTS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, LISTED_FOR_MS, Lines, METHOD_NOT_FOUND,
-    UNSUPPORTED_VERSION, VERSION_NUMBER, WORKSPACE, answer, answer_workspace, assert_error,
-    assert_result, assert_valid, block_on, call, id, request, server_info,
+    Recorded, UNSUPPORTED_VERSION, VERSION_NUMBER, WORKSPACE, answer, answer_workspace,
+    assert_error, assert_result, assert_valid, block_on, call, id, request, server_info, through,
 };
 use crate::tests::Archive;
 use alloc::sync::Arc;
@@ -706,25 +706,33 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         allowed_origins: &[],
         oauth: None,
     };
-    let response = block_on(billing_mcp::answer_http(
-        &over_http,
-        &settings,
-        &archive,
-        async |_request, _call| Ok(()),
-    ));
+    let response = through(|stream| {
+        block_on(billing_mcp::answer_http(
+            &over_http,
+            &settings,
+            stream,
+            &archive,
+            async |_request, _call| Ok(()),
+        ))
+    });
     assert_eq!(response.status, 200);
-    let served = block_on(billing_mcp::serve_http(
-        &over_http,
-        &settings,
-        billing_mcp::SERVER_NAME,
-        None,
-        &ALONE,
-        async |_request, _call| Ok(()),
-        &|ctx: &(), _part, method: &str, params: &Value| {
-            let held = archive.clone();
-            Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
-        },
-    ));
+    let served = through(|stream| {
+        block_on(billing_mcp::serve_http(
+            &over_http,
+            &settings,
+            stream,
+            &billing_mcp::McpServer {
+                endpoint: &ALONE,
+                instructions: None,
+                name: billing_mcp::SERVER_NAME,
+            },
+            async |_request, _call| Ok(()),
+            &|ctx: &(), _part, method: &str, params: &Value| {
+                let held = archive.clone();
+                Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
+            },
+        ))
+    });
     assert_eq!(served, response);
     assert_eq!(
         DocumentServiceSchema::MCP_NAMES.len(),
@@ -780,12 +788,16 @@ fn the_futures_of_serve_and_serve_http_are_send() {
             allowed_origins: &[ORIGIN],
             oauth: None,
         };
+        let stream = Recorded::default();
         document_mcp::serve_http(
             &asked,
             &settings,
-            "Workspace",
-            None,
-            &WORKSPACE,
+            &stream,
+            &document_mcp::McpServer {
+                endpoint: &WORKSPACE,
+                instructions: None,
+                name: "Workspace",
+            },
             async |_request: &document_mcp::McpHttpRequest, _call: document_mcp::McpCall| {
                 Ok::<(), document_mcp::McpDenied>(())
             },

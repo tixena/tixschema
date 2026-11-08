@@ -990,6 +990,18 @@ data class @N@McpHttpRequest(val method: String, val path: String, val headers: 
 
 data class @N@McpHttpResponse(val status: Int, val headers: List<Pair<String, String>>, val body: ByteArray)
 
+/**
+ * Where an HTTP server writes an event-stream answer. [begin] is called once, before the first
+ * event, with the status and headers of the answer; [write] then takes the text of each event, or
+ * of the comment line that keeps the stream open. A call that throws means the client has gone. The
+ * host ends its response when the server answers `null`.
+ */
+interface @N@McpHttpStream {
+  suspend fun begin(status: Int, headers: List<Pair<String, String>>)
+
+  suspend fun write(event: String)
+}
+
 /** The protected-resource metadata of a server that authorizes by OAuth. */
 data class @N@McpOAuth(
   val authorizationServers: List<String>,
@@ -1145,17 +1157,10 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean): Pair
   return text to null
 }
 
-/** One event of an event stream, or the comment line that keeps it open where [text] is `null`. */
-private class @P@McpEvent(val text: String?)
+private val @P@McpEventHeaders = listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no")
 
-private fun @P@McpEventStream(events: Collection<@P@McpEvent>, answered: String?): @N@McpHttpResponse =
-  @N@McpHttpResponse(
-    200,
-    listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no"),
-    (events + listOfNotNull(answered?.let { @P@McpEvent(it) }))
-      .joinToString("") { if (it.text == null) ":\n\n" else "event: message\ndata: ${it.text}\n\n" }
-      .encodeToByteArray(),
-  )
+/** One event of an event stream, carrying one JSON-RPC message. */
+private fun @P@McpFrame(message: String): String = "event: message\ndata: $message\n\n"
 
 private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
   if (answered == null) {
@@ -1167,23 +1172,31 @@ private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
 /**
  * The Streamable HTTP rules around `@P@McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body and the headers that must agree with it. [route] also receives the handlers
- * that `admit` built for the caller. A `subscriptions/listen` answers an event stream where
- * [changes] is handed in: it ends when [changes] answers `null`.
+ * that `admit` built for the caller. A routed request that carries a `progressToken` answers an
+ * event stream written to [stream] as it happens ([@N@McpHttpStream.begin], each notification, then
+ * the answer), and this answers `null`. So does a `subscriptions/listen` where [changes] is handed
+ * in: it ends when [changes] answers `null`. Any other request answers the response, and [stream]
+ * is never begun.
  */
 suspend fun @P@McpServeHttp(
   request: @N@McpHttpRequest,
   settings: @N@McpHttpSettings,
+  stream: @N@McpHttpStream,
   serverName: String,
   instructions: String?,
   endpoint: @N@McpEndpoint,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
   changes: @N@McpChanges? = null,
   route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> JsonObject?,
-): @N@McpHttpResponse {
+): @N@McpHttpResponse? {
   val before = @P@McpBeforeAdmit(request, settings)
   if (before != null) return before
-  val events = java.util.concurrent.ConcurrentLinkedQueue<@P@McpEvent>()
-  val call = @N@McpCall(@P@McpBodyToken(request), { event -> events.add(@P@McpEvent(event)) }, { events.add(@P@McpEvent(null)) })
+  val held = java.util.concurrent.ConcurrentLinkedQueue<String>()
+  val live = java.util.concurrent.atomic.AtomicBoolean(false)
+  suspend fun give(text: String) {
+    if (live.get()) stream.write(text) else held.add(text)
+  }
+  val call = @N@McpCall(@P@McpBodyToken(request), { event -> give(@P@McpFrame(event)) }, { give(":\n\n") })
   val caller = when (val admitted = admit(request, call)) {
     is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
     is @N@McpAdmitted.Caller -> admitted.handlers
@@ -1196,20 +1209,47 @@ suspend fun @P@McpServeHttp(
     is @P@McpBegun.Routed -> begun.request
   }
   val listens = changes != null && (asked["method"] as JsonPrimitive).content == "subscriptions/listen"
+  val streams = @P@McpToken(asked) != null || listens
+  if (streams) {
+    try {
+      stream.begin(200, @P@McpEventHeaders)
+      live.set(true)
+      while (true) stream.write(held.poll() ?: break)
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      call.cancel()
+      return null
+    }
+  }
   val answered = if (changes != null && listens) {
     @P@McpResponseText(asked["id"] ?: JsonNull, @P@McpListen(asked, endpoint, call, changes), serverName)
   } else {
     @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
   }
   val written = if (call.cancelled) null else answered
-  return if (@P@McpToken(asked) != null || listens) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
+  if (!streams) return @P@McpHttpAnswer(written)
+  if (written != null) {
+    try {
+      stream.write(@P@McpFrame(written))
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      call.cancel()
+    }
+  }
+  return null
 }
 
-/** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
+/**
+ * Answers the HTTP requests of this service alone. [admit] answers the handlers built for a
+ * request, or why it is refused. An event-stream answer is written to the stream it is handed, and
+ * the function answers `null`.
+ */
 fun create@N@McpHttpDispatcher(
   settings: @N@McpHttpSettings,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
-): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse = create@N@McpHttpDispatcher(settings, null, admit)
+): suspend (@N@McpHttpRequest, @N@McpHttpStream) -> @N@McpHttpResponse? = create@N@McpHttpDispatcher(settings, null, admit)
 
 /**
  * [create@N@McpHttpDispatcher] for an application that hands in its source of changes: [changes]
@@ -1219,10 +1259,10 @@ fun create@N@McpHttpDispatcher(
   settings: @N@McpHttpSettings,
   changes: @N@McpChanges?,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
-): suspend (@N@McpHttpRequest) -> @N@McpHttpResponse {
+): suspend (@N@McpHttpRequest, @N@McpHttpStream) -> @N@McpHttpResponse? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
-  return { request ->
-    @P@McpServeHttp(request, settings, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
+  return { request, stream ->
+    @P@McpServeHttp(request, settings, stream, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
       create@N@McpRoute(caller)(method, params)
     }
   }

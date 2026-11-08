@@ -11,6 +11,7 @@ use super::mcp_library_service::{
 };
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
+use crate::mcp_streams::through;
 use core::future::{Future, ready};
 use serde_json::{Value, json};
 use std::panic::resume_unwind;
@@ -212,14 +213,9 @@ fn read_rows() -> Vec<Row> {
 }
 
 fn http_row(name: &'static str, message: &Value) -> HttpRow {
-    let method = message["method"].as_str().unwrap().to_owned();
     HttpRow {
         body: message.to_string(),
-        headers: vec![
-            ("Content-Type".to_owned(), "application/json".to_owned()),
-            ("MCP-Protocol-Version".to_owned(), "2026-07-28".to_owned()),
-            ("Mcp-Method".to_owned(), method),
-        ],
+        headers: super::mcp_library_rows::headers_for(message),
         name,
     }
 }
@@ -239,7 +235,28 @@ pub fn http_rows() -> Vec<HttpRow> {
                 &json!({ "name": "code-review" }),
             ),
         ),
+        http_row(
+            "a skills get that asks for progress",
+            &with_progress(request(
+                &Value::from(3_u64),
+                "skills/get",
+                &json!({ "name": "code-review" }),
+            )),
+        ),
+        http_row(
+            "a skill resource read that asks for progress",
+            &with_progress(request(
+                &Value::from(4_u64),
+                "resources/read",
+                &json!({ "uri": "skill://code-review/SKILL.md" }),
+            )),
+        ),
     ]
+}
+
+fn with_progress(mut message: Value) -> Value {
+    message["params"]["_meta"]["progressToken"] = json!("skill-1");
+    message
 }
 
 /// What the Rust dispatcher of `LessonService` answers to `text`.
@@ -266,18 +283,35 @@ pub fn rust_http(row: &HttpRow) -> HttpAnswer {
         allowed_origins: &[ORIGIN],
         oauth: None,
     };
-    let answered = poll_once(super::mcp_lesson_dispatcher::answer_http(
-        &terms,
-        &settings,
-        &Lessons,
-        async |_request, _call| Ok(()),
-    ))
-    .unwrap();
+    let answered = through(|stream| {
+        poll_once(super::mcp_lesson_dispatcher::answer_http(
+            &terms,
+            &settings,
+            stream,
+            &Lessons,
+            async |_request, _call| Ok(()),
+        ))
+        .unwrap()
+    });
     (
         answered.status,
         answered.headers,
         String::from_utf8(answered.body).unwrap(),
     )
+}
+
+/// Holds the answer to `row` to the schema: the last event of a stream, or the whole body.
+fn assert_row_valid(row: &HttpRow, body: &str) {
+    let answer = match body.strip_prefix("event: message\ndata: ") {
+        Some(_) => body
+            .trim_end()
+            .rsplit("\n\n")
+            .next()
+            .and_then(|event| event.strip_prefix("event: message\ndata: "))
+            .unwrap(),
+        None => body,
+    };
+    assert_answer_valid(&super::mcp_library_rows::method_of(&row.body), answer);
 }
 
 /// Holds each plain HTTP answer of a server to the Rust dispatcher's.
@@ -299,7 +333,7 @@ pub fn assert_http(which: &str, answers: &[HttpAnswer]) {
             row.name
         );
         assert_eq!(body, &rust_body, "{which}: {}", row.name);
-        assert_answer_valid("skills", body);
+        assert_row_valid(row, body);
     }
 }
 
@@ -308,7 +342,26 @@ fn the_rust_dispatcher_answers_the_skills_over_http() {
     for row in http_rows() {
         let (status, _, body) = rust_http(&row);
         assert_eq!(status, 200, "{}", row.name);
-        assert_answer_valid("skills", &body);
+        assert_row_valid(&row, &body);
+    }
+}
+
+#[test]
+fn the_rust_dispatcher_streams_a_skill_read_that_asks_for_progress() {
+    for row in http_rows()
+        .iter()
+        .filter(|row| row.name.contains("progress"))
+    {
+        let (_, headers, body) = rust_http(row);
+        assert_eq!(
+            headers
+                .first()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+            Some(("Content-Type", "text/event-stream")),
+            "{}",
+            row.name
+        );
+        assert!(body.starts_with("event: message\ndata: "), "{}", row.name);
     }
 }
 

@@ -8,6 +8,7 @@ use super::StacksServiceSchema;
 use super::mcp_library_service::{book_error_dart, book_info_dart, book_request_dart};
 use super::mcp_stacks_service::{assert_matches_rust, input};
 use super::runtime::ran;
+use crate::mcp_streams::dart_respond;
 use serde_json::Value;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -62,7 +63,7 @@ void main() async {
   for (final row in input['rows'] as List) {
     final given = row as Map<String, dynamic>;
     final before = reached;
-    final response = await serve(StacksServiceMcpHttpRequest(
+    final response = await respondStacksService(serve, StacksServiceMcpHttpRequest(
       method: given['method'] as String,
       path: given['path'] as String,
       headers: [for (final pair in given['headers'] as List) ((pair as List)[0] as String, pair[1] as String)],
@@ -96,6 +97,7 @@ fn module() -> String {
         StacksServiceSchema::dart_definition(),
         StacksServiceSchema::dart_ws_client(),
         StacksServiceSchema::dart_mcp_service(),
+        dart_respond("StacksService"),
         format!("const INPUT = {dollar_safe};"),
         DRIVER.to_owned(),
     ]

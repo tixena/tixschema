@@ -8,7 +8,7 @@ mod over_http {
         self, McpCall, McpDenied, McpEndpoint, McpHttpRequest, McpHttpSettings,
     };
     use crate::http_tests::post;
-    use crate::support::{assert_result, block_on};
+    use crate::support::{Recorded, assert_result, block_on, through};
     use serde_json::{Value, json};
 
     const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
@@ -17,7 +17,11 @@ mod over_http {
     };
 
     fn asked() -> McpHttpRequest {
-        let from = post(&get("greet", &json!({ "name": "Ana" })));
+        asking(&get("greet", &json!({ "name": "Ana" })))
+    }
+
+    fn asking(message: &Value) -> McpHttpRequest {
+        let from = post(message);
         let mut headers = from.headers;
         headers.push(("Mcp-Name".to_owned(), "greet".to_owned()));
         McpHttpRequest {
@@ -26,6 +30,36 @@ mod over_http {
             method: from.method,
             path: from.path,
         }
+    }
+
+    #[test]
+    fn a_prompt_request_with_a_progress_token_answers_an_event_stream() {
+        let mut tokened = get("greet", &json!({ "name": "Ana" }));
+        tokened["params"]["_meta"]["progressToken"] = json!("greet-1");
+        let stream = Recorded::default();
+        let answered = block_on(counsel_mcp::answer_http(
+            &asking(&tokened),
+            &SETTINGS,
+            &stream,
+            &Counsels::default(),
+            async |_request, _call| Ok(()),
+        ));
+        assert!(answered.is_none());
+        let streamed = stream.streamed();
+        assert_eq!(streamed.status, 200);
+        assert!(
+            streamed
+                .headers
+                .contains(&("Content-Type".to_owned(), "text/event-stream".to_owned())),
+            "{:?}",
+            streamed.headers
+        );
+        let body = String::from_utf8(streamed.body).unwrap();
+        let data = body
+            .strip_prefix("event: message\ndata: ")
+            .unwrap()
+            .trim_end();
+        assert_result("GetPromptResult", &serde_json::from_str(data).unwrap());
     }
 
     #[test]
@@ -39,36 +73,44 @@ mod over_http {
             },
             McpDenied::Forbidden,
         ] {
-            let response = block_on(counsel_mcp::serve_http(
-                &asked(),
-                &SETTINGS,
-                "Counsel",
-                None,
-                endpoint,
-                async |request: &McpHttpRequest, call: McpCall| {
-                    assert_eq!(request.mcp_name().as_deref(), Some("greet"));
-                    call.progress(1.0_f64, None, None);
-                    Err::<(), _>(denied.clone())
-                },
-                &|ctx: &(), part, method: &str, params: &Value| {
-                    let held = counsels.clone();
-                    Box::pin(async move {
-                        match part {
-                            0 => counsel_mcp::route(method, params, &held, ctx).await,
-                            _ => None,
-                        }
-                    })
-                },
-            ));
+            let response = through(|stream| {
+                block_on(counsel_mcp::serve_http(
+                    &asked(),
+                    &SETTINGS,
+                    stream,
+                    &counsel_mcp::McpServer {
+                        endpoint,
+                        instructions: None,
+                        name: "Counsel",
+                    },
+                    async |request: &McpHttpRequest, call: McpCall| {
+                        assert_eq!(request.mcp_name().as_deref(), Some("greet"));
+                        call.progress(1.0_f64, None, None);
+                        Err::<(), _>(denied.clone())
+                    },
+                    &|ctx: &(), part, method: &str, params: &Value| {
+                        let held = counsels.clone();
+                        Box::pin(async move {
+                            match part {
+                                0 => counsel_mcp::route(method, params, &held, ctx).await,
+                                _ => None,
+                            }
+                        })
+                    },
+                ))
+            });
             assert!(matches!(response.status, 401 | 403), "{denied:?}");
         }
         assert!(counsels.reached.lock().unwrap().is_empty());
-        let response = block_on(counsel_mcp::answer_http(
-            &asked(),
-            &SETTINGS,
-            &counsels,
-            async |_request, _call| Ok(()),
-        ));
+        let response = through(|stream| {
+            block_on(counsel_mcp::answer_http(
+                &asked(),
+                &SETTINGS,
+                stream,
+                &counsels,
+                async |_request, _call| Ok(()),
+            ))
+        });
         assert_eq!(response.status, 200);
         assert_result(
             "GetPromptResult",
@@ -88,7 +130,7 @@ use crate::counsel_service_schema::{
 };
 use crate::support::{
     HEADER_MISMATCH, INTERNAL_ERROR, INVALID_PARAMS, LISTED_FOR_MS, Lines, assert_error,
-    assert_result, assert_valid, block_on, id, request, server_info,
+    assert_result, assert_valid, block_on, id, request, server_info, through,
 };
 use core::future::Future;
 use serde_json::{Value, json};
@@ -415,12 +457,15 @@ fn the_mcp_name_header_of_prompts_get_must_match_the_body() {
         oauth: None,
     };
     let served = |name: &str| {
-        block_on(counsel_mcp::answer_http(
-            &post(name),
-            &settings,
-            &Counsels::default(),
-            async |_request, _call| Ok(()),
-        ))
+        through(|stream| {
+            block_on(counsel_mcp::answer_http(
+                &post(name),
+                &settings,
+                stream,
+                &Counsels::default(),
+                async |_request, _call| Ok(()),
+            ))
+        })
     };
     let mismatched = served("another");
     assert_eq!(mismatched.status, 400);
