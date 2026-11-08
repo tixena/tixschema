@@ -59,6 +59,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let canonical = super::canonical_json();
     let helpers = helpers(fault);
     let exchange = exchange(fault);
+    let blocks = content_helpers(service, &generated);
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -112,6 +113,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
 
                 #canonical
                 #helpers
+                #blocks
                 #exchange
             };
         }
@@ -142,11 +144,12 @@ fn helpers(fault: &TokenStream) -> TokenStream {
             }
         }
 
-        /// One answer read: the success's structured value, the error the operation
-        /// declared, or the fault the answer reports.
+        /// One answer read: the success's structured value (with `blocks`, its `content` beside
+        /// it), the error the operation declared, or the fault the answer reports.
         fn read_answer(
             tool: &str,
             text: &str,
+            blocks: bool,
         ) -> ::core::result::Result<
             ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
             #fault,
@@ -168,9 +171,15 @@ fn helpers(fault: &TokenStream) -> TokenStream {
                 return ::core::result::Result::Err(unreadable(tool, "the answer holds neither a result nor an error"));
             };
             if result["isError"] != true {
-                return ::core::result::Result::Ok(::core::result::Result::Ok(
-                    result.get("structuredContent").cloned().unwrap_or(::serde_json::Value::Null),
-                ));
+                let found = if blocks {
+                    ::serde_json::json!({
+                        "content": result.get("content").cloned().unwrap_or(::serde_json::Value::Null),
+                        "structuredContent": result.get("structuredContent").cloned().unwrap_or(::serde_json::Value::Null),
+                    })
+                } else {
+                    result.get("structuredContent").cloned().unwrap_or(::serde_json::Value::Null)
+                };
+                return ::core::result::Result::Ok(::core::result::Result::Ok(found));
             }
             let ::core::option::Option::Some(text) = result["content"][0]["text"].as_str() else {
                 return ::core::result::Result::Err(unreadable(tool, "the error holds no text"));
@@ -189,6 +198,139 @@ fn helpers(fault: &TokenStream) -> TokenStream {
     }
 }
 
+/// What reads the blocks of a content tool's answer, written where one is declared.
+fn content_helpers(service: &ServiceDef, generated: &Generated) -> TokenStream {
+    let pair = service.operations.iter().any(super::content::is_pair);
+    let list = service.operations.iter().any(super::content::is_list);
+    if !pair && !list {
+        return TokenStream::new();
+    }
+    let fault = &generated.fault;
+    let module = &generated.module;
+    let reading_pair = pair.then(|| pair_reader(fault));
+    let reading_list = list.then(|| list_reader(fault, module));
+    quote! {
+        /// `text` decoded from base64, with the standard alphabet and padding.
+        fn base64_decoded(text: &str) -> ::core::option::Option<::std::vec::Vec<u8>> {
+            let mut bytes = ::std::vec::Vec::new();
+            let (mut bits, mut held) = (0_u32, 0_u32);
+            for letter in text.trim_end_matches('=').bytes() {
+                let sextet = match letter {
+                    b'A'..=b'Z' => letter - b'A',
+                    b'a'..=b'z' => letter - b'a' + 26,
+                    b'0'..=b'9' => letter - b'0' + 52,
+                    b'+' => 62,
+                    b'/' => 63,
+                    _ => return ::core::option::Option::None,
+                };
+                bits = (bits << 6_u32) | u32::from(sextet);
+                held += 6;
+                if held >= 8 {
+                    held -= 8;
+                    bytes.push(u8::try_from((bits >> held) & 0xff).ok()?);
+                    bits &= (1 << held) - 1;
+                }
+            }
+            ::core::option::Option::Some(bytes)
+        }
+
+        #reading_pair
+        #reading_list
+    }
+}
+
+fn pair_reader(fault: &TokenStream) -> TokenStream {
+    quote! {
+        /// The bytes and the content type of an answer: its structured pair, or its one image
+        /// or audio block.
+        fn read_pair(
+            tool: &str,
+            found: ::serde_json::Value,
+        ) -> ::core::result::Result<(::std::vec::Vec<u8>, ::std::string::String), #fault> {
+            let structured = &found["structuredContent"];
+            if !structured.is_null() {
+                return decoded(tool, structured.clone());
+            }
+            let block = &found["content"][0];
+            let (::core::option::Option::Some(data), ::core::option::Option::Some(mime_type)) =
+                (block["data"].as_str(), block["mimeType"].as_str())
+            else {
+                return ::core::result::Result::Err(unreadable(tool, "the answer holds no image or audio block"));
+            };
+            match base64_decoded(data) {
+                ::core::option::Option::Some(bytes) => ::core::result::Result::Ok((bytes, mime_type.to_owned())),
+                ::core::option::Option::None => ::core::result::Result::Err(unreadable(tool, "the block holds bytes that are not base64")),
+            }
+        }
+    }
+}
+
+fn list_reader(fault: &TokenStream, module: &Ident) -> TokenStream {
+    quote! {
+        /// The text a block holds under `key`.
+        fn block_text(tool: &str, block: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::string::String, #fault> {
+            block[key]
+                .as_str()
+                .map(::std::borrow::ToOwned::to_owned)
+                .ok_or_else(|| unreadable(tool, &format!("a block holds no `{key}`")))
+        }
+
+        /// The bytes a block holds under `data`.
+        fn block_bytes(tool: &str, block: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::vec::Vec<u8>, #fault> {
+            base64_decoded(&block_text(tool, block, key)?)
+                .ok_or_else(|| unreadable(tool, &format!("`{key}` is not base64")))
+        }
+
+        /// The blocks of `content`, each read into the type the service module declares.
+        fn read_blocks(
+            tool: &str,
+            content: &::serde_json::Value,
+        ) -> ::core::result::Result<::std::vec::Vec<$crate::#module::McpContent>, #fault> {
+            let ::core::option::Option::Some(blocks) = content.as_array() else {
+                return ::core::result::Result::Err(unreadable(tool, "the answer holds no content"));
+            };
+            let mut read = ::std::vec::Vec::new();
+            for block in blocks {
+                let optional = |key: &str| block[key].as_str().map(::std::borrow::ToOwned::to_owned);
+                read.push(match block["type"].as_str() {
+                    ::core::option::Option::Some("text") => $crate::#module::McpContent::Text {
+                        text: block_text(tool, block, "text")?,
+                    },
+                    ::core::option::Option::Some("image") => $crate::#module::McpContent::Image {
+                        data: block_bytes(tool, block, "data")?,
+                        mime_type: block_text(tool, block, "mimeType")?,
+                    },
+                    ::core::option::Option::Some("audio") => $crate::#module::McpContent::Audio {
+                        data: block_bytes(tool, block, "data")?,
+                        mime_type: block_text(tool, block, "mimeType")?,
+                    },
+                    ::core::option::Option::Some("resource_link") => $crate::#module::McpContent::ResourceLink {
+                        uri: block_text(tool, block, "uri")?,
+                        name: block_text(tool, block, "name")?,
+                        title: optional("title"),
+                        description: optional("description"),
+                        mime_type: optional("mimeType"),
+                    },
+                    ::core::option::Option::Some("resource") => {
+                        let resource = &block["resource"];
+                        $crate::#module::McpContent::Resource {
+                            uri: block_text(tool, resource, "uri")?,
+                            mime_type: resource["mimeType"].as_str().map(::std::borrow::ToOwned::to_owned),
+                            contents: if resource.get("blob").is_some() {
+                                $crate::#module::McpResourceContents::Blob(block_bytes(tool, resource, "blob")?)
+                            } else {
+                                $crate::#module::McpResourceContents::Text(block_text(tool, resource, "text")?)
+                            },
+                        }
+                    }
+                    _ => return ::core::result::Result::Err(unreadable(tool, "a block of a type this client does not read")),
+                });
+            }
+            ::core::result::Result::Ok(read)
+        }
+    }
+}
+
 /// The call every method makes through the seam.
 fn exchange(fault: &TokenStream) -> TokenStream {
     quote! {
@@ -198,6 +340,7 @@ fn exchange(fault: &TokenStream) -> TokenStream {
             next: &::core::sync::atomic::AtomicU64,
             tool: &'static str,
             arguments: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+            blocks: bool,
         ) -> ::core::result::Result<
             ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
             #fault,
@@ -230,7 +373,7 @@ fn exchange(fault: &TokenStream) -> TokenStream {
                 name: ::core::option::Option::Some(tool.to_owned()),
             };
             match transport.send(message).await {
-                ::core::result::Result::Ok(answer) => read_answer(tool, &answer),
+                ::core::result::Result::Ok(answer) => read_answer(tool, &answer, blocks),
                 ::core::result::Result::Err(uncarried) => {
                     ::core::result::Result::Err(#fault::transport_failure(tool, &uncarried))
                 }
@@ -274,6 +417,7 @@ fn method(operation: &OperationDef, generated: &Generated, schema: &Ident) -> To
         &quote! { ::core::option::Option::None },
     );
     let header_writes = header_writes(operation, generated);
+    let blocks = operation.mcp.content.is_some();
     let settled = settled(operation, tool, generated);
     quote! {
         #[doc = #doc]
@@ -300,7 +444,7 @@ fn method(operation: &OperationDef, generated: &Generated, schema: &Ident) -> To
                     #not_an_object
                 }
                 #(#header_writes)*
-                let settled = exchange(&self.transport, &self.next, #tool, arguments).await;
+                let settled = exchange(&self.transport, &self.next, #tool, arguments, #blocks).await;
                 #settled
             }
         }
@@ -328,7 +472,12 @@ fn settled(operation: &OperationDef, tool: &str, generated: &Generated) -> Token
     };
     let success_carried = success_carried(operation, success);
     let error_carried = error_carried(operation, error);
-    let (found, success_read) = if success_carried.unit && is_unit_type(success) {
+    let (found, success_read) = if operation.mcp.content.is_some() {
+        (
+            quote!(found),
+            content_read(operation, tool, call_error, &quote!(found)),
+        )
+    } else if success_carried.unit && is_unit_type(success) {
         (quote!(_), quote! { ::core::result::Result::Ok(#success) })
     } else {
         (
@@ -349,6 +498,31 @@ fn settled(operation: &OperationDef, tool: &str, generated: &Generated) -> Token
                 }
             }
             ::core::result::Result::Err(reported) => ::core::result::Result::Err(#call_error::Fault(reported)),
+        }
+    }
+}
+
+/// An expression that reads the blocks of `source`, the `content` and `structuredContent` of the
+/// answer, into the success the operation declared.
+fn content_read(
+    operation: &OperationDef,
+    tool: &str,
+    call_error: &TokenStream,
+    source: &TokenStream,
+) -> TokenStream {
+    let refused = quote! { ::core::result::Result::Err(#call_error::Fault(reported)) };
+    if super::content::is_pair(operation) {
+        return quote! {
+            match read_pair(#tool, #source) {
+                ::core::result::Result::Ok(read) => ::core::result::Result::Ok(read),
+                ::core::result::Result::Err(reported) => #refused,
+            }
+        };
+    }
+    quote! {
+        match read_blocks(#tool, &#source["content"]) {
+            ::core::result::Result::Ok(read) => ::core::result::Result::Ok(read),
+            ::core::result::Result::Err(reported) => #refused,
         }
     }
 }

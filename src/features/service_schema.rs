@@ -19,6 +19,10 @@ mod http_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_http_client;
 #[cfg(feature = "kotlin")]
+mod kotlin_mcp_client;
+#[cfg(feature = "kotlin")]
+mod kotlin_mcp_service;
+#[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod mcp_ts_client;
@@ -32,6 +36,8 @@ mod service;
 #[cfg(feature = "swift")]
 mod swift_http_client;
 #[cfg(feature = "swift")]
+mod swift_mcp_client;
+#[cfg(feature = "swift")]
 mod swift_type;
 #[cfg(feature = "swift")]
 mod swift_ws_client;
@@ -42,7 +48,7 @@ mod ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_service;
 
-use crate::service_schema::mcp_tools::registry_items as mcp_registry_items;
+use crate::service_schema::mcp_tools::{form_assertions, registry_items as mcp_registry_items};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::service_schema::parse::OperationDef;
 use crate::service_schema::parse::ServiceDef;
@@ -552,17 +558,53 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
 pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
+    let forms = form_assertions(service);
     let typescript = mcp_ts_seam(service);
     let dart = dart_mcp_seam(service);
+    let kotlin = kotlin_mcp_seam(service);
+    let swift = swift_mcp_seam(service);
     quote! {
+        #forms
+
         impl #registry {
             #items
 
             #typescript
 
             #dart
+
+            #kotlin
+
+            #swift
         }
     }
+}
+
+/// The Kotlin server and client of an `mcp` service, published where the `kotlin` feature is on.
+#[cfg(feature = "kotlin")]
+fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
+    let server = kotlin_mcp_service::accessor(service);
+    let client = kotlin_mcp_client::accessor(service);
+    quote! {
+        #server
+        #client
+    }
+}
+
+#[cfg(not(feature = "kotlin"))]
+fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The Swift client of an `mcp` service, published where the `swift` feature is on.
+#[cfg(feature = "swift")]
+fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
+    swift_mcp_client::accessor(service)
+}
+
+#[cfg(not(feature = "swift"))]
+fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
 }
 
 /// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and

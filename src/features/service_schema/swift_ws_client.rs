@@ -255,7 +255,7 @@ fn dated_decoder_helper(prefix: &str) -> String {
 
 /// The forms of the texts a frame of the service carries as a `String` Swift holds, in a header or
 /// in the message, once each, in the order its operations first carry them.
-fn sent_forms(service: &ServiceDef) -> Vec<TextForm> {
+pub(super) fn sent_forms(service: &ServiceDef) -> Vec<TextForm> {
     let mut found = Vec::new();
     for operation in &service.operations {
         let mut carried: Vec<Type> = HttpShape::of(operation)
@@ -543,7 +543,7 @@ fn operation_method(
 
 /// One argument per `header_in` binding, after the message — mirrors `swift_http_client`'s own
 /// `method_params`.
-fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
+pub(super) fn header_in_params(param_ty: &str, shape: &HttpShape) -> String {
     let mut params = format!("_ req: {param_ty}");
     for header in &shape.header_in {
         let _ = write!(
@@ -579,7 +579,7 @@ fn header_in_build_stmt(named: &str, shape: &HttpShape) -> String {
 
 /// The message as the frame carries it: a `char` or a date Swift holds as a `String` in the form
 /// serde writes.
-fn sent_payload(operation: &OperationDef) -> String {
+pub(super) fn sent_payload(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => swift_sent_value(declared, "req"),
         OperationInputs::Empty | OperationInputs::Generated(_) => None,

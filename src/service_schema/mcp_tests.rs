@@ -26,6 +26,25 @@ const DOCUMENTED: &str = r#"
     }
 "#;
 
+const INTERVIEWS: &str = r#"
+    pub trait DocumentService<Ctx> {
+        /// Deletes one document.
+        #[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
+        async fn delete_document(&self, ctx: &Ctx, document_id: String, confirmation: Option<DeleteConfirmation>)
+            -> Result<(), DeleteError>;
+
+        /// Imports one file.
+        #[service_schema_op(mcp(interview(arm = "NeedsDriveConnection", url)))]
+        async fn import_from_drive(&self, ctx: &Ctx, file_id: String)
+            -> Result<DocumentId, ImportError>;
+
+        /// The preview of one document.
+        #[service_schema_op(mcp(content))]
+        async fn document_preview(&self, ctx: &Ctx, document_id: String)
+            -> Result<(Vec<u8>, String), VersionError>;
+    }
+"#;
+
 const RESOURCES: &str = r#"
     pub trait DocumentService<Ctx> {
         /// The guide.
@@ -186,7 +205,7 @@ fn an_empty_title_name_or_icon_is_refused_naming_the_operation() {
 
 #[test]
 fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
-    for key in ["prompt", "content"] {
+    for key in ["prompt", "task"] {
         let reported = parse_refusals(&format!(
             "pub trait DocumentService<Ctx> {{
                 #[service_schema_op(mcp({key}))]
@@ -201,8 +220,9 @@ fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
                  the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
                  `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
                  `mime_type`, `list_resources`, \
-                 `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms` and \
-                 `cache_scope`"
+                 `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
+                 `cache_scope`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
+                 `interview(arm = \"<Arm>\", url)`"
                     .to_owned()
             ]
         );
@@ -857,4 +877,124 @@ fn scopes_written_as_anything_but_a_list_of_text_are_refused() {
         ));
         assert!(!reported.is_empty(), "{written}");
     }
+}
+
+#[test]
+fn an_interview_and_a_content_flag_are_read() {
+    let read = service(INTERVIEWS);
+    let form = read.operations[0].mcp.interview.as_ref().unwrap();
+    assert_eq!(form.arm.to_string(), "NeedsConfirmation");
+    assert_eq!(form.answers.as_ref().unwrap().to_string(), "confirmation");
+    let link = read.operations[1].mcp.interview.as_ref().unwrap();
+    assert_eq!(link.arm.to_string(), "NeedsDriveConnection");
+    assert!(link.answers.is_none());
+    assert!(read.operations[2].mcp.content.is_some());
+    assert!(read.operations.iter().all(OperationDef::is_mcp_tool));
+    assert_eq!(mcp_refusals_of(INTERVIEWS), Vec::<String>::new());
+}
+
+#[test]
+fn an_interview_needs_its_arm_and_exactly_one_of_answers_and_url() {
+    for written in [
+        r#"interview(arm = "NeedsConfirmation", answers = confirmation, url)"#,
+        r#"interview(arm = "NeedsConfirmation")"#,
+        "interview(answers = confirmation)",
+        "interview(url)",
+    ] {
+        let reported = parse_refusals(&format!(
+            "pub trait DocumentService<Ctx> {{
+                /// Deletes one document.
+                #[service_schema_op(mcp({written}))]
+                async fn delete_document(&self, ctx: &Ctx, document_id: String, confirmation: Option<DeleteConfirmation>)
+                    -> Result<(), DeleteError>;
+            }}"
+        ));
+        assert_eq!(reported.len(), 1, "{written}: {reported:?}");
+        assert!(
+            reported[0].contains("without its arm and exactly one of `answers` and `url`"),
+            "{written}: {reported:?}"
+        );
+    }
+}
+
+#[test]
+fn an_interview_is_held_to_the_operation_it_is_written_on() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// Names no argument.
+            #[service_schema_op(mcp(interview(arm = "Asks", answers = missing)))]
+            async fn first(&self, ctx: &Ctx, document_id: String, other: String) -> Result<(), E>;
+
+            /// Takes a bare form.
+            #[service_schema_op(mcp(interview(arm = "Asks", answers = form)))]
+            async fn second(&self, ctx: &Ctx, document_id: String, form: Form) -> Result<(), E>;
+
+            /// Takes the message alone.
+            #[service_schema_op(mcp(interview(arm = "Asks", answers = form)))]
+            async fn third(&self, ctx: &Ctx, form: Option<Form>) -> Result<(), E>;
+
+            /// Is one way.
+            #[service_schema_op(one_way, mcp(interview(arm = "Asks", url)))]
+            async fn fourth(&self, ctx: &Ctx, document_id: String);
+
+            /// Binds a header beside the arm.
+            #[service_schema_op(http(method = "POST", path = "/fifth", error_header_out("retry-after")), mcp(interview(arm = "Asks", url)))]
+            async fn fifth(&self, ctx: &Ctx, document_id: String) -> Result<(), (E, String)>;
+        }"#,
+    );
+    assert_eq!(reported.len(), 5, "{reported:?}");
+    assert!(reported[0].contains("`first` writes `interview(answers = missing)`"));
+    assert!(reported[1].contains("`second` asks with `form` and its type `Form` is no `Option`"));
+    assert!(reported[2].contains("`third` writes `interview(answers = form)`"));
+    assert!(reported[3].contains("`fourth` is one way"));
+    assert!(
+        reported[4]
+            .contains("`fifth` writes `interview(...)` in `mcp(...)` and binds `error_header_out`")
+    );
+}
+
+#[test]
+fn a_content_tool_answers_blocks_and_nothing_beside_them() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// Answers a string.
+            #[service_schema_op(mcp(content))]
+            async fn first(&self, ctx: &Ctx, document_id: String) -> Result<String, E>;
+
+            /// Is one way.
+            #[service_schema_op(one_way, mcp(content))]
+            async fn second(&self, ctx: &Ctx, document_id: String);
+
+            /// Is a resource.
+            #[service_schema_op(mcp(content, resource = "guide://configure"))]
+            async fn third(&self, ctx: &Ctx) -> Result<String, E>;
+
+            /// Answers blocks beside a header.
+            #[service_schema_op(http(method = "POST", path = "/fourth", header_out("etag")), mcp(content))]
+            async fn fourth(&self, ctx: &Ctx, document_id: String)
+                -> Result<(Vec<u8>, String), E>;
+        }"#,
+    );
+    assert!(
+        reported[0].contains(
+            "`first` writes `content` in `mcp(...)` and answers a success it cannot write as blocks"
+        ),
+        "{reported:?}"
+    );
+    assert!(
+        reported
+            .iter()
+            .any(|one| one.contains("`second` is one way and writes `content`"))
+    );
+    assert!(
+        reported
+            .iter()
+            .any(|one| one.contains("`third` is a resource, a listing or a completion"))
+    );
+    assert!(
+        reported
+            .iter()
+            .any(|one| one
+                .contains("`fourth` writes `content` in `mcp(...)` and binds `header_out`"))
+    );
 }

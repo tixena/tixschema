@@ -10,7 +10,7 @@ use crate::features::jsonschema::in_flight_type;
 use crate::model_schema::needs_wrapper;
 use crate::model_schema::type_json_schema_value;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{ToTokens as _, format_ident, quote, quote_spanned};
 use syn::Type;
 
 const DEFS_PREFIX: &str = "#/$defs/";
@@ -18,6 +18,7 @@ const DEFS_PREFIX: &str = "#/$defs/";
 /// The members of `<Service>Schema` the `mcp` transport reads.
 pub fn registry_items(service: &ServiceDef) -> TokenStream {
     let wrapped = service.operations.iter().map(wrapped_method);
+    let forms = service.operations.iter().filter_map(interview_methods);
     let tools = tools_method(service);
     let instructions = service.doc.as_ref().map_or_else(
         || quote! { ::core::option::Option::None },
@@ -43,6 +44,8 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         #scopes
 
         #(#wrapped)*
+
+        #(#forms)*
 
         #[doc = " The trait's rustdoc, which the server answers as its `instructions`."]
         pub const MCP_INSTRUCTIONS: ::core::option::Option<&'static str> = #instructions;
@@ -179,7 +182,7 @@ fn uri_matcher() -> TokenStream {
     }
 }
 
-fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
+pub fn wrapped_ident(operation: &OperationDef) -> syn::Ident {
     format_ident!(
         "wrapped_{}",
         written(&operation.ident),
@@ -209,6 +212,140 @@ fn wrapped_method(operation: &OperationDef) -> TokenStream {
             #answer
         }
     }
+}
+
+/// One `const` per form an operation asks with, held to `mcp_form_flat()` of the form's type: the
+/// service macro cannot read the type, so the compiler refuses a form that is not flat.
+pub fn form_assertions(service: &ServiceDef) -> TokenStream {
+    let assertions = service.operations.iter().filter_map(|operation| {
+        let answers = operation.mcp.interview.as_ref()?.answers.as_ref()?;
+        let OperationInputs::Generated(fields) = &operation.inputs else {
+            return None;
+        };
+        let (_, ty) = fields
+            .iter()
+            .find(|(field, _)| written(field) == written(answers))?;
+        let form = option_inner(ty)?;
+        let message = format!(
+            "`{}` asks with `{}`, whose type `{}` is not a flat form: MCP takes text, numbers, \
+             yes or no, and choices",
+            written(&operation.ident),
+            written(answers),
+            form.to_token_stream().to_string().replace(' ', "")
+        );
+        Some(quote_spanned! { operation.ident.span()=>
+            const _: () = assert!(<#form>::mcp_form_flat(), #message);
+        })
+    });
+    quote! { #(#assertions)* }
+}
+
+/// What the dispatcher asks of the types only the declaration can name: whether the declared error
+/// is the arm that asks, the link and message that arm holds, the form's schema and the read of
+/// its answer.
+fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
+    let interview = operation.mcp.interview.as_ref()?;
+    let OperationOutcome::Reply {
+        error,
+        success: _success,
+    } = &operation.outcome
+    else {
+        return None;
+    };
+    let arm = &interview.arm;
+    let asks = format_ident!(
+        "mcp_asks_{}",
+        written(&operation.ident),
+        span = operation.ident.span()
+    );
+    let doc = format!(
+        " Whether the error `{}` answered is the arm that asks the user.",
+        operation.mcp_tool_name()
+    );
+    let Some(answers) = interview.answers.as_ref() else {
+        let link_doc = format!(
+            " The link and the message of the arm `{}` asks the user with, where the error is it.",
+            operation.mcp_tool_name()
+        );
+        return Some(quote! {
+            #[doc = #link_doc]
+            pub fn #asks(error: &#error) -> ::core::option::Option<(&str, &str)> {
+                if let #error::#arm { url, message, .. } = error {
+                    return ::core::option::Option::Some((url.as_str(), message.as_str()));
+                }
+                ::core::option::Option::None
+            }
+        });
+    };
+    let OperationInputs::Generated(fields) = &operation.inputs else {
+        return None;
+    };
+    let (_, ty) = fields
+        .iter()
+        .find(|(field, _)| written(field) == written(answers))?;
+    let form = option_inner(ty)?;
+    let method = |prefix: &str| {
+        format_ident!(
+            "{prefix}_{}",
+            written(&operation.ident),
+            span = operation.ident.span()
+        )
+    };
+    let (schema_name, read_name) = (method("mcp_form"), method("mcp_read_form"));
+    let schema_doc = format!(
+        " The schema of the form `{}` asks with.",
+        operation.mcp_tool_name()
+    );
+    let run = run();
+    let schema = described(&operation.ident.to_string(), form);
+    Some(quote! {
+        #[doc = #doc]
+        pub fn #asks(error: &#error) -> bool {
+            ::core::matches!(error, #error::#arm { .. })
+        }
+
+        #[doc = #schema_doc]
+        pub fn #schema_name() -> ::serde_json::Value {
+            #run
+            let schema = #schema;
+            let mut root = match schema {
+                ::serde_json::Value::Object(members) => members,
+                other => {
+                    let mut members = ::serde_json::Map::new();
+                    members.insert("type".to_owned(), ::serde_json::Value::String("object".to_owned()));
+                    members.insert("allOf".to_owned(), ::serde_json::Value::Array(::std::vec![other]));
+                    members
+                }
+            };
+            if let ::core::option::Option::Some(::serde_json::Value::Object(properties)) =
+                root.get_mut("properties")
+            {
+                for property in properties.values_mut() {
+                    let present = property
+                        .get("anyOf")
+                        .and_then(::serde_json::Value::as_array)
+                        .filter(|branches| branches.len() == 2)
+                        .and_then(|branches| branches.iter().find(|branch| branch["type"] != "null"))
+                        .cloned();
+                    if let ::core::option::Option::Some(branch) = present {
+                        *property = branch;
+                    }
+                }
+            }
+            hoisted_defs.retain(|_, described| !described.is_null());
+            if !hoisted_defs.is_empty() {
+                root.insert("$defs".to_owned(), ::serde_json::Value::Object(hoisted_defs));
+            }
+            ::serde_json::Value::Object(root)
+        }
+
+        #[doc = " Reads the answers of a form, or says why they do not read."]
+        pub fn #read_name(content: &::serde_json::Value) -> ::core::result::Result<(), ::std::string::String> {
+            ::serde_json::from_value::<#form>(content.clone())
+                .map(|_| ())
+                .map_err(|rejected| rejected.to_string())
+        }
+    })
 }
 
 fn tools_method(service: &ServiceDef) -> TokenStream {
@@ -335,13 +472,28 @@ fn input_schema(operation: &OperationDef) -> TokenStream {
         OperationInputs::Empty | OperationInputs::Generated(_) => quote! { false },
     };
     let marks = header_marks(operation, &shape);
+    let answers = answers_key(operation);
+    let hidden = answers.iter();
     quote! {
         {
             #run
             let message = #message;
             let headers = ::std::vec![#(#headers),*];
-            arguments_object(message, #wrapped, headers, &[#(#marks),*], hoisted_defs)
+            arguments_object(message, #wrapped, headers, &[#(#marks),*], &[#(#hidden),*], hoisted_defs)
         }
+    }
+}
+
+/// The wire key of the argument an `interview(..., answers = ...)` carries the form's answers in:
+/// the model cannot fill it, so the tool's input leaves it out.
+pub fn answers_key(operation: &OperationDef) -> Option<String> {
+    let answers = operation.mcp.interview.as_ref()?.answers.as_ref()?;
+    match &operation.inputs {
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .find(|(field, _)| written(field) == written(answers))
+            .map(|(field, _)| wire_key(field)),
+        OperationInputs::Empty | OperationInputs::Named(_) => None,
     }
 }
 
@@ -380,6 +532,9 @@ fn output_schema(operation: &OperationDef) -> Option<TokenStream> {
     else {
         return None;
     };
+    if operation.mcp.content.is_some() {
+        return None;
+    }
     let shape = HttpShape::of(operation);
     let subject = operation.ident.to_string();
     let elements: Vec<Type> = tuple_elements(success)
@@ -416,6 +571,7 @@ fn output_schema(operation: &OperationDef) -> Option<TokenStream> {
 /// The two functions every tool's schemas are finished by, written once inside `mcp_tools()`:
 /// the arguments object of an input, and the object of an output.
 fn helpers() -> TokenStream {
+    let objects = object_helpers();
     quote! {
         type Members = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
         type Headers = ::std::vec::Vec<(&'static str, ::serde_json::Value, bool)>;
@@ -452,11 +608,19 @@ fn helpers() -> TokenStream {
             root
         }
 
+        #objects
+    }
+}
+
+/// The functions that finish an input and an output schema, written once inside `mcp_tools()`.
+fn object_helpers() -> TokenStream {
+    quote! {
         fn arguments_object(
             message: ::serde_json::Value,
             wrapped: bool,
             headers: Headers,
             marks: &[(&str, &str)],
+            hidden: &[&str],
             defs: Members,
         ) -> ::serde_json::Value {
             let mut root = if wrapped {
@@ -490,6 +654,18 @@ fn helpers() -> TokenStream {
                         properties.get_mut(*key)
                 {
                     property.insert("x-mcp-header".to_owned(), text(header));
+                }
+            }
+            for key in hidden {
+                if let ::core::option::Option::Some(::serde_json::Value::Object(properties)) =
+                    root.get_mut("properties")
+                {
+                    properties.remove(*key);
+                }
+                if let ::core::option::Option::Some(::serde_json::Value::Array(required)) =
+                    root.get_mut("required")
+                {
+                    required.retain(|named| named.as_str() != ::core::option::Option::Some(*key));
                 }
             }
             root.entry("type".to_owned()).or_insert_with(|| text("object"));

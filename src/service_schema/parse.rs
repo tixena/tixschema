@@ -479,6 +479,8 @@ pub struct McpDirective {
     /// `completes(resource = "<operation>", parameter = "<argument>")`: the operation suggests
     /// values for one placeholder of a resource template.
     pub completes: Option<McpCompletes>,
+    /// `content`: the tool answers content blocks, not a structured value. Where it was written.
+    pub content: Option<proc_macro2::Span>,
     /// `destructive = <bool>`: the tool's `destructiveHint`.
     pub destructive: Option<bool>,
     /// `header(<argument> = "<Header-Name>")`: each argument marked `x-mcp-header`, with the
@@ -488,6 +490,9 @@ pub struct McpDirective {
     pub icon: Option<String>,
     /// `idempotent`: the tool's `idempotentHint`.
     pub idempotent: bool,
+    /// `interview(arm = "<Arm>", answers = <argument>)` or `interview(arm = "<Arm>", url)`: the
+    /// arm of the declared error that asks the user, with a form or with a link.
+    pub interview: Option<McpInterview>,
     /// `list_resources`: the operation lists the resources that change, a page at a time.
     pub list_resources: bool,
     /// `mime_type = "..."`: the MIME type of a resource whose success is text.
@@ -508,6 +513,14 @@ pub struct McpDirective {
     pub title: Option<String>,
     /// `ttl_ms = <number>`: the `ttlMs` a resource read or listing answers.
     pub ttl_ms: Option<u64>,
+}
+
+/// What an `interview(...)` names: the arm that asks, and what it asks with.
+#[derive(Clone)]
+pub struct McpInterview {
+    /// The argument that carries the form's answers. `None` for a link.
+    pub answers: Option<Ident>,
+    pub arm: Ident,
 }
 
 /// The operation and the placeholder a `completes(...)` names.
@@ -964,22 +977,20 @@ fn read_mcp_directive(
             return Ok(());
         }
         if inner.path.is_ident("cache_scope") {
-            let scope = inner.value()?.parse::<LitStr>()?;
-            if !matches!(scope.value().as_str(), "public" | "private") {
-                return Err(syn::Error::new(
-                    scope.span(),
-                    format!(
-                        "service_schema: operation `{operation}` writes `cache_scope = \"{}\"` in \
-                         `mcp(...)`\n       the scope is \"public\" or \"private\"",
-                        scope.value()
-                    ),
-                ));
-            }
-            read.cache_scope = Some(scope.value());
+            read.cache_scope = Some(read_cache_scope(&inner, operation)?);
             return Ok(());
         }
         if inner.path.is_ident("completes") {
             read.completes = Some(read_mcp_completes(&inner, operation)?);
+            return Ok(());
+        }
+        if inner.path.is_ident("content") {
+            mcp_bare_flag(&inner, operation, "content")?;
+            read.content = Some(inner.path.span());
+            return Ok(());
+        }
+        if inner.path.is_ident("interview") {
+            read.interview = Some(read_mcp_interview(&inner, operation)?);
             return Ok(());
         }
         if inner.path.is_ident("header") {
@@ -993,6 +1004,21 @@ fn read_mcp_directive(
         }
         Err(inner.error(unknown_mcp_key_message(operation)))
     })
+}
+
+fn read_cache_scope(inner: &ParseNestedMeta<'_>, operation: &Ident) -> Result<String, syn::Error> {
+    let scope = inner.value()?.parse::<LitStr>()?;
+    if !matches!(scope.value().as_str(), "public" | "private") {
+        return Err(syn::Error::new(
+            scope.span(),
+            format!(
+                "service_schema: operation `{operation}` writes `cache_scope = \"{}\"` in \
+                 `mcp(...)`\n       the scope is \"public\" or \"private\"",
+                scope.value()
+            ),
+        ));
+    }
+    Ok(scope.value())
 }
 
 fn mcp_scopes(
@@ -1070,6 +1096,60 @@ fn read_mcp_completes(
     }
 }
 
+/// Reads `interview(arm = "<Arm>", answers = <argument>)` and `interview(arm = "<Arm>", url)`.
+fn read_mcp_interview(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+) -> Result<McpInterview, syn::Error> {
+    let mut arm_written = None;
+    let mut answers_written = None;
+    let mut url = false;
+    inner.parse_nested_meta(|key| {
+        if key.path.is_ident("arm") {
+            let written = key.value()?.parse::<LitStr>()?;
+            arm_written = Some(written.parse::<Ident>().map_err(|_unreadable| {
+                syn::Error::new(
+                    written.span(),
+                    format!(
+                        "service_schema: operation `{operation}` writes `interview(arm = \"{}\")` \
+                         in `mcp(...)`\n       \
+                         the arm is the name of one variant of the declared error",
+                        written.value()
+                    ),
+                )
+            })?);
+            return Ok(());
+        }
+        if key.path.is_ident("answers") {
+            answers_written = Some(key.value()?.parse::<Ident>()?);
+            return Ok(());
+        }
+        if key.path.is_ident("url") {
+            mcp_bare_flag(&key, operation, "interview(url)")?;
+            url = true;
+            return Ok(());
+        }
+        Err(key.error(format!(
+            "service_schema: operation `{operation}` writes a key `interview(...)` does not take\n       \
+             the keys are `arm = \"<Arm>\"`, then `answers = <argument>` or `url`"
+        )))
+    })?;
+    let usage = format!(
+        "service_schema: operation `{operation}` writes `interview(...)` in `mcp(...)` without \
+         its arm and exactly one of `answers` and `url`\n       \
+         write `interview(arm = \"<Arm>\", answers = <argument>)` for a form, or \
+         `interview(arm = \"<Arm>\", url)` for a link"
+    );
+    match (arm_written, answers_written, url) {
+        (Some(arm), Some(answers), false) => Ok(McpInterview {
+            answers: Some(answers),
+            arm,
+        }),
+        (Some(arm), None, true) => Ok(McpInterview { answers: None, arm }),
+        _ => Err(inner.error(usage)),
+    }
+}
+
 fn mcp_bare_flag(
     inner: &ParseNestedMeta<'_>,
     operation: &Ident,
@@ -1100,8 +1180,9 @@ fn unknown_mcp_key_message(operation: &Ident) -> String {
          the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
          `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
          `mime_type`, `list_resources`, \
-         `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms` and \
-         `cache_scope`"
+         `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
+         `cache_scope`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
+         `interview(arm = \"<Arm>\", url)`"
     )
 }
 

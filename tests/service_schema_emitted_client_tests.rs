@@ -1484,7 +1484,7 @@ use run_node_http_service::{
 };
 #[cfg(test)]
 use run_node_mcp::{
-    ArchiveService, BillingService, DocumentService, archive_service_schema,
+    ArchiveService, BillingService, DocumentService, DocumentServiceSchema, archive_service_schema,
     billing_service_schema, document_service_schema,
 };
 #[cfg(test)]
@@ -1613,21 +1613,55 @@ mod run_swift_member_named;
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
 
-/// The emitted `mcp` server and client run by node: the requests of the design, every answer held
-/// to the 2026-07-28 schema, and two services behind one endpoint.
+/// The requests every emitted `mcp` server's authorization is measured with.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_auth_rows.rs"]
+mod mcp_auth_rows;
+
 #[cfg(test)]
 #[path = "mcp_fault_cases/cases.rs"]
 mod cases;
 
+/// The emitted `mcp` server and client run by node: the requests of the design, every answer held
+/// to the 2026-07-28 schema, and two services behind one endpoint.
 #[cfg(test)]
+#[macro_use]
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
+
+/// `WriterService`, whose handler reports progress, and the rows the emitted TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_writer_rows.rs"]
+mod mcp_writer_rows;
+
+/// The `WriterService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_writer_dispatcher.rs"]
+mod mcp_writer_dispatcher;
+
+#[cfg(test)]
+use mcp_writer_rows::{WriterService, WriterServiceSchema, writer_service_schema};
+
+/// The `DocumentService` dispatcher the emitted TypeScript server is measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]
+mod mcp_node_document;
 
 /// The services the Dart `mcp` server and client are run on.
 #[cfg(test)]
 #[cfg(feature = "dart")]
+#[macro_use]
 #[path = "service_schema_emitted_client_tests/mcp_dart_services.rs"]
 mod mcp_dart_services;
+
+/// The `DartDocumentService` dispatcher the emitted Dart server is measured against.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/mcp_dart_document.rs"]
+mod mcp_dart_document;
 
 #[cfg(test)]
 #[cfg(feature = "dart")]
@@ -1637,6 +1671,57 @@ mod run_dart_mcp;
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
 #[cfg(all(test, feature = "dart"))]
 use mcp_dart_services::{
-    AuditService, DartBillingService, DartDocumentService, TaggingService, audit_service_schema,
-    dart_billing_service_schema, dart_document_service_schema, tagging_service_schema,
+    AuditService, DartBillingService, DartDocumentService, DartDocumentServiceSchema,
+    TaggingService, audit_service_schema, dart_billing_service_schema,
+    dart_document_service_schema, tagging_service_schema,
 };
+
+/// `MobileDocumentService` and `MobileBillingService`, both asking for `mcp`: the Rust twins the
+/// emitted Kotlin server and the Kotlin and Swift clients are measured against.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_service.rs"]
+mod mcp_mobile_service;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_document.rs"]
+mod mcp_mobile_document;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_billing.rs"]
+mod mcp_mobile_billing;
+
+/// The rows both `mcp` runs read: the requests a client sends, the answers the Rust dispatcher
+/// gives them, and the check of every message against the official schema.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_rows.rs"]
+mod mcp_mobile_rows;
+
+/// The requests the Kotlin `mcp` server is sent, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_server_rows.rs"]
+mod mcp_mobile_server_rows;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+use mcp_mobile_service::{
+    MobileBillingService, MobileBillingServiceSchema, MobileDocumentService,
+    MobileDocumentServiceSchema, mobile_billing_service_schema, mobile_document_service_schema,
+};
+
+/// The emitted Kotlin `mcp` server and client, run beside the Rust dispatcher and client.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp.rs"]
+mod run_kotlin_mcp;
+
+/// The emitted Swift `mcp` client, run beside the Rust dispatcher.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp.rs"]
+mod run_swift_mcp;

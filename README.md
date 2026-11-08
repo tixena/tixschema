@@ -3746,13 +3746,20 @@ const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
 );
 
 let host = document_mcp::McpHost { writer: &stdout, in_flight: &in_flight };
-let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, async |ctx: &RequestContext, part, method, params| match part {
-    0 => document_mcp::route(method, params, &documents, ctx).await,
-    1 => billing_mcp::route(method, params, &billing, ctx).await,
-    _ => None,
+let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, &|ctx: &RequestContext, part, method: &str, params: &Value| {
+    let (documents, billing) = (documents.clone(), billing.clone());
+    Box::pin(async move {
+        match part {
+            0 => document_mcp::route(method, params, &documents, ctx).await,
+            1 => billing_mcp::route(method, params, &billing, ctx).await,
+            _ => None,
+        }
+    })
 })
 .await;
 ```
+
+`route` is a `&dyn Fn` that answers a boxed `Send` future, so the future of `serve` and `serve_http` can be spawned on a multi-threaded runtime (a function bounded `Future + Send + 'static`). The boxed future may borrow only its arguments, so it owns what it routes to: `documents` and `billing` here are handles that clone cheaply (an `Arc`, or a pool), and a store borrowed from the caller's stack is refused with `borrowed for 'static`. `answer` and `answer_http` take the store by reference and need no clone.
 
 `tools/list` concatenates the catalogs in the endpoint's order, `server/discover` answers the union of their capabilities with the extensions under `capabilities.extensions`, and a `tools/call` asks each service's `route` in turn. A tool name two services share fails the build when the endpoint is a `const`: `McpEndpoint::new` panics on a name of one kind two services share (a tool and a prompt of one name do not collide), and rustc prints `error[E0080]: evaluation panicked: get-version`. Resolve it with `mcp(name = "...")` on one of the operations.
 
@@ -3783,6 +3790,26 @@ async fn suggest_documents(&self, ctx: &Ctx, typed: String, chosen: HashMap<Stri
 - `server/discover` adds `"resources": {}` where a service declares a resource, a template or a listing, and `"completions": {}` where it declares a completion. The Rust client has no method for these operations, which are not tools.
 - The macro refuses, naming the operation: a placeholder that names no argument, two operations with one URI (templates that differ only in their placeholders' names included), a success a resource cannot answer (anything but a `String` or a `(Vec<u8>, String)`), a `completes` that names no resource template of the service or a placeholder it lacks, a listing or a completion of the wrong shape, an operation that is more than one of the three, and a `cache_scope` other than `"public"` or `"private"`.
 
+**Asking the user.** A handler asks by answering an arm of its declared error, and the operation names the arm with `interview(...)`, for a form or for a link. The service macro cannot read the enum, so the generated match on `DeleteError::NeedsConfirmation { .. }` fails to compile where no such arm exists:
+
+```rust
+/// Deletes one document after the user confirms it.
+#[service_schema_op(mcp(interview(arm = "NeedsConfirmation", answers = confirmation)))]
+async fn delete_document(&self, ctx: &Ctx, document_id: String, confirmation: Option<DeleteConfirmation>)
+    -> Result<(), DeleteError>;
+
+/// Imports one file from the caller's Drive.
+#[service_schema_op(mcp(interview(arm = "NeedsDriveConnection", url)))]
+async fn import_from_drive(&self, ctx: &Ctx, file_id: String) -> Result<ImportedDocument, ImportError>;
+```
+
+- **A form.** `answers` names an argument of the operation, of type `Option<Form>`, where `Form` lists `enable = ["jsonschema"]`; `tools/list` leaves it out of `inputSchema`. The first call runs the handler with `None`. When the handler answers the arm and the client declared `elicitation`, the call answers `input_required` keyed by the argument's wire name, with the form's exported schema (an `Option` field is a property that is not required) and the `message` key of the arm's JSON, or the operation's rustdoc where the arm has none. The retried call carries `inputResponses`: an `accept` is read as the form type (an answer that does not read answers the `failed-validation` fault as a tool execution error), judged with the message and passed to the handler as `Some`; a `decline` or `cancel` runs the handler with `None`, and its arm answers as a tool execution error. A client that did not declare `elicitation` receives the arm as the declared error, and so does a generated client, which declares no capabilities and calls again with the answer among its arguments.
+- **A link.** The arm holds `url` and `message` as `String`, and `interview(arm = "...", url)` is for a secret or a sign-in to another service, which the specification keeps out of a form. A client that declared `elicitation.url` receives `input_required` in URL mode, keyed by the arm's `errorCode` (or the arm's name in kebab-case where the error has none); the retried call runs the handler again, and an arm answered again asks again. A `decline` or `cancel` of the link, and a client without `elicitation.url`, receive the arm as the declared error, whose text holds the link and the message. The page behind the link and the token store are the application's.
+- `interview` takes `answers` or `url`, not both, and is refused on a one way operation, on an operation that binds `error_header_out`, and for an `answers` that is no argument of the operation or is no `Option`.
+- **A form that is not flat does not build.** `#[model_schema]` writes `mcp_form_value()` (true for an enum whose variants hold no data) and `mcp_form_flat()` (true for a struct whose every field is a `String`, a `bool`, an integer, a float, a `mcp_form_value()` type, a `Vec` of such a type, or an `Option` of any of these; false with a `#[serde(flatten)]` field) on every struct and enum. The service macro asserts `mcp_form_flat()` for the form's type, and rustc prints `error[E0080]: evaluation panicked: `ship_document` asks with `shipping`, whose type `ShippingForm` is not a flat form: MCP takes text, numbers, yes or no, and choices`. A type that is no model type has no `mcp_form_flat()` and fails as well. A field's type is read as the answer recorded when that type was expanded, so declare a form's enums above the form.
+
+**Content.** `mcp(content)` makes a tool answer `content` blocks, with no `outputSchema` and no `structuredContent`. A `(Vec<u8>, String)` success answers an `image` block where the content type starts with `image/` and an `audio` block where it starts with `audio/`; any other content type answers the pair as an operation with no flag does. A `Vec<McpContent>` success answers its blocks in order; `McpContent` (`Text`, `Image`, `Audio`, `ResourceLink`, `Resource`) and `McpResourceContents` (`Text`, `Blob`) are written into the service module, on a service that declares such an operation. The Rust client reads the blocks back into the pair or the list. The macro refuses a `content` operation that is one way, that answers anything else, that binds `header_out`, or that is also a resource, a listing or a completion.
+
 **Calling tools.** `{service}_mcp_client!()` emits `Transport`, `McpMessage` and `{Service}Client<T>`, with one method per tool answering what the other Rust clients answer (`Result<Success, CallError<Error>>`, and `Result<(), ServiceFault>` for a one-way operation). `Transport::send` is handed the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` an HTTP seam writes as headers; it answers the server's text, or `Err` for a call that did not travel. A message the validator refuses is refused before `send` is called. The client reads each answer as follows: a result with `isError: false` is the success (from `structuredContent`, or its `value` and the `header_out` properties beside it); `isError: true` with `"isServiceFault": true` is that fault; any other `isError: true` is the declared error; a JSON-RPC error that carries the fault envelope is that fault; any other JSON-RPC error and a failing `send` are a `transport-failure` fault; text that is no JSON, or a value its read refuses, is an `undeserializable-payload` fault.
 
 ```rust,ignore
@@ -3795,11 +3822,28 @@ let version = client.get_version(GetVersionRequest { document_id: "doc-1".into()
 ```ts
 const route = createDocumentServiceMcpRoute(impl);
 const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
-const reply = await documentServiceMcpServe(line, "Workspace", undefined, workspace,
-  async (part, method, params) => (part === 0 ? route(ctx, method, params) : undefined));
+const host = {
+  writer: async (message: string) => { process.stdout.write(`${message}\n`); },
+  inFlight: new DocumentServiceMcpInFlight(),
+};
+const running: Array<Promise<void>> = [];
+for await (const line of lines) {
+  running.push(
+    documentServiceMcpServe(line, "Workspace", undefined, workspace, (call) => ({ call }), host,
+      async (ctx, part, method, params) => (part === 0 ? route(ctx, method, params) : undefined),
+    ).then(async (reply) => { if (reply !== undefined) await host.writer(reply); }),
+  );
+}
+await Promise.all(running);
 ```
 
-`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, and `createDocumentServiceMcpHttpDispatcher(impl, { allowedOrigins })` applies the Streamable HTTP rules around it. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
+A stdio host starts each line's answer and leaves it running, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop.
+
+**Progress and cancellation on the TypeScript server.** `documentServiceMcpServe` and the dispatcher of one service take `ctx`, a function that builds the handler's `Ctx` from the `DocumentServiceMcpCall` of the request, and the writer (`(message: string) => Promise<void>`) and the `DocumentServiceMcpInFlight` table, which `serve` takes together as `{ writer, inFlight }`. A handler awaits `ctx.call.progress(1, 3, "exported 1 of 3 files")`, which writes `notifications/progress` through the writer where the request carries `_meta.progressToken` and does nothing otherwise; a write that rejects marks the call cancelled, and so does `notifications/cancelled` on stdio, which finds the request in the table by `requestId`. A handler reads `ctx.call.cancelled` and stops when it chooses, and the server drops the answer of a cancelled request. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer. The server writes the same messages in the same order as the Rust dispatcher, with a number written as JavaScript writes it (`1` where Rust writes `1.0`).
+
+`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, `(text, ctx, writer, inFlight) => Promise<string | undefined>`, and `createDocumentServiceMcpHttpDispatcher(impl, settings, admit)` applies the Streamable HTTP rules around it, in the order and with the answers the Rust dispatcher gives (`405` carries `Allow: POST`).
+
+**Authorization on the TypeScript server.** `settings` is `{ allowedOrigins, oauth? }`, where `oauth` is `{ authorizationServers, resource, resourceMetadataUrl, scopesSupported }` and, absent, publishes no metadata document and writes no challenge. `admit` is `(request, call) => Promise<{ ctx } | { denied }>`, and `denied` is `{ kind: "noValidCredentials", scope? }`, `{ kind: "insufficientScope", scope }` or `{ kind: "forbidden" }`, answered with the statuses, `WWW-Authenticate` challenges and metadata document of the Rust `McpDenied`. A `DocumentServiceMcpHttpRequest` carries `path` beside `method`, `headers` and `body`, and `documentServiceMcpHeader(request, name)`, `documentServiceMcpBearerToken(request)` and `documentServiceMcpName(request)` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools, written at expansion from `mcp(scopes = [...])`. `call` is the `DocumentServiceMcpCall` of the request in flight. `documentServiceMcpServeHttp` takes the same `settings` and `admit` ahead of its `route`, which receives the `ctx` `admit` answered as its first argument. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
 
 ##### The Dart server and client
 
@@ -3810,16 +3854,62 @@ const workspace = DocumentServiceMcpEndpoint(
   {...documentServiceMcpNames, ...billingServiceMcpNames},
   [documentServiceMcpCatalog, billingServiceMcpCatalog],
 );
-final reply = await documentServiceMcpServe(line, 'Workspace', null, workspace, (part, method, params) => switch (part) {
+final host = DocumentServiceMcpHost(
+  writer: (message) async => stdout.writeln(message),
+  inFlight: DocumentServiceMcpInFlight(),
+);
+final running = <Future<void>>[];
+await for (final line in lines) {
+  running.add(documentServiceMcpServe<RequestContext>(
+    line, 'Workspace', null, workspace, (call) => RequestContext(call), host,
+    (ctx, part, method, params) => switch (part) {
       0 => documents(ctx, method, params),
       1 => billing(ctx, method, params),
       _ => Future.value(null),
-    });
+    },
+  ).then((reply) async {
+    if (reply != null) await host.writer(reply);
+  }));
+}
+await Future.wait(running);
 ```
 
-`documentServiceMcpServe` answers one JSON-RPC text (or `null` for a notification), so any program that reads and writes lines hosts it over stdio; `documentServiceMcpServeHttp` adds the Streamable HTTP rules around it for a program that answers an HTTP `POST`. `createDocumentServiceMcpDispatcher(handlers)` and `createDocumentServiceMcpHttpDispatcher(handlers, ctx, allowedOrigins)` serve the one service. Declared `final` in place of `const`, an endpoint drops a repeated name without a word, so declare it `const`.
+A stdio host leaves each line's future running, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop. A handler awaits `ctx.call.progress(1, total: 3, message: 'exported 1 of 3 files')`, which writes `notifications/progress` through the writer where the request carries `_meta.progressToken` and does nothing otherwise. A write that throws marks the call cancelled, and so does `notifications/cancelled`, which finds the request in the `DocumentServiceMcpInFlight` table by `requestId`; a handler reads `ctx.call.cancelled`, and the server drops the answer of a cancelled request. `DocumentServiceMcpWriter` is `Future<void> Function(String message)`. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer.
+
+`documentServiceMcpServe` answers one JSON-RPC text (or `null` for a notification), so any program that reads and writes lines hosts it over stdio; `documentServiceMcpServeHttp` adds the Streamable HTTP rules around it for a program that answers an HTTP `POST`. `createDocumentServiceMcpDispatcher(handlers)` serves the one service with `(text, ctx, writer, inFlight)`, and `createDocumentServiceMcpHttpDispatcher(handlers, settings, admit)` over HTTP.
+
+**Authorization on the Dart server.** `settings` is `DocumentServiceMcpHttpSettings(allowedOrigins: [...], oauth: DocumentServiceMcpOAuth(authorizationServers:, resource:, resourceMetadataUrl:, scopesSupported:))`, and without `oauth` the server publishes no metadata document and writes no challenge. `admit` is a `DocumentServiceMcpAdmit<Ctx>`, `(request, call) async => (ctx: ..., denied: null)` or `(ctx: null, denied: DocumentServiceMcpNoValidCredentials(scope: ...))`, with `DocumentServiceMcpInsufficientScope(scope: ...)` and `DocumentServiceMcpForbidden()` for the other denials; each answers the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest` carries `path`, and `request.header(name)`, `request.bearerToken` and `request.mcpName` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is the `DocumentServiceMcpCall` of the request in flight. A response now writes `Content-Type` and `Allow` in the case the Rust dispatcher writes them. Declared `final` in place of `const`, an endpoint drops a repeated name without a word, so declare it `const`.
 
 The client is `DocumentServiceMcpClient(transport)`, with one method per operation answering the result type the other Dart clients answer. A consumer implements `DocumentServiceMcpTransport.send`, which is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers; the URL and the credentials live in it. A one-way method throws `DocumentServiceMcpRefusal`.
+
+##### The Kotlin server and the Kotlin and Swift clients
+
+**On Kotlin and Swift.** On a service that asks for `mcp`, `<Service>Schema::kotlin_mcp_service()`, `kotlin_mcp_client()` and `swift_mcp_client()` publish the Kotlin server and the Kotlin and Swift clients, behind the `kotlin` and `swift` features. They read `mcp_tools()` and `wrapped_{operation}()` when the accessor runs in your program, so a tool list keeps the digits Rust wrote. A bundle names the accessor that holds the result types first: `kotlin_http_client()` and `swift_http_client()`, and for the server `kotlin_ws_client()`, which holds the `DocumentServiceHandlers` the server takes.
+
+The Kotlin server answers the bytes the Rust dispatcher answers, with the keys of every object in order. It takes the `DocumentServiceHandlers` the WebSocket attachment takes, so a handler answers its declared error as `Declared`; a message is read with the read that attachment uses, which judges it. A message that does not read answers the `undeserializable-payload` fault, and one the validator refuses answers `failed-validation` naming the field. A message that is not a JSON-RPC request answers `-32600` with no `id`, because the official schema allows an `id` that is a string or an integer and nothing else.
+
+```kotlin
+val workspace = DocumentServiceMcpEndpoint(documentServiceMcpCatalog, billingServiceMcpCatalog)
+val host = DocumentServiceMcpHost({ message -> println(message) }, DocumentServiceMcpInFlight())
+coroutineScope {
+    for (line in lines) {
+        launch {
+            val reply = documentServiceMcpServe(line, "Workspace", null, workspace, host) { call, part, method, params ->
+                when (part) { 0 -> createDocumentServiceMcpRoute(DocumentHandlers(call))(method, params); else -> null }
+            }
+            if (reply != null) host.writer(reply)
+        }
+    }
+}
+```
+
+A stdio host `launch`es each line's answer, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop. `DocumentServiceHandlers` takes no `Ctx` that could hold the call, so `route` receives the `DocumentServiceMcpCall` of the request in flight and builds its handlers from it (`createDocumentServiceMcpRoute(DocumentHandlers(call))`). A handler calls `call.progress(1.0, 3.0, "exported 1 of 3 files")`, which writes `notifications/progress` through the writer (`suspend (message: String) -> Unit`) where the request carries `_meta.progressToken` and does nothing otherwise. A write that throws marks the call cancelled, and so does `notifications/cancelled`, which finds the request in the `DocumentServiceMcpInFlight` table by `requestId`; a handler reads `call.cancelled`, and the server drops the answer of a cancelled request. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer.
+
+`createDocumentServiceMcpDispatcher { call -> handlers }` serves one service from text, as `suspend (text, writer, inFlight) -> String?`, `createDocumentServiceMcpHttpDispatcher(settings, admit)` from `DocumentServiceMcpHttpRequest` and `DocumentServiceMcpHttpResponse` under the Streamable HTTP rules above, and `createDocumentServiceMcpRoute(handlers)` answers the requests of one service on an endpoint shared by several. The answer a route gives is that service's own `DocumentServiceMcpAnswer`, so a `route` over two services converts the second one's answer to the first one's. Kotlin compares no list at compile time, because a `const val` holds only a primitive or a `String`: `DocumentServiceMcpEndpoint(a, b)` throws `IllegalStateException("two services share the MCP name tool:get-version")` when it is built.
+
+**Authorization on the Kotlin server.** `DocumentServiceMcpHttpSettings(allowedOrigins, oauth = null)` holds the origins and, for OAuth, a `DocumentServiceMcpOAuth(authorizationServers, resource, resourceMetadataUrl, scopesSupported)`; without `oauth` the server publishes no metadata document and writes no challenge. `admit` is `suspend (DocumentServiceMcpHttpRequest, DocumentServiceMcpCall) -> DocumentServiceMcpAdmitted`: `DocumentServiceMcpAdmitted.Caller(handlers)` answers the handlers built for that caller, and `DocumentServiceMcpAdmitted.Denied(DocumentServiceMcpDenied.NoValidCredentials(scope))`, `.InsufficientScope(scope)` or `.Forbidden` refuse it, with the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest(method, path, headers, body)` reads `header(name)`, `bearerToken()` and `mcpName()` as the Rust request does, and `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is the `DocumentServiceMcpCall` of the request in flight, which `admit` may build its handlers from. `documentServiceMcpServeHttp` takes `settings` and `admit` ahead of its `route`, whose first argument is the handlers `admit` built for the caller.
+
+The Kotlin and Swift clients write only `send`. `DocumentServiceMcpTransport.send` is handed a `DocumentServiceMcpMessage` holding the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` values, and answers the server's text. Each method answers the sealed result `kotlin_http_client()` declares, or `Result<Success, {Service}{Operation}Failure>` in Swift: a result with `isError: false` is the success, the declared error is `Declared` (`.declared`), a fault in the answer, a text that is no JSON and a failing `send` are the `Fault` arm (`.fault`) with the `undeserializable-payload` or `transport-failure` kind, and a one-way method throws `DocumentServiceMcpRefusal` in Kotlin and `DocumentServiceRefusal` in Swift. The Kotlin client numbers its requests under `synchronized`, and the Swift client is an actor that numbers them in its own state. `_meta` names the client as `DocumentServiceMcpClient`, with the version of the crate that declares the service.
 
 #### The `ws_rpc` Transport
 

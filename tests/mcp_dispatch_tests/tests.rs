@@ -3,6 +3,7 @@
 
 #![cfg(feature = "serde")]
 
+use alloc::sync::Arc;
 use core::future::{Future, poll_fn, ready};
 use core::task::Poll;
 use serde::{Deserialize, Serialize};
@@ -203,9 +204,9 @@ impl Reporting {
 }
 
 /// Answers every operation of both services, and writes down what reached it.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Archive {
-    pub reached: Mutex<Vec<String>>,
+    pub reached: Arc<Mutex<Vec<String>>>,
 }
 
 impl Archive {

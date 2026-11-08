@@ -3,6 +3,7 @@
 
 use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried, writer};
+use super::{content, interview};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, written,
@@ -124,6 +125,10 @@ fn route(
         .then(|| replying_helpers(module))
         .into_iter();
     let tool_results = (!tools.is_empty()).then(|| tool_results(module));
+    let asking = interview::any(service).then(interview::helpers);
+    let blocks = content::any(service).then(|| content::helpers(service, module));
+    let base64 =
+        (resources::reads_bytes(held) || content::any(service)).then(resources::base64_helper);
     let tool_call = (!tools.is_empty()).then(|| {
         quote! {
             "tools/call" => {
@@ -143,6 +148,9 @@ fn route(
         #guard
         #(#replies)*
         #tool_results
+        #asking
+        #base64
+        #blocks
         #resource_helpers
 
         /// One request this service owns: `tools/call`, `resources/read`, its own page of
@@ -268,7 +276,8 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
         }
     });
     let called = quote! { caught(move || svc.#method(ctx #(, #call)*)).await };
-    let settled = settled(operation, &called, tool);
+    let settled = settled(operation, schema, &called, tool);
+    let prepared = interview::preparation(operation, module, schema, tool);
     quote! {
         #tool => {
             let mut arguments = match params.get("arguments") {
@@ -284,6 +293,7 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                 }
             };
             #(#take_headers)*
+            #prepared
             let source = if $crate::#schema::#wrapped() {
                 match arguments.remove("value") {
                     ::core::option::Option::Some(held) => held,
@@ -327,7 +337,12 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
 
 /// What the handler's outcome becomes: the guard's `Err` is a panic, and an `Ok` is the outcome the
 /// operation declared.
-fn settled(operation: &OperationDef, called: &TokenStream, tool: &str) -> TokenStream {
+fn settled(
+    operation: &OperationDef,
+    schema: &Ident,
+    called: &TokenStream,
+    tool: &str,
+) -> TokenStream {
     let OperationOutcome::Reply { error, success } = &operation.outcome else {
         return quote! {
             if let ::core::result::Result::Err(panicked) = #called {
@@ -339,9 +354,15 @@ fn settled(operation: &OperationDef, called: &TokenStream, tool: &str) -> TokenS
             )))
         };
     };
-    let (success_pattern, success_arm) =
+    let (success_pattern, ordinary_success) =
         carried_arm(&success_carried(operation, success), tool, false);
-    let (error_pattern, error_arm) = carried_arm(&error_carried(operation, error), tool, true);
+    let success_arm = if operation.mcp.content.is_some() {
+        content::success_arm(operation, &ordinary_success)
+    } else {
+        ordinary_success
+    };
+    let (error_pattern, ordinary_error) = carried_arm(&error_carried(operation, error), tool, true);
+    let error_arm = interview::asking(operation, schema, tool, ordinary_error);
     quote! {
         match #called {
             ::core::result::Result::Err(panicked) => {
@@ -778,18 +799,18 @@ fn routing() -> TokenStream {
 
         /// Asks the services of the endpoint for what the routed request wants. A `resources/list`
         /// pages across them, and any other method goes to the first service that answers.
-        async fn put_to_services<Ctx, R>(
+        async fn put_to_services<Ctx>(
             request: &::serde_json::Value,
             endpoint: &McpEndpoint,
             ctx: &Ctx,
-            route: &R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
         where
             Ctx: ::core::marker::Sync,
-            R: ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
@@ -833,23 +854,24 @@ fn routing() -> TokenStream {
         /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
         /// answers for the service at that place in the endpoint, and receives the `Ctx` that
         /// `ctx` built from the request in flight. A notification answers `None`, and
-        /// `notifications/cancelled` marks the request it names in `in_flight`.
-        pub async fn serve<Ctx, W, R>(
+        /// `notifications/cancelled` marks the request it names in `in_flight`. `route` boxes a
+        /// `Send` future that owns what it routes to, so the future of `serve` can be spawned.
+        pub async fn serve<Ctx, W>(
             text: &str,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
             ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
             host: McpHost<'_, W>,
-            route: R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> ::core::option::Option<::std::string::String>
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             W: McpEventWriter + ::core::marker::Sync,
-            R: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             let request = match started(text, server_name, instructions, endpoint, ::core::option::Option::Some(host.in_flight)) {
                 ::core::result::Result::Ok(request) => request,
@@ -858,7 +880,7 @@ fn routing() -> TokenStream {
             let call = McpCall::of(&request);
             let ctx = ctx(call.clone());
             let _entered = host.in_flight.enter(&request["id"], &call);
-            let answered = Driven::new(&call, host.writer, put_to_services(&request, endpoint, &ctx, &route)).await;
+            let answered = Driven::new(&call, host.writer, put_to_services(&request, endpoint, &ctx, route)).await;
             finished(&request, &call, answered, server_name)
         }
     }
@@ -1321,23 +1343,23 @@ fn http_serving() -> TokenStream {
 
         /// The Streamable HTTP rules around `serve`. `route` also receives the `Ctx` that
         /// `admit` answered.
-        pub async fn serve_http<Ctx, Admit, R>(
+        pub async fn serve_http<Ctx, Admit>(
             request: &McpHttpRequest,
             settings: &McpHttpSettings<'_>,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
             admit: Admit,
-            route: R,
+            route: &(dyn for<'request> ::core::ops::Fn(&'request Ctx, usize, &'request str, &'request ::serde_json::Value) -> ::core::pin::Pin<
+                ::std::boxed::Box<dyn ::core::future::Future<Output = ::core::option::Option<
+                    ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                >> + ::core::marker::Send + 'request>,
+            > + ::core::marker::Sync),
         ) -> McpHttpResponse
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
             Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
             Admit: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::marker::Send + ::core::marker::Sync,
-            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
-                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            >,
         {
             if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
                 return refused;
@@ -1354,7 +1376,7 @@ fn http_serving() -> TokenStream {
                         ::core::result::Result::Err(answered) => http_response(answered),
                         ::core::result::Result::Ok(asked_request) => {
                             let stream = EventStream::default();
-                            let asking = put_to_services(&asked_request, endpoint, &ctx, &route);
+                            let asking = put_to_services(&asked_request, endpoint, &ctx, route);
                             let answered = Driven::new(&call, &stream, asking).await;
                             http_finished(&asked_request, &call, &stream, answered, server_name)
                         }

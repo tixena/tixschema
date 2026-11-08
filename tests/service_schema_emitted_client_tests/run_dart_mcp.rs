@@ -4,6 +4,12 @@
 
 #![cfg(feature = "dart")]
 
+use super::WriterServiceSchema;
+use super::mcp_auth_rows::{
+    AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
+    auth_rows,
+};
+use super::mcp_dart_document as document_mcp;
 use super::mcp_dart_services::{
     Archive, AuditService, AuditServiceSchema, DartBillingService as _, DartBillingServiceSchema,
     DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequest,
@@ -11,11 +17,16 @@ use super::mcp_dart_services::{
     mcp_document_id_dart, mcp_format_dart, mcp_invoice_list_dart, mcp_invoice_request_dart,
     mcp_version_error_dart, mcp_version_request_dart, mcp_version_response_dart,
 };
+use super::mcp_writer_rows::{
+    assert_matches, input as writer_input, writer_refusal_dart, writer_version_dart,
+    writer_version_request_dart,
+};
 use super::run_dart_validate::{analyzed, dart};
 use super::run_node_mcp::cases_json;
 use super::runtime::ran;
 use super::tests::poll_once;
 use crate::cases;
+use core::future::Future;
 use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
@@ -113,9 +124,11 @@ void main() async {
     return null;
   }
 
+  final host = DartDocumentServiceMcpHost(writer: (message) async {}, inFlight: DartDocumentServiceMcpInFlight());
   final answers = <String, String?>{};
   Future<void> ask(String name, String text) async {
-    answers[name] = await dartDocumentServiceMcpServe(text, 'Workspace', null, endpoint, route);
+    answers[name] = await dartDocumentServiceMcpServe<void>(text, 'Workspace', null, endpoint, (call) {}, host,
+        (ctx, part, method, params) => route(part, method, params));
   }
 
   await ask('discover', request('discover-1', 'server/discover'));
@@ -158,7 +171,7 @@ void main() async {
   await ask('no_arguments', request(26, 'tools/call', {'name': 'get-version'}));
 
   final alone = createDartDocumentServiceMcpDispatcher<void>(documents);
-  answers['alone'] = await alone(null, request(27, 'tools/list'));
+  answers['alone'] = await alone(request(27, 'tools/list'), (call) {}, host.writer, host.inFlight);
 
   print(jsonEncode({'answers': answers, 'touched': touched, 'tags': tags}));
 }
@@ -178,6 +191,7 @@ DartDocumentServiceMcpHttpRequest post(
 }) =>
     DartDocumentServiceMcpHttpRequest(
       method: method,
+      path: '/mcp',
       headers: [for (final entry in headers.entries) (entry.key, entry.value)],
       body: utf8.encode(jsonEncode(body)),
     );
@@ -203,7 +217,11 @@ void main() async {
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async {},
   );
-  final serve = createDartDocumentServiceMcpHttpDispatcher<void>(documents, null, ['https://app.example.com']);
+  final serve = createDartDocumentServiceMcpHttpDispatcher<void>(
+    documents,
+    const DartDocumentServiceMcpHttpSettings(allowedOrigins: ['https://app.example.com']),
+    (request, call) async => (ctx: null, denied: null),
+  );
   final answers = <String, Map<String, dynamic>>{};
   Future<void> ask(String name, DartDocumentServiceMcpHttpRequest request) async {
     final response = await serve(request);
@@ -228,7 +246,7 @@ void main() async {
   await ask('get', post(call(5, 'get-version'), headers: proper, method: 'GET'));
   await ask('foreign_origin', post(call(6, 'get-version'), headers: {...proper, 'Origin': 'https://evil.example.com'}));
   await ask('allowed_origin', post(call(7, 'get-version'), headers: {...proper, 'Origin': 'https://app.example.com'}));
-  await ask('unreadable', DartDocumentServiceMcpHttpRequest(method: 'POST', headers: const [], body: utf8.encode('{')));
+  await ask('unreadable', DartDocumentServiceMcpHttpRequest(method: 'POST', path: '/mcp', headers: const [], body: utf8.encode('{')));
   await ask('notification', post({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers: proper));
   await ask('no_version_header', post(call(8, 'get-version'), headers: {'Mcp-Method': 'tools/call', 'Mcp-Name': 'get-version'}));
   await ask('method_differs', post(call(9, 'get-version'), headers: {...proper, 'Mcp-Method': 'tools/list'}));
@@ -254,6 +272,97 @@ void main() async {
     'params': {'_meta': meta},
   }, headers: {'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/unheard'}));
   print(jsonEncode(answers));
+}
+"#;
+
+/// Authorization: every request of `auth_rows()` through the server with the `admit` of its scheme,
+/// and every scope query through `dartDocumentServiceMcpScopes`.
+const AUTH_DRIVER: &str = r#"
+void main() async {
+  final input = jsonDecode(inputText) as Map<String, dynamic>;
+  var reached = 0;
+  final documents = DartDocumentServiceHandlers<void>(
+    getTagged: (ctx, req, known_tag) async {
+      reached += 1;
+      return (McpVersionResponse(version: 7), '"v7"');
+    },
+    getVersion: (ctx, req) async {
+      reached += 1;
+      return McpVersionResponse(version: req.document_id.length);
+    },
+    lookup: (ctx, req) async {
+      reached += 1;
+      return McpVersionResponse(version: 7);
+    },
+    renameDocument: (ctx, req) async {
+      reached += 1;
+    },
+    touchDocument: (ctx, req) async {
+      reached += 1;
+    },
+  );
+  const tokens = <String, String>{'read-token': 'documents:read', 'write-token': 'documents:read documents:write'};
+  const noCtx = (ctx: null, denied: null);
+  final admits = <String, DartDocumentServiceMcpAdmit<void>>{
+    'oauth': (request, call) async {
+      final needed = dartDocumentServiceMcpScopes(request.header('mcp-method') ?? '', request.mcpName);
+      final token = request.bearerToken;
+      if (token == null) {
+        return (ctx: null, denied: DartDocumentServiceMcpNoValidCredentials(scope: needed.isEmpty ? null : needed.join(' ')));
+      }
+      if (token == 'forbidden-token') return (ctx: null, denied: const DartDocumentServiceMcpForbidden());
+      final held = tokens[token];
+      if (held == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials());
+      if (needed.any((scope) => !held.split(' ').contains(scope))) {
+        return (ctx: null, denied: DartDocumentServiceMcpInsufficientScope(scope: needed.join(' ')));
+      }
+      return noCtx;
+    },
+    'keys': (request, call) async {
+      final key = request.header('x-api-key');
+      final secret = request.header('x-api-secret');
+      if (key == null || secret == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials());
+      if (key == 'admin-key' && secret == 'admin-secret') return noCtx;
+      return (ctx: null, denied: const DartDocumentServiceMcpForbidden());
+    },
+  };
+  final oauth = input['oauth'] as Map<String, dynamic>;
+  final settings = <String, DartDocumentServiceMcpHttpSettings>{
+    'oauth': DartDocumentServiceMcpHttpSettings(
+      allowedOrigins: [input['origin'] as String],
+      oauth: DartDocumentServiceMcpOAuth(
+        authorizationServers: (oauth['authorizationServers'] as List).cast<String>(),
+        resource: oauth['resource'] as String,
+        resourceMetadataUrl: oauth['resourceMetadataUrl'] as String,
+        scopesSupported: (oauth['scopesSupported'] as List).cast<String>(),
+      ),
+    ),
+    'keys': DartDocumentServiceMcpHttpSettings(allowedOrigins: [input['origin'] as String]),
+  };
+  final answers = <Map<String, dynamic>>[];
+  for (final row in input['rows'] as List) {
+    final given = row as Map<String, dynamic>;
+    final scheme = given['scheme'] as String;
+    final serve = createDartDocumentServiceMcpHttpDispatcher<void>(documents, settings[scheme]!, admits[scheme]!);
+    final before = reached;
+    final response = await serve(DartDocumentServiceMcpHttpRequest(
+      method: given['method'] as String,
+      path: given['path'] as String,
+      headers: [for (final pair in given['headers'] as List) ((pair as List)[0] as String, pair[1] as String)],
+      body: utf8.encode(given['body'] as String),
+    ));
+    answers.add({
+      'status': response.status,
+      'headers': [for (final (key, value) in response.headers) [key, value]],
+      'body': utf8.decode(response.body),
+      'reached': reached - before,
+    });
+  }
+  final scopes = [
+    for (final query in input['queries'] as List)
+      dartDocumentServiceMcpScopes((query as List)[0] as String, query[1] as String?),
+  ];
+  print(jsonEncode({'answers': answers, 'scopes': scopes}));
 }
 "#;
 
@@ -375,7 +484,8 @@ void main() async {
     },
   );
   final serve = createTaggingServiceMcpDispatcher<void>(handlers);
-  final client = TaggingServiceMcpClient(Loopback((text) => serve(null, text)));
+  final inFlight = TaggingServiceMcpInFlight();
+  final client = TaggingServiceMcpClient(Loopback((text) => serve(text, (call) {}, (message) async {}, inFlight)));
   final ok = await client.retag('doc-1', 'a', 'r', 'm', 'f');
   final declared = await client.retag('missing', 'a', 'r', null, 'f');
   print(jsonEncode({
@@ -383,6 +493,92 @@ void main() async {
     'declared': declared is TaggingServiceRetagResultOperation ? declared.error.toJson() : null,
     'seen': seen,
   }));
+}
+";
+
+/// The three lines of a stdio host that starts each line's answer without waiting for the one
+/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
+/// the event it waits for.
+const WRITER_DRIVER: &str = "
+void main() async {
+  final input = jsonDecode(inputText) as Map<String, dynamic>;
+  final written = <String>[];
+  final waiting = <Completer<void>>[];
+  Future<void> stdout(String message) async {
+    written.add(message);
+    final woken = waiting.toList();
+    waiting.clear();
+    for (final wake in woken) {
+      wake.complete();
+    }
+  }
+
+  Future<void> until(bool Function() done) async {
+    while (!done()) {
+      final next = Completer<void>();
+      waiting.add(next);
+      await next.future;
+    }
+  }
+
+  final inFlight = WriterServiceMcpInFlight();
+  final released = Completer<void>();
+  var observed = false;
+  final handlers = WriterServiceHandlers<WriterServiceMcpCall>(
+    exportFolder: (ctx, folder) async {
+      await ctx.progress(1, total: 3, message: 'exported 1 of 3 files');
+      if (folder == 'forever') {
+        await released.future;
+        observed = ctx.cancelled;
+      }
+    },
+    getVersion: (ctx, req) async => WriterVersion(version: 7),
+  );
+  final dispatch = createWriterServiceMcpDispatcher<WriterServiceMcpCall>(handlers);
+  final running = <Future<void>>[];
+  void start(String line) {
+    running.add(dispatch(line, (call) => call, stdout, inFlight).then((reply) async {
+      if (reply != null) await stdout(reply);
+    }));
+  }
+
+  final lines = (input['lines'] as List).cast<String>();
+  start(lines[0]);
+  await until(() => written.isNotEmpty);
+  start(lines[1]);
+  await until(() => written.length >= 2);
+  final stopped = await dispatch(lines[2], (call) => call, stdout, inFlight);
+  if (stopped != null) throw StateError('a notification was answered');
+  released.complete();
+  await Future.wait(running);
+
+  WriterServiceMcpCall? seen;
+  final reply = await dispatch(input['failed'] as String, (call) {
+    seen = call;
+    return call;
+  }, (message) async => throw StateError('the client has gone'), inFlight);
+  final failed = <String, dynamic>{'reply': reply, 'cancelled': seen!.cancelled, 'written': <String>[]};
+
+  final serve = createWriterServiceMcpHttpDispatcher<WriterServiceMcpCall>(
+    handlers,
+    const WriterServiceMcpHttpSettings(allowedOrigins: []),
+    (request, call) async => (ctx: call, denied: null),
+  );
+  final http = <Map<String, dynamic>>[];
+  for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
+    final response = await serve(WriterServiceMcpHttpRequest(
+      method: row['method'] as String,
+      path: row['path'] as String,
+      headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
+      body: utf8.encode(row['body'] as String),
+    ));
+    http.add({
+      'status': response.status,
+      'headers': [for (final (name, value) in response.headers) [name, value]],
+      'body': utf8.decode(response.body),
+    });
+  }
+  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http}));
 }
 ";
 
@@ -410,6 +606,12 @@ fn module(driver: &str) -> String {
         TaggingServiceSchema::dart_ws_client(),
         TaggingServiceSchema::dart_mcp_service(),
         TaggingServiceSchema::dart_mcp_client(),
+        writer_version_request_dart::dart_definition(),
+        writer_version_dart::dart_definition(),
+        writer_refusal_dart::dart_definition(),
+        WriterServiceSchema::dart_definition(),
+        WriterServiceSchema::dart_ws_client(),
+        WriterServiceSchema::dart_mcp_service(),
         driver.replace("/*FAULT_CASES*/", &cases_json()),
     ]
     .join("\n\n")
@@ -925,7 +1127,7 @@ fn the_http_rules_answer_the_status_and_the_error_each_names() {
         assert_eq!(status(accepted), 200, "{accepted}");
         assert_eq!(
             driven[accepted]["headers"],
-            json!(["content-type: application/json"]),
+            json!(["Content-Type: application/json"]),
             "{accepted}"
         );
         let message = body(accepted);
@@ -944,6 +1146,7 @@ fn the_http_rules_answer_the_status_and_the_error_each_names() {
     );
     assert_eq!(body("unknown_tool")["error"]["code"], -32_602_i32);
     assert_eq!(status("get"), 405);
+    assert_eq!(driven["get"]["headers"], json!(["Allow: POST"]));
     assert_eq!(driven["get"]["body"], "");
     assert_eq!(status("foreign_origin"), 403);
     assert_eq!(driven["foreign_origin"]["body"], "");
@@ -1140,4 +1343,107 @@ fn the_archive_answers_every_operation_of_every_service() {
     ))
     .unwrap();
     assert_eq!(tagging.unwrap(), "doc-1:a:r::f");
+}
+
+/// What the Rust dispatcher of `DartDocumentService` answers to `row`.
+fn rust_answer(row: &AuthRow) -> (u16, Vec<(String, String)>, String) {
+    rust_auth_answer!(document_mcp, DartDocumentServiceSchema, Archive, row, ready)
+}
+
+fn ready<Answering>(answering: Answering) -> Answering::Output
+where
+    Answering: Future,
+{
+    poll_once(answering).unwrap()
+}
+
+fn auth_report() -> Option<Value> {
+    let input = json!({
+        "origin": ORIGIN,
+        "oauth": {
+            "authorizationServers": [AUTHORIZATION_SERVER],
+            "resource": RESOURCE,
+            "resourceMetadataUrl": METADATA_URL,
+            "scopesSupported": [SCOPES_SUPPORTED],
+        },
+        "rows": auth_rows().iter().map(|row| json!({
+            "body": row.body,
+            "headers": row.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            "method": row.method,
+            "path": row.path,
+            "scheme": row.scheme.word(),
+        })).collect::<Vec<_>>(),
+        "queries": SCOPE_QUERIES.iter().map(|(method, name)| json!([method, name])).collect::<Vec<_>>(),
+    });
+    let driver = format!("const inputText = r\'\'\'{input}\'\'\';\n{AUTH_DRIVER}");
+    driven("mcp_auth", &driver)
+}
+
+#[test]
+fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let rows = auth_rows();
+    let answers = report["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), rows.len());
+    for (row, dart) in rows.iter().zip(answers) {
+        let (status, headers, body) = rust_answer(row);
+        assert_eq!(
+            dart["status"].as_u64().unwrap(),
+            u64::from(status),
+            "{}: {dart}",
+            row.name
+        );
+        let dart_headers: Vec<(String, String)> = dart["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pair| {
+                (
+                    pair[0].as_str().unwrap().to_owned(),
+                    pair[1].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(dart_headers, headers, "{}", row.name);
+        assert_eq!(dart["body"].as_str().unwrap(), body, "{}", row.name);
+        if status != 200 {
+            assert_eq!(dart["reached"], 0_i32, "{}: no handler is called", row.name);
+        }
+    }
+}
+
+#[test]
+fn the_scopes_function_answers_what_the_rust_registry_answers() {
+    let Some(report) = auth_report() else {
+        return;
+    };
+    let dart = report["scopes"].as_array().unwrap();
+    assert_eq!(dart.len(), SCOPE_QUERIES.len());
+    for ((method, name), held) in SCOPE_QUERIES.iter().zip(dart) {
+        let rust = DartDocumentServiceSchema::mcp_scopes(method, *name);
+        assert_eq!(*held, json!(rust), "{method} {name:?}");
+    }
+}
+
+#[test]
+fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike() {
+    let (alone, served, status) =
+        rust_serves_alike!(document_mcp, DartDocumentServiceSchema, Archive, ready);
+    assert_eq!(alone, served);
+    assert!(alone.is_some());
+    assert_eq!(status, 200);
+}
+
+#[test]
+fn the_dart_host_writes_the_messages_the_rust_host_writes() {
+    let driver = format!(
+        "const inputText = r\'\'\'{}\'\'\';\n{WRITER_DRIVER}",
+        writer_input()
+    );
+    let Some(report) = driven("mcp_writer", &driver) else {
+        return;
+    };
+    assert_matches(&report);
 }
