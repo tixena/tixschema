@@ -159,9 +159,69 @@ class @N@McpForbidden extends @N@McpDenied {
   const @N@McpForbidden();
 }
 
-/// What a handler reaches beside its arguments.
+/// Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A
+/// write that throws means the client has gone.
+typedef @N@McpWriter = Future<void> Function(String message);
+
+/// The request in flight, handed to `admit` and to the function that builds `Ctx`, so that a
+/// handler reaches it. `token` is the request's `progressToken`, and `writer` takes what it writes
+/// beyond its answer.
 class @N@McpCall {
-  const @N@McpCall();
+  @N@McpCall({Object? token, @N@McpWriter? writer})
+      : _token = token,
+        _writer = writer;
+  final Object? _token;
+  final @N@McpWriter? _writer;
+  bool _gone = false;
+
+  /// Writes `notifications/progress` where the request carries a `progressToken`, and does nothing
+  /// otherwise. A write that fails cancels the call.
+  Future<void> progress(num done, {num? total, String? message}) async {
+    final writer = _writer;
+    final token = _token;
+    if (writer == null || token == null || _gone) return;
+    try {
+      await writer(_@P@McpJson(<String, dynamic>{
+        'jsonrpc': '2.0',
+        'method': 'notifications/progress',
+        'params': <String, dynamic>{
+          'progress': done,
+          'progressToken': token,
+          if (total != null) 'total': total,
+          if (message != null) 'message': message,
+        },
+      }));
+    } catch (_) {
+      _gone = true;
+    }
+  }
+
+  /// Whether the client cancelled this request, or went away.
+  bool get cancelled => _gone;
+}
+
+/// The requests a stdio host has in flight, so that `notifications/cancelled` reaches the right one.
+class @N@McpInFlight {
+  final Map<String, @N@McpCall> _calls = <String, @N@McpCall>{};
+
+  void _cancel(Object? id) {
+    _calls[jsonEncode(id)]?._gone = true;
+  }
+
+  void Function() _enter(Object? id, @N@McpCall call) {
+    final key = jsonEncode(id);
+    _calls[key] = call;
+    return () {
+      if (identical(_calls[key], call)) _calls.remove(key);
+    };
+  }
+}
+
+/// What `@P@McpServe` writes to, and the requests it has in flight.
+class @N@McpHost {
+  const @N@McpHost({required this.writer, required this.inFlight});
+  final @N@McpWriter writer;
+  final @N@McpInFlight inFlight;
 }
 
 /// What `admit` answers: the context the handlers run with in `ctx`, or why the request is refused in `denied`.
@@ -397,17 +457,80 @@ Future<({String? text, int status})> _@P@McpRespond(
   );
 }
 
+Map<String, dynamic>? _@P@McpMessage(String text) {
+  try {
+    final parsed = jsonDecode(text);
+    return parsed is Map<String, dynamic> ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+Object? _@P@McpToken(Map<String, dynamic>? message) {
+  final params = message?['params'];
+  final meta = params is Map ? params['_meta'] : null;
+  final token = meta is Map ? meta['progressToken'] : null;
+  return token is String || token is num ? token : null;
+}
+
 /// One JSON-RPC message in, one out, for the services of `endpoint`. `route` answers for the
-/// service at that place in the endpoint, or `null` for a request it does not own. A notification
-/// answers `null`.
-Future<String?> @P@McpServe(
+/// service at that place in the endpoint, or `null` for a request it does not own, and receives
+/// the `Ctx` that `ctx` built from the request in flight. A notification answers `null`, and
+/// `notifications/cancelled` marks the request it names in `host.inFlight`. The answer of a
+/// cancelled request is dropped.
+Future<String?> @P@McpServe<Ctx>(
   String text,
   String serverName,
   String? instructions,
   @N@McpEndpoint endpoint,
-  Future<@N@McpAnswer?> Function(int part, String method, Map<String, dynamic> params) route,
-) async =>
-    (await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint, route)).text;
+  Ctx Function(@N@McpCall call) ctx,
+  @N@McpHost host,
+  Future<@N@McpAnswer?> Function(Ctx ctx, int part, String method, Map<String, dynamic> params) route,
+) async {
+  final message = _@P@McpMessage(text);
+  if (message != null && !message.containsKey('id')) {
+    if (message['method'] == 'notifications/cancelled') {
+      final params = message['params'];
+      host.inFlight._cancel(params is Map ? params['requestId'] : null);
+    }
+    return null;
+  }
+  final call = @N@McpCall(token: _@P@McpToken(message), writer: host.writer);
+  void Function()? leave;
+  Ctx? built;
+  var building = true;
+  try {
+    final answered = await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint,
+        (part, method, params) {
+      if (building) {
+        building = false;
+        leave = host.inFlight._enter(message?['id'], call);
+        built = ctx(call);
+      }
+      return route(built as Ctx, part, method, params);
+    });
+    return call.cancelled ? null : answered.text;
+  } finally {
+    leave?.call();
+  }
+}
+
+Object? _@P@McpBodyToken(@N@McpHttpRequest request) {
+  try {
+    return _@P@McpToken(_@P@McpMessage(utf8.decode(request.body)));
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The `200` event-stream answer: each event written, then the answer.
+@N@McpHttpResponse _@P@McpEventStream(List<String> events, String? answered) => @N@McpHttpResponse(
+      status: 200,
+      headers: const [('Content-Type', 'text/event-stream'), ('X-Accel-Buffering', 'no')],
+      body: utf8.encode([
+        for (final event in [...events, if (answered != null) answered]) 'event: message\ndata: $event\n\n',
+      ].join()),
+    );
 
 String _@P@McpUrlPath(String url) {
   final separator = url.indexOf('://');
@@ -484,7 +607,9 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
   }
   final origin = header('origin');
   if (origin != null && !settings.allowedOrigins.contains(origin)) return respond(403);
-  final admitted = await admit(request, const @N@McpCall());
+  final events = <String>[];
+  final call = @N@McpCall(token: _@P@McpBodyToken(request), writer: (event) async => events.add(event));
+  final admitted = await admit(request, call);
   final denied = admitted.denied;
   if (denied != null) return _@P@McpDenial(denied, settings, request);
   final ctx = admitted.ctx as Ctx;
@@ -521,9 +646,16 @@ Future<@N@McpHttpResponse> @P@McpServeHttp<Ctx>(
       return respond(400, error(id, -32020, 'Header mismatch: Mcp-Name'));
     }
   }
+  var routed = false;
   final answered = await _@P@McpRespond(utf8.decode(request.body), serverName, @P@McpServerVersion, instructions,
-      endpoint, (part, method, params) => route(ctx, part, method, params));
-  return respond(answered.status, answered.text);
+      endpoint, (part, method, params) {
+    routed = true;
+    return route(ctx, part, method, params);
+  });
+  if (!routed) return respond(answered.status, answered.text);
+  final written = call.cancelled ? null : answered.text;
+  if (_@P@McpToken(parsed) != null) return _@P@McpEventStream(events, written);
+  return written == null ? respond(202) : respond(answered.status, written);
 }
 "#;
 
@@ -635,16 +767,25 @@ const CLIENT_FAULT_OF: &str = "@F@ _@P@McpFaultOf(Map<String, dynamic> result, S
 const SERVER_ALONE: &str = "const _@P@McpAlone = @N@McpEndpoint({...@P@McpNames}, [@P@McpCatalog]);
 
 /// Answers the requests of this service alone, one text in and one out. Usable as is for stdio.
-Future<String?> Function(Ctx ctx, String text) create@N@McpDispatcher<Ctx>(
+/// `ctx` builds the handlers' context from the request in flight, `writer` takes what the request
+/// writes beyond its answer, and `inFlight` lists the requests `notifications/cancelled` can reach.
+Future<String?> Function(
+  String text,
+  Ctx Function(@N@McpCall call) ctx,
+  @N@McpWriter writer,
+  @N@McpInFlight inFlight,
+) create@N@McpDispatcher<Ctx>(
   @N@Handlers<Ctx> handlers,
 ) {
   final route = create@N@McpRoute(handlers);
-  return (ctx, text) => @P@McpServe(
+  return (text, ctx, writer, inFlight) => @P@McpServe<Ctx>(
         text,
         @P@McpServerName,
         @P@McpInstructions,
         _@P@McpAlone,
-        (part, method, params) => route(ctx, method, params),
+        ctx,
+        @N@McpHost(writer: writer, inFlight: inFlight),
+        (built, part, method, params) => route(built, method, params),
       );
 }
 

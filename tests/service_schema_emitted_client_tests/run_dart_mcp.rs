@@ -4,6 +4,7 @@
 
 #![cfg(feature = "dart")]
 
+use super::WriterServiceSchema;
 use super::mcp_auth_rows::{
     AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
     auth_rows,
@@ -15,6 +16,10 @@ use super::mcp_dart_services::{
     McpVersionError, McpVersionRequest, TaggingService as _, TaggingServiceSchema,
     mcp_document_id_dart, mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_version_error_dart,
     mcp_version_request_dart, mcp_version_response_dart,
+};
+use super::mcp_writer_rows::{
+    assert_matches, input as writer_input, writer_refusal_dart, writer_version_dart,
+    writer_version_request_dart,
 };
 use super::run_dart_validate::{analyzed, dart};
 use super::runtime::ran;
@@ -112,9 +117,11 @@ void main() async {
     return null;
   }
 
+  final host = DartDocumentServiceMcpHost(writer: (message) async {}, inFlight: DartDocumentServiceMcpInFlight());
   final answers = <String, String?>{};
   Future<void> ask(String name, String text) async {
-    answers[name] = await dartDocumentServiceMcpServe(text, 'Workspace', null, endpoint, route);
+    answers[name] = await dartDocumentServiceMcpServe<void>(text, 'Workspace', null, endpoint, (call) {}, host,
+        (ctx, part, method, params) => route(part, method, params));
   }
 
   await ask('discover', request('discover-1', 'server/discover'));
@@ -152,7 +159,7 @@ void main() async {
   await ask('no_arguments', request(26, 'tools/call', {'name': 'get-version'}));
 
   final alone = createDartDocumentServiceMcpDispatcher<void>(documents);
-  answers['alone'] = await alone(null, request(27, 'tools/list'));
+  answers['alone'] = await alone(request(27, 'tools/list'), (call) {}, host.writer, host.inFlight);
 
   print(jsonEncode({'answers': answers, 'touched': touched, 'tags': tags}));
 }
@@ -465,7 +472,8 @@ void main() async {
     },
   );
   final serve = createTaggingServiceMcpDispatcher<void>(handlers);
-  final client = TaggingServiceMcpClient(Loopback((text) => serve(null, text)));
+  final inFlight = TaggingServiceMcpInFlight();
+  final client = TaggingServiceMcpClient(Loopback((text) => serve(text, (call) {}, (message) async {}, inFlight)));
   final ok = await client.retag('doc-1', 'a', 'r', 'm', 'f');
   final declared = await client.retag('missing', 'a', 'r', null, 'f');
   print(jsonEncode({
@@ -473,6 +481,92 @@ void main() async {
     'declared': declared is TaggingServiceRetagResultOperation ? declared.error.toJson() : null,
     'seen': seen,
   }));
+}
+";
+
+/// The three lines of a stdio host that starts each line's answer without waiting for the one
+/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
+/// the event it waits for.
+const WRITER_DRIVER: &str = "
+void main() async {
+  final input = jsonDecode(inputText) as Map<String, dynamic>;
+  final written = <String>[];
+  final waiting = <Completer<void>>[];
+  Future<void> stdout(String message) async {
+    written.add(message);
+    final woken = waiting.toList();
+    waiting.clear();
+    for (final wake in woken) {
+      wake.complete();
+    }
+  }
+
+  Future<void> until(bool Function() done) async {
+    while (!done()) {
+      final next = Completer<void>();
+      waiting.add(next);
+      await next.future;
+    }
+  }
+
+  final inFlight = WriterServiceMcpInFlight();
+  final released = Completer<void>();
+  var observed = false;
+  final handlers = WriterServiceHandlers<WriterServiceMcpCall>(
+    exportFolder: (ctx, folder) async {
+      await ctx.progress(1, total: 3, message: 'exported 1 of 3 files');
+      if (folder == 'forever') {
+        await released.future;
+        observed = ctx.cancelled;
+      }
+    },
+    getVersion: (ctx, req) async => WriterVersion(version: 7),
+  );
+  final dispatch = createWriterServiceMcpDispatcher<WriterServiceMcpCall>(handlers);
+  final running = <Future<void>>[];
+  void start(String line) {
+    running.add(dispatch(line, (call) => call, stdout, inFlight).then((reply) async {
+      if (reply != null) await stdout(reply);
+    }));
+  }
+
+  final lines = (input['lines'] as List).cast<String>();
+  start(lines[0]);
+  await until(() => written.isNotEmpty);
+  start(lines[1]);
+  await until(() => written.length >= 2);
+  final stopped = await dispatch(lines[2], (call) => call, stdout, inFlight);
+  if (stopped != null) throw StateError('a notification was answered');
+  released.complete();
+  await Future.wait(running);
+
+  WriterServiceMcpCall? seen;
+  final reply = await dispatch(input['failed'] as String, (call) {
+    seen = call;
+    return call;
+  }, (message) async => throw StateError('the client has gone'), inFlight);
+  final failed = <String, dynamic>{'reply': reply, 'cancelled': seen!.cancelled, 'written': <String>[]};
+
+  final serve = createWriterServiceMcpHttpDispatcher<WriterServiceMcpCall>(
+    handlers,
+    const WriterServiceMcpHttpSettings(allowedOrigins: []),
+    (request, call) async => (ctx: call, denied: null),
+  );
+  final http = <Map<String, dynamic>>[];
+  for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
+    final response = await serve(WriterServiceMcpHttpRequest(
+      method: row['method'] as String,
+      path: row['path'] as String,
+      headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
+      body: utf8.encode(row['body'] as String),
+    ));
+    http.add({
+      'status': response.status,
+      'headers': [for (final (name, value) in response.headers) [name, value]],
+      'body': utf8.decode(response.body),
+    });
+  }
+  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http}));
 }
 ";
 
@@ -499,6 +593,12 @@ fn module(driver: &str) -> String {
         TaggingServiceSchema::dart_ws_client(),
         TaggingServiceSchema::dart_mcp_service(),
         TaggingServiceSchema::dart_mcp_client(),
+        writer_version_request_dart::dart_definition(),
+        writer_version_dart::dart_definition(),
+        writer_refusal_dart::dart_definition(),
+        WriterServiceSchema::dart_definition(),
+        WriterServiceSchema::dart_ws_client(),
+        WriterServiceSchema::dart_mcp_service(),
         driver.to_owned(),
     ]
     .join("\n\n")
@@ -1295,4 +1395,16 @@ fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike
     assert_eq!(alone, served);
     assert!(alone.is_some());
     assert_eq!(status, 200);
+}
+
+#[test]
+fn the_dart_host_writes_the_messages_the_rust_host_writes() {
+    let driver = format!(
+        "const inputText = r\'\'\'{}\'\'\';\n{WRITER_DRIVER}",
+        writer_input()
+    );
+    let Some(report) = driven("mcp_writer", &driver) else {
+        return;
+    };
+    assert_matches(&report);
 }

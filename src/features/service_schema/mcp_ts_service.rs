@@ -93,6 +93,71 @@ function __p__McpObject(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }"#;
 
+const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that rejects means the client has gone. */
+export type __N__McpWriter = (message: string) => Promise<void>;
+
+/** The request in flight, handed to `admit` and to the function that builds `Ctx`, so that a handler reaches it. */
+export class __N__McpCall {
+  private readonly token: string | number | bigint | undefined;
+  private readonly writer: __N__McpWriter;
+  private gone = false;
+
+  constructor(token?: string | number | bigint, writer?: __N__McpWriter) {
+    this.token = token;
+    this.writer = writer ?? (() => Promise.resolve());
+  }
+
+  /** Writes `notifications/progress` where the request carries a `progressToken`, and does nothing otherwise. A write that fails cancels the call. */
+  async progress(done: number, total?: number, message?: string): Promise<void> {
+    if (this.token === undefined || this.gone) return;
+    const params: Record<string, unknown> = { progress: done, progressToken: this.token };
+    if (total !== undefined) params.total = total;
+    if (message !== undefined) params.message = message;
+    try {
+      await this.writer(__p__McpText({ jsonrpc: "2.0", method: "notifications/progress", params }));
+    } catch {
+      this.gone = true;
+    }
+  }
+
+  /** Whether the client cancelled this request, or went away. */
+  get cancelled(): boolean {
+    return this.gone;
+  }
+
+  /** Marks the request cancelled. The transport calls it. */
+  cancel(): void {
+    this.gone = true;
+  }
+}
+
+/** The requests a stdio host has in flight, so that `notifications/cancelled` reaches the right one. */
+export class __N__McpInFlight {
+  private readonly calls = new Map<string, __N__McpCall>();
+
+  /** Marks the request `id` names as cancelled, and does nothing where none is in flight. */
+  cancel(id: unknown): void {
+    this.calls.get(JSON.stringify(id) ?? "")?.cancel();
+  }
+
+  /** Lists `call` under `id`; the function it answers takes it off the list. */
+  enter(id: unknown, call: __N__McpCall): () => void {
+    const key = JSON.stringify(id) ?? "";
+    this.calls.set(key, call);
+    return () => {
+      if (this.calls.get(key) === call) this.calls.delete(key);
+    };
+  }
+}
+
+/** What `serve` writes to, and the requests it has in flight. */
+export type __N__McpHost = { readonly writer: __N__McpWriter; readonly inFlight: __N__McpInFlight };
+
+function __p__McpToken(message: Record<string, unknown>): string | number | bigint | undefined {
+  const token = __p__McpObject(__p__McpObject(message.params)?._meta)?.progressToken;
+  return typeof token === "string" || typeof token === "number" || typeof token === "bigint" ? token : undefined;
+}"#;
+
 const HANDLING: &str = r#"const __p__McpVersion = "2026-07-28";
 const __p__McpMetaProtocol = "io.modelcontextprotocol/protocolVersion";
 const __p__McpMetaCapabilities = "io.modelcontextprotocol/clientCapabilities";
@@ -251,19 +316,42 @@ export function __p__McpEndpoint<const Parts extends ReadonlyArray<__N__McpPart>
 
 const SERVE: &str = r#"/**
  * One JSON-RPC message in, one out, for the services of `endpoint`. `route` answers for the
- * service at that place in the endpoint, and a notification answers `undefined`.
+ * service at that place in the endpoint and receives the `Ctx` that `ctx` built from the request
+ * in flight, and a notification answers `undefined`. `notifications/cancelled` marks the request
+ * it names in `host.inFlight`, and the answer of a cancelled request is dropped.
  */
-export async function __p__McpServe(
+export async function __p__McpServe<Ctx>(
   text: string,
   serverName: string,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
-  route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
+  ctx: (call: __N__McpCall) => Ctx,
+  host: __N__McpHost,
+  route: (ctx: Ctx, part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
 ): Promise<string | undefined> {
   const parsed = __p__McpParse(text);
   if (!parsed.ok) return parsed.refused.text;
-  if (!("id" in parsed.message)) return undefined;
-  return (await __p__McpHandle(parsed.message, serverName, instructions, endpoint, route)).text;
+  const message = parsed.message;
+  if (!("id" in message)) {
+    if (message.method === "notifications/cancelled") {
+      host.inFlight.cancel(__p__McpObject(message.params)?.requestId);
+    }
+    return undefined;
+  }
+  const call = new __N__McpCall(__p__McpToken(message), host.writer);
+  const entered: { leave?: () => void; ctx?: { readonly built: Ctx } } = {};
+  try {
+    const handled = await __p__McpHandle(message, serverName, instructions, endpoint, async (part, method, params) => {
+      if (entered.ctx === undefined) {
+        entered.leave = host.inFlight.enter(message.id, call);
+        entered.ctx = { built: ctx(call) };
+      }
+      return route(entered.ctx.built, part, method, params);
+    });
+    return call.cancelled ? undefined : handled.text;
+  } finally {
+    entered.leave?.();
+  }
 }"#;
 
 const ROUTE: &str = r#"const __p__McpEmpty = { content: [], isError: false, resultType: "complete" };
@@ -373,9 +461,6 @@ export type __N__McpDenied =
   /** `403` with no challenge. */
   | { readonly kind: \"forbidden\" };
 
-/** What a handler reaches beside its arguments. */
-export class __N__McpCall {}
-
 /** An HTTP request in plain terms. `path` is the request's path, with or without its query. */
 export type __N__McpHttpRequest = {
   readonly method: string;
@@ -434,6 +519,19 @@ function __p__McpHeaderText(value: string): string | undefined {
   }
 }
 
+/** The `200` event-stream answer: each event written, then the answer. */
+function __p__McpEventStream(events: ReadonlyArray<string>, answered: string | undefined): __N__McpHttpResponse {
+  const written = answered === undefined ? events : [...events, answered];
+  return {
+    status: 200,
+    headers: [
+      ["Content-Type", "text/event-stream"],
+      ["X-Accel-Buffering", "no"],
+    ],
+    body: new TextEncoder().encode(written.map((event) => `event: message\ndata: ${event}\n\n`).join("")),
+  };
+}
+
 function __p__McpHttpReplied(handled: __N__McpHandled | number): __N__McpHttpResponse {
   if (typeof handled === "number") return { status: handled, headers: [], body: new Uint8Array() };
   return {
@@ -441,6 +539,16 @@ function __p__McpHttpReplied(handled: __N__McpHandled | number): __N__McpHttpRes
     headers: [["Content-Type", "application/json"]],
     body: new TextEncoder().encode(handled.text),
   };
+}
+
+/** The progress token of an HTTP request, read before its body is judged. */
+function __p__McpBodyToken(request: __N__McpHttpRequest): string | number | bigint | undefined {
+  try {
+    const message = __p__McpObject(__p__McpRead(new TextDecoder().decode(request.body)));
+    return message === undefined ? undefined : __p__McpToken(message);
+  } catch {
+    return undefined;
+  }
 }
 
 function __p__McpUrlPath(url: string): string {
@@ -492,7 +600,8 @@ function __p__McpMetadata(oauth: __N__McpOAuth): __N__McpHttpResponse {
 /**
  * The Streamable HTTP rules around `__p__McpServe`: the metadata document, the method, the `Origin`,
  * `admit`, the body, the headers that must agree with it, and the status each refusal travels
- * under. `route` also receives the `Ctx` that `admit` answered.
+ * under. `route` also receives the `Ctx` that `admit` answered. A routed request that carries a
+ * `progressToken` answers an event stream: each notification, then the answer.
  */
 export async function __p__McpServeHttp<Ctx>(
   request: __N__McpHttpRequest,
@@ -512,7 +621,12 @@ export async function __p__McpServeHttp<Ctx>(
   if (request.method !== "POST") return { ...__p__McpHttpReplied(405), headers: [["Allow", "POST"]] };
   const origin = __p__McpHeader(request, "origin");
   if (origin !== undefined && !settings.allowedOrigins.includes(origin)) return __p__McpHttpReplied(403);
-  const admitted = await admit(request, new __N__McpCall());
+  const events: Array<string> = [];
+  const call = new __N__McpCall(__p__McpBodyToken(request), (event) => {
+    events.push(event);
+    return Promise.resolve();
+  });
+  const admitted = await admit(request, call);
   if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
   const { ctx } = admitted;
   let text: string;
@@ -542,25 +656,43 @@ export async function __p__McpServeHttp<Ctx>(
       }
     }
   }
-  return __p__McpHttpReplied(
-    await __p__McpHandle(message, serverName, instructions, endpoint, (part, called, given) =>
-      route(ctx, part, called, given),
-    ),
-  );
+  const asked = { routed: false };
+  const handled = await __p__McpHandle(message, serverName, instructions, endpoint, (part, called, given) => {
+    asked.routed = true;
+    return route(ctx, part, called, given);
+  });
+  if (!asked.routed) return __p__McpHttpReplied(handled);
+  const answered = call.cancelled ? undefined : handled.text;
+  if (__p__McpToken(message) !== undefined) return __p__McpEventStream(events, answered);
+  return __p__McpHttpReplied(answered === undefined ? 202 : handled);
 }"#;
 
 const FACTORIES: &str = "/**
  * Turns a `__N__` implementation into the function that answers one JSON-RPC message of the
- * service alone: usable as it is over stdio, one line in and one line out.
+ * service alone: usable as it is over stdio, one line in and one line out. `ctx` builds the
+ * handler's context from the request in flight, `writer` takes what the request writes beyond its
+ * answer, and `inFlight` lists the requests that `notifications/cancelled` can reach.
  */
 export function create__N__McpDispatcher<Ctx>(
   impl: __DRIVEN__,
-): (ctx: Ctx, text: string) => Promise<string | undefined> {
+): (
+  text: string,
+  ctx: (call: __N__McpCall) => Ctx,
+  writer: __N__McpWriter,
+  inFlight: __N__McpInFlight,
+) => Promise<string | undefined> {
   const route = create__N__McpRoute(impl);
   const endpoint = __p__McpEndpoint(__p__McpPart);
-  return (ctx, text) =>
-    __p__McpServe(text, __p__McpServerName, __p__McpInstructions, endpoint, (part, method, params) =>
-      part === 0 ? route(ctx, method, params) : Promise.resolve(undefined),
+  return (text, ctx, writer, inFlight) =>
+    __p__McpServe(
+      text,
+      __p__McpServerName,
+      __p__McpInstructions,
+      endpoint,
+      ctx,
+      { writer, inFlight },
+      (built, part, method, params) =>
+        part === 0 ? route(built, method, params) : Promise.resolve(undefined),
     );
 }
 
@@ -610,6 +742,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         message::read_fn(&format!("{prefix}McpRead")),
         fill(TEXT),
         fault_fn(&named, &prefix),
+        fill(WRITER),
         fill(HANDLING),
         fill(ENDPOINT),
         fill(SERVE),

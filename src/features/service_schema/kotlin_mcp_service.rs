@@ -317,8 +317,90 @@ private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint): Jso
     put("ttlMs", 0)
   }"#;
 
+const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that throws means the client has gone. */
+typealias @N@McpWriter = suspend (message: String) -> Unit
+
+/**
+ * The request in flight, handed to `admit` and to the function that builds the handlers, so that a
+ * handler reaches it. [token] is the request's `progressToken`, and [writer] takes what it writes
+ * beyond its answer.
+ */
+class @N@McpCall(private val token: JsonPrimitive? = null, private val writer: @N@McpWriter? = null) {
+  @Volatile
+  private var gone = false
+
+  /** Whether the client cancelled this request, or went away. */
+  val cancelled: Boolean
+    get() = gone
+
+  /** Writes `notifications/progress` where the request carries a `progressToken`, and does nothing otherwise. A write that fails cancels the call. */
+  suspend fun progress(done: Double, total: Double? = null, message: String? = null) {
+    val sink = writer
+    val reported = token
+    if (sink == null || reported == null || gone) return
+    try {
+      sink(
+        @P@McpServeText(
+          buildJsonObject {
+            put("jsonrpc", "2.0")
+            put("method", "notifications/progress")
+            put(
+              "params",
+              buildJsonObject {
+                put("progress", done)
+                put("progressToken", reported)
+                if (total != null) put("total", total)
+                if (message != null) put("message", message)
+              },
+            )
+          },
+        ),
+      )
+    } catch (stopped: CancellationException) {
+      throw stopped
+    } catch (failed: Exception) {
+      gone = true
+    }
+  }
+
+  internal fun cancel() {
+    gone = true
+  }
+}
+
+/** The requests a stdio host has in flight, so that `notifications/cancelled` reaches the right one. */
+class @N@McpInFlight {
+  private val calls = java.util.concurrent.ConcurrentHashMap<String, @N@McpCall>()
+
+  internal fun cancel(id: JsonElement?) {
+    if (id != null) calls[id.toString()]?.cancel()
+  }
+
+  internal fun enter(id: JsonElement, call: @N@McpCall): () -> Unit {
+    val key = id.toString()
+    calls[key] = call
+    return { calls.remove(key, call) }
+  }
+}
+
+/** What [@P@McpServe] writes to, and the requests it has in flight. */
+class @N@McpHost(val writer: @N@McpWriter, val inFlight: @N@McpInFlight)
+
+private fun @P@McpToken(message: JsonObject): JsonPrimitive? {
+  val token = (@P@McpParams(message)["_meta"] as? JsonObject)?.get("progressToken") as? JsonPrimitive
+  return token?.takeIf { it.isString || @P@McpIsNumber(it) }
+}
+
+private fun @P@McpBodyToken(request: @N@McpHttpRequest): JsonPrimitive? =
+  try {
+    (Json.parseToJsonElement(request.body.decodeToString()) as? JsonObject)?.let { @P@McpToken(it) }
+  } catch (rejected: Exception) {
+    null
+  }"#;
+
 const SERVING: &str = r#"private sealed interface @P@McpBegun {
   class Answered(val text: String?) : @P@McpBegun
+  class Notified(val notice: JsonObject) : @P@McpBegun
   class Routed(val request: JsonObject) : @P@McpBegun
 }
 
@@ -342,7 +424,7 @@ private fun @P@McpBegin(
 ): @P@McpBegun {
   val (request, refusal) = @P@McpReadRequest(text)
   if (request == null) return @P@McpBegun.Answered(@P@McpServeText(refusal ?: JsonNull))
-  val id = request["id"] ?: return @P@McpBegun.Answered(null)
+  val id = request["id"] ?: return @P@McpBegun.Notified(request)
   val unchecked = @P@McpChecked(request)
   if (unchecked != null) return @P@McpBegun.Answered(@P@McpServeText(unchecked))
   val method = (request["method"] as JsonPrimitive).content
@@ -381,17 +463,13 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
   return @P@McpResponseText(request["id"] ?: JsonNull, resolved, serverName)
 }
 
-suspend fun @P@McpServe(
-  text: String,
-  serverName: String,
-  instructions: String?,
+/** Asks the services of the endpoint for what the routed [request] wants, and answers its text. */
+private suspend fun @P@McpAsk(
+  request: JsonObject,
   endpoint: @N@McpEndpoint,
+  serverName: String,
   route: suspend (part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
-): String? {
-  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
-    is @P@McpBegun.Answered -> return begun.text
-    is @P@McpBegun.Routed -> begun.request
-  }
+): String {
   val method = (request["method"] as JsonPrimitive).content
   if (method == "resources/list") {
     val listed: @N@McpAnswer = @P@McpListingStart(request, endpoint.catalogs.size).fold(
@@ -406,6 +484,40 @@ suspend fun @P@McpServe(
     if (answered != null) break
   }
   return @P@McpRoutedText(request, answered, serverName)
+}
+
+/**
+ * One JSON-RPC message in, one out, for the services of [endpoint]. [route] answers for the
+ * service at that place in the endpoint, and receives the [@N@McpCall] of the request in flight
+ * to build its handlers from. A notification answers `null`, `notifications/cancelled` marks the
+ * request it names in [host], and the answer of a cancelled request is dropped.
+ */
+suspend fun @P@McpServe(
+  text: String,
+  serverName: String,
+  instructions: String?,
+  endpoint: @N@McpEndpoint,
+  host: @N@McpHost,
+  route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+): String? {
+  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+    is @P@McpBegun.Answered -> return begun.text
+    is @P@McpBegun.Notified -> {
+      if ((begun.notice["method"] as JsonPrimitive).content == "notifications/cancelled") {
+        host.inFlight.cancel(@P@McpParams(begun.notice)["requestId"])
+      }
+      return null
+    }
+    is @P@McpBegun.Routed -> begun.request
+  }
+  val call = @N@McpCall(@P@McpToken(request), host.writer)
+  val leave = host.inFlight.enter(request["id"] ?: JsonNull, call)
+  try {
+    val answered = @P@McpAsk(request, endpoint, serverName) { part, method, params -> route(call, part, method, params) }
+    return if (call.cancelled) null else answered
+  } finally {
+    leave()
+  }
 }"#;
 
 const RECEIVING: &str = r#"private class @P@McpRefused(val answer: @N@McpAnswer) : Exception()
@@ -479,11 +591,19 @@ const ROUTE_TAIL: &str = "      else -> null
   }
 }";
 
-const DISPATCHERS: &str = "fun create@N@McpDispatcher(handlers: @N@Handlers): suspend (text: String) -> String? {
-  val route = create@N@McpRoute(handlers)
+const DISPATCHERS: &str = "/**
+ * Answers the requests of this service alone, one text in and one out. [handlers] builds the
+ * handlers from the request in flight, [writer] takes what the request writes beyond its answer,
+ * and [inFlight] lists the requests `notifications/cancelled` can reach.
+ */
+fun create@N@McpDispatcher(
+  handlers: (@N@McpCall) -> @N@Handlers,
+): suspend (text: String, writer: @N@McpWriter, inFlight: @N@McpInFlight) -> String? {
   val endpoint = @N@McpEndpoint(@P@McpCatalog)
-  return { text ->
-    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint) { _, method, params -> route(method, params) }
+  return { text, writer, inFlight ->
+    @P@McpServe(text, @P@McpServerName, @P@McpInstructions, endpoint, @N@McpHost(writer, inFlight)) { call, _, method, params ->
+      create@N@McpRoute(handlers(call))(method, params)
+    }
   }
 }";
 
@@ -529,9 +649,6 @@ sealed interface @N@McpDenied {
   /** `403` with no challenge. */
   object Forbidden : @N@McpDenied
 }
-
-/** What a handler reaches beside its arguments. */
-class @N@McpCall
 
 /** What `admit` answers: the handlers built for the caller, or why the request is refused. */
 sealed interface @N@McpAdmitted {
@@ -665,6 +782,13 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest): Pair<String?, @N@McpHt
   return text to null
 }
 
+private fun @P@McpEventStream(events: Collection<String>, answered: String?): @N@McpHttpResponse =
+  @N@McpHttpResponse(
+    200,
+    listOf("Content-Type" to "text/event-stream", "X-Accel-Buffering" to "no"),
+    (events + listOfNotNull(answered)).joinToString("") { "event: message\ndata: $it\n\n" }.encodeToByteArray(),
+  )
+
 private fun @P@McpHttpAnswer(answered: String?): @N@McpHttpResponse =
   if (answered == null) {
     @P@McpWithoutBody(202)
@@ -688,15 +812,22 @@ suspend fun @P@McpServeHttp(
 ): @N@McpHttpResponse {
   val before = @P@McpBeforeAdmit(request, settings)
   if (before != null) return before
-  val caller = when (val admitted = admit(request, @N@McpCall())) {
+  val events = java.util.concurrent.ConcurrentLinkedQueue<String>()
+  val call = @N@McpCall(@P@McpBodyToken(request)) { event -> events.add(event) }
+  val caller = when (val admitted = admit(request, call)) {
     is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
     is @N@McpAdmitted.Caller -> admitted.handlers
   }
   val (text, refused) = @P@McpAfterAdmit(request)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
-  return @P@McpHttpAnswer(@P@McpServe(text, serverName, instructions, endpoint) { part, method, params ->
-    route(caller, part, method, params)
-  })
+  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName)) {
+    is @P@McpBegun.Answered -> return @P@McpHttpAnswer(begun.text)
+    is @P@McpBegun.Notified -> return @P@McpHttpAnswer(null)
+    is @P@McpBegun.Routed -> begun.request
+  }
+  val answered = @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
+  val written = if (call.cancelled) null else answered
+  return if (@P@McpToken(asked) != null) @P@McpEventStream(events, written) else @P@McpHttpAnswer(written)
 }
 
 /** Answers the HTTP requests of this service alone. [admit] answers the handlers built for a request, or why it is refused. */
@@ -730,6 +861,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(CATALOG, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &wrapped_entries(service)),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
+        fill(WRITER, &prefix, &named, &fields),
         fill(SERVING, &prefix, &named, &fields),
         fill(RECEIVING, &prefix, &named, &fields),
         route(service, &prefix, &named, &fields),

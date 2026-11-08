@@ -3822,13 +3822,28 @@ let version = client.get_version(GetVersionRequest { document_id: "doc-1".into()
 ```ts
 const route = createDocumentServiceMcpRoute(impl);
 const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
-const reply = await documentServiceMcpServe(line, "Workspace", undefined, workspace,
-  async (part, method, params) => (part === 0 ? route(ctx, method, params) : undefined));
+const host = {
+  writer: async (message: string) => { process.stdout.write(`${message}\n`); },
+  inFlight: new DocumentServiceMcpInFlight(),
+};
+const running: Array<Promise<void>> = [];
+for await (const line of lines) {
+  running.push(
+    documentServiceMcpServe(line, "Workspace", undefined, workspace, (call) => ({ call }), host,
+      async (ctx, part, method, params) => (part === 0 ? route(ctx, method, params) : undefined),
+    ).then(async (reply) => { if (reply !== undefined) await host.writer(reply); }),
+  );
+}
+await Promise.all(running);
 ```
 
-`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, and `createDocumentServiceMcpHttpDispatcher(impl, settings, admit)` applies the Streamable HTTP rules around it, in the order and with the answers the Rust dispatcher gives (`405` carries `Allow: POST`).
+A stdio host starts each line's answer and leaves it running, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop.
 
-**Authorization on the TypeScript server.** `settings` is `{ allowedOrigins, oauth? }`, where `oauth` is `{ authorizationServers, resource, resourceMetadataUrl, scopesSupported }` and, absent, publishes no metadata document and writes no challenge. `admit` is `(request, call) => Promise<{ ctx } | { denied }>`, and `denied` is `{ kind: "noValidCredentials", scope? }`, `{ kind: "insufficientScope", scope }` or `{ kind: "forbidden" }`, answered with the statuses, `WWW-Authenticate` challenges and metadata document of the Rust `McpDenied`. A `DocumentServiceMcpHttpRequest` carries `path` beside `method`, `headers` and `body`, and `documentServiceMcpHeader(request, name)`, `documentServiceMcpBearerToken(request)` and `documentServiceMcpName(request)` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools, written at expansion from `mcp(scopes = [...])`. `call` is a `DocumentServiceMcpCall`, which holds nothing yet; the writer, progress and cancellation reach it later. `documentServiceMcpServeHttp` takes the same `settings` and `admit` ahead of its `route`, which receives the `ctx` `admit` answered as its first argument. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
+**Progress and cancellation on the TypeScript server.** `documentServiceMcpServe` and the dispatcher of one service take `ctx`, a function that builds the handler's `Ctx` from the `DocumentServiceMcpCall` of the request, and the writer (`(message: string) => Promise<void>`) and the `DocumentServiceMcpInFlight` table, which `serve` takes together as `{ writer, inFlight }`. A handler awaits `ctx.call.progress(1, 3, "exported 1 of 3 files")`, which writes `notifications/progress` through the writer where the request carries `_meta.progressToken` and does nothing otherwise; a write that rejects marks the call cancelled, and so does `notifications/cancelled` on stdio, which finds the request in the table by `requestId`. A handler reads `ctx.call.cancelled` and stops when it chooses, and the server drops the answer of a cancelled request. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer. The server writes the same messages in the same order as the Rust dispatcher, with a number written as JavaScript writes it (`1` where Rust writes `1.0`).
+
+`createDocumentServiceMcpDispatcher(impl)` answers one line of stdio for the service alone, `(text, ctx, writer, inFlight) => Promise<string | undefined>`, and `createDocumentServiceMcpHttpDispatcher(impl, settings, admit)` applies the Streamable HTTP rules around it, in the order and with the answers the Rust dispatcher gives (`405` carries `Allow: POST`).
+
+**Authorization on the TypeScript server.** `settings` is `{ allowedOrigins, oauth? }`, where `oauth` is `{ authorizationServers, resource, resourceMetadataUrl, scopesSupported }` and, absent, publishes no metadata document and writes no challenge. `admit` is `(request, call) => Promise<{ ctx } | { denied }>`, and `denied` is `{ kind: "noValidCredentials", scope? }`, `{ kind: "insufficientScope", scope }` or `{ kind: "forbidden" }`, answered with the statuses, `WWW-Authenticate` challenges and metadata document of the Rust `McpDenied`. A `DocumentServiceMcpHttpRequest` carries `path` beside `method`, `headers` and `body`, and `documentServiceMcpHeader(request, name)`, `documentServiceMcpBearerToken(request)` and `documentServiceMcpName(request)` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools, written at expansion from `mcp(scopes = [...])`. `call` is the `DocumentServiceMcpCall` of the request in flight. `documentServiceMcpServeHttp` takes the same `settings` and `admit` ahead of its `route`, which receives the `ctx` `admit` answered as its first argument. An endpoint of several services fails to type-check with `twoServicesShare` naming a tool, prompt or resource two parts share; a part whose names `tsc` cannot read as literals throws when the endpoint is built. The client, `createDocumentServiceMcpClient(transport)`, has one method per operation answering `{Service}{Operation}Result`; its `transport.send` is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, and answers the text of the reply.
 
 ##### The Dart server and client
 
@@ -3839,16 +3854,31 @@ const workspace = DocumentServiceMcpEndpoint(
   {...documentServiceMcpNames, ...billingServiceMcpNames},
   [documentServiceMcpCatalog, billingServiceMcpCatalog],
 );
-final reply = await documentServiceMcpServe(line, 'Workspace', null, workspace, (part, method, params) => switch (part) {
+final host = DocumentServiceMcpHost(
+  writer: (message) async => stdout.writeln(message),
+  inFlight: DocumentServiceMcpInFlight(),
+);
+final running = <Future<void>>[];
+await for (final line in lines) {
+  running.add(documentServiceMcpServe<RequestContext>(
+    line, 'Workspace', null, workspace, (call) => RequestContext(call), host,
+    (ctx, part, method, params) => switch (part) {
       0 => documents(ctx, method, params),
       1 => billing(ctx, method, params),
       _ => Future.value(null),
-    });
+    },
+  ).then((reply) async {
+    if (reply != null) await host.writer(reply);
+  }));
+}
+await Future.wait(running);
 ```
 
-`documentServiceMcpServe` answers one JSON-RPC text (or `null` for a notification), so any program that reads and writes lines hosts it over stdio; `documentServiceMcpServeHttp` adds the Streamable HTTP rules around it for a program that answers an HTTP `POST`. `createDocumentServiceMcpDispatcher(handlers)` and `createDocumentServiceMcpHttpDispatcher(handlers, settings, admit)` serve the one service.
+A stdio host leaves each line's future running, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop. A handler awaits `ctx.call.progress(1, total: 3, message: 'exported 1 of 3 files')`, which writes `notifications/progress` through the writer where the request carries `_meta.progressToken` and does nothing otherwise. A write that throws marks the call cancelled, and so does `notifications/cancelled`, which finds the request in the `DocumentServiceMcpInFlight` table by `requestId`; a handler reads `ctx.call.cancelled`, and the server drops the answer of a cancelled request. `DocumentServiceMcpWriter` is `Future<void> Function(String message)`. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer.
 
-**Authorization on the Dart server.** `settings` is `DocumentServiceMcpHttpSettings(allowedOrigins: [...], oauth: DocumentServiceMcpOAuth(authorizationServers:, resource:, resourceMetadataUrl:, scopesSupported:))`, and without `oauth` the server publishes no metadata document and writes no challenge. `admit` is a `DocumentServiceMcpAdmit<Ctx>`, `(request, call) async => (ctx: ..., denied: null)` or `(ctx: null, denied: DocumentServiceMcpNoValidCredentials(scope: ...))`, with `DocumentServiceMcpInsufficientScope(scope: ...)` and `DocumentServiceMcpForbidden()` for the other denials; each answers the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest` carries `path`, and `request.header(name)`, `request.bearerToken` and `request.mcpName` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is a `DocumentServiceMcpCall`, which holds nothing yet. A response now writes `Content-Type` and `Allow` in the case the Rust dispatcher writes them. Declared `final` in place of `const`, an endpoint drops a repeated name without a word, so declare it `const`.
+`documentServiceMcpServe` answers one JSON-RPC text (or `null` for a notification), so any program that reads and writes lines hosts it over stdio; `documentServiceMcpServeHttp` adds the Streamable HTTP rules around it for a program that answers an HTTP `POST`. `createDocumentServiceMcpDispatcher(handlers)` serves the one service with `(text, ctx, writer, inFlight)`, and `createDocumentServiceMcpHttpDispatcher(handlers, settings, admit)` over HTTP.
+
+**Authorization on the Dart server.** `settings` is `DocumentServiceMcpHttpSettings(allowedOrigins: [...], oauth: DocumentServiceMcpOAuth(authorizationServers:, resource:, resourceMetadataUrl:, scopesSupported:))`, and without `oauth` the server publishes no metadata document and writes no challenge. `admit` is a `DocumentServiceMcpAdmit<Ctx>`, `(request, call) async => (ctx: ..., denied: null)` or `(ctx: null, denied: DocumentServiceMcpNoValidCredentials(scope: ...))`, with `DocumentServiceMcpInsufficientScope(scope: ...)` and `DocumentServiceMcpForbidden()` for the other denials; each answers the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest` carries `path`, and `request.header(name)`, `request.bearerToken` and `request.mcpName` read it as the Rust request's helpers do. `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is the `DocumentServiceMcpCall` of the request in flight. A response now writes `Content-Type` and `Allow` in the case the Rust dispatcher writes them. Declared `final` in place of `const`, an endpoint drops a repeated name without a word, so declare it `const`.
 
 The client is `DocumentServiceMcpClient(transport)`, with one method per operation answering the result type the other Dart clients answer. A consumer implements `DocumentServiceMcpTransport.send`, which is handed the JSON-RPC text and the values of the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers; the URL and the credentials live in it. A one-way method throws `DocumentServiceMcpRefusal`.
 
@@ -3860,14 +3890,24 @@ The Kotlin server answers the bytes the Rust dispatcher answers, with the keys o
 
 ```kotlin
 val workspace = DocumentServiceMcpEndpoint(documentServiceMcpCatalog, billingServiceMcpCatalog)
-val reply = documentServiceMcpServe(line, "Workspace", null, workspace) { part, method, params ->
-    when (part) { 0 -> documents(method, params); 1 -> billing(method, params); else -> null }
+val host = DocumentServiceMcpHost({ message -> println(message) }, DocumentServiceMcpInFlight())
+coroutineScope {
+    for (line in lines) {
+        launch {
+            val reply = documentServiceMcpServe(line, "Workspace", null, workspace, host) { call, part, method, params ->
+                when (part) { 0 -> createDocumentServiceMcpRoute(DocumentHandlers(call))(method, params); else -> null }
+            }
+            if (reply != null) host.writer(reply)
+        }
+    }
 }
 ```
 
-`createDocumentServiceMcpDispatcher(handlers)` serves one service from text, `createDocumentServiceMcpHttpDispatcher(settings, admit)` from `DocumentServiceMcpHttpRequest` and `DocumentServiceMcpHttpResponse` under the Streamable HTTP rules above, and `createDocumentServiceMcpRoute(handlers)` answers the requests of one service on an endpoint shared by several. The answer a route gives is that service's own `DocumentServiceMcpAnswer`, so a `route` over two services converts the second one's answer to the first one's. Kotlin compares no list at compile time, because a `const val` holds only a primitive or a `String`: `DocumentServiceMcpEndpoint(a, b)` throws `IllegalStateException("two services share the MCP name tool:get-version")` when it is built.
+A stdio host `launch`es each line's answer, as the loop above does, because a host that waits for one answer before it reads the next line leaves a `notifications/cancelled` unread behind the handler it is meant to stop. `DocumentServiceHandlers` takes no `Ctx` that could hold the call, so `route` receives the `DocumentServiceMcpCall` of the request in flight and builds its handlers from it (`createDocumentServiceMcpRoute(DocumentHandlers(call))`). A handler calls `call.progress(1.0, 3.0, "exported 1 of 3 files")`, which writes `notifications/progress` through the writer (`suspend (message: String) -> Unit`) where the request carries `_meta.progressToken` and does nothing otherwise. A write that throws marks the call cancelled, and so does `notifications/cancelled`, which finds the request in the `DocumentServiceMcpInFlight` table by `requestId`; a handler reads `call.cancelled`, and the server drops the answer of a cancelled request. Over HTTP, `admit` receives the call, and a routed request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer.
 
-**Authorization on the Kotlin server.** `DocumentServiceMcpHttpSettings(allowedOrigins, oauth = null)` holds the origins and, for OAuth, a `DocumentServiceMcpOAuth(authorizationServers, resource, resourceMetadataUrl, scopesSupported)`; without `oauth` the server publishes no metadata document and writes no challenge. `admit` is `suspend (DocumentServiceMcpHttpRequest, DocumentServiceMcpCall) -> DocumentServiceMcpAdmitted`: `DocumentServiceMcpAdmitted.Caller(handlers)` answers the handlers built for that caller, and `DocumentServiceMcpAdmitted.Denied(DocumentServiceMcpDenied.NoValidCredentials(scope))`, `.InsufficientScope(scope)` or `.Forbidden` refuse it, with the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest(method, path, headers, body)` reads `header(name)`, `bearerToken()` and `mcpName()` as the Rust request does, and `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is a `DocumentServiceMcpCall`, which holds nothing yet. `documentServiceMcpServeHttp` takes `settings` and `admit` ahead of its `route`, whose first argument is the handlers `admit` built for the caller.
+`createDocumentServiceMcpDispatcher { call -> handlers }` serves one service from text, as `suspend (text, writer, inFlight) -> String?`, `createDocumentServiceMcpHttpDispatcher(settings, admit)` from `DocumentServiceMcpHttpRequest` and `DocumentServiceMcpHttpResponse` under the Streamable HTTP rules above, and `createDocumentServiceMcpRoute(handlers)` answers the requests of one service on an endpoint shared by several. The answer a route gives is that service's own `DocumentServiceMcpAnswer`, so a `route` over two services converts the second one's answer to the first one's. Kotlin compares no list at compile time, because a `const val` holds only a primitive or a `String`: `DocumentServiceMcpEndpoint(a, b)` throws `IllegalStateException("two services share the MCP name tool:get-version")` when it is built.
+
+**Authorization on the Kotlin server.** `DocumentServiceMcpHttpSettings(allowedOrigins, oauth = null)` holds the origins and, for OAuth, a `DocumentServiceMcpOAuth(authorizationServers, resource, resourceMetadataUrl, scopesSupported)`; without `oauth` the server publishes no metadata document and writes no challenge. `admit` is `suspend (DocumentServiceMcpHttpRequest, DocumentServiceMcpCall) -> DocumentServiceMcpAdmitted`: `DocumentServiceMcpAdmitted.Caller(handlers)` answers the handlers built for that caller, and `DocumentServiceMcpAdmitted.Denied(DocumentServiceMcpDenied.NoValidCredentials(scope))`, `.InsufficientScope(scope)` or `.Forbidden` refuse it, with the status, challenge and metadata document of the Rust `McpDenied`. `DocumentServiceMcpHttpRequest(method, path, headers, body)` reads `header(name)`, `bearerToken()` and `mcpName()` as the Rust request does, and `documentServiceMcpScopes(method, name)` answers what `mcp_scopes(method, name)` answers for the tools. `call` is the `DocumentServiceMcpCall` of the request in flight, which `admit` may build its handlers from. `documentServiceMcpServeHttp` takes `settings` and `admit` ahead of its `route`, whose first argument is the handlers `admit` built for the caller.
 
 The Kotlin and Swift clients write only `send`. `DocumentServiceMcpTransport.send` is handed a `DocumentServiceMcpMessage` holding the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` values, and answers the server's text. Each method answers the sealed result `kotlin_http_client()` declares, or `Result<Success, {Service}{Operation}Failure>` in Swift: a result with `isError: false` is the success, the declared error is `Declared` (`.declared`), a fault in the answer, a text that is no JSON and a failing `send` are the `Fault` arm (`.fault`) with the `undeserializable-payload` or `transport-failure` kind, and a one-way method throws `DocumentServiceMcpRefusal` in Kotlin and `DocumentServiceRefusal` in Swift. The Kotlin client numbers its requests under `synchronized`, and the Swift client is an actor that numbers them in its own state. `_meta` names the client as `DocumentServiceMcpClient`, with the version of the crate that declares the service.
 

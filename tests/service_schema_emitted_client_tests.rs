@@ -1626,6 +1626,21 @@ mod mcp_auth_rows;
 #[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
 mod run_node_mcp;
 
+/// `WriterService`, whose handler reports progress, and the rows the emitted TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_writer_rows.rs"]
+mod mcp_writer_rows;
+
+/// The `WriterService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_writer_dispatcher.rs"]
+mod mcp_writer_dispatcher;
+
+#[cfg(test)]
+use mcp_writer_rows::{WriterService, WriterServiceSchema, writer_service_schema};
+
 /// The `DocumentService` dispatcher the emitted TypeScript server is measured against.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]
