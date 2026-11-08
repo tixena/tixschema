@@ -99,6 +99,17 @@ fn run_in(
     source: &str,
     at: &Path,
 ) -> Option<String> {
+    run_in_with_stderr(var, fallback, entry, source, at).map(|(written, _)| written)
+}
+
+/// [`run_in`], answering what the process wrote to stderr beside what it wrote to stdout.
+fn run_in_with_stderr(
+    var: &str,
+    fallback: &'static str,
+    entry: &str,
+    source: &str,
+    at: &Path,
+) -> Option<(String, String)> {
     let chosen = env::var(var).ok();
     let runtime = chosen.clone().unwrap_or_else(|| fallback.to_owned());
     fs::write(at.join(entry), source).unwrap();
@@ -120,7 +131,23 @@ fn run_in(
         String::from_utf8_lossy(&reported.stdout),
         String::from_utf8_lossy(&reported.stderr)
     );
-    Some(String::from_utf8_lossy(&reported.stdout).into_owned())
+    Some((
+        String::from_utf8_lossy(&reported.stdout).into_owned(),
+        String::from_utf8_lossy(&reported.stderr).into_owned(),
+    ))
+}
+
+#[cfg(feature = "dart")]
+/// [`ran`], answering what the process wrote to stderr beside what it wrote to stdout.
+pub fn ran_with_stderr(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    entry: &str,
+    source: &str,
+) -> Option<(String, String)> {
+    let at = workspace(named);
+    run_in_with_stderr(var, fallback, entry, source, &at)
 }
 
 /// Writes `entry` into a workspace of its own and runs it under the named runtime. See [`run_in`].

@@ -723,6 +723,35 @@ fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
+/// One `.replace` for the tag key and one for the wire name of the arm each interview operation
+/// asks with, writing `mcp_arm_tag_{operation}()` and `mcp_arm_wire_{operation}()` over their markers.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+                let marker = mcp_ts_service::arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! {
+                    .replace(
+                        #marker,
+                        &::serde_json::Value::String(Self::#method().to_owned()).to_string(),
+                    )
+                }
+            })
+        })
+        .collect()
+}
+
 /// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
 /// each `wrapped_{operation}()` over their markers when they run in the consuming program.
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -755,6 +784,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
         })
         .collect();
     let forms = mcp_ts_form_replacements(service);
+    let arms = mcp_ts_arm_replacements(service);
     let content = mcp_content_accessor(service, "ts_mcp_content", mcp_ts_service::CONTENT_TYPE);
     quote! {
         #content
@@ -811,6 +841,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                 #skill_replacements
                 #(#wrapped)*
                 #(#forms)*
+                #(#arms)*
         }
 
         #[doc = " The service's generated MCP client for TypeScript: the transport seam and"]

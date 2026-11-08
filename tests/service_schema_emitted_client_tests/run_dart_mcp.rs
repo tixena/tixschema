@@ -23,7 +23,7 @@ use super::mcp_writer_rows::{
 };
 use super::run_dart_validate::{analyzed, dart};
 use super::run_node_mcp::cases_json;
-use super::runtime::ran;
+use super::runtime::{ran, ran_with_stderr};
 use super::tests::poll_once;
 use crate::cases;
 use crate::mcp_streams::dart_respond;
@@ -63,6 +63,9 @@ void main() async {
   final touched = <String>[];
   final tags = <String?>[];
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       tags.add(known_tag);
       return (McpVersionResponse(version: 7), '"v7"');
@@ -212,6 +215,9 @@ const proper = <String, String>{
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
     getVersion: (ctx, req) async => McpVersionResponse(version: 7),
     lookup: (ctx, req) async => McpVersionResponse(version: 7),
@@ -283,6 +289,9 @@ void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   var reached = 0;
   final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       reached += 1;
       return (McpVersionResponse(version: 7), '"v7"');
@@ -712,11 +721,54 @@ void main() async {
 }
 ";
 
+/// A one-way handler that throws, served with a callback and without one, and a replying handler
+/// that throws beside them.
+const ONE_WAY_DRIVER: &str = r#"
+const meta = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
+};
+
+String call(int id, String name, Map<String, dynamic> arguments) => jsonEncode({
+      'jsonrpc': '2.0',
+      'id': id,
+      'method': 'tools/call',
+      'params': {'name': name, 'arguments': arguments, '_meta': meta},
+    });
+
+void main() async {
+  final documents = DartDocumentServiceHandlers<void>(
+    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
+    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
+    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
+    getVersion: (ctx, req) async => throw 'the handler came apart',
+    lookup: (ctx, req) async => McpVersionResponse(version: 7),
+    renameDocument: (ctx, req) async {},
+    touchDocument: (ctx, req) async => throw 'the handler came apart',
+  );
+  final faults = <Map<String, dynamic>>[];
+  final touch = call(1, 'touch-document', {'documentId': 'doc-1', 'reader': 'boom'});
+  Future<String?> serve(DartDocumentServiceHandlers<void> held, String text, [void Function(DartDocumentServiceFaultFields)? onFault]) =>
+      createDartDocumentServiceMcpDispatcher<void>(held, onFault)(text, (call) {}, (message) async {}, DartDocumentServiceMcpInFlight());
+  final heard = await serve(documents, touch, (fault) => faults.add(fault.toJson()));
+  final replying = await serve(documents, call(2, 'get-version', {'document_id': 'doc-1'}), (fault) => faults.add(fault.toJson()));
+  final routed = await createDartDocumentServiceMcpRoute<void>(documents, (fault) => faults.add(fault.toJson()))(
+    null,
+    'tools/call',
+    {'name': 'touch-document', 'arguments': {'documentId': 'doc-1', 'reader': 'boom'}},
+  );
+  final silent = await serve(documents, touch);
+  print(jsonEncode({'faults': faults, 'heard': heard, 'replying': replying, 'routed': routed?.result, 'silent': silent}));
+}
+"#;
+
 /// The imports, the models, the document and billing services and their clients, and `driver`.
 fn module(driver: &str) -> String {
     [
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
+        "import 'dart:io';".to_owned(),
         mcp_format_dart::dart_definition(),
         mcp_version_request_dart::dart_definition(),
         mcp_version_response_dart::dart_definition(),
@@ -1222,6 +1274,51 @@ fn resources_are_listed_a_page_at_a_time_across_the_services_of_an_endpoint() {
 }
 
 #[test]
+fn a_one_way_handler_that_throws_reaches_the_callback_or_standard_error() {
+    let Some((written, standard_error)) = ran_with_stderr(
+        "dart",
+        RUNTIME_VAR,
+        "dart",
+        "mcp_one_way.dart",
+        &module(ONE_WAY_DRIVER),
+    ) else {
+        return;
+    };
+    let report: Value = serde_json::from_str(written.trim()).unwrap();
+    let empty = |reply: &Value| {
+        let parsed: Value = serde_json::from_str(reply.as_str().unwrap()).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed:#}");
+        assert_eq!(parsed["result"]["content"], json!([]), "{parsed:#}");
+    };
+    empty(&report["heard"]);
+    empty(&report["silent"]);
+    assert_eq!(report["routed"]["isError"], false, "{report:#}");
+    let faults = report["faults"].as_array().unwrap();
+    assert_eq!(
+        faults.len(),
+        2,
+        "one for the dispatcher, one for the route: {report:#}"
+    );
+    for fault in faults {
+        assert_eq!(fault["kind"], "handler-panic", "{fault:#}");
+        assert_eq!(fault["operation"], "touch-document", "{fault:#}");
+        assert_eq!(fault["detail"], "the handler came apart", "{fault:#}");
+    }
+    let replying: Value = serde_json::from_str(report["replying"].as_str().unwrap()).unwrap();
+    assert_eq!(replying["error"]["code"], -32_603_i32, "{replying:#}");
+    let printed: Vec<Value> = standard_error
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(printed.len(), 1, "{standard_error}");
+    assert_eq!(printed[0]["kind"], "handler-panic", "{standard_error}");
+    assert_eq!(
+        printed[0]["operation"], "touch-document",
+        "{standard_error}"
+    );
+}
+
+#[test]
 fn a_service_served_alone_answers_its_own_tools() {
     let Some(driven) = driven("mcp_server_alone", SERVER_DRIVER) else {
         return;
@@ -1391,6 +1488,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         [
             "import 'dart:async';".to_owned(),
             "import 'dart:convert';".to_owned(),
+            "import 'dart:io';".to_owned(),
             mcp_format_dart::dart_definition(),
             mcp_version_request_dart::dart_definition(),
             mcp_version_response_dart::dart_definition(),
@@ -1420,7 +1518,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         return;
     };
     assert!(distinct, "{said}");
-    assert_eq!(said.trim(), "6");
+    assert_eq!(said.trim(), "9");
     let (shared, refused) = dart("endpoint-shared", &[], &endpoint("audit")).unwrap();
     assert!(!shared, "{refused}");
     assert!(

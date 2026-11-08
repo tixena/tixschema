@@ -3,8 +3,9 @@
 //! gives, and the client reads the answers back into the pair, the list and the declared arm.
 
 use super::mcp_asking_rows::{
-    AskingConfirmation, AskingError, AskingLinkError, AskingLinked, AskingMiss, AskingPriority,
-    AskingReportRequest, AskingShipping, assert_client, assert_matches, client_input, input,
+    AskingConfirmation, AskingError, AskingKindError, AskingLinkError, AskingLinked, AskingMiss,
+    AskingPriority, AskingRenamedError, AskingReportRequest, AskingShipping, assert_client,
+    assert_matches, client_input, input,
 };
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use super::{AskingServiceSchema, PreviewServiceSchema};
@@ -29,6 +30,28 @@ const impl = {
         { type: "resource", uri: "workspace://documents/doc-2", mimeType: "text/plain", text: "passport" },
         { type: "resource", uri: "workspace://documents/doc-3", blob: Uint8Array.from([9, 8, 7]) },
       ],
+    };
+  },
+  async connectRenamed(ctx, id) {
+    reached.push(["connect-renamed", id]);
+    return {
+      ok: false,
+      error: {
+        errorCode: "connect-first",
+        url: "https://mcp.example.com/connect/drive?request=7f3a",
+        message: "Connect your Google Drive so this server can import the file.",
+      },
+    };
+  },
+  async connectByKind(ctx, id) {
+    reached.push(["connect-by-kind", id]);
+    return {
+      ok: false,
+      error: {
+        kind: "needs_connection",
+        url: "https://mcp.example.com/connect/drive?request=7f3a",
+        message: "Connect your Google Drive so this server can import the file.",
+      },
     };
   },
   async deleteDocument(ctx, req) {
@@ -220,6 +243,10 @@ fn bundle() -> String {
         AskingError::zod_schema(),
         AskingLinkError::ts_definition(),
         AskingLinkError::zod_schema(),
+        AskingRenamedError::ts_definition(),
+        AskingRenamedError::zod_schema(),
+        AskingKindError::ts_definition(),
+        AskingKindError::zod_schema(),
         AskingMiss::ts_definition(),
         AskingMiss::zod_schema(),
         AskingReportRequest::ts_definition(),

@@ -3,6 +3,8 @@
 //! The `use` is what resolves the types the author declared: the macro spells them exactly as
 //! they were written.
 
+use std::collections::HashMap;
+
 use crate::tests::{DocumentId, GetVersionRequest, VersionError, VersionResponse};
 
 document_service_mcp_client!();

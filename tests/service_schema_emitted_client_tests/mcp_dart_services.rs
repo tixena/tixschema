@@ -4,6 +4,7 @@
 
 #![cfg(feature = "dart")]
 
+use alloc::collections::BTreeMap;
 use core::future::ready;
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
@@ -58,6 +59,30 @@ pub struct McpInvoiceList {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DartDocumentService<Ctx> {
+    /// Answers the versions of several documents, one request for each.
+    #[service_schema_op(mcp(title = "Versions Of Many"))]
+    async fn check_many(
+        &self,
+        ctx: &Ctx,
+        req: Vec<McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError>;
+
+    /// Answers the version of a document, if one is asked for.
+    #[service_schema_op(mcp(title = "Version Of Maybe One"))]
+    async fn check_maybe(
+        &self,
+        ctx: &Ctx,
+        req: Option<McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError>;
+
+    /// Answers the versions of documents asked for by name.
+    #[service_schema_op(mcp(title = "Versions By Name"))]
+    async fn check_named(
+        &self,
+        ctx: &Ctx,
+        req: BTreeMap<String, McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError>;
+
     /// Answers the current version of one document, unless it still carries the tag the caller
     /// knows.
     #[service_schema_op(http(
@@ -153,6 +178,33 @@ pub trait TaggingService<Ctx> {
 pub struct Archive;
 
 impl DartDocumentService<()> for Archive {
+    async fn check_many(
+        &self,
+        _ctx: &(),
+        _req: Vec<McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError> {
+        ready(()).await;
+        Err(McpVersionError::NotFound)
+    }
+
+    async fn check_maybe(
+        &self,
+        _ctx: &(),
+        _req: Option<McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError> {
+        ready(()).await;
+        Err(McpVersionError::NotFound)
+    }
+
+    async fn check_named(
+        &self,
+        _ctx: &(),
+        _req: BTreeMap<String, McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError> {
+        ready(()).await;
+        Err(McpVersionError::NotFound)
+    }
+
     async fn get_tagged(
         &self,
         _ctx: &(),

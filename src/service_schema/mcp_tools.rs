@@ -14,7 +14,7 @@ use crate::model_schema::needs_wrapper;
 use crate::model_schema::type_json_schema_value;
 use proc_macro2::TokenStream;
 use quote::{ToTokens as _, format_ident, quote, quote_spanned};
-use syn::Type;
+use syn::{Ident, Type};
 
 const DEFS_PREFIX: &str = "#/$defs/";
 
@@ -474,7 +474,65 @@ pub fn form_assertions(service: &ServiceDef) -> TokenStream {
             const _: () = assert!(<#form>::mcp_form_flat(), #message);
         })
     });
-    quote! { #(#assertions)* }
+    let arms = service.operations.iter().filter_map(|operation| {
+        let interview = operation.mcp.interview.as_ref()?;
+        let OperationOutcome::Reply { error, success: _success } = &operation.outcome else {
+            return None;
+        };
+        let arm = interview.arm.to_string();
+        let message = format!(
+            "`{}` asks with the arm `{arm}`, which serde does not write as a tagged variant of `{}`",
+            written(&operation.ident),
+            error.to_token_stream().to_string().replace(' ', "")
+        );
+        Some(quote_spanned! { operation.ident.span()=>
+            const _: () = assert!(<#error>::mcp_variant_tag(#arm).is_some(), #message);
+        })
+    });
+    quote! { #(#assertions)* #(#arms)* }
+}
+
+/// The name `{prefix}_{operation}` a method of the registry is published under.
+fn method_ident(operation: &OperationDef, prefix: &str) -> Ident {
+    format_ident!(
+        "{prefix}_{}",
+        written(&operation.ident),
+        span = operation.ident.span()
+    )
+}
+
+/// `mcp_arm_tag_{operation}()` and `mcp_arm_wire_{operation}()`: the key serde tags the arm an
+/// operation asks with and the name it writes the arm under.
+fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenStream {
+    let (tag_name, wire_name) = (
+        method_ident(operation, "mcp_arm_tag"),
+        method_ident(operation, "mcp_arm_wire"),
+    );
+    let tag_doc = format!(
+        " The key serde tags the arm `{}` asks with, empty where the enum has none.",
+        operation.mcp_tool_name()
+    );
+    let wire_doc = format!(
+        " The name serde writes the arm `{}` asks with.",
+        operation.mcp_tool_name()
+    );
+    quote! {
+        #[doc = #tag_doc]
+        pub const fn #tag_name() -> &'static str {
+            match <#error>::mcp_variant_tag(#arm) {
+                ::core::option::Option::Some((tag, _)) => tag,
+                ::core::option::Option::None => "",
+            }
+        }
+
+        #[doc = #wire_doc]
+        pub const fn #wire_name() -> &'static str {
+            match <#error>::mcp_variant_tag(#arm) {
+                ::core::option::Option::Some((_, wire)) => wire,
+                ::core::option::Option::None => "",
+            }
+        }
+    }
 }
 
 /// What the dispatcher asks of the types only the declaration can name: whether the declared error
@@ -490,15 +548,12 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         return None;
     };
     let arm = &interview.arm;
-    let asks = format_ident!(
-        "mcp_asks_{}",
-        written(&operation.ident),
-        span = operation.ident.span()
-    );
+    let asks = method_ident(operation, "mcp_asks");
     let doc = format!(
         " Whether the error `{}` answered is the arm that asks the user.",
         operation.mcp_tool_name()
     );
+    let tagged = arm_tag_methods(operation, error, &arm.to_string());
     let Some(answers) = interview.answers.as_ref() else {
         let link_doc = format!(
             " The link and the message of the arm `{}` asks the user with, where the error is it.",
@@ -512,6 +567,8 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
                 }
                 ::core::option::Option::None
             }
+
+            #tagged
         });
     };
     let OperationInputs::Generated(fields) = &operation.inputs else {
@@ -521,14 +578,10 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         .iter()
         .find(|(field, _)| written(field) == written(answers))?;
     let form = option_inner(ty)?;
-    let method = |prefix: &str| {
-        format_ident!(
-            "{prefix}_{}",
-            written(&operation.ident),
-            span = operation.ident.span()
-        )
-    };
-    let (schema_name, read_name) = (method("mcp_form"), method("mcp_read_form"));
+    let (schema_name, read_name) = (
+        method_ident(operation, "mcp_form"),
+        method_ident(operation, "mcp_read_form"),
+    );
     let schema_doc = format!(
         " The schema of the form `{}` asks with.",
         operation.mcp_tool_name()
@@ -540,6 +593,8 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         pub fn #asks(error: &#error) -> bool {
             ::core::matches!(error, #error::#arm { .. })
         }
+
+        #tagged
 
         #[doc = #schema_doc]
         pub fn #schema_name() -> ::serde_json::Value {

@@ -1242,9 +1242,10 @@ Future<String?> Function(
   @N@McpInFlight inFlight, [
   @N@McpChanges? changes,
 ]) create@N@McpDispatcher<Ctx>(
-  @N@Handlers<Ctx> handlers,
-) {
-  final route = create@N@McpRoute(handlers);
+  @N@Handlers<Ctx> handlers, [
+  void Function(@N@FaultFields fault)? onFault,
+]) {
+  final route = create@N@McpRoute(handlers, onFault);
   return (text, ctx, writer, inFlight, [changes]) => @P@McpServe<Ctx>(
         text,
         @P@McpServerName,
@@ -1263,8 +1264,9 @@ Future<@N@McpHttpResponse?> Function(@N@McpHttpRequest, @N@McpHttpStream) create
   @N@McpHttpSettings settings,
   @N@McpAdmit<Ctx> admit, [
   @N@McpChanges? changes,
+  void Function(@N@FaultFields fault)? onFault,
 ]) {
-  final route = create@N@McpRoute(handlers);
+  final route = create@N@McpRoute(handlers, onFault);
   return (request, stream) => @P@McpServeHttp<Ctx>(
         request,
         settings,
@@ -1278,9 +1280,7 @@ Future<@N@McpHttpResponse?> Function(@N@McpHttpRequest, @N@McpHttpStream) create
       );
 }";
 
-const INTERVIEW_HELPERS: &str = "String _@P@McpPlain(String text) => text.replaceAll(RegExp('[-_ ]'), '').toLowerCase();
-
-/// Whether the client declared the elicitation `mode`: an empty `elicitation` is a form.
+const INTERVIEW_HELPERS: &str = "/// Whether the client declared the elicitation `mode`: an empty `elicitation` is a form.
 bool _@P@McpElicits(Map<String, dynamic> params, String mode) {
   final meta = params['_meta'];
   final capabilities = meta is Map ? meta['io.modelcontextprotocol/clientCapabilities'] : null;
@@ -1312,7 +1312,8 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
 /// The result that asks the user where `error` is the arm that asks and the client can be asked,
 /// `null` otherwise.
 @N@McpAnswer? _@P@McpAsking(
-  String arm,
+  String tag,
+  String wire,
   String? answers,
   String? form,
   String doc,
@@ -1321,9 +1322,9 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
   bool declined,
 ) {
   if (error is! Map<String, dynamic>) return null;
-  final code = error['errorCode'];
-  if (code is! String || _@P@McpPlain(code) != _@P@McpPlain(arm)) return null;
-  final message = error['message'];
+  final Object? held = tag.isEmpty ? error[wire] : (error[tag] == wire ? error : null);
+  if (held is! Map<String, dynamic>) return null;
+  final message = held['message'];
   if (answers != null) {
     if (declined || !_@P@McpElicits(params, 'form')) return null;
     return _@P@McpInputRequired(answers, <String, dynamic>{
@@ -1332,10 +1333,10 @@ bool _@P@McpDismissed(Map<String, dynamic> params, String key) {
       'requestedSchema': jsonDecode(form ?? '{}'),
     });
   }
-  final url = error['url'];
+  final url = held['url'];
   if (url is! String || message is! String) return null;
-  if (_@P@McpDismissed(params, code) || !_@P@McpElicits(params, 'url')) return null;
-  return _@P@McpInputRequired(code, <String, dynamic>{'message': message, 'mode': 'url', 'url': url});
+  if (_@P@McpDismissed(params, wire) || !_@P@McpElicits(params, 'url')) return null;
+  return _@P@McpInputRequired(wire, <String, dynamic>{'message': message, 'mode': 'url', 'url': url});
 }";
 
 const CONTENT_HELPERS: &str = "/// The result of a tool that answers blocks.
@@ -1703,6 +1704,12 @@ fn answer_helpers(
              );"
         );
     }
+    if tools_of(service).any(|operation| matches!(operation.outcome, OperationOutcome::OneWay)) {
+        let _ = write!(
+            text,
+            "\n\nvoid _{prefix}McpToStderr({named}FaultFields fault) => stderr.writeln(_{prefix}McpJson(fault.toJson()));"
+        );
+    }
     if calls.ok {
         let _ = write!(
             text,
@@ -1791,7 +1798,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          {named}Handlers<Ctx> handlers,\n  \
          Ctx ctx,\n  \
          Map<String, dynamic> params,\n  \
-         Object? arguments,\n\
+         Object? arguments,{fault_param}\n\
          ) async {{\n  \
          final Map<String, dynamic> members;\n  \
          if (arguments is Map<String, dynamic>) {{\n    \
@@ -1824,6 +1831,11 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          }}\n",
         op = pascal(operation),
         answers = answers_stmt(named, prefix, operation),
+        fault_param = if matches!(operation.outcome, OperationOutcome::OneWay) {
+            format!("\n  void Function({named}FaultFields fault)? onFault,")
+        } else {
+            String::new()
+        },
     );
     let mut locals = Vec::new();
     for header in &shape.header_in {
@@ -1852,7 +1864,9 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
                 "  try {{\n    \
              await handlers.{call}(ctx, decoded{header_args});\n  \
              }} catch (unexpected) {{\n    \
-             return _{prefix}McpEmpty();\n  \
+             (onFault ?? _{prefix}McpToStderr)(\n      \
+             _{prefix}McpFault({kind}.handlerPanic, {tool}, '$unexpected'),\n    \
+             );\n  \
              }}\n  \
              return _{prefix}McpEmpty();\n\
              }}"
@@ -1943,6 +1957,32 @@ fn reply_tail(
     )
 }
 
+/// Stands in the emitted text for the key serde tags the arm an operation asks with, and for the
+/// name it writes the arm under: `part` is `TAG` or `WIRE`.
+fn arm_marker(operation: &OperationDef, part: &str) -> String {
+    format!("@ARM_{part}:{}@", written(&operation.ident))
+}
+
+/// One `.replace` for the tag key and one for the wire name of the arm each interview operation asks with.
+fn arm_replacements(declared: &ServiceDef) -> Vec<TokenStream> {
+    declared
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [("TAG", "mcp_arm_tag"), ("WIRE", "mcp_arm_wire")].map(|(part, head)| {
+                let marker = arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! { .replace(#marker, &literal(Self::#method())) }
+            })
+        })
+        .collect()
+}
+
 /// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
 fn form_marker(operation: &OperationDef) -> String {
     format!("@FORM:{}@", written(&operation.ident))
@@ -2009,9 +2049,10 @@ fn asking_stmt(prefix: &str, operation: &OperationDef, declared: &str) -> (Strin
     };
     let asking = format!(
         "    final Object? declaredBody = {declared};\n    \
-         final asking = _{prefix}McpAsking({}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
+         final asking = _{prefix}McpAsking({}, {}, {answers}, {form}, {}, declaredBody, params, {declined});\n    \
          if (asking != null) return asking;\n",
-        quoted(&interview.arm.to_string()),
+        arm_marker(operation, "TAG"),
+        arm_marker(operation, "WIRE"),
         quoted(operation.doc.as_deref().unwrap_or_default()),
     );
     (asking, "declaredBody".to_owned())
@@ -2024,7 +2065,7 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
         "/// Answers the requests of this service on an endpoint shared by several, and `null` for a\n\
          /// request it does not own.\n\
          Future<{named}McpAnswer?> Function(Ctx ctx, String method, Map<String, dynamic> params)\n    \
-         create{named}McpRoute<Ctx>({named}Handlers<Ctx> handlers) =>"
+         create{named}McpRoute<Ctx>({named}Handlers<Ctx> handlers, [void Function({named}FaultFields fault)? onFault]) =>"
     );
     if service.operations.is_empty() {
         return format!("{preamble}\n        (ctx, method, params) async => null;");
@@ -2034,9 +2075,14 @@ fn route_fn(service: &ServiceDef, held: &Resourced<'_>, named: &str, prefix: &st
     if !tools.is_empty() {
         let mut arms = String::new();
         for operation in tools {
+            let fault_argument = if matches!(operation.outcome, OperationOutcome::OneWay) {
+                ", onFault"
+            } else {
+                ""
+            };
             let _ = writeln!(
                 arms,
-                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']);",
+                "            case {}:\n              return _{prefix}McpCall{}(handlers, ctx, params, params['arguments']{fault_argument});",
                 quoted(operation.mcp_tool_name()),
                 pascal(operation)
             );
@@ -3121,6 +3167,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
         .collect();
     let wrapped_server = wrapped.clone();
     let forms = form_replacements(declared);
+    let arms = arm_replacements(declared);
     let skill_literals = skill_literals();
     let content = declared
         .operations
@@ -3192,6 +3239,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"))
                 #(#wrapped_server)*
                 #(#forms)*
+                #(#arms)*
         }
 
         #[doc = " The service's generated Dart `mcp` client: the transport a consumer implements"]

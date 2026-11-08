@@ -43,6 +43,15 @@ const call = (id, name, args) => request(id, "tools/call", { name, arguments: ar
 const nowhere = async () => {};
 
 const impl = {
+  async checkMany(ctx, req) {
+    return { ok: true, value: { version: 7 } };
+  },
+  async checkMaybe(ctx, req) {
+    return { ok: true, value: { version: 7 } };
+  },
+  async checkNamed(ctx, req) {
+    return { ok: true, value: { version: 7 } };
+  },
   async getTagged(ctx, id, knownTag) {
     if (knownTag === "\"v7\"") return { ok: false, error: { errorCode: "not-found" } };
     return { ok: true, value: [{ version: 7 }, "\"v7\""] };
@@ -101,6 +110,31 @@ async function main() {
     answers.push({ method, reply: reply === undefined ? null : reply });
   }
   console.log(JSON.stringify(answers));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// A one-way handler that throws, served with a callback, with none, and a replying handler that
+/// throws beside them.
+const ONE_WAY_DRIVER: &str = r#"
+async function main() {
+  const faults = [];
+  const printed = [];
+  const touch = (id) => call(id, "touch-document", { documentId: "doc-1", reader: "boom" });
+  const serve = (onFault) => createDocumentServiceMcpDispatcher(impl, onFault);
+  const run = (served, text) => served(text, () => ({}), nowhere, new DocumentServiceMcpInFlight());
+  const heard = await run(serve((fault) => faults.push(fault)), touch(1));
+  const original = console.error;
+  console.error = (...held) => printed.push(held);
+  const silent = await run(serve(), touch(2));
+  console.error = original;
+  const replying = await run(serve((fault) => faults.push(fault)), call(3, "get-version", { document_id: "boom" }));
+  const routed = await createDocumentServiceMcpRoute(impl, (fault) => faults.push(fault))({}, "tools/call", {
+    name: "touch-document",
+    arguments: { documentId: "doc-1", reader: "boom" },
+  });
+  console.log(JSON.stringify({ faults, heard, printed, replying, routed, silent }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -317,7 +351,7 @@ export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
 export const operations = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
-export const names: readonly ["tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
+export const names: readonly ["tool:check-many", "tool:check-maybe", "tool:check-named", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
 
 export async function usage() {
   const client = createDocumentServiceMcpClient(transport);
@@ -605,6 +639,30 @@ pub enum BillingError {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DocumentService<Ctx> {
+    /// Answers the versions of several documents, one request for each.
+    #[service_schema_op(mcp(title = "Versions Of Many"))]
+    async fn check_many(
+        &self,
+        ctx: &Ctx,
+        req: Vec<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
+    /// Answers the version of a document, if one is asked for.
+    #[service_schema_op(mcp(title = "Version Of Maybe One"))]
+    async fn check_maybe(
+        &self,
+        ctx: &Ctx,
+        req: Option<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
+    /// Answers the versions of documents asked for by name.
+    #[service_schema_op(mcp(title = "Versions By Name"))]
+    async fn check_named(
+        &self,
+        ctx: &Ctx,
+        req: BTreeMap<String, GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// Answers the current version of one document, unless it still carries the tag the caller
     /// knows.
     #[service_schema_op(http(
@@ -672,6 +730,33 @@ pub trait ArchiveService<Ctx> {
 struct Stand;
 
 impl DocumentService<()> for Stand {
+    async fn check_many(
+        &self,
+        _ctx: &(),
+        _req: Vec<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError> {
+        ready(()).await;
+        Ok(VersionResponse { version: 7 })
+    }
+
+    async fn check_maybe(
+        &self,
+        _ctx: &(),
+        _req: Option<GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError> {
+        ready(()).await;
+        Ok(VersionResponse { version: 7 })
+    }
+
+    async fn check_named(
+        &self,
+        _ctx: &(),
+        _req: BTreeMap<String, GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError> {
+        ready(()).await;
+        Ok(VersionResponse { version: 7 })
+    }
+
     async fn get_tagged(
         &self,
         _ctx: &(),
@@ -1074,6 +1159,37 @@ fn a_message_the_zod_reads_refuse_answers_the_fault_the_rust_dispatcher_answers(
         let (_, reply) = answer_to(&answers, 100 + at as u64);
         case.holds(&reply);
     }
+}
+
+#[test]
+fn a_one_way_handler_that_throws_reaches_the_callback_or_the_console() {
+    let Some(report) = run("mcp-one-way", &format!("{REQUESTS}\n{ONE_WAY_DRIVER}")) else {
+        return;
+    };
+    let empty = |reply: &Value| {
+        let parsed: Value = serde_json::from_str(reply.as_str().unwrap()).unwrap();
+        assert_eq!(parsed["result"]["isError"], false, "{parsed:#}");
+        assert_eq!(parsed["result"]["content"], json!([]), "{parsed:#}");
+    };
+    empty(&report["heard"]);
+    empty(&report["silent"]);
+    assert_eq!(report["routed"]["result"]["isError"], false, "{report:#}");
+    let faults = report["faults"].as_array().unwrap();
+    assert_eq!(
+        faults.len(),
+        2,
+        "one for the dispatcher, one for the route: {report:#}"
+    );
+    for fault in faults {
+        assert_eq!(fault["kind"], "handler-panic", "{fault:#}");
+        assert_eq!(fault["operation"], "touch-document", "{fault:#}");
+        assert_eq!(fault["detail"], "the handler came apart", "{fault:#}");
+    }
+    let printed = report["printed"].as_array().unwrap();
+    assert_eq!(printed.len(), 1, "{report:#}");
+    assert_eq!(printed[0][0]["kind"], "handler-panic", "{report:#}");
+    let replying: Value = serde_json::from_str(report["replying"].as_str().unwrap()).unwrap();
+    assert_eq!(replying["error"]["code"], -32_603_i32, "{replying:#}");
 }
 
 #[test]
