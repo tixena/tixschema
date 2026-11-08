@@ -3,7 +3,7 @@
 
 use crate::document_mcp::{self, McpEndpoint};
 use crate::support::{
-    CENTS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, LISTED_FOR_MS, METHOD_NOT_FOUND,
+    CENTS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, LISTED_FOR_MS, Lines, METHOD_NOT_FOUND,
     UNSUPPORTED_VERSION, VERSION_NUMBER, WORKSPACE, answer, answer_workspace, assert_error,
     assert_result, assert_valid, block_on, call, id, request, server_info,
 };
@@ -151,7 +151,9 @@ fn an_answer_is_one_line_of_compact_json_with_its_keys_in_order() {
     let text = block_on(document_mcp::answer(
         &asked.to_string(),
         &Archive::default(),
-        &(),
+        |_call| (),
+        &Lines::default(),
+        &document_mcp::McpInFlight::default(),
     ))
     .unwrap();
     assert_eq!(
@@ -405,7 +407,14 @@ fn text_that_is_no_message_answers_32600_with_a_null_id() {
         "{\"jsonrpc\":\"2.0\",\"id\":{},\"method\":\"x\"}",
     ] {
         let answered: Value = serde_json::from_str(
-            &block_on(document_mcp::answer(text, &Archive::default(), &())).unwrap(),
+            &block_on(document_mcp::answer(
+                text,
+                &Archive::default(),
+                |_call| (),
+                &Lines::default(),
+                &document_mcp::McpInFlight::default(),
+            ))
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(answered["error"]["code"], INVALID_REQUEST, "{text}");
@@ -588,7 +597,12 @@ fn discover_answers_the_union_of_the_capabilities_with_the_extensions_inside_the
         "Workspace",
         Some("Everything."),
         &ENDPOINT,
-        async |_part, _method, _params| None,
+        |_call| (),
+        document_mcp::McpHost {
+            in_flight: &document_mcp::McpInFlight::default(),
+            writer: &Lines::default(),
+        },
+        async |_ctx: &(), _part, _method, _params| None,
     ))
     .unwrap();
     let answered: Value = serde_json::from_str(&text).unwrap();
@@ -631,7 +645,14 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
         &json!({ "value": "acct-1", "x-ledger": "main" }),
     );
     let by_answer: Value = serde_json::from_str(
-        &block_on(billing_mcp::answer(&asked.to_string(), &archive, &())).unwrap(),
+        &block_on(billing_mcp::answer(
+            &asked.to_string(),
+            &archive,
+            |_call| (),
+            &Lines::default(),
+            &billing_mcp::McpInFlight::default(),
+        ))
+        .unwrap(),
     )
     .unwrap();
     let by_serve: Value = serde_json::from_str(
@@ -640,7 +661,14 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             billing_mcp::SERVER_NAME,
             billing_mcp::INSTRUCTIONS,
             &ALONE,
-            async |_part, method, params| billing_mcp::route(method, params, &archive, &()).await,
+            |_call| (),
+            billing_mcp::McpHost {
+                in_flight: &billing_mcp::McpInFlight::default(),
+                writer: &Lines::default(),
+            },
+            async |ctx: &(), _part, method, params| {
+                billing_mcp::route(method, params, &archive, ctx).await
+            },
         ))
         .unwrap(),
     )

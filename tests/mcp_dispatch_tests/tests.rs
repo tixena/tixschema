@@ -3,7 +3,8 @@
 
 #![cfg(feature = "serde")]
 
-use core::future::{Future, ready};
+use core::future::{Future, poll_fn, ready};
+use core::task::Poll;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::panic::resume_unwind;
@@ -170,6 +171,37 @@ pub trait DocumentService<Ctx> {
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 
+/// Exports folders.
+#[service_schema(transports = ["mcp"])]
+pub trait ExportService<Ctx> {
+    /// Exports one folder, reporting one step of three.
+    async fn export_folder(&self, ctx: &Ctx, folder: String) -> Result<(), VersionError>;
+
+    /// The report of one folder, reporting one step of three while it is read.
+    #[service_schema_op(mcp(resource = "export://reports/{folder}", mime_type = "text/plain"))]
+    async fn export_report(&self, ctx: &Ctx, folder: String) -> Result<String, VersionError>;
+}
+
+/// What a handler reaches of the request in flight, whichever dispatcher's call it came from.
+pub struct Reporting {
+    cancelled: Box<dyn Fn() -> bool + Send + Sync>,
+    progress: Box<ProgressFn>,
+}
+
+type ProgressFn = dyn Fn(f64, Option<f64>, Option<&str>) + Send + Sync;
+
+impl Reporting {
+    pub fn new(
+        progress: impl Fn(f64, Option<f64>, Option<&str>) + Send + Sync + 'static,
+        cancelled: impl Fn() -> bool + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            progress: Box::new(progress),
+            cancelled: Box::new(cancelled),
+        }
+    }
+}
+
 /// Answers every operation of both services, and writes down what reached it.
 #[derive(Default)]
 pub struct Archive {
@@ -250,15 +282,18 @@ impl BillingService<()> for Archive {
     }
 }
 
-impl DocumentService<()> for Archive {
-    fn configuration_guide(&self, _ctx: &()) -> impl Future<Output = Result<String, VersionError>> {
+impl<Ctx> DocumentService<Ctx> for Archive {
+    fn configuration_guide(
+        &self,
+        _ctx: &Ctx,
+    ) -> impl Future<Output = Result<String, VersionError>> {
         self.reach("configuration-guide".to_owned());
         ready(Ok("# Configure the workspace".to_owned()))
     }
 
     fn document_file(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         document_id: String,
     ) -> impl Future<Output = Result<(Vec<u8>, String), VersionError>> {
         self.reach(format!("document-file {document_id}"));
@@ -271,7 +306,7 @@ impl DocumentService<()> for Archive {
 
     fn get_tagged(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         id: String,
         known_tag: Option<String>,
     ) -> impl Future<Output = Result<(VersionResponse, String), VersionError>> {
@@ -281,7 +316,7 @@ impl DocumentService<()> for Archive {
 
     fn get_version(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         req: GetVersionRequest,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
         self.reach(format!("get-version {}", req.document_id));
@@ -290,7 +325,7 @@ impl DocumentService<()> for Archive {
 
     fn list_documents(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         cursor: Option<String>,
     ) -> impl Future<Output = Result<document_service_schema::McpResourcePage, VersionError>> {
         self.reach(format!("list-documents {cursor:?}"));
@@ -318,7 +353,7 @@ impl DocumentService<()> for Archive {
 
     fn lookup(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         id: DocumentId,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
         self.reach(format!("lookup-document {}", id.0));
@@ -327,7 +362,7 @@ impl DocumentService<()> for Archive {
 
     fn rename_document(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         document_id: String,
         title: String,
     ) -> impl Future<Output = Result<(), VersionError>> {
@@ -337,7 +372,7 @@ impl DocumentService<()> for Archive {
 
     fn suggest_documents(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         typed: String,
         chosen: HashMap<String, String>,
     ) -> impl Future<Output = Result<Vec<String>, VersionError>> {
@@ -359,7 +394,7 @@ impl DocumentService<()> for Archive {
 
     fn touch_document(
         &self,
-        _ctx: &(),
+        _ctx: &Ctx,
         document_id: String,
         reader: String,
     ) -> impl Future<Output = ()> {
@@ -368,6 +403,56 @@ impl DocumentService<()> for Archive {
             came_apart();
         }
         ready(())
+    }
+}
+
+impl ExportService<Reporting> for Archive {
+    fn export_folder(
+        &self,
+        ctx: &Reporting,
+        folder: String,
+    ) -> impl Future<Output = Result<(), VersionError>> {
+        self.reach(format!("export-folder {folder}"));
+        async move {
+            (ctx.progress)(1.0_f64, Some(3.0_f64), Some("exported 1 of 3 files"));
+            match folder.as_str() {
+                "forever" => {
+                    poll_fn(|_cx| {
+                        if (ctx.cancelled)() {
+                            Poll::Ready(())
+                        } else {
+                            Poll::Pending
+                        }
+                    })
+                    .await;
+                }
+                "steps" => {
+                    let mut yielded = false;
+                    poll_fn(|cx| {
+                        if yielded {
+                            return Poll::Ready(());
+                        }
+                        yielded = true;
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    })
+                    .await;
+                    (ctx.progress)(2.0_f64, Some(3.0_f64), None);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+
+    fn export_report(
+        &self,
+        ctx: &Reporting,
+        folder: String,
+    ) -> impl Future<Output = Result<String, VersionError>> {
+        self.reach(format!("export-report {folder}"));
+        (ctx.progress)(1.0_f64, Some(3.0_f64), Some("exported 1 of 3 files"));
+        ready(Ok(format!("report of {folder}")))
     }
 }
 

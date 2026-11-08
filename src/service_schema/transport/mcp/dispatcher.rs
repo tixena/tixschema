@@ -2,7 +2,7 @@
 //! service, and the `answer` and `answer_http` of a service that stands alone.
 
 use super::resources::{self, Resourced};
-use super::{Carried, error_carried, success_carried};
+use super::{Carried, error_carried, success_carried, writer};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, written,
@@ -27,7 +27,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
          here.\n\n\
          It takes no arguments and emits bare items - `SERVER_NAME`, `INSTRUCTIONS`, `catalog`, \
          `route`, `McpEndpoint`, `serve`, `answer`, `McpHttpRequest`, `McpHttpResponse`, \
-         `serve_http` and `answer_http` - so the caller supplies the module they land in and two \
+         `serve_http`, `answer_http`, `McpCall`, `McpInFlight` and `McpEventWriter` - so the caller supplies the module they land in and two \
          transports in one crate cannot collide. The invoking crate names `serde`, `serde_json` \
          and `tracing` in its own manifest, because the items below call them. The service's \
          `{schema}` is reached as `$crate::{schema}`, so a service declared in a submodule \
@@ -46,12 +46,15 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let protocol = protocol();
     let answers = answers();
     let serving = serving(&module);
-    let serve_fn = serve_fn();
+    let routing = routing();
     let answer = answer(contract);
     let http_fns = http_fns();
     let http_rules = http_rules();
     let http_authorization = http_authorization();
     let http_entry = http_entry();
+    let http_serving = http_serving();
+    let writer_types = writer::types();
+    let writer_functions = writer::functions();
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -59,6 +62,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
             () => {
                 #constants
                 #types
+                #writer_types
                 #catalog
                 #route
                 #endpoint_fns
@@ -66,12 +70,14 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #listing
                 #answers
                 #serving
-                #serve_fn
+                #routing
                 #answer
                 #http_fns
                 #http_rules
                 #http_authorization
                 #http_entry
+                #http_serving
+                #writer_functions
             };
         }
     }
@@ -680,7 +686,7 @@ fn serving(module: &Ident) -> TokenStream {
                 ::core::result::Result::Err(refused) => return Begun::Answered(::core::option::Option::Some(canonical(&refused))),
             };
             let ::core::option::Option::Some(id) = request.get("id") else {
-                return Begun::Answered(::core::option::Option::None);
+                return Begun::Notified(request);
             };
             if let ::core::result::Result::Err(refused) = checked(&request) {
                 return Begun::Answered(::core::option::Option::Some(canonical(&refused)));
@@ -711,7 +717,7 @@ fn serving(module: &Ident) -> TokenStream {
             Begun::Answered(::core::option::Option::Some(response_text(id, answered, server_name)))
         }
 
-        /// What a routed `tools/call` answers once its services have been asked.
+        /// What a routed request answers once its services have been asked.
         fn routed_text(
             request: &::serde_json::Value,
             answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
@@ -739,100 +745,172 @@ fn serving(module: &Ident) -> TokenStream {
     }
 }
 
-/// `serve`, the loop over the services of an endpoint.
-fn serve_fn() -> TokenStream {
+/// `serve`, and what it does around the services it asks.
+fn routing() -> TokenStream {
     quote! {
-        /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
-        /// answers for the service at that place in the endpoint. A notification answers `None`.
-        pub async fn serve<R>(
+        /// What a message needs before a service is asked: `Ok` with the request that `route`
+        /// is to answer, or `Err` with the answer it has already. A `notifications/cancelled`
+        /// marks the request it names in `in_flight`.
+        fn started(
             text: &str,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
-            route: R,
-        ) -> ::core::option::Option<::std::string::String>
+            in_flight: ::core::option::Option<&McpInFlight>,
+        ) -> ::core::result::Result<::serde_json::Value, ::core::option::Option<::std::string::String>> {
+            match begun(text, instructions, endpoint, server_name) {
+                Begun::Answered(answered) => ::core::result::Result::Err(answered),
+                Begun::Notified(notice) => {
+                    if let ::core::option::Option::Some(table) = in_flight {
+                        if notice["method"] == "notifications/cancelled" {
+                            table.cancel(&notice["params"]["requestId"]);
+                        }
+                    }
+                    ::core::result::Result::Err(::core::option::Option::None)
+                }
+                Begun::Routed(request) => ::core::result::Result::Ok(request),
+            }
+        }
+
+        /// Asks the services of the endpoint for what the routed request wants. A `resources/list`
+        /// pages across them, and any other method goes to the first service that answers.
+        async fn put_to_services<Ctx, R>(
+            request: &::serde_json::Value,
+            endpoint: &McpEndpoint,
+            ctx: &Ctx,
+            route: &R,
+        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
         where
-            R: ::core::ops::AsyncFn(usize, &str, &::serde_json::Value) -> ::core::option::Option<
+            Ctx: ::core::marker::Sync,
+            R: ::core::marker::Sync,
+            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
                 ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
             >,
         {
-            let request = match begun(text, instructions, endpoint, server_name) {
-                Begun::Answered(text) => return text,
-                Begun::Routed(request) => request,
-            };
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
-                let (start, own, first) = match listing_start(&request, endpoint.catalogs.len()) {
+                let (start, own, first) = match listing_start(request, endpoint.catalogs.len()) {
                     ::core::result::Result::Ok(start) => start,
-                    ::core::result::Result::Err(refused) => {
-                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), server_name));
-                    }
+                    ::core::result::Result::Err(refused) => return ::core::option::Option::Some(::core::result::Result::Err(refused)),
                 };
-                let mut answered = ::core::option::Option::None;
+                let mut page = ::core::option::Option::None;
                 for part in start..endpoint.catalogs.len() {
                     let params = listing_params(if part == start { own.as_ref() } else { ::core::option::Option::None });
-                    if let ::core::option::Option::Some(page) = route(part, "resources/list", &params).await {
-                        answered = ::core::option::Option::Some((part, page));
+                    if let ::core::option::Option::Some(answered) = route(ctx, part, "resources/list", &params).await {
+                        page = ::core::option::Option::Some((part, answered));
                         break;
                     }
                 }
-                return ::core::option::Option::Some(response_text(
-                    &request["id"],
-                    listed_resources(first, endpoint, answered),
-                    server_name,
-                ));
+                return ::core::option::Option::Some(listed_resources(first, endpoint, page));
             }
-            let mut answered = ::core::option::Option::None;
             for part in 0..endpoint.catalogs.len() {
-                answered = route(part, method, &request["params"]).await;
+                let answered = route(ctx, part, method, &request["params"]).await;
                 if answered.is_some() {
-                    break;
+                    return answered;
                 }
             }
-            routed_text(&request, answered, server_name)
+            ::core::option::Option::None
+        }
+
+        /// The answer to a routed request once its services have been asked: dropped where the
+        /// call was cancelled.
+        fn finished(
+            request: &::serde_json::Value,
+            call: &McpCall,
+            answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
+            server_name: &str,
+        ) -> ::core::option::Option<::std::string::String> {
+            if call.cancelled() {
+                return ::core::option::Option::None;
+            }
+            routed_text(request, answered, server_name)
+        }
+
+        /// One JSON-RPC message in, one out, for the services of the endpoint handed in. `route`
+        /// answers for the service at that place in the endpoint, and receives the `Ctx` that
+        /// `ctx` built from the request in flight. A notification answers `None`, and
+        /// `notifications/cancelled` marks the request it names in `in_flight`.
+        pub async fn serve<Ctx, W, R>(
+            text: &str,
+            server_name: &str,
+            instructions: ::core::option::Option<&str>,
+            endpoint: &McpEndpoint,
+            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            host: McpHost<'_, W>,
+            route: R,
+        ) -> ::core::option::Option<::std::string::String>
+        where
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            W: McpEventWriter + ::core::marker::Sync,
+            R: ::core::marker::Send + ::core::marker::Sync,
+            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
+                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+            >,
+        {
+            let request = match started(text, server_name, instructions, endpoint, ::core::option::Option::Some(host.in_flight)) {
+                ::core::result::Result::Ok(request) => request,
+                ::core::result::Result::Err(answered) => return answered,
+            };
+            let call = McpCall::of(&request);
+            let ctx = ctx(call.clone());
+            let _entered = host.in_flight.enter(&request["id"], &call);
+            let answered = Driven::new(&call, host.writer, put_to_services(&request, endpoint, &ctx, &route)).await;
+            finished(&request, &call, answered, server_name)
         }
     }
 }
 
 fn answer(contract: &Ident) -> TokenStream {
-    let schema = format_ident!("{contract}Schema", span = contract.span());
     quote! {
         /// `serve` for this service alone, with `SERVER_NAME`, `INSTRUCTIONS`, `catalog()` and
-        /// `route`. Usable as is for stdio, and its future is `Send` wherever `Svc` and `Ctx`
-        /// allow it.
-        pub async fn answer<Svc, Ctx>(
+        /// `route`. Usable as is for stdio, and its future is `Send` wherever `Svc`, `Ctx` and
+        /// `writer` allow it.
+        pub async fn answer<Svc, Ctx, W>(
             text: &str,
             svc: &Svc,
-            ctx: &Ctx,
+            ctx: impl ::core::ops::FnOnce(McpCall) -> Ctx + ::core::marker::Send,
+            writer: &W,
+            in_flight: &McpInFlight,
         ) -> ::core::option::Option<::std::string::String>
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
-            Ctx: ::core::marker::Sync,
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            W: McpEventWriter + ::core::marker::Sync,
         {
-            const ALONE: McpEndpoint = McpEndpoint::new(&[$crate::#schema::MCP_NAMES], &[catalog]);
-            let request = match begun(text, INSTRUCTIONS, &ALONE, SERVER_NAME) {
-                Begun::Answered(text) => return text,
-                Begun::Routed(request) => request,
+            let request = match started(text, SERVER_NAME, INSTRUCTIONS, &ALONE, ::core::option::Option::Some(in_flight)) {
+                ::core::result::Result::Ok(request) => request,
+                ::core::result::Result::Err(answered) => return answered,
             };
+            let call = McpCall::of(&request);
+            let ctx = ctx(call.clone());
+            let _entered = in_flight.enter(&request["id"], &call);
+            let asking = put_to_service(&request, svc, &ctx);
+            let answered = Driven::new(&call, writer, asking).await;
+            finished(&request, &call, answered, SERVER_NAME)
+        }
+
+        /// `put_to_services` for this service alone.
+        async fn put_to_service<Svc, Ctx>(
+            request: &::serde_json::Value,
+            svc: &Svc,
+            ctx: &Ctx,
+        ) -> ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>
+        where
+            Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+        {
             let method = request["method"].as_str().unwrap_or_default();
             if method == "resources/list" {
-                let (_start, own, first) = match listing_start(&request, ALONE.catalogs.len()) {
+                let (_start, own, first) = match listing_start(request, ALONE.catalogs.len()) {
                     ::core::result::Result::Ok(start) => start,
-                    ::core::result::Result::Err(refused) => {
-                        return ::core::option::Option::Some(response_text(&request["id"], ::core::result::Result::Err(refused), SERVER_NAME));
-                    }
+                    ::core::result::Result::Err(refused) => return ::core::option::Option::Some(::core::result::Result::Err(refused)),
                 };
-                let answered = route("resources/list", &listing_params(own.as_ref()), svc, ctx)
+                let page = route("resources/list", &listing_params(own.as_ref()), svc, ctx)
                     .await
                     .map(|page| (0, page));
-                return ::core::option::Option::Some(response_text(
-                    &request["id"],
-                    listed_resources(first, &ALONE, answered),
-                    SERVER_NAME,
-                ));
+                return ::core::option::Option::Some(listed_resources(first, &ALONE, page));
             }
-            let answered = route(method, &request["params"], svc, ctx).await;
-            routed_text(&request, answered, SERVER_NAME)
+            route(method, &request["params"], svc, ctx).await
         }
 
         /// `serve_http` for this service alone.
@@ -850,14 +928,23 @@ fn answer(contract: &Ident) -> TokenStream {
             if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
                 return refused;
             }
-            let ctx = match admit(request, McpCall::new()).await {
+            let call = McpCall::of_body(request);
+            let ctx = match admit(request, call.clone()).await {
                 ::core::result::Result::Ok(ctx) => ctx,
                 ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
             };
             match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
                 ::core::result::Result::Ok(text) => {
-                    http_response(answer(text, svc, &ctx).await)
+                    match started(text, SERVER_NAME, INSTRUCTIONS, &ALONE, ::core::option::Option::None) {
+                        ::core::result::Result::Err(answered) => http_response(answered),
+                        ::core::result::Result::Ok(asked_request) => {
+                            let stream = EventStream::default();
+                            let asking = put_to_service(&asked_request, svc, &ctx);
+                            let answered = Driven::new(&call, &stream, asking).await;
+                            http_finished(&asked_request, &call, &stream, answered, SERVER_NAME)
+                        }
+                    }
                 }
             }
         }
@@ -886,10 +973,11 @@ fn types() -> TokenStream {
     quote! {
         #endpoint
 
-        /// What a message needs before a service is asked: its answer, or the `tools/call` that
-        /// `route` is to answer.
+        /// What a message needs before a service is asked: its answer, the notification it is, or
+        /// the request that `route` is to answer.
         enum Begun {
             Answered(::core::option::Option<::std::string::String>),
+            Notified(::serde_json::Value),
             Routed(::serde_json::Value),
         }
 
@@ -931,16 +1019,6 @@ fn types() -> TokenStream {
             InsufficientScope { scope: ::std::string::String },
             /// `403` with no challenge.
             Forbidden,
-        }
-
-        /// The request in flight, handed to `admit`.
-        #[derive(Clone, Debug, Default)]
-        pub struct McpCall(());
-
-        impl McpCall {
-            const fn new() -> Self {
-                Self(())
-            }
         }
 
         /// An HTTP response in plain terms.
@@ -985,6 +1063,7 @@ fn constants(schema: &Ident, contract_name: &str) -> TokenStream {
         /// The trait's own name, reported as `serverInfo.name`.
         pub const SERVER_NAME: &str = #contract_name;
 
+        const ALONE: McpEndpoint = McpEndpoint::new(&[$crate::#schema::MCP_NAMES], &[catalog]);
         const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
         const LISTED_FOR_MS: u64 = 300_000;
         /// The methods `serve` answers itself or asks `route` for.
@@ -1213,6 +1292,29 @@ fn http_entry() -> TokenStream {
             }
         }
 
+    }
+}
+
+/// `serve_http`, and the answer it writes around the services it asks.
+fn http_serving() -> TokenStream {
+    quote! {
+        /// The response to a routed request that passed the rules of `serve_http`: one JSON object,
+        /// or an event stream where the request carries a `progressToken`.
+        fn http_finished(
+            request: &::serde_json::Value,
+            call: &McpCall,
+            stream: &EventStream,
+            answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
+            server_name: &str,
+        ) -> McpHttpResponse {
+            let text = finished(request, call, answered, server_name);
+            if call.reports_progress() {
+                event_stream_response(stream, text)
+            } else {
+                http_response(text)
+            }
+        }
+
         /// The Streamable HTTP rules around `serve`. `route` also receives the `Ctx` that
         /// `admit` answered.
         pub async fn serve_http<Ctx, Admit, R>(
@@ -1236,18 +1338,24 @@ fn http_entry() -> TokenStream {
             if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
                 return refused;
             }
-            let ctx = match admit(request, McpCall::new()).await {
+            let call = McpCall::of_body(request);
+            let ctx = match admit(request, call.clone()).await {
                 ::core::result::Result::Ok(ctx) => ctx,
                 ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
             };
             match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
-                ::core::result::Result::Ok(text) => http_response(
-                    serve(text, server_name, instructions, endpoint, async |part, method, params| {
-                        route(&ctx, part, method, params).await
-                    })
-                    .await,
-                ),
+                ::core::result::Result::Ok(text) => {
+                    match started(text, server_name, instructions, endpoint, ::core::option::Option::None) {
+                        ::core::result::Result::Err(answered) => http_response(answered),
+                        ::core::result::Result::Ok(asked_request) => {
+                            let stream = EventStream::default();
+                            let asking = put_to_services(&asked_request, endpoint, &ctx, &route);
+                            let answered = Driven::new(&call, &stream, asking).await;
+                            http_finished(&asked_request, &call, &stream, answered, server_name)
+                        }
+                    }
+                }
             }
         }
     }
