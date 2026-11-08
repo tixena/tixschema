@@ -1,13 +1,18 @@
 //! Resources, resource templates and completion: the listing across services, a read, a
 //! completion, and the rules each applies, every answer checked against the official schema.
 
-use crate::document_mcp::{self, McpHttpRequest};
+use crate::document_mcp::{self, McpHttpRequest, McpHttpSettings};
 use crate::support::{
     INTERNAL_ERROR, INVALID_PARAMS, LISTED_FOR_MS, answer, answer_workspace, assert_error,
     assert_result, assert_valid, block_on, id, request, schema_errors, server_info,
 };
 use crate::tests::Archive;
 use serde_json::{Value, json};
+
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
+    allowed_origins: &[],
+    oauth: None,
+};
 
 const GUIDE: &str = "guide://configure-workspace";
 
@@ -378,12 +383,13 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
             ),
         ],
         method: "POST".to_owned(),
+        path: "/mcp".to_owned(),
     };
     let response = block_on(document_mcp::answer_http(
         &asked,
-        &[],
+        &SETTINGS,
         &Archive::default(),
-        &(),
+        async |_request, _call| Ok(()),
     ));
     assert_eq!(response.status, 200);
     let sent: Value = serde_json::from_slice(&response.body).unwrap();
@@ -395,9 +401,9 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
     ));
     let mismatched = block_on(document_mcp::answer_http(
         &asked,
-        &[],
+        &SETTINGS,
         &Archive::default(),
-        &(),
+        async |_request, _call| Ok(()),
     ));
     assert_eq!(mismatched.status, 400);
 }

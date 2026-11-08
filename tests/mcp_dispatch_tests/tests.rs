@@ -97,12 +97,16 @@ pub trait DocumentService<Ctx> {
     /// The guide to the configuration of a workspace.
     #[service_schema_op(mcp(
         resource = "guide://configure-workspace",
-        mime_type = "text/markdown"
+        mime_type = "text/markdown",
+        scopes = ["guides:read"]
     ))]
     async fn configuration_guide(&self, ctx: &Ctx) -> Result<String, VersionError>;
 
     /// The file of one document.
-    #[service_schema_op(mcp(resource = "workspace://documents/{document_id}"))]
+    #[service_schema_op(mcp(
+        resource = "workspace://documents/{document_id}",
+        scopes = ["documents:read", "files:read"]
+    ))]
     async fn document_file(
         &self,
         ctx: &Ctx,
@@ -124,7 +128,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<(VersionResponse, String), VersionError>;
 
     /// Answers the current version of one document.
-    #[service_schema_op(mcp(title = "Current Document Version"))]
+    #[service_schema_op(mcp(title = "Current Document Version", scopes = ["documents:read"]))]
     async fn get_version(
         &self,
         ctx: &Ctx,
@@ -140,10 +144,11 @@ pub trait DocumentService<Ctx> {
     ) -> Result<document_service_schema::McpResourcePage, VersionError>;
 
     /// Answers the current version of the document the identifier names.
-    #[service_schema_op(mcp(name = "lookup-document"))]
+    #[service_schema_op(mcp(name = "lookup-document", scopes = ["documents:read"]))]
     async fn lookup(&self, ctx: &Ctx, id: DocumentId) -> Result<VersionResponse, VersionError>;
 
     /// Renames one document.
+    #[service_schema_op(mcp(scopes = ["documents:write"]))]
     async fn rename_document(
         &self,
         ctx: &Ctx,
@@ -161,7 +166,7 @@ pub trait DocumentService<Ctx> {
     ) -> Result<Vec<String>, VersionError>;
 
     /// Marks one document as read.
-    #[service_schema_op(one_way)]
+    #[service_schema_op(one_way, mcp(scopes = ["documents:read", "documents:touch"]))]
     async fn touch_document(&self, ctx: &Ctx, document_id: String, reader: String);
 }
 
