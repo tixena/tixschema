@@ -24,8 +24,13 @@ use super::mcp_mobile_service::{
     balance_error_kotlin, balance_response_kotlin, document_id_kotlin, get_version_request_kotlin,
     version_error_kotlin, version_response_kotlin,
 };
+use super::mcp_writer_rows::{
+    assert_matches, input as writer_input, writer_refusal_kotlin, writer_version_kotlin,
+    writer_version_request_kotlin,
+};
 use super::runtime::ran_kotlin;
-use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
+use super::writer_service_schema;
+use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema, WriterServiceSchema};
 use super::{mobile_billing_service_schema, mobile_document_service_schema};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -116,14 +121,16 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     val workspace = MobileDocumentServiceMcpEndpoint(mobileDocumentServiceMcpCatalog, mobileBillingServiceMcpCatalog)
     val documentRoute = createMobileDocumentServiceMcpRoute(DocumentHandlers)
     val billingRoute = createMobileBillingServiceMcpRoute(BillingHandlers)
-    val alone = createMobileDocumentServiceMcpDispatcher(DocumentHandlers)
-    val billingAlone = createMobileBillingServiceMcpDispatcher(BillingHandlers)
+    val alone = createMobileDocumentServiceMcpDispatcher { DocumentHandlers }
+    val billingAlone = createMobileBillingServiceMcpDispatcher { BillingHandlers }
+    val nowhere: MobileDocumentServiceMcpWriter = { }
+    val host = MobileDocumentServiceMcpHost(nowhere, MobileDocumentServiceMcpInFlight())
     val http = createMobileDocumentServiceMcpHttpDispatcher(
         MobileDocumentServiceMcpHttpSettings(listOf(input.getValue("origin").jsonPrimitive.content)),
     ) { _, _ -> MobileDocumentServiceMcpAdmitted.Caller(DocumentHandlers) }
     val requests = input.getValue("requests").jsonArray.map { it.jsonPrimitive.content }
     val workspaceAnswers = requests.map { text ->
-        nullable(mobileDocumentServiceMcpServe(text, "Workspace", null, workspace) { part, method, params ->
+        nullable(mobileDocumentServiceMcpServe(text, "Workspace", null, workspace, host) { _, part, method, params ->
             when (part) {
                 0 -> documentRoute(method, params)
                 1 -> billingRoute(method, params)?.let { answered ->
@@ -136,8 +143,8 @@ suspend fun serverReport(input: JsonObject): JsonObject {
             }
         })
     }
-    val aloneAnswers = requests.map { nullable(alone(it)) }
-    val billingAnswers = requests.map { nullable(billingAlone(it)) }
+    val aloneAnswers = requests.map { nullable(alone(it, nowhere, MobileDocumentServiceMcpInFlight())) }
+    val billingAnswers = requests.map { nullable(billingAlone(it, nowhere, MobileBillingServiceMcpInFlight())) }
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
@@ -283,6 +290,98 @@ suspend fun authReport(input: JsonObject): JsonObject {
 }
 "#;
 
+/// The three lines of a stdio host that starts each line's answer without waiting for the one
+/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
+/// the event it waits for.
+const WRITER_DRIVER: &str = r#"
+class WriterHandlers(
+    private val call: WriterServiceMcpCall,
+    private val released: CompletableDeferred<Unit>,
+    private val observed: (Boolean) -> Unit,
+) : WriterServiceHandlers {
+    override suspend fun exportFolder(req: String): WriterServiceExportFolderResult {
+        call.progress(1.0, 3.0, "exported 1 of 3 files")
+        if (req == "forever") {
+            released.await()
+            observed(call.cancelled)
+        }
+        return WriterServiceExportFolderResult.Ok
+    }
+
+    override suspend fun getVersion(req: WriterVersionRequest): WriterServiceGetVersionResult =
+        WriterServiceGetVersionResult.Ok(WriterVersion(7u))
+}
+
+suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
+    val written = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    val stdout: WriterServiceMcpWriter = { message ->
+        written.add(message)
+        changed.trySend(Unit)
+    }
+    suspend fun until(done: () -> Boolean) {
+        while (!done()) changed.receive()
+    }
+    val inFlight = WriterServiceMcpInFlight()
+    val released = CompletableDeferred<Unit>()
+    var observed = false
+    val dispatch = createWriterServiceMcpDispatcher { call -> WriterHandlers(call, released) { observed = it } }
+    val running = mutableListOf<Job>()
+    fun start(line: String) {
+        running.add(launch {
+            val reply = dispatch(line, stdout, inFlight)
+            if (reply != null) stdout(reply)
+        })
+    }
+    val lines = input.getValue("lines").jsonArray.map { it.jsonPrimitive.content }
+    start(lines[0])
+    until { written.size >= 1 }
+    start(lines[1])
+    until { written.size >= 2 }
+    check(dispatch(lines[2], stdout, inFlight) == null) { "a notification was answered" }
+    released.complete(Unit)
+    running.joinAll()
+    val kept = written.toList()
+
+    var seen: WriterServiceMcpCall? = null
+    val gone: WriterServiceMcpWriter = { throw IllegalStateException("the client has gone") }
+    val failedReply = createWriterServiceMcpDispatcher { call ->
+        seen = call
+        WriterHandlers(call, released) { }
+    }(input.getValue("failed").jsonPrimitive.content, gone, inFlight)
+
+    val serve = createWriterServiceMcpHttpDispatcher(WriterServiceMcpHttpSettings(emptyList())) { _, call ->
+        WriterServiceMcpAdmitted.Caller(WriterHandlers(call, released) { })
+    }
+    val http = input.getValue("http").jsonArray.map { row ->
+        val given = row.jsonObject
+        val response = serve(
+            WriterServiceMcpHttpRequest(
+                given.getValue("method").jsonPrimitive.content,
+                given.getValue("path").jsonPrimitive.content,
+                given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content },
+                given.getValue("body").jsonPrimitive.content.encodeToByteArray(),
+            ),
+        )
+        buildJsonObject {
+            put("status", response.status)
+            put("headers", JsonArray(response.headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))
+            put("body", response.body.decodeToString())
+        }
+    }
+    buildJsonObject {
+        put("written", JsonArray(kept.map { JsonPrimitive(it) }))
+        put("observed", observed)
+        put("failed", buildJsonObject {
+            put("reply", failedReply?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("cancelled", seen!!.cancelled)
+            put("written", JsonArray(emptyList()))
+        })
+        put("http", JsonArray(http))
+    }
+}
+"#;
+
 const CLIENT_DRIVER: &str = r#"
 class Canned(private val replies: Map<Long, String?>) : MobileDocumentServiceMcpTransport {
     val sent = mutableListOf<MobileDocumentServiceMcpMessage>()
@@ -390,6 +489,7 @@ fun main() = runBlocking {
         put("server", serverReport(input))
         put("client", clientReport(input))
         put("auth", authReport(input))
+        put("writer", writerReport(input.getValue("writer").jsonObject))
     }
     println(report.toString())
 }
@@ -417,6 +517,14 @@ fn definitions() -> Vec<String> {
         MobileBillingServiceSchema::kotlin_http_client(),
         MobileBillingServiceSchema::kotlin_ws_client(),
         MobileBillingServiceSchema::kotlin_mcp_service(),
+        writer_version_request_kotlin::kotlin_definition(),
+        writer_version_kotlin::kotlin_definition(),
+        writer_refusal_kotlin::kotlin_definition(),
+        writer_service_schema::writer_service_fault_fields_kotlin::kotlin_definition(),
+        writer_service_schema::writer_service_fault_kind_kotlin::kotlin_definition(),
+        WriterServiceSchema::kotlin_http_client(),
+        WriterServiceSchema::kotlin_ws_client(),
+        WriterServiceSchema::kotlin_mcp_service(),
     ]
 }
 
@@ -442,6 +550,7 @@ fn input() -> Value {
         .collect();
     json!({
         "origin": ORIGIN,
+        "writer": writer_input(),
         "requests": server_rows().iter().map(|row| row.text.clone()).collect::<Vec<_>>(),
         "http": http_rows().iter().map(http_input).collect::<Vec<_>>(),
         "replies": replies,
@@ -470,6 +579,7 @@ fn module() -> String {
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(SERVER_DRIVER.to_owned());
     parts.push(AUTH_DRIVER.to_owned());
+    parts.push(WRITER_DRIVER.to_owned());
     parts.push(CLIENT_DRIVER.to_owned());
     parts.join("\n\n")
 }
@@ -673,4 +783,12 @@ fn the_scopes_function_answers_what_the_rust_registry_answers() {
         let rust = MobileDocumentServiceSchema::mcp_scopes(method, *name);
         assert_eq!(*held, json!(rust), "{method} {name:?}");
     }
+}
+
+#[test]
+fn the_kotlin_host_writes_the_messages_the_rust_host_writes() {
+    let Some(report) = driven() else {
+        return;
+    };
+    assert_matches(&report["writer"]);
 }

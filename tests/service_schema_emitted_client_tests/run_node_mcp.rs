@@ -2,11 +2,15 @@
 //! bytes it records, every answer held to the official 2026-07-28 schema, two services behind one
 //! endpoint, a schema's digits kept, and the client reading each outcome.
 
+use super::WriterServiceSchema;
 use super::mcp_auth_rows::{
     AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
     auth_rows,
 };
 use super::mcp_node_document as document_mcp;
+use super::mcp_writer_rows::{
+    WriterRefusal, WriterVersion, WriterVersionRequest, assert_matches, input as writer_input,
+};
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
@@ -34,6 +38,8 @@ const meta = {
 const request = (id, method, params) => JSON.stringify({ jsonrpc: "2.0", id, method, params: { ...params, _meta: meta } });
 const call = (id, name, args) => request(id, "tools/call", { name, arguments: args });
 
+const nowhere = async () => {};
+
 const impl = {
   async getTagged(ctx, id, knownTag) {
     if (knownTag === "\"v7\"") return { ok: false, error: { errorCode: "not-found" } };
@@ -60,7 +66,9 @@ const impl = {
 /// below read their answers.
 const WIRE_DRIVER: &str = r#"
 async function main() {
-  const dispatch = createDocumentServiceMcpDispatcher(impl);
+  const served = createDocumentServiceMcpDispatcher(impl);
+  const inFlight = new DocumentServiceMcpInFlight();
+  const dispatch = (text) => served(text, () => ({}), nowhere, inFlight);
   const requests = [
     ["server/discover", JSON.stringify({ jsonrpc: "2.0", id: "discover-1", method: "server/discover", params: { _meta: meta } })],
     ["tools/list", request(1, "tools/list", {})],
@@ -87,7 +95,7 @@ async function main() {
   ];
   const answers = [];
   for (const [method, text] of requests) {
-    const reply = await dispatch({}, text);
+    const reply = await dispatch(text);
     answers.push({ method, reply: reply === undefined ? null : reply });
   }
   console.log(JSON.stringify(answers));
@@ -194,8 +202,9 @@ async function main() {
   const documents = createDocumentServiceMcpRoute(impl);
   const billing = createBillingServiceMcpRoute(billingImpl);
   const workspace = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
-  const serve = (text) => documentServiceMcpServe(text, "Workspace", undefined, workspace,
-    async (part, method, params) => (part === 0 ? documents({}, method, params) : part === 1 ? billing({}, method, params) : undefined));
+  const host = { writer: nowhere, inFlight: new DocumentServiceMcpInFlight() };
+  const serve = (text) => documentServiceMcpServe(text, "Workspace", undefined, workspace, () => ({}), host,
+    async (ctx, part, method, params) => (part === 0 ? documents(ctx, method, params) : part === 1 ? billing(ctx, method, params) : undefined));
   const replies = [
     await serve(JSON.stringify({ jsonrpc: "2.0", id: "d", method: "server/discover", params: { _meta: meta } })),
     await serve(request(1, "tools/list", {})),
@@ -255,18 +264,29 @@ const USAGE_CALLER: &str = r#"import {
   documentServiceMcpName,
   documentServiceMcpScopes,
   DocumentServiceMcpCall,
+  DocumentServiceMcpInFlight,
   type DocumentServiceImpl,
   type DocumentServiceMcpAdmitted,
   type DocumentServiceMcpDenied,
   type DocumentServiceMcpHttpRequest,
   type DocumentServiceMcpHttpSettings,
   type DocumentServiceMcpTransport,
+  type DocumentServiceMcpWriter,
 } from "./bundle.js";
 
 declare const impl: DocumentServiceImpl<number>;
 declare const transport: DocumentServiceMcpTransport;
 
-export const dispatcher: (ctx: number, text: string) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
+declare const writer: DocumentServiceMcpWriter;
+
+export const dispatcher: (
+  text: string,
+  ctx: (call: DocumentServiceMcpCall) => number,
+  writer: DocumentServiceMcpWriter,
+  inFlight: DocumentServiceMcpInFlight,
+) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
+export const reported: Promise<void> = new DocumentServiceMcpCall("token", writer).progress(1, 3, "one of three");
+export const cancelled: boolean = new DocumentServiceMcpCall().cancelled;
 export const http = createDocumentServiceMcpHttpDispatcher(
   impl,
   { allowedOrigins: [] },
@@ -350,8 +370,9 @@ async function main() {
   outcomes.oneWayThrows = thrown;
 
   const served = createDocumentServiceMcpDispatcher(impl);
+  const inFlight = new DocumentServiceMcpInFlight();
   const round = createDocumentServiceMcpClient({
-    send: async (message) => (await served({}, message.text)) ?? "",
+    send: async (message) => (await served(message.text, () => ({}), nowhere, inFlight)) ?? "",
   });
   outcomes.roundTrip = {
     success: await round.getVersion({ document_id: "doc-1" }),
@@ -364,6 +385,79 @@ async function main() {
     oneWay: (await round.touchDocument({ documentId: "doc-1", reader: "reviewer-7" })) ?? "void",
   };
   console.log(JSON.stringify({ outcomes, seen }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// The three lines of a stdio host that starts each line's answer without waiting for the one
+/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
+/// the event it waits for.
+const WRITER_DRIVER: &str = r#"
+const input = JSON.parse(INPUT);
+
+function stdioHost() {
+  const written = [];
+  const waiting = [];
+  const stdout = async (message) => {
+    written.push(message);
+    for (const wake of waiting.splice(0)) wake();
+  };
+  const until = async (done) => {
+    while (!done()) await new Promise((resolve) => waiting.push(resolve));
+  };
+  return { written, stdout, until };
+}
+
+async function main() {
+  const host = stdioHost();
+  const inFlight = new WriterServiceMcpInFlight();
+  let release;
+  const released = new Promise((resolve) => { release = resolve; });
+  let observed = false;
+  const impl = {
+    async exportFolder(ctx, folder) {
+      await ctx.call.progress(1, 3, "exported 1 of 3 files");
+      if (folder === "forever") {
+        await released;
+        observed = ctx.call.cancelled;
+      }
+      return { ok: true };
+    },
+    async getVersion(ctx, req) {
+      return { ok: true, value: { version: 7 } };
+    },
+  };
+  const dispatch = createWriterServiceMcpDispatcher(impl);
+  const running = [];
+  const start = (line) => running.push(
+    dispatch(line, (call) => ({ call }), host.stdout, inFlight).then(async (reply) => {
+      if (reply !== undefined) await host.stdout(reply);
+    }),
+  );
+  const [exported, version, cancelled] = input.lines;
+  start(exported);
+  await host.until(() => host.written.length >= 1);
+  start(version);
+  await host.until(() => host.written.length >= 2);
+  const stopped = await dispatch(cancelled, (call) => ({ call }), host.stdout, inFlight);
+  if (stopped !== undefined) throw new Error("a notification was answered");
+  release();
+  await Promise.all(running);
+
+  const gone = { cancelled: false, written: [] };
+  let seen;
+  const reply = await dispatch(input.failed, (call) => { seen = call; return { call }; }, async () => { throw new Error("the client has gone"); }, inFlight);
+  gone.reply = reply === undefined ? null : reply;
+  gone.cancelled = seen.cancelled;
+
+  const http = [];
+  const serve = createWriterServiceMcpHttpDispatcher(impl, { allowedOrigins: [] }, async (request, call) => ({ ctx: { call } }));
+  for (const row of input.http) {
+    const response = await serve({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    http.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
+  }
+  console.log(JSON.stringify({ written: host.written, observed, failed: gone, http }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -600,6 +694,32 @@ fn bundle() -> String {
     .join("\n\n")
 }
 
+/// The models and the service the writer driver runs against.
+fn writer_bundle() -> String {
+    [
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
+        WriterVersionRequest::ts_definition(),
+        WriterVersionRequest::zod_schema(),
+        WriterVersion::ts_definition(),
+        WriterVersion::zod_schema(),
+        WriterRefusal::ts_definition(),
+        WriterRefusal::zod_schema(),
+        WriterServiceSchema::ts_definition(),
+        WriterServiceSchema::ts_service(),
+        WriterServiceSchema::ts_mcp_service(),
+    ]
+    .join("\n\n")
+}
+
+/// The bundle the run called `named` imports: the writer's own, or the documents'.
+fn bundle_of(named: &str) -> String {
+    if named == "mcp-writer" {
+        writer_bundle()
+    } else {
+        bundle()
+    }
+}
+
 /// Runs `driver` after the bundle under node, or stands down naming `TIXSCHEMA_NODE_MODULES`.
 fn run(named: &str, driver: &str) -> Option<Value> {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
@@ -609,7 +729,7 @@ fn run(named: &str, driver: &str) -> Option<Value> {
         );
         return None;
     };
-    let source = format!("{}\n\n{driver}", bundle());
+    let source = format!("{}\n\n{driver}", bundle_of(named));
     let wrote = ran_with_modules(
         named,
         RUNTIME_VAR,
@@ -1386,4 +1506,16 @@ fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike
     assert_eq!(alone, served);
     assert!(alone.is_some());
     assert_eq!(status, 200);
+}
+
+#[test]
+fn the_typescript_host_writes_the_messages_the_rust_host_writes() {
+    let driver = format!(
+        "const INPUT = {};\n{WRITER_DRIVER}",
+        Value::String(writer_input().to_string())
+    );
+    let Some(report) = run("mcp-writer", &driver) else {
+        return;
+    };
+    assert_matches(&report);
 }
