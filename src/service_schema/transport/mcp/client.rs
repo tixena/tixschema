@@ -4,7 +4,8 @@
 use super::{Carried, error_carried, success_carried};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, is_unit_type, written,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, argument_local,
+    is_unit_type, wire_key, written,
 };
 use crate::service_schema::support::{message_validator_ident, module_ident};
 use crate::service_schema::transport::amqp_rpc::{
@@ -13,8 +14,10 @@ use crate::service_schema::transport::amqp_rpc::{
 };
 use crate::service_schema::transport::{Transport, client_macro_ident};
 use proc_macro2::TokenStream;
+use quote::ToTokens as _;
 use quote::{format_ident, quote};
 use syn::Ident;
+use syn::Type;
 
 pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenStream {
     let contract = &service.ident;
@@ -25,7 +28,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let methods = service
         .operations
         .iter()
-        .filter(|operation| operation.is_mcp_tool())
+        .filter(|operation| operation.is_mcp_tool() || operation.is_mcp_prompt())
         .map(|operation| method(operation, &generated, &schema));
     let placement = placement_doc(
         &published,
@@ -57,8 +60,12 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let wire = fault_wire_types();
     let readers = fault_mirror_readers(&generated);
     let canonical = super::canonical_json();
+    let tools = service.operations.iter().any(OperationDef::is_mcp_tool);
+    let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
     let helpers = helpers(fault);
-    let exchange = exchange(fault);
+    let reading_tools = tools.then(|| tool_reader(fault));
+    let reading_prompts = prompting.then(|| prompt_reader(fault));
+    let exchange = exchange(fault, tools, prompting);
     let blocks = content_helpers(service, &generated);
     quote! {
         #[doc = #macro_doc]
@@ -113,6 +120,8 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
 
                 #canonical
                 #helpers
+                #reading_tools
+                #reading_prompts
                 #blocks
                 #exchange
             };
@@ -143,7 +152,12 @@ fn helpers(fault: &TokenStream) -> TokenStream {
                 ::core::result::Result::Err(rejected) => unreadable(tool, &rejected.to_string()),
             }
         }
+    }
+}
 
+/// What reads a tool's answer.
+fn tool_reader(fault: &TokenStream) -> TokenStream {
+    quote! {
         /// One answer read: the success's structured value (with `blocks`, its `content` beside
         /// it), the error the operation declared, or the fault the answer reports.
         fn read_answer(
@@ -198,17 +212,69 @@ fn helpers(fault: &TokenStream) -> TokenStream {
     }
 }
 
+/// What reads a prompt's answer.
+fn prompt_reader(fault: &TokenStream) -> TokenStream {
+    quote! {
+        /// One prompt answer read: its result, the error the operation declared (a `-32602` whose
+        /// `data` holds no fault), or the fault the answer reports.
+        fn read_prompt(
+            prompt: &str,
+            text: &str,
+        ) -> ::core::result::Result<
+            ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+            #fault,
+        > {
+            let answered: ::serde_json::Value = match ::serde_json::from_str(text) {
+                ::core::result::Result::Ok(answered) => answered,
+                ::core::result::Result::Err(rejected) => {
+                    return ::core::result::Result::Err(unreadable(prompt, &rejected.to_string()));
+                }
+            };
+            if let ::core::option::Option::Some(error) = answered.get("error") {
+                let data = &error["data"];
+                if data.get("isServiceFault").is_some() {
+                    return ::core::result::Result::Err(reported_fault(prompt, data.clone()));
+                }
+                if error["code"] == -32602_i64 && !data.is_null() {
+                    return ::core::result::Result::Ok(::core::result::Result::Err(data.clone()));
+                }
+                let said = format!("{}: {}", error["code"], error["message"].as_str().unwrap_or_default());
+                return ::core::result::Result::Err(#fault::transport_failure(prompt, &said));
+            }
+            match answered.get("result") {
+                ::core::option::Option::Some(result) => {
+                    ::core::result::Result::Ok(::core::result::Result::Ok(result.clone()))
+                }
+                ::core::option::Option::None => ::core::result::Result::Err(unreadable(
+                    prompt,
+                    "the answer holds neither a result nor an error",
+                )),
+            }
+        }
+
+        /// The text of the first message of a prompt's result.
+        fn first_text(prompt: &str, result: &::serde_json::Value) -> ::core::result::Result<::std::string::String, #fault> {
+            result["messages"][0]["content"]["text"]
+                .as_str()
+                .map(::std::borrow::ToOwned::to_owned)
+                .ok_or_else(|| unreadable(prompt, "the first message holds no text"))
+        }
+    }
+}
+
 /// What reads the blocks of a content tool's answer, written where one is declared.
 fn content_helpers(service: &ServiceDef, generated: &Generated) -> TokenStream {
     let pair = service.operations.iter().any(super::content::is_pair);
     let list = service.operations.iter().any(super::content::is_list);
-    if !pair && !list {
+    let messages = super::content::prompt_messages(service);
+    if !pair && !list && !messages {
         return TokenStream::new();
     }
     let fault = &generated.fault;
     let module = &generated.module;
     let reading_pair = pair.then(|| pair_reader(fault));
-    let reading_list = list.then(|| list_reader(fault, module));
+    let reading_list = (list || messages).then(|| list_reader(fault, module, list));
+    let reading_messages = messages.then(|| message_reader(fault, module));
     quote! {
         /// `text` decoded from base64, with the standard alphabet and padding.
         fn base64_decoded(text: &str) -> ::core::option::Option<::std::vec::Vec<u8>> {
@@ -236,6 +302,7 @@ fn content_helpers(service: &ServiceDef, generated: &Generated) -> TokenStream {
 
         #reading_pair
         #reading_list
+        #reading_messages
     }
 }
 
@@ -265,7 +332,21 @@ fn pair_reader(fault: &TokenStream) -> TokenStream {
     }
 }
 
-fn list_reader(fault: &TokenStream, module: &Ident) -> TokenStream {
+fn list_reader(fault: &TokenStream, module: &Ident, blocks: bool) -> TokenStream {
+    let listing = blocks.then(|| {
+        quote! {
+            /// The blocks of `content`, each read into the type the service module declares.
+            fn read_blocks(
+                tool: &str,
+                content: &::serde_json::Value,
+            ) -> ::core::result::Result<::std::vec::Vec<$crate::#module::McpContent>, #fault> {
+                let ::core::option::Option::Some(blocks) = content.as_array() else {
+                    return ::core::result::Result::Err(unreadable(tool, "the answer holds no content"));
+                };
+                blocks.iter().map(|block| read_block(tool, block)).collect()
+            }
+        }
+    });
     quote! {
         /// The text a block holds under `key`.
         fn block_text(tool: &str, block: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::string::String, #fault> {
@@ -281,70 +362,139 @@ fn list_reader(fault: &TokenStream, module: &Ident) -> TokenStream {
                 .ok_or_else(|| unreadable(tool, &format!("`{key}` is not base64")))
         }
 
-        /// The blocks of `content`, each read into the type the service module declares.
-        fn read_blocks(
+        /// One block, read into the type the service module declares.
+        fn read_block(
             tool: &str,
-            content: &::serde_json::Value,
-        ) -> ::core::result::Result<::std::vec::Vec<$crate::#module::McpContent>, #fault> {
-            let ::core::option::Option::Some(blocks) = content.as_array() else {
-                return ::core::result::Result::Err(unreadable(tool, "the answer holds no content"));
-            };
-            let mut read = ::std::vec::Vec::new();
-            for block in blocks {
-                let optional = |key: &str| block[key].as_str().map(::std::borrow::ToOwned::to_owned);
-                read.push(match block["type"].as_str() {
-                    ::core::option::Option::Some("text") => $crate::#module::McpContent::Text {
-                        text: block_text(tool, block, "text")?,
-                    },
-                    ::core::option::Option::Some("image") => $crate::#module::McpContent::Image {
-                        data: block_bytes(tool, block, "data")?,
-                        mime_type: block_text(tool, block, "mimeType")?,
-                    },
-                    ::core::option::Option::Some("audio") => $crate::#module::McpContent::Audio {
-                        data: block_bytes(tool, block, "data")?,
-                        mime_type: block_text(tool, block, "mimeType")?,
-                    },
-                    ::core::option::Option::Some("resource_link") => $crate::#module::McpContent::ResourceLink {
-                        uri: block_text(tool, block, "uri")?,
-                        name: block_text(tool, block, "name")?,
-                        title: optional("title"),
-                        description: optional("description"),
-                        mime_type: optional("mimeType"),
-                    },
-                    ::core::option::Option::Some("resource") => {
-                        let resource = &block["resource"];
-                        $crate::#module::McpContent::Resource {
-                            uri: block_text(tool, resource, "uri")?,
-                            mime_type: resource["mimeType"].as_str().map(::std::borrow::ToOwned::to_owned),
-                            contents: if resource.get("blob").is_some() {
-                                $crate::#module::McpResourceContents::Blob(block_bytes(tool, resource, "blob")?)
-                            } else {
-                                $crate::#module::McpResourceContents::Text(block_text(tool, resource, "text")?)
-                            },
-                        }
+            block: &::serde_json::Value,
+        ) -> ::core::result::Result<$crate::#module::McpContent, #fault> {
+            let optional = |key: &str| block[key].as_str().map(::std::borrow::ToOwned::to_owned);
+            ::core::result::Result::Ok(match block["type"].as_str() {
+                ::core::option::Option::Some("text") => $crate::#module::McpContent::Text {
+                    text: block_text(tool, block, "text")?,
+                },
+                ::core::option::Option::Some("image") => $crate::#module::McpContent::Image {
+                    data: block_bytes(tool, block, "data")?,
+                    mime_type: block_text(tool, block, "mimeType")?,
+                },
+                ::core::option::Option::Some("audio") => $crate::#module::McpContent::Audio {
+                    data: block_bytes(tool, block, "data")?,
+                    mime_type: block_text(tool, block, "mimeType")?,
+                },
+                ::core::option::Option::Some("resource_link") => $crate::#module::McpContent::ResourceLink {
+                    uri: block_text(tool, block, "uri")?,
+                    name: block_text(tool, block, "name")?,
+                    title: optional("title"),
+                    description: optional("description"),
+                    mime_type: optional("mimeType"),
+                },
+                ::core::option::Option::Some("resource") => {
+                    let resource = &block["resource"];
+                    $crate::#module::McpContent::Resource {
+                        uri: block_text(tool, resource, "uri")?,
+                        mime_type: resource["mimeType"].as_str().map(::std::borrow::ToOwned::to_owned),
+                        contents: if resource.get("blob").is_some() {
+                            $crate::#module::McpResourceContents::Blob(block_bytes(tool, resource, "blob")?)
+                        } else {
+                            $crate::#module::McpResourceContents::Text(block_text(tool, resource, "text")?)
+                        },
                     }
-                    _ => return ::core::result::Result::Err(unreadable(tool, "a block of a type this client does not read")),
-                });
-            }
-            ::core::result::Result::Ok(read)
+                }
+                _ => return ::core::result::Result::Err(unreadable(tool, "a block of a type this client does not read")),
+            })
+        }
+
+        #listing
+    }
+}
+
+/// What reads the messages of a prompt's result.
+fn message_reader(fault: &TokenStream, module: &Ident) -> TokenStream {
+    quote! {
+        /// The messages of a prompt's result, each read into the type the service module declares.
+        fn read_messages(
+            prompt: &str,
+            messages: &::serde_json::Value,
+        ) -> ::core::result::Result<::std::vec::Vec<$crate::#module::McpPromptMessage>, #fault> {
+            let ::core::option::Option::Some(held) = messages.as_array() else {
+                return ::core::result::Result::Err(unreadable(prompt, "the answer holds no messages"));
+            };
+            held.iter()
+                .map(|message| {
+                    let role = match message["role"].as_str() {
+                        ::core::option::Option::Some("user") => $crate::#module::McpRole::User,
+                        ::core::option::Option::Some("assistant") => $crate::#module::McpRole::Assistant,
+                        _ => return ::core::result::Result::Err(unreadable(prompt, "a message of a role this client does not read")),
+                    };
+                    ::core::result::Result::Ok($crate::#module::McpPromptMessage {
+                        role,
+                        content: read_block(prompt, &message["content"])?,
+                    })
+                })
+                .collect()
         }
     }
 }
 
-/// The call every method makes through the seam.
-fn exchange(fault: &TokenStream) -> TokenStream {
+/// The calls every method makes through the seam.
+fn exchange(fault: &TokenStream, tools: bool, prompting: bool) -> TokenStream {
+    let calling = tools.then(|| {
+        quote! {
+            /// Sends one `tools/call` and reads the answer.
+            async fn exchange<T>(
+                transport: &T,
+                next: &::core::sync::atomic::AtomicU64,
+                tool: &'static str,
+                arguments: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+                blocks: bool,
+            ) -> ::core::result::Result<
+                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                #fault,
+            >
+            where
+                T: Transport + ::core::marker::Sync,
+            {
+                match sent(transport, next, "tools/call", tool, arguments).await {
+                    ::core::result::Result::Ok(answer) => read_answer(tool, &answer, blocks),
+                    ::core::result::Result::Err(uncarried) => {
+                        ::core::result::Result::Err(#fault::transport_failure(tool, &uncarried))
+                    }
+                }
+            }
+        }
+    });
+    let prompted = prompting.then(|| {
+        quote! {
+            /// Sends one `prompts/get` and reads the answer.
+            async fn prompted<T>(
+                transport: &T,
+                next: &::core::sync::atomic::AtomicU64,
+                prompt: &'static str,
+                arguments: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+            ) -> ::core::result::Result<
+                ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
+                #fault,
+            >
+            where
+                T: Transport + ::core::marker::Sync,
+            {
+                match sent(transport, next, "prompts/get", prompt, arguments).await {
+                    ::core::result::Result::Ok(answer) => read_prompt(prompt, &answer),
+                    ::core::result::Result::Err(uncarried) => {
+                        ::core::result::Result::Err(#fault::transport_failure(prompt, &uncarried))
+                    }
+                }
+            }
+        }
+    });
     quote! {
-        /// Sends one `tools/call` and reads the answer.
-        async fn exchange<T>(
+        /// Sends one request through the seam and answers the text that came back.
+        async fn sent<T>(
             transport: &T,
             next: &::core::sync::atomic::AtomicU64,
-            tool: &'static str,
+            method: &'static str,
+            name: &'static str,
             arguments: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-            blocks: bool,
-        ) -> ::core::result::Result<
-            ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            #fault,
-        >
+        ) -> ::core::result::Result<::std::string::String, ::std::string::String>
         where
             T: Transport + ::core::marker::Sync,
         {
@@ -352,9 +502,9 @@ fn exchange(fault: &TokenStream) -> TokenStream {
             let text = canonical(&::serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "method": "tools/call",
+                "method": method,
                 "params": {
-                    "name": tool,
+                    "name": name,
                     "arguments": arguments,
                     "_meta": {
                         "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
@@ -369,14 +519,85 @@ fn exchange(fault: &TokenStream) -> TokenStream {
             let message = McpMessage {
                 text,
                 protocol_version: PROTOCOL_VERSION,
-                method: "tools/call",
-                name: ::core::option::Option::Some(tool.to_owned()),
+                method,
+                name: ::core::option::Option::Some(name.to_owned()),
             };
-            match transport.send(message).await {
-                ::core::result::Result::Ok(answer) => read_answer(tool, &answer, blocks),
-                ::core::result::Result::Err(uncarried) => {
-                    ::core::result::Result::Err(#fault::transport_failure(tool, &uncarried))
+            transport.send(message).await
+        }
+
+        #calling
+        #prompted
+    }
+}
+
+/// One prompt's client method: validate, write the arguments as strings, send `prompts/get` and
+/// read the messages.
+fn prompt_method(operation: &OperationDef, generated: &Generated) -> TokenStream {
+    let module = &generated.module;
+    let named = &operation.ident;
+    let prompt = operation.mcp_tool_name();
+    let check = message_validator_ident(operation);
+    let (taken, packed) = call_message(operation, module);
+    let invalid = outbound_refusal(operation, generated);
+    let answers = answers(operation, generated);
+    let doc = method_doc(operation);
+    let refused = refusal(
+        operation,
+        generated,
+        &quote! { &rejected.to_string() },
+        &quote! { ::core::option::Option::None },
+    );
+    let not_strings = refusal(
+        operation,
+        generated,
+        &quote! { "the arguments are not text" },
+        &quote! { ::core::option::Option::None },
+    );
+    let single = matches!(operation.inputs, OperationInputs::Named(_)).then(|| {
+        let key = operation
+            .mcp
+            .prompt
+            .iter()
+            .filter_map(|held| held.arguments.first())
+            .map(|(argument, _)| wire_key(argument))
+            .next()
+            .unwrap_or_default();
+        quote! {
+            ::serde_json::Value::String(held) => {
+                arguments.insert(#key.to_owned(), ::serde_json::Value::String(held));
+            }
+        }
+    });
+    let settled = settled(operation, prompt, generated);
+    quote! {
+        #[doc = #doc]
+        pub fn #named(
+            &self #(, #taken)*
+        ) -> impl ::core::future::Future<Output = #answers> + ::core::marker::Send {
+            async move {
+                #packed
+                if let ::core::result::Result::Err(violations) = $crate::#module::#check(&sending) {
+                    #invalid
                 }
+                let message = match ::serde_json::to_value(&sending) {
+                    ::core::result::Result::Ok(message) => message,
+                    ::core::result::Result::Err(rejected) => {
+                        #refused
+                    }
+                };
+                let mut arguments = ::serde_json::Map::new();
+                match message {
+                    ::serde_json::Value::Object(members) => {
+                        arguments.extend(members.into_iter().filter(|(_, held)| held.is_string()));
+                    }
+                    #single
+                    ::serde_json::Value::Null => {}
+                    _ => {
+                        #not_strings
+                    }
+                }
+                let settled = prompted(&self.transport, &self.next, #prompt, arguments).await;
+                #settled
             }
         }
     }
@@ -384,6 +605,9 @@ fn exchange(fault: &TokenStream) -> TokenStream {
 
 /// One operation's client method: validate, write the arguments, send and read the answer.
 fn method(operation: &OperationDef, generated: &Generated, schema: &Ident) -> TokenStream {
+    if operation.is_mcp_prompt() {
+        return prompt_method(operation, generated);
+    }
     let module = &generated.module;
     let named = &operation.ident;
     let tool = operation.mcp_tool_name();
@@ -472,7 +696,12 @@ fn settled(operation: &OperationDef, tool: &str, generated: &Generated) -> Token
     };
     let success_carried = success_carried(operation, success);
     let error_carried = error_carried(operation, error);
-    let (found, success_read) = if operation.mcp.content.is_some() {
+    let (found, success_read) = if operation.is_mcp_prompt() {
+        (
+            quote!(found),
+            prompt_read(success, tool, call_error, &quote!(found)),
+        )
+    } else if operation.mcp.content.is_some() {
         (
             quote!(found),
             content_read(operation, tool, call_error, &quote!(found)),
@@ -497,6 +726,27 @@ fn settled(operation: &OperationDef, tool: &str, generated: &Generated) -> Token
                     ::core::result::Result::Err(refused) => ::core::result::Result::Err(refused),
                 }
             }
+            ::core::result::Result::Err(reported) => ::core::result::Result::Err(#call_error::Fault(reported)),
+        }
+    }
+}
+
+/// An expression that reads the messages of a prompt's result `source` into the success the
+/// operation declared: the text of the first message, or every message.
+fn prompt_read(
+    success: &Type,
+    tool: &str,
+    call_error: &TokenStream,
+    source: &TokenStream,
+) -> TokenStream {
+    let reader = if success.to_token_stream().to_string().replace(' ', "") == "String" {
+        quote! { first_text(#tool, &#source) }
+    } else {
+        quote! { read_messages(#tool, &#source["messages"]) }
+    };
+    quote! {
+        match #reader {
+            ::core::result::Result::Ok(read) => ::core::result::Result::Ok(read),
             ::core::result::Result::Err(reported) => ::core::result::Result::Err(#call_error::Fault(reported)),
         }
     }

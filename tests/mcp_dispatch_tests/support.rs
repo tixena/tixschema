@@ -3,8 +3,8 @@
 
 use crate::tests::Archive;
 use crate::{
-    BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, document_mcp,
-    export_mcp,
+    BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, counsel_mcp,
+    document_mcp, export_mcp,
 };
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -121,7 +121,13 @@ impl Lines {
     }
 }
 
-writes_to!(document_mcp, billing_mcp, export_mcp, approval_mcp);
+writes_to!(
+    document_mcp,
+    billing_mcp,
+    export_mcp,
+    approval_mcp,
+    counsel_mcp
+);
 
 /// One call the dispatcher made on an HTTP stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,7 +211,13 @@ impl Recorded {
     }
 }
 
-streams_to!(document_mcp, billing_mcp, export_mcp, approval_mcp);
+streams_to!(
+    document_mcp,
+    billing_mcp,
+    export_mcp,
+    approval_mcp,
+    counsel_mcp
+);
 
 struct Fed<Change> {
     closed: bool,

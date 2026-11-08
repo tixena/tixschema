@@ -1935,3 +1935,41 @@ mod run_kotlin_mcp;
 #[cfg(feature = "swift")]
 #[path = "service_schema_emitted_client_tests/run_swift_mcp.rs"]
 mod run_swift_mcp;
+
+/// `GuideService`, whose operations are prompts and the completion of a prompt's argument, and the
+/// rows the emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_guide_rows.rs"]
+mod mcp_guide_rows;
+
+/// The `GuideService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_guide_dispatcher.rs"]
+mod mcp_guide_dispatcher;
+
+#[cfg(test)]
+use mcp_guide_rows::{GuideService, GuideServiceSchema, guide_service_schema};
+
+/// The emitted TypeScript `mcp` server and client run by node on the guide service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_guide.rs"]
+mod run_node_mcp_guide;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the guide service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_guide.rs"]
+mod run_dart_mcp_guide;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the guide service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_guide.rs"]
+mod run_kotlin_mcp_guide;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the guide service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_guide.rs"]
+mod run_swift_mcp_guide;
