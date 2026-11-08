@@ -554,6 +554,10 @@ pub struct McpDirective {
     pub scopes: Vec<(String, proc_macro2::Span)>,
     /// `skill = "<name>"`: the operation writes the files of one skill at run time.
     pub skill: Option<(String, proc_macro2::Span)>,
+    /// `task(get = "<operation>", cancel = "<operation>", update = "<operation>")`: the tool
+    /// answers a task handle, and the operations named answer `tasks/get`, `tasks/cancel` and
+    /// `tasks/update`.
+    pub task: Option<McpTask>,
     /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
     pub title: Option<String>,
     /// `ttl_ms = <number>`: the `ttlMs` a resource read or listing answers.
@@ -566,6 +570,15 @@ pub struct McpInterview {
     /// The argument that carries the form's answers. `None` for a link.
     pub answers: Option<Ident>,
     pub arm: Ident,
+}
+
+/// The operations a task tool names, as written, and where the group was written.
+#[derive(Clone)]
+pub struct McpTask {
+    pub cancel: Option<String>,
+    pub get: Option<String>,
+    pub span: proc_macro2::Span,
+    pub update: Option<String>,
 }
 
 /// What a prompt takes: the operation's own arguments, in declaration order.
@@ -1027,6 +1040,10 @@ fn read_mcp_directive(
             read.prompt = Some(McpPrompt::default());
             return Ok(());
         }
+        if inner.path.is_ident("task") {
+            read.task = Some(read_mcp_task(&inner, operation)?);
+            return Ok(());
+        }
         if inner.path.is_ident("ttl_ms") {
             read.ttl_ms = Some(
                 inner
@@ -1188,6 +1205,34 @@ fn read_mcp_completes(
     }
 }
 
+/// Reads `task(get = "<operation>", cancel = "<operation>", update = "<operation>")`.
+fn read_mcp_task(inner: &ParseNestedMeta<'_>, operation: &Ident) -> Result<McpTask, syn::Error> {
+    let mut task = McpTask {
+        cancel: None,
+        get: None,
+        span: inner.path.span(),
+        update: None,
+    };
+    inner.parse_nested_meta(|key| {
+        for (name, slot) in [
+            ("get", &mut task.get),
+            ("cancel", &mut task.cancel),
+            ("update", &mut task.update),
+        ] {
+            if key.path.is_ident(name) {
+                *slot = Some(non_empty_mcp_text(&key, operation, &format!("task({name})"))?);
+                return Ok(());
+            }
+        }
+        Err(key.error(format!(
+            "service_schema: operation `{operation}` writes a key `task(...)` does not take\n       \
+             the keys are `get = \"<operation>\"`, `cancel = \"<operation>\"` and \
+             `update = \"<operation>\"`"
+        )))
+    })?;
+    Ok(task)
+}
+
 /// Reads `interview(arm = "<Arm>", answers = <argument>)` and `interview(arm = "<Arm>", url)`.
 fn read_mcp_interview(
     inner: &ParseNestedMeta<'_>,
@@ -1271,7 +1316,8 @@ fn unknown_mcp_key_message(operation: &Ident) -> String {
         "service_schema: operation `{operation}` writes a key `mcp(...)` does not take\n       \
          the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
          `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
-         `mime_type`, `list_resources`, `prompt`, \
+         `mime_type`, `list_resources`, `prompt`, `task(get = \"<operation>\", cancel = \"<operation>\", \
+         update = \"<operation>\")`, \
          `completes(resource = \"<operation>\", parameter = \"<argument>\")` or \
          `completes(prompt = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
          `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \

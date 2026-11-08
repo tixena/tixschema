@@ -4,7 +4,7 @@
 use super::prompts;
 use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried, writer};
-use super::{content, interview, listen, skills};
+use super::{content, interview, listen, skills, tasks};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, written,
@@ -48,6 +48,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let listing = resources::listing_fns();
     let protocol = protocol();
     let answers = answers();
+    let discovery = discovery();
     let serving = serving(&module);
     let routing = routing();
     let answer = answer(contract);
@@ -62,6 +63,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let writer_functions = writer::functions();
     let listen_types = listen::types();
     let listen_functions = listen::functions();
+    let listen_streaming = listen::streaming();
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -77,6 +79,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #protocol
                 #listing
                 #answers
+                #discovery
                 #serving
                 #routing
                 #serve_stream
@@ -89,6 +92,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #http_serving
                 #writer_functions
                 #listen_functions
+                #listen_streaming
             };
         }
     }
@@ -101,7 +105,11 @@ fn catalog(
     skilled: bool,
 ) -> TokenStream {
     let parts = resources::catalog_parts(held, skilled);
-    let extensions = skilled.then(|| quote! { "io.modelcontextprotocol/skills": {} });
+    let extensions: Vec<TokenStream> = skilled
+        .then(|| quote! { "io.modelcontextprotocol/skills": {} })
+        .into_iter()
+        .chain(tasks::extension(service))
+        .collect();
     let capabilities = parts.capabilities;
     let prompt_capability = prompts::capability(service);
     let listed_prompts = prompts::catalog_prompts(service);
@@ -111,7 +119,7 @@ fn catalog(
         pub fn catalog() -> ::serde_json::Value {
             ::serde_json::json!({
                 "capabilities": { "tools": {} #capabilities #prompt_capability },
-                "extensions": { #extensions },
+                "extensions": { #(#extensions),* },
                 "skills": $crate::#schema::mcp_skills(),
                 "tools": $crate::#schema::mcp_tools(),
                 #listed_prompts
@@ -165,9 +173,13 @@ fn route(
             }
         }
     });
-    let resource_helpers =
-        (held.any() || prompts::any(service) || !skills::dynamic(service).is_empty())
-            .then(|| resources::helpers(held));
+    let resource_helpers = (held.any()
+        || prompts::any(service)
+        || tasks::any(service)
+        || !skills::dynamic(service).is_empty())
+    .then(|| resources::helpers(held));
+    let task_helpers = tasks::any(service).then(tasks::helpers);
+    let task_arms = tasks::arms(service, module);
     let skill_reads = skills::read_blocks(service, schema, module);
     let skill_get = skills::get_arm(service, schema);
     let reads = resources::read_arm(held, module, &skill_reads);
@@ -182,6 +194,7 @@ fn route(
         #base64
         #blocks
         #resource_helpers
+        #task_helpers
 
         /// One request this service owns: `tools/call`, `resources/read`, `prompts/get`, its own
         /// page of `resources/list` and `completion/complete`. `None` for a request it does not own,
@@ -201,6 +214,7 @@ fn route(
                 #tool_call
                 #reads
                 #getting
+                #task_arms
                 #skill_get
                 #listing
                 #completing
@@ -388,7 +402,9 @@ fn settled(
     };
     let (success_pattern, ordinary_success) =
         carried_arm(&success_carried(operation, success), tool, false);
-    let success_arm = if operation.mcp.content.is_some() {
+    let success_arm = if operation.mcp.task.is_some() {
+        tasks::success_arm(tool)
+    } else if operation.mcp.content.is_some() {
         content::success_arm(operation, &ordinary_success)
     } else {
         ordinary_success
@@ -652,6 +668,7 @@ fn answers() -> TokenStream {
                 "resources/read" => params["uri"].as_str(),
                 "prompts/get" => params["name"].as_str(),
                 "skills/get" => params["name"].as_str().or(params["uri"].as_str()),
+                "tasks/get" | "tasks/cancel" | "tasks/update" => params["taskId"].as_str(),
                 _ => params["argument"]["name"].as_str().and(
                     if params["ref"]["type"] == "ref/prompt" {
                         params["ref"]["name"].as_str()
@@ -695,6 +712,19 @@ fn answers() -> TokenStream {
                 }
             }
             result
+        }
+    }
+}
+
+/// What `server/discover` and the list methods answer from the catalogs of an endpoint.
+fn discovery() -> TokenStream {
+    quote! {
+        /// Whether any service of the endpoint offers the tasks extension.
+        fn tasked(endpoint: &McpEndpoint) -> bool {
+            endpoint
+                .catalogs
+                .iter()
+                .any(|catalog| catalog()["extensions"].get("io.modelcontextprotocol/tasks").is_some())
         }
 
         fn discovered(instructions: ::core::option::Option<&str>, endpoint: &McpEndpoint, listens: bool) -> ::serde_json::Value {
@@ -776,6 +806,16 @@ fn serving(module: &Ident) -> TokenStream {
                 "skills/list" => ::core::result::Result::Ok(listed(endpoint, "skills")),
                 "resources/list" => return Begun::Routed(request),
                 "subscriptions/listen" if listens => return Begun::Routed(request),
+                method @ ("tasks/get" | "tasks/cancel" | "tasks/update") if tasked(endpoint) => {
+                    if named(&request["params"], method).is_some() {
+                        return Begun::Routed(request);
+                    }
+                    ::core::result::Result::Err(error_object(
+                        -32602,
+                        &format!("Invalid params: {method} names nothing to answer"),
+                        ::core::option::Option::None,
+                    ))
+                }
                 method @ ("tools/call" | "resources/read" | "prompts/get" | "completion/complete"
                 | "skills/get") => {
                     if named(&request["params"], method).is_some() {
@@ -810,6 +850,7 @@ fn serving(module: &Ident) -> TokenStream {
                     "resources/read" => "Resource not found",
                     "prompts/get" => "Unknown prompt",
                     "skills/get" => "Skill not found",
+                    "tasks/get" | "tasks/cancel" | "tasks/update" => "Unknown task",
                     _ => "Unknown completion",
                 };
                 ::core::result::Result::Err(error_object(
@@ -1154,7 +1195,7 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
                 ::core::result::Result::Ok(ctx) => ctx,
                 ::core::result::Result::Err(denied) => return ::core::option::Option::Some(denial_response(&denied, settings, request)),
             };
-            match admitted(request, listens) {
+            match admitted(request, listens, &ALONE) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(refused),
                 ::core::result::Result::Ok(text) => {
                     match started(text, &alone(), ::core::option::Option::None, listens) {
@@ -1482,7 +1523,7 @@ fn http_entry() -> TokenStream {
     quote! {
         /// The rules a request meets once `admit` let it through: the text of its body where they
         /// let it through, and the response that refuses it where they do not.
-        fn admitted(request: &McpHttpRequest, listens: bool) -> ::core::result::Result<&str, McpHttpResponse> {
+        fn admitted<'request>(request: &'request McpHttpRequest, listens: bool, endpoint: &McpEndpoint) -> ::core::result::Result<&'request str, McpHttpResponse> {
             let ::core::result::Result::Ok(text) = ::core::str::from_utf8(&request.body) else {
                 return ::core::result::Result::Err(json_response(
                     400,
@@ -1506,7 +1547,9 @@ fn http_entry() -> TokenStream {
                 return ::core::result::Result::Err(json_response(400, &refused));
             }
             let method = message["method"].as_str().unwrap_or_default();
-            if !(METHODS.contains(&method) || (listens && method == "subscriptions/listen")) {
+            let task_method = matches!(method, "tasks/get" | "tasks/cancel" | "tasks/update");
+            let known = if task_method { tasked(endpoint) } else { METHODS.contains(&method) };
+            if !(known || (listens && method == "subscriptions/listen")) {
                 return ::core::result::Result::Err(json_response(
                     404,
                     &failed(
@@ -1601,7 +1644,7 @@ fn http_serving() -> TokenStream {
                 ::core::result::Result::Ok(ctx) => ctx,
                 ::core::result::Result::Err(denied) => return ::core::option::Option::Some(denial_response(&denied, settings, request)),
             };
-            match admitted(request, listens) {
+            match admitted(request, listens, server.endpoint) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(refused),
                 ::core::result::Result::Ok(text) => {
                     match started(text, server, ::core::option::Option::None, listens) {

@@ -106,7 +106,7 @@ fn kept_alive() -> Value {
 }
 
 fn moved() -> Value {
-    json!({ "kind": "task", "taskId": "export:1" })
+    json!({ "kind": "task", "taskId": "export:1", "state": {} })
 }
 
 /// The requests of a stdio host, each with the changes its source is handed.
@@ -247,6 +247,7 @@ fn change_of(spec: &Value) -> McpChange {
         },
         "task" => McpChange::Task {
             task_id: spec["taskId"].as_str().unwrap().to_owned(),
+            state: spec["state"].clone(),
         },
         _ => McpChange::KeepAlive,
     }

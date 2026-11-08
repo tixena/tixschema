@@ -15,7 +15,11 @@ pub(super) fn types() -> TokenStream {
             /// One resource changed.
             ResourceUpdated { uri: ::std::string::String },
             /// One task moved.
-            Task { task_id: ::std::string::String },
+            Task {
+                task_id: ::std::string::String,
+                /// Where the task stands now, as `McpTaskState` writes it.
+                state: ::serde_json::Value,
+            },
             /// Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio.
             KeepAlive,
         }
@@ -44,11 +48,17 @@ pub(super) fn functions() -> TokenStream {
                     return ::core::result::Result::Err(invalid("`resourceSubscriptions` is not an array of strings"));
                 }
             }
+            if let ::core::option::Option::Some(ids) = filter.get("taskIds") {
+                let strings = ids.as_array().is_some_and(|held| held.iter().all(::serde_json::Value::is_string));
+                if !strings {
+                    return ::core::result::Result::Err(invalid("`taskIds` is not an array of strings"));
+                }
+            }
             ::core::result::Result::Ok(filter.clone())
         }
 
-        /// The subset of `filter` this endpoint honors: resources only, because the tool list is
-        /// fixed at compile time and no prompts are offered.
+        /// The subset of `filter` this endpoint honors: resources and tasks only, because the tool
+        /// list is fixed at compile time and no prompts are offered.
         fn honored(filter: &::serde_json::Value, endpoint: &McpEndpoint) -> ::serde_json::Value {
             let mut agreed = ::serde_json::Map::new();
             let offers_resources = endpoint
@@ -65,7 +75,35 @@ pub(super) fn functions() -> TokenStream {
                     }
                 }
             }
+            if tasked(endpoint) {
+                if let ::core::option::Option::Some(::serde_json::Value::Array(ids)) = filter.get("taskIds") {
+                    if !ids.is_empty() {
+                        agreed.insert("taskIds".to_owned(), ::serde_json::Value::Array(ids.clone()));
+                    }
+                }
+            }
             ::serde_json::Value::Object(agreed)
+        }
+    }
+}
+
+pub(super) fn streaming() -> TokenStream {
+    quote! {
+        /// A task state as a task method and a notification write it: under the full task id, and
+        /// the result of a completed task as the `CallToolResult` the starting tool would have
+        /// answered.
+        fn task_view(task_id: &str, state: ::serde_json::Value) -> ::serde_json::Value {
+            let mut state = if state.is_object() { state } else { ::serde_json::json!({}) };
+            state["taskId"] = ::serde_json::Value::String(task_id.to_owned());
+            if let ::core::option::Option::Some(result) = state.get("result").cloned() {
+                state["result"] = ::serde_json::json!({
+                    "content": [{ "type": "text", "text": canonical(&result) }],
+                    "isError": false,
+                    "resultType": "complete",
+                    "structuredContent": result,
+                });
+            }
+            state
         }
 
         /// A notification of a subscription stream.
@@ -97,6 +135,10 @@ pub(super) fn functions() -> TokenStream {
                 .as_array()
                 .map(|uris| uris.iter().filter_map(|uri| uri.as_str().map(::std::borrow::ToOwned::to_owned)).collect())
                 .unwrap_or_default();
+            let followed: ::std::vec::Vec<::std::string::String> = agreed["taskIds"]
+                .as_array()
+                .map(|ids| ids.iter().filter_map(|id| id.as_str().map(::std::borrow::ToOwned::to_owned)).collect())
+                .unwrap_or_default();
             loop {
                 let mut next = ::core::pin::pin!(changes());
                 let change = ::core::future::poll_fn(|cx| {
@@ -119,7 +161,11 @@ pub(super) fn functions() -> TokenStream {
                             call.queue(subscribed(id, "notifications/resources/updated", ::serde_json::json!({ "uri": uri })));
                         }
                     }
-                    ::core::option::Option::Some(::core::option::Option::Some(McpChange::Task { .. })) => {}
+                    ::core::option::Option::Some(::core::option::Option::Some(McpChange::Task { task_id, state })) => {
+                        if followed.contains(&task_id) {
+                            call.queue(subscribed(id, "notifications/tasks", task_view(&task_id, state)));
+                        }
+                    }
                     ::core::option::Option::Some(::core::option::Option::Some(McpChange::KeepAlive)) => call.queue(Queued::KeepAlive),
                 }
             }

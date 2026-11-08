@@ -96,6 +96,7 @@ macro_rules! rust_listens_alike {
                 },
                 $module::McpChange::Task {
                     task_id: "export:1".to_owned(),
+                    state: ::serde_json::json!({}),
                 },
                 $module::McpChange::KeepAlive,
             ])

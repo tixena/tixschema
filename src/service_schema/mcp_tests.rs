@@ -45,6 +45,26 @@ const INTERVIEWS: &str = r#"
     }
 "#;
 
+const TASKS: &str = r#"
+    pub trait JobService<Ctx> {
+        /// Starts the export of one folder.
+        #[service_schema_op(mcp(task(get = "export_status", cancel = "cancel_export", update = "answer_export")))]
+        async fn start_export(&self, ctx: &Ctx, req: ExportRequest)
+            -> Result<job_service_schema::McpTask, ExportError>;
+
+        /// Answers where one export stands.
+        async fn export_status(&self, ctx: &Ctx, task_id: String)
+            -> Result<job_service_schema::McpTaskState<ExportReport>, ExportError>;
+
+        /// Asks one export to stop.
+        async fn cancel_export(&self, ctx: &Ctx, task_id: String) -> Result<(), ExportError>;
+
+        /// Answers a question an export asked.
+        async fn answer_export(&self, ctx: &Ctx, task_id: String, key: String, action: String, content: Option<String>)
+            -> Result<(), ExportError>;
+    }
+"#;
+
 const RESOURCES: &str = r#"
     pub trait DocumentService<Ctx> {
         /// The guide.
@@ -229,7 +249,7 @@ fn an_empty_title_name_or_icon_is_refused_naming_the_operation() {
 fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
     let reported = parse_refusals(
         "pub trait DocumentService<Ctx> {
-            #[service_schema_op(mcp(task))]
+            #[service_schema_op(mcp(sampling))]
             async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
                 -> Result<VersionResponse, VersionError>;
         }",
@@ -240,7 +260,8 @@ fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
             "service_schema: operation `get_version` writes a key `mcp(...)` does not take\n       \
              the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
              `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
-             `mime_type`, `list_resources`, `prompt`, \
+             `mime_type`, `list_resources`, `prompt`, `task(get = \"<operation>\", cancel = \"<operation>\", \
+             update = \"<operation>\")`, \
              `completes(resource = \"<operation>\", parameter = \"<argument>\")` or \
              `completes(prompt = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
              `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
@@ -1193,4 +1214,91 @@ fn a_prompt_completion_that_names_no_prompt_or_no_argument_is_refused() {
              name an argument of the prompt, as the operation spells it"
         ]
     );
+}
+
+#[test]
+fn a_task_is_read_with_the_operations_it_names_and_stays_a_tool() {
+    let read = service(TASKS);
+    let task = read.operations[0].mcp.task.as_ref().unwrap();
+    assert_eq!(task.get.as_deref(), Some("export_status"));
+    assert_eq!(task.cancel.as_deref(), Some("cancel_export"));
+    assert_eq!(task.update.as_deref(), Some("answer_export"));
+    assert!(read.operations.iter().all(OperationDef::is_mcp_tool));
+    assert_eq!(mcp_refusals_of(TASKS), Vec::<String>::new());
+}
+
+#[test]
+fn a_task_is_held_to_its_shape() {
+    let broken = |start: &str, rest: &str| {
+        format!(
+            "pub trait JobService<Ctx> {{
+                /// Starts the export of one folder.
+                #[service_schema_op(mcp({start}))]
+                async fn start_export(&self, ctx: &Ctx, req: ExportRequest)
+                    -> Result<job_service_schema::McpTask, ExportError>;
+                {rest}
+            }}"
+        )
+    };
+    let status = "/// Answers where one export stands.
+        async fn export_status(&self, ctx: &Ctx, task_id: String)
+            -> Result<job_service_schema::McpTaskState<ExportReport>, ExportError>;";
+    for (written, rest, said) in [
+        (
+            "task(cancel = \"cancel_export\")",
+            "",
+            "writes `task(...)` without `get`",
+        ),
+        (
+            "task(get = \"nothing\")",
+            "",
+            "the service has no such operation",
+        ),
+        (
+            "task(get = \"export_status\", cancel = \"export_status\")",
+            status,
+            "task(cancel = \"export_status\")",
+        ),
+        (
+            "task(get = \"export_status\", update = \"export_status\")",
+            status,
+            "not a tool of the right shape",
+        ),
+    ] {
+        let reported = mcp_refusals_of(&broken(written, rest));
+        assert_eq!(reported.len(), 1, "{reported:?}");
+        assert!(reported[0].contains(said), "{reported:?}");
+    }
+}
+
+#[test]
+fn a_handle_with_no_task_group_and_a_state_nothing_names_are_refused() {
+    let reported = mcp_refusals_of(
+        "pub trait JobService<Ctx> {
+            /// Starts the export of one folder.
+            async fn start_export(&self, ctx: &Ctx, req: ExportRequest)
+                -> Result<job_service_schema::McpTask, ExportError>;
+
+            /// Answers where one export stands.
+            async fn export_status(&self, ctx: &Ctx, task_id: String)
+                -> Result<job_service_schema::McpTaskState<ExportReport>, ExportError>;
+        }",
+    );
+    assert_eq!(reported.len(), 2, "{reported:?}");
+    assert!(reported[0].contains("answers an `McpTask` and writes no `task(...)`"));
+    assert!(reported[1].contains("answers an `McpTaskState` and no operation names it"));
+}
+
+#[test]
+fn a_task_key_that_is_unknown_is_refused_at_parse() {
+    let reported = parse_refusals(
+        r#"pub trait JobService<Ctx> {
+            /// Starts the export of one folder.
+            #[service_schema_op(mcp(task(get = "export_status", pace = 3)))]
+            async fn start_export(&self, ctx: &Ctx, req: ExportRequest)
+                -> Result<job_service_schema::McpTask, ExportError>;
+        }"#,
+    );
+    assert_eq!(reported.len(), 1, "{reported:?}");
+    assert!(reported[0].contains("a key `task(...)` does not take"));
 }

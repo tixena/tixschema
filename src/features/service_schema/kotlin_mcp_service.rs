@@ -306,11 +306,34 @@ private fun @P@McpListedSkills(endpoint: @N@McpEndpoint): JsonObject {
   }
 }
 
+/** Whether any service of the endpoint offers the tasks extension. */
+private fun @P@McpTasked(endpoint: @N@McpEndpoint): Boolean = endpoint.catalogs.any { catalog ->
+  catalog["capabilities"].orEmpty().any {
+    ((Json.parseToJsonElement(it) as? JsonObject)?.get("extensions") as? JsonObject)?.containsKey("io.modelcontextprotocol/tasks") == true
+  }
+}
+
+/** A task state as a task method and a notification write it: under the full task id, with a completed task's result as the `CallToolResult` the starting tool would have answered. */
+private fun @P@McpTaskView(taskId: String, state: JsonObject): Map<String, JsonElement> {
+  val view = state.toMutableMap()
+  view["taskId"] = JsonPrimitive(taskId)
+  state["result"]?.let { result ->
+    view["result"] = buildJsonObject {
+      put("content", buildJsonArray { add(buildJsonObject { put("text", @P@McpServeText(result)); put("type", "text") }) })
+      put("isError", false)
+      put("resultType", "complete")
+      put("structuredContent", result)
+    }
+  }
+  return view
+}
+
 private fun @P@McpNamed(params: JsonObject, method: String): String? {
   val written = when (method) {
     "tools/call", "prompts/get" -> params["name"]
     "resources/read" -> params["uri"]
     "skills/get" -> params["name"]?.takeIf { it is JsonPrimitive && it.isString } ?: params["uri"]
+    "tasks/get", "tasks/cancel", "tasks/update" -> params["taskId"]
     else -> if (((params["argument"] as? JsonObject)?.get("name") as? JsonPrimitive)?.isString == true) {
       val reference = params["ref"] as? JsonObject
       if ((reference?.get("type") as? JsonPrimitive)?.content == "ref/prompt") reference["name"] else reference?.get("uri")
@@ -453,8 +476,8 @@ sealed interface @N@McpChange {
   /** One resource changed. */
   data class ResourceUpdated(val uri: String) : @N@McpChange
 
-  /** One task moved. */
-  data class Task(val taskId: String) : @N@McpChange
+  /** One task moved: where it stands now, as [McpTaskState] writes it. */
+  data class Task(val taskId: String, val state: JsonObject) : @N@McpChange
 
   /** Keeps an event stream open: the comment line `:` on HTTP, nothing on stdio. */
   object KeepAlive : @N@McpChange
@@ -543,6 +566,12 @@ private fun @P@McpBegin(
       if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
       @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
+    "tasks/get", "tasks/cancel", "tasks/update" -> if (@P@McpTasked(endpoint)) {
+      if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
+      @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
+    } else {
+      @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
+    }
     else -> @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
   }
   return @P@McpBegun.Answered(@P@McpResponseText(id, answered, serverName))
@@ -556,6 +585,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverN
     "resources/read" -> "Resource not found"
     "prompts/get" -> "Unknown prompt"
     "skills/get" -> "Skill not found"
+    "tasks/get", "tasks/cancel", "tasks/update" -> "Unknown task"
     else -> "Unknown completion"
   }
   val resolved = answered ?: @P@McpErrorOf(
@@ -638,6 +668,10 @@ private suspend fun @P@McpListen(
   if (uris != null && !(uris is JsonArray && uris.all { it is JsonPrimitive && it.isString })) {
     return invalid("`resourceSubscriptions` is not an array of strings")
   }
+  val tasks = filter["taskIds"]
+  if (tasks != null && !(tasks is JsonArray && tasks.all { it is JsonPrimitive && it.isString })) {
+    return invalid("`taskIds` is not an array of strings")
+  }
   val agreed = mutableMapOf<String, JsonElement>()
   val offersResources = endpoint.catalogs.any { catalog ->
     catalog["capabilities"].orEmpty().any { (Json.parseToJsonElement(it) as? JsonObject)?.containsKey("resources") == true }
@@ -646,6 +680,7 @@ private suspend fun @P@McpListen(
     if (listed?.toString() == "true") agreed["resourcesListChanged"] = JsonPrimitive(true)
     if (uris is JsonArray && uris.isNotEmpty()) agreed["resourceSubscriptions"] = uris
   }
+  if (@P@McpTasked(endpoint) && tasks is JsonArray && tasks.isNotEmpty()) agreed["taskIds"] = tasks
   fun notified(method: String, given: Map<String, JsonElement>): String =
     @P@McpServeText(
       buildJsonObject {
@@ -656,6 +691,7 @@ private suspend fun @P@McpListen(
     )
   val lists = agreed.containsKey("resourcesListChanged")
   val watched = (agreed["resourceSubscriptions"] as? JsonArray).orEmpty().map { (it as JsonPrimitive).content }.toSet()
+  val followed = (agreed["taskIds"] as? JsonArray).orEmpty().map { (it as JsonPrimitive).content }.toSet()
   if (!call.write(notified("notifications/subscriptions/acknowledged", mapOf("notifications" to JsonObject(agreed))))) return ended
   while (true) {
     val (stopped, change) = kotlinx.coroutines.coroutineScope {
@@ -674,7 +710,8 @@ private suspend fun @P@McpListen(
       is @N@McpChange.ResourceUpdated ->
         change.uri !in watched || call.write(notified("notifications/resources/updated", mapOf("uri" to JsonPrimitive(change.uri))))
       is @N@McpChange.KeepAlive -> call.keepAlive()
-      is @N@McpChange.Task -> true
+      is @N@McpChange.Task ->
+        change.taskId !in followed || call.write(notified("notifications/tasks", @P@McpTaskView(change.taskId, change.state)))
     }
     if (!written) return ended
   }
@@ -1134,7 +1171,7 @@ private fun @P@McpBeforeAdmit(request: @N@McpHttpRequest, settings: @N@McpHttpSe
   return null
 }
 
-private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean): Pair<String?, @N@McpHttpResponse?> {
+private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean, endpoint: @N@McpEndpoint): Pair<String?, @N@McpHttpResponse?> {
   val text = try {
     Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(request.body)).toString()
   } catch (rejected: Exception) {
@@ -1148,7 +1185,8 @@ private fun @P@McpAfterAdmit(request: @N@McpHttpRequest, listens: Boolean): Pair
   val unchecked = @P@McpChecked(message)
   if (unchecked != null) return null to @P@McpJsonResponse(400, unchecked)
   val method = (message["method"] as JsonPrimitive).content
-  if (method !in @P@McpMethods && !(listens && method == "subscriptions/listen")) {
+  val known = if (method in setOf("tasks/get", "tasks/cancel", "tasks/update")) @P@McpTasked(endpoint) else method in @P@McpMethods
+  if (!known && !(listens && method == "subscriptions/listen")) {
     return null to @P@McpJsonResponse(
       404,
       @P@McpFailed(message["id"], @P@McpErrorObject(-32601, "Method not found: $method", null)),
@@ -1201,7 +1239,7 @@ suspend fun @P@McpServeHttp(
     is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
     is @N@McpAdmitted.Caller -> admitted.handlers
   }
-  val (text, refused) = @P@McpAfterAdmit(request, changes != null)
+  val (text, refused) = @P@McpAfterAdmit(request, changes != null, endpoint)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
   val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, changes != null)) {
     is @P@McpBegun.Answered -> return @P@McpHttpAnswer(begun.text)
@@ -1264,6 +1302,133 @@ fun create@N@McpHttpDispatcher(
   return { request, stream ->
     @P@McpServeHttp(request, settings, stream, @P@McpServerName, @P@McpInstructions, endpoint, admit, changes) { caller, _, method, params ->
       create@N@McpRoute(caller)(method, params)
+    }
+  }
+}"#;
+
+/// The types an `mcp(task(...))` operation answers, as the service module declares them in Rust:
+/// the handle of a task, and where a task stands.
+pub const TASK_TYPE: &str = r#"/** The handle of a task: the id the application keeps it under, and when it started. */
+@Serializable(with = McpTaskSerializer::class)
+data class McpTask(
+  val taskId: String,
+  val createdAt: String,
+  val lastUpdatedAt: String,
+  val ttlMs: Long? = null,
+  val pollIntervalMs: Long? = null,
+)
+
+/** Why a task failed, as the specification writes an error. */
+data class McpTaskError(val code: Int, val message: String, val data: JsonElement? = null)
+
+/** Where a task stands: what `tasks/get` and the operation named in `task(get = ...)` answer. */
+@Serializable(with = McpTaskStateSerializer::class)
+sealed interface McpTaskState<out T> {
+  val task: McpTask
+
+  /** The work goes on. */
+  data class Working(override val task: McpTask) : McpTaskState<Nothing>
+
+  /** The work waits for the user: each request is an `elicitation/create` request. */
+  data class InputRequired(override val task: McpTask, val inputRequests: Map<String, JsonElement>) : McpTaskState<Nothing>
+
+  /** The work ended: [result] is what the starting tool would have answered. */
+  data class Completed<out T>(override val task: McpTask, val result: T) : McpTaskState<T>
+
+  /** The work failed. */
+  data class Failed(override val task: McpTask, val error: McpTaskError) : McpTaskState<Nothing>
+
+  /** The work was cancelled. */
+  data class Cancelled(override val task: McpTask) : McpTaskState<Nothing>
+}
+
+/** Reads and writes a [McpTask] as the specification writes it; the handle of a task is `working`. */
+object McpTaskSerializer : KSerializer<McpTask> {
+  override val descriptor: SerialDescriptor = buildClassSerialDescriptor("McpTask")
+
+  private fun text(from: JsonObject, key: String): String =
+    (from[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw SerializationException("a task holds no `" + key + "`")
+
+  private fun number(from: JsonObject, key: String): Long? = (from[key] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()
+
+  override fun serialize(encoder: Encoder, value: McpTask) {
+    (encoder as JsonEncoder).encodeJsonElement(
+      buildJsonObject {
+        put("createdAt", value.createdAt)
+        put("lastUpdatedAt", value.lastUpdatedAt)
+        value.pollIntervalMs?.let { put("pollIntervalMs", it) }
+        put("status", "working")
+        put("taskId", value.taskId)
+        put("ttlMs", value.ttlMs?.let { JsonPrimitive(it) } ?: JsonNull)
+      },
+    )
+  }
+
+  override fun deserialize(decoder: Decoder): McpTask = read((decoder as JsonDecoder).decodeJsonElement())
+
+  fun read(element: JsonElement): McpTask {
+    val task = element as? JsonObject ?: throw SerializationException("a task is not an object")
+    return McpTask(text(task, "taskId"), text(task, "createdAt"), text(task, "lastUpdatedAt"), number(task, "ttlMs"), number(task, "pollIntervalMs"))
+  }
+}
+
+/** Reads and writes a [McpTaskState] as the specification writes it; [result] reads and writes a completed task's result. */
+class McpTaskStateSerializer<T>(private val result: KSerializer<T>) : KSerializer<McpTaskState<T>> {
+  override val descriptor: SerialDescriptor = buildClassSerialDescriptor("McpTaskState")
+
+  override fun serialize(encoder: Encoder, value: McpTaskState<T>) {
+    val output = encoder as JsonEncoder
+    val members = (output.json.encodeToJsonElement(McpTaskSerializer, value.task) as JsonObject).toMutableMap()
+    when (value) {
+      is McpTaskState.Working -> members["status"] = JsonPrimitive("working")
+      is McpTaskState.InputRequired -> {
+        members["status"] = JsonPrimitive("input_required")
+        members["inputRequests"] = JsonObject(value.inputRequests)
+      }
+      is McpTaskState.Completed -> {
+        members["status"] = JsonPrimitive("completed")
+        members["result"] = output.json.encodeToJsonElement(result, value.result)
+      }
+      is McpTaskState.Failed -> {
+        members["status"] = JsonPrimitive("failed")
+        members["error"] = buildJsonObject {
+          put("code", value.error.code)
+          value.error.data?.let { put("data", it) }
+          put("message", value.error.message)
+        }
+      }
+      is McpTaskState.Cancelled -> members["status"] = JsonPrimitive("cancelled")
+    }
+    output.encodeJsonElement(JsonObject(members))
+  }
+
+  override fun deserialize(decoder: Decoder): McpTaskState<T> {
+    val input = decoder as JsonDecoder
+    val held = input.decodeJsonElement() as? JsonObject ?: throw SerializationException("a task is not an object")
+    val task = McpTaskSerializer.read(held)
+    return when ((held["status"] as? JsonPrimitive)?.takeIf { it.isString }?.content) {
+      "working" -> McpTaskState.Working(task)
+      "input_required" -> McpTaskState.InputRequired(
+        task,
+        held["inputRequests"] as? JsonObject ?: throw SerializationException("a task holds no `inputRequests`"),
+      )
+      "completed" -> McpTaskState.Completed(
+        task,
+        input.json.decodeFromJsonElement(result, held["result"] ?: throw SerializationException("a task holds no `result`")),
+      )
+      "failed" -> {
+        val error = held["error"] as? JsonObject ?: throw SerializationException("a task holds no `error`")
+        McpTaskState.Failed(
+          task,
+          McpTaskError(
+            (error["code"] as? JsonPrimitive)?.content?.toIntOrNull() ?: throw SerializationException("an error holds no `code`"),
+            (error["message"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw SerializationException("an error holds no `message`"),
+            error["data"],
+          ),
+        )
+      }
+      "cancelled" -> McpTaskState.Cancelled(task)
+      else -> throw SerializationException("a task of a status this client does not read")
     }
   }
 }"#;
@@ -1422,6 +1587,9 @@ pub const SKILL_FILES_MARKER: &str = "@MCP_SKILL_FILES@";
 /// Where the emitted text lists the capabilities, as Kotlin literals of their JSON text.
 const CAPABILITIES_MARKER: &str = "@MCP_CAPABILITIES@";
 
+/// A task method's case in the route of `tasks/...`, and the function it calls.
+type TaskCase = (String, String);
+
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     kotlin_tuple_naming(TupleNaming::Named);
     let service = &declared.enveloped();
@@ -1549,6 +1717,38 @@ fn prompt_scopes(table: &ScopeTable) -> String {
     text
 }
 
+/// The scopes the task methods need, by the tool that started the task.
+fn task_scopes(table: &ScopeTable) -> String {
+    let list = |scopes: &[String]| {
+        format!(
+            "listOf({})",
+            scopes
+                .iter()
+                .map(|scope| kotlin_quoted(scope))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let mut text = String::new();
+    for (method, rows) in &table.tasks {
+        let _ = writeln!(
+            text,
+            "  if (method == {} && name != null) {{\n    when (name.substringBefore(':')) {{",
+            kotlin_quoted(method)
+        );
+        for (tool, scopes) in rows {
+            let _ = writeln!(
+                text,
+                "      {} -> return {}",
+                kotlin_quoted(tool),
+                list(scopes)
+            );
+        }
+        text.push_str("    }\n  }\n");
+    }
+    text
+}
+
 fn scopes_table(table: &ScopeTable) -> String {
     let list = |scopes: &[String]| {
         format!(
@@ -1593,6 +1793,7 @@ fn scopes_table(table: &ScopeTable) -> String {
         text.push_str("    }\n  }\n");
     }
     text.push_str(&prompt_scopes(table));
+    text.push_str(&task_scopes(table));
     if !table.reads.is_empty() {
         text.push_str("  if (method == \"resources/read\" && name != null) {\n");
         for (uri, scopes) in &table.reads {
@@ -1837,6 +2038,15 @@ fn route(
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
         dispatch.push_str("      \"prompts/get\" -> @P@McpGetPrompt(handlers, mcpParams)\n");
     }
+    let tasked = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some());
+    if tasked {
+        dispatch.push_str(
+            "      \"tasks/get\", \"tasks/cancel\", \"tasks/update\" -> @P@McpTasks(handlers, mcpMethod, mcpParams)\n",
+        );
+    }
     if !held.completions.is_empty() {
         dispatch.push_str("      \"completion/complete\" -> @P@McpComplete(handlers, mcpParams)\n");
     }
@@ -1854,6 +2064,173 @@ fn route(
         text.push_str(TOOL_TAIL);
     }
     text.push_str(&resource_functions(service, held, prefix, named, fields));
+    if tasked {
+        text.push_str(&task_functions(service, prefix, named, fields));
+    }
+    text
+}
+
+/// The case and the function of `tasks/get` for the task tool `start`, calling `target`.
+fn task_get(
+    (prefix, named, fields): (&str, &str, &str),
+    start: &OperationDef,
+    target: &OperationDef,
+) -> TaskCase {
+    let tool = start.mcp_tool_name();
+    let op = pascal(start);
+    let success = format!(
+        "        {prefix}McpResultOf(JsonObject({prefix}McpTaskView(mcpTask, mcpEncoded as JsonObject) + mapOf(\"resultType\" to JsonPrimitive(\"complete\"))))"
+    );
+    let refusal = kotlin_quoted(&format!("{tool}: the service refused the task"));
+    let function = format!(
+        "\n\nprivate suspend fun {prefix}McpTaskGet{op}(handlers: {named}Handlers, mcpTask: String, mcpHeld: String): JsonObject {{\n{}\n",
+        resource_body(
+            target,
+            prefix,
+            named,
+            fields,
+            "JsonPrimitive(mcpHeld)",
+            &refusal,
+            &success
+        )
+    );
+    let case = format!(
+        "    \"tasks/get\" to {} -> {prefix}McpTaskGet{op}(handlers, mcpTask, mcpHeld)\n",
+        kotlin_quoted(tool)
+    );
+    (case, function)
+}
+
+/// The case and the function of `tasks/cancel` for the task tool `start`, calling `target`.
+fn task_cancel(
+    (prefix, named, fields): (&str, &str, &str),
+    start: &OperationDef,
+    target: &OperationDef,
+) -> TaskCase {
+    let tool = start.mcp_tool_name();
+    let op = pascal(start);
+    let refusal = kotlin_quoted(&format!("{tool}: the service refused to cancel the task"));
+    let success = format!("        {prefix}McpResultOf(JsonObject(emptyMap()))");
+    let function = format!(
+        "\n\nprivate suspend fun {prefix}McpTaskCancel{op}(handlers: {named}Handlers, mcpHeld: String): JsonObject {{\n{}\n",
+        resource_body(
+            target,
+            prefix,
+            named,
+            fields,
+            "JsonPrimitive(mcpHeld)",
+            &refusal,
+            &success
+        )
+    );
+    let case = format!(
+        "    \"tasks/cancel\" to {} -> {prefix}McpTaskCancel{op}(handlers, mcpHeld)\n",
+        kotlin_quoted(tool)
+    );
+    (case, function)
+}
+
+/// The case and the functions of `tasks/update` for the task tool `start`, calling `target`.
+fn task_update(
+    (prefix, named, fields): (&str, &str, &str),
+    start: &OperationDef,
+    target: &OperationDef,
+) -> Option<TaskCase> {
+    let tool = start.mcp_tool_name();
+    let op = pascal(start);
+    let OperationInputs::Generated(members) = &target.inputs else {
+        return None;
+    };
+    let keys: Vec<String> = members
+        .iter()
+        .map(|(field, _)| kotlin_quoted(&wire_key(field)))
+        .collect();
+    let [id_key, key_key, action_key, content_key] = keys.as_slice() else {
+        return None;
+    };
+    let refusal = kotlin_quoted(&format!("{tool}: the service refused the answer"));
+    let success = format!("        {prefix}McpResultOf(JsonObject(emptyMap()))");
+    let mut function = format!(
+        "\n\nprivate suspend fun {prefix}McpTaskAnswer{op}(handlers: {named}Handlers, mcpMessage: JsonObject): JsonObject {{\n{}\n",
+        resource_body(
+            target,
+            prefix,
+            named,
+            fields,
+            "mcpMessage",
+            &refusal,
+            &success
+        )
+    );
+    let _ = write!(
+        function,
+        "\n\nprivate suspend fun {prefix}McpTaskUpdate{op}(handlers: {named}Handlers, mcpHeld: String, mcpParams: JsonObject): JsonObject {{\n  \
+         val mcpResponses = mcpParams[\"inputResponses\"] as? JsonObject\n    \
+         ?: return {prefix}McpErrorOf({prefix}McpErrorObject(-32602, \"Invalid params: tasks/update needs `inputResponses`\", null))\n  \
+         for (mcpKey in mcpResponses.keys.sorted()) {{\n    \
+         val mcpResponse = mcpResponses[mcpKey] as? JsonObject\n    \
+         val mcpAnswer = {prefix}McpTaskAnswer{op}(handlers, buildJsonObject {{\n      \
+         put({id_key}, mcpHeld)\n      \
+         put({key_key}, mcpKey)\n      \
+         put({action_key}, (mcpResponse?.get(\"action\") as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: \"\")\n      \
+         mcpResponse?.get(\"content\")?.let {{ put({content_key}, {prefix}McpServeText(it)) }}\n    }})\n    \
+         if (mcpAnswer[\"error\"] != null) return mcpAnswer\n  }}\n  \
+         return {prefix}McpResultOf(JsonObject(emptyMap()))\n}}"
+    );
+    let case = format!(
+        "    \"tasks/update\" to {} -> {prefix}McpTaskUpdate{op}(handlers, mcpHeld, mcpParams)\n",
+        kotlin_quoted(tool)
+    );
+    Some((case, function))
+}
+
+/// The start of a task, and the route of `tasks/get`, `tasks/cancel` and `tasks/update`.
+fn task_functions(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
+    let held_names = (prefix, named, fields);
+    let mut text = format!(
+        "\n\nprivate fun {prefix}McpDeclaresTasks(params: JsonObject): Boolean =\n  \
+         ((((params[\"_meta\"] as? JsonObject)?.get({prefix}McpCapabilitiesKey) as? JsonObject)?.get(\"extensions\") as? JsonObject)\n    \
+         ?.get(\"io.modelcontextprotocol/tasks\")) is JsonObject\n\n\
+         private fun {prefix}McpTaskStart(handle: JsonObject, tool: String, params: JsonObject): JsonObject {{\n  \
+         if (!{prefix}McpDeclaresTasks(params)) return {prefix}McpDone(handle, null)\n  \
+         val held = (handle[\"taskId\"] as JsonPrimitive).content\n  \
+         return {prefix}McpResultOf(JsonObject(handle + mapOf(\"resultType\" to JsonPrimitive(\"task\"), \"taskId\" to JsonPrimitive(\"$tool:$held\"))))\n}}\n\n\
+         private suspend fun {prefix}McpTasks(handlers: {named}Handlers, mcpMethod: String, mcpParams: JsonObject): JsonObject? {{\n  \
+         val mcpTask = (mcpParams[\"taskId\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
+         val mcpColon = mcpTask.indexOf(':')\n  \
+         if (mcpColon < 0) return null\n  \
+         val mcpTool = mcpTask.substring(0, mcpColon)\n  \
+         val mcpHeld = mcpTask.substring(mcpColon + 1)\n  \
+         return when (mcpMethod to mcpTool) {{\n"
+    );
+    let mut functions = String::new();
+    for start in service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.task.is_some())
+    {
+        let Some(task) = start.mcp.task.as_ref() else {
+            continue;
+        };
+        let find = |name: &Option<String>| {
+            let wanted = name.as_deref()?;
+            service
+                .operations
+                .iter()
+                .find(|candidate| written(&candidate.ident) == wanted)
+        };
+        let cases = [
+            find(&task.get).map(|target| task_get(held_names, start, target)),
+            find(&task.cancel).map(|target| task_cancel(held_names, start, target)),
+            find(&task.update).and_then(|target| task_update(held_names, start, target)),
+        ];
+        for (case, function) in cases.into_iter().flatten() {
+            text.push_str(&case);
+            functions.push_str(&function);
+        }
+    }
+    text.push_str("    else -> null\n  }\n}");
+    text.push_str(&functions);
     text
 }
 
@@ -1873,6 +2250,15 @@ fn capabilities_literal(service: &ServiceDef, held: &Resourced<'_>, skilled: boo
     }
     if !held.completions.is_empty() {
         capabilities.push(kotlin_quoted("{\"completions\":{}}"));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
+    {
+        capabilities.push(kotlin_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/tasks\":{}}}",
+        ));
     }
     capabilities.join(", ")
 }
@@ -1931,7 +2317,11 @@ fn resource_functions(
         .iter()
         .filter(|operation| operation.is_mcp_prompt())
         .collect();
-    if !held.any() && prompts.is_empty() && !skilled(service) {
+    let tasked = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some());
+    if !held.any() && prompts.is_empty() && !skilled(service) && !tasked {
         return String::new();
     }
     let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
@@ -2527,6 +2917,13 @@ fn ok_arm(
     shape: &HttpShape,
     success: &Type,
 ) -> String {
+    if operation.mcp.task.is_some() {
+        let written = read_serializer(success);
+        return format!(
+            "          is {result}.Ok -> {prefix}McpTaskStart(Json.encodeToJsonElement({written}, answered.value) as JsonObject, {}, mcpParams)\n",
+            kotlin_quoted(operation.mcp_tool_name())
+        );
+    }
     if is_content_list(operation) {
         return format!(
             "          is {result}.Ok -> {prefix}McpBlocks(answered.value.map {{ Json.encodeToJsonElement(McpContentSerializer, it) }})\n"

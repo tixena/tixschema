@@ -22,6 +22,7 @@ macro_rules! listens_through_every_entry_point_of {
                     },
                     $module::McpChange::Task {
                         task_id: "export:1".to_owned(),
+                        state: serde_json::json!({}),
                     },
                     $module::McpChange::KeepAlive,
                 ])

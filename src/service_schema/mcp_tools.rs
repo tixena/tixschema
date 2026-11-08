@@ -18,6 +18,9 @@ use syn::Type;
 
 const DEFS_PREFIX: &str = "#/$defs/";
 
+/// The scopes a task method needs, by the tool that started the task.
+pub type TaskScopes = Vec<(&'static str, Vec<(String, Vec<String>)>)>;
+
 /// The members of `<Service>Schema` the `mcp` transport reads.
 pub fn registry_items(service: &ServiceDef) -> TokenStream {
     let wrapped = service.operations.iter().map(wrapped_method);
@@ -272,6 +275,59 @@ fn completion_arms(service: &ServiceDef) -> Vec<TokenStream> {
         .collect()
 }
 
+/// The scopes `tasks/get`, `tasks/cancel` and `tasks/update` need, by the tool that started the
+/// task: those of the operation each names, left out where it declares none.
+pub fn task_scope_rows(service: &ServiceDef) -> TaskScopes {
+    ["tasks/get", "tasks/cancel", "tasks/update"]
+        .into_iter()
+        .map(|method| {
+            let found = service
+                .operations
+                .iter()
+                .filter_map(|start| {
+                    let task = start.mcp.task.as_ref()?;
+                    let named = match method {
+                        "tasks/get" => task.get.as_ref(),
+                        "tasks/cancel" => task.cancel.as_ref(),
+                        _ => task.update.as_ref(),
+                    }?;
+                    let target = service
+                        .operations
+                        .iter()
+                        .find(|candidate| written(&candidate.ident) == *named)?;
+                    (!target.mcp.scopes.is_empty()).then(|| {
+                        let scopes = target.mcp.scopes.iter().map(|(scope, _)| scope.clone());
+                        (start.mcp_tool_name().to_owned(), scopes.collect())
+                    })
+                })
+                .collect::<Vec<_>>();
+            (method, found)
+        })
+        .filter(|(_, rows)| !rows.is_empty())
+        .collect()
+}
+
+/// The arms of `mcp_scopes` for the task methods: the scopes of the operation each names, found by
+/// the tool that started the task, which the name carries ahead of its first `:`.
+fn task_arms(service: &ServiceDef) -> Vec<TokenStream> {
+    task_scope_rows(service)
+        .into_iter()
+        .map(|(method, tools)| {
+            let rows = tools
+                .iter()
+                .map(|(tool, scopes)| quote! { #tool => &[#(#scopes),*], });
+            quote! {
+                (#method, ::core::option::Option::Some(task)) => {
+                    match task.split(':').next().unwrap_or(task) {
+                        #(#rows)*
+                        _ => &[],
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
 fn scopes_of(operation: &OperationDef) -> TokenStream {
     let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
     quote! { &[#(#scopes),*] }
@@ -289,6 +345,7 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             quote! { ("tools/call", ::core::option::Option::Some(#name)) => #scopes, }
         });
     let prompts = prompt_arms(service);
+    let tasks = task_arms(service);
     let resourced = || {
         service
             .operations
@@ -356,6 +413,7 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             match (method, name) {
                 #(#tools)*
                 #(#prompts)*
+                #(#tasks)*
                 #reads
                 #listing
                 #(#completions)*
@@ -439,6 +497,39 @@ pub fn is_content_list(operation: &OperationDef) -> bool {
             OperationOutcome::Reply { success, error: _error }
                 if !matches!(success.as_ref(), Type::Tuple(_))
         )
+}
+
+/// The last segment of the path the operation's success is written as.
+fn success_segment(operation: &OperationDef) -> Option<String> {
+    let OperationOutcome::Reply {
+        success,
+        error: _error,
+    } = &operation.outcome
+    else {
+        return None;
+    };
+    if let Type::Path(path) = success.as_ref() {
+        return path.path.segments.last().map(|last| last.ident.to_string());
+    }
+    None
+}
+
+/// The operation answers the task handle the service module declares.
+pub fn is_task_handle(operation: &OperationDef) -> bool {
+    success_segment(operation).is_some_and(|name| name == "McpTask")
+}
+
+/// The operation answers the state of a task, as `tasks/get` asks for it.
+pub fn is_task_state(operation: &OperationDef) -> bool {
+    success_segment(operation).is_some_and(|name| name == "McpTaskState")
+}
+
+/// Whether any operation of the service starts a task.
+pub fn has_tasks(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.task.is_some())
 }
 
 /// A prompt's success is a list of messages.
@@ -769,7 +860,7 @@ fn output_schema(operation: &OperationDef) -> Option<TokenStream> {
     else {
         return None;
     };
-    if operation.mcp.content.is_some() {
+    if operation.mcp.content.is_some() || is_task_handle(operation) || is_task_state(operation) {
         return None;
     }
     let shape = HttpShape::of(operation);

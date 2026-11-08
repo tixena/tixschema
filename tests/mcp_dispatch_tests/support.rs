@@ -4,7 +4,7 @@
 use crate::tests::Archive;
 use crate::{
     BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, counsel_mcp,
-    document_mcp, export_mcp,
+    document_mcp, export_mcp, job_mcp,
 };
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -70,6 +70,10 @@ macro_rules! streams_to {
     )*};
 }
 
+/// The official schema of the tasks extension.
+const TASKS_SCHEMA: &str =
+    include_str!("../mcp_declaration_tests/mcp-tasks-schema-2026-07-28.json");
+
 /// The official 2026-07-28 schema of the Model Context Protocol.
 const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-07-28.json");
 
@@ -126,7 +130,8 @@ writes_to!(
     billing_mcp,
     export_mcp,
     approval_mcp,
-    counsel_mcp
+    counsel_mcp,
+    job_mcp
 );
 
 /// One call the dispatcher made on an HTTP stream.
@@ -216,7 +221,8 @@ streams_to!(
     billing_mcp,
     export_mcp,
     approval_mcp,
-    counsel_mcp
+    counsel_mcp,
+    job_mcp
 );
 
 struct Fed<Change> {
@@ -363,6 +369,18 @@ pub fn schema_errors(definition: &str, instance: &Value) -> Vec<String> {
         .iter_errors(instance)
         .map(|error| format!("{error} at {}", error.instance_path()))
         .collect()
+}
+
+/// Holds `instance` to the definition `definition` of the schema of the tasks extension.
+pub fn assert_task(definition: &str, instance: &Value) {
+    let schema: Value = serde_json::from_str(TASKS_SCHEMA).unwrap();
+    let rooted = json!({ "$ref": format!("#/$defs/{definition}"), "$defs": schema["$defs"] });
+    let validator = jsonschema::validator_for(&rooted).unwrap();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|error| format!("{error} at {}", error.instance_path()))
+        .collect();
+    assert_eq!(errors, Vec::<String>::new(), "{definition}: {instance:#}");
 }
 
 pub fn assert_valid(definition: &str, instance: &Value) {

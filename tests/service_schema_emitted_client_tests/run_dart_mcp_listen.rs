@@ -117,7 +117,7 @@ const workspace = LibraryServiceMcpEndpoint(
 LibraryServiceMcpChange changeOf(Map<String, dynamic> spec) => switch (spec['kind']) {
       'resourcesListChanged' => const LibraryServiceMcpResourcesListChanged(),
       'resourceUpdated' => LibraryServiceMcpResourceUpdated(spec['uri'] as String),
-      'task' => LibraryServiceMcpTaskMoved(spec['taskId'] as String),
+      'task' => LibraryServiceMcpTaskMoved(spec['taskId'] as String, spec['state'] as Map<String, dynamic>),
       _ => const LibraryServiceMcpKeepAlive(),
     };
 

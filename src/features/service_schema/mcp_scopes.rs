@@ -1,6 +1,7 @@
 //! What `mcp_scopes` answers, read once from a declaration for the servers that write the same
 //! answer in TypeScript, Dart and Kotlin.
 
+use crate::service_schema::mcp_tools::{TaskScopes, task_scope_rows};
 use crate::service_schema::parse::{
     McpCompletesKind, McpResourceUri, OperationDef, PathSegment, ServiceDef, written,
 };
@@ -17,6 +18,7 @@ pub struct ScopeTable {
     pub listing: Option<Vec<String>>,
     pub prompts: Vec<(String, Vec<String>)>,
     pub reads: Vec<(ReadUri, Vec<String>)>,
+    pub tasks: TaskScopes,
     pub tools: Vec<(String, Vec<String>)>,
 }
 
@@ -103,6 +105,7 @@ impl ScopeTable {
             listing,
             prompts,
             reads,
+            tasks: task_scope_rows(service),
             tools,
         }
     }
