@@ -586,12 +586,47 @@ pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     }
 }
 
+/// `{accessor}()` on the service's registry, which publishes the `McpContent` type of the language
+/// where an operation answers a list of blocks: the type a bundle names once, beside the
+/// service's own accessors.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "kotlin",
+    feature = "swift"
+))]
+fn mcp_content_accessor(
+    service: &ServiceDef,
+    accessor: &str,
+    text: &'static str,
+) -> Option<TokenStream> {
+    use crate::service_schema::mcp_tools::is_content_list;
+
+    let listed = service.operations.iter().any(is_content_list);
+    let name = format_ident!("{accessor}");
+    let doc =
+        " The `McpContent` type a list of blocks of an `mcp(content)` operation is written in.";
+    listed.then(|| {
+        quote! {
+            #[doc = #doc]
+            pub fn #name() -> ::std::string::String {
+                #text.to_owned()
+            }
+        }
+    })
+}
+
 /// The Kotlin server and client of an `mcp` service, published where the `kotlin` feature is on.
 #[cfg(feature = "kotlin")]
 fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
     let server = kotlin_mcp_service::accessor(service);
     let client = kotlin_mcp_client::accessor(service);
+    let content = mcp_content_accessor(
+        service,
+        "kotlin_mcp_content",
+        kotlin_mcp_service::CONTENT_TYPE,
+    );
     quote! {
+        #content
         #server
         #client
     }
@@ -605,12 +640,50 @@ fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
 /// The Swift client of an `mcp` service, published where the `swift` feature is on.
 #[cfg(feature = "swift")]
 fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
-    swift_mcp_client::accessor(service)
+    let client = swift_mcp_client::accessor(service);
+    let content =
+        mcp_content_accessor(service, "swift_mcp_content", swift_mcp_client::CONTENT_TYPE);
+    quote! {
+        #content
+        #client
+    }
 }
 
 #[cfg(not(feature = "swift"))]
 fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
     TokenStream::new()
+}
+
+/// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .interview
+                .as_ref()
+                .is_some_and(|interview| interview.answers.is_some())
+        })
+        .map(|operation| {
+            let marker = mcp_ts_service::form_marker(operation);
+            let method = format_ident!(
+                "mcp_form_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! {
+                .replace(
+                    #marker,
+                    &::serde_json::Value::String(Self::#method().to_string()).to_string(),
+                )
+            }
+        })
+        .collect()
 }
 
 /// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
@@ -642,7 +715,11 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
             }
         })
         .collect();
+    let forms = mcp_ts_form_replacements(service);
+    let content = mcp_content_accessor(service, "ts_mcp_content", mcp_ts_service::CONTENT_TYPE);
     quote! {
+        #content
+
         #[doc = " The service's generated MCP server for TypeScript: the part it puts on an"]
         #[doc = " endpoint, the endpoint with its shared-name check, `serve` and `serveHttp`,"]
         #[doc = " and the factories that drive `create{Service}Dispatcher`."]
@@ -685,6 +762,7 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
                         .join(", "),
                 )
                 #(#wrapped)*
+                #(#forms)*
         }
 
         #[doc = " The service's generated MCP client for TypeScript: the transport seam and"]

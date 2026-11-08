@@ -7,6 +7,7 @@ use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
+use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
     is_unit_type, wire_key, written,
@@ -458,6 +459,82 @@ export async function __p__McpServe<Ctx>(
   }
 }"#;
 
+const INTERVIEW: &str = r#"function __p__McpPlain(text: string): string {
+  return text.replace(/[-_ ]/g, "").toLowerCase();
+}
+
+/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
+function __p__McpElicits(call: Record<string, unknown>, mode: "form" | "url"): boolean {
+  const held = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.elicitation);
+  if (held === undefined) return false;
+  if (mode === "url") return __p__McpObject(held.url) !== undefined;
+  return __p__McpObject(held.form) !== undefined || held.url === undefined;
+}
+
+/** Whether the user declined or dismissed the request keyed `key`. */
+function __p__McpDismissed(call: Record<string, unknown>, key: string): boolean {
+  const action = __p__McpObject(__p__McpObject(call.inputResponses)?.[key])?.action;
+  return action === "decline" || action === "cancel";
+}
+
+/** The result that asks the client for the elicitation `request`, keyed `key`. */
+function __p__McpInputRequired(key: string, request: Record<string, unknown>): Record<string, unknown> {
+  return { inputRequests: { [key]: { method: "elicitation/create", params: request } }, resultType: "input_required" };
+}
+
+/** The result that asks the user where `error` is the arm that asks and the client can be asked, `undefined` otherwise. */
+function __p__McpAsking(
+  interview: __N__McpInterview,
+  error: unknown,
+  call: Record<string, unknown>,
+  declined: boolean,
+): Record<string, unknown> | undefined {
+  const arm = __p__McpObject(error);
+  const code = arm?.errorCode;
+  if (arm === undefined || typeof code !== "string" || __p__McpPlain(code) !== __p__McpPlain(interview.arm)) {
+    return undefined;
+  }
+  const message = typeof arm.message === "string" ? arm.message : undefined;
+  if (interview.answers !== undefined) {
+    if (declined || !__p__McpElicits(call, "form")) return undefined;
+    return __p__McpInputRequired(interview.answers, {
+      message: message ?? interview.doc,
+      mode: "form",
+      requestedSchema: new __N__McpRaw(interview.form ?? "{}"),
+    });
+  }
+  if (typeof arm.url !== "string" || message === undefined) return undefined;
+  if (__p__McpDismissed(call, code) || !__p__McpElicits(call, "url")) return undefined;
+  return __p__McpInputRequired(code, { message, mode: "url", url: arm.url });
+}"#;
+
+const CONTENT: &str = r#"/** One block of `content`, as the result writes it. */
+function __p__McpBlock(block: unknown): Record<string, unknown> {
+  const held = __p__McpObject(block) ?? {};
+  if (held.type === "image" || held.type === "audio") {
+    return { data: __p__McpBase64(held.data), mimeType: held.mimeType, type: held.type };
+  }
+  if (held.type === "resource") {
+    const resource: Record<string, unknown> = { mimeType: held.mimeType, uri: held.uri };
+    if (typeof held.text === "string") resource.text = held.text;
+    else resource.blob = __p__McpBase64(held.blob);
+    return { resource, type: "resource" };
+  }
+  return held;
+}
+
+/**
+ * The blocks a content tool answers: the one image or audio block of a pair, or the blocks of a
+ * list. A pair of any other content type has none, and answers as an operation with no flag does.
+ */
+function __p__McpBlocks(kind: "pair" | "list" | undefined, value: unknown): ReadonlyArray<Record<string, unknown>> | undefined {
+  if (kind === "list" && Array.isArray(value)) return value.map(__p__McpBlock);
+  if (kind !== "pair" || !Array.isArray(value) || typeof value[1] !== "string") return undefined;
+  const type: string = value[1];
+  const block = type.startsWith("image/") ? "image" : type.startsWith("audio/") ? "audio" : undefined;
+  return block === undefined ? undefined : [{ data: __p__McpBase64(value[0]), mimeType: type, type: block }];
+}"#;
+
 const ROUTE: &str = r#"const __p__McpEmpty = { content: [], isError: false, resultType: "complete" };
 
 /** The Zod issue codes that mean the arguments do not read as the message; any other is a validator's refusal. */
@@ -470,11 +547,23 @@ const __p__McpUnreadable: ReadonlySet<string> = new Set([
   "unrecognized_keys",
 ]);
 
-/** The `undeserializable-payload` fault of a message that does not read as `schema`; none where it reads or only the validator refuses it. */
-function __p__McpUnread(schema: ZodType, payload: unknown, operation: string): __N__Fault | undefined {
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, `undeserializable-payload` for any other; none where it reads or only the validator refuses it. */
+function __p__McpUnread(
+  schema: ZodType,
+  payload: unknown,
+  operation: string,
+  answers?: string,
+): __N__Fault | undefined {
   const read = schema.safeParse(payload);
   if (read.success) return undefined;
   const issues = read.error.issues;
+  if (answers !== undefined && issues.some((issue) => issue.path[0] === answers)) {
+    const detail = issues
+      .filter((issue) => issue.path[0] === answers)
+      .map((issue) => (issue.path.length === 1 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
+      .join("; ");
+    return __FAULT__("failed-validation", operation, detail, answers);
+  }
   if (!issues.some((issue) => __p__McpUnreadable.has(issue.code))) return undefined;
   const detail = issues
     .map((issue) => (issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
@@ -498,7 +587,7 @@ function __p__McpPanicked(operation: string, thrown: unknown): __N__McpAnswer {
 function __p__McpBase64(value: unknown): string {
   const bytes = value instanceof Uint8Array ? value : Uint8Array.from(Array.isArray(value) ? (value as ReadonlyArray<number>) : []);
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (let at = 0; at < bytes.length; at += 4096) binary += String.fromCharCode(...bytes.subarray(at, at + 4096));
   return btoa(binary);
 }
 
@@ -550,7 +639,7 @@ export function create__N__McpRoute<Ctx>(
     const given: unknown = call.arguments === undefined ? {} : call.arguments;
     const held = __p__McpObject(given);
     const headers: Array<readonly [string, string]> = [];
-    let payload: unknown = given;
+    let payload: unknown = given;__DECLINED__
     if (held !== undefined) {
       const rest: Record<string, unknown> = { ...held };
       for (const name of operation.headersIn) {
@@ -558,9 +647,9 @@ export function create__N__McpRoute<Ctx>(
         const carried = held[name];
         if (carried !== undefined) headers.push([name, __p__McpText(carried)]);
       }
-      payload = operation.wrapped ? held.value : rest;
+__ANSWERS__      payload = operation.wrapped ? held.value : rest;
     }
-    const unread = __p__McpUnread(operation.schema, payload, operation.tool);
+    const unread = __p__McpUnread(operation.schema, payload, operation.tool, operation.interview?.answers);
     const attempt =
       unread === undefined
         ? await attempted(ctx, operation.operation, payload, headers)
@@ -588,7 +677,7 @@ export function create__N__McpRoute<Ctx>(
       return written;
     };
     if (answered.ok) {
-      let structured: unknown;
+__BLOCKS__      let structured: unknown;
       if (operation.headersOut.length > 0) {
         structured = { value: answered.value ?? null, ...beside(operation.headersOut) };
       } else if (!operation.unit) {
@@ -605,7 +694,7 @@ export function create__N__McpRoute<Ctx>(
     }
     const error = answered.error;
     const fault = typeof error === "object" && error !== null && "isServiceFault" in error;
-    const faulted = error as { fault: object };
+__ASKING__    const faulted = error as { fault: object };
     const named = fault ? { ...faulted, fault: { ...faulted.fault, operation: operation.tool } } : error;
     const body =
       !fault && operation.errorHeadersOut.length > 0
@@ -720,6 +809,32 @@ export function create__N__McpRoute<Ctx>(
     }
   };
 }"#;
+
+const ANSWERS: &str = r#"      const answers = operation.interview?.answers;
+      if (answers !== undefined) {
+        const response = __p__McpObject(__p__McpObject(call.inputResponses)?.[answers]);
+        if (response !== undefined) {
+          if (response.action === "accept") {
+            rest[answers] = response.content ?? {};
+          } else {
+            delete rest[answers];
+            declined = true;
+          }
+        }
+      }
+"#;
+
+const BLOCKS: &str = r#"      const blocks = __p__McpBlocks(operation.content, answered.value);
+      if (blocks !== undefined) {
+        return { result: { content: blocks, isError: false, resultType: "complete" } };
+      }
+"#;
+
+const ASKING: &str = "    if (!fault && operation.interview !== undefined) {
+      const asked = __p__McpAsking(operation.interview, error, call, declined);
+      if (asked !== undefined) return { result: asked };
+    }
+";
 
 const HTTP_TYPES: &str = "/** What the HTTP endpoint checks of a request before it answers. */
 export type __N__McpHttpSettings = {
@@ -1001,6 +1116,35 @@ export function create__N__McpHttpDispatcher<Ctx>(
     );
 }";
 
+/// The type an `mcp(content)` operation answers a list of, as the service module declares it in
+/// Rust: one block of a tool's `content`, in the form the specification writes it.
+pub const CONTENT_TYPE: &str =
+    "/** One block of a tool's `content`: what an `mcp(content)` operation answers a list of. */
+export type McpContent =
+  | { readonly type: \"text\"; readonly text: string }
+  | { readonly type: \"image\"; readonly data: Uint8Array; readonly mimeType: string }
+  | { readonly type: \"audio\"; readonly data: Uint8Array; readonly mimeType: string }
+  | {
+      readonly type: \"resource_link\";
+      readonly uri: string;
+      readonly name: string;
+      readonly title?: string | undefined;
+      readonly description?: string | undefined;
+      readonly mimeType?: string | undefined;
+    }
+  | {
+      readonly type: \"resource\";
+      readonly uri: string;
+      readonly mimeType?: string | undefined;
+      readonly text: string;
+    }
+  | {
+      readonly type: \"resource\";
+      readonly uri: string;
+      readonly mimeType?: string | undefined;
+      readonly blob: Uint8Array;
+    };";
+
 /// Stands in the emitted text for what `wrapped_{operation}()` answers.
 pub fn wrapped_marker(operation: &OperationDef) -> String {
     format!(
@@ -1037,12 +1181,15 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(HANDLING),
         fill(ENDPOINT),
         fill(SERVE),
+        interview_text(service, &named, &prefix),
+        content_text(service, &prefix),
         route(service, &named, &prefix),
         fill(HTTP_TYPES),
         scopes(service, &prefix),
         fill(SERVE_HTTP),
         factories(service, &named, &prefix),
     ]);
+    published.retain(|text| !text.is_empty());
     published
 }
 
@@ -1140,7 +1287,16 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .collect();
     rows.extend(resource_rows(service));
     format!(
-        "/** What the route reads of each operation: the tool, resource, listing or completion it \
+        "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
+         wire key of the argument that carries a form's answers and the JSON text of the form, \
+         and the message to ask with where the arm holds none. */\n\
+         export type {named}McpInterview = {{\n  \
+         readonly arm: string;\n  \
+         readonly answers: string | undefined;\n  \
+         readonly form: string | undefined;\n  \
+         readonly doc: string;\n\
+         }};\n\n\
+         /** What the route reads of each operation: the tool, resource, listing or completion it \
          answers, the operation it calls, and how its arguments, success and error are carried. */\n\
          export type {named}McpOperation =\n  \
          | {{\n      \
@@ -1153,7 +1309,9 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly unit: boolean;\n      \
          readonly headersIn: ReadonlyArray<string>;\n      \
          readonly headersOut: ReadonlyArray<string>;\n      \
-         readonly errorHeadersOut: ReadonlyArray<string>;\n    \
+         readonly errorHeadersOut: ReadonlyArray<string>;\n      \
+         readonly content: \"pair\" | \"list\" | undefined;\n      \
+         readonly interview: {named}McpInterview | undefined;\n    \
          }}\n  \
          | {{\n      \
          readonly kind: \"resource\";\n      \
@@ -1353,7 +1511,9 @@ fn operation_row(operation: &OperationDef) -> String {
     format!(
         "  {{ kind: \"tool\", tool: {tool}, operation: {wire}, schema: {schema}, wrapped: {wrapped}, oneWay: {one_way}, unit: {unit}, \
          headersIn: [{headers_in}], headersOut: [{headers_out}], errorHeadersOut: \
-         [{error_headers_out}] }},",
+         [{error_headers_out}], content: {content}, interview: {interview} }},",
+        content = content_kind(operation),
+        interview = interview_literal(operation),
         tool = ts_quoted(operation.mcp_tool_name()),
         schema = message::schema(operation),
         wire = ts_quoted(&operation.wire_name),
@@ -1361,6 +1521,64 @@ fn operation_row(operation: &OperationDef) -> String {
         headers_out = quoted(&shape.header_out),
         error_headers_out = quoted(&shape.error_header_out),
     )
+}
+
+/// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
+pub fn form_marker(operation: &OperationDef) -> String {
+    format!("/*__TIXSCHEMA_MCP_FORM:{}__*/", written(&operation.ident))
+}
+
+/// What the route writes of an `mcp(content)` operation.
+fn content_kind(operation: &OperationDef) -> &'static str {
+    if is_content_pair(operation) {
+        "\"pair\""
+    } else if operation.mcp.content.is_some() {
+        "\"list\""
+    } else {
+        "undefined"
+    }
+}
+
+fn interview_literal(operation: &OperationDef) -> String {
+    let Some(interview) = operation.mcp.interview.as_ref() else {
+        return "undefined".to_owned();
+    };
+    let answers =
+        answers_key(operation).map_or_else(|| "undefined".to_owned(), |key| ts_quoted(&key));
+    let form = if interview.answers.is_some() {
+        form_marker(operation)
+    } else {
+        "undefined".to_owned()
+    };
+    format!(
+        "{{ arm: {}, answers: {answers}, form: {form}, doc: {} }}",
+        ts_quoted(&interview.arm.to_string()),
+        ts_quoted(operation.doc.as_deref().unwrap_or_default()),
+    )
+}
+
+fn interview_text(service: &ServiceDef, named: &str, prefix: &str) -> String {
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.interview.is_some())
+    {
+        filled(INTERVIEW, named, prefix)
+    } else {
+        String::new()
+    }
+}
+
+fn content_text(service: &ServiceDef, prefix: &str) -> String {
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.content.is_some())
+    {
+        filled(CONTENT, "", prefix)
+    } else {
+        String::new()
+    }
 }
 
 fn scopes(service: &ServiceDef, prefix: &str) -> String {
@@ -1466,21 +1684,42 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
 fn fault_fn(named: &str, prefix: &str) -> String {
     format!(
         "/** A `{named}Fault` of the kind given. */\n\
-         function {prefix}McpFault(kind: {named}FaultKind, operation: string, detail: string): \
+         function {prefix}McpFault(kind: {named}FaultKind, operation: string, detail: string, field?: string): \
          {named}Fault {{\n\
          {minted}\n\
          }}",
-        minted = fault::minted(
-            named,
-            "    detail,\n    field: undefined,\n    kind,\n    operation,"
-        ),
+        minted = fault::minted(named, "    detail,\n    field,\n    kind,\n    operation,"),
     )
 }
 
 fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
     let driven = enveloped_impl(service);
     let fault = format!("{prefix}McpFault");
+    let asks = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.interview.is_some());
+    let answers = service.operations.iter().any(|operation| {
+        operation
+            .mcp
+            .interview
+            .as_ref()
+            .is_some_and(|interview| interview.answers.is_some())
+    });
+    let blocks = service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.content.is_some());
+    let declined = if asks {
+        "\n    let declined = false;"
+    } else {
+        ""
+    };
     ROUTE
+        .replace("__DECLINED__", declined)
+        .replace("__ANSWERS__", if answers { ANSWERS } else { "" })
+        .replace("__BLOCKS__", if blocks { BLOCKS } else { "" })
+        .replace("__ASKING__", if asks { ASKING } else { "" })
         .replace("__DRIVEN__", &driven)
         .replace("__FAULT__", &fault)
         .replace("__N__", named)

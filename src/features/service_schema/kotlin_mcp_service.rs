@@ -11,7 +11,9 @@ use crate::features::kotlin::{
     TupleNaming, kotlin_declarations, kotlin_name, kotlin_quoted, kotlin_tuple_naming,
 };
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::wrapped_ident;
+use crate::service_schema::mcp_tools::{
+    answers_key, is_content_list, is_content_pair, wrapped_ident,
+};
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
     is_unit_type, option_inner, wire_key, written,
@@ -20,7 +22,7 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::Type;
 
 const CATALOG: &str = r#"const val @P@McpServerName = "@N@"
@@ -621,6 +623,85 @@ private fun <T : Any> @P@McpOptionalHeader(
   raw: JsonElement?,
 ): T? = if (raw == null || raw is JsonNull) null else @P@McpHeader(tool, name, serializer, raw)"#;
 
+const INTERVIEW: &str = r#"private fun @P@McpPlain(text: String): String = text.replace(Regex("[-_ ]"), "").lowercase()
+
+/** Whether the client declared the elicitation [mode]: an empty `elicitation` is a form. */
+private fun @P@McpElicits(params: JsonObject, mode: String): Boolean {
+  val meta = params["_meta"] as? JsonObject
+  val held = (meta?.get(@P@McpCapabilitiesKey) as? JsonObject)?.get("elicitation") as? JsonObject ?: return false
+  if (mode == "url") return held["url"] is JsonObject
+  return held["form"] is JsonObject || "url" !in held
+}
+
+/** Whether the user declined or dismissed the request keyed [key]. */
+private fun @P@McpDismissed(params: JsonObject, key: String): Boolean {
+  val response = (params["inputResponses"] as? JsonObject)?.get(key) as? JsonObject
+  val action = (response?.get("action") as? JsonPrimitive)?.content
+  return action == "decline" || action == "cancel"
+}
+
+/** The result that asks the client for the elicitation [request], keyed [key]. */
+private fun @P@McpInputRequired(key: String, request: JsonObject): @N@McpAnswer =
+  @N@McpAnswer.Answered(
+    buildJsonObject {
+      put(
+        "inputRequests",
+        buildJsonObject {
+          put(key, buildJsonObject { put("method", "elicitation/create"); put("params", request) })
+        },
+      )
+      put("resultType", "input_required")
+    },
+  )
+
+/** The result that asks the user where [error] is the arm that asks and the client can be asked, `null` otherwise. */
+private fun @P@McpAsking(
+  arm: String,
+  answers: String?,
+  form: String?,
+  doc: String,
+  error: JsonElement,
+  params: JsonObject,
+  declined: Boolean,
+): @N@McpAnswer? {
+  val body = error as? JsonObject ?: return null
+  val code = (body["errorCode"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+  if (@P@McpPlain(code) != @P@McpPlain(arm)) return null
+  val message = (body["message"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+  if (answers != null) {
+    if (declined || !@P@McpElicits(params, "form")) return null
+    return @P@McpInputRequired(
+      answers,
+      buildJsonObject {
+        put("message", message ?: doc)
+        put("mode", "form")
+        put("requestedSchema", Json.parseToJsonElement(form ?: "{}"))
+      },
+    )
+  }
+  val url = (body["url"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+  if (message == null) return null
+  if (@P@McpDismissed(params, code) || !@P@McpElicits(params, "url")) return null
+  return @P@McpInputRequired(code, buildJsonObject { put("message", message); put("mode", "url"); put("url", url) })
+}"#;
+
+const CONTENT: &str = r#"/** The result of a tool that answers blocks. */
+private fun @P@McpBlocks(content: List<JsonElement>): @N@McpAnswer =
+  @N@McpAnswer.Answered(
+    buildJsonObject {
+      put("resultType", "complete")
+      put("content", JsonArray(content))
+      put("isError", false)
+    },
+  )"#;
+
+const MEDIA: &str = r#"/** The image or audio block of [bytes], where [contentType] says they are one. */
+private fun @P@McpMedia(bytes: List<UByte>, contentType: String): @N@McpAnswer? {
+  val kind = if (contentType.startsWith("image/")) "image" else if (contentType.startsWith("audio/")) "audio" else return null
+  val data = java.util.Base64.getEncoder().encodeToString(ByteArray(bytes.size) { bytes[it].toByte() })
+  return @P@McpBlocks(listOf(buildJsonObject { put("data", data); put("mimeType", contentType); put("type", kind) }))
+}"#;
+
 const ROUTE_HEAD: &str = "fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> @N@McpAnswer? =
   { mcpMethod, mcpParams -> @P@McpCall(handlers, mcpMethod, mcpParams) }
 
@@ -957,6 +1038,124 @@ fun create@N@McpHttpDispatcher(
   }
 }"#;
 
+/// The type an `mcp(content)` operation answers a list of, as the service module declares it in
+/// Rust: one block of a tool's `content`, read and written as the specification writes it.
+pub const CONTENT_TYPE: &str = r#"/** One block of a tool's `content`: what an `mcp(content)` operation answers a list of. */
+@Serializable(with = McpContentSerializer::class)
+sealed interface McpContent {
+  /** Text. */
+  data class Text(val text: String) : McpContent
+
+  /** An image: its bytes and its content type. */
+  data class Image(val data: List<UByte>, val mimeType: String) : McpContent
+
+  /** Audio: its bytes and its content type. */
+  data class Audio(val data: List<UByte>, val mimeType: String) : McpContent
+
+  /** A link to a resource the client can read. */
+  data class ResourceLink(
+    val uri: String,
+    val name: String,
+    val title: String? = null,
+    val description: String? = null,
+    val mimeType: String? = null,
+  ) : McpContent
+
+  /** A resource carried in the result. */
+  data class Resource(val uri: String, val mimeType: String? = null, val contents: McpResourceContents) : McpContent
+}
+
+/** What an embedded resource holds. */
+sealed interface McpResourceContents {
+  /** Text. */
+  data class Text(val text: String) : McpResourceContents
+
+  /** Bytes. */
+  data class Blob(val bytes: List<UByte>) : McpResourceContents
+}
+
+/** Reads and writes a [McpContent] as the block the specification writes. */
+object McpContentSerializer : KSerializer<McpContent> {
+  override val descriptor: SerialDescriptor = buildClassSerialDescriptor("McpContent")
+
+  private fun encoded(bytes: List<UByte>): String =
+    java.util.Base64.getEncoder().encodeToString(ByteArray(bytes.size) { bytes[it].toByte() })
+
+  private fun decoded(from: JsonObject, key: String): List<UByte> =
+    try {
+      java.util.Base64.getDecoder().decode(text(from, key)).map { it.toUByte() }
+    } catch (rejected: IllegalArgumentException) {
+      throw SerializationException("`" + key + "` is not base64")
+    }
+
+  private fun text(from: JsonObject, key: String): String =
+    optional(from, key) ?: throw SerializationException("a block holds no `" + key + "`")
+
+  private fun optional(from: JsonObject, key: String): String? =
+    (from[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+  override fun serialize(encoder: Encoder, value: McpContent) {
+    val output = encoder as JsonEncoder
+    output.encodeJsonElement(
+      when (value) {
+        is McpContent.Text -> buildJsonObject { put("text", value.text); put("type", "text") }
+        is McpContent.Image ->
+          buildJsonObject { put("data", encoded(value.data)); put("mimeType", value.mimeType); put("type", "image") }
+        is McpContent.Audio ->
+          buildJsonObject { put("data", encoded(value.data)); put("mimeType", value.mimeType); put("type", "audio") }
+        is McpContent.ResourceLink -> buildJsonObject {
+          put("name", value.name)
+          put("type", "resource_link")
+          put("uri", value.uri)
+          value.title?.let { put("title", it) }
+          value.description?.let { put("description", it) }
+          value.mimeType?.let { put("mimeType", it) }
+        }
+        is McpContent.Resource -> buildJsonObject {
+          put(
+            "resource",
+            buildJsonObject {
+              put("uri", value.uri)
+              value.mimeType?.let { put("mimeType", it) }
+              when (val held = value.contents) {
+                is McpResourceContents.Text -> put("text", held.text)
+                is McpResourceContents.Blob -> put("blob", encoded(held.bytes))
+              }
+            },
+          )
+          put("type", "resource")
+        }
+      },
+    )
+  }
+
+  override fun deserialize(decoder: Decoder): McpContent {
+    val block = (decoder as JsonDecoder).decodeJsonElement() as? JsonObject
+      ?: throw SerializationException("a block is not an object")
+    return when (optional(block, "type")) {
+      "text" -> McpContent.Text(text(block, "text"))
+      "image" -> McpContent.Image(decoded(block, "data"), text(block, "mimeType"))
+      "audio" -> McpContent.Audio(decoded(block, "data"), text(block, "mimeType"))
+      "resource_link" -> McpContent.ResourceLink(
+        text(block, "uri"),
+        text(block, "name"),
+        optional(block, "title"),
+        optional(block, "description"),
+        optional(block, "mimeType"),
+      )
+      "resource" -> {
+        val resource = block["resource"] as? JsonObject ?: throw SerializationException("a resource block holds no resource")
+        McpContent.Resource(
+          text(resource, "uri"),
+          optional(resource, "mimeType"),
+          if (resource["blob"] != null) McpResourceContents.Blob(decoded(resource, "blob")) else McpResourceContents.Text(text(resource, "text")),
+        )
+      }
+      else -> throw SerializationException("a block of a type this client does not read")
+    }
+  }
+}"#;
+
 /// Where the accessor writes the tools, as the comma-joined Kotlin literals of their JSON text.
 pub const TOOLS_MARKER: &str = "@MCP_TOOLS@";
 /// Where the accessor writes the names, as `kind:name` Kotlin literals.
@@ -989,14 +1188,89 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(WRITER, &prefix, &named, &fields),
         fill(SERVING, &prefix, &named, &fields),
         fill(RECEIVING, &prefix, &named, &fields),
+        asking_text(service, &prefix, &named, &fields),
+        blocks_text(service, &prefix, &named, &fields),
         route(service, &held, &prefix, &named, &fields),
         fill(DISPATCHERS, &prefix, &named, &fields),
         fill(HTTP, &prefix, &named, &fields)
             .replace("@SCOPES@", &scopes_table(&ScopeTable::of(service))),
     ];
+    published.retain(|text| !text.is_empty());
     published.extend(kotlin_declarations());
     published.retain(|text| !text.is_empty());
     published
+}
+
+fn asking_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.interview.is_some())
+    {
+        fill(INTERVIEW, prefix, named, fields)
+    } else {
+        String::new()
+    }
+}
+
+fn blocks_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
+    let mut texts = Vec::new();
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.content.is_some())
+    {
+        texts.push(fill(CONTENT, prefix, named, fields));
+    }
+    if service.operations.iter().any(is_content_pair) {
+        texts.push(fill(MEDIA, prefix, named, fields));
+    }
+    texts.join("\n\n")
+}
+
+/// Stands in the emitted text for the JSON text of the form `mcp_form_{operation}()` answers.
+pub fn form_marker(operation: &OperationDef) -> String {
+    format!("@MCP_FORM_{}@", written(&operation.ident))
+}
+
+/// The statements that read the answers of a retried form call into the arguments, ahead of the
+/// message's own read.
+fn answers_stmt(prefix: &str, operation: &OperationDef) -> String {
+    let Some(wire) = answers_key(operation) else {
+        return String::new();
+    };
+    let key = kotlin_quoted(&wire);
+    let tool = kotlin_quoted(operation.mcp_tool_name());
+    let read = match &operation.inputs {
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .find(|(field, _)| wire_key(field) == wire)
+            .and_then(|(_, ty)| option_inner(ty)),
+        OperationInputs::Empty | OperationInputs::Named(_) => None,
+    }
+    .map_or_else(String::new, |form| {
+        format!(
+            "          try {{\n            \
+             Json.decodeFromJsonElement({}, mcpAnswered)\n          \
+             }} catch (rejected: IllegalArgumentException) {{\n            \
+             {prefix}McpRefuse(\"failed-validation\", {tool}, rejected.message ?: rejected.toString(), {key})\n          \
+             }}\n",
+            read_serializer(form)
+        )
+    });
+    format!(
+        "      var mcpDeclined = false\n      \
+         val mcpResponse = (mcpParams[\"inputResponses\"] as? JsonObject)?.get({key}) as? JsonObject\n      \
+         if (mcpResponse != null) {{\n        \
+         if ((mcpResponse[\"action\"] as? JsonPrimitive)?.content == \"accept\") {{\n          \
+         val mcpAnswered = mcpResponse[\"content\"] ?: JsonObject(emptyMap())\n{read}          \
+         mcpArguments[{key}] = mcpAnswered\n        \
+         }} else {{\n          \
+         mcpArguments.remove({key})\n          \
+         mcpDeclined = true\n        \
+         }}\n      \
+         }}\n"
+    )
 }
 
 /// `wrapped_entries` for the operations that are tools.
@@ -1142,6 +1416,26 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
     let text = emit(service).join("\n\n");
     let wrapped = wrapped_replacements(service);
     let literal = literal_fn();
+    let forms: Vec<TokenStream> = service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .interview
+                .as_ref()
+                .is_some_and(|interview| interview.answers.is_some())
+        })
+        .map(|operation| {
+            let marker = form_marker(operation);
+            let method = format_ident!(
+                "mcp_form_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! { text = text.replace(#marker, &literal(&Self::#method().to_string())); }
+        })
+        .collect();
     quote! {
         #[doc = " The service's generated Kotlin `mcp` server: its catalog, the route that answers"]
         #[doc = " its `tools/call`, the function that answers one message for the services of an"]
@@ -1177,6 +1471,7 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .replace(#INSTRUCTIONS_MARKER, &instructions)
                 .replace(#VERSION_MARKER, env!("CARGO_PKG_VERSION"));
             #(#wrapped)*
+            #(#forms)*
             text
         }
     }
@@ -1623,7 +1918,8 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
     let read_by = message_serializer(operation);
     let mut text = format!(
         "    {tool} -> {{\n      \
-         val mcpArguments = {prefix}McpArguments({tool}, mcpParams)\n"
+         val mcpArguments = {prefix}McpArguments({tool}, mcpParams)\n{}",
+        answers_stmt(prefix, operation)
     );
     if !shape.header_in.is_empty() {
         let header_names = shape
@@ -1680,8 +1976,8 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
         }
         OperationOutcome::Reply { error, success } => {
             let result = result_name(named, operation).unwrap_or_default();
-            let ok = ok_arm(&result, prefix, &shape, success);
-            let declared = declared_arm(&result, prefix, &shape, error);
+            let ok = ok_arm(operation, &result, prefix, &shape, success);
+            let declared = declared_arm(operation, &result, prefix, &shape, error);
             let _ = write!(
                 text,
                 "      val answered = try {{\n        {call}\n      }} catch (unexpected: Throwable) {{\n        \
@@ -1698,7 +1994,24 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
 }
 
 /// The arm that answers the declared success.
-fn ok_arm(result: &str, prefix: &str, shape: &HttpShape, success: &Type) -> String {
+fn ok_arm(
+    operation: &OperationDef,
+    result: &str,
+    prefix: &str,
+    shape: &HttpShape,
+    success: &Type,
+) -> String {
+    if is_content_list(operation) {
+        return format!(
+            "          is {result}.Ok -> {prefix}McpBlocks(answered.value.map {{ Json.encodeToJsonElement(McpContentSerializer, it) }})\n"
+        );
+    }
+    if is_content_pair(operation) {
+        return format!(
+            "          is {result}.Ok -> {prefix}McpMedia(answered.value.slot0, answered.value.slot1)\n            \
+             ?: {prefix}McpDone(Json.encodeToJsonElement(answered.value), null)\n"
+        );
+    }
     if shape.header_out.is_empty() {
         if is_unit_type(success) {
             return format!("          is {result}.Ok -> {prefix}McpDone(null, null)\n");
@@ -1720,7 +2033,36 @@ fn ok_arm(result: &str, prefix: &str, shape: &HttpShape, success: &Type) -> Stri
 }
 
 /// The arm that answers the declared error.
-fn declared_arm(result: &str, prefix: &str, shape: &HttpShape, error: &Type) -> String {
+fn declared_arm(
+    operation: &OperationDef,
+    result: &str,
+    prefix: &str,
+    shape: &HttpShape,
+    error: &Type,
+) -> String {
+    if let Some(interview) = operation.mcp.interview.as_ref() {
+        let written = read_serializer(error);
+        let answers =
+            answers_key(operation).map_or_else(|| "null".to_owned(), |key| kotlin_quoted(&key));
+        let form = if interview.answers.is_some() {
+            form_marker(operation)
+        } else {
+            "null".to_owned()
+        };
+        let declined = if interview.answers.is_some() {
+            "mcpDeclined"
+        } else {
+            "false"
+        };
+        return format!(
+            "          is {result}.Declared -> {{\n            \
+             val mcpBody = Json.encodeToJsonElement({written}, answered.error)\n            \
+             {prefix}McpAsking({}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
+             ?: {prefix}McpDone(null, {prefix}McpServeText(mcpBody))\n          }}\n",
+            kotlin_quoted(&interview.arm.to_string()),
+            kotlin_quoted(operation.doc.as_deref().unwrap_or_default()),
+        );
+    }
     if shape.error_header_out.is_empty() {
         let written = read_serializer(error);
         return format!(

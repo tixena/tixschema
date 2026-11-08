@@ -1,29 +1,13 @@
 //! Result content in the dispatcher: a tool that answers blocks, not a structured value.
 
-use crate::service_schema::parse::{OperationDef, OperationOutcome, ServiceDef};
+use crate::service_schema::parse::{OperationDef, ServiceDef};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, Type};
+use syn::Ident;
 
-/// A content tool's success is the pair of bytes and their content type.
-pub(super) fn is_pair(operation: &OperationDef) -> bool {
-    operation.mcp.content.is_some()
-        && matches!(
-            &operation.outcome,
-            OperationOutcome::Reply { success, error: _error }
-                if matches!(success.as_ref(), Type::Tuple(_))
-        )
-}
-
-/// A content tool's success is a list of blocks.
-pub(super) fn is_list(operation: &OperationDef) -> bool {
-    operation.mcp.content.is_some()
-        && matches!(
-            &operation.outcome,
-            OperationOutcome::Reply { success, error: _error }
-                if !matches!(success.as_ref(), Type::Tuple(_))
-        )
-}
+pub(super) use crate::service_schema::mcp_tools::{
+    is_content_list as is_list, is_content_pair as is_pair,
+};
 
 pub(super) fn any(service: &ServiceDef) -> bool {
     service
