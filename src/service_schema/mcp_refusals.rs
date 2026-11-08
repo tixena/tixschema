@@ -59,6 +59,43 @@ fn operation_refusals(operation: &OperationDef) -> Vec<syn::Error> {
         ));
     }
     refused.extend(header_refusals(operation));
+    refused.extend(scope_refusals(operation));
+    refused
+}
+
+fn scope_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    for (position, (scope, span)) in operation.mcp.scopes.iter().enumerate() {
+        let found = if scope.is_empty() {
+            Some("an empty scope".to_owned())
+        } else if operation.mcp.scopes[..position]
+            .iter()
+            .any(|(earlier, _)| earlier == scope)
+        {
+            Some(format!("the scope \"{scope}\" twice"))
+        } else if scope
+            .chars()
+            .any(|letter| letter == ' ' || letter == '"' || letter == '\\' || letter.is_control())
+        {
+            Some(format!(
+                "the scope \"{}\", which holds a space, a quote, a backslash or a control character",
+                scope.escape_debug()
+            ))
+        } else {
+            None
+        };
+        if let Some(problem) = found {
+            refused.push(syn::Error::new(
+                *span,
+                format!(
+                    "service_schema: operation `{ident}` writes {problem} in `mcp(scopes = [...])`\n       \
+                     a scope is one token a token's `scope` claim lists, separated by spaces; write \
+                     each scope once, with none of those characters"
+                ),
+            ));
+        }
+    }
     refused
 }
 

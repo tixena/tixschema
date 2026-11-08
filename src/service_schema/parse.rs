@@ -12,6 +12,7 @@ use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
 use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
+use syn::parse::Parse;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
 use syn::{
@@ -493,6 +494,9 @@ pub struct McpDirective {
     pub open_world: Option<bool>,
     /// `read_only`: the tool's `readOnlyHint`.
     pub read_only: bool,
+    /// `scopes = ["..."]`: the scopes a caller needs to call the operation, each with the span of
+    /// its literal.
+    pub scopes: Vec<(String, proc_macro2::Span)>,
     /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
     pub title: Option<String>,
 }
@@ -868,6 +872,10 @@ fn read_mcp_directive(
             read.open_world = Some(mcp_bool(&inner, operation, "open_world")?);
             return Ok(());
         }
+        if inner.path.is_ident("scopes") {
+            read.scopes = mcp_scopes(&inner, operation)?;
+            return Ok(());
+        }
         if inner.path.is_ident("header") {
             inner.parse_nested_meta(|bound| {
                 let argument = bound.path.require_ident()?.clone();
@@ -879,6 +887,26 @@ fn read_mcp_directive(
         }
         Err(inner.error(unknown_mcp_key_message(operation)))
     })
+}
+
+fn mcp_scopes(
+    inner: &ParseNestedMeta<'_>,
+    operation: &Ident,
+) -> Result<Vec<(String, proc_macro2::Span)>, syn::Error> {
+    if !inner.input.peek(Token![=]) {
+        return Err(inner.error(format!(
+            "service_schema: operation `{operation}` writes `scopes` in `mcp(...)` with no list\n       \
+             write `scopes = [\"documents:read\"]`"
+        )));
+    }
+    let stream = inner.value()?;
+    let content;
+    syn::bracketed!(content in stream);
+    let written = content.parse_terminated(<LitStr as Parse>::parse, Token![,])?;
+    Ok(written
+        .iter()
+        .map(|scope| (scope.value(), scope.span()))
+        .collect())
 }
 
 fn non_empty_mcp_text(
@@ -927,7 +955,7 @@ fn unknown_mcp_key_message(operation: &Ident) -> String {
     format!(
         "service_schema: operation `{operation}` writes a key `mcp(...)` does not take\n       \
          the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
-         `open_world` and `header(<argument> = \"<Header-Name>\")`"
+         `open_world`, `scopes = [\"...\"]` and `header(<argument> = \"<Header-Name>\")`"
     )
 }
 

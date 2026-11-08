@@ -159,7 +159,12 @@ fn an_empty_title_name_or_icon_is_refused_naming_the_operation() {
 
 #[test]
 fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
-    for key in ["resource = \"guide://x\"", "prompt", "content", "scopes(a)"] {
+    for key in [
+        "resource = \"guide://x\"",
+        "prompt",
+        "content",
+        "completes(a)",
+    ] {
         let reported = parse_refusals(&format!(
             "pub trait DocumentService<Ctx> {{
                 #[service_schema_op(mcp({key}))]
@@ -172,7 +177,7 @@ fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
             [
                 "service_schema: operation `get_version` writes a key `mcp(...)` does not take\n       \
                  the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
-                 `open_world` and `header(<argument> = \"<Header-Name>\")`"
+                 `open_world`, `scopes = [\"...\"]` and `header(<argument> = \"<Header-Name>\")`"
                     .to_owned()
             ]
         );
@@ -518,4 +523,83 @@ fn a_message_lists_jsonschema_on_a_service_that_asks_for_mcp_as_it_does_for_open
 fn the_mcp_transport_is_known_by_name() {
     assert_eq!(Transport::Mcp.name(), "mcp");
     assert!(Transport::KNOWN.contains(&Transport::Mcp));
+}
+
+fn scoped(scopes: &str) -> String {
+    format!(
+        "pub trait DocumentService<Ctx> {{
+            /// Answers the current version of one document.
+            #[service_schema_op(mcp(scopes = {scopes}))]
+            async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+                -> Result<VersionResponse, VersionError>;
+        }}"
+    )
+}
+
+#[test]
+fn scopes_are_read_in_order() {
+    let read = service(&scoped(r#"["documents:read", "documents:write"]"#));
+    let names: Vec<&str> = read.operations[0]
+        .mcp
+        .scopes
+        .iter()
+        .map(|(scope, _)| scope.as_str())
+        .collect();
+    assert_eq!(names, ["documents:read", "documents:write"]);
+    assert_eq!(
+        mcp_refusals_of(&scoped(r#"["documents:read"]"#)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_scope_that_is_empty_spaced_quoted_escaped_controlled_or_repeated_is_refused() {
+    for (scope, problem) in [
+        (r#""""#, "an empty scope"),
+        (
+            r#""documents read""#,
+            "the scope \"documents read\", which holds a space, a quote, a backslash or a control character",
+        ),
+        (
+            r#""a\"b""#,
+            "the scope \"a\\\"b\", which holds a space, a quote, a backslash or a control character",
+        ),
+        (
+            r#""a\\b""#,
+            "the scope \"a\\\\b\", which holds a space, a quote, a backslash or a control character",
+        ),
+        (
+            r#""a\tb""#,
+            "the scope \"a\\tb\", which holds a space, a quote, a backslash or a control character",
+        ),
+    ] {
+        let reported = mcp_refusals_of(&scoped(&format!("[{scope}]")));
+        assert_eq!(reported.len(), 1, "{scope}: {reported:?}");
+        assert!(
+            reported[0].starts_with(&format!(
+                "service_schema: operation `get_version` writes {problem} in `mcp(scopes = [...])`"
+            )),
+            "{scope}: {reported:?}"
+        );
+    }
+    let repeated = mcp_refusals_of(&scoped(r#"["documents:read", "documents:read"]"#));
+    assert_eq!(repeated.len(), 1, "{repeated:?}");
+    assert!(
+        repeated[0].contains("the scope \"documents:read\" twice"),
+        "{repeated:?}"
+    );
+}
+
+#[test]
+fn scopes_written_as_anything_but_a_list_of_text_are_refused() {
+    for written in ["scopes", "scopes = \"a\"", "scopes = [1]"] {
+        let reported = parse_refusals(&format!(
+            "pub trait DocumentService<Ctx> {{
+                #[service_schema_op(mcp({written}))]
+                async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+                    -> Result<VersionResponse, VersionError>;
+            }}"
+        ));
+        assert!(!reported.is_empty(), "{written}");
+    }
 }
