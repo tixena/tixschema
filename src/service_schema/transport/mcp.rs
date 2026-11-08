@@ -6,6 +6,7 @@ mod content;
 mod dispatcher;
 mod interview;
 mod resources;
+mod writer;
 
 use super::Transport;
 use crate::service_schema::parse::{

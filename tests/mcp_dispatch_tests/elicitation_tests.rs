@@ -8,7 +8,7 @@ mod over_http {
         self, McpCall, McpDenied, McpEndpoint, McpHttpRequest, McpHttpSettings, McpOAuth,
     };
     use crate::http_tests::post;
-    use crate::support::{assert_result, block_on};
+    use crate::support::{Lines, assert_result, block_on};
     use serde_json::{Value, json};
 
     const ENDPOINT: McpEndpoint = McpEndpoint::new(
@@ -89,13 +89,83 @@ mod over_http {
             "Approvals",
             None,
             &ENDPOINT,
-            async |part, method, params| match part {
-                0 => approval_mcp::route(method, params, &approvals, &()).await,
+            |_call| (),
+            approval_mcp::McpHost {
+                in_flight: &approval_mcp::McpInFlight::default(),
+                writer: &Lines::default(),
+            },
+            async |ctx: &(), part, method, params| match part {
+                0 => approval_mcp::route(method, params, &approvals, ctx).await,
                 _ => None,
             },
         ))
         .unwrap();
         assert_result("CallToolResult", &serde_json::from_str(&text).unwrap());
+    }
+}
+
+mod with_progress {
+    use super::{Approvals, call_with, form};
+    use crate::ApprovalServiceSchema;
+    use crate::approval_mcp::{self, McpEndpoint, McpHost, McpInFlight};
+    use crate::support::{Lines, assert_result, assert_valid, block_on};
+    use serde_json::{Value, json};
+
+    const ENDPOINT: McpEndpoint = McpEndpoint::new(
+        &[ApprovalServiceSchema::MCP_NAMES],
+        &[approval_mcp::catalog],
+    );
+
+    fn delete_with_a_token() -> String {
+        let mut asked = call_with(
+            &form(),
+            "delete-document",
+            &json!({ "documentId": "doc-1" }),
+            None,
+        );
+        asked["params"]["_meta"]["progressToken"] = json!("delete-1");
+        asked.to_string()
+    }
+
+    fn serve(asked: &str, lines: &Lines) -> Option<String> {
+        block_on(approval_mcp::serve(
+            asked,
+            "Approvals",
+            None,
+            &ENDPOINT,
+            |call| call.progress(1.0_f64, None, Some("asking")),
+            McpHost {
+                in_flight: &McpInFlight::default(),
+                writer: lines,
+            },
+            async |_ctx: &(), part, method, params| match part {
+                0 => approval_mcp::route(method, params, &Approvals::default(), &()).await,
+                _ => None,
+            },
+        ))
+    }
+
+    #[test]
+    fn an_interview_called_with_a_token_writes_progress_and_still_asks() {
+        let lines = Lines::default();
+        let text = serve(&delete_with_a_token(), &lines).unwrap();
+        let answered: Value = serde_json::from_str(&text).unwrap();
+        assert_result("InputRequiredResult", &answered);
+        assert_eq!(answered["result"]["resultType"], "input_required");
+        assert!(answered["result"]["inputRequests"]["confirmation"].is_object());
+        let written = lines.written();
+        assert_eq!(written.len(), 1);
+        assert_valid(
+            "ProgressNotification",
+            &serde_json::from_str(&written[0]).unwrap(),
+        );
+    }
+
+    #[test]
+    fn an_interview_whose_client_is_gone_writes_no_answer() {
+        let lines = Lines::gone();
+        assert_eq!(serve(&delete_with_a_token(), &lines), None);
+        assert_eq!(lines.written(), Vec::<String>::new());
     }
 }
 
@@ -106,7 +176,7 @@ use crate::approval::{
 use crate::approval_client::{ApprovalServiceClient, McpMessage, Transport};
 use crate::approval_mcp;
 use crate::approval_service_schema::{CallError, McpContent, McpResourceContents};
-use crate::support::{assert_result, assert_valid, block_on, id, meta, server_info};
+use crate::support::{Lines, assert_result, assert_valid, block_on, id, meta, server_info};
 use core::future::Future;
 use serde_json::{Value, json};
 
@@ -128,9 +198,15 @@ impl Transport for Dispatching<'_> {
         assert_eq!(sent.2, "2026-07-28");
         let approvals = self.approvals;
         async move {
-            Ok(approval_mcp::answer(&message.text, approvals, &())
-                .await
-                .unwrap())
+            Ok(approval_mcp::answer(
+                &message.text,
+                approvals,
+                |_call| (),
+                &Lines::default(),
+                &approval_mcp::McpInFlight::default(),
+            )
+            .await
+            .unwrap())
         }
     }
 }
@@ -157,9 +233,15 @@ fn call_with(
 }
 
 fn answer(approvals: &Approvals, asked: &Value) -> Value {
-    block_on(approval_mcp::answer(&asked.to_string(), approvals, &()))
-        .map(|text| serde_json::from_str(&text).unwrap())
-        .unwrap()
+    block_on(approval_mcp::answer(
+        &asked.to_string(),
+        approvals,
+        |_call| (),
+        &Lines::default(),
+        &approval_mcp::McpInFlight::default(),
+    ))
+    .map(|text| serde_json::from_str(&text).unwrap())
+    .unwrap()
 }
 
 fn form() -> Value {

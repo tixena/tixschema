@@ -5,6 +5,8 @@
 
 #![cfg(feature = "serde")]
 
+extern crate alloc;
+
 #[cfg(test)]
 #[macro_use]
 #[path = "mcp_dispatch_tests/tests.rs"]
@@ -32,6 +34,10 @@ mod document_mcp;
 mod billing_mcp;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/export_mcp.rs"]
+mod export_mcp;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/document_client.rs"]
 mod document_client;
 
@@ -56,6 +62,10 @@ mod auth_tests;
 mod resource_tests;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/writer_tests.rs"]
+mod writer_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/client_tests.rs"]
 mod client_tests;
 
@@ -68,6 +78,6 @@ mod elicitation_tests;
 use approval::{ApprovalService, ApprovalServiceSchema, approval_service_schema};
 #[cfg(test)]
 use tests::{
-    BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema,
-    billing_service_schema, document_service_schema,
+    BillingService, BillingServiceSchema, DocumentService, DocumentServiceSchema, ExportService,
+    ExportServiceSchema, billing_service_schema, document_service_schema, export_service_schema,
 };

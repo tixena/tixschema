@@ -3712,18 +3712,26 @@ On a service that asks for `mcp`, the macro refuses, naming the operation: a met
 **Serving tools.** `{service}_mcp_dispatcher!()` goes in a module of its own file, as the other dispatcher macros do, and emits `SERVER_NAME`, `INSTRUCTIONS`, `catalog()`, `route`, `McpEndpoint`, `serve`, `answer`, `McpHttpRequest`, `McpHttpResponse`, `serve_http` and `answer_http`. A crate that invokes it names `serde`, `serde_json` and `tracing`, and reaches the service as `$crate::<Service>Schema`, so a service declared in a submodule re-exports its `<Service>Schema` at the crate root. The application owns the stdio loop and the HTTP server:
 
 ```rust,ignore
-// stdio: one line in, at most one line out
-while let Some(line) = lines.next() {
-    if let Some(reply) = document_mcp::answer(&line, &documents, &ctx).await {
-        println!("{reply}");
-    }
+// stdio: one task per line, so a cancellation is read while a handler runs
+let stdout = Lines::default();
+let in_flight = document_mcp::McpInFlight::default();
+while let Some(line) = lines.next_line().await? {
+    let (stdout, in_flight, store) = (stdout.clone(), in_flight.clone(), store.clone());
+    running.spawn_local(async move {
+        let reply = document_mcp::answer(&line, &*store, |call| RequestContext { call }, &stdout, &in_flight).await;
+        if let Some(reply) = reply {
+            stdout.write(reply).await.ok();
+        }
+    });
 }
 
 // HTTP: build `McpHttpRequest` from the framework's request, write the response back
 let response = document_mcp::answer_http(&request, &settings, &documents, admit).await;
 ```
 
-The server answers revision 2026-07-28 only: `server/discover`, `tools/list` and `tools/call`. It checks each message in this order: text that is no JSON-RPC message answers `-32600`; a notification answers nothing; a missing `_meta.io.modelcontextprotocol/protocolVersion` or `clientCapabilities` answers `-32602`; another version answers `-32022` naming both; an unknown method answers `-32601`. A call is read through the operation's `unjudged_` reader and judged by its `validated_` validator, so `preprocess`, bounds and checks run as on every other transport. A success answers `structuredContent` and the same JSON as one text block (an empty `content` list for a unit success and for a one-way operation, once its handler has returned); a declared error answers `isError: true` with its JSON as the text; arguments that do not read, a field the validator refuses, a missing `header_in` property and an unknown tool answer the fault envelope `{"isServiceFault": true, "fault": ...}`, as the text of a tool error or, for an unknown tool and a handler panic, in the `data` of `-32602` and `-32603`. Every answer is compact JSON with the keys of each object in order, and every result carries `serverInfo`, the trait's name and the version of the crate that invoked the macro. `answer` and `answer_http` take a service that is `Sync` and a `Ctx` that is `Sync`, and their futures are `Send` where those are.
+**Progress and cancellation.** `answer` and `serve` take `ctx`, a closure that builds the handler's `Ctx` from the `McpCall` of the request, a writer (`McpEventWriter`, whose `write` answers `Err(McpClientGone)` once the client has gone) and a `McpInFlight` table; `serve` takes the writer and the table together as `McpHost { writer, in_flight }`. Every routed request (`tools/call`, `resources/read`, `resources/list` and `completion/complete`) is built a `Ctx` this way. A handler calls `ctx.call.progress(1.0, Some(3.0), Some("exported 1 of 3 files"))`, which queues `notifications/progress` where the request carries `_meta.progressToken` and does nothing otherwise; the transport writes each between two polls of the handler, naming no async runtime. A failed write marks the call cancelled, and so does `notifications/cancelled` on stdio, which finds the request in `McpInFlight` by `requestId`; a handler reads `ctx.call.cancelled()` and stops when it chooses, and the transport drops the answer and writes nothing more for that request. A host that waits for each answer before it reads the next line never reads the cancellation, so it starts each `answer` as its own task. Over HTTP, `admit` receives the call, and a request with a `progressToken` answers `200` with `Content-Type: text/event-stream` and `X-Accel-Buffering: no`: one `event: message` per notification, then the answer; without a token the answer is one JSON object. `serve`'s `route` receives the `Ctx` that `ctx` built, as `serve_http`'s receives the one `admit` answered.
+
+The server answers revision 2026-07-28 only: `server/discover`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list` and `completion/complete`. It checks each message in this order: text that is no JSON-RPC message answers `-32600`; a notification answers nothing; a missing `_meta.io.modelcontextprotocol/protocolVersion` or `clientCapabilities` answers `-32602`; another version answers `-32022` naming both; an unknown method answers `-32601`. A call is read through the operation's `unjudged_` reader and judged by its `validated_` validator, so `preprocess`, bounds and checks run as on every other transport. A success answers `structuredContent` and the same JSON as one text block (an empty `content` list for a unit success and for a one-way operation, once its handler has returned); a declared error answers `isError: true` with its JSON as the text; arguments that do not read, a field the validator refuses, a missing `header_in` property and an unknown tool answer the fault envelope `{"isServiceFault": true, "fault": ...}`, as the text of a tool error or, for an unknown tool and a handler panic, in the `data` of `-32602` and `-32603`. Every answer is compact JSON with the keys of each object in order, and every result carries `serverInfo`, the trait's name and the version of the crate that invoked the macro. `answer` and `answer_http` take a service that is `Sync` and a `Ctx` that is `Send` and `Sync`, and their futures are `Send` where those are.
 
 `serve_http` applies, in order, the Streamable HTTP rules: a `GET` at the path of the metadata document answers it (`405` where `oauth` is `None`), `405` for a method other than `POST`, `403` for an `Origin` not in `settings.allowed_origins`, then `admit`, then `400` with `-32600` for an unreadable body, `202` for a notification, `400` with `-32020` when `MCP-Protocol-Version`, `Mcp-Method` or (for `tools/call`, `resources/read` and `prompts/get`) `Mcp-Name` is missing or differs from the body (header names compared in any case, `Mcp-Name` decoded from `=?base64?...?=`), `400` with `-32602` and `-32022` as above, `404` with `-32601` for an unknown method, and otherwise `200` with `Content-Type: application/json`.
 
@@ -3737,9 +3745,10 @@ const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
     &[document_mcp::catalog, billing_mcp::catalog],
 );
 
-let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, async |part, method, params| match part {
-    0 => document_mcp::route(method, params, &documents, &ctx).await,
-    1 => billing_mcp::route(method, params, &billing, &ctx).await,
+let host = document_mcp::McpHost { writer: &stdout, in_flight: &in_flight };
+let reply = document_mcp::serve(&text, "Workspace", None, &WORKSPACE, |call| RequestContext { call }, host, async |ctx: &RequestContext, part, method, params| match part {
+    0 => document_mcp::route(method, params, &documents, ctx).await,
+    1 => billing_mcp::route(method, params, &billing, ctx).await,
     _ => None,
 })
 .await;
