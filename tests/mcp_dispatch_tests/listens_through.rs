@@ -120,15 +120,15 @@ macro_rules! listens_through_every_entry_point_of {
                 let service = $service;
                 let mut queue = script();
                 let mut source = async || queue.pop_front();
-                let response = block_on($module::answer_http_listening(
+                let response = through(|stream| block_on($module::answer_http_listening(
                     &posted(),
-                    &SETTINGS,
+                    &SETTINGS, stream,
                     &service,
                     async |_request: &$module::McpHttpRequest, call: $module::McpCall| {
                         Ok::<_, $module::McpDenied>(($ctx)(call))
                     },
                     &mut source,
-                ));
+                )));
                 assert_eq!(response.status, 200);
                 let streamed = String::from_utf8(response.body).unwrap();
                 assert_eq!(streamed.matches(":\n\n").count(), 1, "{streamed}");
@@ -139,9 +139,9 @@ macro_rules! listens_through_every_entry_point_of {
                 let service = $service;
                 let mut queue = script();
                 let mut source = async || queue.pop_front();
-                let response = block_on($module::serve_http_listening(
+                let response = through(|stream| block_on($module::serve_http_listening(
                     &posted(),
-                    &SETTINGS,
+                    &SETTINGS, stream,
                     &server(),
                     async |_request: &$module::McpHttpRequest, call: $module::McpCall| {
                         Ok::<_, $module::McpDenied>(($ctx)(call))
@@ -156,7 +156,7 @@ macro_rules! listens_through_every_entry_point_of {
                         })
                     },
                     &mut source,
-                ));
+                )));
                 assert_eq!(response.status, 200);
                 let streamed = String::from_utf8(response.body).unwrap();
                 assert_eq!(streamed.matches(":\n\n").count(), 1, "{streamed}");

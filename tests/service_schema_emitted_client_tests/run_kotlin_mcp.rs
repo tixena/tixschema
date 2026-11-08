@@ -32,6 +32,7 @@ use super::runtime::ran_kotlin;
 use super::writer_service_schema;
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema, WriterServiceSchema};
 use super::{mobile_billing_service_schema, mobile_document_service_schema};
+use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -148,7 +149,8 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
-        val answered = http(
+        val answered = respondMobileDocumentService(
+            http,
             MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 "/mcp",
@@ -263,7 +265,8 @@ suspend fun authReport(input: JsonObject): JsonObject {
         val scheme = given.getValue("scheme").jsonPrimitive.content
         val serve = createMobileDocumentServiceMcpHttpDispatcher(settings.getValue(scheme), admits.getValue(scheme))
         val before = reached
-        val response = serve(
+        val response = respondMobileDocumentService(
+            serve,
             MobileDocumentServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 given.getValue("path").jsonPrimitive.content,
@@ -312,6 +315,55 @@ class WriterHandlers(
         WriterServiceGetVersionResult.Ok(WriterVersion(7u))
 }
 
+class HeldHandlers(
+    private val call: WriterServiceMcpCall,
+    private val opened: CompletableDeferred<Unit>,
+    private val reached: IntArray,
+) : WriterServiceHandlers {
+    override suspend fun exportFolder(req: String): WriterServiceExportFolderResult {
+        reached[0] += 1
+        call.progress(1.0, 3.0, "exported 1 of 3 files")
+        if (req == "held") opened.await()
+        return WriterServiceExportFolderResult.Ok
+    }
+
+    override suspend fun getVersion(req: WriterVersionRequest): WriterServiceGetVersionResult =
+        WriterServiceGetVersionResult.Ok(WriterVersion(7u))
+}
+
+class RecordingStream(private val goneAfter: Int? = null) : WriterServiceMcpHttpStream {
+    var attempts = 0
+    val seen = mutableListOf<JsonObject>()
+    private val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    suspend fun until(done: () -> Boolean) {
+        while (!done()) changed.receive()
+    }
+
+    private fun take() {
+        attempts += 1
+        val refused = goneAfter != null && seen.size >= goneAfter
+        changed.trySend(Unit)
+        if (refused) throw IllegalStateException("the client has gone")
+    }
+
+    override suspend fun begin(status: Int, headers: List<Pair<String, String>>) {
+        take()
+        seen.add(
+            buildJsonObject {
+                put("began", JsonArray(listOf(JsonPrimitive(status), JsonArray(headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))))
+            },
+        )
+        changed.trySend(Unit)
+    }
+
+    override suspend fun write(event: String) {
+        take()
+        seen.add(buildJsonObject { put("wrote", event) })
+        changed.trySend(Unit)
+    }
+}
+
 suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
     val written = java.util.concurrent.ConcurrentLinkedQueue<String>()
     val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
@@ -355,7 +407,8 @@ suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
     }
     val http = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
-        val response = serve(
+        val response = respondWriterService(
+            serve,
             WriterServiceMcpHttpRequest(
                 given.getValue("method").jsonPrimitive.content,
                 given.getValue("path").jsonPrimitive.content,
@@ -369,7 +422,72 @@ suspend fun writerReport(input: JsonObject): JsonObject = coroutineScope {
             put("body", response.body.decodeToString())
         }
     }
+    fun asRequest(name: String): WriterServiceMcpHttpRequest {
+        val row = input.getValue("streams").jsonObject.getValue(name).jsonObject
+        return WriterServiceMcpHttpRequest(
+            row.getValue("method").jsonPrimitive.content,
+            row.getValue("path").jsonPrimitive.content,
+            row.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content },
+            row.getValue("body").jsonPrimitive.content.encodeToByteArray(),
+        )
+    }
+    fun serving(opened: CompletableDeferred<Unit>, reached: IntArray, taken: Array<WriterServiceMcpCall?>) =
+        createWriterServiceMcpHttpDispatcher(WriterServiceMcpHttpSettings(emptyList())) { _, call ->
+            taken[0] = call
+            WriterServiceMcpAdmitted.Caller(HeldHandlers(call, opened, reached))
+        }
+
+    val progressGate = CompletableDeferred<Unit>()
+    val progressStream = RecordingStream()
+    val progressRunning = async { serving(progressGate, intArrayOf(0), arrayOfNulls(1))(asRequest("held"), progressStream) }
+    progressStream.until { progressStream.seen.size >= 2 }
+    val heldSeen = JsonArray(progressStream.seen.toList())
+    val endedWhileHeld = progressRunning.isCompleted
+    progressGate.complete(Unit)
+    val progressAnswered = progressRunning.await()
+
+    val failedGate = CompletableDeferred<Unit>()
+    val failedStream = RecordingStream(1)
+    val failedTaken = arrayOfNulls<WriterServiceMcpCall>(1)
+    val failedRunning = async { serving(failedGate, intArrayOf(0), failedTaken)(asRequest("held"), failedStream) }
+    failedStream.until { failedStream.attempts >= 2 }
+    failedGate.complete(Unit)
+    val failedAnswered = failedRunning.await()
+
+    val refusedStream = RecordingStream(0)
+    val refusedTaken = arrayOfNulls<WriterServiceMcpCall>(1)
+    val refusedReached = intArrayOf(0)
+    val refusedAnswered = serving(CompletableDeferred(Unit), refusedReached, refusedTaken)(asRequest("docs"), refusedStream)
+
+    val plainStream = RecordingStream()
+    val plainAnswered = serving(CompletableDeferred(Unit), intArrayOf(0), arrayOfNulls(1))(asRequest("plain"), plainStream)
+
+    val streams = buildJsonObject {
+        put("progress", buildJsonObject {
+            put("endedWhileHeld", endedWhileHeld)
+            put("full", JsonArray(progressStream.seen.toList()))
+            put("held", heldSeen)
+            put("returned", progressAnswered != null)
+        })
+        put("failed", buildJsonObject {
+            put("cancelled", failedTaken[0]!!.cancelled)
+            put("returned", failedAnswered != null)
+            put("seen", JsonArray(failedStream.seen.toList()))
+        })
+        put("refused", buildJsonObject {
+            put("cancelled", refusedTaken[0]!!.cancelled)
+            put("reached", refusedReached[0])
+            put("returned", refusedAnswered != null)
+            put("seen", JsonArray(refusedStream.seen.toList()))
+        })
+        put("plain", buildJsonObject {
+            put("returned", plainAnswered != null)
+            put("seen", JsonArray(plainStream.seen.toList()))
+            put("status", plainAnswered!!.status)
+        })
+    }
     buildJsonObject {
+        put("streams", streams)
         put("written", JsonArray(kept.map { JsonPrimitive(it) }))
         put("observed", observed)
         put("failed", buildJsonObject {
@@ -576,6 +694,8 @@ fn module() -> String {
     let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
     parts.extend(definitions());
     parts.push(HANDLERS.to_owned());
+    parts.push(kotlin_respond("MobileDocumentService"));
+    parts.push(kotlin_respond("WriterService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(SERVER_DRIVER.to_owned());
     parts.push(AUTH_DRIVER.to_owned());

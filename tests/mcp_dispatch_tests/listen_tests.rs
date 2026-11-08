@@ -34,8 +34,8 @@ listens_through_every_entry_point_of!(
 use crate::approval::Approvals;
 use crate::document_mcp::{self, McpChange, McpEndpoint, McpHttpRequest, McpHttpSettings};
 use crate::support::{
-    Lines, Tasks, answer, assert_error, assert_result, assert_valid, block_on, id, request,
-    server_info,
+    Feed, Lines, Recorded, Seen, Tasks, answer, assert_error, assert_result, assert_valid,
+    block_on, id, request, server_info, through,
 };
 use crate::tests::{Archive, Reporting};
 use crate::{
@@ -45,6 +45,7 @@ use crate::{
 use alloc::collections::VecDeque;
 use core::future::pending;
 use serde_json::{Value, json};
+use std::sync::Mutex;
 
 const WATCHED: &str = "workspace://documents/64de3d95ff45b119e5b53a01";
 const OTHER: &str = "workspace://documents/another";
@@ -306,15 +307,18 @@ fn a_write_that_fails_ends_the_stream() {
 fn listen_over_http(asked: &Value, changes: Vec<McpChange>) -> document_mcp::McpHttpResponse {
     let mut queue = VecDeque::from(changes);
     let mut source = async || queue.pop_front();
-    block_on(document_mcp::answer_http_listening(
-        &post(asked),
-        &SETTINGS,
-        &Archive::default(),
-        async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
-            Ok::<_, document_mcp::McpDenied>(())
-        },
-        &mut source,
-    ))
+    through(|stream| {
+        block_on(document_mcp::answer_http_listening(
+            &post(asked),
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
+                Ok::<_, document_mcp::McpDenied>(())
+            },
+            &mut source,
+        ))
+    })
 }
 
 #[test]
@@ -351,14 +355,17 @@ fn over_http_the_stream_holds_the_events_a_comment_and_the_end() {
 #[test]
 fn over_http_a_service_handed_no_changes_does_not_know_the_method() {
     let asked = listen(&json!({ "resourcesListChanged": true }));
-    let response = block_on(document_mcp::answer_http(
-        &post(&asked),
-        &SETTINGS,
-        &Archive::default(),
-        async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
-            Ok::<_, document_mcp::McpDenied>(())
-        },
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &post(&asked),
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
+                Ok::<_, document_mcp::McpDenied>(())
+            },
+        ))
+    });
     assert_eq!(response.status, 404);
 }
 
@@ -419,4 +426,97 @@ fn an_endpoint_of_two_services_honors_resources_of_either() {
             }),
         ]
     );
+}
+
+fn change_event(text: &str) -> Value {
+    let data = text
+        .strip_prefix("event: message\ndata: ")
+        .and_then(|rest| rest.strip_suffix("\n\n"))
+        .unwrap();
+    serde_json::from_str(data).unwrap()
+}
+
+#[test]
+fn over_http_the_acknowledgment_and_each_change_are_written_as_they_come() {
+    let filter = json!({ "resourcesListChanged": true, "resourceSubscriptions": [WATCHED] });
+    let asked = listen(&filter);
+    let stream = Recorded::default();
+    let feed = Feed::default();
+    let mut source = async || feed.next().await;
+    let mut tasks = Tasks::default();
+    tasks.spawn(async {
+        let answered = document_mcp::answer_http_listening(
+            &post(&asked),
+            &SETTINGS,
+            &stream,
+            &Archive::default(),
+            async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
+                Ok::<_, document_mcp::McpDenied>(())
+            },
+            &mut source,
+        )
+        .await;
+        assert!(answered.is_none());
+    });
+    tasks.run_until_idle();
+    assert_eq!(
+        stream.seen()[0],
+        Seen::Began(
+            200,
+            vec![
+                ("Content-Type".to_owned(), "text/event-stream".to_owned()),
+                ("X-Accel-Buffering".to_owned(), "no".to_owned()),
+            ]
+        )
+    );
+    assert_eq!(stream.seen().len(), 2);
+    let acknowledged = change_event(&stream.wrote()[0]);
+    assert_eq!(acknowledged, acknowledgment(&filter));
+    assert_valid("SubscriptionsAcknowledgedNotification", &acknowledged);
+    feed.push(McpChange::ResourcesListChanged);
+    tasks.run_until_idle();
+    assert_eq!(stream.seen().len(), 3);
+    let listed = change_event(&stream.wrote()[1]);
+    assert_eq!(listed["method"], "notifications/resources/list_changed");
+    assert_valid("ResourceListChangedNotification", &listed);
+    feed.push(updated(WATCHED));
+    tasks.run_until_idle();
+    assert_eq!(stream.seen().len(), 4);
+    let changed = change_event(&stream.wrote()[2]);
+    assert_eq!(changed["method"], "notifications/resources/updated");
+    assert_valid("ResourceUpdatedNotification", &changed);
+    assert_eq!(tasks.running(), 1);
+    feed.push(McpChange::KeepAlive);
+    tasks.run_until_idle();
+    assert_eq!(stream.wrote()[3], ":\n\n");
+    feed.close();
+    tasks.run_until_idle();
+    assert_eq!(tasks.running(), 0);
+    assert_eq!(stream.seen().len(), 6);
+    assert_valid(
+        "SubscriptionsListenResultResponse",
+        &change_event(&stream.wrote()[4]),
+    );
+}
+
+#[test]
+fn over_http_a_listen_whose_write_fails_is_cancelled_and_ends() {
+    let asked = listen(&json!({ "resourcesListChanged": true }));
+    let stream = Recorded::gone_after(1);
+    let held_call = Mutex::new(None);
+    let mut source = async || pending::<Option<McpChange>>().await;
+    let answered = block_on(document_mcp::answer_http_listening(
+        &post(&asked),
+        &SETTINGS,
+        &stream,
+        &Archive::default(),
+        async |_request: &McpHttpRequest, call: document_mcp::McpCall| {
+            *held_call.lock().unwrap() = Some(call);
+            Ok::<_, document_mcp::McpDenied>(())
+        },
+        &mut source,
+    ));
+    assert!(answered.is_none());
+    assert_eq!(stream.seen().len(), 1);
+    assert!(held_call.lock().unwrap().as_ref().unwrap().cancelled());
 }

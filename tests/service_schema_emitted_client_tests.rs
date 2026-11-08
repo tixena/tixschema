@@ -1613,6 +1613,12 @@ mod run_swift_member_named;
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
 
+/// Where an HTTP host of an emitted `mcp` dispatcher streams to.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_streams.rs"]
+mod mcp_streams;
+
 /// The requests every emitted `mcp` server's authorization is measured with.
 #[cfg(test)]
 #[macro_use]

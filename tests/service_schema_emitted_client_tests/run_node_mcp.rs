@@ -13,6 +13,7 @@ use super::mcp_writer_rows::{
 };
 use super::runtime::{compiled_with_modules, node_modules, ran_with_modules, stand_down_modules};
 use crate::cases;
+use crate::mcp_streams::NODE_RESPOND;
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
 use core::pin::pin;
@@ -137,7 +138,7 @@ async function main() {
   ];
   const answers = [];
   for (const [method, input] of requests) {
-    const response = await dispatch(input);
+    const response = await respond(dispatch, input);
     answers.push({ method, status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
   }
   console.log(JSON.stringify(answers));
@@ -181,7 +182,7 @@ async function main() {
   for (const row of input.rows) {
     const dispatch = createDocumentServiceMcpHttpDispatcher(counted, settings[row.scheme], admits[row.scheme]);
     const before = reached;
-    const response = await dispatch({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(dispatch, { method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
     answers.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body), reached: reached - before });
   }
   const scopes = input.queries.map(([method, name]) => documentServiceMcpScopes(method, name ?? undefined));
@@ -455,10 +456,97 @@ async function main() {
   const http = [];
   const serve = createWriterServiceMcpHttpDispatcher(impl, { allowedOrigins: [] }, async (request, call) => ({ ctx: { call } }));
   for (const row of input.http) {
-    const response = await serve({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(serve, { method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
     http.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body) });
   }
-  console.log(JSON.stringify({ written: host.written, observed, failed: gone, http }));
+  const asRequest = (row) => ({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+  const recording = (goneAfter) => {
+    const seen = [];
+    const changed = [];
+    const stream = {
+      attempts: 0,
+      seen,
+      until: async (done) => {
+        while (!done()) await new Promise((resolve) => changed.push(resolve));
+      },
+      take() {
+        stream.attempts += 1;
+        const refused = goneAfter !== undefined && seen.length >= goneAfter;
+        for (const wake of changed.splice(0)) wake();
+        if (refused) throw new Error("the client has gone");
+      },
+      async begin(status, headers) {
+        stream.take();
+        seen.push({ began: [status, headers.map(([name, value]) => [name, value])] });
+        for (const wake of changed.splice(0)) wake();
+      },
+      async write(event) {
+        stream.take();
+        seen.push({ wrote: event });
+        for (const wake of changed.splice(0)) wake();
+      },
+    };
+    return stream;
+  };
+  const gated = () => {
+    let open;
+    const opened = new Promise((resolve) => { open = resolve; });
+    return { open, opened };
+  };
+  const heldImpl = (opened, reached) => ({
+    async exportFolder(ctx, folder) {
+      reached.count += 1;
+      await ctx.call.progress(1, 3, "exported 1 of 3 files");
+      if (folder === "held") await opened;
+      return { ok: true };
+    },
+    async getVersion() {
+      return { ok: true, value: { version: 7 } };
+    },
+  });
+  const serving = (impl, taken) => createWriterServiceMcpHttpDispatcher(impl, { allowedOrigins: [] }, async (request, call) => {
+    taken.call = call;
+    return { ctx: { call } };
+  });
+  const streams = {};
+  {
+    const gate = gated();
+    const stream = recording();
+    let ended = false;
+    const running = serving(heldImpl(gate.opened, { count: 0 }), {})(asRequest(input.streams.held), stream).then((answered) => {
+      ended = true;
+      return answered;
+    });
+    await stream.until(() => stream.seen.length >= 2);
+    const held = stream.seen.slice();
+    const endedWhileHeld = ended;
+    gate.open();
+    const answered = await running;
+    streams.progress = { endedWhileHeld, full: stream.seen.slice(), held, returned: answered !== undefined };
+  }
+  {
+    const gate = gated();
+    const stream = recording(1);
+    const taken = {};
+    const running = serving(heldImpl(gate.opened, { count: 0 }), taken)(asRequest(input.streams.held), stream);
+    await stream.until(() => stream.attempts >= 2);
+    gate.open();
+    const answered = await running;
+    streams.failed = { cancelled: taken.call.cancelled, returned: answered !== undefined, seen: stream.seen.slice() };
+  }
+  {
+    const stream = recording(0);
+    const taken = {};
+    const reached = { count: 0 };
+    const answered = await serving(heldImpl(Promise.resolve(), reached), taken)(asRequest(input.streams.docs), stream);
+    streams.refused = { cancelled: taken.call.cancelled, reached: reached.count, returned: answered !== undefined, seen: stream.seen.slice() };
+  }
+  {
+    const stream = recording();
+    const answered = await serving(heldImpl(Promise.resolve(), { count: 0 }), {})(asRequest(input.streams.plain), stream);
+    streams.plain = { returned: answered !== undefined, seen: stream.seen.slice(), status: answered.status };
+  }
+  console.log(JSON.stringify({ written: host.written, observed, failed: gone, http, streams }));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -1009,7 +1097,10 @@ fn a_notification_a_broken_text_and_an_unknown_method_are_answered_as_serve_orde
 
 #[test]
 fn the_http_server_applies_the_rules_in_the_order_the_design_gives() {
-    let Some(driven) = run("mcp-http", &format!("{REQUESTS}\n{HTTP_DRIVER}")) else {
+    let Some(driven) = run(
+        "mcp-http",
+        &format!("{REQUESTS}\n{NODE_RESPOND}\n{HTTP_DRIVER}"),
+    ) else {
         return;
     };
     let answers = driven.as_array().unwrap();
@@ -1422,7 +1513,8 @@ fn auth_input() -> Value {
 
 fn auth_report() -> Option<Value> {
     let driver = format!(
-        "{REQUESTS}\nconst INPUT = {};\n{AUTH_DRIVER}",
+        "{REQUESTS}\n{}\nconst INPUT = {};\n{AUTH_DRIVER}",
+        NODE_RESPOND,
         Value::String(auth_input().to_string())
     );
     run("mcp-auth", &driver)
@@ -1503,7 +1595,8 @@ fn the_rust_dispatcher_answers_alone_beside_a_second_service_and_over_http_alike
 #[test]
 fn the_typescript_host_writes_the_messages_the_rust_host_writes() {
     let driver = format!(
-        "const INPUT = {};\n{WRITER_DRIVER}",
+        "{}\nconst INPUT = {};\n{WRITER_DRIVER}",
+        NODE_RESPOND,
         Value::String(writer_input().to_string())
     );
     let Some(report) = run("mcp-writer", &driver) else {

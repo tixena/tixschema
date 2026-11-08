@@ -14,6 +14,7 @@ use super::{
     BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, MirrorService,
     MirrorServiceSchema, ShelfServiceSchema,
 };
+use crate::mcp_streams::through;
 use serde_json::{Value, json};
 
 macro_rules! exercised {
@@ -31,25 +32,33 @@ macro_rules! exercised {
                 oauth: None,
             };
             let endpoint = $module::McpEndpoint::new(&[$schema::MCP_NAMES], &[$module::catalog]);
-            let alone = poll_once($module::answer_http(
-                &terms,
-                &settings,
-                &$stand,
-                async |_request, _call| Ok(()),
-            ))
-            .unwrap();
-            let served = poll_once($module::serve_http(
-                &terms,
-                &settings,
-                $module::SERVER_NAME,
-                None,
-                &endpoint,
-                async |_request, _call| Ok(()),
-                &|ctx: &(), _part, method: &str, params: &Value| {
-                    Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
-                },
-            ))
-            .unwrap();
+            let alone = crate::mcp_streams::through(|stream| {
+                poll_once($module::answer_http(
+                    &terms,
+                    &settings,
+                    stream,
+                    &$stand,
+                    async |_request, _call| Ok(()),
+                ))
+                .unwrap()
+            });
+            let served = crate::mcp_streams::through(|stream| {
+                poll_once($module::serve_http(
+                    &terms,
+                    &settings,
+                    stream,
+                    &$module::McpServer {
+                        endpoint: &endpoint,
+                        instructions: None,
+                        name: $module::SERVER_NAME,
+                    },
+                    async |_request, _call| Ok(()),
+                    &|ctx: &(), _part, method: &str, params: &Value| {
+                        Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
+                    },
+                ))
+                .unwrap()
+            });
             let listed = poll_once($module::serve(
                 &row.body,
                 "Workspace",
@@ -90,15 +99,20 @@ macro_rules! exercised {
                 ),
                 ($module::McpDenied::Forbidden, 403_u16),
             ] {
-                let response = poll_once($module::answer_http(
-                    &terms,
-                    &settings,
-                    &$stand,
-                    async |_request: &$module::McpHttpRequest,
-                           _call: $module::McpCall|
-                           -> Result<(), $module::McpDenied> { Err(denied.clone()) },
-                ))
-                .unwrap();
+                let response = crate::mcp_streams::through(|stream| {
+                    poll_once($module::answer_http(
+                        &terms,
+                        &settings,
+                        stream,
+                        &$stand,
+                        async |_request: &$module::McpHttpRequest,
+                               _call: $module::McpCall|
+                               -> Result<(), $module::McpDenied> {
+                            Err(denied.clone())
+                        },
+                    ))
+                    .unwrap()
+                });
                 assert_eq!(response.status, status, "{denied:?}");
             }
         }
@@ -546,13 +560,16 @@ fn plain_terms(row: &HttpRow) -> McpHttpRequest {
 
 /// What the Rust dispatcher of `LibraryService` alone answers to the request in plain terms.
 pub fn rust_http(row: &HttpRow) -> HttpAnswer {
-    let answered = poll_once(mcp_library_dispatcher::answer_http(
-        &plain_terms(row),
-        &SETTINGS,
-        &Stand,
-        async |_request, _call| Ok(()),
-    ))
-    .unwrap();
+    let answered = through(|stream| {
+        poll_once(mcp_library_dispatcher::answer_http(
+            &plain_terms(row),
+            &SETTINGS,
+            stream,
+            &Stand,
+            async |_request, _call| Ok(()),
+        ))
+        .unwrap()
+    });
     (
         answered.status,
         answered.headers,

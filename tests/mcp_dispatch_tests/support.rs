@@ -6,9 +6,10 @@ use crate::{
     BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, document_mcp,
     export_mcp,
 };
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::task::Wake;
-use core::future::{Future, ready};
+use core::future::{Future, poll_fn, ready};
 use core::pin::{Pin, pin};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, Waker};
@@ -23,6 +24,47 @@ macro_rules! writes_to {
                 message: String,
             ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
                 ready(self.keep(message).then_some(()).ok_or($module::McpClientGone))
+            }
+        }
+    )*};
+}
+
+macro_rules! streams_to {
+    ($($module:ident),*) => {$(
+        impl $module::McpEventWriter for Recorded {
+            fn write(
+                &self,
+                message: String,
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(
+                    self.record(Seen::Wrote(message))
+                        .then_some(())
+                        .ok_or($module::McpClientGone),
+                )
+            }
+        }
+
+        impl $module::McpHttpStream for Recorded {
+            fn begin(
+                &self,
+                status: u16,
+                headers: &[(String, String)],
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(
+                    self.record(Seen::Began(status, headers.to_vec()))
+                        .then_some(())
+                        .ok_or($module::McpClientGone),
+                )
+            }
+        }
+
+        impl From<Streamed> for $module::McpHttpResponse {
+            fn from(streamed: Streamed) -> Self {
+                Self {
+                    body: streamed.body,
+                    headers: streamed.headers,
+                    status: streamed.status,
+                }
             }
         }
     )*};
@@ -80,6 +122,157 @@ impl Lines {
 }
 
 writes_to!(document_mcp, billing_mcp, export_mcp, approval_mcp);
+
+/// One call the dispatcher made on an HTTP stream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Seen {
+    Began(u16, Vec<(String, String)>),
+    Wrote(String),
+}
+
+/// What a stream received, put together the way a response carries it.
+pub struct Streamed {
+    pub body: Vec<u8>,
+    pub headers: Vec<(String, String)>,
+    pub status: u16,
+}
+
+/// Where an HTTP host streams to: every call kept in order, and every call refused once the
+/// stream has taken `lasts` of them.
+#[derive(Default)]
+pub struct Recorded {
+    lasts: Option<usize>,
+    log: Mutex<Vec<Seen>>,
+}
+
+impl Recorded {
+    /// The response `answered`, or what the stream was begun with and written where it is `None`.
+    pub fn collect<Response>(&self, answered: Option<Response>) -> Response
+    where
+        Response: From<Streamed>,
+    {
+        answered.unwrap_or_else(|| self.streamed().into())
+    }
+
+    /// A stream whose client goes away after `calls` calls.
+    pub fn gone_after(calls: usize) -> Self {
+        Self {
+            lasts: Some(calls),
+            log: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn record(&self, seen: Seen) -> bool {
+        let mut log = self.log.lock().unwrap();
+        if self.lasts.is_some_and(|lasts| log.len() >= lasts) {
+            return false;
+        }
+        log.push(seen);
+        true
+    }
+
+    /// Every call the stream took, in order.
+    pub fn seen(&self) -> Vec<Seen> {
+        self.log.lock().unwrap().clone()
+    }
+
+    /// What the stream was begun with, and everything written to it.
+    pub fn streamed(&self) -> Streamed {
+        let (status, headers) = self
+            .seen()
+            .into_iter()
+            .find_map(|seen| match seen {
+                Seen::Began(status, headers) => Some((status, headers)),
+                Seen::Wrote(_) => None,
+            })
+            .unwrap();
+        Streamed {
+            body: self.wrote().concat().into_bytes(),
+            headers,
+            status,
+        }
+    }
+
+    /// Every text written, in order.
+    pub fn wrote(&self) -> Vec<String> {
+        self.seen()
+            .into_iter()
+            .filter_map(|seen| match seen {
+                Seen::Wrote(text) => Some(text),
+                Seen::Began(..) => None,
+            })
+            .collect()
+    }
+}
+
+streams_to!(document_mcp, billing_mcp, export_mcp, approval_mcp);
+
+struct Fed<Change> {
+    closed: bool,
+    pending: VecDeque<Change>,
+    waiting: Option<Waker>,
+}
+
+/// A source of changes the test feeds one at a time: `next` waits for the test, with nothing to
+/// time out.
+pub struct Feed<Change> {
+    held: Arc<Mutex<Fed<Change>>>,
+}
+
+impl<Change> Clone for Feed<Change> {
+    fn clone(&self) -> Self {
+        Self {
+            held: Arc::clone(&self.held),
+        }
+    }
+}
+
+impl<Change> Default for Feed<Change> {
+    fn default() -> Self {
+        Self {
+            held: Arc::new(Mutex::new(Fed {
+                closed: false,
+                pending: VecDeque::new(),
+                waiting: None,
+            })),
+        }
+    }
+}
+
+impl<Change> Feed<Change> {
+    /// Ends the stream the feed is the source of.
+    pub fn close(&self) {
+        let mut fed = self.held.lock().unwrap();
+        fed.closed = true;
+        if let Some(waker) = fed.waiting.take() {
+            waker.wake();
+        }
+    }
+
+    pub async fn next(&self) -> Option<Change> {
+        poll_fn(|cx| {
+            let mut fed = self.held.lock().unwrap();
+            if let Some(change) = fed.pending.pop_front() {
+                return Poll::Ready(Some(change));
+            }
+            if fed.closed {
+                return Poll::Ready(None);
+            }
+            fed.waiting = Some(cx.waker().clone());
+            Poll::Pending
+        })
+        .await
+    }
+
+    /// Hands one change to the stream.
+    pub fn push(&self, change: Change) {
+        let mut fed = self.held.lock().unwrap();
+        fed.pending.push_back(change);
+        if let Some(waker) = fed.waiting.take() {
+            waker.wake();
+        }
+    }
+}
 
 type Task<'task> = Pin<Box<dyn Future<Output = ()> + 'task>>;
 
@@ -248,4 +441,14 @@ pub fn answer_workspace(archive: &Archive, asked: &Value) -> Option<Value> {
         },
     ))
     .map(|text| serde_json::from_str(&text).unwrap())
+}
+
+/// The response of a call that is handed a fresh stream, however the call answers.
+pub fn through<Response>(answering: impl FnOnce(&Recorded) -> Option<Response>) -> Response
+where
+    Response: From<Streamed>,
+{
+    let stream = Recorded::default();
+    let answered = answering(&stream);
+    stream.collect(answered)
 }

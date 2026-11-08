@@ -10,8 +10,10 @@ use super::mcp_library_dispatcher::{
     McpHttpSettings, McpInFlight, McpServer,
 };
 use super::mcp_library_service::Stand;
+use super::mcp_streams::{Feed, Recorded};
 use super::mcp_writer_rows::{Tasks, ready_output};
 use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema};
+use crate::mcp_streams::through;
 use alloc::collections::VecDeque;
 use core::future::{Future, pending, ready};
 use serde_json::{Value, json};
@@ -227,6 +229,12 @@ pub fn input() -> Value {
         })).collect::<Vec<_>>(),
         "cancel": cancel_lines(),
         "gone": { "request": gone_request, "script": gone_script },
+        "streamed": {
+            "body": http_row(&streamed_line()).body,
+            "headers": http_row(&streamed_line()).headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            "method": "POST",
+            "path": "/mcp",
+        },
         "discover": discover_line(),
     })
 }
@@ -324,26 +332,32 @@ fn http_json(response: mcp_library_dispatcher::McpHttpResponse) -> Value {
 fn http(row: &ListenRow, script: &[Value]) -> Value {
     let mut queue = queue_of(script);
     let mut source = async || queue.pop_front();
-    http_json(ready_output(mcp_library_dispatcher::answer_http_listening(
-        &http_terms(row),
-        &SETTINGS,
-        &Stand,
-        async |_request: &McpHttpRequest, _call: McpCall| {
-            Ok::<_, mcp_library_dispatcher::McpDenied>(())
-        },
-        &mut source,
-    )))
+    http_json(through(|stream| {
+        ready_output(mcp_library_dispatcher::answer_http_listening(
+            &http_terms(row),
+            &SETTINGS,
+            stream,
+            &Stand,
+            async |_request: &McpHttpRequest, _call: McpCall| {
+                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+            },
+            &mut source,
+        ))
+    }))
 }
 
 fn plain_http(row: &ListenRow) -> Value {
-    http_json(ready_output(mcp_library_dispatcher::answer_http(
-        &http_terms(row),
-        &SETTINGS,
-        &Stand,
-        async |_request: &McpHttpRequest, _call: McpCall| {
-            Ok::<_, mcp_library_dispatcher::McpDenied>(())
-        },
-    )))
+    http_json(through(|stream| {
+        ready_output(mcp_library_dispatcher::answer_http(
+            &http_terms(row),
+            &SETTINGS,
+            stream,
+            &Stand,
+            async |_request: &McpHttpRequest, _call: McpCall| {
+                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+            },
+        ))
+    }))
 }
 
 fn plain_stdio(request: &str) -> Option<String> {
@@ -433,6 +447,96 @@ fn gone() -> Value {
     json!({ "reply": reply, "written": lines.written() })
 }
 
+/// The request whose stream is fed one change at a time.
+pub fn streamed_line() -> String {
+    listen_request(&json!({ "resourcesListChanged": true, "resourceSubscriptions": [WATCHED] }))
+        .to_string()
+}
+
+/// A `subscriptions/listen` fed one change at a time: what the stream has received after the
+/// acknowledgment and after each change, and when it ends.
+fn streamed_ordering() -> Value {
+    let row = http_row(&streamed_line());
+    let terms = http_terms(&row);
+    let stream = Recorded::default();
+    let feed = Feed::<McpChange>::default();
+    let mut source = async || feed.next().await;
+    let returned = Mutex::new(None);
+    let mut tasks = Tasks::default();
+    tasks.spawn(async {
+        let answered = mcp_library_dispatcher::answer_http_listening(
+            &terms,
+            &SETTINGS,
+            &stream,
+            &Stand,
+            async |_request: &McpHttpRequest, _call: McpCall| {
+                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+            },
+            &mut source,
+        )
+        .await;
+        *returned.lock().unwrap() = Some(answered.is_some());
+    });
+    let mut snapshots = Vec::new();
+    tasks.run_until_idle();
+    snapshots.push(stream.report());
+    for change in [
+        McpChange::ResourcesListChanged,
+        McpChange::ResourceUpdated {
+            uri: WATCHED.to_owned(),
+        },
+        McpChange::KeepAlive,
+    ] {
+        feed.push(change);
+        tasks.run_until_idle();
+        snapshots.push(stream.report());
+    }
+    let ended_while_open = returned.lock().unwrap().is_some();
+    feed.close();
+    tasks.run_until_idle();
+    let answered = returned.lock().unwrap().unwrap();
+    json!({
+        "endedWhileOpen": ended_while_open,
+        "full": stream.report(),
+        "returned": answered,
+        "snapshots": snapshots,
+    })
+}
+
+/// A `subscriptions/listen` whose stream goes away at the acknowledgment.
+fn streamed_departure() -> Value {
+    let terms = http_terms(&http_row(&streamed_line()));
+    let stream = Recorded::gone_after(1);
+    let feed = Feed::<McpChange>::default();
+    let mut source = async || feed.next().await;
+    let seen_call = Mutex::new(None);
+    let returned = Mutex::new(None);
+    let mut tasks = Tasks::default();
+    tasks.spawn(async {
+        let answered = mcp_library_dispatcher::answer_http_listening(
+            &terms,
+            &SETTINGS,
+            &stream,
+            &Stand,
+            async |_request: &McpHttpRequest, call: McpCall| {
+                *seen_call.lock().unwrap() = Some(call);
+                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+            },
+            &mut source,
+        )
+        .await;
+        *returned.lock().unwrap() = Some(answered.is_some());
+    });
+    tasks.run_until_idle();
+    let cancelled = seen_call.lock().unwrap().as_ref().unwrap().cancelled();
+    let answered = returned.lock().unwrap().unwrap();
+    json!({ "cancelled": cancelled, "returned": answered, "seen": stream.report() })
+}
+
+fn streams_report() -> Value {
+    json!({ "gone": streamed_departure(), "ordered": streamed_ordering() })
+}
+
 /// What the Rust dispatcher writes and answers for the requests above, in the shape each
 /// language's program reports.
 pub fn rust_report() -> Value {
@@ -444,6 +548,7 @@ pub fn rust_report() -> Value {
         "gone": gone(),
         "http": http_listens().iter().map(|(row, script)| http(row, script)).collect::<Vec<_>>(),
         "plain": { "http": plain_http(plain_row), "stdio": plain_stdio(&all[0].request) },
+        "streams": streams_report(),
         "stdio": all.iter().map(|held| stdio(&held.request, &held.script)).collect::<Vec<_>>(),
         "workspace": workspace(&all[0].request, &all[0].script),
     })
@@ -510,6 +615,43 @@ fn event_texts(body: &str) -> Vec<&str> {
         .collect()
 }
 
+fn streamed_message(entry: &Value) -> &str {
+    entry["wrote"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("event: message\ndata: ")
+        .and_then(|rest| rest.strip_suffix("\n\n"))
+        .unwrap()
+}
+
+/// Holds what a language's stream received as a subscription was fed to what the Rust stream
+/// received, and every message to the official schema.
+fn assert_streams(report: &Value, rust: &Value) {
+    assert_eq!(report["streams"], rust["streams"], "{report:#}");
+    let ordered = &report["streams"]["ordered"];
+    assert_eq!(ordered["endedWhileOpen"], false, "{report:#}");
+    assert_eq!(ordered["returned"], false, "{report:#}");
+    let counts: Vec<usize> = ordered["snapshots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|snapshot| snapshot.as_array().unwrap().len())
+        .collect();
+    assert_eq!(counts, [2, 3, 4, 5], "{report:#}");
+    let full = ordered["full"].as_array().unwrap();
+    assert_eq!(full.len(), 6, "{report:#}");
+    assert_eq!(full[0]["began"][0], 200_u64, "{report:#}");
+    for entry in &full[1..] {
+        if entry["wrote"] != ":\n\n" {
+            assert_message_valid(streamed_message(entry));
+        }
+    }
+    let gone = &report["streams"]["gone"];
+    assert_eq!(gone["cancelled"], true, "{report:#}");
+    assert_eq!(gone["returned"], false, "{report:#}");
+    assert_eq!(gone["seen"].as_array().unwrap().len(), 1, "{report:#}");
+}
+
 /// Holds the report of a language's program to what the Rust dispatcher wrote and answered, and
 /// every message to the official schema.
 pub fn assert_matches(report: &Value) {
@@ -521,6 +663,7 @@ pub fn assert_matches(report: &Value) {
     assert_eq!(report["discover"], rust["discover"], "{report:#}");
     assert_eq!(report["gone"], rust["gone"], "{report:#}");
     assert_eq!(report["cancelled"], rust["cancelled"], "{report:#}");
+    assert_streams(report, &rust);
     for held in report["stdio"].as_array().unwrap().iter().chain([
         &report["workspace"],
         &report["gone"],

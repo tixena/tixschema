@@ -10,11 +10,91 @@ use super::mcp_listen_rows::{assert_matches, input};
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use super::{DepotServiceSchema, LibraryServiceSchema};
+use crate::mcp_streams::dart_respond;
 use serde_json::Value;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
 const DRIVER: &str = "
+class RecordingStream implements LibraryServiceMcpHttpStream {
+  RecordingStream([this.goneAfter]);
+  final int? goneAfter;
+  final List<Map<String, dynamic>> seen = <Map<String, dynamic>>[];
+  final List<Completer<void>> waiting = <Completer<void>>[];
+
+  void wake() {
+    final woken = waiting.toList();
+    waiting.clear();
+    for (final one in woken) {
+      one.complete();
+    }
+  }
+
+  Future<void> until(bool Function() done) async {
+    while (!done()) {
+      final next = Completer<void>();
+      waiting.add(next);
+      await next.future;
+    }
+  }
+
+  void take() {
+    final refused = goneAfter != null && seen.length >= goneAfter!;
+    if (refused) throw StateError('the client has gone');
+  }
+
+  @override
+  Future<void> begin(int status, List<(String, String)> headers) async {
+    take();
+    seen.add({
+      'began': [status, [for (final (name, value) in headers) [name, value]]],
+    });
+    wake();
+  }
+
+  @override
+  Future<void> write(String event) async {
+    take();
+    seen.add({'wrote': event});
+    wake();
+  }
+}
+
+class Feed {
+  final List<LibraryServiceMcpChange> pending = <LibraryServiceMcpChange>[];
+  Completer<LibraryServiceMcpChange?>? waiting;
+  bool closed = false;
+
+  void settle() {
+    final next = waiting;
+    if (next == null) return;
+    if (pending.isNotEmpty) {
+      waiting = null;
+      next.complete(pending.removeAt(0));
+    } else if (closed) {
+      waiting = null;
+      next.complete(null);
+    }
+  }
+
+  Future<LibraryServiceMcpChange?> next() {
+    final next = Completer<LibraryServiceMcpChange?>();
+    waiting = next;
+    settle();
+    return next.future;
+  }
+
+  void push(LibraryServiceMcpChange change) {
+    pending.add(change);
+    settle();
+  }
+
+  void close() {
+    closed = true;
+    settle();
+  }
+}
+
 final libraryHandlers = LibraryServiceHandlers<void>(
   getBook: (ctx, req) async => throw const BookErrorNotFound(),
   libraryGuide: (ctx, req) async => '# The library',
@@ -103,7 +183,7 @@ void main() async {
       (request, call) async => (ctx: null, denied: null),
       changesOf(row['script'] as List<dynamic>),
     );
-    http.add(httpReport(await over(httpRequest(row))));
+    http.add(httpReport(await respondLibraryService(over, httpRequest(row))));
   }
 
   final firstHttp = (input['http'] as List<dynamic>)[0] as Map<String, dynamic>;
@@ -112,7 +192,7 @@ void main() async {
     settings,
     (request, call) async => (ctx: null, denied: null),
   );
-  final plainResponse = await plainOver(httpRequest(firstHttp));
+  final plainResponse = await respondLibraryService(plainOver, httpRequest(firstHttp));
   final plainReply = await dispatch(first['request'] as String, open, lines().write, LibraryServiceMcpInFlight());
 
   final listening = await dispatch(input['discover'] as String, open, lines().write, LibraryServiceMcpInFlight(), changesOf([]));
@@ -143,7 +223,65 @@ void main() async {
     changesOf(gone['script'] as List<dynamic>),
   );
 
+  final streamedRow = input['streamed'] as Map<String, dynamic>;
+  final streamedRequest = httpRequest(streamedRow);
+  final streams = <String, dynamic>{};
+  {
+    final stream = RecordingStream();
+    final feed = Feed();
+    final over = createLibraryServiceMcpHttpDispatcher<void>(
+      libraryHandlers,
+      settings,
+      (request, call) async => (ctx: null, denied: null),
+      feed.next,
+    );
+    var ended = false;
+    final running = over(streamedRequest, stream).then((answered) {
+      ended = true;
+      return answered;
+    });
+    final snapshots = <List<Map<String, dynamic>>>[];
+    await stream.until(() => stream.seen.length >= 2);
+    snapshots.add(stream.seen.toList());
+    var expected = 2;
+    for (final change in <LibraryServiceMcpChange>[
+      const LibraryServiceMcpResourcesListChanged(),
+      const LibraryServiceMcpResourceUpdated('library://covers/book-1'),
+      const LibraryServiceMcpKeepAlive(),
+    ]) {
+      feed.push(change);
+      expected += 1;
+      await stream.until(() => stream.seen.length >= expected);
+      snapshots.add(stream.seen.toList());
+    }
+    final endedWhileOpen = ended;
+    feed.close();
+    final answered = await running;
+    streams['ordered'] = {
+      'endedWhileOpen': endedWhileOpen,
+      'full': stream.seen.toList(),
+      'returned': answered != null,
+      'snapshots': snapshots,
+    };
+  }
+  {
+    final stream = RecordingStream(1);
+    LibraryServiceMcpCall? taken;
+    final over = createLibraryServiceMcpHttpDispatcher<void>(
+      libraryHandlers,
+      settings,
+      (request, call) async {
+        taken = call;
+        return (ctx: null, denied: null);
+      },
+      () => Completer<LibraryServiceMcpChange?>().future,
+    );
+    final answered = await over(streamedRequest, stream);
+    streams['gone'] = {'cancelled': taken!.cancelled, 'returned': answered != null, 'seen': stream.seen.toList()};
+  }
+
   print(jsonEncode({
+    'streams': streams,
     'stdio': stdio,
     'workspace': workspaceReport,
     'http': http,
@@ -171,6 +309,7 @@ fn module() -> String {
         DepotServiceSchema::dart_definition(),
         DepotServiceSchema::dart_ws_client(),
         DepotServiceSchema::dart_mcp_service(),
+        dart_respond("LibraryService"),
         format!("const INPUT = {dollar_safe};"),
         DRIVER.to_owned(),
     ]

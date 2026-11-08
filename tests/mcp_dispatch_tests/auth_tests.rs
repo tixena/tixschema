@@ -27,22 +27,25 @@ mod api_key_headers {
     }
 
     fn respond_keys(asked: &McpHttpRequest) -> McpHttpResponse {
-        block_on(document_mcp::answer_http(
-            asked,
-            &KEYS,
-            &Archive::default(),
-            async |request: &McpHttpRequest, _call: McpCall| {
-                let (Some(key), Some(secret)) =
-                    (request.header("x-api-key"), request.header("x-api-secret"))
-                else {
-                    return Err(McpDenied::NoValidCredentials { scope: None });
-                };
-                match validate_api_key(key, secret) {
-                    Some(account) if account.organization_admin => Ok(()),
-                    _ => Err(McpDenied::Forbidden),
-                }
-            },
-        ))
+        through(|stream| {
+            block_on(document_mcp::answer_http(
+                asked,
+                &KEYS,
+                stream,
+                &Archive::default(),
+                async |request: &McpHttpRequest, _call: McpCall| {
+                    let (Some(key), Some(secret)) =
+                        (request.header("x-api-key"), request.header("x-api-secret"))
+                    else {
+                        return Err(McpDenied::NoValidCredentials { scope: None });
+                    };
+                    match validate_api_key(key, secret) {
+                        Some(account) if account.organization_admin => Ok(()),
+                        _ => Err(McpDenied::Forbidden),
+                    }
+                },
+            ))
+        })
     }
 
     fn keyed(key: Option<&str>, secret: Option<&str>) -> McpHttpRequest {
@@ -91,7 +94,9 @@ use crate::document_mcp::{
     self, McpCall, McpDenied, McpHttpRequest, McpHttpResponse, McpHttpSettings, McpOAuth,
 };
 use crate::http_tests::{ORIGIN, body_of, get_version, post};
-use crate::support::{HEADER_MISMATCH, assert_error, assert_valid, block_on, call, id, request};
+use crate::support::{
+    HEADER_MISMATCH, Recorded, assert_error, assert_valid, block_on, call, id, request, through,
+};
 use crate::tests::Archive;
 use crate::{DocumentServiceSchema, billing_mcp};
 use serde_json::{Value, json};
@@ -153,12 +158,15 @@ async fn admit_scopes(request: &McpHttpRequest, _call: McpCall) -> Result<(), Mc
 }
 
 fn respond_with(asked: &McpHttpRequest, settings: &McpHttpSettings<'_>) -> McpHttpResponse {
-    block_on(document_mcp::answer_http(
-        asked,
-        settings,
-        &Archive::default(),
-        admit_scopes,
-    ))
+    through(|stream| {
+        block_on(document_mcp::answer_http(
+            asked,
+            settings,
+            stream,
+            &Archive::default(),
+            admit_scopes,
+        ))
+    })
 }
 
 fn respond(asked: &McpHttpRequest) -> McpHttpResponse {
@@ -338,14 +346,17 @@ fn too_few_scopes_answer_403_naming_the_missing_scope_with_a_plain_or_base64_nam
 
 #[test]
 fn a_forbidden_answers_403_with_no_challenge() {
-    let response = block_on(document_mcp::answer_http(
-        &post(&get_version()),
-        &SETTINGS,
-        &Archive::default(),
-        async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
-            Err(McpDenied::Forbidden)
-        },
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &post(&get_version()),
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+                Err(McpDenied::Forbidden)
+            },
+        ))
+    });
     assert_eq!(response.status, 403);
     assert_eq!(challenge(&response), None);
 }
@@ -372,14 +383,17 @@ fn without_oauth_every_denial_answers_its_status_with_no_challenge() {
         ),
         (McpDenied::Forbidden, 403),
     ] {
-        let response = block_on(document_mcp::answer_http(
-            &bearing("forged", post(&get_version())),
-            &settings,
-            &Archive::default(),
-            async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
-                Err(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            block_on(document_mcp::answer_http(
+                &bearing("forged", post(&get_version())),
+                &settings,
+                stream,
+                &Archive::default(),
+                async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+                    Err(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status, "{denied:?}");
         assert_eq!(challenge(&response), None, "{denied:?}");
         assert_eq!(response.body, Vec::<u8>::new(), "{denied:?}");
@@ -403,18 +417,21 @@ fn admit_reads_the_method_and_the_name_ahead_of_the_rule_that_holds_them_to_the_
         "Mcp-Name",
         "rename-document",
     );
-    let response = block_on(document_mcp::answer_http(
-        &asked,
-        &SETTINGS,
-        &archive,
-        async |request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
-            seen.lock().unwrap().push((
-                request.header("mcp-method").map(str::to_owned),
-                request.mcp_name(),
-            ));
-            Ok(())
-        },
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &archive,
+            async |request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+                seen.lock().unwrap().push((
+                    request.header("mcp-method").map(str::to_owned),
+                    request.mcp_name(),
+                ));
+                Ok(())
+            },
+        ))
+    });
     assert_eq!(
         *seen.lock().unwrap(),
         [(
@@ -436,12 +453,15 @@ fn a_name_that_names_a_read_tool_over_a_write_body_reaches_no_handler() {
         "read-token",
         with_header(without_name(post(&rename())), "Mcp-Name", "get-version"),
     );
-    let response = block_on(document_mcp::answer_http(
-        &asked,
-        &SETTINGS,
-        &archive,
-        admit_scopes,
-    ));
+    let response = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &archive,
+            admit_scopes,
+        ))
+    });
     assert_eq!(response.status, 400);
     assert_eq!(body_of(&response)["error"]["code"], HEADER_MISMATCH);
     assert!(archive.reached.lock().unwrap().is_empty());
@@ -583,9 +603,11 @@ fn the_futures_of_answer_http_are_send() {
     }
     let archive = Archive::default();
     let asked = post(&get_version());
+    let stream = Recorded::default();
     drop(is_send(document_mcp::answer_http(
         &asked,
         &SETTINGS,
+        &stream,
         &archive,
         admit_scopes,
     )));
@@ -616,15 +638,18 @@ fn the_second_service_denies_and_reads_the_name_as_the_first_does() {
         ),
         (billing_mcp::McpDenied::Forbidden, 403),
     ] {
-        let response = block_on(billing_mcp::answer_http(
-            &billing_request(&asked),
-            &settings,
-            &archive,
-            async |request: &billing_mcp::McpHttpRequest, _call: billing_mcp::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("get-balance"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            block_on(billing_mcp::answer_http(
+                &billing_request(&asked),
+                &settings,
+                stream,
+                &archive,
+                async |request: &billing_mcp::McpHttpRequest, _call: billing_mcp::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("get-balance"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status, "{denied:?}");
     }
 }
