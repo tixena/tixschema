@@ -11,10 +11,7 @@ mod over_http {
     use crate::support::{Recorded, assert_result, block_on, through};
     use serde_json::{Value, json};
 
-    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[], None);
 
     fn asked() -> McpHttpRequest {
         asking(&get("greet", &json!({ "name": "Ana" })))
@@ -22,14 +19,14 @@ mod over_http {
 
     fn asking(message: &Value) -> McpHttpRequest {
         let from = post(message);
-        let mut headers = from.headers;
+        let mut headers = from.headers().to_vec();
         headers.push(("Mcp-Name".to_owned(), "greet".to_owned()));
-        McpHttpRequest {
-            body: from.body,
+        McpHttpRequest::new(
+            from.method().to_owned(),
+            from.path().to_owned(),
             headers,
-            method: from.method,
-            path: from.path,
-        }
+            from.body().to_vec(),
+        )
     }
 
     #[test]
@@ -78,11 +75,7 @@ mod over_http {
                     &asked(),
                     &SETTINGS,
                     stream,
-                    &counsel_mcp::McpServer {
-                        endpoint,
-                        instructions: None,
-                        name: "Counsel",
-                    },
+                    &counsel_mcp::McpServer::new(endpoint, None, "Counsel"),
                     async |request: &McpHttpRequest, call: McpCall| {
                         assert_eq!(request.mcp_name().as_deref(), Some("greet"));
                         call.progress(1.0_f64, None, None);
@@ -99,7 +92,7 @@ mod over_http {
                     },
                 ))
             });
-            assert!(matches!(response.status, 401 | 403), "{denied:?}");
+            assert!(matches!(response.status(), 401 | 403), "{denied:?}");
         }
         assert!(counsels.reached.lock().unwrap().is_empty());
         let response = through(|stream| {
@@ -111,10 +104,10 @@ mod over_http {
                 async |_request, _call| Ok(()),
             ))
         });
-        assert_eq!(response.status, 200);
+        assert_eq!(response.status(), 200);
         assert_result(
             "GetPromptResult",
-            &serde_json::from_slice(&response.body).unwrap(),
+            &serde_json::from_slice(response.body()).unwrap(),
         );
     }
 }
@@ -146,16 +139,16 @@ struct Dispatching {
 
 impl Transport for Dispatching {
     fn send(&self, message: McpMessage) -> impl Future<Output = Result<String, String>> + Send {
-        let asked: Value = serde_json::from_str(&message.text).unwrap();
-        assert_eq!(message.protocol_version, "2026-07-28");
+        let asked: Value = serde_json::from_str(message.text()).unwrap();
+        assert_eq!(message.protocol_version(), "2026-07-28");
         self.sent.lock().unwrap().push((
-            message.method,
-            message.name.clone(),
+            message.method(),
+            message.name().map(str::to_owned),
             asked["params"]["arguments"].clone(),
         ));
         async move {
             Ok(block_on(counsel_mcp::answer(
-                &message.text,
+                message.text(),
                 &Counsels::default(),
                 |_call| (),
                 &Lines::default(),
@@ -446,16 +439,15 @@ fn the_mcp_name_header_of_prompts_get_must_match_the_body() {
             ("Mcp-Name".to_owned(), name.to_owned()),
         ]
     };
-    let post = |name: &str| McpHttpRequest {
-        body: asked.to_string().into_bytes(),
-        headers: headers(name),
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
+    let post = |name: &str| {
+        McpHttpRequest::new(
+            "POST".to_owned(),
+            "/mcp".to_owned(),
+            headers(name),
+            asked.to_string().into_bytes(),
+        )
     };
-    let settings = McpHttpSettings {
-        allowed_origins: &[],
-        oauth: None,
-    };
+    let settings = McpHttpSettings::new(&[], None);
     let served = |name: &str| {
         through(|stream| {
             block_on(counsel_mcp::answer_http(
@@ -468,14 +460,14 @@ fn the_mcp_name_header_of_prompts_get_must_match_the_body() {
         })
     };
     let mismatched = served("another");
-    assert_eq!(mismatched.status, 400);
-    let body: Value = serde_json::from_slice(&mismatched.body).unwrap();
+    assert_eq!(mismatched.status(), 400);
+    let body: Value = serde_json::from_slice(mismatched.body()).unwrap();
     assert_eq!(body["error"]["code"], HEADER_MISMATCH);
     let matched = served("greet");
-    assert_eq!(matched.status, 200);
+    assert_eq!(matched.status(), 200);
     assert_result(
         "GetPromptResult",
-        &serde_json::from_slice(&matched.body).unwrap(),
+        &serde_json::from_slice(matched.body()).unwrap(),
     );
 }
 
@@ -488,10 +480,7 @@ fn an_endpoint_lists_and_routes_prompts() {
             None,
             &ENDPOINT,
             |_call| (),
-            McpHost {
-                in_flight: &McpInFlight::default(),
-                writer: &Lines::default(),
-            },
+            McpHost::new(&McpInFlight::default(), &Lines::default()),
             &|_ctx: &(), part, method: &str, params: &Value| {
                 Box::pin(async move {
                     match part {

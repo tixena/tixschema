@@ -228,7 +228,7 @@ fn read_skills(
 ///
 /// ```text
 /// error: service_schema: operation `upload_document` declares a multipart file part, and this service also declares `amqp_rpc`
-///               a file part has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
+///               a file part has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` answers with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
 ///   --> tests/zz_probe.rs:22:14
 ///    |
 /// 22 |     async fn upload_document(
@@ -277,7 +277,7 @@ fn read_skills(
 ///
 /// ```text
 /// error: service_schema: operation `upload_document` declares a multipart file part, and this service also declares `ws_rpc`
-///               a file part has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
+///               a file part has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
 ///   --> tests/zz_probe.rs:22:14
 ///    |
 /// 22 |     async fn upload_document(
@@ -320,10 +320,35 @@ fn multipart_envelope_message(operation: &Ident, envelopes: &[transport::Transpo
     format!(
         "service_schema: operation `{operation}` declares a multipart file part, and this \
          service also declares {named}\n       \
-         a file part has no carrier inside the `{{ ok, value, error }}` envelope those \
-         transports answer with - drop them from `transports`, or drop the `part(...)` binding \
-         and `body = \"multipart\"` from this operation"
+         a file part has no carrier inside {carriers} - drop them from `transports`, or drop \
+         the `part(...)` binding and `body = \"multipart\"` from this operation",
+        carriers = carriers(envelopes),
     )
+}
+
+/// What each refused transport answers with: the `{ ok, value, error }` envelope of `amqp_rpc` and
+/// `ws_rpc`, and the tool result of `mcp`.
+#[cfg(feature = "serde")]
+fn carriers(refused: &[transport::Transport]) -> String {
+    let envelope = refused
+        .iter()
+        .filter(|named| !matches!(named, transport::Transport::Mcp))
+        .map(|named| format!("`{}`", named.name()))
+        .collect::<Vec<_>>();
+    let mut phrases = Vec::new();
+    if !envelope.is_empty() {
+        phrases.push(format!(
+            "the `{{ ok, value, error }}` envelope {} answers with",
+            envelope.join(" and ")
+        ));
+    }
+    if refused
+        .iter()
+        .any(|named| matches!(named, transport::Transport::Mcp))
+    {
+        phrases.push("the tool result `mcp` answers with".to_owned());
+    }
+    phrases.join(", nor inside ")
 }
 
 /// The transports a service declared that answer inside the `{ ok, value, error }` envelope, in
@@ -395,7 +420,7 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
 ///
 /// ```text
 /// error: service_schema: operation `get_content` declares a streamed body, and this service also declares `amqp_rpc`
-///               a streamed body has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop `body = "stream"` from this operation
+///               a streamed body has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` answers with - drop them from `transports`, or drop `body = "stream"` from this operation
 ///   --> tests/zz_probe.rs:16:14
 ///    |
 /// 16 |     async fn get_content(
@@ -437,7 +462,7 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
 ///
 /// ```text
 /// error: service_schema: operation `get_content` declares a streamed body, and this service also declares `ws_rpc`
-///               a streamed body has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop `body = "stream"` from this operation
+///               a streamed body has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers with - drop them from `transports`, or drop `body = "stream"` from this operation
 ///   --> tests/zz_probe.rs:16:14
 ///    |
 /// 16 |     async fn get_content(
@@ -480,9 +505,9 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
     format!(
         "service_schema: operation `{operation}` declares a streamed body, and this service \
          also declares {named}\n       \
-         a streamed body has no carrier inside the `{{ ok, value, error }}` envelope those \
-         transports answer with - drop them from `transports`, or drop `body = \"stream\"` from \
-         this operation"
+         a streamed body has no carrier inside {carriers} - drop them from `transports`, or \
+         drop `body = \"stream\"` from this operation",
+        carriers = carriers(envelopes),
     )
 }
 

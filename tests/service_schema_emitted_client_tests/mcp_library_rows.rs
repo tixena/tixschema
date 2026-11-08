@@ -23,16 +23,13 @@ macro_rules! exercised {
     ($name:ident, $module:ident, $schema:ident, $stand:expr) => {
         /// Serves the row over HTTP alone and on an endpoint of one, and answers each denial.
         fn $name(row: &HttpRow) {
-            let terms = $module::McpHttpRequest {
-                body: row.body.clone().into_bytes(),
-                headers: row.headers.clone(),
-                method: "POST".to_owned(),
-                path: "/mcp".to_owned(),
-            };
-            let settings = $module::McpHttpSettings {
-                allowed_origins: &[ORIGIN],
-                oauth: None,
-            };
+            let terms = $module::McpHttpRequest::new(
+                "POST".to_owned(),
+                "/mcp".to_owned(),
+                row.headers.clone(),
+                row.body.clone().into_bytes(),
+            );
+            let settings = $module::McpHttpSettings::new(&[ORIGIN], None);
             let endpoint = $module::McpEndpoint::new(&[$schema::MCP_NAMES], &[$module::catalog]);
             let alone = crate::mcp_streams::through(|stream| {
                 poll_once($module::answer_http(
@@ -49,11 +46,7 @@ macro_rules! exercised {
                     &terms,
                     &settings,
                     stream,
-                    &$module::McpServer {
-                        endpoint: &endpoint,
-                        instructions: None,
-                        name: $module::SERVER_NAME,
-                    },
+                    &$module::McpServer::new(&endpoint, None, $module::SERVER_NAME),
                     async |_request, _call| Ok(()),
                     &|ctx: &(), _part, method: &str, params: &Value| {
                         Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
@@ -67,18 +60,15 @@ macro_rules! exercised {
                 None,
                 &endpoint,
                 |call| call.progress(0.0_f64, None, None),
-                $module::McpHost {
-                    in_flight: &$module::McpInFlight::default(),
-                    writer: &Sink,
-                },
+                $module::McpHost::new(&$module::McpInFlight::default(), &Sink),
                 &|ctx: &(), _part, method: &str, params: &Value| {
                     Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
                 },
             ))
             .flatten();
-            assert_eq!(listed.is_some(), !alone.body.is_empty());
-            assert_eq!(alone.status, served.status);
-            assert_eq!(alone.body, served.body);
+            assert_eq!(listed.is_some(), !alone.body().is_empty());
+            assert_eq!(alone.status(), served.status());
+            assert_eq!(alone.body(), served.body());
             assert_eq!(
                 terms.mcp_name().as_deref(),
                 row.headers
@@ -115,7 +105,7 @@ macro_rules! exercised {
                     ))
                     .unwrap()
                 });
-                assert_eq!(response.status, status, "{denied:?}");
+                assert_eq!(response.status(), status, "{denied:?}");
             }
         }
     };
@@ -127,10 +117,7 @@ const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-
 pub const VERSION: &str = "2026-07-28";
 pub const ORIGIN: &str = "https://app.example.com";
 
-const SETTINGS: McpHttpSettings<'static> = McpHttpSettings {
-    allowed_origins: &[ORIGIN],
-    oauth: None,
-};
+const SETTINGS: McpHttpSettings<'static> = McpHttpSettings::new(&[ORIGIN], None);
 
 /// Two services behind one endpoint, built in a `const` so a shared name would stop the build.
 const WORKSPACE: McpEndpoint = McpEndpoint::new(
@@ -552,12 +539,12 @@ pub fn http_rows() -> Vec<HttpRow> {
 }
 
 fn plain_terms(row: &HttpRow) -> McpHttpRequest {
-    McpHttpRequest {
-        body: row.body.clone().into_bytes(),
-        headers: row.headers.clone(),
-        method: "POST".to_owned(),
-        path: "/mcp".to_owned(),
-    }
+    McpHttpRequest::new(
+        "POST".to_owned(),
+        "/mcp".to_owned(),
+        row.headers.clone(),
+        row.body.clone().into_bytes(),
+    )
 }
 
 /// What the Rust dispatcher of `LibraryService` alone answers to the request in plain terms.
@@ -573,9 +560,9 @@ pub fn rust_http(row: &HttpRow) -> HttpAnswer {
         .unwrap()
     });
     (
-        answered.status,
-        answered.headers,
-        String::from_utf8(answered.body).unwrap(),
+        answered.status(),
+        answered.headers().to_vec(),
+        String::from_utf8(answered.body().to_vec()).unwrap(),
     )
 }
 
@@ -587,10 +574,10 @@ pub fn workspace_answer(text: &str) -> Option<String> {
         None,
         &WORKSPACE,
         |call| call.progress(0.0_f64, None, None),
-        mcp_library_dispatcher::McpHost {
-            in_flight: &mcp_library_dispatcher::McpInFlight::default(),
-            writer: &Sink,
-        },
+        mcp_library_dispatcher::McpHost::new(
+            &mcp_library_dispatcher::McpInFlight::default(),
+            &Sink,
+        ),
         &|ctx: &(), part, method: &str, params: &Value| {
             Box::pin(async move {
                 match part {
