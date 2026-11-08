@@ -477,6 +477,30 @@ fn a_service_that_asks_for_mcp_expands_its_tool_list_and_one_that_does_not_has_n
     assert!(!plain.contains("MCP_NAMES"), "{plain}");
 }
 
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[test]
+fn the_typescript_accessors_are_published_only_on_a_service_that_asks_for_mcp() {
+    let source = "
+        /// Reads and renames documents.
+        pub trait DocumentService<Ctx> {
+            /// Answers the current version of one document.
+            async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+                -> Result<VersionResponse, VersionError>;
+        }";
+    for transports in [
+        quote! { transports = ["mcp"] },
+        quote! { transports = ["mcp", "ws_rpc"] },
+    ] {
+        let asked = expansion(transports, source);
+        assert!(asked.contains("pub fn ts_mcp_service"), "{asked}");
+        assert!(asked.contains("pub fn ts_mcp_client"), "{asked}");
+    }
+    let plain = expansion(quote! { transports = ["ws_rpc"] }, source);
+    assert!(!plain.contains("ts_mcp_service"), "{plain}");
+    assert!(!plain.contains("ts_mcp_client"), "{plain}");
+    assert!(plain.contains("ts_http_service"), "{plain}");
+}
+
 #[test]
 fn a_message_lists_jsonschema_on_a_service_that_asks_for_mcp_as_it_does_for_openapi() {
     let source = "
