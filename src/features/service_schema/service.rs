@@ -7,6 +7,7 @@ use super::message;
 use super::result::{result_arm, result_name, stream_success_ts_type, writes_an_inexact_key};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
+use crate::service_schema::mcp_tools::{is_content_list, is_prompt_messages};
 use crate::service_schema::message_shape::collection_depth;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -136,13 +137,36 @@ pub fn arm(service: &ServiceDef, operation: &OperationDef) -> String {
             success: _success,
         } => {
             let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
-            format!(
-                "        return {{ answered: {prefix}Answered(await impl.{call}({call_args})), \
-                 headers: [] }};"
+            blocks_wire_fn(operation).map_or_else(
+                || {
+                    format!(
+                        "        return {{ answered: {prefix}Answered(await \
+                         impl.{call}({call_args})), headers: [] }};"
+                    )
+                },
+                |written| {
+                    format!(
+                        "        const outcome = await impl.{call}({call_args});\n        \
+                         return {{ answered: {prefix}Answered(outcome.ok ? {{ ok: true, value: \
+                         outcome.value.map({written}) }} : outcome), headers: [] }};"
+                    )
+                },
             )
         }
     };
     format!("      case {wire}: {{\n{received}{bindings}{answering}\n      }}")
+}
+
+/// What writes one element of a success that is a list of content blocks or prompt messages as the
+/// specification writes it, which is how every transport carries them.
+fn blocks_wire_fn(operation: &OperationDef) -> Option<&'static str> {
+    if is_prompt_messages(operation) {
+        Some("McpPromptMessage$Wire")
+    } else if is_content_list(operation) {
+        Some("McpContent$Wire")
+    } else {
+        None
+    }
 }
 
 /// Splits an outcome whose success or declared error is a header tuple: the body answers as the

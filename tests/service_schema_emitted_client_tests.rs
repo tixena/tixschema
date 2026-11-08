@@ -1974,6 +1974,79 @@ mod run_kotlin_mcp_guide;
 #[path = "service_schema_emitted_client_tests/run_swift_mcp_guide.rs"]
 mod run_swift_mcp_guide;
 
+/// `ShelfWireService`, which asks for `mcp` beside every other transport and answers content blocks
+/// and prompt messages, and the stand-in that answers it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_wire_service.rs"]
+mod mcp_wire_service;
+
+/// The `ShelfWireService` dispatchers and clients of every transport, each expanded out of its
+/// macro into a module of its own.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_amqp_client.rs"]
+mod mcp_wire_amqp_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_amqp_transport.rs"]
+mod mcp_wire_amqp_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_http_rest_client.rs"]
+mod mcp_wire_http_rest_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_http_rest_transport.rs"]
+mod mcp_wire_http_rest_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_ws_rpc_client.rs"]
+mod mcp_wire_ws_rpc_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_ws_rpc_transport.rs"]
+mod mcp_wire_ws_rpc_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_mcp_transport.rs"]
+mod mcp_wire_mcp_transport;
+
+#[cfg(test)]
+use mcp_wire_service::{ShelfWireService, ShelfWireServiceSchema, shelf_wire_service_schema};
+
+/// What the Rust dispatchers and clients of `ShelfWireService` write and read on every transport.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_rust.rs"]
+mod mcp_wire_rust;
+
+/// The emitted TypeScript clients and servers of the shelf service on `http_rest` and `ws_rpc`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_wire.rs"]
+mod run_node_mcp_wire;
+
+/// The emitted Dart `http_rest` and `ws_rpc` clients and attachment of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_wire.rs"]
+mod run_dart_mcp_wire;
+
+/// The emitted Kotlin `http_rest` and `ws_rpc` clients and attachment of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_wire.rs"]
+mod run_kotlin_mcp_wire;
+
+/// The emitted Swift `http_rest` and `ws_rpc` clients of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_wire.rs"]
+mod run_swift_mcp_wire;
+
+/// The `mcp` clients of `LibraryService` hold a method for its tool and for nothing else.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_clients.rs"]
+mod mcp_library_clients;
+
 #[cfg(test)]
 #[macro_use]
 #[path = "mcp_dispatch_tests/published_structs.rs"]
@@ -1991,6 +2064,7 @@ mod published {
         mcp_preview_dispatcher,
         mcp_shelf_dispatcher,
         mcp_stacks_dispatcher,
+        mcp_wire_mcp_transport,
         mcp_writer_dispatcher,
     );
 }

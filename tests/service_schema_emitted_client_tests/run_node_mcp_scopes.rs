@@ -63,6 +63,7 @@ fn bundle() -> String {
         BookError::zod_schema(),
         StacksServiceSchema::ts_definition(),
         StacksServiceSchema::ts_service(),
+        StacksServiceSchema::ts_mcp_content(),
         StacksServiceSchema::ts_mcp_service(),
     ]
     .join("\n\n")

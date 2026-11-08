@@ -158,7 +158,7 @@ pub(super) fn helpers(held: &Resourced<'_>) -> TokenStream {
 }
 
 /// `base64_encoded`, for a resource of bytes and for a content block of bytes.
-pub(super) fn base64_helper() -> TokenStream {
+pub fn base64_helper() -> TokenStream {
     quote! {
         /// `bytes` in base64, with the standard alphabet and padding.
         fn base64_encoded(bytes: &[u8]) -> ::std::string::String {
@@ -178,6 +178,35 @@ pub(super) fn base64_helper() -> TokenStream {
                 text.push(if chunk.len() > 2 { letter(group, 0) } else { '=' });
             }
             text
+        }
+    }
+}
+
+/// `base64_decoded`, for a content block of bytes in the client and in the service module.
+pub fn base64_decoder() -> TokenStream {
+    quote! {
+        /// `text` decoded from base64, with the standard alphabet and padding.
+        fn base64_decoded(text: &str) -> ::core::option::Option<::std::vec::Vec<u8>> {
+            let mut bytes = ::std::vec::Vec::new();
+            let (mut bits, mut held) = (0_u32, 0_u32);
+            for letter in text.trim_end_matches('=').bytes() {
+                let sextet = match letter {
+                    b'A'..=b'Z' => letter - b'A',
+                    b'a'..=b'z' => letter - b'a' + 26,
+                    b'0'..=b'9' => letter - b'0' + 52,
+                    b'+' => 62,
+                    b'/' => 63,
+                    _ => return ::core::option::Option::None,
+                };
+                bits = (bits << 6_u32) | u32::from(sextet);
+                held += 6;
+                if held >= 8 {
+                    held -= 8;
+                    bytes.push(u8::try_from((bits >> held) & 0xff).ok()?);
+                    bits &= (1 << held) - 1;
+                }
+            }
+            ::core::option::Option::Some(bytes)
         }
     }
 }

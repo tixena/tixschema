@@ -1461,7 +1461,6 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
                 CAPABILITIES_MARKER,
                 &capabilities_literal(service, &held, skilled(service)),
             ),
-        page_types(service),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
         fill(WRITER, &prefix, &named, &fields),
@@ -1970,7 +1969,7 @@ fn dynamic_skills(service: &ServiceDef) -> Vec<&OperationDef> {
 
 /// `McpResource` and `McpResourcePage`, which a listing answers and the Rust service module
 /// declares.
-fn page_types(service: &ServiceDef) -> String {
+pub fn page_types(service: &ServiceDef) -> String {
     if !service
         .operations
         .iter()
