@@ -119,6 +119,38 @@ Rust spells it and every enum as externally tagged, so `validate.rs` holds those
 new place a rule is held, gets a model and a test here, under no other gate. `just check-mix` runs
 the binary with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`.
 
+### Testing the `mcp` Transport
+
+Every MCP answer a test reads is held to the official schema of revision 2026-07-28, vendored as
+[tests/mcp_declaration_tests/mcp-schema-2026-07-28.json](../tests/mcp_declaration_tests/mcp-schema-2026-07-28.json),
+and every task message to the tasks extension's schema beside it, through the `jsonschema`
+dev-dependency (`schema_errors` in `tests/mcp_dispatch_tests/support.rs`). A new message is checked
+there by its `$defs` name before any test compares its bytes.
+
+- `tests/mcp_declaration_tests.rs`: `mcp_tools()`, `wrapped_{operation}()` and `MCP_NAMES`, each
+  tool held to the official `Tool` definition, and `needs_wrapper()`, `mcp_form_value()` and
+  `mcp_form_flat()` on every kind of model type.
+- `tests/mcp_dispatch_tests.rs`: the Rust dispatcher and client, one file per feature under
+  `tests/mcp_dispatch_tests/` (tools, resources, prompts, elicitation, the writer, subscriptions,
+  tasks, skills, authorization over HTTP).
+- `tests/mcp_client_tests.rs`: a crate that declares the service and a crate that calls it, apart.
+- `tests/mcp_fault_cases/`: the one table of the faults every server answers. Both
+  `tests/mcp_dispatch_tests.rs` and `tests/service_schema_emitted_client_tests.rs` include it by
+  `#[path]`, so the Rust, TypeScript, Dart and Kotlin servers are held to the same rows. A new fault
+  rule is a row here, never a copy in one run.
+- `tests/service_schema_emitted_client_tests/`: the TypeScript, Dart and Kotlin servers and the five
+  clients under their own toolchains (`just test-emitted`). Each `mcp_*_rows.rs` file sends the same
+  requests to a server and to the Rust dispatcher, and asserts the same bytes. `mcp_streams.rs`
+  holds the streams that record each `begin` and `write` with the handler still running, so an
+  order is asserted with no clock. Every service there is one test binary, and a `macro_rules!` name
+  is global to its crate, so a new service takes a name no other service of the binary uses.
+- `tests/foundation_refusals/mcp_*.rs`: what rustc prints for a name two services of one endpoint
+  share, a form that is not flat or not a model type, and a type that does not list `jsonschema`.
+- `tests/mcp_skills/` and `tests/mcp_skills_refused/`: the skills folders a service reads, and the
+  folders it refuses.
+- `examples/strict_consumer_models/desk*.rs`: a module that exports the dispatcher and the client,
+  linted by the package's own clippy table.
+
 ### Running Single Tests During Development
 
 ```bash

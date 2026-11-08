@@ -597,6 +597,29 @@ change has to keep.
   through the `http_rest` and `ws_rpc` clients of each language, which read the date reply and
   `header_out` the Rust dispatchers write.
 
+### 15. A Type in an MCP Tool
+
+On a service that asks for `mcp`, a tool's `inputSchema` and `outputSchema` are the JSON Schema of
+the message and the success, built by `type_json_schema_value` under the pointer prefix
+`#/$defs/`, so a type is written there as `json_schema()` writes it, without its `examples`.
+
+- **The arguments are always an object.** A message serde writes as a JSON object is the arguments
+  object itself. One serde writes as anything else (a branded newtype over a `String`, a plain enum,
+  a list) sits under the property `value`, which `needs_wrapper()` answers per type and
+  `wrapped_{operation}()` per operation. A `header_in` argument is a property beside it, named by
+  the header as written, and a `header_out` value is a property of the `outputSchema` beside the
+  success under `value`.
+- **A unit success and a one-way operation have no `outputSchema`.**
+- **A form** of an `interview(answers = ...)` operation is exported with its schema, and must be
+  flat: a `String`, a `bool`, an integer, a float, an enum whose variants hold no data, a `Vec` of
+  such a type, or an `Option` of any of these (`mcp_form_flat()`).
+- **The MCP value types on every transport.** `McpContent`, `McpRole` and `McpPromptMessage` are
+  written in the block form the `mcp` transport writes (`{"type": "text", "text": ...}`,
+  `{"type": "image", "data": <base64>, "mimeType": ...}`, `{"content": <block>, "role": ...}`),
+  keys in sorted order, on `ws_rpc`, `http_rest` and `amqp_rpc` as on `mcp`. The other languages
+  name them from their value-type accessor (`ts_mcp_content()`, `dart_mcp_content()`,
+  `kotlin_mcp_content()`, `swift_mcp_content()`).
+
 ## MongoDB ObjectId Support
 
 The `mongodb` feature provides comprehensive MongoDB ObjectId type support with proper validation and serialization.
