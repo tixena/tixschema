@@ -12,6 +12,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
     is_unit_type, wire_key, written,
 };
+use crate::service_schema::skills::written_frontmatter;
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
@@ -35,6 +36,13 @@ pub const RESOURCES_MARKER: &str = "/*__TIXSCHEMA_MCP_RESOURCES__*/";
 /// The text `ts_mcp_service()` replaces with the resource templates' JSON texts, each quoted,
 /// joined by commas.
 pub const TEMPLATES_MARKER: &str = "/*__TIXSCHEMA_MCP_TEMPLATES__*/";
+
+/// The text `ts_mcp_service()` replaces with the skills' JSON texts, each quoted, joined by commas.
+pub const SKILLS_MARKER: &str = "/*__TIXSCHEMA_MCP_SKILLS__*/";
+
+/// The text `ts_mcp_service()` replaces with the files of the skills folder, each a quoted URI and
+/// the quoted JSON text of its content, joined by commas.
+pub const SKILL_FILES_MARKER: &str = "/*__TIXSCHEMA_MCP_SKILL_FILES__*/";
 
 const TYPES: &str = "/** Everything a service puts on an endpoint: its names, and each list item as JSON text. */
 export type __N__McpPart = {
@@ -292,6 +300,7 @@ function __p__McpNamed(params: Record<string, unknown> | undefined, method: stri
   const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
   if (method === "tools/call") return text(params?.name);
   if (method === "resources/read") return text(params?.uri);
+  if (method === "skills/get") return text(params?.name) ?? text(params?.uri);
   return text(__p__McpObject(params?.argument)?.name) === undefined
     ? undefined
     : text(__p__McpObject(params?.ref)?.uri);
@@ -474,8 +483,23 @@ async function __p__McpHandle(
       });
     case "resources/list":
       return __p__McpListResources(id, params, info, endpoint, route);
+    case "skills/list": {
+      const skills = endpoint.parts.flatMap((part) => part.skills);
+      const dynamic = skills.some((text) => __p__McpObject(__p__McpRead(text))?.resources === "dynamic");
+      return __p__McpReplied(200, {
+        id,
+        result: {
+          _meta: info,
+          cacheScope: dynamic ? "private" : "public",
+          resultType: "complete",
+          skills: skills.map((text) => new __N__McpRaw(text)),
+          ttlMs: dynamic ? 0 : 300000,
+        },
+      });
+    }
     case "tools/call":
     case "resources/read":
+    case "skills/get":
     case "completion/complete": {
       const name = __p__McpNamed(params, method);
       if (name === undefined) {
@@ -491,7 +515,14 @@ async function __p__McpHandle(
           result: result === undefined ? answer.result : { ...result, _meta: info },
         });
       }
-      const unknown = method === "tools/call" ? "Unknown tool" : method === "resources/read" ? "Resource not found" : "Unknown completion";
+      const unknown =
+        method === "tools/call"
+          ? "Unknown tool"
+          : method === "resources/read"
+            ? "Resource not found"
+            : method === "skills/get"
+              ? "Skill not found"
+              : "Unknown completion";
       return __p__McpRefused(id, 200, -32602, `${unknown}: ${name}`, {
         fault: {
           detail: "the service answers to no operation by that name",
@@ -843,6 +874,30 @@ __ASKING__    const faulted = error as { fault: object };
   const reading = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
     const uri = call.uri;
     if (typeof uri !== "string") return undefined;
+    const folder = __p__McpSkillFiles.get(uri);
+    if (folder !== undefined) {
+      return {
+        result: { cacheScope: "public", contents: [new __N__McpRaw(folder)], resultType: "complete", ttlMs: 300000 },
+      };
+    }
+    for (const operation of __p__McpOperations) {
+      if (operation.kind !== "skill") continue;
+      const root = `skill://${operation.name}/`;
+      if (!uri.startsWith(root) || uri.length === root.length) continue;
+      const path = uri.slice(root.length);
+      return answering(ctx, operation.operation, operation.schema, path, "Skill file not found", (value) => {
+        const given: Record<string, unknown> = { uri };
+        if (operation.blob) {
+          const pair = value as ReadonlyArray<unknown>;
+          given.mimeType = pair[1];
+          given.blob = __p__McpBase64(pair[0]);
+        } else {
+          given.mimeType = "text/markdown";
+          given.text = path === "SKILL.md" ? `${operation.frontmatter}${value as string}` : value;
+        }
+        return { cacheScope: "private", contents: [given], resultType: "complete", ttlMs: 0 };
+      });
+    }
     for (const operation of __p__McpOperations) {
       if (operation.kind !== "resource") continue;
       const captured = __p__McpCaptured(operation.segments, uri);
@@ -867,6 +922,26 @@ __ASKING__    const faulted = error as { fault: object };
         }
         return { cacheScope: operation.cacheScope, contents: [given], resultType: "complete", ttlMs: operation.ttlMs };
       });
+    }
+    return undefined;
+  };
+  const getting = (call: Record<string, unknown>): __N__McpAnswer | undefined => {
+    const name = typeof call.name === "string" ? call.name : undefined;
+    const uri = typeof call.uri === "string" ? call.uri : undefined;
+    for (const text of __p__McpPart.skills) {
+      const entry = __p__McpObject(__p__McpRead(text));
+      if (entry === undefined) continue;
+      const held = __p__McpObject(entry.frontmatter);
+      if (!((name !== undefined && held?.name === name) || (uri !== undefined && entry.uri === uri))) continue;
+      const dynamic = entry.resources === "dynamic";
+      return {
+        result: {
+          cacheScope: dynamic ? "private" : "public",
+          resultType: "complete",
+          skill: new __N__McpRaw(text),
+          ttlMs: dynamic ? 0 : 300000,
+        },
+      };
     }
     return undefined;
   };
@@ -922,6 +997,8 @@ __ASKING__    const faulted = error as { fault: object };
         return reading(ctx, call);
       case "resources/list":
         return listing(ctx, call);
+      case "skills/get":
+        return getting(call);
       case "completion/complete":
         return completing(ctx, call);
       default:
@@ -1354,10 +1431,14 @@ fn constants(named: &str, prefix: &str) -> String {
     )
 }
 
-/// The name an operation takes on an endpoint, `kind:name`: a tool, a resource or a template.
+/// The name an operation takes on an endpoint, `kind:name`: a tool, a resource, a template or a
+/// skill.
 fn endpoint_name(operation: &OperationDef) -> Option<String> {
     if operation.is_mcp_tool() {
         return Some(format!("tool:{}", operation.mcp_tool_name()));
+    }
+    if let Some((skill, _)) = &operation.mcp.skill {
+        return Some(format!("skill:{skill}"));
     }
     let resource = operation.mcp.resource.as_ref()?;
     let kind = if resource.is_template() {
@@ -1369,17 +1450,29 @@ fn endpoint_name(operation: &OperationDef) -> Option<String> {
 }
 
 fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
+    let folder_names = service
+        .skills
+        .iter()
+        .flat_map(|folder| folder.skills.iter())
+        .map(|skill| format!("skill:{}", skill.name));
     let literal = service
         .operations
         .iter()
         .filter_map(endpoint_name)
+        .chain(folder_names)
         .map(|name| ts_quoted(&name))
         .collect::<Vec<_>>()
         .join(", ");
-    let served = service
-        .operations
-        .iter()
-        .any(|operation| operation.mcp.resource.is_some() || operation.mcp.list_resources);
+    let skilled = service.skills.is_some()
+        || service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.skill.is_some());
+    let served = skilled
+        || service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.resource.is_some() || operation.mcp.list_resources);
     let completes = service
         .operations
         .iter()
@@ -1391,6 +1484,11 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
     if completes {
         capabilities.push(ts_quoted("{\"completions\":{}}"));
     }
+    if skilled {
+        capabilities.push(ts_quoted(
+            "{\"extensions\":{\"io.modelcontextprotocol/skills\":{}}}",
+        ));
+    }
     format!(
         "/** Everything `{named}` puts on an endpoint: its names, and each list item as JSON text, \
          so a schema keeps the digits Rust wrote. */\n\
@@ -1400,9 +1498,12 @@ fn part(service: &ServiceDef, named: &str, prefix: &str) -> String {
          resources: [{RESOURCES_MARKER}],\n  \
          resourceTemplates: [{TEMPLATES_MARKER}],\n  \
          prompts: [],\n  \
-         skills: [],\n  \
+         skills: [{SKILLS_MARKER}],\n  \
          capabilities: [{capabilities}],\n\
-         }};",
+         }};\n\n\
+         /** The content `resources/read` answers for each file of the skills folder, as JSON text, by \
+         its URI. */\n\
+         const {prefix}McpSkillFiles: ReadonlyMap<string, string> = new Map<string, string>([{SKILL_FILES_MARKER}]);",
         capabilities = capabilities.join(", "),
     )
 }
@@ -1435,6 +1536,7 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .map(operation_row)
         .collect();
     rows.extend(resource_rows(service));
+    rows.extend(service.operations.iter().filter_map(skill_row));
     format!(
         "/** What a tool that asks the user is told: the arm of its declared error that asks, the \
          wire key of the argument that carries a form's answers and the JSON text of the form, \
@@ -1474,6 +1576,14 @@ fn operations(service: &ServiceDef, named: &str, prefix: &str) -> String {
          readonly mimeType: string | undefined;\n      \
          readonly ttlMs: number;\n      \
          readonly cacheScope: string;\n    \
+         }}\n  \
+         | {{\n      \
+         readonly kind: \"skill\";\n      \
+         readonly name: string;\n      \
+         readonly operation: string;\n      \
+         readonly schema: ZodType;\n      \
+         readonly blob: boolean;\n      \
+         readonly frontmatter: string;\n    \
          }}\n  \
          | {{\n      \
          readonly kind: \"listing\";\n      \
@@ -1590,6 +1700,25 @@ fn resource_row(operation: &OperationDef) -> String {
                 .unwrap_or(DEFAULT_CACHE_SCOPE)
         ),
     )
+}
+
+fn skill_row(operation: &OperationDef) -> Option<String> {
+    let (name, _) = operation.mcp.skill.as_ref()?;
+    let blob = matches!(
+        &operation.outcome,
+        OperationOutcome::Reply { success, error: _error } if matches!(success.as_ref(), Type::Tuple(_))
+    );
+    Some(format!(
+        "  {{ kind: \"skill\", name: {name}, operation: {wire}, schema: {schema}, blob: {blob}, \
+         frontmatter: {frontmatter} }},",
+        name = ts_quoted(name),
+        wire = ts_quoted(&operation.wire_name),
+        schema = message::schema(operation),
+        frontmatter = ts_quoted(&written_frontmatter(
+            name,
+            operation.doc.as_deref().unwrap_or_default()
+        )),
+    ))
 }
 
 fn listing_row(operation: &OperationDef) -> String {

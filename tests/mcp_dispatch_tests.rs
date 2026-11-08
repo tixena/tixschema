@@ -30,6 +30,10 @@ mod approval_client;
 mod document_mcp;
 
 #[cfg(test)]
+#[path = "mcp_dispatch_tests/skill_tests.rs"]
+mod skill_tests;
+
+#[cfg(test)]
 #[path = "mcp_dispatch_tests/billing_mcp.rs"]
 mod billing_mcp;
 
