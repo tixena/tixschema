@@ -8,6 +8,7 @@ use super::message;
 use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
+use crate::service_schema::mcp_tools::{is_content_list, is_content_pair};
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
 };
@@ -60,7 +61,7 @@ const ISSUES: &str = r#"function __p__Issues(issues: ReadonlyArray<{ path: Reado
 
 const CALL: &str = r#"/** What one call came to, before the operation's own schemas read it. */
 type __N__McpCalled =
-  | { readonly kind: "success"; readonly structured: unknown }
+  | { readonly kind: "success"; readonly structured: unknown; readonly blocks: unknown }
   | { readonly kind: "fault"; readonly fault: __N__Fault }
   | { readonly kind: "declared"; readonly error: unknown };
 
@@ -117,7 +118,7 @@ async function __p__Call(
   if (result === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
   }
-  if (result.isError !== true) return { kind: "success", structured: result.structuredContent };
+  if (result.isError !== true) return { kind: "success", structured: result.structuredContent, blocks: result.content };
   const blocks: ReadonlyArray<unknown> = Array.isArray(result.content) ? result.content : [];
   const errorText = blocks
     .map((block) => __p__Object(block))
@@ -157,6 +158,84 @@ function __p__ReplyHeader<Parsed>(
     fault: __p__Undeserializable(operation, `'${name}': ${__p__Issues(parsed.error.issues)}`),
   };
 }";
+
+const BLOCKS: &str = r#"/** `text` decoded from base64 as the array of its bytes, `undefined` where it is none. */
+function __p__Unbase64(text: unknown): Array<number> | undefined {
+  if (typeof text !== "string") return undefined;
+  try {
+    return Array.from(Uint8Array.from(atob(text), (letter) => letter.charCodeAt(0)));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The structured pair of an answer: its own, or its one image or audio block written as one. */
+function __p__PairSource(structured: unknown, blocks: unknown): unknown {
+  if (structured !== undefined) return structured;
+  const block = Array.isArray(blocks) ? __p__Object(blocks[0]) : undefined;
+  const bytes = __p__Unbase64(block?.data);
+  return bytes === undefined || typeof block?.mimeType !== "string" ? undefined : [bytes, block.mimeType];
+}"#;
+
+const LIST: &str = r#"/** The blocks of `content`, each read into a `McpContent`. */
+function __p__Blocks(content: unknown): { ok: true; value: Array<McpContent> } | { ok: false; detail: string } {
+  if (!Array.isArray(content)) return { ok: false, detail: "the answer holds no content" };
+  const text = (from: Record<string, unknown>, key: string): string => {
+    const held = from[key];
+    if (typeof held !== "string") throw new Error(`a block holds no \`${key}\``);
+    return held;
+  };
+  const optional = (from: Record<string, unknown>, key: string): string | undefined => {
+    const held = from[key];
+    return typeof held === "string" ? held : undefined;
+  };
+  const bytes = (from: Record<string, unknown>, key: string): Uint8Array => {
+    const decoded = __p__Unbase64(from[key]);
+    if (decoded === undefined) throw new Error(`\`${key}\` is not base64`);
+    return Uint8Array.from(decoded);
+  };
+  const read: Array<McpContent> = [];
+  try {
+    for (const entry of content as ReadonlyArray<unknown>) {
+      const block = __p__Held(entry);
+      switch (block.type) {
+        case "text":
+          read.push({ type: "text", text: text(block, "text") });
+          break;
+        case "image":
+          read.push({ type: "image", data: bytes(block, "data"), mimeType: text(block, "mimeType") });
+          break;
+        case "audio":
+          read.push({ type: "audio", data: bytes(block, "data"), mimeType: text(block, "mimeType") });
+          break;
+        case "resource_link":
+          read.push({
+            type: "resource_link",
+            uri: text(block, "uri"),
+            name: text(block, "name"),
+            title: optional(block, "title"),
+            description: optional(block, "description"),
+            mimeType: optional(block, "mimeType"),
+          });
+          break;
+        case "resource": {
+          const resource = __p__Held(block.resource);
+          read.push(
+            resource.blob === undefined
+              ? { type: "resource", uri: text(resource, "uri"), mimeType: optional(resource, "mimeType"), text: text(resource, "text") }
+              : { type: "resource", uri: text(resource, "uri"), mimeType: optional(resource, "mimeType"), blob: bytes(resource, "blob") },
+          );
+          break;
+        }
+        default:
+          throw new Error("a block of a type this client does not read");
+      }
+    }
+  } catch (rejected) {
+    return { ok: false, detail: rejected instanceof Error ? rejected.message : String(rejected) };
+  }
+  return { ok: true, value: read };
+}"#;
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let service = &declared.enveloped();
@@ -207,6 +286,16 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     ];
     if header_out {
         published.push(fill(REPLY_HEADER));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.mcp.content.is_some())
+    {
+        published.push(fill(BLOCKS));
+    }
+    if service.operations.iter().any(is_content_list) {
+        published.push(fill(LIST));
     }
     if one_way {
         published.push(refusal_type(&named));
@@ -395,7 +484,7 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
             format!("      if (called.kind === \"fault\") throw {prefix}Refused(called.fault);")
         }
         OperationOutcome::Reply { error, success } => {
-            reply_tail(&prefix, &wire, &shape, error, success)
+            reply_tail(&prefix, &wire, operation, &shape, error, success)
         }
     };
     format!(
@@ -451,7 +540,14 @@ fn header_checks(
     (stmt, "extra")
 }
 
-fn reply_tail(prefix: &str, wire: &str, shape: &HttpShape, error: &Type, success: &Type) -> String {
+fn reply_tail(
+    prefix: &str,
+    wire: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+    error: &Type,
+    success: &Type,
+) -> String {
     let fault_arm = |fault: &str| {
         format!("return {{ ok: false, error: {{ isServiceFault: true, fault: {fault} }} }};")
     };
@@ -460,7 +556,9 @@ fn reply_tail(prefix: &str, wire: &str, shape: &HttpShape, error: &Type, success
         fault_arm("called.fault")
     );
     stmt.push_str(&declared_arm(prefix, wire, shape, error, &fault_arm));
-    stmt.push_str(&success_arm(prefix, wire, shape, success, &fault_arm));
+    stmt.push_str(&success_arm(
+        prefix, wire, operation, shape, success, &fault_arm,
+    ));
     stmt.truncate(stmt.trim_end().len());
     stmt
 }
@@ -528,10 +626,19 @@ fn declared_arm(
 fn success_arm(
     prefix: &str,
     wire: &str,
+    operation: &OperationDef,
     shape: &HttpShape,
     success: &Type,
     fault_arm: &dyn Fn(&str) -> String,
 ) -> String {
+    if is_content_list(operation) {
+        return format!(
+            "      const read = {prefix}Blocks(called.blocks);\n      \
+             if (!read.ok) {{\n        {}\n      }}\n      \
+             return {{ ok: true, value: read.value }};\n",
+            fault_arm(&format!("{prefix}Undeserializable({wire}, read.detail)"))
+        );
+    }
     let body = message::success_body(shape, success);
     let unit = is_unit_type(&body);
     let width: usize = if matches!(shape.body_kind, BodyKind::Bytes) {
@@ -542,10 +649,13 @@ fn success_arm(
     if unit && shape.header_out.is_empty() {
         return "      return { ok: true, value: undefined };\n".to_owned();
     }
-    let source = if shape.header_out.is_empty() {
-        "called.structured"
-    } else {
+    let pair_source = format!("{prefix}PairSource(called.structured, called.blocks)");
+    let source = if !shape.header_out.is_empty() {
         "received.value"
+    } else if is_content_pair(operation) {
+        pair_source.as_str()
+    } else {
+        "called.structured"
     };
     let mut stmt = String::new();
     if !shape.header_out.is_empty() {

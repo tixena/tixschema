@@ -1765,6 +1765,52 @@ mod mcp_writer_dispatcher;
 #[cfg(test)]
 use mcp_writer_rows::{WriterService, WriterServiceSchema, writer_service_schema};
 
+/// `AskingService`, whose operations ask the user and answer content blocks, and the rows the
+/// emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_asking_rows.rs"]
+mod mcp_asking_rows;
+
+/// The `AskingService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_asking_dispatcher.rs"]
+mod mcp_asking_dispatcher;
+
+/// The `PreviewService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_preview_dispatcher.rs"]
+mod mcp_preview_dispatcher;
+
+#[cfg(test)]
+use mcp_asking_rows::{
+    AskingService, AskingServiceSchema, PreviewService, PreviewServiceSchema,
+    asking_service_schema, preview_service_schema,
+};
+
+/// The emitted TypeScript `mcp` server and client run by node on the asking service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_asking.rs"]
+mod run_node_mcp_asking;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the asking service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_asking.rs"]
+mod run_dart_mcp_asking;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the asking service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_asking.rs"]
+mod run_kotlin_mcp_asking;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the asking service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_asking.rs"]
+mod run_swift_mcp_asking;
+
 /// The `DocumentService` dispatcher the emitted TypeScript server is measured against.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]

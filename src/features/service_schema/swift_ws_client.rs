@@ -15,7 +15,8 @@ use core::fmt::Write as _;
 use syn::Type;
 
 use super::swift_http_client::{
-    swift_call, swift_parameter, swift_parameter_declared, swift_sent_value,
+    is_plain_tuple, swift_call, swift_parameter, swift_parameter_declared, swift_sent_value,
+    tuple_hint,
 };
 use super::swift_type::swift_typename_of;
 use super::{left_to_http_rest, on_one_line};
@@ -746,6 +747,23 @@ fn success_block(
             "Void".to_owned(),
             "        return .success(())\n".to_owned(),
         );
+    }
+    if is_plain_tuple(shape, success) {
+        let carrier = swift_reference_type(
+            &get_field_def("value", success, ""),
+            &tuple_hint(named, operation),
+        )
+        .0;
+        let block = format!(
+            "        do {{\n          \
+             let decoded = try {prefix}WsDatedDecoder().decode(\
+             {named}WsValueEnvelope<{carrier}>.self, from: raw)\n          \
+             return .success((decoded.value.slot0, decoded.value.slot1))\n        \
+             }} catch {{\n          \
+             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\")))\n        \
+             }}\n"
+        );
+        return (swift_typename_of(success), block);
     }
     let field_hint = format!(
         "{named}{}Success",
