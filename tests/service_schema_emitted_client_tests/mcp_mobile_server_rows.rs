@@ -208,6 +208,14 @@ fn operation_rows() -> Vec<ServerRow> {
             ),
         ),
         row(
+            "a list message",
+            &call(
+                38,
+                "check-many",
+                &json!({ "value": [{ "document_id": "doc-1" }] }),
+            ),
+        ),
+        row(
             "a one-way operation",
             &call(
                 16,
@@ -316,11 +324,82 @@ fn refused_rows() -> Vec<ServerRow> {
     ]
 }
 
+/// The messages whose bound is broken inside a list, a map or an optional of a model, with the
+/// tool the Kotlin server answers `failed-validation` for, naming `document_id`. The Rust
+/// dispatcher answers them `undeserializable-payload`, so only the Kotlin run holds them.
+pub fn wrapped_refusal_requests() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "check-many",
+            call(
+                32,
+                "check-many",
+                &json!({ "value": [{ "document_id": "" }] }),
+            )
+            .to_string(),
+        ),
+        (
+            "check-named",
+            call(
+                34,
+                "check-named",
+                &json!({ "first": { "document_id": "" } }),
+            )
+            .to_string(),
+        ),
+        (
+            "check-maybe",
+            call(
+                36,
+                "check-maybe",
+                &json!({ "value": { "document_id": "" } }),
+            )
+            .to_string(),
+        ),
+    ]
+}
+
+/// The messages whose type is a list, a map or an optional of a model, and the lists that read.
+fn wrapped_model_rows() -> Vec<ServerRow> {
+    let looser = |name, asked: Value| ServerRow {
+        matches: Match::WithoutDetail,
+        name,
+        text: asked.to_string(),
+    };
+    vec![
+        looser(
+            "a list whose item does not read",
+            call(
+                33,
+                "check-many",
+                &json!({ "value": [{ "document_id": 7_u8 }] }),
+            ),
+        ),
+        looser(
+            "a map whose value does not read",
+            call(
+                35,
+                "check-named",
+                &json!({ "first": { "document_id": 7_u8 } }),
+            ),
+        ),
+        looser(
+            "an optional message that does not read",
+            call(
+                37,
+                "check-maybe",
+                &json!({ "value": { "document_id": 7_u8 } }),
+            ),
+        ),
+    ]
+}
+
 /// Every request a server is sent in a run, in order.
 pub fn server_rows() -> Vec<ServerRow> {
     let mut rows = documented_rows();
     rows.extend(operation_rows());
     rows.extend(refused_rows());
+    rows.extend(wrapped_model_rows());
     rows
 }
 

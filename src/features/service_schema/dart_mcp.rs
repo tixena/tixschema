@@ -2058,10 +2058,10 @@ fn page_types(service: &ServiceDef) -> String {
         return String::new();
     }
     "/// One resource of a listing, as `resources/list` writes it.
-class McpResource {
-  McpResource({required this.uri, required this.name, this.title, this.description, this.mimeType, this.size});
+class @N@McpResource {
+  @N@McpResource({required this.uri, required this.name, this.title, this.description, this.mimeType, this.size});
 
-  factory McpResource.fromJson(Map<String, dynamic> json) => McpResource(
+  factory @N@McpResource.fromJson(Map<String, dynamic> json) => @N@McpResource(
         uri: json['uri'] as String,
         name: json['name'] as String,
         title: json['title'] as String?,
@@ -2088,18 +2088,18 @@ class McpResource {
 }
 
 /// One page of `resources/list`, with the cursor of the next where there is one.
-class McpResourcePage {
-  McpResourcePage({required this.resources, this.nextCursor});
+class @N@McpResourcePage {
+  @N@McpResourcePage({required this.resources, this.nextCursor});
 
-  factory McpResourcePage.fromJson(Map<String, dynamic> json) => McpResourcePage(
+  factory @N@McpResourcePage.fromJson(Map<String, dynamic> json) => @N@McpResourcePage(
         resources: [
           for (final resource in json['resources'] as List<dynamic>)
-            McpResource.fromJson(resource as Map<String, dynamic>),
+            @N@McpResource.fromJson(resource as Map<String, dynamic>),
         ],
         nextCursor: json['nextCursor'] as String?,
       );
 
-  final List<McpResource> resources;
+  final List<@N@McpResource> resources;
   final String? nextCursor;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -2107,7 +2107,7 @@ class McpResourcePage {
         if (nextCursor != null) 'nextCursor': nextCursor,
       };
 }"
-    .to_owned()
+    .replace("@N@", &service.ident.to_string())
 }
 
 /// The pieces of the resource requests, one function for each operation that answers one.

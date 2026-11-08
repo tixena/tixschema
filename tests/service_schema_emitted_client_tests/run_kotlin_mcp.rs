@@ -17,7 +17,7 @@ use super::mcp_mobile_rows::{
 };
 use super::mcp_mobile_server_rows::{
     HttpRow, ORIGIN, ServerRow, billing_answer, expected, http_rows, observed, rust_http,
-    server_rows, workspace_answer,
+    server_rows, workspace_answer, wrapped_refusal_requests,
 };
 use super::mcp_mobile_service::Archive;
 use super::mcp_mobile_service::{
@@ -52,6 +52,27 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
         "panic" -> throw IllegalStateException("the handler came apart")
         else -> null
     }
+
+    private fun checked(id: String?): MobileDocumentServiceCheckManyResult {
+        val found = id?.let { versionOf(it) }
+        return if (found != null) MobileDocumentServiceCheckManyResult.Ok(found)
+        else MobileDocumentServiceCheckManyResult.Declared(VersionErrorNotFound)
+    }
+
+    override suspend fun checkMany(req: List<GetVersionRequest>): MobileDocumentServiceCheckManyResult =
+        checked(req.firstOrNull()?.documentId)
+
+    override suspend fun checkMaybe(req: GetVersionRequest?): MobileDocumentServiceCheckMaybeResult =
+        when (val answered = checked(req?.documentId)) {
+            is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckMaybeResult.Ok(answered.value)
+            else -> MobileDocumentServiceCheckMaybeResult.Declared(VersionErrorNotFound)
+        }
+
+    override suspend fun checkNamed(req: Map<String, GetVersionRequest>): MobileDocumentServiceCheckNamedResult =
+        when (val answered = checked(req["first"]?.documentId)) {
+            is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckNamedResult.Ok(answered.value)
+            else -> MobileDocumentServiceCheckNamedResult.Declared(VersionErrorNotFound)
+        }
 
     override suspend fun getTagged(req: String, knownTag: String?): MobileDocumentServiceGetTaggedResult {
         val found = versionOf(req)
@@ -134,16 +155,12 @@ suspend fun serverReport(input: JsonObject): JsonObject {
         nullable(mobileDocumentServiceMcpServe(text, "Workspace", null, workspace, host) { _, part, method, params ->
             when (part) {
                 0 -> documentRoute(method, params)
-                1 -> billingRoute(method, params)?.let { answered ->
-                    when (answered) {
-                        is MobileBillingServiceMcpAnswer.Answered -> MobileDocumentServiceMcpAnswer.Answered(answered.result)
-                        is MobileBillingServiceMcpAnswer.Refused -> MobileDocumentServiceMcpAnswer.Refused(answered.error)
-                    }
-                }
+                1 -> billingRoute(method, params)
                 else -> null
             }
         })
     }
+    val wrappedAnswers = input.getValue("wrapped").jsonArray.map { nullable(alone(it.jsonPrimitive.content, nowhere, MobileDocumentServiceMcpInFlight())) }
     val aloneAnswers = requests.map { nullable(alone(it, nowhere, MobileDocumentServiceMcpInFlight())) }
     val billingAnswers = requests.map { nullable(billingAlone(it, nowhere, MobileBillingServiceMcpInFlight())) }
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
@@ -163,6 +180,14 @@ suspend fun serverReport(input: JsonObject): JsonObject {
             put("headers", JsonArray(answered.headers.map { JsonArray(listOf(JsonPrimitive(it.first), JsonPrimitive(it.second))) }))
             put("body", answered.body.decodeToString())
         }
+    }
+    val called = requests.first { it.contains("\"tools/call\"") }
+    val badRoutes = listOf(
+        JsonObject(emptyMap()),
+        buildJsonObject { put("result", buildJsonObject { }); put("error", buildJsonObject { }) },
+        buildJsonObject { put("result", JsonPrimitive(1)) },
+    ).map { bad ->
+        nullable(mobileDocumentServiceMcpServe(called, "Workspace", null, workspace, host) { _, _, _, _ -> bad })
     }
     val shared = try {
         MobileDocumentServiceMcpEndpoint(
@@ -185,7 +210,9 @@ suspend fun serverReport(input: JsonObject): JsonObject {
     return buildJsonObject {
         put("workspace", JsonArray(workspaceAnswers))
         put("alone", JsonArray(aloneAnswers))
+        put("wrapped", JsonArray(wrappedAnswers))
         put("billing", JsonArray(billingAnswers))
+        put("badRoutes", JsonArray(badRoutes))
         put("http", JsonArray(httpAnswers))
         put("shared", shared)
         put("kept", kept)
@@ -670,6 +697,7 @@ fn input() -> Value {
         "origin": ORIGIN,
         "writer": writer_input(),
         "requests": server_rows().iter().map(|row| row.text.clone()).collect::<Vec<_>>(),
+        "wrapped": wrapped_refusal_requests().iter().map(|(_, text)| text.clone()).collect::<Vec<_>>(),
         "http": http_rows().iter().map(http_input).collect::<Vec<_>>(),
         "replies": replies,
         "oauth": {
@@ -773,6 +801,29 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         &rows,
     );
     assert_answers("billing", billing_answer, &texts(&server["billing"]), &rows);
+    for ((tool, _), answered) in wrapped_refusal_requests()
+        .iter()
+        .zip(texts(&server["wrapped"]))
+    {
+        let reply: Value = serde_json::from_str(&answered.unwrap()).unwrap();
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        let fault: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(
+            fault["fault"]["kind"], "failed-validation",
+            "{tool}: {reply}"
+        );
+        assert_eq!(fault["fault"]["field"], "document_id", "{tool}: {reply}");
+        assert_eq!(fault["fault"]["operation"], *tool, "{reply}");
+    }
+    let bad_routes = texts(&server["badRoutes"]);
+    assert_eq!(bad_routes.len(), 3);
+    for answered in bad_routes {
+        let reply: Value = serde_json::from_str(&answered.unwrap()).unwrap();
+        assert_eq!(reply["error"]["code"], -32_603_i32, "{reply}");
+        let fault = &reply["error"]["data"]["fault"];
+        assert_eq!(fault["kind"], "handler-panic", "{reply}");
+        assert_eq!(fault["operation"], "tools/call", "{reply}");
+    }
     assert_eq!(
         server["shared"], "two services share the MCP name tool:get-version",
         "an endpoint of two services that share a name throws when it is built"

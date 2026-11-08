@@ -68,6 +68,10 @@ const depotImpl = {
   async getBin(ctx, req) {
     return { ok: true, value: `${req.aisle}/${req.binId}` };
   },
+  async listCrates(ctx, cursor) {
+    if (cursor !== undefined) return notFound;
+    return { ok: true, value: { resources: [{ uri: "depot://crates/crate-1", name: "crate-1", mimeType: "application/json" }] } };
+  },
 };
 
 const bareImpl = {
@@ -166,7 +170,7 @@ const USAGE_CALLER: &str = r#"import {
   type LibraryServiceMcpCall,
   type LibraryServiceMcpInFlight,
   type LibraryServiceMcpWriter,
-  type McpResourcePage,
+  type LibraryServiceMcpResourcePage,
 } from "./bundle.js";
 
 declare const impl: LibraryServiceImpl<number>;
@@ -179,7 +183,7 @@ export const dispatcher: (
 ) => Promise<string | undefined> = createLibraryServiceMcpDispatcher(impl);
 export const kinds: ReadonlyArray<string> = libraryServiceMcpOperations.map((operation) => operation.kind);
 export const names: readonly ["resource template:library://covers/{book_id}", "tool:get-book", "resource:guide://library"] = libraryServiceMcpPart.names;
-export const page: McpResourcePage = { resources: [{ uri: "library://covers/book-1", name: "cover-1.pdf" }], nextCursor: "page-2" };
+export const page: LibraryServiceMcpResourcePage = { resources: [{ uri: "library://covers/book-1", name: "cover-1.pdf" }], nextCursor: "page-2" };
 "#;
 
 fn bundle() -> String {

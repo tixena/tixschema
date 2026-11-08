@@ -118,12 +118,7 @@ suspend fun report(input: JsonObject): JsonObject = coroutineScope {
     ) { _, part, method, params ->
         when (part) {
             0 -> libraryRoute(method, params)
-            1 -> depotRoute(method, params)?.let { answered ->
-                when (answered) {
-                    is DepotServiceMcpAnswer.Answered -> LibraryServiceMcpAnswer.Answered(answered.result)
-                    is DepotServiceMcpAnswer.Refused -> LibraryServiceMcpAnswer.Refused(answered.error)
-                }
-            }
+            1 -> depotRoute(method, params)
             else -> null
         }
     }

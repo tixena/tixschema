@@ -26,7 +26,7 @@ void main() async {
     pinnedItem: (ctx, req) async => found('pinned'),
     getItem: (ctx, itemId) async => found(itemId),
     openNotice: (ctx, req) async => found('open'),
-    listItems: (ctx, cursor) async => found(McpResourcePage(resources: [McpResource(uri: 'stacks://items/item-1', name: 'item-1')])),
+    listItems: (ctx, cursor) async => found(StacksServiceMcpResourcePage(resources: [StacksServiceMcpResource(uri: 'stacks://items/item-1', name: 'item-1')])),
     suggestItems: (ctx, req) async => found(['item-1', 'item-2'].where((name) => name.startsWith(req.typed)).toList()),
     countItems: (ctx, req) async => found(BookInfo(pages: 3)),
   );
