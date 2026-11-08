@@ -108,6 +108,33 @@ impl ServiceDef {
             .retain(|operation| operation.carried_by_http_alone().is_none());
         enveloped
     }
+
+    /// The service with the page its listing answers named after the service, as every other
+    /// generated name of a service is: the Rust module keeps `McpResourcePage`, a program that
+    /// holds several services keeps one `{Service}McpResourcePage` for each.
+    pub fn with_page_named(&self) -> Self {
+        let mut named = self.clone();
+        let page = format_ident!("{}McpResourcePage", self.ident);
+        for operation in named
+            .operations
+            .iter_mut()
+            .filter(|operation| operation.mcp.list_resources)
+        {
+            if let OperationOutcome::Reply { error, success } = &operation.outcome
+                && matches!(
+                    &**success,
+                    Type::Path(path) if path.qself.is_none()
+                        && path.path.segments.last().is_some_and(|last| last.ident == "McpResourcePage")
+                )
+            {
+                operation.outcome = OperationOutcome::Reply {
+                    error: error.clone(),
+                    success: Box::new(syn::parse_quote!(#page)),
+                };
+            }
+        }
+        named
+    }
 }
 
 /// What of an operation only `http_rest` carries: no envelope `ws_rpc` and `amqp_rpc` answer

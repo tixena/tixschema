@@ -688,7 +688,7 @@ fn unjudged_of(name: &str) -> Option<String> {
 }
 
 /// The `KSerializer` of a value typed `field`, each model it holds read by its unjudged one.
-fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
+pub(super) fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
     let scalar = if let FieldDefType::SiblingType(name, written) = &field.field_type {
         if let [element] = written.as_slice()
             && is_sequence_wrapper(name)

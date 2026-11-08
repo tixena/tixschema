@@ -3,7 +3,9 @@
 //! holding both halves, mirroring [`super::dart_ws_client`] over Kotlin's own coroutine and
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
 
-use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
+use super::kotlin_http_client::{
+    held_copies, kotlin_held, read_serializer, unjudged_read_serializer,
+};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
@@ -1201,6 +1203,15 @@ pub(super) fn message_serializer(operation: &OperationDef) -> String {
         read_serializer(declared)
     } else {
         format!("serializer<{}>()", message_kotlin_typename(operation))
+    }
+}
+
+/// [`message_serializer`] with each model it holds read by its unjudged serializer.
+pub(super) fn message_unjudged_serializer(operation: &OperationDef) -> String {
+    if let OperationInputs::Named(declared) = &operation.inputs {
+        unjudged_read_serializer(declared)
+    } else {
+        message_serializer(operation)
     }
 }
 

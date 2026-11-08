@@ -4,7 +4,9 @@
 //! dispatcher answers.
 
 use super::kotlin_http_client::{kotlin_held, read_serializer};
-use super::kotlin_ws_client::{HeaderElement, body_type, header_elements, message_serializer};
+use super::kotlin_ws_client::{
+    HeaderElement, body_type, header_elements, message_serializer, message_unjudged_serializer,
+};
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
 use crate::features::kotlin::{
@@ -46,12 +48,7 @@ private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
   @WRAPPED_MAP@
 )"#;
 
-const ENDPOINT: &str = r#"sealed interface @N@McpAnswer {
-  data class Answered(val result: JsonObject) : @N@McpAnswer
-  data class Refused(val error: JsonObject) : @N@McpAnswer
-}
-
-class @N@McpEndpoint(vararg catalogs: Map<String, List<String>>) {
+const ENDPOINT: &str = r#"class @N@McpEndpoint(vararg catalogs: Map<String, List<String>>) {
   val catalogs: List<Map<String, List<String>>> = catalogs.toList()
 
   init {
@@ -137,9 +134,13 @@ private fun @P@McpFaultObject(kind: String, operation: String, detail: String, f
     put("operation", operation)
   }
 
-private fun @P@McpDone(structured: JsonElement?, failure: String?): @N@McpAnswer {
+private fun @P@McpResultOf(result: JsonObject): JsonObject = buildJsonObject { put("result", result) }
+
+private fun @P@McpErrorOf(error: JsonObject): JsonObject = buildJsonObject { put("error", error) }
+
+private fun @P@McpDone(structured: JsonElement?, failure: String?): JsonObject {
   val text = failure ?: structured?.let { @P@McpServeText(it) }
-  return @N@McpAnswer.Answered(
+  return @P@McpResultOf(
     buildJsonObject {
       put("resultType", "complete")
       putJsonArray("content") {
@@ -151,11 +152,11 @@ private fun @P@McpDone(structured: JsonElement?, failure: String?): @N@McpAnswer
   )
 }
 
-private fun @P@McpFaulted(fault: JsonElement): @N@McpAnswer =
+private fun @P@McpFaulted(fault: JsonElement): JsonObject =
   @P@McpDone(null, @P@McpServeText(buildJsonObject { put("fault", fault); put("isServiceFault", true) }))
 
-private fun @P@McpInternal(tool: String, detail: String): @N@McpAnswer =
-  @N@McpAnswer.Refused(
+private fun @P@McpInternal(tool: String, detail: String): JsonObject =
+  @P@McpErrorOf(
     buildJsonObject {
       put("code", -32603)
       put(
@@ -335,7 +336,7 @@ private fun @P@McpListingStart(request: JsonObject, services: Int): @P@McpStart?
   return @P@McpStart(part, own.ifEmpty { null }, false)
 }
 
-private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page: Pair<Int, @N@McpAnswer>?): @N@McpAnswer {
+private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page: Pair<Int, JsonObject>?): JsonObject {
   val resources = mutableListOf<JsonElement>()
   if (first) {
     for (catalog in endpoint.catalogs) {
@@ -349,8 +350,7 @@ private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page
   )
   if (page != null) {
     val (part, answer) = page
-    if (answer is @N@McpAnswer.Refused) return answer
-    val listed = (answer as @N@McpAnswer.Answered).result
+    val listed = answer["result"] as? JsonObject ?: return answer
     (listed["resources"] as? JsonArray)?.let { resources.addAll(it) }
     for (key in listOf("ttlMs", "cacheScope")) listed[key]?.let { members[key] = it }
     val own = (listed["nextCursor"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content
@@ -362,7 +362,7 @@ private fun @P@McpListedResources(first: Boolean, endpoint: @N@McpEndpoint, page
     if (next != null) members["nextCursor"] = JsonPrimitive(next)
   }
   members["resources"] = JsonArray(resources)
-  return @N@McpAnswer.Answered(JsonObject(members))
+  return @P@McpResultOf(JsonObject(members))
 }"#;
 
 const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that throws means the client has gone. */
@@ -500,15 +500,15 @@ const SERVING: &str = r#"private sealed interface @P@McpBegun {
   class Routed(val request: JsonObject) : @P@McpBegun
 }
 
-private fun @P@McpResponseText(id: JsonElement, answered: @N@McpAnswer, serverName: String): String =
+private fun @P@McpResponseText(id: JsonElement, answered: JsonObject, serverName: String): String =
   @P@McpServeText(
-    when (answered) {
-      is @N@McpAnswer.Answered -> buildJsonObject {
+    when (val result = answered["result"]) {
+      is JsonObject -> buildJsonObject {
         put("id", id)
         put("jsonrpc", "2.0")
-        put("result", @P@McpWithInfo(answered.result, serverName))
+        put("result", @P@McpWithInfo(result, serverName))
       }
-      is @N@McpAnswer.Refused -> @P@McpFailed(id, answered.error)
+      else -> @P@McpFailed(id, answered["error"] as JsonObject)
     },
   )
 
@@ -525,27 +525,27 @@ private fun @P@McpBegin(
   val unchecked = @P@McpChecked(request)
   if (unchecked != null) return @P@McpBegun.Answered(@P@McpServeText(unchecked))
   val method = (request["method"] as JsonPrimitive).content
-  val answered: @N@McpAnswer = when (method) {
-    "server/discover" -> @N@McpAnswer.Answered(@P@McpDiscovered(instructions, endpoint, listens))
-    "tools/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "tools"))
-    "resources/templates/list" -> @N@McpAnswer.Answered(@P@McpListedItems(endpoint, "resourceTemplates"))
-    "skills/list" -> @N@McpAnswer.Answered(@P@McpListedSkills(endpoint))
+  val answered: JsonObject = when (method) {
+    "server/discover" -> @P@McpResultOf(@P@McpDiscovered(instructions, endpoint, listens))
+    "tools/list" -> @P@McpResultOf(@P@McpListedItems(endpoint, "tools"))
+    "resources/templates/list" -> @P@McpResultOf(@P@McpListedItems(endpoint, "resourceTemplates"))
+    "skills/list" -> @P@McpResultOf(@P@McpListedSkills(endpoint))
     "resources/list" -> return @P@McpBegun.Routed(request)
     "subscriptions/listen" -> if (listens) {
       return @P@McpBegun.Routed(request)
     } else {
-      @N@McpAnswer.Refused(@P@McpErrorObject(-32601, "Method not found: $method", null))
+      @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
     }
     "tools/call", "resources/read", "completion/complete", "skills/get" -> {
       if (@P@McpNamed(@P@McpParams(request), method) != null) return @P@McpBegun.Routed(request)
-      @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
+      @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid params: $method names nothing to answer", null))
     }
-    else -> @N@McpAnswer.Refused(@P@McpErrorObject(-32601, "Method not found: $method", null))
+    else -> @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
   }
   return @P@McpBegun.Answered(@P@McpResponseText(id, answered, serverName))
 }
 
-private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serverName: String): String {
+private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverName: String): String {
   val method = (request["method"] as JsonPrimitive).content
   val name = @P@McpNamed(@P@McpParams(request), method).orEmpty()
   val unknown = when (method) {
@@ -554,7 +554,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
     "skills/get" -> "Skill not found"
     else -> "Unknown completion"
   }
-  val resolved = answered ?: @N@McpAnswer.Refused(
+  val resolved = answered ?: @P@McpErrorOf(
     @P@McpErrorObject(
       -32602,
       "$unknown: $name",
@@ -567,27 +567,35 @@ private fun @P@McpRoutedText(request: JsonObject, answered: @N@McpAnswer?, serve
   return @P@McpResponseText(request["id"] ?: JsonNull, resolved, serverName)
 }
 
+private fun @P@McpRouted(method: String, answer: JsonObject?): JsonObject? {
+  if (answer == null) return null
+  val result = answer["result"]
+  val error = answer["error"]
+  val one = answer.size == 1 && ((result is JsonObject) != (error is JsonObject))
+  return if (one) answer else @P@McpInternal(method, "the route answered with neither or both of result and error")
+}
+
 /** Asks the services of the endpoint for what the routed [request] wants, and answers its text. */
 private suspend fun @P@McpAsk(
   request: JsonObject,
   endpoint: @N@McpEndpoint,
   serverName: String,
-  route: suspend (part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+  route: suspend (part: Int, method: String, params: JsonObject) -> JsonObject?,
 ): String {
   val method = (request["method"] as JsonPrimitive).content
   if (method == "resources/list") {
     val start = @P@McpListingStart(request, endpoint.catalogs.size)
-    val listed: @N@McpAnswer = if (start == null) {
-      @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid cursor", null))
+    val listed: JsonObject = if (start == null) {
+      @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid cursor", null))
     } else {
-      var page: Pair<Int, @N@McpAnswer>? = null
+      var page: Pair<Int, JsonObject>? = null
       for (part in start.part until endpoint.catalogs.size) {
         val asked = if (part == start.part && start.own != null) {
           buildJsonObject { put("cursor", start.own) }
         } else {
           JsonObject(emptyMap())
         }
-        val answered = route(part, method, asked)
+        val answered = @P@McpRouted(method, route(part, method, asked))
         if (answered != null) {
           page = part to answered
           break
@@ -597,9 +605,9 @@ private suspend fun @P@McpAsk(
     }
     return @P@McpResponseText(request["id"] ?: JsonNull, listed, serverName)
   }
-  var answered: @N@McpAnswer? = null
+  var answered: JsonObject? = null
   for (part in endpoint.catalogs.indices) {
-    answered = route(part, method, @P@McpParams(request))
+    answered = @P@McpRouted(method, route(part, method, @P@McpParams(request)))
     if (answered != null) break
   }
   return @P@McpRoutedText(request, answered, serverName)
@@ -611,11 +619,11 @@ private suspend fun @P@McpListen(
   endpoint: @N@McpEndpoint,
   call: @N@McpCall,
   changes: @N@McpChanges,
-): @N@McpAnswer {
+): JsonObject {
   val id = request["id"] ?: JsonNull
-  val ended = @N@McpAnswer.Answered(buildJsonObject { put("_meta", buildJsonObject { put(@P@McpSubscriptionKey, id) }) })
-  fun invalid(detail: String): @N@McpAnswer =
-    @N@McpAnswer.Refused(@P@McpErrorObject(-32602, "Invalid params: $detail", null))
+  val ended = @P@McpResultOf(buildJsonObject { put("_meta", buildJsonObject { put(@P@McpSubscriptionKey, id) }) })
+  fun invalid(detail: String): JsonObject =
+    @P@McpErrorOf(@P@McpErrorObject(-32602, "Invalid params: $detail", null))
   val filter = @P@McpParams(request)["notifications"] as? JsonObject
     ?: return invalid("subscriptions/listen needs `notifications`")
   val listed = filter["resourcesListChanged"]
@@ -681,7 +689,7 @@ suspend fun @P@McpServe(
   instructions: String?,
   endpoint: @N@McpEndpoint,
   host: @N@McpHost,
-  route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+  route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> JsonObject?,
 ): String? {
   val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, host.changes != null)) {
     is @P@McpBegun.Answered -> return begun.text
@@ -708,7 +716,7 @@ suspend fun @P@McpServe(
   }
 }"#;
 
-const RECEIVING: &str = r#"private class @P@McpRefused(val answer: @N@McpAnswer) : Exception()
+const RECEIVING: &str = r#"private class @P@McpRefused(val answer: JsonObject) : Exception()
 
 private fun @P@McpRefuse(kind: String, tool: String, detail: String, field: String? = null): Nothing =
   throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field)))
@@ -738,6 +746,7 @@ private fun @P@McpNamedField(detail: String): String? {
 private fun <T> @P@McpReceive(
   tool: String,
   serializer: DeserializationStrategy<T>,
+  unjudged: DeserializationStrategy<*>,
   source: JsonElement,
   refuse: (kind: String, detail: String, field: String?) -> Nothing = { kind, detail, field ->
     @P@McpRefuse(kind, tool, detail, field)
@@ -746,8 +755,8 @@ private fun <T> @P@McpReceive(
   try {
     return Json.decodeFromJsonElement(serializer, source)
   } catch (refused: IllegalArgumentException) {
-    val unjudged = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*>
-    val readable = unjudged != null && runCatching { Json.decodeFromJsonElement(unjudged, source) }.isSuccess
+    val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
+    val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
     if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail))
     refuse("undeserializable-payload", detail, null)
@@ -786,8 +795,8 @@ private fun @P@McpDismissed(params: JsonObject, key: String): Boolean {
 }
 
 /** The result that asks the client for the elicitation [request], keyed [key]. */
-private fun @P@McpInputRequired(key: String, request: JsonObject): @N@McpAnswer =
-  @N@McpAnswer.Answered(
+private fun @P@McpInputRequired(key: String, request: JsonObject): JsonObject =
+  @P@McpResultOf(
     buildJsonObject {
       put(
         "inputRequests",
@@ -808,7 +817,7 @@ private fun @P@McpAsking(
   error: JsonElement,
   params: JsonObject,
   declined: Boolean,
-): @N@McpAnswer? {
+): JsonObject? {
   val body = error as? JsonObject ?: return null
   val code = (body["errorCode"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
   if (@P@McpPlain(code) != @P@McpPlain(arm)) return null
@@ -831,8 +840,8 @@ private fun @P@McpAsking(
 }"#;
 
 const CONTENT: &str = r#"/** The result of a tool that answers blocks. */
-private fun @P@McpBlocks(content: List<JsonElement>): @N@McpAnswer =
-  @N@McpAnswer.Answered(
+private fun @P@McpBlocks(content: List<JsonElement>): JsonObject =
+  @P@McpResultOf(
     buildJsonObject {
       put("resultType", "complete")
       put("content", JsonArray(content))
@@ -841,16 +850,16 @@ private fun @P@McpBlocks(content: List<JsonElement>): @N@McpAnswer =
   )"#;
 
 const MEDIA: &str = r#"/** The image or audio block of [bytes], where [contentType] says they are one. */
-private fun @P@McpMedia(bytes: List<UByte>, contentType: String): @N@McpAnswer? {
+private fun @P@McpMedia(bytes: List<UByte>, contentType: String): JsonObject? {
   val kind = if (contentType.startsWith("image/")) "image" else if (contentType.startsWith("audio/")) "audio" else return null
   val data = java.util.Base64.getEncoder().encodeToString(ByteArray(bytes.size) { bytes[it].toByte() })
   return @P@McpBlocks(listOf(buildJsonObject { put("data", data); put("mimeType", contentType); put("type", kind) }))
 }"#;
 
-const ROUTE_HEAD: &str = "fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> @N@McpAnswer? =
+const ROUTE_HEAD: &str = "fun create@N@McpRoute(handlers: @N@Handlers): suspend (method: String, params: JsonObject) -> JsonObject? =
   { mcpMethod, mcpParams -> @P@McpCall(handlers, mcpMethod, mcpParams) }
 
-private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpParams: JsonObject): @N@McpAnswer? {
+private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpParams: JsonObject): JsonObject? {
   try {
     return when (mcpMethod) {
 @DISPATCH@      else -> null
@@ -862,7 +871,7 @@ private suspend fun @P@McpCall(handlers: @N@Handlers, mcpMethod: String, mcpPara
 ";
 
 const TOOL_HEAD: &str = r#"
-private suspend fun @P@McpTool(handlers: @N@Handlers, mcpParams: JsonObject): @N@McpAnswer? {
+private suspend fun @P@McpTool(handlers: @N@Handlers, mcpParams: JsonObject): JsonObject? {
   val mcpNamed = mcpParams["name"]
   if (mcpNamed !is JsonPrimitive || !mcpNamed.isString) return null
   return when (mcpNamed.content) {
@@ -894,7 +903,7 @@ private fun @P@McpCaptured(segments: List<Pair<String, Boolean>>, uri: String): 
 
 private fun @P@McpUnread(operation: String, kind: String, detail: String, field: String?): Nothing =
   throw @P@McpRefused(
-    @N@McpAnswer.Refused(
+    @P@McpErrorOf(
       @P@McpErrorObject(
         -32602,
         "Invalid params",
@@ -906,11 +915,11 @@ private fun @P@McpUnread(operation: String, kind: String, detail: String, field:
     ),
   )
 
-private fun @P@McpDeclined(error: JsonElement, refusal: String): @N@McpAnswer =
-  @N@McpAnswer.Refused(@P@McpErrorObject(-32602, refusal, error))
+private fun @P@McpDeclined(error: JsonElement, refusal: String): JsonObject =
+  @P@McpErrorOf(@P@McpErrorObject(-32602, refusal, error))
 
-private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElement): @N@McpAnswer =
-  @N@McpAnswer.Answered(
+private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElement): JsonObject =
+  @P@McpResultOf(
     buildJsonObject {
       put("cacheScope", scope)
       put(key, items)
@@ -919,8 +928,8 @@ private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElem
     },
   )
 
-private fun @P@McpFaultedRequest(fault: JsonElement): @N@McpAnswer =
-  @N@McpAnswer.Refused(
+private fun @P@McpFaultedRequest(fault: JsonElement): JsonObject =
+  @P@McpErrorOf(
     @P@McpErrorObject(
       -32602,
       "Invalid params",
@@ -1165,7 +1174,7 @@ suspend fun @P@McpServeHttp(
   endpoint: @N@McpEndpoint,
   admit: suspend (@N@McpHttpRequest, @N@McpCall) -> @N@McpAdmitted,
   changes: @N@McpChanges? = null,
-  route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> @N@McpAnswer?,
+  route: suspend (caller: @N@Handlers, part: Int, method: String, params: JsonObject) -> JsonObject?,
 ): @N@McpHttpResponse {
   val before = @P@McpBeforeAdmit(request, settings)
   if (before != null) return before
@@ -1809,7 +1818,7 @@ fn page_types(service: &ServiceDef) -> String {
     }
     "/** One resource of a listing, as `resources/list` writes it. */
 @Serializable
-data class McpResource(
+data class @N@McpResource(
   val uri: String,
   val name: String,
   val title: String? = null,
@@ -1820,8 +1829,8 @@ data class McpResource(
 
 /** One page of `resources/list`, with the cursor of the next where there is one. */
 @Serializable
-data class McpResourcePage(val resources: List<McpResource>, val nextCursor: String? = null)"
-        .to_owned()
+data class @N@McpResourcePage(val resources: List<@N@McpResource>, val nextCursor: String? = null)"
+        .replace("@N@", &service.ident.to_string())
 }
 
 /// The functions that answer the requests the resources, the listing and the completions own.
@@ -1846,7 +1855,7 @@ fn resource_functions(
         }
     }
     if skilled(service) {
-        text.push_str(&skill_get(prefix, named));
+        text.push_str(&skill_get(prefix));
     }
     if let Some(operation) = held.listing {
         text.push_str(&resource_listing(operation, prefix, named, fields));
@@ -1889,7 +1898,7 @@ fn skill_read(operation: &OperationDef, prefix: &str, named: &str, fields: &str)
          buildJsonArray {{\n            add(\n              buildJsonObject {{\n          put(\"uri\", mcpUri)\n{content}\n              }},\n            )\n          }},\n        )"
     );
     let head = format!(
-        "\n\nprivate suspend fun {prefix}McpReadSkill{op}(handlers: {named}Handlers, mcpUri: String, mcpPath: String): {named}McpAnswer {{\n",
+        "\n\nprivate suspend fun {prefix}McpReadSkill{op}(handlers: {named}Handlers, mcpUri: String, mcpPath: String): JsonObject {{\n",
         op = pascal(operation),
     );
     format!(
@@ -1907,9 +1916,9 @@ fn skill_read(operation: &OperationDef, prefix: &str, named: &str, fields: &str)
 }
 
 /// The `skills/get` of the service: the entry its catalog lists under the name or the URI asked.
-fn skill_get(prefix: &str, named: &str) -> String {
+fn skill_get(prefix: &str) -> String {
     format!(
-        "\n\nprivate fun {prefix}McpSkillGet(mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+        "\n\nprivate fun {prefix}McpSkillGet(mcpParams: JsonObject): JsonObject? {{\n  \
          val mcpName = (mcpParams[\"name\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
          val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content\n  \
          for (text in {prefix}McpCatalog[\"skills\"].orEmpty()) {{\n    \
@@ -1919,7 +1928,7 @@ fn skill_get(prefix: &str, named: &str) -> String {
          (mcpUri != null && (entry[\"uri\"] as? JsonPrimitive)?.content == mcpUri)\n    \
          if (!held) continue\n    \
          val written = (entry[\"resources\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content == \"dynamic\"\n    \
-         return {named}McpAnswer.Answered(\n      buildJsonObject {{\n        \
+         return {prefix}McpResultOf(\n      buildJsonObject {{\n        \
          put(\"cacheScope\", if (written) \"private\" else \"public\")\n        \
          put(\"resultType\", \"complete\")\n        \
          put(\"skill\", entry)\n        \
@@ -1930,7 +1939,7 @@ fn skill_get(prefix: &str, named: &str) -> String {
 
 fn read_dispatch(service: &ServiceDef, held: &Resourced<'_>, prefix: &str, named: &str) -> String {
     let mut text = format!(
-        "\n\nprivate suspend fun {prefix}McpRead(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+        "\n\nprivate suspend fun {prefix}McpRead(handlers: {named}Handlers, mcpParams: JsonObject): JsonObject? {{\n  \
          val mcpUri = (mcpParams[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n"
     );
     if service.skills.is_some() {
@@ -2014,6 +2023,7 @@ fn resource_body(
     };
     let wire = kotlin_quoted(&operation.wire_name);
     let read_by = message_serializer(operation);
+    let unjudged_by = message_unjudged_serializer(operation);
     let result = result_name(named, operation).unwrap_or_default();
     let call = format!("handlers.{}(decoded)", kotlin_name(&operation.ts_name));
     let written_error = read_serializer(error);
@@ -2027,7 +2037,7 @@ fn resource_body(
     };
     format!(
         "  val mcpSource: JsonElement = {source}\n  \
-         val decoded = {prefix}McpReceive({wire}, {read_by}, mcpSource) {{ kind, detail, field ->\n    \
+         val decoded = {prefix}McpReceive({wire}, {read_by}, {unjudged_by}, mcpSource) {{ kind, detail, field ->\n    \
          {prefix}McpUnread({wire}, kind, detail, field)\n  }}\n  \
          val answered = try {{\n    {call}\n  }} catch (unexpected: Throwable) {{\n    \
          if (unexpected is CancellationException) throw unexpected\n    \
@@ -2098,7 +2108,7 @@ fn resource_read(operation: &OperationDef, prefix: &str, named: &str, fields: &s
         ""
     };
     let head = format!(
-        "\n\nprivate suspend fun {prefix}McpRead{op}(handlers: {named}Handlers, mcpUri: String{captured}): {named}McpAnswer {{\n",
+        "\n\nprivate suspend fun {prefix}McpRead{op}(handlers: {named}Handlers, mcpUri: String{captured}): JsonObject {{\n",
         op = pascal(operation),
     );
     format!(
@@ -2124,11 +2134,11 @@ fn resource_listing(operation: &OperationDef, prefix: &str, named: &str, fields:
     let ttl = operation.mcp.ttl_ms.unwrap_or(0);
     let scope = operation.mcp.cache_scope.as_deref().unwrap_or("private");
     let success = format!(
-        "        {named}McpAnswer.Answered(\n          JsonObject(\n            mcpEncoded.jsonObject + mapOf(\n              \"cacheScope\" to JsonPrimitive({scope}),\n              \"resultType\" to JsonPrimitive(\"complete\"),\n              \"ttlMs\" to JsonPrimitive({ttl}),\n            ),\n          ),\n        )",
+        "        {prefix}McpResultOf(\n          JsonObject(\n            mcpEncoded.jsonObject + mapOf(\n              \"cacheScope\" to JsonPrimitive({scope}),\n              \"resultType\" to JsonPrimitive(\"complete\"),\n              \"ttlMs\" to JsonPrimitive({ttl}),\n            ),\n          ),\n        )",
         scope = kotlin_quoted(scope),
     );
     let head = format!(
-        "\n\nprivate suspend fun {prefix}McpList(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer {{\n  \
+        "\n\nprivate suspend fun {prefix}McpList(handlers: {named}Handlers, mcpParams: JsonObject): JsonObject {{\n  \
          val mcpCursor = mcpParams[\"cursor\"]\n"
     );
     format!(
@@ -2164,7 +2174,7 @@ fn resource_completion(
     );
     let success = format!(
         "        val mcpSuggested = mcpEncoded.jsonArray\n        \
-         {named}McpAnswer.Answered(\n          buildJsonObject {{\n            \
+         {prefix}McpResultOf(\n          buildJsonObject {{\n            \
          put(\n              \"completion\",\n              buildJsonObject {{\n                \
          put(\"hasMore\", mcpSuggested.size > 100)\n                \
          if (mcpSuggested.size > 100) put(\"total\", mcpSuggested.size)\n                \
@@ -2172,7 +2182,7 @@ fn resource_completion(
          put(\"resultType\", \"complete\")\n          }},\n        )"
     );
     let head = format!(
-        "\n\nprivate suspend fun {prefix}McpComplete{op}(handlers: {named}Handlers, mcpTyped: String, mcpChosen: JsonElement): {named}McpAnswer {{\n",
+        "\n\nprivate suspend fun {prefix}McpComplete{op}(handlers: {named}Handlers, mcpTyped: String, mcpChosen: JsonElement): JsonObject {{\n",
         op = pascal(operation),
     );
     format!(
@@ -2196,7 +2206,7 @@ fn complete_dispatch(
     named: &str,
 ) -> String {
     let mut text = format!(
-        "\n\nprivate suspend fun {prefix}McpComplete(handlers: {named}Handlers, mcpParams: JsonObject): {named}McpAnswer? {{\n  \
+        "\n\nprivate suspend fun {prefix}McpComplete(handlers: {named}Handlers, mcpParams: JsonObject): JsonObject? {{\n  \
          val mcpReference = mcpParams[\"ref\"] as? JsonObject ?: return null\n  \
          if ((mcpReference[\"type\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content != \"ref/resource\") return null\n  \
          val mcpUri = (mcpReference[\"uri\"] as? JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: return null\n  \
@@ -2236,6 +2246,7 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
     let tool = kotlin_quoted(operation.mcp_tool_name());
     let shape = HttpShape::of(operation);
     let read_by = message_serializer(operation);
+    let unjudged_by = message_unjudged_serializer(operation);
     let mut text = format!(
         "    {tool} -> {{\n      \
          val mcpArguments = {prefix}McpArguments({tool}, mcpParams)\n{}",
@@ -2257,7 +2268,7 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
         text,
         "      val mcpSource = {prefix}McpSource({tool}, mcpArguments, \
          {prefix}McpWrapped.getValue({tool}))\n      \
-         val decoded = {prefix}McpReceive({tool}, {read_by}, mcpSource)\n"
+         val decoded = {prefix}McpReceive({tool}, {read_by}, {unjudged_by}, mcpSource)\n"
     );
     let mut call_arguments = vec!["decoded".to_owned()];
     for header in &shape.header_in {

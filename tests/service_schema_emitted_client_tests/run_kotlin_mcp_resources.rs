@@ -49,15 +49,15 @@ object LibraryHandlers : LibraryServiceHandlers {
 
     override suspend fun listBooks(req: String?): LibraryServiceListBooksResult = when (req) {
         null -> LibraryServiceListBooksResult.Ok(
-            McpResourcePage(
-                listOf(McpResource("library://covers/book-1", "cover-1.pdf", mimeType = "application/pdf")),
+            LibraryServiceMcpResourcePage(
+                listOf(LibraryServiceMcpResource("library://covers/book-1", "cover-1.pdf", mimeType = "application/pdf")),
                 "page-2",
             ),
         )
         "page-2" -> LibraryServiceListBooksResult.Ok(
-            McpResourcePage(
+            LibraryServiceMcpResourcePage(
                 listOf(
-                    McpResource(
+                    LibraryServiceMcpResource(
                         "library://covers/book-2",
                         "cover-2.pdf",
                         title = "Second cover",
@@ -87,6 +87,17 @@ object DepotHandlers : DepotServiceHandlers {
 
     override suspend fun getBin(req: GetBinRequest): DepotServiceGetBinResult =
         DepotServiceGetBinResult.Ok(req.aisle + "/" + req.binId)
+
+    override suspend fun listCrates(req: String?): DepotServiceListCratesResult =
+        if (req == null) {
+            DepotServiceListCratesResult.Ok(
+                DepotServiceMcpResourcePage(
+                    listOf(DepotServiceMcpResource("depot://crates/crate-1", "crate-1", mimeType = "application/json")),
+                ),
+            )
+        } else {
+            DepotServiceListCratesResult.Declared(BookErrorNotFound)
+        }
 }
 
 object BareHandlers : BareServiceHandlers {
@@ -118,12 +129,7 @@ suspend fun report(input: JsonObject): JsonObject {
         nullable(libraryServiceMcpServe(text, "Workspace", null, workspace, host) { _, part, method, params ->
             when (part) {
                 0 -> libraryRoute(method, params)
-                1 -> depotRoute(method, params)?.let { answered ->
-                    when (answered) {
-                        is DepotServiceMcpAnswer.Answered -> LibraryServiceMcpAnswer.Answered(answered.result)
-                        is DepotServiceMcpAnswer.Refused -> LibraryServiceMcpAnswer.Refused(answered.error)
-                    }
-                }
+                1 -> depotRoute(method, params)
                 else -> null
             }
         })

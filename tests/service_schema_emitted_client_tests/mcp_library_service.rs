@@ -98,6 +98,14 @@ pub trait DepotService<Ctx> {
         cache_scope = "public"
     ))]
     async fn get_crate(&self, ctx: &Ctx, crate_id: String) -> Result<String, BookError>;
+
+    /// Lists the crates.
+    #[service_schema_op(mcp(list_resources))]
+    async fn list_crates(
+        &self,
+        ctx: &Ctx,
+        cursor: Option<String>,
+    ) -> Result<depot_service_schema::McpResourcePage, BookError>;
 }
 
 /// Mirrors the guide and the covers of `LibraryService`, so an endpoint of both shares their URIs.
@@ -231,6 +239,27 @@ impl DepotService<()> for Stand {
             Ok("{\"total\":120}".to_owned())
         } else {
             Err(BookError::NotFound)
+        })
+    }
+
+    fn list_crates(
+        &self,
+        _ctx: &(),
+        cursor: Option<String>,
+    ) -> impl Future<Output = Result<depot_service_schema::McpResourcePage, BookError>> {
+        ready(match cursor.as_deref() {
+            None => Ok(depot_service_schema::McpResourcePage {
+                resources: vec![depot_service_schema::McpResource {
+                    uri: "depot://crates/crate-1".to_owned(),
+                    name: "crate-1".to_owned(),
+                    title: None,
+                    description: None,
+                    mime_type: Some("application/json".to_owned()),
+                    size: None,
+                }],
+                next_cursor: None,
+            }),
+            Some(_) => Err(BookError::NotFound),
         })
     }
 }
