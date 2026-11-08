@@ -5,6 +5,8 @@ mod client;
 #[cfg(feature = "dart")]
 mod dart_http_client;
 #[cfg(feature = "dart")]
+mod dart_mcp;
+#[cfg(feature = "dart")]
 mod dart_result;
 #[cfg(feature = "dart")]
 mod dart_ws_client;
@@ -551,11 +553,14 @@ pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
     let registry = registry_ident(service);
     let items = mcp_registry_items(service);
     let typescript = mcp_ts_seam(service);
+    let dart = dart_mcp_seam(service);
     quote! {
         impl #registry {
             #items
 
             #typescript
+
+            #dart
         }
     }
 }
@@ -632,6 +637,16 @@ fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
 
 #[cfg(not(all(feature = "typescript", feature = "zod")))]
 fn mcp_ts_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(feature = "dart")]
+fn dart_mcp_seam(service: &ServiceDef) -> TokenStream {
+    dart_mcp::seam(service)
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_mcp_seam(_service: &ServiceDef) -> TokenStream {
     TokenStream::new()
 }
 
