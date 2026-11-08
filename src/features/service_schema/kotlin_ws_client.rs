@@ -21,10 +21,10 @@ use syn::Type;
 
 /// One `header_out`/`error_header_out` entry: its local identifier (`headerOut0`, ...), its wire
 /// name, and its declared type.
-struct HeaderElement {
-    kotlin_prop: String,
-    ty: Type,
-    wire_name: String,
+pub(super) struct HeaderElement {
+    pub kotlin_prop: String,
+    pub ty: Type,
+    pub wire_name: String,
 }
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
@@ -1173,7 +1173,7 @@ fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> S
 
 /// The message's Kotlin type: the type the operation named, or the one the macro declared for an
 /// operation that named none.
-fn message_kotlin_typename(operation: &OperationDef) -> String {
+pub(super) fn message_kotlin_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => kotlin_type_of(declared),
         OperationInputs::Empty | OperationInputs::Generated(_) => {
@@ -1188,14 +1188,14 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
     }
 }
 
-fn kotlin_type_of(ty: &Type) -> String {
+pub(super) fn kotlin_type_of(ty: &Type) -> String {
     kotlin_typename(&kotlin_field_def("value", ty))
 }
 
 /// The `KSerializer` the client writes the message with and the dispatcher reads it with,
 /// [`read_serializer`] of the type the operation named, a `char` and a date in the form serde
 /// writes, or `serializer<T>()` of the one the macro declared.
-fn message_serializer(operation: &OperationDef) -> String {
+pub(super) fn message_serializer(operation: &OperationDef) -> String {
     if let OperationInputs::Named(declared) = &operation.inputs {
         read_serializer(declared)
     } else {
@@ -1205,7 +1205,7 @@ fn message_serializer(operation: &OperationDef) -> String {
 
 /// The type a header tuple carries in its body slot: the tuple's first element, or `ty` itself
 /// where no headers were declared.
-fn body_type(headers: usize, ty: &Type) -> &Type {
+pub(super) fn body_type(headers: usize, ty: &Type) -> &Type {
     if headers == 0 {
         return ty;
     }
@@ -1215,7 +1215,11 @@ fn body_type(headers: usize, ty: &Type) -> &Type {
 }
 
 /// `names`' own declared header elements, matched against `whole`'s trailing tuple elements.
-fn header_elements(names: &[String], whole: &Type, ident_prefix: &str) -> Vec<HeaderElement> {
+pub(super) fn header_elements(
+    names: &[String],
+    whole: &Type,
+    ident_prefix: &str,
+) -> Vec<HeaderElement> {
     let elements: Vec<&Type> = tuple_elements(whole).into_iter().flatten().collect();
     names
         .iter()

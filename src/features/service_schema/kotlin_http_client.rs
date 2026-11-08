@@ -24,9 +24,10 @@ use core::fmt::Write as _;
 use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
-/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's.
-const TAKEN_BY_A_METHOD: [&str; 36] = [
+/// REST client's, the `ws_rpc` client's and dispatcher's, and the `mcp` client's and route's.
+const TAKEN_BY_A_METHOD: [&str; 49] = [
     "answered",
+    "arguments",
     "assigned",
     "body",
     "contentRange",
@@ -43,7 +44,17 @@ const TAKEN_BY_A_METHOD: [&str; 36] = [
     "incomingHeaders",
     "isServiceFault",
     "it",
+    "mcpArguments",
+    "mcpHeaders",
+    "mcpMethod",
+    "mcpNamed",
+    "mcpParams",
+    "mcpRefused",
+    "mcpSource",
+    "members",
+    "message",
     "ok",
+    "outcome",
     "parts",
     "path",
     "query",
@@ -55,12 +66,14 @@ const TAKEN_BY_A_METHOD: [&str; 36] = [
     "replyHeaders",
     "req",
     "response",
+    "sent",
     "shared",
     "status",
     "thrown",
     "transport",
     "uncarried",
     "unexpected",
+    "unwritten",
     "value",
 ];
 
@@ -164,7 +177,7 @@ fn result_interfaces(service: &ServiceDef, named: &str) -> Vec<String> {
 
 /// Whether a reply operation's success carries nothing at all: the same condition that earns the
 /// unit `data object Ok` member instead of a `data class Ok(val value: ...)`.
-fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> bool {
+pub(super) fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> bool {
     let OperationOutcome::Reply {
         success,
         error: _error,
