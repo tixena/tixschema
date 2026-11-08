@@ -19,11 +19,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # beta is the toolchain the code is developed and linted on; 1.91.1 is the floor, `rust-version`
+    # in Cargo.toml, which every test step runs on. `rustflags: ""` leaves RUSTFLAGS unset, so only
+    # the lint steps, which pass `-D warnings` themselves, deny a warning.
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        toolchain: stable
+        toolchain: 1.91.1, beta
         components: clippy, rustfmt
+        rustflags: ""
 
     - name: Install just, cargo-hack and cargo-audit
       uses: taiki-e/install-action@v2
@@ -63,6 +67,8 @@ jobs:
 
     - name: Show the toolchains
       run: |
+        cargo +beta --version
+        cargo +1.91.1 --version
         node --version
         "$TIXSCHEMA_TSC" --version
         dart --version
@@ -72,18 +78,24 @@ jobs:
 
     - name: Run code checks
       id: check
+      env:
+        RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🔍 Running code checks..."
         just check
 
     - name: Run lint across all feature combinations
       id: lint-all
+      env:
+        RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🧹 Linting every combination of the feature sets..."
         just lint-sets
 
     - name: Run basic tests
       id: test-basic
+      env:
+        RUSTUP_TOOLCHAIN: "1.91.1"
       run: |
         echo "🧪 Running basic tests..."
         cargo test --verbose
@@ -91,22 +103,34 @@ jobs:
     - name: Run extensive tests
       id: test-extensive
       env:
-        RUSTFLAGS: ""
+        RUSTUP_TOOLCHAIN: "1.91.1"
       run: |
         echo "🚀 Testing every combination of the feature sets..."
         just test-sets
 
     - name: Type-check the emitted TypeScript
       id: typecheck-ts
+      env:
+        RUSTUP_TOOLCHAIN: "1.91.1"
       run: |
         echo "🔎 Type-checking the emitted TypeScript with tsc..."
         just typecheck-ts
 
+    - name: Lint the tests that wait on a real clock
+      id: lint-slow
+      env:
+        RUSTUP_TOOLCHAIN: beta
+      run: |
+        echo "🧹 Linting the tests that wait on a real clock..."
+        just lint-slow
+
     - name: Run the emitted clients under their own toolchains, the tests on a real clock included
       id: test-emitted
+      env:
+        RUSTUP_TOOLCHAIN: "1.91.1"
       run: |
         echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients, and the tests that wait on a real clock..."
-        just test-slow
+        just run-slow
 
     - name: Run security audit
       id: audit
@@ -140,6 +164,7 @@ jobs:
         TBASIC: ${{ steps.test-basic.outcome }}
         TEXT: ${{ steps.test-extensive.outcome }}
         TSC: ${{ steps.typecheck-ts.outcome }}
+        LSLOW: ${{ steps.lint-slow.outcome }}
         EMIT: ${{ steps.test-emitted.outcome }}
         AUDIT: ${{ steps.audit.outcome }}
         JOB: ${{ job.status }}
@@ -158,15 +183,16 @@ jobs:
         elif [[ "$TBASIC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Basic tests (cargo test)";
         elif [[ "$TEXT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Feature-set tests (just test-sets)";
         elif [[ "$TSC" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted TypeScript type check (just typecheck-ts)";
-        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients and the tests on a real clock (just test-slow)";
+        elif [[ "$LSLOW" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint the tests on a real clock (just lint-slow)";
+        elif [[ "$EMIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Emitted clients and the tests on a real clock (just run-slow)";
         elif [[ "$AUDIT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Security audit (cargo audit)";
         elif [[ "$JOB" == "cancelled" ]]; then JOB_STATUS="failure"; FAILED_STEP="The run was cancelled";
         elif [[ "$JOB" != "success" ]]; then JOB_STATUS="failure"; FAILED_STEP="A setup step (see the run)";
         fi
 
         icon() { case "$1" in success) printf '✅';; failure) printf '❌';; cancelled) printf '🚫';; *) printf '⏭️';; esac; }
-        STATUS_VALUE=$(printf '🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
-          "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
+        STATUS_VALUE=$(printf '🔍 Check: %s\n🧹 Lint (all features): %s\n🧪 Basic Tests: %s\n🚀 Extensive Tests: %s\n🔎 Emitted TypeScript: %s\n🧹 Lint (real clock): %s\n🌐 Emitted Clients: %s\n🛡️ Audit: %s' \
+          "$(icon "$CHK")" "$(icon "$LALL")" "$(icon "$TBASIC")" "$(icon "$TEXT")" "$(icon "$TSC")" "$(icon "$LSLOW")" "$(icon "$EMIT")" "$(icon "$AUDIT")")
 
         # Per-event details: commit message / author / PR link
         if [[ "$EVENT_NAME" == "pull_request" ]]; then

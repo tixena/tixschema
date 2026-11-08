@@ -216,7 +216,10 @@ slow_tests := "--config 'build.rustflags=[\"--cfg\", \"slow_tests\"]'"
 
 # Lint, then run, the tests that wait on a real clock: the WebSocket runs of the emitted clients.
 # They run through `test-emitted`, so this refuses to stand down and needs every toolchain it needs.
-test-slow: lint-slow (test-emitted slow_tests)
+test-slow: lint-slow run-slow
+
+# Run the tests that wait on a real clock, with the emitted clients, without linting them.
+run-slow: (test-emitted slow_tests)
 
 # Lint the tests that wait on a real clock, under the cfg that compiles them.
 lint-slow:
@@ -259,9 +262,13 @@ check-mix:
     cargo test --no-default-features --features mongo --test every_build_validation_tests
     cargo test --no-default-features --features mobile,mongo --test every_build_validation_tests
 
-# Check the library on the minimum supported Rust version.
+# Check the library on the floor, `rust-version` in Cargo.toml.
 check-msrv:
-    cargo +1.91 check --all-features
+    cargo +1.91.1 check --all-features
+
+# Run the tests on the floor, as CI does. No lint: lints run on beta alone.
+test-floor:
+    cargo +1.91.1 test --all-features
 
 # Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
 # file is generated afresh and scanned on its own.

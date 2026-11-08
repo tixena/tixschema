@@ -107,6 +107,10 @@ just all
 # Runs, with every feature on: one clippy lint and one test run
 ```
 
+The code is developed on Rust beta, which `rust-toolchain.toml` pins, and linted on beta alone. CI
+runs every test on the floor, `rust-version` in `Cargo.toml` (1.91.1), with no lint and no
+`-D warnings`: `just test-floor` runs the tests there, and `just check-msrv` checks the library.
+
 ### The Full Run (every few days)
 ```bash
 just all-named     # both packages: default and all-features lints, the format check, the named feature lists

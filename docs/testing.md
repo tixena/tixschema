@@ -258,11 +258,13 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
+Each workflow installs two toolchains: beta, which `rust-toolchain.toml` pins and the code is developed on, and 1.91.1, the floor (`rust-version` in `Cargo.toml`). Every lint step runs on beta, and every test step on the floor. The setup action is given `rustflags: ""`, so `RUSTFLAGS` stays unset: only a lint step, which passes `-D warnings` itself, fails on a warning.
+
 A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on, then `just check-mix`:
 
-1. `cargo clippy --all-targets --all-features -- -D warnings`
-2. `cargo test --all-features`
-3. `just check-mix`, not part of `just all`, in three steps:
+1. `cargo clippy --all-targets --all-features -- -D warnings`, on beta
+2. `cargo test --all-features`, on the floor
+3. `just check-mix`, not part of `just all`, on the floor, in three steps:
    - `cargo hack check --each-feature` compiles this package's library, no test, once with no feature, once with the default, once with every feature, and once with each feature by itself
    - the same line over `bson3/`, with `--tests`, compiles that package's tests, against version 3 of the `bson` library, and tixschema, a dev-dependency there, under the same features; no test runs
    - `tests/every_build_validation_tests.rs` runs with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`
@@ -275,7 +277,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 3. `cargo test --verbose` (basic tests)
 4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
-6. `just test-slow` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
+6. `just lint-slow` on beta, then `just run-slow` on the floor (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status
 
@@ -283,7 +285,7 @@ The gate lints and tests one feature selection of one package. `just check-mix` 
 
 `just check-all` builds what the first two lines of `just check-mix` build, over every combination of the features in place of each feature by itself: this package's library, then the tests of `bson3/` and tixschema. `just ci` runs it, and neither workflow does.
 
-Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `test-slow`.
+Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `run-slow`.
 
 The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of either workflow runs it.
 
