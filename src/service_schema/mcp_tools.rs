@@ -2,10 +2,12 @@
 //! `mcp` service, each tool built from its operation's message, success, headers and rustdoc.
 
 use super::parse::{
-    BodyKind, HttpShape, McpResourceUri, OperationDef, OperationInputs, OperationOutcome,
-    PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements, wire_key, written,
+    BodyKind, HttpShape, McpCompletesKind, McpResourceUri, OperationDef, OperationInputs,
+    OperationOutcome, PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements,
+    wire_key, written,
 };
 use super::transport::http_rest::openapi::message_type;
+use super::transport::mcp::prompts::prompt_entries;
 use super::transport::mcp::resource_entries;
 use crate::features::jsonschema::in_flight_type;
 use crate::model_schema::needs_wrapper;
@@ -29,6 +31,9 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         if operation.is_mcp_tool() {
             return Some(("tool", operation.mcp_tool_name().to_owned()));
         }
+        if operation.is_mcp_prompt() {
+            return Some(("prompt", operation.mcp_tool_name().to_owned()));
+        }
         if let Some((skill, _)) = &operation.mcp.skill {
             return Some(("skill", skill.clone()));
         }
@@ -48,6 +53,7 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
     let (kinds, names): (Vec<_>, Vec<_>) = listed.chain(folder_skills).unzip();
     let scopes = scopes_method(service);
     let listed_resources = resources_methods(service);
+    let listed_prompts = prompts_method(service);
     let listed_skills = skills_methods(service);
     let sorted = sorted_fn();
     quote! {
@@ -59,6 +65,8 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
 
         #listed_resources
 
+        #listed_prompts
+
         #scopes
 
         #(#wrapped)*
@@ -68,7 +76,7 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         #[doc = " The trait's rustdoc, which the server answers as its `instructions`."]
         pub const MCP_INSTRUCTIONS: ::core::option::Option<&'static str> = #instructions;
 
-        #[doc = " Every tool, resource and resource template the service lists, as `(<kind>, <name>)`."]
+        #[doc = " Every tool, prompt, resource and resource template the service lists, as `(<kind>, <name>)`."]
         pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#((#kinds, #names)),*];
     }
 }
@@ -111,6 +119,18 @@ fn resources_methods(service: &ServiceDef) -> TokenStream {
         #[doc = " The service's resource templates, in the order the trait declares them."]
         pub fn mcp_resource_templates() -> ::std::vec::Vec<::serde_json::Value> {
             ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#templates))),*]
+        }
+    }
+}
+
+/// `mcp_prompts()`: the entries `prompts/list` answers for the service, as the servers in other
+/// languages write them.
+fn prompts_method(service: &ServiceDef) -> TokenStream {
+    let prompts = prompt_entries(service);
+    quote! {
+        #[doc = " The service's prompts, in the order the trait declares them."]
+        pub fn mcp_prompts() -> ::std::vec::Vec<::serde_json::Value> {
+            ::std::vec![#(Self::mcp_sorted(::serde_json::json!(#prompts))),*]
         }
     }
 }
@@ -211,12 +231,54 @@ fn skills_methods(service: &ServiceDef) -> TokenStream {
     }
 }
 
+/// The arms of `mcp_scopes` for `prompts/get`.
+fn prompt_arms(service: &ServiceDef) -> Vec<TokenStream> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_prompt() && !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let name = operation.mcp_tool_name();
+            let scopes = scopes_of(operation);
+            quote! { ("prompts/get", ::core::option::Option::Some(#name)) => #scopes, }
+        })
+        .collect()
+}
+
+/// The arms of `mcp_scopes` for `completion/complete`: a resource by its URI, a prompt by its name.
+fn completion_arms(service: &ServiceDef) -> Vec<TokenStream> {
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.completes.is_some() && !operation.mcp.scopes.is_empty())
+        .filter_map(|operation| {
+            let completes = operation.mcp.completes.as_ref()?;
+            let target = service
+                .operations
+                .iter()
+                .find(|candidate| written(&candidate.ident) == completes.operation)?;
+            let uri = match completes.kind {
+                McpCompletesKind::Resource => target.mcp.resource.as_ref()?.uri.as_str(),
+                McpCompletesKind::Prompt => {
+                    target.mcp.prompt.as_ref()?;
+                    target.mcp_tool_name()
+                }
+            };
+            let scopes = scopes_of(operation);
+            Some(quote! {
+                ("completion/complete", ::core::option::Option::Some(#uri)) => #scopes,
+            })
+        })
+        .collect()
+}
+
+fn scopes_of(operation: &OperationDef) -> TokenStream {
+    let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
+    quote! { &[#(#scopes),*] }
+}
+
 /// `mcp_scopes(method, name)`: the scopes the request `serve` routes to an operation needs.
 fn scopes_method(service: &ServiceDef) -> TokenStream {
-    let scopes_of = |operation: &OperationDef| {
-        let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
-        quote! { &[#(#scopes),*] }
-    };
     let tools = service
         .operations
         .iter()
@@ -226,11 +288,12 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             let scopes = scopes_of(operation);
             quote! { ("tools/call", ::core::option::Option::Some(#name)) => #scopes, }
         });
+    let prompts = prompt_arms(service);
     let resourced = || {
         service
             .operations
             .iter()
-            .filter(|operation| !operation.is_mcp_tool())
+            .filter(|operation| !operation.is_mcp_tool() && !operation.is_mcp_prompt())
     };
     let is_template = |operation: &OperationDef| {
         operation
@@ -282,20 +345,7 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             let scopes = scopes_of(operation);
             quote! { ("resources/list", _) => #scopes, }
         });
-    let completions = resourced()
-        .filter(|operation| !operation.mcp.scopes.is_empty())
-        .filter_map(|operation| {
-            let completes = operation.mcp.completes.as_ref()?;
-            let target = service
-                .operations
-                .iter()
-                .find(|candidate| written(&candidate.ident) == completes.resource)?;
-            let uri = &target.mcp.resource.as_ref()?.uri;
-            let scopes = scopes_of(operation);
-            Some(quote! {
-                ("completion/complete", ::core::option::Option::Some(#uri)) => #scopes,
-            })
-        });
+    let completions = completion_arms(service);
     quote! {
         #[doc = " The scopes a caller needs for the request `method` and `name` name, `[]` for none."]
         pub fn mcp_scopes(
@@ -305,6 +355,7 @@ fn scopes_method(service: &ServiceDef) -> TokenStream {
             #matcher
             match (method, name) {
                 #(#tools)*
+                #(#prompts)*
                 #reads
                 #listing
                 #(#completions)*
@@ -387,6 +438,16 @@ pub fn is_content_list(operation: &OperationDef) -> bool {
             &operation.outcome,
             OperationOutcome::Reply { success, error: _error }
                 if !matches!(success.as_ref(), Type::Tuple(_))
+        )
+}
+
+/// A prompt's success is a list of messages.
+pub fn is_prompt_messages(operation: &OperationDef) -> bool {
+    operation.is_mcp_prompt()
+        && matches!(
+            &operation.outcome,
+            OperationOutcome::Reply { success, error: _error }
+                if !matches!(success.as_ref(), Type::Path(path) if path.path.is_ident("String"))
         )
 }
 

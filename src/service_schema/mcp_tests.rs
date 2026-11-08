@@ -72,6 +72,28 @@ const RESOURCES: &str = r#"
     }
 "#;
 
+const PROMPTS: &str = r#"
+    pub trait DocumentService<Ctx> {
+        /// Guides the model.
+        #[service_schema_op(mcp(prompt, title = "Guide", scopes = ["prompts:read"]))]
+        async fn configure_organization(&self, ctx: &Ctx) -> Result<String, SetupError>;
+
+        /// Reviews one document type.
+        #[service_schema_op(mcp(prompt, name = "review", icon = "https://example.com/r.png"))]
+        async fn review_document_type(&self, ctx: &Ctx, document_type: String, focus: Option<String>)
+            -> Result<Vec<McpPromptMessage>, SetupError>;
+
+        /// Suggests types.
+        #[service_schema_op(mcp(completes(prompt = "review_document_type", parameter = "document_type")))]
+        async fn suggest_types(&self, ctx: &Ctx, typed: String, chosen: HashMap<String, String>)
+            -> Result<Vec<String>, SetupError>;
+
+        /// The version.
+        async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+            -> Result<VersionResponse, VersionError>;
+    }
+"#;
+
 fn declared(source: &str) -> ItemTrait {
     syn::parse_str::<ItemTrait>(source).unwrap()
 }
@@ -205,28 +227,27 @@ fn an_empty_title_name_or_icon_is_refused_naming_the_operation() {
 
 #[test]
 fn a_key_the_group_does_not_take_is_refused_naming_the_operation() {
-    for key in ["prompt", "task"] {
-        let reported = parse_refusals(&format!(
-            "pub trait DocumentService<Ctx> {{
-                #[service_schema_op(mcp({key}))]
-                async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
-                    -> Result<VersionResponse, VersionError>;
-            }}"
-        ));
-        assert_eq!(
-            reported,
-            [
-                "service_schema: operation `get_version` writes a key `mcp(...)` does not take\n       \
-                 the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
-                 `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
-                 `mime_type`, `list_resources`, \
-                 `completes(resource = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
-                 `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
-                 `interview(arm = \"<Arm>\", url)`"
-                    .to_owned()
-            ]
-        );
-    }
+    let reported = parse_refusals(
+        "pub trait DocumentService<Ctx> {
+            #[service_schema_op(mcp(task))]
+            async fn get_version(&self, ctx: &Ctx, req: GetVersionRequest)
+                -> Result<VersionResponse, VersionError>;
+        }",
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `get_version` writes a key `mcp(...)` does not take\n       \
+             the keys are `title`, `name`, `icon`, `read_only`, `destructive`, `idempotent`, \
+             `open_world`, `scopes = [\"...\"]`, `header(<argument> = \"<Header-Name>\")`, `resource`, \
+             `mime_type`, `list_resources`, `prompt`, \
+             `completes(resource = \"<operation>\", parameter = \"<argument>\")` or \
+             `completes(prompt = \"<operation>\", parameter = \"<argument>\")`, `ttl_ms`, \
+             `cache_scope`, `skill`, `content` and `interview(arm = \"<Arm>\", answers = <argument>)` or \
+             `interview(arm = \"<Arm>\", url)`"
+                .to_owned()
+        ]
+    );
 }
 
 #[test]
@@ -585,7 +606,7 @@ fn the_resource_keys_are_read() {
     assert!(file.is_template());
     assert_eq!(file.placeholder_names(), ["document_id"]);
     let completes = read.operations[3].mcp.completes.as_ref().unwrap();
-    assert_eq!(completes.resource, "document_file");
+    assert_eq!(completes.operation, "document_file");
     assert_eq!(completes.parameter, "document_id");
     let tools: Vec<_> = read
         .operations
@@ -754,8 +775,8 @@ fn an_operation_that_is_two_things_is_refused() {
         reported,
         [
             "service_schema: operation `configuration_guide` is more than one of `resource`, \
-             `list_resources`, `completes` and `skill` in `mcp(...)`, and this service asks \
-             for `mcp`\n       an operation is one of them; split it into one operation each"
+             `list_resources`, `prompt`, `completes` and `skill` in `mcp(...)`, and this service \
+             asks for `mcp`\n       an operation is one of them; split it into one operation each"
         ]
     );
 }
@@ -996,5 +1017,180 @@ fn a_content_tool_answers_blocks_and_nothing_beside_them() {
             .iter()
             .any(|one| one
                 .contains("`fourth` writes `content` in `mcp(...)` and binds `header_out`"))
+    );
+}
+
+#[test]
+fn a_prompt_is_read_with_its_arguments_and_is_no_tool() {
+    let read = service(PROMPTS);
+    let review = &read.operations[1];
+    assert!(review.is_mcp_prompt());
+    assert!(!review.is_mcp_tool());
+    assert_eq!(review.mcp_tool_name(), "review");
+    let arguments: Vec<String> = review
+        .mcp
+        .prompt
+        .as_ref()
+        .unwrap()
+        .arguments
+        .iter()
+        .map(|(argument, _)| argument.to_string())
+        .collect();
+    assert_eq!(arguments, ["document_type", "focus"]);
+    let completes = read.operations[2].mcp.completes.as_ref().unwrap();
+    assert_eq!(completes.operation, "review_document_type");
+    assert_eq!(completes.parameter, "document_type");
+    let tools: Vec<_> = read
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .map(OperationDef::mcp_tool_name)
+        .collect();
+    assert_eq!(tools, ["get-version"]);
+    assert_eq!(mcp_refusals_of(PROMPTS), Vec::<String>::new());
+}
+
+#[test]
+fn a_prompt_argument_that_is_not_text_is_refused() {
+    let reported = mcp_refusals_of(
+        "pub trait DocumentService<Ctx> {
+            /// Reviews.
+            #[service_schema_op(mcp(prompt))]
+            async fn review(&self, ctx: &Ctx, page: u32) -> Result<String, VersionError>;
+        }",
+    );
+    assert_eq!(
+        reported,
+        [
+            "service_schema: operation `review` is a prompt and takes `page: u32`, and this \
+             service asks for `mcp`\n       \
+             MCP sends a prompt's arguments as strings only; take a `String`, or an \
+             `Option<String>` for one that may be left out"
+        ]
+    );
+}
+
+#[test]
+fn a_prompt_is_held_to_its_success_its_outcome_and_its_keys() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// Answers a number.
+            #[service_schema_op(mcp(prompt))]
+            async fn number(&self, ctx: &Ctx) -> Result<u32, VersionError>;
+
+            /// Fires and forgets.
+            #[service_schema_op(one_way, mcp(prompt))]
+            async fn forget(&self, ctx: &Ctx);
+
+            /// Binds a header.
+            #[service_schema_op(http(method = "POST", path = "/tagged", header_in("x-tag" = tag)), mcp(prompt))]
+            async fn tagged(&self, ctx: &Ctx, tag: String) -> Result<String, VersionError>;
+
+            /// Reads only.
+            #[service_schema_op(mcp(prompt, read_only, ttl_ms = 5, content))]
+            async fn lonely(&self, ctx: &Ctx) -> Result<String, VersionError>;
+        }"#,
+    );
+    assert!(
+        reported.iter().any(|text| text.contains(
+            "`number` is a prompt and answers a success a prompt cannot write as messages"
+        )),
+        "{reported:#?}"
+    );
+    assert!(
+        reported
+            .iter()
+            .any(|text| text.contains("`forget` is one way and writes `prompt`")),
+        "{reported:#?}"
+    );
+    assert!(
+        reported
+            .iter()
+            .any(|text| text.contains("`tagged` is a prompt and binds a header")),
+        "{reported:#?}"
+    );
+    for key in ["read_only", "ttl_ms", "content"] {
+        assert!(
+            reported.iter().any(|text| text.contains(&format!(
+                "`lonely` is a prompt and writes `{key}` in `mcp(...)`"
+            ))),
+            "{key}: {reported:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_prompt_name_is_held_to_the_rules_of_a_tool_name_and_is_listed_once() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// Reviews.
+            #[service_schema_op(mcp(prompt, name = "bad name"))]
+            async fn review(&self, ctx: &Ctx) -> Result<String, VersionError>;
+
+            /// Reviews once.
+            #[service_schema_op(mcp(prompt, name = "again"))]
+            async fn review_once(&self, ctx: &Ctx) -> Result<String, VersionError>;
+
+            /// Reviews twice.
+            #[service_schema_op(mcp(prompt, name = "again"))]
+            async fn review_twice(&self, ctx: &Ctx) -> Result<String, VersionError>;
+        }"#,
+    );
+    assert_eq!(reported.len(), 2, "{reported:#?}");
+    assert!(reported[0].contains("`review` is the prompt `bad name`"));
+    assert!(
+        reported[1]
+            .contains("operations `review_once` and `review_twice` are both the prompt `again`")
+    );
+}
+
+#[test]
+fn a_prompt_and_a_tool_of_one_name_are_both_listed() {
+    let reported = mcp_refusals_of(
+        r#"pub trait DocumentService<Ctx> {
+            /// Reviews.
+            #[service_schema_op(mcp(prompt, name = "review"))]
+            async fn review_prompt(&self, ctx: &Ctx) -> Result<String, VersionError>;
+
+            /// Reviews.
+            #[service_schema_op(mcp(name = "review"))]
+            async fn review_tool(&self, ctx: &Ctx) -> Result<(), VersionError>;
+        }"#,
+    );
+    assert_eq!(reported, Vec::<String>::new());
+}
+
+#[test]
+fn a_prompt_completion_that_names_no_prompt_or_no_argument_is_refused() {
+    let source = |prompt: &str, parameter: &str| {
+        format!(
+            r#"pub trait DocumentService<Ctx> {{
+                /// Reviews.
+                #[service_schema_op(mcp(prompt))]
+                async fn review(&self, ctx: &Ctx, document_type: String)
+                    -> Result<String, VersionError>;
+
+                /// Suggests types.
+                #[service_schema_op(mcp(completes(prompt = "{prompt}", parameter = "{parameter}")))]
+                async fn suggest(&self, ctx: &Ctx, typed: String, chosen: HashMap<String, String>)
+                    -> Result<Vec<String>, VersionError>;
+            }}"#
+        )
+    };
+    assert_eq!(
+        mcp_refusals_of(&source("nothing", "document_type")),
+        [
+            "service_schema: operation `suggest` completes `nothing`, which is no prompt of the \
+             service, and this service asks for `mcp`\n       \
+             name an operation of this service that writes `mcp(prompt)`"
+        ]
+    );
+    assert_eq!(
+        mcp_refusals_of(&source("review", "page")),
+        [
+            "service_schema: operation `suggest` completes `review` for `page`, and the prompt \
+             takes no such argument, and this service asks for `mcp`\n       \
+             name an argument of the prompt, as the operation spells it"
+        ]
     );
 }

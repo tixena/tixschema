@@ -4,6 +4,7 @@
 
 use super::mcp_asking_dispatcher as dispatcher;
 use super::mcp_preview_dispatcher as preview_dispatcher;
+use crate::mcp_streams::through;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::future::{Future, ready};
@@ -981,17 +982,20 @@ fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
             401,
         ),
     ] {
-        let response = ready_output(dispatcher::answer_http(
-            &asked,
-            &settings,
-            &stand,
-            async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("delete-document"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &stand,
+                async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("delete-document"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("tools/call"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());
@@ -1056,18 +1060,21 @@ fn an_admit_that_denies_stops_a_preview_before_its_handler_runs() {
             401,
         ),
     ] {
-        let response = ready_output(preview_dispatcher::answer_http(
-            &asked,
-            &settings,
-            &stand,
-            async |request: &preview_dispatcher::McpHttpRequest,
-                   _call: preview_dispatcher::McpCall| {
-                assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
-                assert_eq!(request.bearer_token(), None);
-                assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                Err::<(), _>(denied.clone())
-            },
-        ));
+        let response = through(|stream| {
+            ready_output(preview_dispatcher::answer_http(
+                &asked,
+                &settings,
+                stream,
+                &stand,
+                async |request: &preview_dispatcher::McpHttpRequest,
+                       _call: preview_dispatcher::McpCall| {
+                    assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
+                    assert_eq!(request.bearer_token(), None);
+                    assert_eq!(request.header("mcp-method"), Some("tools/call"));
+                    Err::<(), _>(denied.clone())
+                },
+            ))
+        });
         assert_eq!(response.status, status);
     }
     assert!(stand.reached.lock().unwrap().is_empty());

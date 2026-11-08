@@ -26,6 +26,7 @@ use super::run_node_mcp::cases_json;
 use super::runtime::{ran, ran_with_stderr};
 use super::tests::poll_once;
 use crate::cases;
+use crate::mcp_streams::dart_respond;
 use core::future::Future;
 use serde_json::{Value, json};
 
@@ -230,7 +231,7 @@ void main() async {
   );
   final answers = <String, Map<String, dynamic>>{};
   Future<void> ask(String name, DartDocumentServiceMcpHttpRequest request) async {
-    final response = await serve(request);
+    final response = await respondDartDocumentService(serve, request);
     answers[name] = {
       'status': response.status,
       'headers': [for (final (key, value) in response.headers) '$key: $value'],
@@ -354,7 +355,7 @@ void main() async {
     final scheme = given['scheme'] as String;
     final serve = createDartDocumentServiceMcpHttpDispatcher<void>(documents, settings[scheme]!, admits[scheme]!);
     final before = reached;
-    final response = await serve(DartDocumentServiceMcpHttpRequest(
+    final response = await respondDartDocumentService(serve, DartDocumentServiceMcpHttpRequest(
       method: given['method'] as String,
       path: given['path'] as String,
       headers: [for (final pair in given['headers'] as List) ((pair as List)[0] as String, pair[1] as String)],
@@ -509,6 +510,53 @@ void main() async {
 /// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
 /// the event it waits for.
 const WRITER_DRIVER: &str = "
+class RecordingStream implements WriterServiceMcpHttpStream {
+  RecordingStream([this.goneAfter]);
+  final int? goneAfter;
+  int attempts = 0;
+  final List<Map<String, dynamic>> seen = <Map<String, dynamic>>[];
+  final List<Completer<void>> waiting = <Completer<void>>[];
+
+  void wake() {
+    final woken = waiting.toList();
+    waiting.clear();
+    for (final one in woken) {
+      one.complete();
+    }
+  }
+
+  Future<void> until(bool Function() done) async {
+    while (!done()) {
+      final next = Completer<void>();
+      waiting.add(next);
+      await next.future;
+    }
+  }
+
+  void take() {
+    attempts += 1;
+    final refused = goneAfter != null && seen.length >= goneAfter!;
+    wake();
+    if (refused) throw StateError('the client has gone');
+  }
+
+  @override
+  Future<void> begin(int status, List<(String, String)> headers) async {
+    take();
+    seen.add({
+      'began': [status, [for (final (name, value) in headers) [name, value]]],
+    });
+    wake();
+  }
+
+  @override
+  Future<void> write(String event) async {
+    take();
+    seen.add({'wrote': event});
+    wake();
+  }
+}
+
 void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   final written = <String>[];
@@ -575,7 +623,7 @@ void main() async {
   );
   final http = <Map<String, dynamic>>[];
   for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
-    final response = await serve(WriterServiceMcpHttpRequest(
+    final response = await respondWriterService(serve, WriterServiceMcpHttpRequest(
       method: row['method'] as String,
       path: row['path'] as String,
       headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
@@ -587,7 +635,89 @@ void main() async {
       'body': utf8.decode(response.body),
     });
   }
-  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http}));
+  final rows = input['streams'] as Map<String, dynamic>;
+  WriterServiceMcpHttpRequest asRequest(String name) {
+    final row = rows[name] as Map<String, dynamic>;
+    return WriterServiceMcpHttpRequest(
+      method: row['method'] as String,
+      path: row['path'] as String,
+      headers: [for (final pair in row['headers'] as List) (pair[0] as String, pair[1] as String)],
+      body: utf8.encode(row['body'] as String),
+    );
+  }
+
+  WriterServiceHandlers<WriterServiceMcpCall> heldHandlers(Future<void> opened, List<int> reached) =>
+      WriterServiceHandlers<WriterServiceMcpCall>(
+        exportFolder: (ctx, folder) async {
+          reached[0] += 1;
+          await ctx.progress(1, total: 3, message: 'exported 1 of 3 files');
+          if (folder == 'held') await opened;
+        },
+        getVersion: (ctx, req) async => WriterVersion(version: 7),
+      );
+
+  Future<WriterServiceMcpHttpResponse?> Function(WriterServiceMcpHttpRequest, WriterServiceMcpHttpStream) serving(
+    WriterServiceHandlers<WriterServiceMcpCall> held,
+    List<WriterServiceMcpCall?> taken,
+  ) =>
+      createWriterServiceMcpHttpDispatcher<WriterServiceMcpCall>(
+        held,
+        const WriterServiceMcpHttpSettings(allowedOrigins: []),
+        (request, call) async {
+          taken[0] = call;
+          return (ctx: call, denied: null);
+        },
+      );
+
+  final streams = <String, dynamic>{};
+  {
+    final gate = Completer<void>();
+    final stream = RecordingStream();
+    var ended = false;
+    final running = serving(heldHandlers(gate.future, [0]), [null])(asRequest('held'), stream).then((answered) {
+      ended = true;
+      return answered;
+    });
+    await stream.until(() => stream.seen.length >= 2);
+    final held = stream.seen.toList();
+    final endedWhileHeld = ended;
+    gate.complete();
+    final answered = await running;
+    streams['progress'] = {
+      'endedWhileHeld': endedWhileHeld,
+      'full': stream.seen.toList(),
+      'held': held,
+      'returned': answered != null,
+    };
+  }
+  {
+    final gate = Completer<void>();
+    final stream = RecordingStream(1);
+    final taken = <WriterServiceMcpCall?>[null];
+    final running = serving(heldHandlers(gate.future, [0]), taken)(asRequest('held'), stream);
+    await stream.until(() => stream.attempts >= 2);
+    gate.complete();
+    final answered = await running;
+    streams['failed'] = {'cancelled': taken[0]!.cancelled, 'returned': answered != null, 'seen': stream.seen.toList()};
+  }
+  {
+    final stream = RecordingStream(0);
+    final taken = <WriterServiceMcpCall?>[null];
+    final reached = [0];
+    final answered = await serving(heldHandlers(Future<void>.value(), reached), taken)(asRequest('docs'), stream);
+    streams['refused'] = {
+      'cancelled': taken[0]!.cancelled,
+      'reached': reached[0],
+      'returned': answered != null,
+      'seen': stream.seen.toList(),
+    };
+  }
+  {
+    final stream = RecordingStream();
+    final answered = await serving(heldHandlers(Future<void>.value(), [0]), [null])(asRequest('plain'), stream);
+    streams['plain'] = {'returned': answered != null, 'seen': stream.seen.toList(), 'status': answered!.status};
+  }
+  print(jsonEncode({'written': written, 'observed': observed, 'failed': failed, 'http': http, 'streams': streams}));
 }
 ";
 
@@ -664,6 +794,8 @@ fn module(driver: &str) -> String {
         WriterServiceSchema::dart_definition(),
         WriterServiceSchema::dart_ws_client(),
         WriterServiceSchema::dart_mcp_service(),
+        dart_respond("DartDocumentService"),
+        dart_respond("WriterService"),
         driver.replace("/*FAULT_CASES*/", &cases_json()),
     ]
     .join("\n\n")

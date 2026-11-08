@@ -8,7 +8,7 @@ mod over_http {
         self, McpCall, McpDenied, McpEndpoint, McpHttpRequest, McpHttpSettings, McpOAuth,
     };
     use crate::http_tests::post;
-    use crate::support::{Lines, assert_result, block_on};
+    use crate::support::{Lines, assert_result, block_on, through};
     use serde_json::{Value, json};
 
     const ENDPOINT: McpEndpoint = McpEndpoint::new(
@@ -55,36 +55,44 @@ mod over_http {
             },
             McpDenied::Forbidden,
         ] {
-            let response = block_on(approval_mcp::serve_http(
-                &asked(&message()),
-                &SETTINGS,
-                "Approvals",
-                None,
-                &ENDPOINT,
-                async |request: &McpHttpRequest, _call: McpCall| {
-                    assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
-                    assert_eq!(request.bearer_token(), None);
-                    assert_eq!(request.header("content-type"), Some("application/json"));
-                    Err::<(), _>(denied.clone())
-                },
-                &|ctx: &(), part, method: &str, params: &Value| {
-                    let held = approvals.clone();
-                    Box::pin(async move {
-                        match part {
-                            0 => approval_mcp::route(method, params, &held, ctx).await,
-                            _ => None,
-                        }
-                    })
-                },
-            ));
+            let response = through(|stream| {
+                block_on(approval_mcp::serve_http(
+                    &asked(&message()),
+                    &SETTINGS,
+                    stream,
+                    &approval_mcp::McpServer {
+                        endpoint: &ENDPOINT,
+                        instructions: None,
+                        name: "Approvals",
+                    },
+                    async |request: &McpHttpRequest, _call: McpCall| {
+                        assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
+                        assert_eq!(request.bearer_token(), None);
+                        assert_eq!(request.header("content-type"), Some("application/json"));
+                        Err::<(), _>(denied.clone())
+                    },
+                    &|ctx: &(), part, method: &str, params: &Value| {
+                        let held = approvals.clone();
+                        Box::pin(async move {
+                            match part {
+                                0 => approval_mcp::route(method, params, &held, ctx).await,
+                                _ => None,
+                            }
+                        })
+                    },
+                ))
+            });
             assert!(matches!(response.status, 401 | 403), "{denied:?}");
         }
-        let response = block_on(approval_mcp::answer_http(
-            &asked(&message()),
-            &SETTINGS,
-            &approvals,
-            async |_request, _call| Ok(()),
-        ));
+        let response = through(|stream| {
+            block_on(approval_mcp::answer_http(
+                &asked(&message()),
+                &SETTINGS,
+                stream,
+                &approvals,
+                async |_request, _call| Ok(()),
+            ))
+        });
         assert_eq!(response.status, 200);
         let sent: Value = serde_json::from_slice(&response.body).unwrap();
         assert_result("CallToolResult", &sent);

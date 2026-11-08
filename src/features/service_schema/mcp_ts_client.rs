@@ -8,9 +8,10 @@ use super::message;
 use super::result::result_name;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{is_content_list, is_content_pair};
+use crate::service_schema::mcp_tools::{is_content_list, is_content_pair, is_prompt_messages};
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    wire_key,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -40,9 +41,9 @@ const FAULTS: &str = r#"function __p__Object(value: unknown): Record<string, unk
 /** `value` as the members of an object, none where it is no object. */
 function __p__Held(value: unknown): Record<string, unknown> {
   return __p__Object(value) ?? {};
-}
+}"#;
 
-/** The arguments object of a call: the message itself, or under `value`, with each header beside it. */
+const ARGUMENTS: &str = "/** The arguments object of a call: the message itself, or under `value`, with each header beside it. */
 function __p__Arguments(
   sent: unknown,
   wrapped: boolean,
@@ -51,7 +52,7 @@ function __p__Arguments(
   const given: Record<string, unknown> = wrapped ? { value: sent } : { ...__p__Held(sent) };
   for (const [name, held] of extra) given[name] = held;
   return given;
-}"#;
+}";
 
 const ISSUES: &str = r#"function __p__Issues(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>): string {
   return issues
@@ -237,6 +238,109 @@ function __p__Blocks(content: unknown): { ok: true; value: Array<McpContent> } |
   return { ok: true, value: read };
 }"#;
 
+const PROMPT: &str = r#"/** What one prompt request came to, before the operation's own schemas read it. */
+type __N__McpPrompted =
+  | { readonly kind: "success"; readonly messages: unknown }
+  | { readonly kind: "fault"; readonly fault: __N__Fault }
+  | { readonly kind: "declared"; readonly error: unknown };
+
+/** The arguments of a `prompts/get`: the members of the message that are text, or the one argument the message is. */
+function __p__PromptArguments(sent: unknown, key: string): Record<string, string> {
+  if (typeof sent === "string") return { [key]: sent };
+  const given: Record<string, string> = {};
+  for (const [name, held] of Object.entries(__p__Held(sent))) {
+    if (typeof held === "string") given[name] = held;
+  }
+  return given;
+}
+
+/** Sends one `prompts/get` and sorts the answer into the messages, a fault, or a declared error. */
+async function __p__Prompt(
+  transport: __N__McpTransport,
+  id: number,
+  operation: string,
+  prompt: string,
+  args: Record<string, string>,
+): Promise<__N__McpPrompted> {
+  const text = JSON.stringify({
+    id,
+    jsonrpc: "2.0",
+    method: "prompts/get",
+    params: {
+      _meta: {
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { name: "__N__", version: __p__Version },
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      },
+      arguments: args,
+      name: prompt,
+    },
+  });
+  let answered: string;
+  try {
+    answered = await transport.send({ text, protocolVersion: "2026-07-28", method: "prompts/get", name: prompt });
+  } catch (thrown) {
+    const detail = thrown instanceof Error ? thrown.message : String(thrown);
+    return { kind: "fault", fault: __p__TransportFailure(operation, detail) };
+  }
+  let read: unknown;
+  try {
+    read = __p__Read(answered);
+  } catch (rejected) {
+    return { kind: "fault", fault: __p__Undeserializable(operation, `the answer is no JSON: ${String(rejected)}`) };
+  }
+  const message = __p__Object(read);
+  if (message === undefined) {
+    return { kind: "fault", fault: __p__Undeserializable(operation, "the answer is no JSON object") };
+  }
+  const failure = __p__Object(message.error);
+  if (failure !== undefined) {
+    const data = __p__Object(failure.data);
+    const sealed = data?.isServiceFault === true ? __p__FaultOf(data.fault) : undefined;
+    if (sealed !== undefined) return { kind: "fault", fault: sealed };
+    if (failure.code === -32602 && failure.data !== undefined && failure.data !== null && data?.isServiceFault !== true) {
+      return { kind: "declared", error: failure.data };
+    }
+    return {
+      kind: "fault",
+      fault: __p__TransportFailure(operation, `${String(failure.code)}: ${String(failure.message)}`),
+    };
+  }
+  const result = __p__Object(message.result);
+  if (result === undefined) {
+    return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
+  }
+  return { kind: "success", messages: result.messages };
+}
+
+/** The text of the first message of a prompt's result, `undefined` where it holds none. */
+function __p__PromptText(messages: unknown): string | undefined {
+  const first = Array.isArray(messages) ? __p__Object(messages[0]) : undefined;
+  const text = __p__Object(first?.content)?.text;
+  return typeof text === "string" ? text : undefined;
+}"#;
+
+const MESSAGES: &str = r#"/** The messages of a prompt's result, each read into a `McpPromptMessage`. */
+function __p__Messages(
+  messages: unknown,
+): { ok: true; value: Array<McpPromptMessage> } | { ok: false; detail: string } {
+  if (!Array.isArray(messages)) return { ok: false, detail: "the answer holds no messages" };
+  const read: Array<McpPromptMessage> = [];
+  for (const entry of messages as ReadonlyArray<unknown>) {
+    const held = __p__Held(entry);
+    const role = held.role;
+    if (role !== "user" && role !== "assistant") {
+      return { ok: false, detail: "a message of a role this client does not read" };
+    }
+    const block = __p__Blocks([held.content]);
+    if (!block.ok) return block;
+    const content = block.value[0];
+    if (content === undefined) return { ok: false, detail: "a message holds no content" };
+    read.push({ role, content });
+  }
+  return { ok: true, value: read };
+}"#;
+
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let service = &declared.enveloped();
     let named = service.ident.to_string();
@@ -282,20 +386,31 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
             "undeserializable-payload",
         ),
         fault_of_fn(&named, &prefix),
-        fill(CALL),
     ];
+    if service.operations.iter().any(OperationDef::is_mcp_tool) {
+        published.push(fill(ARGUMENTS));
+        published.push(fill(CALL));
+    }
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        published.push(fill(PROMPT));
+    }
     if header_out {
         published.push(fill(REPLY_HEADER));
     }
+    let messages = service.operations.iter().any(is_prompt_messages);
     if service
         .operations
         .iter()
         .any(|operation| operation.mcp.content.is_some())
+        || messages
     {
         published.push(fill(BLOCKS));
     }
-    if service.operations.iter().any(is_content_list) {
+    if service.operations.iter().any(is_content_list) || messages {
         published.push(fill(LIST));
+    }
+    if messages {
+        published.push(fill(MESSAGES));
     }
     if one_way {
         published.push(refusal_type(&named));
@@ -308,10 +423,16 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published
 }
 
-fn client_type(service: &ServiceDef, named: &str) -> String {
-    let methods = service
+/// The operations the client has a method for: the tools and the prompts.
+fn served(service: &ServiceDef) -> impl Iterator<Item = &OperationDef> {
+    service
         .operations
         .iter()
+        .filter(|operation| operation.is_mcp_tool() || operation.is_mcp_prompt())
+}
+
+fn client_type(service: &ServiceDef, named: &str) -> String {
+    let methods = served(service)
         .map(|operation| {
             format!(
                 "{}\n  {}({}): Promise<{}>;",
@@ -436,9 +557,7 @@ fn refused_fn(named: &str, prefix: &str) -> String {
 }
 
 fn factory(service: &ServiceDef, named: &str, prefix: &str) -> String {
-    let methods = service
-        .operations
-        .iter()
+    let methods = served(service)
         .map(|operation| method(service, operation))
         .collect::<Vec<_>>()
         .join("\n");
@@ -478,6 +597,9 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
     };
     let refusal = outbound_refusal(&prefix, operation, &wire, "validated.error.issues");
     let schema = message::schema(operation);
+    if operation.is_mcp_prompt() {
+        return prompt_method(&prefix, operation, &wire, &tool, &schema, &refusal);
+    }
     let (header_checks, extra) = header_checks(&prefix, operation, &shape, &wire);
     let tail = match &operation.outcome {
         OperationOutcome::OneWay => {
@@ -498,6 +620,73 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
          {tail}\n    \
          }},",
         call = operation.ts_name,
+    )
+}
+
+/// One prompt's method: check the message, send `prompts/get` with its text members, and read the
+/// messages.
+fn prompt_method(
+    prefix: &str,
+    operation: &OperationDef,
+    wire: &str,
+    prompt: &str,
+    schema: &str,
+    refusal: &str,
+) -> String {
+    let key = operation
+        .mcp
+        .prompt
+        .iter()
+        .filter_map(|held| held.arguments.first())
+        .map(|(argument, _)| wire_key(argument))
+        .next()
+        .unwrap_or_default();
+    let OperationOutcome::Reply {
+        error,
+        success: _success,
+    } = &operation.outcome
+    else {
+        return String::new();
+    };
+    let shape = HttpShape::of(operation);
+    let fault_arm = |fault: &str| {
+        format!("return {{ ok: false, error: {{ isServiceFault: true, fault: {fault} }} }};")
+    };
+    let mut tail = format!(
+        "      if (called.kind === \"fault\") {{\n        {}\n      }}\n",
+        fault_arm("called.fault")
+    );
+    tail.push_str(&declared_arm(prefix, wire, &shape, error, &fault_arm));
+    if is_prompt_messages(operation) {
+        let _ = write!(
+            tail,
+            "      const read = {prefix}Messages(called.messages);\n      \
+             if (!read.ok) {{\n        {}\n      }}\n      \
+             return {{ ok: true, value: read.value }};",
+            fault_arm(&format!("{prefix}Undeserializable({wire}, read.detail)"))
+        );
+    } else {
+        let _ = write!(
+            tail,
+            "      const text = {prefix}PromptText(called.messages);\n      \
+             if (text === undefined) {{\n        {}\n      }}\n      \
+             return {{ ok: true, value: text }};",
+            fault_arm(&format!(
+                "{prefix}Undeserializable({wire}, \"the first message holds no text\")"
+            ))
+        );
+    }
+    format!(
+        "    async {call}(req) {{\n      \
+         const validated = {prefix}Checked({schema}, req);\n      \
+         if (!validated.success) {{\n{refusal}\n      \
+         }}\n      \
+         const called = await {prefix}Prompt(transport, ++next, {wire}, {prompt}, \
+         {prefix}PromptArguments(validated.sent, {key}));\n\
+         {tail}\n    \
+         }},",
+        call = operation.ts_name,
+        key = ts_quoted(&key),
     )
 }
 

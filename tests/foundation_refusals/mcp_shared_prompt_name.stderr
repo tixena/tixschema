@@ -1,0 +1,19 @@
+error[E0080]: evaluation panicked: review
+  --> tests/foundation_refusals/mcp_shared_prompt_name.rs:38:46
+   |
+38 |   const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
+   |  ______________________________________________^
+39 | |     &[DocumentServiceSchema::MCP_NAMES, BillingServiceSchema::MCP_NAMES],
+40 | |     &[document_mcp::catalog, billing_mcp::catalog],
+41 | | );
+   | |_^ evaluation of `WORKSPACE` failed inside this call
+   |
+note: inside `document_mcp::McpEndpoint::new`
+  --> tests/foundation_refusals/mcp_shared_prompt_name.rs:15:1
+   |
+15 | #[service_schema(transports = ["mcp"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+...
+31 |     document_service_mcp_dispatcher!();
+   |     ---------------------------------- in this macro invocation
+   = note: this error originates in the macro `$crate::panic::panic_2021` which comes from the expansion of the macro `document_service_mcp_dispatcher` (in Nightly builds, run with -Z macro-backtrace for more info)

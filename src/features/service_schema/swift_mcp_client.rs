@@ -10,10 +10,12 @@ use super::swift_ws_client::{header_in_params, sent_forms, sent_payload};
 use super::{left_to_http_rest, on_one_line};
 use crate::features::swift::{forms, swift_quoted};
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{is_content_list, is_content_pair, wrapped_ident};
+use crate::service_schema::mcp_tools::{
+    is_content_list, is_content_pair, is_prompt_messages, wrapped_ident,
+};
 use crate::service_schema::parse::{
-    HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
-    tuple_elements, written,
+    HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
+    option_inner, tuple_elements, wire_key, written,
 };
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
@@ -139,7 +141,7 @@ struct @N@McpRequest: Encodable {
   }
   let id: Int
   let jsonrpc = "2.0"
-  let method = "tools/call"
+  let method: String
   let params: Params
 }
 
@@ -241,18 +243,18 @@ const ACTOR_HEAD: &str = r#"public actor @N@McpClient {
     self.transport = transport
   }
 
-  private func exchange(_ tool: String, _ arguments: @N@McpArguments) async -> @N@McpExchanged {
+  private func exchange(_ method: String, _ tool: String, _ arguments: @N@McpArguments) async -> @N@McpExchanged {
     nextId += 1
     let text: String
     do {
-      let data = try @P@McpDatedEncoder().encode(@N@McpRequest(id: nextId, params: .init(arguments: arguments, name: tool)))
+      let data = try @P@McpDatedEncoder().encode(@N@McpRequest(id: nextId, method: method, params: .init(arguments: arguments, name: tool)))
       text = String(decoding: data, as: UTF8.self)
     } catch {
       return .failed(@P@McpFault(.failedValidation, tool, "\(error)"))
     }
     do {
       let answered = try await transport.send(
-        @N@McpMessage(text: text, protocolVersion: "2026-07-28", method: "tools/call", name: tool))
+        @N@McpMessage(text: text, protocolVersion: "2026-07-28", method: method, name: tool))
       return .answered(Data(answered.utf8))
     } catch {
       return .failed(@P@McpFault(.transportFailure, tool, "\(error)"))
@@ -260,6 +262,53 @@ const ACTOR_HEAD: &str = r#"public actor @N@McpClient {
   }
 
 "#;
+
+const PROMPTS: &str = r#"struct @N@McpFirstText: Decodable {
+  struct Inner: Decodable {
+    struct Message: Decodable {
+      struct Content: Decodable { let text: String? }
+      let content: Content
+    }
+    let messages: [Message]
+  }
+  let result: Inner
+}
+
+struct @N@McpMessages<Payload: Decodable>: Decodable {
+  struct Inner: Decodable { let messages: Payload }
+  let result: Inner
+}
+
+func @P@McpClassifyPrompt(_ prompt: String, _ raw: Data) -> @N@McpReading {
+  let probe: @N@McpProbe
+  do {
+    probe = try JSONDecoder().decode(@N@McpProbe.self, from: raw)
+  } catch {
+    return .faulted(@P@McpFault(.undeserializablePayload, prompt, "\(error)"))
+  }
+  if let failure = probe.error {
+    if failure.data?.isServiceFault != nil {
+      if let tagged = try? JSONDecoder().decode(@N@McpInError.self, from: raw), let fault = tagged.error.data.fault {
+        return .faulted(fault)
+      }
+      return .faulted(@P@McpFault(.undeserializablePayload, prompt, "the answer carries no readable fault"))
+    }
+    if failure.code == -32602,
+      let object = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
+      let carried = (object["error"] as? [String: Any])?["data"],
+      !(carried is NSNull),
+      let written = try? JSONSerialization.data(withJSONObject: carried, options: [.fragmentsAllowed])
+    {
+      return .declared(Data("{\"error\":\(String(decoding: written, as: UTF8.self))}".utf8))
+    }
+    let code = failure.code.map { String($0) } ?? "null"
+    return .faulted(@P@McpFault(.transportFailure, prompt, "\(code): \(failure.message ?? "")"))
+  }
+  guard probe.result != nil else {
+    return .faulted(@P@McpFault(.undeserializablePayload, prompt, "the answer holds neither a result nor an error"))
+  }
+  return .succeeded
+}"#;
 
 const BLOCKS: &str = "struct @N@McpBlocks<Payload: Decodable>: Decodable {
   struct Inner: Decodable { let content: Payload }
@@ -397,6 +446,23 @@ public enum McpResourceContents: Sendable, Equatable {
   case text(String)
   /// Bytes.
   case blob([UInt8])
+}
+
+/// Who a prompt's message is from.
+public enum McpRole: String, Sendable, Equatable, Codable {
+  case user
+  case assistant
+}
+
+/// One message of a prompt: who it is from, and the block it holds.
+public struct McpPromptMessage: Sendable, Equatable, Codable {
+  public let role: McpRole
+  public let content: McpContent
+
+  public init(role: McpRole, content: McpContent) {
+    self.role = role
+    self.content = content
+  }
 }"#;
 
 /// Where the accessor writes the version of the crate that declares the service.
@@ -410,6 +476,9 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(TRANSPORT, &prefix, &named),
         fill(SUPPORT, &prefix, &named),
     ];
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        published.push(fill(PROMPTS, &prefix, &named));
+    }
     if service.operations.iter().any(is_content_list) {
         published.push(fill(BLOCKS, &prefix, &named));
     }
@@ -560,6 +629,7 @@ fn actor(service: &ServiceDef, prefix: &str, named: &str) -> String {
         .operations
         .iter()
         .enumerate()
+        .filter(|(_, operation)| operation.is_mcp_tool() || operation.is_mcp_prompt())
         .map(|(at, operation)| method(operation, prefix, named, at))
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -567,25 +637,28 @@ fn actor(service: &ServiceDef, prefix: &str, named: &str) -> String {
     format!("/// A `{named}` caller over `mcp`.\n{note}{head}{texts}{methods}\n}}")
 }
 
-fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> String {
-    let shape = HttpShape::of(operation);
-    let tool = swift_quoted(operation.mcp_tool_name());
-    let call = swift_call(operation);
-    let params = header_in_params(&message_swift_typename(operation), &shape);
+/// The statements that write a call's `arguments`: the headers it binds, then the message.
+fn argument_statements(
+    operation: &OperationDef,
+    shape: &HttpShape,
+    named: &str,
+    at: usize,
+) -> Vec<String> {
     let payload = sent_payload(operation);
     let wrapped = wrapped_marker(at);
-    let doc = format!(
-        "  /// Calls `{}` over `mcp`.",
-        on_one_line(operation.mcp_tool_name())
-    );
-    let mut statements = vec![format!(
-        "{} headers: [String: {named}McpValue] = [:]",
-        if shape.header_in.is_empty() {
-            "let"
-        } else {
-            "var"
-        }
-    )];
+    let keeps_headers =
+        !operation.is_mcp_prompt() || matches!(operation.inputs, OperationInputs::Named(_));
+    let mut statements = Vec::new();
+    if keeps_headers {
+        statements.push(format!(
+            "{} headers: [String: {named}McpValue] = [:]",
+            if shape.header_in.is_empty() && !operation.is_mcp_prompt() {
+                "let"
+            } else {
+                "var"
+            }
+        ));
+    }
     for header in &shape.header_in {
         let parameter = swift_parameter(&header.parameter);
         let name = swift_quoted(&header.name);
@@ -600,9 +673,25 @@ fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> Str
             statements.push(format!("headers[{name}] = {named}McpValue({sent})"));
         }
     }
-    statements.push(format!(
-        "arguments = {named}McpArguments(wrapped: {wrapped}, message: {named}McpValue({payload}), headers: headers)"
-    ));
+    statements.extend(prompt_statements(operation, named));
+    if !operation.is_mcp_prompt() {
+        statements.push(format!(
+            "arguments = {named}McpArguments(wrapped: {wrapped}, message: {named}McpValue({payload}), headers: headers)"
+        ));
+    }
+    statements
+}
+
+fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> String {
+    let shape = HttpShape::of(operation);
+    let tool = swift_quoted(operation.mcp_tool_name());
+    let call = swift_call(operation);
+    let params = header_in_params(&message_swift_typename(operation), &shape);
+    let doc = format!(
+        "  /// Calls `{}` over `mcp`.",
+        on_one_line(operation.mcp_tool_name())
+    );
+    let statements = argument_statements(operation, &shape, named, at);
     // A `catch` that nothing in its `do` can reach is a warning, so a call that writes only
     // values that cannot refuse has none.
     let can_refuse = statements
@@ -618,9 +707,19 @@ fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> Str
     } else {
         lines
     };
+    let verb = if operation.is_mcp_prompt() {
+        "prompts/get"
+    } else {
+        "tools/call"
+    };
+    let classify = if operation.is_mcp_prompt() {
+        "McpClassifyPrompt"
+    } else {
+        "McpClassify"
+    };
     let template = format!(
         "    let arguments: {named}McpArguments\n{guarded}    \
-         let raw: Data\n    switch await exchange({tool}, arguments) {{\n    \
+         let raw: Data\n    switch await exchange(\"{verb}\", {tool}, arguments) {{\n    \
          case .answered(let answered): raw = answered\n    \
          case .failed(let fault): FAULTED\n    }}\n"
     );
@@ -634,7 +733,7 @@ fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> Str
                 .replace("FAULTED", &format!("throw {named}Refusal(fault: fault)"));
             format!(
                 "{doc}\n  public func {call}({params}) async throws {{\n{one_way_body}    \
-                 switch {prefix}McpClassify({tool}, raw) {{\n    \
+                 switch {prefix}{classify}({tool}, raw) {{\n    \
                  case .faulted(let fault): throw {named}Refusal(fault: fault)\n    \
                  case .declared: throw {named}Refusal(fault: {prefix}McpFault(.undeserializablePayload, {tool}, \"a one-way operation answered an error\"))\n    \
                  case .succeeded: return\n    }}\n  }}"
@@ -653,13 +752,48 @@ fn method(operation: &OperationDef, prefix: &str, named: &str, at: usize) -> Str
             let declared_block = declared_block(operation, &shape, prefix, named, &tool, error);
             format!(
                 "{doc}\n  public func {call}({params}) async -> Result<{success_ty}, {failure}> {{\n{reply_body}    \
-                 switch {prefix}McpClassify({tool}, raw) {{\n    \
+                 switch {prefix}{classify}({tool}, raw) {{\n    \
                  case .faulted(let fault): return .failure(.fault(fault))\n    \
                  case .declared(let carried):\n{declared_block}    \
                  case .succeeded:\n{success_block}    }}\n  }}"
             )
         }
     }
+}
+
+/// The statements that write a prompt's arguments: its message as it stands, or the one argument it
+/// is under the name of that argument.
+fn prompt_statements(operation: &OperationDef, named: &str) -> Vec<String> {
+    if !operation.is_mcp_prompt() {
+        return Vec::new();
+    }
+    let OperationInputs::Named(ty) = &operation.inputs else {
+        return vec![format!(
+            "arguments = {named}McpArguments(wrapped: false, message: {named}McpValue({}), headers: [:])",
+            sent_payload(operation)
+        )];
+    };
+    let key = swift_quoted(
+        &operation
+            .mcp
+            .prompt
+            .iter()
+            .filter_map(|prompt| prompt.arguments.first())
+            .map(|(argument, _)| wire_key(argument))
+            .next()
+            .unwrap_or_default(),
+    );
+    let held = if option_inner(ty).is_some() {
+        format!("if let sentArgument = req {{ headers[{key}] = {named}McpValue(sentArgument) }}")
+    } else {
+        format!("headers[{key}] = {named}McpValue(req)")
+    };
+    vec![
+        held,
+        format!(
+            "arguments = {named}McpArguments(wrapped: false, message: {named}McpValue([String: String]()), headers: headers)"
+        ),
+    ]
 }
 
 fn unreadable(prefix: &str, tool: &str) -> String {
@@ -677,6 +811,27 @@ fn success_block(
     success: &Type,
 ) -> (String, String) {
     let fail = unreadable(prefix, tool);
+    if operation.is_mcp_prompt() {
+        let ty = swift_typename_of(success);
+        let block = if is_prompt_messages(operation) {
+            format!(
+                "      do {{\n        \
+                 let decoded = try {prefix}McpDatedDecoder().decode({named}McpMessages<{ty}>.self, from: raw)\n        \
+                 return .success(decoded.result.messages)\n      \
+                 }} catch {{\n        {fail}\n      }}\n"
+            )
+        } else {
+            format!(
+                "      do {{\n        \
+                 let decoded = try {prefix}McpDatedDecoder().decode({named}McpFirstText.self, from: raw)\n        \
+                 guard let text = decoded.result.messages.first?.content.text else {{\n          \
+                 throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: \"the first message holds no text\"))\n        }}\n        \
+                 return .success(text)\n      \
+                 }} catch {{\n        {fail}\n      }}\n"
+            )
+        };
+        return (ty, block);
+    }
     if is_content_list(operation) {
         let ty = swift_typename_of(success);
         let block = format!(

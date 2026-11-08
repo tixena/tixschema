@@ -11,7 +11,7 @@
 //! `<Service>Schema` the crate root does not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
 //! which is no brand without the `serde` feature, and a path placeholder that names no member a
-//! declared message reads under a key of its own.
+//! declared message reads under a key of its own, and two services that share a prompt name.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.

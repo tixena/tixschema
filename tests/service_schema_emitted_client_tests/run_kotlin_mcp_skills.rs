@@ -12,6 +12,7 @@ use super::mcp_lesson_service::{assert_http, http_rows, lesson_answer, rows};
 use super::mcp_library_rows::{HttpAnswer, ORIGIN, assert_answers};
 use super::mcp_library_service::{book_error_kotlin, book_info_kotlin, book_request_kotlin};
 use super::runtime::ran_kotlin;
+use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -65,7 +66,8 @@ suspend fun report(input: JsonObject): JsonObject {
     val httpAnswers = input.getValue("http").jsonArray.map { row ->
         val given = row.jsonObject
         val headers = given.getValue("headers").jsonArray.map { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
-        val answered = http(
+        val answered = respondLessonService(
+            http,
             LessonServiceMcpHttpRequest(
                 "POST",
                 "/mcp",
@@ -149,6 +151,7 @@ fn module() -> String {
         "%TUPLE%",
         &wrapper_of_bytes(&LessonServiceSchema::kotlin_http_client()),
     ));
+    parts.push(kotlin_respond("LessonService"));
     parts.push(format!("const val INPUT = \"{literal}\""));
     parts.push(DRIVER.to_owned());
     parts.join("\n\n")

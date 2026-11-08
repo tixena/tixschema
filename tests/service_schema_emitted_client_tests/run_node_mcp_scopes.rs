@@ -6,6 +6,7 @@ use super::StacksServiceSchema;
 use super::mcp_library_service::{BookError, BookInfo, BookRequest};
 use super::mcp_stacks_service::{assert_matches_rust, input};
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
+use crate::mcp_streams::NODE_RESPOND;
 use serde_json::Value;
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
@@ -41,7 +42,7 @@ async function main() {
   const answers = [];
   for (const row of input.rows) {
     const before = reached;
-    const response = await dispatch({ method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
+    const response = await respond(dispatch, { method: row.method, path: row.path, headers: row.headers, body: new TextEncoder().encode(row.body) });
     answers.push({ status: response.status, headers: response.headers, body: new TextDecoder().decode(response.body), reached: reached - before });
   }
   const scopes = input.queries.map(([method, name]) => stacksServiceMcpScopes(method, name ?? undefined));
@@ -76,7 +77,11 @@ fn driven() -> Option<Value> {
         return None;
     };
     let literal = Value::String(input().to_string());
-    let source = format!("{}\n\nconst INPUT = {literal};\n{DRIVER}", bundle());
+    let source = format!(
+        "{}\n\n{}\nconst INPUT = {literal};\n{DRIVER}",
+        bundle(),
+        NODE_RESPOND
+    );
     let wrote = ran_with_modules(
         "mcp-scopes",
         RUNTIME_VAR,

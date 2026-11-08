@@ -171,12 +171,19 @@ pub fn emit(
             .iter()
             .any(|operation| operation.mcp.list_resources))
     .then(resource_page_types);
-    let content_types = (asked.contains(&Transport::Mcp)
+    let prompting = asked.contains(&Transport::Mcp)
         && service
             .operations
             .iter()
-            .any(|operation| operation.mcp.content.is_some()))
+            .any(super::parse::OperationDef::is_mcp_prompt);
+    let content_types = (prompting
+        || (asked.contains(&Transport::Mcp)
+            && service
+                .operations
+                .iter()
+                .any(|operation| operation.mcp.content.is_some())))
     .then(content_types);
+    let prompt_types = prompting.then(prompt_types);
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -200,6 +207,7 @@ pub fn emit(
             #streamed_answer
             #resource_page
             #content_types
+            #prompt_types
         }
     }
 }
@@ -239,6 +247,29 @@ fn content_types() -> TokenStream {
             Text(::std::string::String),
             /// Bytes.
             Blob(::std::vec::Vec<u8>),
+        }
+    }
+}
+
+/// What an `mcp(prompt)` operation answers a list of: one message of a prompt.
+fn prompt_types() -> TokenStream {
+    quote! {
+        /// Who a prompt's message is from.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum McpRole {
+            /// The user.
+            User,
+            /// The model.
+            Assistant,
+        }
+
+        /// One message of a prompt: who it is from, and the block it holds.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct McpPromptMessage {
+            /// Who the message is from.
+            pub role: McpRole,
+            /// What the message holds.
+            pub content: McpContent,
         }
     }
 }

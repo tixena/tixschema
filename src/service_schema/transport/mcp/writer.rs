@@ -1,5 +1,5 @@
 //! The writer half of the dispatcher: the request in flight, the progress it queues, the
-//! cancellation it carries, and the event stream an HTTP answer becomes.
+//! cancellation it carries, and the event stream an HTTP answer is written to.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -27,6 +27,29 @@ pub(super) fn types() -> TokenStream {
             fn write(&self, message: ::std::string::String) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send;
         }
 
+        /// Where an HTTP server writes an event-stream answer. `begin` is called once, before the
+        /// first event, with the status and headers of the answer; `write` then takes the text of
+        /// each event, or of the comment line that keeps the stream open. A one-object answer is
+        /// returned instead, and `begin` is never called.
+        pub trait McpHttpStream: McpEventWriter {
+            fn begin(&self, status: u16, headers: &[(::std::string::String, ::std::string::String)]) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send;
+        }
+
+        /// What one HTTP request is answered with: the request, the settings and the stream.
+        struct McpHttpAsk<'ask, Stream> {
+            request: &'ask McpHttpRequest,
+            settings: &'ask McpHttpSettings<'ask>,
+            stream: &'ask Stream,
+        }
+
+        impl<Stream> ::core::clone::Clone for McpHttpAsk<'_, Stream> {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        impl<Stream> ::core::marker::Copy for McpHttpAsk<'_, Stream> {}
+
         /// What `serve` writes to, and the requests it has in flight.
         pub struct McpHost<'host, W> {
             pub in_flight: &'host McpInFlight,
@@ -52,20 +75,42 @@ pub(super) fn functions() -> TokenStream {
             format!("event: message\ndata: {message}\n\n")
         }
 
-        /// The `200` event-stream answer: each event written, then the answer.
-        fn event_stream_response(stream: &EventStream, answered: ::core::option::Option<::std::string::String>) -> McpHttpResponse {
-            let mut body = ::core::mem::take(&mut *held(&stream.events));
-            if let ::core::option::Option::Some(text) = answered {
-                body.push_str(&event_text(&text));
+        /// The answer to a routed request that passed the rules of `serve_http`: the response of
+        /// one JSON object, or `None` where the request carries a `progressToken` or is a
+        /// `subscriptions/listen`, which `stream` was written to.
+        async fn http_answer<Stream, Work>(
+            request: &::serde_json::Value,
+            call: &McpCall,
+            stream: &Stream,
+            server_name: &str,
+            work: Work,
+        ) -> ::core::option::Option<McpHttpResponse>
+        where
+            Stream: McpHttpStream + ::core::marker::Sync,
+            Work: ::core::future::Future<Output = ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>>,
+        {
+            let framed = Framed(stream);
+            let streaming = call.reports_progress() || request["method"] == "subscriptions/listen";
+            if streaming && stream.begin(200, &event_stream_headers()).await.is_err() {
+                call.cancel();
+                return ::core::option::Option::None;
             }
-            McpHttpResponse {
-                status: 200,
-                headers: ::std::vec![
-                    ("Content-Type".to_owned(), "text/event-stream".to_owned()),
-                    ("X-Accel-Buffering".to_owned(), "no".to_owned()),
-                ],
-                body: body.into_bytes(),
+            let answered = Driven::new(call, &framed, work).await;
+            let text = finished(request, call, answered, server_name);
+            if !streaming {
+                return ::core::option::Option::Some(http_response(text));
             }
+            if let ::core::option::Option::Some(text) = text {
+                let _ = McpEventWriter::write(&framed, text).await;
+            }
+            ::core::option::Option::None
+        }
+
+        fn event_stream_headers() -> ::std::vec::Vec<(::std::string::String, ::std::string::String)> {
+            ::std::vec![
+                ("Content-Type".to_owned(), "text/event-stream".to_owned()),
+                ("X-Accel-Buffering".to_owned(), "no".to_owned()),
+            ]
         }
     }
 }
@@ -235,21 +280,19 @@ fn in_flight() -> TokenStream {
 
 fn event_stream_type() -> TokenStream {
     quote! {
-        /// The events an HTTP answer writes before its final one.
-        #[derive(Default)]
-        struct EventStream {
-            events: ::std::sync::Mutex<::std::string::String>,
-        }
+        /// An HTTP stream that frames what the call writes as the events of an event stream.
+        struct Framed<'stream, S>(&'stream S);
 
-        impl McpEventWriter for EventStream {
+        impl<S> McpEventWriter for Framed<'_, S>
+        where
+            S: McpHttpStream,
+        {
             fn keep_alive(&self) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send {
-                held(&self.events).push_str(":\n\n");
-                ::core::future::ready(::core::result::Result::Ok(()))
+                self.0.write(":\n\n".to_owned())
             }
 
             fn write(&self, message: ::std::string::String) -> impl ::core::future::Future<Output = ::core::result::Result<(), McpClientGone>> + ::core::marker::Send {
-                held(&self.events).push_str(&event_text(&message));
-                ::core::future::ready(::core::result::Result::Ok(()))
+                self.0.write(event_text(&message))
             }
         }
     }
