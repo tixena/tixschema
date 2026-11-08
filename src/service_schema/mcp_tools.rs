@@ -27,8 +27,11 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         .operations
         .iter()
         .map(|operation| operation.mcp_tool_name().to_owned());
+    let scopes = scopes_method(service);
     quote! {
         #tools
+
+        #scopes
 
         #(#wrapped)*
 
@@ -37,6 +40,33 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
 
         #[doc = " Every tool the service lists, as `(\"tool\", <name>)`."]
         pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#(("tool", #names)),*];
+    }
+}
+
+/// `mcp_scopes(method, name)`: the scopes the request `serve` routes to an operation needs.
+fn scopes_method(service: &ServiceDef) -> TokenStream {
+    let arms = service
+        .operations
+        .iter()
+        .filter(|operation| !operation.mcp.scopes.is_empty())
+        .map(|operation| {
+            let name = operation.mcp_tool_name();
+            let scopes = operation.mcp.scopes.iter().map(|(scope, _)| scope);
+            quote! {
+                ("tools/call", ::core::option::Option::Some(#name)) => &[#(#scopes),*],
+            }
+        });
+    quote! {
+        #[doc = " The scopes a caller needs for the request `method` and `name` name, `[]` for none."]
+        pub fn mcp_scopes(
+            method: &str,
+            name: ::core::option::Option<&str>,
+        ) -> &'static [&'static str] {
+            match (method, name) {
+                #(#arms)*
+                _ => &[],
+            }
+        }
     }
 }
 

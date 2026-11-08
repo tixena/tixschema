@@ -46,6 +46,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let answer = answer(contract);
     let http_fns = http_fns();
     let http_rules = http_rules();
+    let http_authorization = http_authorization();
     let http_entry = http_entry();
     quote! {
         #[doc = #macro_doc]
@@ -63,6 +64,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #answer
                 #http_fns
                 #http_rules
+                #http_authorization
                 #http_entry
             };
         }
@@ -723,20 +725,28 @@ fn answer(contract: &Ident) -> TokenStream {
         }
 
         /// `serve_http` for this service alone.
-        pub async fn answer_http<Svc, Ctx>(
+        pub async fn answer_http<Svc, Ctx, Admit>(
             request: &McpHttpRequest,
-            allowed_origins: &[&str],
+            settings: &McpHttpSettings<'_>,
             svc: &Svc,
-            ctx: &Ctx,
+            admit: Admit,
         ) -> McpHttpResponse
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
-            Ctx: ::core::marker::Sync,
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
         {
-            match admitted(request, allowed_origins) {
+            if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
+                return refused;
+            }
+            let ctx = match admit(request, McpCall::new()).await {
+                ::core::result::Result::Ok(ctx) => ctx,
+                ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
+            };
+            match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
                 ::core::result::Result::Ok(text) => {
-                    http_response(answer(&text, svc, ctx).await)
+                    http_response(answer(text, svc, &ctx).await)
                 }
             }
         }
@@ -778,6 +788,48 @@ fn types() -> TokenStream {
             pub body: ::std::vec::Vec<u8>,
             pub headers: ::std::vec::Vec<(::std::string::String, ::std::string::String)>,
             pub method: ::std::string::String,
+            /// The request's path, with or without its query.
+            pub path: ::std::string::String,
+        }
+
+        /// What an HTTP server of this endpoint is configured with.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpHttpSettings<'settings> {
+            pub allowed_origins: &'settings [&'settings str],
+            /// `None` where the server authorizes by other means: no metadata document and no
+            /// challenge.
+            pub oauth: ::core::option::Option<McpOAuth<'settings>>,
+        }
+
+        /// The protected-resource metadata of a server that authorizes by OAuth.
+        #[derive(Clone, Copy, Debug)]
+        pub struct McpOAuth<'oauth> {
+            pub authorization_servers: &'oauth [&'oauth str],
+            pub resource: &'oauth str,
+            pub resource_metadata_url: &'oauth str,
+            pub scopes_supported: &'oauth [&'oauth str],
+        }
+
+        /// Why `admit` refused a request.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub enum McpDenied {
+            /// `401`: no credentials, or credentials that do not hold. `scope` names what the
+            /// called operation needs, where it is known.
+            NoValidCredentials { scope: ::core::option::Option<::std::string::String> },
+            /// `403` with a challenge: the credentials hold, but not the scopes `scope` names.
+            InsufficientScope { scope: ::std::string::String },
+            /// `403` with no challenge.
+            Forbidden,
+        }
+
+        /// The request in flight, handed to `admit`.
+        #[derive(Clone, Debug, Default)]
+        pub struct McpCall(());
+
+        impl McpCall {
+            const fn new() -> Self {
+                Self(())
+            }
         }
 
         /// An HTTP response in plain terms.
@@ -789,12 +841,25 @@ fn types() -> TokenStream {
         }
 
         impl McpHttpRequest {
+            /// The token of an `Authorization: Bearer` header, whatever the case of the scheme.
+            pub fn bearer_token(&self) -> ::core::option::Option<&str> {
+                let value = self.header("authorization")?;
+                let (scheme, token) = value.split_once(' ')?;
+                let token = token.trim();
+                (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
+            }
+
             /// The value of the header called `name`, whatever its case.
             pub fn header(&self, name: &str) -> ::core::option::Option<&str> {
                 self.headers
                     .iter()
                     .find(|(held, _)| held.eq_ignore_ascii_case(name))
                     .map(|(_, value)| value.as_str())
+            }
+
+            /// The `Mcp-Name` header, decoded from `=?base64?...?=` where it is written so.
+            pub fn mcp_name(&self) -> ::core::option::Option<::std::string::String> {
+                decoded_header(self.header("mcp-name")?)
             }
         }
     }
@@ -888,25 +953,100 @@ fn http_rules() -> TokenStream {
     }
 }
 
-/// The rules a request meets before any service is asked, and the entry that applies them.
-fn http_entry() -> TokenStream {
+/// The rules a request meets before `admit`, and the denials `admit` answers with.
+fn http_authorization() -> TokenStream {
     quote! {
-        /// The rules a request meets before any service is asked: the text of its body where
-        /// they let it through, and the response that refuses it where they do not.
-        fn admitted<'request>(
-            request: &'request McpHttpRequest,
-            allowed_origins: &[&str],
-        ) -> ::core::result::Result<&'request str, McpHttpResponse> {
+        /// The path of `url`, without its query or fragment.
+        fn url_path(url: &str) -> &str {
+            let after = url.split_once("://").map_or(url, |(_, rest)| rest);
+            let from_path = after.find('/').and_then(|at| after.get(at..)).unwrap_or("/");
+            from_path.split(['?', '#']).next().unwrap_or(from_path)
+        }
+
+        /// The response to a denial: its status, and the challenge where the server uses OAuth.
+        fn denial_response(
+            denied: &McpDenied,
+            settings: &McpHttpSettings<'_>,
+            request: &McpHttpRequest,
+        ) -> McpHttpResponse {
+            let (status, challenge) = match (denied, settings.oauth.as_ref()) {
+                (McpDenied::NoValidCredentials { scope }, oauth) => {
+                    let challenge = oauth.map(|oauth| {
+                        let mut parts = ::std::vec![format!("resource_metadata=\"{}\"", oauth.resource_metadata_url)];
+                        if let ::core::option::Option::Some(scope) = scope {
+                            parts.push(format!("scope=\"{scope}\""));
+                        }
+                        if request.bearer_token().is_some() {
+                            parts.push("error=\"invalid_token\"".to_owned());
+                        }
+                        format!("Bearer {}", parts.join(", "))
+                    });
+                    (401, challenge)
+                }
+                (McpDenied::InsufficientScope { scope }, oauth) => (
+                    403,
+                    oauth.map(|oauth| {
+                        format!(
+                            "Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{}\"",
+                            oauth.resource_metadata_url
+                        )
+                    }),
+                ),
+                (McpDenied::Forbidden, _) => (403, ::core::option::Option::None),
+            };
+            let mut response = without_body(status);
+            if let ::core::option::Option::Some(challenge) = challenge {
+                response.headers.push(("WWW-Authenticate".to_owned(), challenge));
+            }
+            response
+        }
+
+        /// The protected-resource metadata document of `oauth`.
+        fn metadata_response(oauth: &McpOAuth<'_>) -> McpHttpResponse {
+            let mut document = ::serde_json::json!({
+                "authorization_servers": oauth.authorization_servers,
+                "bearer_methods_supported": ["header"],
+                "resource": oauth.resource,
+            });
+            if !oauth.scopes_supported.is_empty() {
+                document["scopes_supported"] = ::serde_json::json!(oauth.scopes_supported);
+            }
+            json_response(200, &document)
+        }
+
+        /// The rules a request meets before `admit`: the metadata document, the method and the
+        /// `Origin`.
+        fn before_admit(
+            request: &McpHttpRequest,
+            settings: &McpHttpSettings<'_>,
+        ) -> ::core::result::Result<(), McpHttpResponse> {
+            if let ::core::option::Option::Some(oauth) = settings.oauth.as_ref() {
+                let path = request.path.split(['?', '#']).next().unwrap_or_default();
+                if request.method == "GET" && path == url_path(oauth.resource_metadata_url) {
+                    return ::core::result::Result::Err(metadata_response(oauth));
+                }
+            }
             if request.method != "POST" {
                 let mut refused = without_body(405);
                 refused.headers.push(("Allow".to_owned(), "POST".to_owned()));
                 return ::core::result::Result::Err(refused);
             }
             if let ::core::option::Option::Some(origin) = request.header("origin") {
-                if !allowed_origins.contains(&origin) {
+                if !settings.allowed_origins.contains(&origin) {
                     return ::core::result::Result::Err(without_body(403));
                 }
             }
+            ::core::result::Result::Ok(())
+        }
+    }
+}
+
+/// The rules a request meets after `admit`, and the entry that applies them all.
+fn http_entry() -> TokenStream {
+    quote! {
+        /// The rules a request meets once `admit` let it through: the text of its body where they
+        /// let it through, and the response that refuses it where they do not.
+        fn admitted(request: &McpHttpRequest) -> ::core::result::Result<&str, McpHttpResponse> {
             let ::core::result::Result::Ok(text) = ::core::str::from_utf8(&request.body) else {
                 return ::core::result::Result::Err(json_response(
                     400,
@@ -954,25 +1094,41 @@ fn http_entry() -> TokenStream {
             }
         }
 
-        /// The Streamable HTTP rules around `serve`.
-        pub async fn serve_http<R>(
+        /// The Streamable HTTP rules around `serve`. `route` also receives the `Ctx` that
+        /// `admit` answered.
+        pub async fn serve_http<Ctx, Admit, R>(
             request: &McpHttpRequest,
-            allowed_origins: &[&str],
+            settings: &McpHttpSettings<'_>,
             server_name: &str,
             instructions: ::core::option::Option<&str>,
             endpoint: &McpEndpoint,
+            admit: Admit,
             route: R,
         ) -> McpHttpResponse
         where
-            R: ::core::ops::AsyncFn(usize, &str, &::serde_json::Value) -> ::core::option::Option<
+            Ctx: ::core::marker::Send + ::core::marker::Sync,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::marker::Send + ::core::marker::Sync,
+            R: ::core::marker::Send + ::core::marker::Sync,
+            R: ::core::ops::AsyncFn(&Ctx, usize, &str, &::serde_json::Value) -> ::core::option::Option<
                 ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
             >,
         {
-            match admitted(request, allowed_origins) {
+            if let ::core::result::Result::Err(refused) = before_admit(request, settings) {
+                return refused;
+            }
+            let ctx = match admit(request, McpCall::new()).await {
+                ::core::result::Result::Ok(ctx) => ctx,
+                ::core::result::Result::Err(denied) => return denial_response(&denied, settings, request),
+            };
+            match admitted(request) {
                 ::core::result::Result::Err(refused) => refused,
-                ::core::result::Result::Ok(text) => {
-                    http_response(serve(text, server_name, instructions, endpoint, route).await)
-                }
+                ::core::result::Result::Ok(text) => http_response(
+                    serve(text, server_name, instructions, endpoint, async |part, method, params| {
+                        route(&ctx, part, method, params).await
+                    })
+                    .await,
+                ),
             }
         }
     }
