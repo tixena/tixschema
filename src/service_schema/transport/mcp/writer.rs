@@ -54,6 +54,10 @@ pub(super) fn types() -> TokenStream {
             fn clone(&self) -> Self {
                 *self
             }
+
+            fn clone_from(&mut self, source: &Self) {
+                *self = *source;
+            }
         }
 
         impl<Stream> ::core::marker::Copy for McpHttpAsk<'_, Stream> {}

@@ -61,6 +61,18 @@ pub trait DeskService<Ctx> {
     /// Answers the ticket a number names.
     async fn find_ticket(&self, ctx: &Ctx, req: TicketLookup) -> Result<Ticket, TicketError>;
 
+    /// Greets the person at the desk in one line.
+    #[service_schema_op(mcp(prompt))]
+    async fn greet_in_a_line(&self, ctx: &Ctx, name: String) -> Result<String, TicketError>;
+
+    /// Greets the person at the desk.
+    #[service_schema_op(mcp(prompt))]
+    async fn greet_visitor(
+        &self,
+        ctx: &Ctx,
+        name: String,
+    ) -> Result<Vec<desk_service_schema::McpPromptMessage>, TicketError>;
+
     /// Answers where one search stands.
     #[service_schema_op(mcp(scopes = ["desk:read"]))]
     async fn search_status(
@@ -76,4 +88,12 @@ pub trait DeskService<Ctx> {
         ctx: &Ctx,
         req: TicketLookup,
     ) -> Result<desk_service_schema::McpTask, TicketError>;
+
+    /// Answers the ticket a number names, as the blocks of a tool's result.
+    #[service_schema_op(mcp(content))]
+    async fn ticket_card(
+        &self,
+        ctx: &Ctx,
+        req: TicketLookup,
+    ) -> Result<Vec<desk_service_schema::McpContent>, TicketError>;
 }

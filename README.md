@@ -2644,6 +2644,8 @@ error[E0425]: cannot find type `BalanceError` in this scope
 One consequence is worth knowing before it costs anyone an afternoon: rustdoc wraps a doctest with
 no explicit `fn main` in one, so a doctest that declares a service writes `fn main() {}` of its own.
 
+**`#[service_schema(non_exhaustive)]` marks every type the service generates `#[non_exhaustive]`:** the fault kind, `CallError`, the messages the macro writes, the `{Service}Schema` struct, and with `mcp` the `McpTask`, `McpTaskState`, `McpContent`, `McpResourceContents`, `McpRole` and `McpPromptMessage` types. A type you declare yourself keeps your own attributes. Another crate that matches on one of them needs a wildcard arm. The flag is bare: `non_exhaustive = true` is refused.
+
 #### The Shape of a Service
 
 A service names a **context** type parameter, and every operation takes it as its first argument after `&self`. An operation receives one message and answers `Result<Success, Error>`.

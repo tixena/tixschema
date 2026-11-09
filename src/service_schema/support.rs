@@ -182,8 +182,8 @@ pub fn emit(
                 .operations
                 .iter()
                 .any(|operation| operation.mcp.content.is_some())))
-    .then(content_types);
-    let prompt_types = prompting.then(prompt_types);
+    .then(|| content_types(non_exhaustive));
+    let prompt_types = prompting.then(|| prompt_types(non_exhaustive));
     let task_types = (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service))
         .then(|| task_types(non_exhaustive));
     quote! {
@@ -216,11 +216,13 @@ pub fn emit(
 }
 
 /// What an `mcp(content)` operation answers a list of: one block of a tool's `content`.
-fn content_types() -> TokenStream {
+fn content_types(non_exhaustive: bool) -> TokenStream {
     let wire_form = content_wire_form();
+    let sealed = exhaustiveness(non_exhaustive);
     quote! {
         /// One block of a tool's `content`.
         #[derive(Clone, Debug, Eq, PartialEq)]
+        #sealed
         pub enum McpContent {
             /// Text.
             Text { text: ::std::string::String },
@@ -246,6 +248,7 @@ fn content_types() -> TokenStream {
 
         /// What an embedded resource holds.
         #[derive(Clone, Debug, Eq, PartialEq)]
+        #sealed
         pub enum McpResourceContents {
             /// Text.
             Text(::std::string::String),
@@ -390,11 +393,13 @@ fn content_wire_reading() -> TokenStream {
 }
 
 /// What an `mcp(prompt)` operation answers a list of: one message of a prompt.
-fn prompt_types() -> TokenStream {
+fn prompt_types(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
     quote! {
         /// Who a prompt's message is from.
         #[derive(Clone, Copy, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
         #[serde(rename_all = "lowercase")]
+        #sealed
         pub enum McpRole {
             /// The user.
             User,
@@ -404,6 +409,7 @@ fn prompt_types() -> TokenStream {
 
         /// One message of a prompt: who it is from, and the block it holds.
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #sealed
         pub struct McpPromptMessage {
             /// What the message holds.
             pub content: McpContent,

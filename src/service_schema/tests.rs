@@ -225,6 +225,20 @@ const GET_AT_A_ROOT_PLACEHOLDER_SERVICE: &str = r#"
     }
 "#;
 
+const CONTENT_AND_PROMPT_SERVICE: &str = "
+    pub trait CardService<Ctx> {
+        /// Shows one card.
+        #[service_schema_op(mcp(content))]
+        async fn show_card(&self, ctx: &Ctx, card_id: String)
+            -> Result<Vec<card_service_schema::McpContent>, CardError>;
+
+        /// Greets one person.
+        #[service_schema_op(mcp(prompt))]
+        async fn greet(&self, ctx: &Ctx, name: String)
+            -> Result<Vec<card_service_schema::McpPromptMessage>, CardError>;
+    }
+";
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -262,6 +276,16 @@ fn expansion_over_amqp_rpc_non_exhaustive(source: &str) -> TokenStream {
         quote! { transports = ["amqp_rpc"], non_exhaustive },
         declared(source).to_token_stream(),
     )
+}
+
+/// The expansion of a service that asked for `mcp` alone, with or without `non_exhaustive`.
+fn expansion_over_mcp(source: &str, non_exhaustive: bool) -> String {
+    let arguments = if non_exhaustive {
+        quote! { non_exhaustive, transports = ["mcp"] }
+    } else {
+        quote! { transports = ["mcp"] }
+    };
+    exec_service_schema(arguments, declared(source).to_token_stream()).to_string()
 }
 
 /// The same expansion for a service that asked for `http_rest`, which is what carries both a
@@ -4099,6 +4123,49 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
 fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
     let emitted = expansion_over_amqp_rpc(INVOICE_SERVICE).to_string();
     assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
+}
+
+#[test]
+fn the_non_exhaustive_flag_seals_the_content_and_prompt_types() {
+    let emitted = expansion_over_mcp(CONTENT_AND_PROMPT_SERVICE, true);
+    for sealed in [
+        "# [non_exhaustive] pub enum McpContent",
+        "# [non_exhaustive] pub enum McpResourceContents",
+        "# [non_exhaustive] pub enum McpRole",
+        "# [non_exhaustive] pub struct McpPromptMessage",
+    ] {
+        assert!(
+            emitted.contains(sealed),
+            "missing `{sealed}`. Got: {emitted}"
+        );
+    }
+}
+
+#[test]
+fn the_default_expansion_seals_neither_the_content_nor_the_prompt_types() {
+    let emitted = expansion_over_mcp(CONTENT_AND_PROMPT_SERVICE, false);
+    for unsealed in [
+        "# [derive (Clone , Debug , Eq , PartialEq)] pub enum McpContent",
+        "# [derive (Clone , Debug , Eq , PartialEq)] pub enum McpResourceContents",
+        "pub enum McpRole",
+        "pub struct McpPromptMessage",
+    ] {
+        assert!(
+            emitted.contains(unsealed),
+            "missing `{unsealed}`. Got: {emitted}"
+        );
+    }
+    for sealed in [
+        "enum McpContent",
+        "enum McpResourceContents",
+        "enum McpRole",
+        "struct McpPromptMessage",
+    ] {
+        assert!(
+            !emitted.contains(&format!("# [non_exhaustive] pub {sealed}")),
+            "`{sealed}` is sealed. Got: {emitted}"
+        );
+    }
 }
 
 #[test]
