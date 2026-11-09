@@ -2203,6 +2203,44 @@ fn transform_example_code(code: &str) -> String {
     result.trim().to_owned()
 }
 
+/// The rustdoc in `attrs`: each `///` line with the single space after it removed, joined with
+/// newlines. `None` where there is none, or where it holds no text.
+pub fn rustdoc_text(attrs: &[Attribute]) -> Option<String> {
+    let lines: Vec<String> = attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("doc"))
+        .filter_map(|attribute| {
+            let Meta::NameValue(pair) = &attribute.meta else {
+                return None;
+            };
+            let Expr::Lit(syn::ExprLit {
+                lit: Lit::Str(text),
+                attrs: _attrs,
+            }) = &pair.value
+            else {
+                return None;
+            };
+            let line = text.value();
+            Some(line.strip_prefix(' ').unwrap_or(&line).to_owned())
+        })
+        .collect();
+    lines
+        .iter()
+        .any(|line| !line.trim().is_empty())
+        .then(|| lines.join("\n"))
+}
+
+/// The rustdoc in `attrs` as a JSON Schema `description`: [`rustdoc_text`] with the `rust example`
+/// blocks left out, and `None` where no text remains.
+pub fn rustdoc_description(attrs: &[Attribute]) -> Option<String> {
+    let text = rustdoc_text(attrs)?;
+    let lines: Vec<String> = text.lines().map(ToOwned::to_owned).collect();
+    let kept = strip_examples_from_docs(&lines);
+    kept.iter()
+        .any(|line| !line.trim().is_empty())
+        .then(|| kept.join("\n"))
+}
+
 /// Every doc body the crate writes — an item's, an alias's, a field's, an enum variant's, and the
 /// descriptions spelled from the same lines — passes through here, so example blocks are dropped
 /// once rather than at each surface.

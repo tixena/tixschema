@@ -17837,6 +17837,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
     super::FieldDef {
         array_lengths: Vec::new(),
         docs: String::new(),
+        description: None,
         field_type: FieldDefType::SiblingType(wrapper.to_owned(), vec![element]),
         array_depth: 0,
         model_schema_prop_meta: None,

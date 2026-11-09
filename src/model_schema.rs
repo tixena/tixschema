@@ -53,7 +53,7 @@ use crate::{
         BoundKind, FieldDef, FieldDefType, MissingKey, VariantKind, classify_variant,
         format_number_literal, get_field_def, held_literal, is_plain_enum,
     },
-    utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
+    utils::{get_field_docs, get_variant_docs, rustdoc_description, strip_examples_from_docs},
 };
 
 use crate::field_type::is_undescribable_primitive;
@@ -14040,7 +14040,10 @@ fn untagged_named_json_value(
 ) -> proc_macro2::TokenStream {
     let property_inserts = field_defs.iter().map(|fld| {
         let name_str = fld.name.clone();
-        let value = nullable_slot_json_schema_value(fld, field_json_schema_value(fld));
+        let value = described_json_schema_value(
+            fld,
+            nullable_slot_json_schema_value(fld, field_json_schema_value(fld)),
+        );
         let required_insert = if fld.key_is_required() {
             quote! {
                 required.push(serde_json::Value::String(#name_str.to_string()));
@@ -14334,6 +14337,7 @@ fn untagged_member_field_def(
 ) -> (FieldDef, Vec<proc_macro2::TokenStream>) {
     let (mut field_def, written_def) =
         untagged_member_field_defs(field, final_field_name, ctx.type_parameters);
+    field_def.description = rustdoc_description(&field.attrs);
     apply_serde_key_omission(
         &mut field_def,
         field,
@@ -16990,11 +16994,54 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
         quote! {}
     };
     let default_code = default_json_insert(fld);
+    let description_code = description_json_insert(fld);
 
     quote! {
         #schema_code
         #required_code
         #default_code
+        #description_code
+    }
+}
+
+/// The statements that state, in the member `fld` the local `properties` holds, the rustdoc as its
+/// `description`, beside a `$ref` where the member is one, and nothing for a member with no rustdoc.
+fn description_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    let field_name_str = &fld.name;
+    fld.description.as_ref().map(|text| {
+        quote! {
+            if let ::core::option::Option::Some(serde_json::Value::Object(described)) =
+                properties.get_mut(#field_name_str)
+            {
+                described.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(#text.to_string()),
+                );
+            }
+        }
+    })
+}
+
+/// `value`, a member's schema, with the member's rustdoc as its `description`; `value` alone where
+/// there is none, or where the schema is not an object.
+fn described_json_schema_value(
+    fld: &FieldDef,
+    value: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let Some(text) = &fld.description else {
+        return value;
+    };
+    quote! {
+        {
+            let mut described: serde_json::Value = #value;
+            if let ::core::option::Option::Some(object) = described.as_object_mut() {
+                object.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(#text.to_string()),
+                );
+            }
+            described
+        }
     }
 }
 
@@ -20100,6 +20147,7 @@ fn process_field(
     let field_docs = build_jsdoc_body(get_field_docs(field).as_deref(), &final_name);
 
     let mut field_def = get_field_def(&final_name, &field.ty, &field_docs);
+    field_def.description = rustdoc_description(&field.attrs);
 
     // Resolve `Self` references to the concrete type name so recursive fields (e.g. `Vec<Self>`)
     // are treated exactly like `Vec<EnclosingType>`.

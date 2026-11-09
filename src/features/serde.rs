@@ -323,6 +323,7 @@ where
         array_depth: 0,
         array_lengths: Vec::new(),
         docs: String::new(),
+        description: None,
         field_type: FieldDefType::Tuple(slots),
         model_schema_prop_meta: None,
         name: "value".to_owned(),

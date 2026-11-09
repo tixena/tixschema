@@ -18,6 +18,7 @@ struct Archive;
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GetVersionRequest {
+    /// The document whose version is asked for.
     #[model_schema_prop(minLength = 1)]
     pub document_id: String,
 }
@@ -25,6 +26,7 @@ pub struct GetVersionRequest {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VersionResponse {
+    /// The version the document is at.
     pub version: u32,
 }
 
@@ -298,7 +300,11 @@ fn a_message_the_operation_names_is_the_arguments_object_itself() {
         version["inputSchema"],
         json!({
             "additionalProperties": false,
-            "properties": { "document_id": { "minLength": 1_u32, "type": "string" } },
+            "properties": { "document_id": {
+                "description": "The document whose version is asked for.",
+                "minLength": 1_u32,
+                "type": "string"
+            } },
             "required": ["document_id"],
             "type": "object"
         })
@@ -307,7 +313,10 @@ fn a_message_the_operation_names_is_the_arguments_object_itself() {
         version["outputSchema"],
         json!({
             "additionalProperties": false,
-            "properties": { "version": { "type": "integer" } },
+            "properties": { "version": {
+                "description": "The version the document is at.",
+                "type": "integer"
+            } },
             "required": ["version"],
             "type": "object"
         })
@@ -387,7 +396,10 @@ fn a_header_in_is_a_property_beside_the_wrapped_message_and_a_header_out_beside_
                 "etag": { "type": "string" },
                 "value": {
                     "additionalProperties": false,
-                    "properties": { "version": { "type": "integer" } },
+                    "properties": { "version": {
+                        "description": "The version the document is at.",
+                        "type": "integer"
+                    } },
                     "required": ["version"],
                     "type": "object"
                 }

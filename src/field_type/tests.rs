@@ -20,6 +20,7 @@ fn field(field_type: FieldDefType) -> FieldDef {
     FieldDef {
         array_lengths: Vec::new(),
         docs: String::new(),
+        description: None,
         field_type,
         array_depth: 0,
         model_schema_prop_meta: None,

@@ -113,6 +113,22 @@ serde_json::from_str::<Ping>("null").unwrap_err();
 
 TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin a serializable `object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
 
+### A Member's Rustdoc in the JSON Schema
+
+A named member's rustdoc is the `description` of its property in the JSON Schema: a struct field, and a member of a named enum variant under every tagging (external, internal, adjacent and untagged). `json_schema()`, `openapi()` and the tools of `mcp_tools()` all show it. The lines are joined with newlines, a `rust example` block is left out, and a member with no rustdoc has no `description`. A member typed with a named type keeps its `$ref` and gains the `description` beside it. TypeScript, Zod, Dart, Swift and Kotlin are unchanged.
+
+```rust
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CommentArgs {
+    /// Names from the registry who must see this in their pending queue.
+    #[serde(default)]
+    pub to: Vec<String>,
+}
+```
+
+`CommentArgs::json_schema()["properties"]["to"]` is `{"default": [], "description": "Names from the registry who must see this in their pending queue.", "items": {"type": "string"}, "type": "array"}`.
+
 ### Published Names (`name`)
 
 A type publishes under the Rust ident it is declared with, spelled exactly as written. Nothing is read off that spelling -- no suffix is taken off it and no part of it is rewritten -- so `UserData` publishes as `UserData` on all three surfaces.

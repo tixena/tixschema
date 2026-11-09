@@ -579,7 +579,8 @@ mod a_key_on_a_list {
         assert_eq!(
             Document::json_schema()["properties"]["nameConfig"],
             json!({
-                "type": "array", "items": Part::json_schema(), "minItems": 1_u32, "maxItems": 3_u32
+                "type": "array", "items": Part::json_schema(), "minItems": 1_u32, "maxItems": 3_u32,
+                "description": "One to three name parts."
             })
         );
         assert_eq!(

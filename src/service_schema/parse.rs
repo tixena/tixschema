@@ -6,7 +6,7 @@ use crate::model_schema::{UndescribableStd, undescribable_std_message};
 use crate::rename_rule::RenameRule;
 use crate::utils::{
     WireScalarKind, is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum,
-    is_wire_scalar_type, wire_scalar_kind,
+    is_wire_scalar_type, rustdoc_text, wire_scalar_kind,
 };
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident};
@@ -1416,7 +1416,7 @@ pub fn parse_service(declared: &ItemTrait) -> Result<ServiceDef, syn::Error> {
     }
     let service = ServiceDef {
         context_param,
-        doc: doc_text(&declared.attrs),
+        doc: rustdoc_text(&declared.attrs),
         generated_messages: operations.iter().filter_map(generated_message).collect(),
         ident: declared.ident.clone(),
         operations,
@@ -1630,7 +1630,7 @@ fn parse_operation(operation: &TraitItemFn, context: &Ident) -> Result<Operation
     mcp_header_refusals(&ident, &mcp, &inputs, http.as_ref())?;
     mcp_placeholder_refusals(&ident, &mcp, &extra_arguments(operation))?;
     Ok(OperationDef {
-        doc: doc_text(&operation.attrs),
+        doc: rustdoc_text(&operation.attrs),
         http,
         ident,
         inputs,
@@ -1682,33 +1682,6 @@ fn extra_arguments(operation: &TraitItemFn) -> HashMap<String, Type> {
             Some((written(&named.ident), typed.ty.as_ref().clone()))
         })
         .collect()
-}
-
-/// The rustdoc in `attrs`: each `///` line with the single space after it removed, joined with
-/// newlines. `None` where there is none, or where it holds no text.
-fn doc_text(attrs: &[Attribute]) -> Option<String> {
-    let lines: Vec<String> = attrs
-        .iter()
-        .filter(|attribute| attribute.path().is_ident("doc"))
-        .filter_map(|attribute| {
-            let syn::Meta::NameValue(pair) = &attribute.meta else {
-                return None;
-            };
-            let syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Str(text),
-                attrs: _attrs,
-            }) = &pair.value
-            else {
-                return None;
-            };
-            let line = text.value();
-            Some(line.strip_prefix(' ').unwrap_or(&line).to_owned())
-        })
-        .collect();
-    lines
-        .iter()
-        .any(|line| !line.trim().is_empty())
-        .then(|| lines.join("\n"))
 }
 
 /// Refuses an `mcp(header(...))` that marks something the tool's input does not carry as a

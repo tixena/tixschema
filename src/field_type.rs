@@ -360,6 +360,8 @@ pub struct FieldDef {
     pub array_lengths: Vec<(u8, usize)>,
     /// Whether array level 0 is a `Vec<u8>`, which TypeScript and Dart hold as bytes.
     pub bytes: bool,
+    /// The rustdoc as a JSON Schema `description`: no examples, and no name in place of a missing one.
+    pub description: Option<String>,
     pub docs: String,
     pub field_type: FieldDefType,
     /// What serde does with this member's key when the payload leaves it out.
@@ -1096,6 +1098,7 @@ impl FieldDef {
         };
         Self {
             docs: self.docs,
+            description: self.description,
             type_span: self.type_span,
             ..held
         }
@@ -1428,6 +1431,7 @@ impl FieldDef {
                         array_depth: 0,
                         array_lengths: Vec::new(),
                         docs: String::new(),
+                        description: None,
                         model_schema_prop_meta: None,
                         nullable_levels: Vec::new(),
                         absent_from_wire: false,
@@ -2998,6 +3002,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3017,6 +3022,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3043,6 +3049,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3111,6 +3118,7 @@ fn get_field_def_from_generic_type(
                 Box::new(arg_types[1].clone()),
             ),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3154,6 +3162,7 @@ fn written_def(
         array_depth: 0,
         array_lengths: Vec::new(),
         docs: field_docs.to_owned(),
+        description: None,
         model_schema_prop_meta: None,
         nullable_levels: Vec::new(),
         absent_from_wire: false,
@@ -3317,6 +3326,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3334,6 +3344,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,

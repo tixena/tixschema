@@ -3790,6 +3790,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         array_depth: 0,
         array_lengths: Vec::new(),
         docs: String::new(),
+        description: None,
         field_type: FieldDefType::Tuple(slots),
         model_schema_prop_meta: None,
         name: "value".to_owned(),
