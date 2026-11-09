@@ -331,19 +331,15 @@ fn every_failure_is_a_json_rpc_error() {
     refused(
         &fetched("review-document-type", &json!({})),
         INVALID_PARAMS,
-        "undeserializable-payload",
+        "failed-validation",
     );
     let mut numbered = get("review-document-type", &json!({ "documentType": "x" }));
     numbered["params"]["arguments"]["documentType"] = json!(5_u8);
-    refused(
-        &answer(&numbered),
-        INVALID_PARAMS,
-        "undeserializable-payload",
-    );
+    refused(&answer(&numbered), INVALID_PARAMS, "failed-validation");
     refused(
         &fetched("greet", &json!({})),
         INVALID_PARAMS,
-        "undeserializable-payload",
+        "failed-validation",
     );
     refused(
         &fetched("greet", &json!({ "name": "boom" })),

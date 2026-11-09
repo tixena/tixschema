@@ -9,8 +9,9 @@ use super::mcp_mobile_rows::{
 };
 use super::mcp_mobile_service::{
     archive_document_request_swift, balance_error_swift, balance_response_swift, document_id_swift,
-    get_version_request_swift, rename_document_request_swift, touch_document_request_swift,
-    version_error_swift, version_response_swift,
+    draft_batch_swift, draft_swift, get_version_request_swift, reference_swift,
+    rename_document_request_swift, touch_document_request_swift, version_error_swift,
+    version_response_swift,
 };
 use super::runtime::ran;
 use super::{MobileDocumentServiceSchema, mobile_document_service_schema};
@@ -158,6 +159,9 @@ fn emitted() -> String {
         version_error_swift::swift_definition(),
         get_version_request_swift::swift_definition(),
         document_id_swift::swift_definition(),
+        reference_swift::swift_definition(),
+        draft_swift::swift_definition(),
+        draft_batch_swift::swift_definition(),
         balance_response_swift::swift_definition(),
         balance_error_swift::swift_definition(),
         rename_document_request_swift::swift_definition(),

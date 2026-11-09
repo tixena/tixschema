@@ -1893,6 +1893,114 @@ fn scopes_table(table: &ScopeTable) -> String {
     text
 }
 
+/// The Dart that names the path of the value a message does not read at, from the JSON schema the
+/// catalog holds for it.
+fn unread_helpers(named: &str, prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    format!(
+        "{fields} _{prefix}McpUnreadFault(String operation, String detail, Object? schema, Object? source) {{\n  \
+         final found = _{prefix}McpMismatch(schema, source);\n  \
+         if (found == null || found.isEmpty) {{\n    \
+         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
+         }}\n  \
+         final path = found.join('.');\n  \
+         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, \"'$path': $detail\", field: path);\n\
+         }}\n\n\
+         List<String>? _{prefix}McpMismatch(Object? schema, Object? value) {{\n  \
+         if (schema is! Map) return null;\n  \
+         final alternatives = schema['anyOf'];\n  \
+         if (alternatives is List) {{\n    \
+         if (value == null) return null;\n    \
+         for (final alternative in alternatives) {{\n      \
+         if (alternative is Map && alternative['type'] == 'null') continue;\n      \
+         return _{prefix}McpMismatch(alternative, value);\n    \
+         }}\n    \
+         return null;\n  \
+         }}\n  \
+         final allowed = schema['enum'];\n  \
+         if (allowed is List && !allowed.contains(value)) return <String>[];\n  \
+         switch (schema['type']) {{\n    \
+         case 'object':\n      \
+         if (value is! Map) return <String>[];\n      \
+         final properties = schema['properties'];\n      \
+         final others = schema['additionalProperties'];\n      \
+         for (final entry in value.entries) {{\n        \
+         final held = properties is Map && properties.containsKey(entry.key) ? properties[entry.key] : others;\n        \
+         final found = _{prefix}McpMismatch(held, entry.value);\n        \
+         if (found != null) return <String>['${{entry.key}}', ...found];\n      \
+         }}\n      \
+         final required = schema['required'];\n      \
+         if (required is List) {{\n        \
+         for (final key in required) {{\n          \
+         if (!value.containsKey(key)) return <String>['$key'];\n        \
+         }}\n      \
+         }}\n      \
+         return null;\n    \
+         case 'array':\n      \
+         if (value is! List) return <String>[];\n      \
+         for (var at = 0; at < value.length; at += 1) {{\n        \
+         final found = _{prefix}McpMismatch(schema['items'], value[at]);\n        \
+         if (found != null) return <String>['$at', ...found];\n      \
+         }}\n      \
+         return null;\n    \
+         case 'string':\n      \
+         return value is String ? null : <String>[];\n    \
+         case 'integer':\n      \
+         return value is int || (value is double && value == value.truncateToDouble()) ? null : <String>[];\n    \
+         case 'number':\n      \
+         return value is num ? null : <String>[];\n    \
+         case 'boolean':\n      \
+         return value is bool ? null : <String>[];\n    \
+         default:\n      \
+         return null;\n  \
+         }}\n\
+         }}",
+    )
+}
+
+/// The Dart that finds the JSON schema of a tool or a prompt in the catalog.
+fn schema_lookups(prefix: &str, tools: bool, service: &ServiceDef) -> String {
+    let mut text = String::new();
+    if tools {
+        let _ = write!(
+            text,
+            "\n\nObject? _{prefix}McpMessageSchema(String tool, bool wrapped) {{\n  \
+             for (final written in {prefix}McpCatalog.tools) {{\n    \
+             final parsed = jsonDecode(written);\n    \
+             if (parsed is Map && parsed['name'] == tool) {{\n      \
+             final schema = parsed['inputSchema'];\n      \
+             if (wrapped && schema is Map && schema['properties'] is Map) {{\n        \
+             return (schema['properties'] as Map)['value'];\n      \
+             }}\n      \
+             return schema;\n    \
+             }}\n  \
+             }}\n  \
+             return null;\n\
+             }}"
+        );
+    }
+    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
+        let _ = write!(
+            text,
+            "\n\nObject? _{prefix}McpPromptSchema(String prompt) {{\n  \
+             for (final written in {prefix}McpCatalog.prompts) {{\n    \
+             final parsed = jsonDecode(written);\n    \
+             if (parsed is Map && parsed['name'] == prompt && parsed['arguments'] is List) {{\n      \
+             final arguments = (parsed['arguments'] as List).whereType<Map>().toList();\n      \
+             return <String, dynamic>{{\n        \
+             'type': 'object',\n        \
+             'properties': <String, dynamic>{{for (final argument in arguments) '${{argument['name']}}': <String, dynamic>{{'type': 'string'}}}},\n        \
+             'required': <String>[for (final argument in arguments) if (argument['required'] == true) '${{argument['name']}}'],\n      \
+             }};\n    \
+             }}\n  \
+             }}\n  \
+             return null;\n\
+             }}"
+        );
+    }
+    text
+}
+
 fn answer_helpers(
     named: &str,
     prefix: &str,
@@ -1913,6 +2021,9 @@ fn answer_helpers(
          return end < 0 ? null : message.substring(1, end);\n\
          }}"
     );
+    text.push_str("\n\n");
+    text.push_str(&unread_helpers(named, prefix));
+    text.push_str(&schema_lookups(prefix, tools, service));
     if tools {
         let _ = write!(
             text,
@@ -2016,12 +2127,42 @@ fn unjudged_decode(operation: &OperationDef, payload: &str) -> String {
     )
 }
 
+/// The Dart expression telling whether the message of a tool sits under the `value` key, and the
+/// statement refusing a call that holds none where it must.
+fn wrapped_check(
+    named: &str,
+    prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> (String, String) {
+    let tool = quoted(operation.mcp_tool_name());
+    let known = wrapped_at_expansion(operation, shape);
+    let wrapped = known.map_or_else(
+        || format!("_{prefix}McpServerWrapped[{tool}]!"),
+        |under| under.to_string(),
+    );
+    let absent = match known {
+        Some(false) => return (wrapped, String::new()),
+        Some(true) => "!members.containsKey('value')".to_owned(),
+        None => format!("{wrapped} && !members.containsKey('value')"),
+    };
+    let refusal = format!(
+        "if ({absent}) {{\n    \
+         return _{prefix}McpFaultResult(\n      \
+         _{prefix}McpFault({named}FaultKind.failedValidation, {tool}, \"'value': missing field `value`\", field: 'value'),\n    \
+         );\n  \
+         }}\n  "
+    );
+    (wrapped, refusal)
+}
+
 fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     let tool = quoted(operation.mcp_tool_name());
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let source = source_expr(prefix, operation, &shape);
+    let (wrapped, missing_value) = wrapped_check(named, prefix, operation, &shape);
     let decode = message_decode(operation, "source");
     let unjudged = unjudged_decode(operation, "source");
     let kind = format!("{named}FaultKind");
@@ -2043,6 +2184,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          );\n  \
          }}\n\
          {answers}  \
+         {missing_value}  \
          final dynamic source = {source};\n  \
          final {req_ty} decoded;\n  \
          try {{\n    \
@@ -2051,15 +2193,15 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          try {{\n      \
          {unjudged};\n    \
          }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, unread.message));\n    \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread.message, _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, '$unread'));\n    \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$unread', _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n    \
          }}\n    \
          return _{prefix}McpFaultResult(\n      \
          _{prefix}McpFault({kind}.failedValidation, {tool}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpFaultResult(_{prefix}McpFault({kind}.undeserializablePayload, {tool}, '$rejected'));\n  \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$rejected', _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n  \
          }}\n",
         op = pascal(operation),
         answers = answers_stmt(named, prefix, operation),
@@ -2737,6 +2879,7 @@ fn resource_body(
     prefix: &str,
     operation: &OperationDef,
     source: &str,
+    schema: &str,
     refusal: &str,
     answer: &str,
 ) -> String {
@@ -2762,15 +2905,15 @@ fn resource_body(
          try {{\n      \
          {unjudged};\n    \
          }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpFault({kind}.undeserializablePayload, {wire}, unread.message));\n    \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread.message, {schema}, source));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpFault({kind}.undeserializablePayload, {wire}, '$unread'));\n    \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$unread', {schema}, source));\n    \
          }}\n    \
          return _{prefix}McpUnread(\n      \
          _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpUnread(_{prefix}McpFault({kind}.undeserializablePayload, {wire}, '$rejected'));\n  \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$rejected', {schema}, source));\n  \
          }}\n  \
          try {{\n    \
          final answered = await handlers.{call}(ctx, decoded);\n    \
@@ -2853,6 +2996,7 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
             prefix,
             operation,
             &source,
+            "null",
             "'Resource not found'",
             &success,
         )
@@ -2904,6 +3048,7 @@ fn skill_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
             prefix,
             operation,
             "path",
+            "null",
             "'Skill file not found'",
             &success,
         )
@@ -3028,6 +3173,7 @@ fn resource_listing(named: &str, prefix: &str, operation: &OperationDef) -> Stri
             prefix,
             operation,
             source,
+            "null",
             "'Resources could not be listed'",
             &success,
         )
@@ -3041,6 +3187,9 @@ fn resource_completion(named: &str, prefix: &str, operation: &OperationDef) -> O
     let typed_key = quoted(&wire_key(&fields.first()?.0));
     let chosen_key = quoted(&wire_key(&fields.get(1)?.0));
     let source = format!("<String, dynamic>{{{typed_key}: typed, {chosen_key}: chosen}}");
+    let completion_schema = format!(
+        "<String, dynamic>{{'type': 'object', 'properties': <String, dynamic>{{{typed_key}: <String, dynamic>{{'type': 'string'}}, {chosen_key}: <String, dynamic>{{'type': 'object', 'additionalProperties': <String, dynamic>{{'type': 'string'}}}}}}}}"
+    );
     let success = "final suggested = <Object>[...answered];\n    \
          return (\n      result: <String, dynamic>{\n        \
          'completion': <String, dynamic>{\n          \
@@ -3065,6 +3214,7 @@ fn resource_completion(named: &str, prefix: &str, operation: &OperationDef) -> O
             prefix,
             operation,
             &source,
+            &completion_schema,
             "'Completion refused'",
             &success,
         )
@@ -3180,7 +3330,18 @@ fn prompt_function(named: &str, prefix: &str, operation: &OperationDef) -> Strin
     );
     format!(
         "{head}{}",
-        resource_body(named, prefix, operation, &source, &refusal, &success)
+        resource_body(
+            named,
+            prefix,
+            operation,
+            &source,
+            &format!(
+                "_{prefix}McpPromptSchema({})",
+                quoted(operation.mcp_tool_name())
+            ),
+            &refusal,
+            &success,
+        )
     )
 }
 

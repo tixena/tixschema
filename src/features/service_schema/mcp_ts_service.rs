@@ -751,7 +751,28 @@ const __p__McpUnreadable: ReadonlySet<string> = new Set([
   "unrecognized_keys",
 ]);
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, `undeserializable-payload` for any other; none where it reads or only the validator refuses it. */
+type __p__McpIssue = {
+  readonly code: string;
+  readonly path: ReadonlyArray<PropertyKey>;
+  readonly keys?: ReadonlyArray<string>;
+  readonly errors?: ReadonlyArray<ReadonlyArray<__p__McpIssue>>;
+};
+
+/** The path of an issue: below an `invalid_union`, the deepest path any of its alternatives reached; below `unrecognized_keys`, the first key. */
+function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
+  if (issue.code === "unrecognized_keys" && issue.keys !== undefined) return [...issue.path, issue.keys[0]];
+  if (issue.code !== "invalid_union" || issue.errors === undefined) return issue.path;
+  let deepest: ReadonlyArray<PropertyKey> = issue.path;
+  for (const alternative of issue.errors) {
+    for (const inner of alternative) {
+      const steps = [...issue.path, ...__p__McpSteps(inner)];
+      if (steps.length > deepest.length) deepest = steps;
+    }
+  }
+  return deepest;
+}
+
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read; none where it reads or only the validator refuses it. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -768,11 +789,13 @@ function __p__McpUnread(
       .join("; ");
     return __FAULT__("failed-validation", operation, detail, answers);
   }
-  if (!issues.some((issue) => __p__McpUnreadable.has(issue.code))) return undefined;
+  const unread = issues.find((issue) => __p__McpUnreadable.has(issue.code));
+  if (unread === undefined) return undefined;
+  const steps = __p__McpSteps(unread);
   const detail = issues
     .map((issue) => (issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
     .join("; ");
-  return __FAULT__("undeserializable-payload", operation, detail);
+  return __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
 }
 
 /** The `-32603` answer of a handler that came apart. */
@@ -854,7 +877,13 @@ export function create__N__McpRoute<Ctx>(
       }
 __ANSWERS__      payload = operation.wrapped ? held.value : rest;
     }
-    const unread = __p__McpUnread(operation.schema, payload, operation.tool, operation.interview?.answers);
+    const refused =
+      held === undefined && given !== null
+        ? __FAULT__("undeserializable-payload", operation.tool, "the arguments are not a JSON object")
+        : operation.wrapped && held !== undefined && held.value === undefined
+          ? __FAULT__("failed-validation", operation.tool, "'value': missing field `value`", "value")
+          : undefined;
+    const unread = refused ?? __p__McpUnread(operation.schema, payload, operation.tool, operation.interview?.answers);
     const attempt =
       unread === undefined
         ? await attempted(ctx, operation.operation, payload, headers)

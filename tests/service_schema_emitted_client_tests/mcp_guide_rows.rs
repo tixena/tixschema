@@ -601,7 +601,7 @@ fn client_calls() -> Vec<ClientCall> {
         ClientCall {
             answer: "get_missing_argument",
             arguments: json!({ "documentType": "ID card", "focus": "names" }),
-            expected: json!({ "fault": "undeserializable-payload" }),
+            expected: json!({ "fault": "failed-validation" }),
             label: "unreadable",
             prompt: "review-document-type",
         },

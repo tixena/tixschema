@@ -427,14 +427,11 @@ pub(super) fn reading(
 ) -> TokenStream {
     let wire = &operation.wire_name;
     quote! {
-        let received = match $crate::#module::#reader(#source) {
+        let received = match read_tracked(#source, |tracked| $crate::#module::#reader(tracked)) {
             ::core::result::Result::Ok(received) => received,
             ::core::result::Result::Err(rejected) => {
                 return ::core::option::Option::Some(::core::result::Result::Err(faulted(
-                    $crate::#module::ServiceFault::undeserializable_payload(
-                        #wire,
-                        &::std::string::ToString::to_string(&rejected),
-                    ),
+                    refused_payload(#wire, &rejected),
                 )));
             }
         };

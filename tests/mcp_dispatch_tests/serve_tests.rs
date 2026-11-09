@@ -15,9 +15,25 @@ use alloc::sync::Arc;
 use core::future::Future;
 use serde_json::{Value, json};
 
-/// The five tools of `DocumentService`, as the document writes them.
+/// The tools of `DocumentService`, as the document writes them.
 fn expected_tools() -> Value {
     json!([
+        { "name": "check-drafts",
+          "title": "Count Of Drafts",
+          "description": "Answers the number of drafts it was handed.",
+          "inputSchema": { "additionalProperties": false,
+                           "properties": { "drafts": { "items": { "additionalProperties": false,
+                                                       "properties": { "references": { "items": { "additionalProperties": false,
+                                                                                         "properties": { "name": { "type": "string" } },
+                                                                                         "required": ["name"], "type": "object" },
+                                                                                       "type": "array" },
+                                                                       "title": { "minLength": 1_u8, "type": "string" } },
+                                                       "required": ["references", "title"], "type": "object" },
+                                                     "type": "array" } },
+                           "required": ["drafts"], "type": "object" },
+          "outputSchema": { "additionalProperties": false,
+                            "properties": { "version": { "type": "integer" } },
+                            "required": ["version"], "type": "object" } },
         { "name": "check-many",
           "title": "Versions Of Many",
           "description": "Answers the versions of several documents, one request for each.",
@@ -235,11 +251,11 @@ fn a_declared_error_answers_its_json_as_text_and_no_structured_content() {
 }
 
 #[test]
-fn arguments_that_do_not_read_answer_the_undeserializable_payload_fault() {
+fn arguments_that_do_not_read_answer_the_failed_validation_fault_naming_the_path() {
     let answered = ask("get-version", &json!({ "document_id": 5_u8 }));
     assert_eq!(
         failure_text(&answered),
-        "{\"fault\":{\"detail\":\"invalid type: integer `5`, expected a string\",\"kind\":\"undeserializable-payload\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"detail\":\"'document_id': invalid type: integer `5`, expected a string\",\"field\":\"document_id\",\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
     );
     assert_result("CallToolResult", &answered);
 }
@@ -420,7 +436,50 @@ fn a_wrapped_message_is_read_from_its_value_property() {
     let unfound = ask("lookup-document", &json!({}));
     assert_eq!(
         failure_text(&unfound),
-        "{\"fault\":{\"detail\":\"missing field `value`\",\"kind\":\"undeserializable-payload\",\"operation\":\"lookup-document\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"detail\":\"'value': missing field `value`\",\"field\":\"value\",\"kind\":\"failed-validation\",\"operation\":\"lookup-document\"},\"isServiceFault\":true}"
+    );
+}
+
+#[test]
+fn a_key_that_is_missing_and_a_value_of_the_wrong_type_name_their_full_path() {
+    let missing = ask(
+        "check-drafts",
+        &json!({ "drafts": [{ "references": [], "title": "Plan" }, { "references": [] }] }),
+    );
+    assert_eq!(
+        failure_text(&missing),
+        "{\"fault\":{\"detail\":\"'drafts.1.title': missing field `title`\",\"field\":\"drafts.1.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+    let mistyped = ask(
+        "check-drafts",
+        &json!({ "drafts": [{ "references": [{ "name": 5_u8 }], "title": "Plan" }] }),
+    );
+    assert_eq!(
+        failure_text(&mistyped),
+        "{\"fault\":{\"detail\":\"'drafts.0.references.0.name': invalid type: integer `5`, expected a string\",\"field\":\"drafts.0.references.0.name\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+    let broken = ask(
+        "check-drafts",
+        &json!({ "drafts": [{ "references": [], "title": "" }] }),
+    );
+    assert_eq!(
+        failure_text(&broken),
+        "{\"fault\":{\"detail\":\"'drafts.0.title': too short: minimum length is 1, got 0\",\"field\":\"drafts.0.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+}
+
+#[test]
+fn an_unknown_key_inside_a_list_names_the_key_once() {
+    let unknown = ask(
+        "check-drafts",
+        &json!({ "drafts": [
+            { "references": [], "title": "Plan" },
+            { "references": [], "subtitle": "Draft", "title": "Plan" },
+        ] }),
+    );
+    assert_eq!(
+        failure_text(&unknown),
+        "{\"fault\":{\"detail\":\"'drafts.1.subtitle': unknown field `subtitle`, expected `references` or `title`\",\"field\":\"drafts.1.subtitle\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -548,6 +607,7 @@ fn an_endpoint_of_two_services_lists_their_tools_one_after_the_other() {
     assert_eq!(
         names,
         [
+            "check-drafts",
             "check-many",
             "check-maybe",
             "check-named",
@@ -757,8 +817,8 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
     assert_eq!(served, response);
     assert_eq!(
         DocumentServiceSchema::MCP_NAMES.len(),
-        10,
-        "eight tools, one resource and one template"
+        11,
+        "nine tools, one resource and one template"
     );
 }
 

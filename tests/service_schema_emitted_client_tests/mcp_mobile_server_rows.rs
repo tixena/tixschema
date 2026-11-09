@@ -6,6 +6,7 @@ use super::mcp_mobile_document::{self, McpEndpoint, McpHttpRequest, McpHttpSetti
 use super::mcp_mobile_rows::{VERSION, block_on, call, request};
 use super::mcp_mobile_service::{Archive, Sink};
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema};
+use crate::cases::FAULT_CASES;
 use crate::mcp_streams::through;
 use serde_json::{Value, json};
 
@@ -377,12 +378,25 @@ fn wrapped_model_rows() -> Vec<ServerRow> {
     ]
 }
 
-/// Every request a server is sent in a run, in order.
+/// The requests of the shared fault table, numbered from 100.
+fn fault_case_rows() -> Vec<ServerRow> {
+    (100_u64..)
+        .zip(FAULT_CASES.iter())
+        .map(|(id, case)| ServerRow {
+            matches: Match::WithoutDetail,
+            name: "a request of the fault table",
+            text: call(id, case.tool, &case.arguments()).to_string(),
+        })
+        .collect()
+}
+
+/// Every request a server is sent in a run, in order, those of the fault table last.
 pub fn server_rows() -> Vec<ServerRow> {
     let mut rows = documented_rows();
     rows.extend(operation_rows());
     rows.extend(refused_rows());
     rows.extend(wrapped_model_rows());
+    rows.extend(fault_case_rows());
     rows
 }
 

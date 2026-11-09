@@ -50,6 +50,27 @@ pub struct VersionResponse {
     pub version: u32,
 }
 
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Reference {
+    pub name: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Draft {
+    pub references: Vec<Reference>,
+    #[model_schema_prop(minLength = 1)]
+    pub title: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DraftBatch {
+    pub drafts: Vec<Draft>,
+}
+
 /// Answers what a caller owes.
 #[service_schema(transports = ["mcp"])]
 pub trait BillingService<Ctx> {
@@ -96,6 +117,14 @@ pub trait BillingService<Ctx> {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DocumentService<Ctx> {
+    /// Answers the number of drafts it was handed.
+    #[service_schema_op(mcp(title = "Count Of Drafts"))]
+    async fn check_drafts(
+        &self,
+        ctx: &Ctx,
+        req: DraftBatch,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// Answers the versions of several documents, one request for each.
     #[service_schema_op(mcp(title = "Versions Of Many"))]
     async fn check_many(
@@ -337,6 +366,16 @@ impl BillingService<()> for Archive {
 }
 
 impl<Ctx> DocumentService<Ctx> for Archive {
+    fn check_drafts(
+        &self,
+        _ctx: &Ctx,
+        req: DraftBatch,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(Ok(VersionResponse {
+            version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
+        }))
+    }
+
     fn check_many(
         &self,
         _ctx: &Ctx,

@@ -438,6 +438,14 @@ A step is a key, a position in an array, or nothing where serde writes the value
 the path an issue of the Zod schema holds, and the one the recovering decode lists. `README.md`'s
 "The path a message names" section is the consumer's view; this is what a change has to keep.
 
+A refusal of serde's own carries the same path. Each Rust reader of a message runs the read through
+`read_tracked` (`serde_path_to_error` around the deserializer), which rewrites the path into the
+dotted form above, and `refused_payload` answers `failed-validation` with the path as the field and
+as the opening of the detail; a missing key is appended to the path it was missing from, and an
+unknown key is named once, the path already ending with it. The `mcp` servers answer the same
+kind, field and detail for arguments that miss a key or hold the wrong type; the TypeScript server
+reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JSON schema.
+
 | Member | serde writes it | Reported under |
 |---|---|---|
 | a named field of a struct | under its key | `'itemLabel'` |

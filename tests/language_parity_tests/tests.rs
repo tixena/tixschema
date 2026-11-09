@@ -635,10 +635,16 @@ fn a_payload_that_parsed_and_is_not_the_message_answers_the_same_kind_in_both_la
             "`{payload}` was answered under a kind the other language does not answer it under, \
              and the kind is what a caller branches on. Got: {answered}"
         );
+        let at_a_position = payload == "[1,2,3]";
         assert_eq!(
             answered["field"],
-            serde_json::Value::Null,
-            "`{payload}` failed at no key, and there is no key to send a caller to. Got: {answered}"
+            if at_a_position {
+                serde_json::Value::from("0")
+            } else {
+                serde_json::Value::Null
+            },
+            "`{payload}` failed at no key but a position of an array, which is named, and a value \
+             that is no array has no path. Got: {answered}"
         );
         assert!(
             !answered["detail"].as_str().unwrap().contains("at line"),

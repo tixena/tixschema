@@ -468,7 +468,7 @@ pub mod a_message_annotated_with_a_constraint {
             (
                 br#"{"customer_id":42}"#.to_vec(),
                 gate_service_schema::ServiceFaultKind::FailedValidation,
-                None,
+                Some("customer_id"),
             ),
             (
                 b"{}".to_vec(),
@@ -1778,10 +1778,13 @@ fn a_payload_carrying_the_wrong_type_of_value_becomes_a_fault_and_reaches_no_imp
     assert_eq!(reported.operation(), "get-balance");
     assert_eq!(
         reported.field(),
-        None,
-        "a type mismatch says what serde expected and not where, so there is no name to carry and \
-         one carried anyway would be invented. Got: {}",
+        Some("customer_id"),
+        "a type mismatch names the path serde was at when it came. Got: {}",
         reported.detail()
+    );
+    assert_eq!(
+        reported.detail(),
+        "'customer_id': invalid type: integer `42`, expected a string"
     );
     assert!(
         !reported.detail().contains("at line"),

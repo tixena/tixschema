@@ -5,6 +5,6 @@
 
 use std::collections::HashMap;
 
-use crate::tests::{DocumentId, GetVersionRequest, VersionError, VersionResponse};
+use crate::tests::{DocumentId, DraftBatch, GetVersionRequest, VersionError, VersionResponse};
 
 document_service_mcp_client!();

@@ -43,6 +43,9 @@ const call = (id, name, args) => request(id, "tools/call", { name, arguments: ar
 const nowhere = async () => {};
 
 const impl = {
+  async checkDrafts(ctx, req) {
+    return { ok: true, value: { version: req.drafts.length } };
+  },
   async checkMany(ctx, req) {
     return { ok: true, value: { version: 7 } };
   },
@@ -358,7 +361,7 @@ export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
 export const operations = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
-export const names: readonly ["tool:check-many", "tool:check-maybe", "tool:check-named", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
+export const names: readonly ["tool:check-drafts", "tool:check-many", "tool:check-maybe", "tool:check-named", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
 
 export async function usage() {
   const client = createDocumentServiceMcpClient(transport);
@@ -605,6 +608,26 @@ pub struct GetVersionRequest {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
+pub struct Reference {
+    pub name: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Draft {
+    pub references: Vec<Reference>,
+    #[model_schema_prop(minLength = 1)]
+    pub title: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DraftBatch {
+    pub drafts: Vec<Draft>,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct VersionResponse {
     pub version: u32,
 }
@@ -646,6 +669,14 @@ pub enum BillingError {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DocumentService<Ctx> {
+    /// Answers the number of drafts it was handed.
+    #[service_schema_op(mcp(title = "Count Of Drafts"))]
+    async fn check_drafts(
+        &self,
+        ctx: &Ctx,
+        req: DraftBatch,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// Answers the versions of several documents, one request for each.
     #[service_schema_op(mcp(title = "Versions Of Many"))]
     async fn check_many(
@@ -737,6 +768,17 @@ pub trait ArchiveService<Ctx> {
 struct Stand;
 
 impl DocumentService<()> for Stand {
+    async fn check_drafts(
+        &self,
+        _ctx: &(),
+        req: DraftBatch,
+    ) -> Result<VersionResponse, VersionError> {
+        ready(()).await;
+        Ok(VersionResponse {
+            version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
+        })
+    }
+
     async fn check_many(
         &self,
         _ctx: &(),
@@ -847,6 +889,12 @@ fn bundle() -> String {
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         GetVersionRequest::ts_definition(),
         GetVersionRequest::zod_schema(),
+        Reference::ts_definition(),
+        Reference::zod_schema(),
+        Draft::ts_definition(),
+        Draft::zod_schema(),
+        DraftBatch::ts_definition(),
+        DraftBatch::zod_schema(),
         VersionResponse::ts_definition(),
         VersionResponse::zod_schema(),
         VersionError::ts_definition(),

@@ -41,6 +41,26 @@ pub enum VersionError {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Reference {
+    pub name: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Draft {
+    pub references: Vec<Reference>,
+    #[model_schema_prop(minLength = 1)]
+    pub title: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DraftBatch {
+    pub drafts: Vec<Draft>,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BalanceResponse {
     pub cents: i64,
 }
@@ -96,6 +116,14 @@ pub trait MobileDocumentService<Ctx> {
         reason: String,
         exchange: String,
     ) -> Result<(), VersionError>;
+
+    /// Answers the number of drafts it was handed.
+    #[service_schema_op(mcp(title = "Count Of Drafts"))]
+    async fn check_drafts(
+        &self,
+        ctx: &Ctx,
+        req: DraftBatch,
+    ) -> Result<VersionResponse, VersionError>;
 
     /// Answers the versions of several documents, one request for each.
     #[service_schema_op(mcp(title = "Versions Of Many"))]
@@ -240,6 +268,16 @@ impl MobileDocumentService<()> for Archive {
         _exchange: String,
     ) -> impl Future<Output = Result<(), VersionError>> {
         ready(Self::version_of(&document_id).map(|_found| ()))
+    }
+
+    fn check_drafts(
+        &self,
+        _ctx: &(),
+        req: DraftBatch,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(Ok(VersionResponse {
+            version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
+        }))
     }
 
     fn check_many(

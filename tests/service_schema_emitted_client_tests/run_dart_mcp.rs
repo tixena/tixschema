@@ -14,8 +14,9 @@ use super::mcp_dart_services::{
     Archive, AuditService, AuditServiceSchema, DartBillingService as _, DartBillingServiceSchema,
     DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequest,
     McpVersionError, McpVersionRequest, TaggingService as _, TaggingServiceSchema,
-    mcp_document_id_dart, mcp_format_dart, mcp_invoice_list_dart, mcp_invoice_request_dart,
-    mcp_version_error_dart, mcp_version_request_dart, mcp_version_response_dart,
+    mcp_document_id_dart, mcp_draft_batch_dart, mcp_draft_dart, mcp_format_dart,
+    mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_reference_dart, mcp_version_error_dart,
+    mcp_version_request_dart, mcp_version_response_dart,
 };
 use super::mcp_writer_rows::{
     assert_matches, input as writer_input, writer_refusal_dart, writer_version_dart,
@@ -63,6 +64,7 @@ void main() async {
   final touched = <String>[];
   final tags = <String?>[];
   final documents = DartDocumentServiceHandlers<void>(
+    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
@@ -215,6 +217,7 @@ const proper = <String, String>{
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
+    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
@@ -289,6 +292,7 @@ void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   var reached = 0;
   final documents = DartDocumentServiceHandlers<void>(
+    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
@@ -745,6 +749,7 @@ String call(int id, String name, Map<String, dynamic> arguments) => jsonEncode({
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
+    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
@@ -777,6 +782,9 @@ fn module(driver: &str) -> String {
         "import 'dart:convert';".to_owned(),
         "import 'dart:io';".to_owned(),
         mcp_format_dart::dart_definition(),
+        mcp_reference_dart::dart_definition(),
+        mcp_draft_dart::dart_definition(),
+        mcp_draft_batch_dart::dart_definition(),
         mcp_version_request_dart::dart_definition(),
         mcp_version_response_dart::dart_definition(),
         mcp_version_error_dart::dart_definition(),
@@ -1166,10 +1174,11 @@ fn a_message_that_does_not_read_answers_the_fault_of_what_went_wrong() {
         return;
     };
     let unread = fault_of(&driven, "unread");
-    assert_eq!(unread["kind"], "undeserializable-payload");
+    assert_eq!(unread["kind"], "failed-validation");
     assert_eq!(unread["operation"], "get-version");
     let missing = fault_of(&driven, "no_arguments");
-    assert_eq!(missing["kind"], "undeserializable-payload");
+    assert_eq!(missing["kind"], "failed-validation");
+    assert_eq!(missing["field"], "document_id");
     let bad_header = fault_of(&driven, "bad_header");
     assert_eq!(bad_header["kind"], "failed-validation");
     assert_eq!(bad_header["field"], "if-none-match");
@@ -1199,7 +1208,8 @@ fn the_faults_of_the_server_carry_the_kind_field_and_tool_the_rust_dispatcher_wr
         case.holds(&message);
     }
     let unknown_variant = fault_of(&driven, "unknown_variant");
-    assert_eq!(unknown_variant["kind"], "undeserializable-payload");
+    assert_eq!(unknown_variant["kind"], "failed-validation");
+    assert_eq!(unknown_variant["field"], "format");
     assert_eq!(unknown_variant["operation"], "get-version");
 }
 
@@ -1497,6 +1507,9 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
             "import 'dart:convert';".to_owned(),
             "import 'dart:io';".to_owned(),
             mcp_format_dart::dart_definition(),
+            mcp_reference_dart::dart_definition(),
+            mcp_draft_dart::dart_definition(),
+            mcp_draft_batch_dart::dart_definition(),
             mcp_version_request_dart::dart_definition(),
             mcp_version_response_dart::dart_definition(),
             mcp_version_error_dart::dart_definition(),
@@ -1525,7 +1538,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         return;
     };
     assert!(distinct, "{said}");
-    assert_eq!(said.trim(), "9");
+    assert_eq!(said.trim(), "10");
     let (shared, refused) = dart("endpoint-shared", &[], &endpoint("audit")).unwrap();
     assert!(!shared, "{refused}");
     assert!(

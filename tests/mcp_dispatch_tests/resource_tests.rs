@@ -357,7 +357,7 @@ fn a_completion_whose_context_is_not_strings_answers_a_fault_and_calls_nothing()
     assert_eq!(answered["error"]["code"], INVALID_PARAMS);
     assert_eq!(
         answered["error"]["data"]["fault"]["kind"],
-        "undeserializable-payload"
+        "failed-validation"
     );
     assert_eq!(*archive.reached.lock().unwrap(), Vec::<String>::new());
 }

@@ -15,9 +15,15 @@ use super::mcp_library_service::{
     book_error_kotlin, book_info_kotlin, book_request_kotlin, get_bin_request_kotlin,
     library_guide_request_kotlin, suggest_books_request_kotlin,
 };
+use super::mcp_shelf_service::{
+    assert_faults, fault_requests, get_slot_request_kotlin, shelf_label_kotlin,
+    suggest_slots_request_kotlin,
+};
 use super::runtime::ran_kotlin;
-use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema};
-use super::{bare_service_schema, depot_service_schema, library_service_schema};
+use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, ShelfServiceSchema};
+use super::{
+    bare_service_schema, depot_service_schema, library_service_schema, shelf_service_schema,
+};
 use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -111,6 +117,36 @@ object BareHandlers : BareServiceHandlers {
 
 fun nullable(text: String?): JsonElement = if (text == null) JsonNull else JsonPrimitive(text)
 "##;
+
+/// Answers the fault table's requests through the dispatcher of `ShelfService` alone and through
+/// its route.
+const FAULT_DRIVER: &str = r#"
+object ShelfHandlers : ShelfServiceHandlers {
+    override suspend fun getCount(req: UInt): ShelfServiceGetCountResult =
+        ShelfServiceGetCountResult.Ok(req.toString())
+
+    override suspend fun getSlot(req: GetSlotRequest): ShelfServiceGetSlotResult =
+        ShelfServiceGetSlotResult.Ok(req.aisle.toString() + "/" + req.slot)
+
+    override suspend fun suggestSlots(req: SuggestSlotsRequest): ShelfServiceSuggestSlotsResult =
+        ShelfServiceSuggestSlotsResult.Ok(listOf(req.typed.toString()))
+}
+
+fun main() = runBlocking {
+    val requests = Json.parseToJsonElement(INPUT).jsonArray.map { it.jsonPrimitive.content }
+    val nowhere: ShelfServiceMcpWriter = { }
+    val route = createShelfServiceMcpRoute(ShelfHandlers)
+    val alone = createShelfServiceMcpDispatcher { ShelfHandlers }
+    val host = ShelfServiceMcpHost(nowhere, ShelfServiceMcpInFlight())
+    val endpoint = ShelfServiceMcpEndpoint(shelfServiceMcpCatalog)
+    println(buildJsonObject {
+        put("alone", JsonArray(requests.map { nullable(alone(it, nowhere, ShelfServiceMcpInFlight())) }))
+        put("endpoint", JsonArray(requests.map { text ->
+            nullable(shelfServiceMcpServe(text, "Workspace", null, endpoint, host) { _, _, method, params -> route(method, params) })
+        }))
+    }.toString())
+}
+"#;
 
 const DRIVER: &str = r#"
 suspend fun report(input: JsonObject): JsonObject {
@@ -243,6 +279,28 @@ pub fn kotlin_text(text: &str) -> String {
     written
 }
 
+fn fault_module() -> String {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend([
+        shelf_label_kotlin::kotlin_definition(),
+        book_error_kotlin::kotlin_definition(),
+        get_slot_request_kotlin::kotlin_definition(),
+        suggest_slots_request_kotlin::kotlin_definition(),
+        shelf_service_schema::shelf_service_fault_fields_kotlin::kotlin_definition(),
+        shelf_service_schema::shelf_service_fault_kind_kotlin::kotlin_definition(),
+        ShelfServiceSchema::kotlin_http_client(),
+        ShelfServiceSchema::kotlin_ws_client(),
+        ShelfServiceSchema::kotlin_mcp_service(),
+    ]);
+    parts.push("fun nullable(text: String?): JsonElement = if (text == null) JsonNull else JsonPrimitive(text)".to_owned());
+    parts.push(format!(
+        "const val INPUT = \"{}\"",
+        kotlin_text(&json!(fault_requests()).to_string())
+    ));
+    parts.push(FAULT_DRIVER.to_owned());
+    parts.join("\n\n")
+}
+
 fn input(requests: &[Row], http: &[HttpRow]) -> Value {
     json!({
         "origin": ORIGIN,
@@ -363,4 +421,15 @@ fn an_endpoint_names_a_resource_and_a_template_by_their_kind_and_refuses_one_two
         report["kept"], "built",
         "a tool, a resource and a template of one text do not collide"
     );
+}
+
+#[test]
+fn a_resource_read_and_a_completion_the_kotlin_reads_refuse_answer_the_fault_the_rust_dispatcher_answers()
+ {
+    let Some(written) = ran_kotlin(&fault_module()) else {
+        return;
+    };
+    let report: Value = serde_json::from_str(written.trim()).unwrap();
+    assert_faults("alone", &texts(&report["alone"]));
+    assert_faults("endpoint", &texts(&report["endpoint"]));
 }

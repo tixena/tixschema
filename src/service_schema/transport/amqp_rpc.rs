@@ -285,14 +285,14 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
                 S: ::serde::de::DeserializeOwned,
                 E: ::serde::de::DeserializeOwned,
             {
-                let answered = match ::serde_json::from_slice::<
+                let answered = match read_reply::<
                     $crate::#module::Answered<S, ReportedError<E>>,
                 >(encoded) {
                     ::core::result::Result::Ok(answered) => answered,
                     ::core::result::Result::Err(rejected) => {
                         return ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                             operation,
-                            &rejected.to_string(),
+                            &rejected,
                         )));
                     }
                 };
@@ -324,14 +324,14 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
             where
                 E: ::serde::de::DeserializeOwned,
             {
-                let answered = match ::serde_json::from_slice::<
+                let answered = match read_reply::<
                     $crate::#module::Answered<::serde::de::IgnoredAny, ReportedError<E>>,
                 >(encoded) {
                     ::core::result::Result::Ok(answered) => answered,
                     ::core::result::Result::Err(rejected) => {
                         return ::core::result::Result::Err(#call_error::Fault(#fault::undeserializable_payload(
                             operation,
-                            &rejected.to_string(),
+                            &rejected,
                         )));
                     }
                 };
@@ -351,9 +351,54 @@ pub(super) fn answer_reader(service: &ServiceDef, generated: &Generated) -> Toke
             }
         }
     });
+    let reading = (ordinary.is_some() || unit.is_some()).then(reply_reader);
     quote! {
         #ordinary
         #unit
+        #reading
+    }
+}
+
+/// Reads a reply as a `T`, naming the dotted path of the value serde refused ahead of serde's own
+/// sentence.
+pub(super) fn reply_reader() -> TokenStream {
+    quote! {
+        fn read_reply<T>(encoded: &[u8]) -> ::core::result::Result<T, ::std::string::String>
+        where
+            T: ::serde::de::DeserializeOwned,
+        {
+            let mut reader = ::serde_json::Deserializer::from_slice(encoded);
+            match ::serde_path_to_error::deserialize::<_, T>(&mut reader) {
+                ::core::result::Result::Ok(read) => reader
+                    .end()
+                    .map(|()| read)
+                    .map_err(|rejected| rejected.to_string()),
+                ::core::result::Result::Err(refused) => {
+                    let steps: ::std::vec::Vec<::std::string::String> = refused
+                        .path()
+                        .iter()
+                        .filter_map(|step| match step {
+                            ::serde_path_to_error::Segment::Seq { index } => {
+                                ::core::option::Option::Some(index.to_string())
+                            }
+                            ::serde_path_to_error::Segment::Map { key } => {
+                                ::core::option::Option::Some(key.clone())
+                            }
+                            ::serde_path_to_error::Segment::Enum { variant } => {
+                                ::core::option::Option::Some(variant.clone())
+                            }
+                            ::serde_path_to_error::Segment::Unknown => ::core::option::Option::None,
+                        })
+                        .collect();
+                    let said = refused.inner().to_string();
+                    ::core::result::Result::Err(if steps.is_empty() {
+                        said
+                    } else {
+                        format!("'{}': {said}", steps.join("."))
+                    })
+                }
+            }
+        }
     }
 }
 
@@ -478,8 +523,11 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
         #wire => {
             // The message is read with no judgement of its own, and the validator answers next.
             let mut payload = ::serde_json::Deserializer::from_slice(message.payload());
-            let received = match $crate::#module::#reader(&mut payload)
-                .and_then(|read| payload.end().map(|()| read))
+            let received = match read_tracked(&mut payload, |tracked| $crate::#module::#reader(tracked))
+                .and_then(|read| payload.end().map(|()| read).map_err(|error| Refusal {
+                    path: ::std::string::String::new(),
+                    error,
+                }))
             {
                 ::core::result::Result::Ok(received) => received,
                 ::core::result::Result::Err(rejected) => {
@@ -1056,9 +1104,15 @@ pub(super) fn dispatcher_types(service: &ServiceDef) -> TokenStream {
     // `send` always stands here: this dispatcher's own `ReplyHandle` and `http_rest`'s implement
     // `Reply` by hand, and neither is generated conditionally on the service's own operations.
     let reply = reply_trait(contract, &module, true);
+    let refusal = if service.operations.is_empty() {
+        TokenStream::new()
+    } else {
+        refusal_type()
+    };
     quote! {
         #incoming
         #reply
+        #refusal
     }
 }
 
@@ -2059,6 +2113,17 @@ pub(super) fn placement_doc(macro_name: &Ident, module: &str, placed: &str) -> S
     )
 }
 
+/// The type a refused read is carried in, which the reader of the refusal answers for.
+pub(super) fn refusal_type() -> TokenStream {
+    quote! {
+        /// A refusal of a message's read and the path serde was at when it came.
+        struct Refusal {
+            path: ::std::string::String,
+            error: ::serde_json::Error,
+        }
+    }
+}
+
 /// Which fault a `serde_json` refusal is, and the reader of the field serde names in its own words.
 pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
     quote! {
@@ -2078,35 +2143,97 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
             ::core::option::Option::Some(field)
         }
 
+        /// Reads a message through `read` and, on a refusal, keeps the path of the value serde
+        /// refused, in the dotted form `validate()` names a member by.
+        fn read_tracked<'de, D, T, F>(deserializer: D, read: F) -> ::core::result::Result<T, Refusal>
+        where
+            D: ::serde::Deserializer<'de, Error = ::serde_json::Error>,
+            F: ::core::ops::FnOnce(
+                ::serde_path_to_error::Deserializer<'_, '_, D>,
+            ) -> ::core::result::Result<T, ::serde_json::Error>,
+        {
+            let mut track = ::serde_path_to_error::Track::new();
+            match read(::serde_path_to_error::Deserializer::new(deserializer, &mut track)) {
+                ::core::result::Result::Ok(read) => ::core::result::Result::Ok(read),
+                ::core::result::Result::Err(error) => {
+                    let steps: ::std::vec::Vec<::std::string::String> = track
+                        .path()
+                        .iter()
+                        .filter_map(|step| match step {
+                            ::serde_path_to_error::Segment::Seq { index } => {
+                                ::core::option::Option::Some(index.to_string())
+                            }
+                            ::serde_path_to_error::Segment::Map { key } => {
+                                ::core::option::Option::Some(key.clone())
+                            }
+                            ::serde_path_to_error::Segment::Enum { variant } => {
+                                ::core::option::Option::Some(variant.clone())
+                            }
+                            ::serde_path_to_error::Segment::Unknown => ::core::option::Option::None,
+                        })
+                        .collect();
+                    ::core::result::Result::Err(Refusal {
+                        path: steps.join("."),
+                        error,
+                    })
+                }
+            }
+        }
+
         /// Which fault a serde refusal is, and what it says.
         ///
         /// serde_json classifies its own refusals, and that classification is the line between the
         /// two kinds. `Syntax` and `Eof` say the bytes are not a document at all, which is a
         /// sender whose serialization is broken. `Data` says the bytes read as a document and did
         /// not match the message — a value someone supplied that the message does not admit, which
-        /// is the same failure the validator answers for and is answered under the same kind. That
-        /// is where the TypeScript service serving the same operation draws it too: its reader
-        /// parses the payload, and its schema then judges what was read, so a type mismatch and a
-        /// broken bound are one kind there and are one kind here.
+        /// is the same failure the validator answers for and is answered under the same kind.
+        ///
+        /// A `Data` refusal names the path serde was at, and the key serde says is missing or
+        /// unknown below it, so it reads as a broken bound does: `'entities.1.title': …`.
         ///
         /// The byte offset serde appends is dropped. It locates the failure inside an encoding the
         /// caller never saw, and it is removed by rebuilding it from the refusal's own line and
         /// column rather than by matching the sentence for it.
         fn refused_payload(
             operation: &str,
-            refusal: &::serde_json::Error,
+            refusal: &Refusal,
         ) -> $crate::#module::ServiceFault {
-            let reported = refusal.to_string();
+            let reported = refusal.error.to_string();
             let offset = format!(
                 " at line {} column {}",
-                refusal.line(),
-                refusal.column()
+                refusal.error.line(),
+                refusal.error.column()
             );
             let said = reported.strip_suffix(&offset).unwrap_or(reported.as_str());
-            if matches!(refusal.classify(), ::serde_json::error::Category::Data) {
-                let named = $crate::#module::named_field(said)
-                    .or_else(|| serde_named_field(said));
-                return $crate::#module::ServiceFault::failed_validation(operation, named, said);
+            if matches!(refusal.error.classify(), ::serde_json::error::Category::Data) {
+                if let ::core::option::Option::Some(field) = $crate::#module::named_field(said) {
+                    return $crate::#module::ServiceFault::failed_validation(
+                        operation,
+                        ::core::option::Option::Some(field),
+                        said,
+                    );
+                }
+                let mut path = refusal.path.clone();
+                if said.starts_with("missing field ") {
+                    if let ::core::option::Option::Some(key) = serde_named_field(said) {
+                        if !path.is_empty() {
+                            path.push('.');
+                        }
+                        path.push_str(key);
+                    }
+                }
+                if path.is_empty() {
+                    return $crate::#module::ServiceFault::failed_validation(
+                        operation,
+                        ::core::option::Option::None,
+                        said,
+                    );
+                }
+                return $crate::#module::ServiceFault::failed_validation(
+                    operation,
+                    ::core::option::Option::Some(path.as_str()),
+                    &format!("'{path}': {said}"),
+                );
             }
             $crate::#module::ServiceFault::undeserializable_payload(operation, said)
         }

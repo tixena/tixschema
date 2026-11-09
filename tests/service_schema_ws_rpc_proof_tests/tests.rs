@@ -606,7 +606,8 @@ fn a_failed_validation_becomes_a_fault_through_the_wire() {
         serde_json::json!({
             "error": {
                 "fault": {
-                    "detail": "invalid type: integer `7`, expected a string",
+                    "detail": "'document_id': invalid type: integer `7`, expected a string",
+                    "field": "document_id",
                     "kind": "failed-validation",
                     "operation": "watch",
                 },

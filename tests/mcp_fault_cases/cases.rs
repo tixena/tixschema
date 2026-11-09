@@ -4,11 +4,11 @@
 
 use serde_json::Value;
 
-pub const FAULT_CASES: [FaultCase; 11] = [
+pub const FAULT_CASES: [FaultCase; 14] = [
     FaultCase {
         arguments: r#"{"document_id":5}"#,
-        field: None,
-        kind: "undeserializable-payload",
+        field: Some("document_id"),
+        kind: "failed-validation",
         operation: "get-version",
         tool: "get-version",
     },
@@ -22,7 +22,7 @@ pub const FAULT_CASES: [FaultCase; 11] = [
     FaultCase {
         arguments: r#"{"value":5}"#,
         field: None,
-        kind: "undeserializable-payload",
+        kind: "failed-validation",
         operation: "lookup-document",
         tool: "lookup-document",
     },
@@ -34,6 +34,27 @@ pub const FAULT_CASES: [FaultCase; 11] = [
         tool: "get-tagged",
     },
     FaultCase {
+        arguments: r#"{"drafts":[{"references":[],"title":"Plan"},{"references":[]}]}"#,
+        field: Some("drafts.1.title"),
+        kind: "failed-validation",
+        operation: "check-drafts",
+        tool: "check-drafts",
+    },
+    FaultCase {
+        arguments: r#"{"drafts":[{"references":[{"name":5}],"title":"Plan"}]}"#,
+        field: Some("drafts.0.references.0.name"),
+        kind: "failed-validation",
+        operation: "check-drafts",
+        tool: "check-drafts",
+    },
+    FaultCase {
+        arguments: r#"{"drafts":[{"references":[{"name":"a"}],"title":""}]}"#,
+        field: Some("drafts.0.title"),
+        kind: "failed-validation",
+        operation: "check-drafts",
+        tool: "check-drafts",
+    },
+    FaultCase {
         arguments: r#"{"value":"panic"}"#,
         field: None,
         kind: "handler-panic",
@@ -42,8 +63,8 @@ pub const FAULT_CASES: [FaultCase; 11] = [
     },
     FaultCase {
         arguments: r#"{"value":[{"document_id":7}]}"#,
-        field: None,
-        kind: "undeserializable-payload",
+        field: Some("0.document_id"),
+        kind: "failed-validation",
         operation: "check-many",
         tool: "check-many",
     },
@@ -56,8 +77,8 @@ pub const FAULT_CASES: [FaultCase; 11] = [
     },
     FaultCase {
         arguments: r#"{"first":{"document_id":7}}"#,
-        field: None,
-        kind: "undeserializable-payload",
+        field: Some("first.document_id"),
+        kind: "failed-validation",
         operation: "check-named",
         tool: "check-named",
     },
@@ -70,8 +91,8 @@ pub const FAULT_CASES: [FaultCase; 11] = [
     },
     FaultCase {
         arguments: r#"{"value":{"document_id":7}}"#,
-        field: None,
-        kind: "undeserializable-payload",
+        field: Some("document_id"),
+        kind: "failed-validation",
         operation: "check-maybe",
         tool: "check-maybe",
     },

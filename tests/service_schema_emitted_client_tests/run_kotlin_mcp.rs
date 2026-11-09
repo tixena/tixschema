@@ -22,8 +22,9 @@ use super::mcp_mobile_server_rows::{
 };
 use super::mcp_mobile_service::Archive;
 use super::mcp_mobile_service::{
-    balance_error_kotlin, balance_response_kotlin, document_id_kotlin, get_version_request_kotlin,
-    version_error_kotlin, version_response_kotlin,
+    balance_error_kotlin, balance_response_kotlin, document_id_kotlin, draft_batch_kotlin,
+    draft_kotlin, get_version_request_kotlin, reference_kotlin, version_error_kotlin,
+    version_response_kotlin,
 };
 use super::mcp_writer_rows::{
     assert_matches, input as writer_input, writer_refusal_kotlin, writer_version_kotlin,
@@ -33,6 +34,7 @@ use super::runtime::ran_kotlin;
 use super::writer_service_schema;
 use super::{MobileBillingServiceSchema, MobileDocumentServiceSchema, WriterServiceSchema};
 use super::{mobile_billing_service_schema, mobile_document_service_schema};
+use crate::cases::FAULT_CASES;
 use crate::mcp_streams::kotlin_respond;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -53,6 +55,9 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
         "panic" -> throw IllegalStateException("the handler came apart")
         else -> null
     }
+
+    override suspend fun checkDrafts(req: DraftBatch): MobileDocumentServiceCheckDraftsResult =
+        MobileDocumentServiceCheckDraftsResult.Ok(VersionResponse(req.drafts.size.toUInt()))
 
     private fun checked(id: String?): MobileDocumentServiceCheckManyResult {
         val found = id?.let { versionOf(it) }
@@ -694,6 +699,9 @@ fn definitions() -> Vec<String> {
         version_error_kotlin::kotlin_definition(),
         get_version_request_kotlin::kotlin_definition(),
         document_id_kotlin::kotlin_definition(),
+        reference_kotlin::kotlin_definition(),
+        draft_kotlin::kotlin_definition(),
+        draft_batch_kotlin::kotlin_definition(),
         balance_response_kotlin::kotlin_definition(),
         balance_error_kotlin::kotlin_definition(),
         super::mcp_mobile_service::rename_document_request_kotlin::kotlin_definition(),
@@ -865,6 +873,38 @@ fn the_kotlin_server_answers_the_bytes_the_rust_dispatcher_answers() {
         server["kept"], "built",
         "a tool and a prompt of one name do not collide"
     );
+}
+
+#[test]
+fn the_kotlin_server_answers_every_fault_of_the_shared_table() {
+    let Some(report) = driven() else {
+        return;
+    };
+    let rows = server_rows();
+    let first = rows.len() - FAULT_CASES.len();
+    for answers in [
+        texts(&report["server"]["alone"]),
+        texts(&report["server"]["workspace"]),
+    ] {
+        for (case, answered) in FAULT_CASES.iter().zip(&answers[first..]) {
+            let text = answered.as_deref().unwrap();
+            assert_answer_valid("tools/call", text);
+            let reply: Value = serde_json::from_str(text).unwrap();
+            case.holds(&reply);
+            if let (Some(field), "check-drafts") = (case.field, case.tool) {
+                let carried: Value =
+                    serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap())
+                        .unwrap();
+                assert!(
+                    carried["fault"]["detail"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with(&format!("'{field}': ")),
+                    "{reply}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

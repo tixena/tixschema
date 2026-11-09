@@ -5,7 +5,9 @@ use crate::document_client::{DocumentServiceClient, McpMessage, Transport};
 use crate::document_mcp;
 use crate::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
 use crate::support::{Lines, assert_valid, block_on};
-use crate::tests::{Archive, DocumentId, GetVersionRequest, VersionError, VersionResponse};
+use crate::tests::{
+    Archive, DocumentId, Draft, DraftBatch, GetVersionRequest, VersionError, VersionResponse,
+};
 use core::fmt::Debug;
 use core::future::Future;
 use core::mem::take;
@@ -186,6 +188,29 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
         document_id: "doc-1".to_owned(),
     }]));
     assert_eq!(read, Ok(VersionResponse { version: 7 }));
+}
+
+#[test]
+fn a_list_of_drafts_is_read_by_the_server_and_counted() {
+    let archive = Archive::default();
+    let client = DocumentServiceClient::new(Dispatching::over(&archive));
+    let counted = block_on(client.check_drafts(DraftBatch {
+        drafts: vec![Draft {
+            references: Vec::new(),
+            title: "Plan".to_owned(),
+        }],
+    }));
+    assert_eq!(counted, Ok(VersionResponse { version: 1 }));
+}
+
+#[test]
+fn an_answer_the_read_refuses_names_the_path_of_the_value() {
+    let result = json!({ "resultType": "complete", "content": [], "structuredContent": { "version": "seven" }, "isError": false });
+    let client = DocumentServiceClient::new(Canned::answering(&result_text(&result)));
+    assert_eq!(
+        fault_of(ask(&client, "doc-1")).detail(),
+        "'version': invalid type: string \"seven\", expected u32"
+    );
 }
 
 #[test]

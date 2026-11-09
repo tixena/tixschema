@@ -28,6 +28,26 @@ pub struct McpVersionRequest {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
+pub struct McpReference {
+    pub name: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct McpDraft {
+    pub references: Vec<McpReference>,
+    #[model_schema_prop(minLength = 1)]
+    pub title: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct McpDraftBatch {
+    pub drafts: Vec<McpDraft>,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct McpVersionResponse {
     pub version: u32,
 }
@@ -59,6 +79,14 @@ pub struct McpInvoiceList {
 /// Reads and renames documents in the caller's workspace.
 #[service_schema(transports = ["mcp"])]
 pub trait DartDocumentService<Ctx> {
+    /// Answers the number of drafts it was handed.
+    #[service_schema_op(mcp(title = "Count Of Drafts"))]
+    async fn check_drafts(
+        &self,
+        ctx: &Ctx,
+        req: McpDraftBatch,
+    ) -> Result<McpVersionResponse, McpVersionError>;
+
     /// Answers the versions of several documents, one request for each.
     #[service_schema_op(mcp(title = "Versions Of Many"))]
     async fn check_many(
@@ -178,6 +206,15 @@ pub trait TaggingService<Ctx> {
 pub struct Archive;
 
 impl DartDocumentService<()> for Archive {
+    async fn check_drafts(
+        &self,
+        _ctx: &(),
+        _req: McpDraftBatch,
+    ) -> Result<McpVersionResponse, McpVersionError> {
+        ready(()).await;
+        Err(McpVersionError::NotFound)
+    }
+
     async fn check_many(
         &self,
         _ctx: &(),

@@ -2262,7 +2262,7 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
     // The message's own read would refuse a broken bound as a payload serde cannot read. The
     // arm reads it unjudged, so the validator is what answers for it, with its field.
     let deserialized = emitted
-        .find("$ crate :: billing_service_schema :: unjudged_get_open_balance (& mut payload)")
+        .find("$ crate :: billing_service_schema :: unjudged_get_open_balance (tracked)")
         .unwrap();
     let validated = emitted
         .find("$ crate :: billing_service_schema :: validated_get_open_balance (& received)")
@@ -2284,7 +2284,7 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
          result :: Result < GetOpenBalanceMessage , D :: Error >",
         "< GetOpenBalanceMessage > :: model_schema_read_unjudged (deserializer)",
         // What follows the message in the payload is refused, as `from_slice` refuses it.
-        ". and_then (| read | payload . end () . map (| () | read))",
+        ". and_then (| read | payload . end () . map (| () | read) . map_err",
     ] {
         assert!(
             emitted.contains(written),
@@ -2474,16 +2474,17 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
     );
     assert!(
         emitted.contains(
-            "let named = $ crate :: billing_service_schema :: named_field (said) . or_else \
-             (|| serde_named_field (said))"
-        ),
+            "if let :: core :: option :: Option :: Some (field) = $ crate :: \
+             billing_service_schema :: named_field (said)"
+        ) && emitted.contains("serde_named_field (said)"),
         "a serde refusal is read for a field by the reader a violation is read by — a hook hands \
          serde a validator's message verbatim — and, failing that, by serde's own naming. \
          Got: {emitted}"
     );
     assert!(
-        emitted
-            .contains("if matches ! (refusal . classify () , :: serde_json :: error :: Category"),
+        emitted.contains(
+            "if matches ! (refusal . error . classify () , :: serde_json :: error :: Category"
+        ),
         "which fault a refusal is comes off serde_json's own classification of it rather than off \
          the shape of the sentence it wrote. Got: {emitted}"
     );
@@ -2858,11 +2859,17 @@ fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_i
         ":: core :: future :: Future",
         ":: serde :: Serialize",
         ":: serde :: de :: DeserializeOwned",
-        ":: serde_json :: from_slice",
+        ":: serde_json :: Deserializer :: from_slice",
+        ":: serde_path_to_error :: deserialize",
     ] {
         assert!(code.contains(reached), "got: {code}");
     }
-    for crate_root in ["core :: ", "serde :: ", "serde_json :: "] {
+    for crate_root in [
+        "core :: ",
+        "serde :: ",
+        "serde_json :: ",
+        "serde_path_to_error :: ",
+    ] {
         assert_eq!(
             code.matches(crate_root).count(),
             code.matches(&format!(":: {crate_root}")).count(),
@@ -4058,8 +4065,8 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
 
     let client = published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_client");
     for fragment in [
-        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < VersionResponse > (response . body ()) { :: core :: result :: \
+        "let status = response . status () ; if status == 200u16 { return match read_reply :: \
+         < VersionResponse > (response . body ()) { :: core :: result :: \
          Result :: Ok (value) => { let header_out_0 : String = match response . header \
          (\"etag\") { :: core :: option :: Option :: Some (text) => match :: serde_json :: \
          from_value (:: serde_json :: Value :: String ((text) . to_owned ())) { :: core :: \
@@ -4072,13 +4079,12 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
          CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
          undeserializable_payload (\"get-version\" , \"a declared response header was missing\" \
          ,))) , } ; :: core :: result :: Result :: Ok ((value , header_out_0)) }",
-        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < CreateDocumentResponse > (response . body ()) { :: core :: result \
+        "let status = response . status () ; if status == 200u16 { return match read_reply :: \
+         < CreateDocumentResponse > (response . body ()) { :: core :: result \
          :: Result :: Ok (value) => :: core :: result :: Result :: Ok (value) , :: core :: \
          result :: Result :: Err (rejected) => :: core :: result :: Result :: Err ($ crate :: \
          document_service_schema :: CallError :: Fault ($ crate :: document_service_schema :: \
-         ServiceFault :: undeserializable_payload (\"create-document\" , & rejected . to_string \
-         ()) ,)) , } ; }",
+         ServiceFault :: undeserializable_payload (\"create-document\" , & rejected) ,)) , } ; }",
     ] {
         assert!(
             client.contains(fragment),

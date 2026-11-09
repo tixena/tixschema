@@ -28,6 +28,7 @@ publish = false
 [dependencies]
 serde = { version = \"1\", features = [\"derive\"] }
 serde_json = \"1\"
+serde_path_to_error = \"0.1\"
 tixschema = { path = \"@TIXSCHEMA@\", default-features = false, features = [\"serde\"] }
 ";
 
@@ -42,6 +43,7 @@ publish = false
 contract = { path = \"../contract\" }
 serde = { version = \"1\", features = [\"derive\"] }
 serde_json = \"1\"
+serde_path_to_error = \"0.1\"
 ";
 
 #[test]

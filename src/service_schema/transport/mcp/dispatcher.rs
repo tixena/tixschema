@@ -11,7 +11,7 @@ use crate::service_schema::parse::{
 };
 use crate::service_schema::support::{message_reader_ident, message_validator_ident, module_ident};
 use crate::service_schema::transport::amqp_rpc::{
-    call_arguments, declares_a_reply, panic_guard, placement_doc,
+    call_arguments, declares_a_reply, panic_guard, placement_doc, refusal_reader, refusal_type,
 };
 use crate::service_schema::transport::{Transport, dispatcher_macro_ident};
 use proc_macro2::TokenStream;
@@ -59,6 +59,11 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let http_authorization = http_authorization();
     let http_entry = http_entry();
     let http_serving = http_serving();
+    let refusal_type = if service.operations.is_empty() {
+        TokenStream::new()
+    } else {
+        refusal_type()
+    };
     let writer_types = writer::types();
     let writer_functions = writer::functions();
     let listen_types = listen::types();
@@ -71,6 +76,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
             () => {
                 #constants
                 #types
+                #refusal_type
                 #writer_types
                 #listen_types
                 #catalog
@@ -148,7 +154,13 @@ fn route(
     let (implementation, context, guard) = if service.operations.is_empty() {
         (quote!(_), quote!(_), TokenStream::new())
     } else {
-        (quote!(svc), quote!(ctx), panic_guard())
+        (
+            quote!(svc),
+            quote!(ctx),
+            [refusal_reader(module), panic_guard()]
+                .into_iter()
+                .collect(),
+        )
     };
     let replies = declares_a_reply(service)
         .then(|| replying_helpers(module))
@@ -345,9 +357,10 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                     ::core::option::Option::Some(held) => held,
                     ::core::option::Option::None => {
                         return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
-                            $crate::#module::ServiceFault::undeserializable_payload(
+                            $crate::#module::ServiceFault::failed_validation(
                                 #tool,
-                                "missing field `value`",
+                                ::core::option::Option::Some("value"),
+                                "'value': missing field `value`",
                             ),
                         )));
                     }
@@ -355,14 +368,11 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
             } else {
                 ::serde_json::Value::Object(arguments)
             };
-            let received = match $crate::#module::#reader(source) {
+            let received = match read_tracked(source, |tracked| $crate::#module::#reader(tracked)) {
                 ::core::result::Result::Ok(received) => received,
                 ::core::result::Result::Err(rejected) => {
                     return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
-                        $crate::#module::ServiceFault::undeserializable_payload(
-                            #tool,
-                            &::std::string::ToString::to_string(&rejected),
-                        ),
+                        refused_payload(#tool, &rejected),
                     )));
                 }
             };

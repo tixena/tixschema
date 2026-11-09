@@ -187,8 +187,29 @@ fn helpers(fault: &TokenStream) -> TokenStream {
         where
             V: ::serde::de::DeserializeOwned,
         {
-            ::serde_json::from_value(value)
-                .map_err(|rejected| unreadable(tool, &rejected.to_string()))
+            ::serde_path_to_error::deserialize(value).map_err(|rejected| {
+                let steps: ::std::vec::Vec<::std::string::String> = rejected
+                    .path()
+                    .iter()
+                    .filter_map(|step| match step {
+                        ::serde_path_to_error::Segment::Seq { index } => {
+                            ::core::option::Option::Some(index.to_string())
+                        }
+                        ::serde_path_to_error::Segment::Map { key } => {
+                            ::core::option::Option::Some(key.clone())
+                        }
+                        ::serde_path_to_error::Segment::Enum { variant } => {
+                            ::core::option::Option::Some(variant.clone())
+                        }
+                        ::serde_path_to_error::Segment::Unknown => ::core::option::Option::None,
+                    })
+                    .collect();
+                if steps.is_empty() {
+                    unreadable(tool, &rejected.inner().to_string())
+                } else {
+                    unreadable(tool, &format!("'{}': {}", steps.join("."), rejected.inner()))
+                }
+            })
         }
 
         /// The fault a value tagged `isServiceFault` carries.

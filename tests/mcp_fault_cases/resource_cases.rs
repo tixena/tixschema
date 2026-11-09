@@ -7,7 +7,7 @@ use serde_json::Value;
 pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
     ResourceFaultCase {
         field: None,
-        kind: "undeserializable-payload",
+        kind: "failed-validation",
         method: "resources/read",
         operation: "get-count",
         params: r#"{"uri":"shelf://counts/abc"}"#,
@@ -20,8 +20,8 @@ pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
         params: r#"{"uri":"shelf://aisles/too-long/slots/1"}"#,
     },
     ResourceFaultCase {
-        field: None,
-        kind: "undeserializable-payload",
+        field: Some("chosen"),
+        kind: "failed-validation",
         method: "completion/complete",
         operation: "suggest-slots",
         params: r#"{"ref":{"type":"ref/resource","uri":"shelf://aisles/{aisle}/slots/{slot}"},"argument":{"name":"slot","value":"1"},"context":{"arguments":5}}"#,
