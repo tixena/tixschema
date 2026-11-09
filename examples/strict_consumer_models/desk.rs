@@ -61,10 +61,6 @@ pub trait DeskService<Ctx> {
     /// Answers the ticket a number names.
     async fn find_ticket(&self, ctx: &Ctx, req: TicketLookup) -> Result<Ticket, TicketError>;
 
-    /// Greets the person at the desk in one line.
-    #[service_schema_op(mcp(prompt))]
-    async fn greet_in_a_line(&self, ctx: &Ctx, name: String) -> Result<String, TicketError>;
-
     /// Greets the person at the desk.
     #[service_schema_op(mcp(prompt))]
     async fn greet_visitor(

@@ -92,6 +92,28 @@ const RESOURCES: &str = r#"
     }
 "#;
 
+const MESSAGES_ONLY_PROMPTS: &str = "
+    pub trait GreetingService<Ctx> {
+        /// Greets one person.
+        #[service_schema_op(mcp(prompt))]
+        async fn greet(&self, ctx: &Ctx, name: String)
+            -> Result<Vec<greeting_service_schema::McpPromptMessage>, GreetingError>;
+    }
+";
+
+const MESSAGES_AND_A_STRING_PROMPT: &str = "
+    pub trait GreetingService<Ctx> {
+        /// Greets one person.
+        #[service_schema_op(mcp(prompt))]
+        async fn greet(&self, ctx: &Ctx, name: String)
+            -> Result<Vec<greeting_service_schema::McpPromptMessage>, GreetingError>;
+
+        /// Greets one person in a line.
+        #[service_schema_op(mcp(prompt))]
+        async fn greet_in_a_line(&self, ctx: &Ctx, name: String) -> Result<String, GreetingError>;
+    }
+";
+
 const PROMPTS: &str = r#"
     pub trait DocumentService<Ctx> {
         /// Guides the model.
@@ -138,6 +160,17 @@ fn mcp_refusals_of(source: &str) -> Vec<String> {
 
 fn expansion(arguments: TokenStream, source: &str) -> String {
     exec_service_schema(arguments, declared(source).to_token_stream()).to_string()
+}
+
+#[test]
+fn the_client_reads_the_first_text_only_where_a_prompt_answers_a_string() {
+    let arguments = || quote! { transports = ["mcp"] };
+    let messages = expansion(arguments(), MESSAGES_ONLY_PROMPTS);
+    assert!(messages.contains("fn read_messages"), "got: {messages}");
+    assert!(!messages.contains("fn first_text"), "got: {messages}");
+    let text = expansion(arguments(), MESSAGES_AND_A_STRING_PROMPT);
+    assert!(text.contains("fn first_text"), "got: {text}");
+    assert!(text.contains("fn read_messages"), "got: {text}");
 }
 
 #[test]

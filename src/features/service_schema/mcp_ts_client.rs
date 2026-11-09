@@ -311,9 +311,9 @@ async function __p__Prompt(
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
   }
   return { kind: "success", messages: result.messages };
-}
+}"#;
 
-/** The text of the first message of a prompt's result, `undefined` where it holds none. */
+const PROMPT_TEXT: &str = r#"/** The text of the first message of a prompt's result, `undefined` where it holds none. */
 function __p__PromptText(messages: unknown): string | undefined {
   const first = Array.isArray(messages) ? __p__Object(messages[0]) : undefined;
   const text = __p__Object(first?.content)?.text;
@@ -393,6 +393,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     }
     if service.operations.iter().any(OperationDef::is_mcp_prompt) {
         published.push(fill(PROMPT));
+    }
+    if service
+        .operations
+        .iter()
+        .any(|operation| operation.is_mcp_prompt() && !is_prompt_messages(operation))
+    {
+        published.push(fill(PROMPT_TEXT));
     }
     if header_out {
         published.push(fill(REPLY_HEADER));

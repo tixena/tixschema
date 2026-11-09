@@ -113,6 +113,11 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
     let helpers = helpers(fault);
     let reading_tools = tools.then(|| tool_reader(fault));
     let reading_prompts = prompting.then(|| prompt_reader(fault));
+    let texting = service
+        .operations
+        .iter()
+        .any(|operation| operation.is_mcp_prompt() && answers_a_string(operation));
+    let reading_text = texting.then(|| text_reader(fault));
     let exchange = exchange(fault, tools, prompting);
     let blocks = content_helpers(service, &generated);
     quote! {
@@ -162,6 +167,7 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
                 #helpers
                 #reading_tools
                 #reading_prompts
+                #reading_text
                 #blocks
                 #exchange
             };
@@ -291,7 +297,12 @@ fn prompt_reader(fault: &TokenStream) -> TokenStream {
                 )),
             }
         }
+    }
+}
 
+/// What reads the text of a prompt's first message, written where a prompt answers a `String`.
+fn text_reader(fault: &TokenStream) -> TokenStream {
+    quote! {
         /// The text of the first message of a prompt's result.
         fn first_text(prompt: &str, result: &::serde_json::Value) -> ::core::result::Result<::std::string::String, #fault> {
             result["messages"][0]["content"]["text"]
@@ -299,6 +310,20 @@ fn prompt_reader(fault: &TokenStream) -> TokenStream {
                 .map(::std::borrow::ToOwned::to_owned)
                 .ok_or_else(|| unreadable(prompt, "the first message holds no text"))
         }
+    }
+}
+
+fn is_a_string(success: &Type) -> bool {
+    success.to_token_stream().to_string().replace(' ', "") == "String"
+}
+
+fn answers_a_string(operation: &OperationDef) -> bool {
+    match &operation.outcome {
+        OperationOutcome::Reply {
+            error: _error,
+            success,
+        } => is_a_string(success),
+        OperationOutcome::OneWay => false,
     }
 }
 
@@ -758,7 +783,7 @@ fn prompt_read(
     call_error: &TokenStream,
     source: &TokenStream,
 ) -> TokenStream {
-    let reader = if success.to_token_stream().to_string().replace(' ', "") == "String" {
+    let reader = if is_a_string(success) {
         quote! { first_text(#tool, &#source) }
     } else {
         quote! { read_messages(#tool, &#source["messages"]) }

@@ -27,6 +27,8 @@ mod swift_mcp_client_tests;
 #[cfg(feature = "swift")]
 mod swift_ws_client_tests;
 #[cfg(all(feature = "typescript", feature = "zod"))]
+mod ts_mcp_client_tests;
+#[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_client_tests;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_server_tests;
@@ -1389,6 +1391,11 @@ fn kotlin_ws_client_of(source: &str) -> String {
 #[cfg(feature = "kotlin")]
 fn kotlin_mcp_service_of(source: &str) -> String {
     kotlin_mcp_service::emit(&parsed(source)).join("\n\n")
+}
+
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn ts_mcp_client_of(source: &str) -> String {
+    super::mcp_ts_client::emit(&parsed(source)).join("\n\n")
 }
 
 #[cfg(feature = "kotlin")]
