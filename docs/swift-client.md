@@ -58,6 +58,8 @@ the Swift client" section is the consumer's view; this is what a change to the e
 
 ### 11. The Swift read
 
+The Swift read of a strict type refuses a key no member reads, as the Rust, Zod, Dart and Kotlin reads do. A type whose keys are known (`closed_keys` in `src/features/swift.rs`: its own members, and those it flattens whose type was written above and refuses a key itself or takes known keys) writes its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)` reads the members and refuses nothing, and `init(swiftSchemaUnjudged:)` refuses a key outside the list, then calls it with no key taken. A holder, an enum under a tag and a lone slot read a type beside other keys through the first, and refuse the keys of the whole object once, in the second; a list element, a map value and a member read the type through the second. An enum under a tag alone, or under a tag and a content key, and an untagged enum refuse a key none of their variants reads in their second read; an untagged enum tries a variant's struct through its second read, unless the enum is itself handed keys. A `nonstrict` type, a type that names a function on itself, a struct under its own tag and a type that flattens a member whose keys are not known refuse nothing.
+
 Every Swift type the emitter writes has two reads: `init(swiftSchemaUnjudged:)` is the type's own,
 and `init(from:)` runs it and then `validate()`, throwing `DecodingError.dataCorrupted` with every
 message joined by `; ` under the decoder's own coding path. `README.md`'s "A Swift read refuses

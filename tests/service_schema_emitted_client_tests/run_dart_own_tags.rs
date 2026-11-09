@@ -110,6 +110,16 @@ fn definitions() -> Vec<String> {
     ]
 }
 
+/// The statements that refuse a key of `object` that is none of `keys`, in the read of `class`.
+fn refusing(object: &str, class: &str, keys: &[&str]) -> String {
+    let listed: Vec<String> = keys.iter().map(|key| format!("'{key}'")).collect();
+    format!(
+        "for (final key in {object}.keys) {{ if (!const <String>{{{}}}.contains(key)) throw \
+         FormatException('Unknown key of a {class}: $key'); }}",
+        listed.join(", ")
+    )
+}
+
 /// The statements that refuse `object` where it holds no tag `kind` of the value `named`.
 fn tag_held(object: &str, named: &str) -> String {
     format!(
@@ -128,8 +138,9 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         (
             flag_dart::dart_definition(),
             format!(
-                "factory Flag.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
+                "factory Flag.fromJsonUnjudged(Map<String, dynamic> json) {{ {} {} return \
                  Flag(label: json['label'] as String,); }}",
+                refusing("json", "Flag", &["kind", "label"]),
                 tag_held("json", "Flag")
             ),
         ),
@@ -137,30 +148,36 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             gonfalon_dart::dart_definition(),
             format!(
                 "factory Gonfalon.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-                 heldFromJson) {{ {} return Gonfalon(label: heldFromJson(json['label']),); }}",
+                 heldFromJson) {{ {} {} return Gonfalon(label: heldFromJson(json['label']),); }}",
+                refusing("json", "Gonfalon", &["kind", "label"]),
                 tag_held("json", "Gonfalon")
             ),
         ),
         (
             semaphore_dart::dart_definition(),
             format!(
-                "throw FormatException('duplicate field `$key`'); named[key] = entry.value; }} {} \
+                "throw FormatException('duplicate field `$key`'); named[key] = entry.value; }} {} {} \
                  return Semaphore(label: named['label'] as String,); }}",
+                refusing("named", "Semaphore", &["kind", "label", "name"]),
                 tag_held("named", "Semaphore")
             ),
         ),
         (
             pennant_dart::dart_definition(),
             format!(
-                "factory Pennant.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Pennant(labelling: Labelling.fromJsonUnjudged(json),note: json['note'] as \
-                 String,); }}",
+                "factory Pennant.fromJsonUnjudged(Map<String, dynamic> json) {{ {} {} return \
+                 Pennant(labelling: Labelling.fromJsonUnjudged((switch (json) {{ final whole => \
+                 {{ for (final key in const ['label']) if (whole.containsKey(key)) key: \
+                 whole[key] }} }})),note: json['note'] as String,); }}",
+                refusing("json", "Pennant", &["kind", "label", "note"]),
                 tag_held("json", "Pennant")
             ),
         ),
         (
             dressing_dart::dart_definition(),
-            "Dressing(ensign: Ensign.fromJsonUnjudged(json),north: (switch (json['north'] as \
+            "Dressing(ensign: Ensign.fromJsonUnjudged((switch (json) { final whole => { for \
+             (final key in const ['kind', 'label']) if (whole.containsKey(key)) key: whole[key] \
+             } })),north: (switch (json['north'] as \
              int) { final number when number >= 0 && number <= 255 => number, final number => \
              throw FormatException('expected an integer from 0 to 255, found $number') }),)"
                 .to_owned(),
@@ -168,8 +185,9 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         (
             ensign_dart::dart_definition(),
             format!(
-                "factory Ensign.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
+                "factory Ensign.fromJsonUnjudged(Map<String, dynamic> json) {{ {} {} return \
                  Ensign(label: json['label'] as String,); }}",
+                refusing("json", "Ensign", &["kind", "label"]),
                 tag_held("json", "Ensign")
             ),
         ),

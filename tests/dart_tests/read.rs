@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::held_numbers::{u8_held, u32_held};
+use super::unknown_keys::refusing;
 use super::validate::{
     closed_dock_dart, code_dart, consignment_dart, crate_dart, depot_dart, freight_dart,
     gauge_dart, grade_dart, haul_dart, lift_dart, manifest_dart, pair_dart, parcel_dart,
@@ -166,25 +167,28 @@ fn a_class_reads_unjudged_then_refuses_what_validate_answers() {
     assert_written(
         &parcel,
         &format!(
-            "{}=> Parcel(fragile_item_codes: (json['fragileItemCodes'] as List<dynamic>).map((e) \
-             => e as String).toList(),item_code_list: (json['itemCodeList'] as \
-             List<dynamic>).map((e) => e as String).toList(),label: json['label'] as String,); \
-             Map<String, dynamic> toJson() =>",
-            pair("Parcel", "Map<String, dynamic> json", "json")
+            "{}{{ {}return Parcel(fragile_item_codes: (json['fragileItemCodes'] as \
+             List<dynamic>).map((e) => e as String).toList(),item_code_list: (json['itemCodeList'] \
+             as List<dynamic>).map((e) => e as String).toList(),label: json['label'] as String,); \
+             }} Map<String, dynamic> toJson() =>",
+            pair("Parcel", "Map<String, dynamic> json", "json"),
+            refusing("Parcel", &["fragileItemCodes", "itemCodeList", "label"])
         ),
     );
     assert_written(
         &depot_dart::dart_definition(),
         &format!(
-            "{}=> Depot(name: json['name'] as String,);",
-            pair("Depot", "Map<String, dynamic> json", "json")
+            "{}{{ {}return Depot(name: json['name'] as String,); }}",
+            pair("Depot", "Map<String, dynamic> json", "json"),
+            refusing("Depot", &["name"])
         ),
     );
     assert_written(
         &closed_dock_dart::dart_definition(),
         &format!(
-            "{}=> ClosedDock();",
-            pair("ClosedDock", "Map<String, dynamic> json", "json")
+            "{}{{ {}return ClosedDock(); }}",
+            pair("ClosedDock", "Map<String, dynamic> json", "json"),
+            refusing("ClosedDock", &[])
         ),
     );
 }
@@ -196,14 +200,18 @@ fn a_holder_reads_what_it_names_unjudged() {
     assert_written(
         &manifest_dart::dart_definition(),
         &format!(
-            "{}=> Manifest(first_parcel: Parcel.fromJsonUnjudged(json['firstParcel']),parcel_list: \
+            "{}{{ {}return Manifest(first_parcel: Parcel.fromJsonUnjudged(json['firstParcel']),parcel_list: \
              (json['parcelList'] as List<dynamic>).map((e) => \
              Parcel.fromJsonUnjudged(e)).toList(),parcels_by_dock: Map<String, \
              Parcel>.fromEntries((json['parcelsByDock'] as Map<String, dynamic>).entries.map((e) \
              => MapEntry(e.key, Parcel.fromJsonUnjudged(e.value)))),spare_parcel: \
              (json['spareParcel'] == null ? null : \
-             Parcel.fromJsonUnjudged(json['spareParcel'])),);",
-            pair("Manifest", "Map<String, dynamic> json", "json")
+             Parcel.fromJsonUnjudged(json['spareParcel'])),); }}",
+            pair("Manifest", "Map<String, dynamic> json", "json"),
+            refusing(
+                "Manifest",
+                &["firstParcel", "parcelList", "parcelsByDock", "spareParcel"]
+            )
         ),
     );
 }
@@ -216,9 +224,10 @@ fn a_value_validate_does_not_reach_judges_itself() {
     assert_written(
         &crate_dart::dart_definition(),
         &format!(
-            "{}=> Crate(codes: (json['codes'] as List<dynamic>).map((e) => \
-             codeTypeFromJson(e)).toList(),label: json['label'] as String,);",
-            pair("Crate", converters, "json, codeTypeFromJson")
+            "{}{{ {}return Crate(codes: (json['codes'] as List<dynamic>).map((e) => \
+             codeTypeFromJson(e)).toList(),label: json['label'] as String,); }}",
+            pair("Crate", converters, "json, codeTypeFromJson"),
+            refusing("Crate", &["codes", "label"])
         ),
     );
     let hold = hold_dart::dart_definition();
@@ -336,19 +345,21 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     assert_written(
         &freight,
         &format!(
-            "{}=> FreightLoose(freight_label: json['freightLabel'] as String,); @override \
-             dynamic toJson() =>",
-            pair("FreightLoose", "Map<String, dynamic> json", "json")
+            "{}{{ {}return FreightLoose(freight_label: json['freightLabel'] as String,); }} \
+             @override dynamic toJson() =>",
+            pair("FreightLoose", "Map<String, dynamic> json", "json"),
+            refusing("FreightLoose", &["freightLabel"])
         ),
     );
     let haul = haul_dart::dart_definition();
     assert_written(
         &haul,
         &format!(
-            "{}{{ final tag = json['kind'] as String; switch (tag) {{ case 'Boxed': return \
+            "{}{{ {}final tag = json['kind'] as String; switch (tag) {{ case 'Boxed': return \
              HaulBoxed(json['held'] as String); case 'Loose': return \
              HaulLoose.fromJsonUnjudged(json['held']);",
-            pair("Haul", "Map<String, dynamic> json", "json")
+            pair("Haul", "Map<String, dynamic> json", "json"),
+            refusing("Haul", &["kind", "held"])
         ),
     );
     let lift = lift_dart::dart_definition();
@@ -364,9 +375,10 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     assert_written(
         &lift,
         &format!(
-            "{}=> LiftLoose(lift_label: json['liftLabel'] as String,); Map<String, dynamic> \
-             toJson() =>",
-            pair("LiftLoose", "Map<String, dynamic> json", "json")
+            "{}{{ {}return LiftLoose(lift_label: json['liftLabel'] as String,); }} \
+             Map<String, dynamic> toJson() =>",
+            pair("LiftLoose", "Map<String, dynamic> json", "json"),
+            refusing("LiftLoose", &["kind", "liftLabel"])
         ),
     );
 }

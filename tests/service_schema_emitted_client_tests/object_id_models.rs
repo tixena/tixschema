@@ -335,7 +335,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Cartouching",
@@ -362,7 +362,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"rewaxed":{"waxing":{"note":"n","wax":"red"}}}"#,
         kotlin: Told::Serde,
         read_as: "Rewaxed",
@@ -389,7 +389,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"waxed":{"held":"h","note":"n"}}"#,
         kotlin: Told::Serde,
         read_as: "Countersealing",
@@ -416,7 +416,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"waxed":{"kind":"Plain","note":"n"}}"#,
         kotlin: Told::Serde,
         read_as: "Waxworking",
@@ -434,7 +434,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Refused,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Refused,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Impressing",
@@ -452,7 +452,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Refused,
     },
     Row {
-        dart: Told::Serde,
+        dart: Told::Dropped,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Latewaxed",
@@ -613,6 +613,9 @@ pub struct Row {
 /// What a client's read answers of a payload.
 #[derive(Clone, Copy)]
 pub enum Told {
+    /// What a Dart class a holder fills a flattened `Option` of a type parameter with reads: the
+    /// holder without the filling, which refuses the keys of the members beside it.
+    Dropped,
     /// A refusal.
     Refused,
     /// The value serde reads, written back as serde writes it.

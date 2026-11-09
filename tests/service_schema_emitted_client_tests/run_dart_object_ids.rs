@@ -216,10 +216,7 @@ fn the_dart_text_hands_an_object_id_a_type_parameter_flattens_its_key_alone() {
         ),
         (
             crossed_dart::dart_definition(),
-            "factory Crossed.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-             heldFromJson, {Held Function(dynamic)? heldFromFlattenedJson}) => Crossed(held: \
-             (heldFromFlattenedJson ?? heldFromJson)(({...json}..remove('spare'))),remark: \
-             Notation.fromJsonUnjudged(json),spare: heldFromJson(json['spare']),);"
+            "factory Crossed.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) heldFromJson, {Held Function(dynamic)? heldFromFlattenedJson}) => Crossed(held: (heldFromFlattenedJson ?? heldFromJson)(({...json}..remove('spare'))),remark: Notation.fromJsonUnjudged((switch (json) { final whole => { for (final key in const ['note']) if (whole.containsKey(key)) key: whole[key] } })),spare: heldFromJson(json['spare']),);"
                 .to_owned(),
         ),
         (

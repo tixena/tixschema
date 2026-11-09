@@ -199,8 +199,12 @@ fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     })
     .unwrap();
     assert_eq!(written, r#"{"id":"1"}"#);
-    let read_back = serde_json::from_str::<FullySkipped>(r#"{"id":"1","roles":["x"]}"#).unwrap();
+    let read_back = serde_json::from_str::<FullySkipped>(r#"{"id":"1"}"#).unwrap();
     assert_eq!(read_back.roles, Vec::<String>::new());
+    let refused = serde_json::from_str::<FullySkipped>(r#"{"id":"1","roles":["x"]}"#)
+        .err()
+        .map(|error| error.to_string());
+    assert!(refused.is_some_and(|reason| reason.starts_with("unknown field `roles`")));
     let skipped = FullySkipped::ts_definition();
     assert!(!skipped.contains("roles"), "Got: {skipped}");
 

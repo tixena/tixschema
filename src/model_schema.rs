@@ -14,6 +14,8 @@ pub mod mcp_form;
 pub mod needs_wrapper;
 pub mod preprocess;
 pub mod ranges;
+#[cfg(feature = "serde")]
+pub mod strict;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -87,6 +89,7 @@ use crate::utils::{
 use crate::utils::{
     escape_js_regex_literal, publishes_zod_factory, record_zod_default_arguments,
     record_zod_factory, record_zod_preprocess, zod_default_arguments, zod_factory_argument,
+    zod_own_object,
 };
 
 #[cfg(feature = "arky")]
@@ -116,7 +119,9 @@ use crate::utils::{
     record_union_parameters, record_value_parameter, recorded_non_object_wire, union_parameters,
     value_parameter,
 };
-use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
+use crate::utils::{
+    TrivialPattern, is_nonstrict, record_field_validator, record_nonstrict, trivial_pattern,
+};
 
 use crate::features::serde::brand_slot;
 #[cfg(all(feature = "serde", feature = "chrono"))]
@@ -269,6 +274,7 @@ const KNOWN_ARGS: &[&str] = &[
     "minLength",
     "maxLength",
     "no_display",
+    "nonstrict",
     "default_types",
     "enable",
     "check",
@@ -1105,6 +1111,9 @@ struct ModelSchemaArgs {
     /// Opt-out of the branded newtype `Display` impl (and its inner-type assertion) for brands
     /// whose inner type is a container rather than a scalar.
     no_display: bool,
+    /// Opt-out of the closed object: a value of the type may carry a key no member declares, and
+    /// every reader reads past it.
+    nonstrict: bool,
     /// `pattern` in the spelling every surface reads the same way, or as it was written when it
     /// earned a `pattern_rejection`.
     pattern: Option<String>,
@@ -1116,6 +1125,15 @@ struct ModelSchemaArgs {
     /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
     /// check is spanned there.
     string_check: Option<(&'static str, proc_macro2::Span)>,
+}
+
+/// How a unit struct's own `Deserialize` reads: whether it judges the value with `validate()`, and
+/// whether it refuses a key, which no member declares.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy)]
+struct UnitRead {
+    publishes_validate: bool,
+    strict: bool,
 }
 
 /// One `#[serde(flatten)]` source as a surface writes it: the spelling of what its members are, and
@@ -1972,6 +1990,8 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.max_length = Some(length_arg(meta, "maxLength")?);
     } else if path.is_ident("no_display") {
         result.no_display = flag_arg(meta, "no_display")?;
+    } else if path.is_ident("nonstrict") {
+        result.nonstrict = flag_arg(meta, "nonstrict")?;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
     } else if path.is_ident("enable") {
@@ -2334,6 +2354,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = preprocess_refusal_output(&item, &parsed_args) {
         return output;
     }
+    // `nonstrict` reads past the key `deny_unknown_fields` refuses, so both on one type is refused.
+    #[cfg(feature = "serde")]
+    if let Some(output) = refused(&strict::conflict_errors(&item, &parsed_args)) {
+        return output;
+    }
     // `decode_with` generates methods on the type it is written on, and `"arky"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
     if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
@@ -2351,6 +2376,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
+    record_nonstrict(parsed_args.nonstrict);
+    #[cfg(feature = "serde")]
+    strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
     needs_wrapper::record(&item);
     #[cfg(feature = "serde")]
@@ -8512,6 +8540,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
 
+    #[cfg(feature = "serde")]
+    strict::close_struct(&mut item_struct, args);
+
     let (item_name, module_name, module_ident) =
         struct_module_idents(&name, args.name_override.as_deref());
     register_struct(&name, &item_name, &module_name, Surface::object());
@@ -8542,7 +8573,13 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
     #[cfg(feature = "serde")]
-    let unit_struct_impls = unit_struct_impls_for(&mut item_struct, !args.check.is_empty());
+    let unit_struct_impls = unit_struct_impls_for(
+        &mut item_struct,
+        UnitRead {
+            publishes_validate: !args.check.is_empty(),
+            strict: !args.nonstrict,
+        },
+    );
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
@@ -8804,11 +8841,11 @@ fn enum_output_with_decode(
 #[cfg(feature = "serde")]
 fn unit_struct_impls_for(
     item_struct: &mut syn::ItemStruct,
-    publishes_validate: bool,
+    read: UnitRead,
 ) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
         record_unit_struct(&item_struct.ident.to_string());
-        return unit_struct_serde_impls(item_struct, publishes_validate);
+        return unit_struct_serde_impls(item_struct, read);
     }
     quote! {}
 }
@@ -8828,7 +8865,7 @@ fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenSt
 #[cfg(feature = "serde")]
 fn unit_struct_serde_impls(
     item_struct: &mut syn::ItemStruct,
-    publishes_validate: bool,
+    read: UnitRead,
 ) -> proc_macro2::TokenStream {
     let name = &item_struct.ident;
     let type_name = name.to_string();
@@ -8877,7 +8914,7 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| unit_struct_read(name, publishes_validate));
+    let deserialize_impl = reads.then(|| unit_struct_read(name, read));
 
     quote! {
         #serialize_impl
@@ -8888,9 +8925,42 @@ fn unit_struct_serde_impls(
 /// The `Deserialize` of the unit struct `name`, which reads `{}`: alone, or after
 /// `model_schema_read_unjudged` where the struct publishes `validate()` or names a `preprocess`.
 #[cfg(feature = "serde")]
-fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2::TokenStream {
+fn unit_struct_read(name: &syn::Ident, how: UnitRead) -> proc_macro2::TokenStream {
+    let UnitRead {
+        publishes_validate,
+        strict,
+    } = how;
     let type_name = name.to_string();
     let expecting = format!("an empty object for `{type_name}`");
+    let entries = if strict {
+        quote! {
+            struct UnknownKey(::core::convert::Infallible);
+            impl<'de> ::serde::Deserialize<'de> for UnknownKey {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                    struct KeyVisitor;
+                    impl<'de> ::serde::de::Visitor<'de> for KeyVisitor {
+                        type Value = UnknownKey;
+                        fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                            formatter.write_str("no key")
+                        }
+                        fn visit_str<E: ::serde::de::Error>(self, key: &str) -> ::core::result::Result<Self::Value, E> {
+                            ::core::result::Result::Err(E::unknown_field(key, &[]))
+                        }
+                    }
+                    deserializer.deserialize_identifier(KeyVisitor)
+                }
+            }
+            match map.next_key::<UnknownKey>()? {
+                ::core::option::Option::Some(unknown) => match unknown.0 {},
+                ::core::option::Option::None => ::core::result::Result::Ok(#name),
+            }
+        }
+    } else {
+        quote! {
+            while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
+            ::core::result::Result::Ok(#name)
+        }
+    };
     let read = quote! {
         struct UnitStructVisitor;
         impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
@@ -8902,8 +8972,7 @@ fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2:
                 self,
                 mut map: A,
             ) -> ::core::result::Result<Self::Value, A::Error> {
-                while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-                ::core::result::Result::Ok(#name)
+                #entries
             }
         }
         deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
@@ -11474,7 +11543,15 @@ fn counted_by(ty: &syn::Type) -> Option<Counted> {
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
-fn process_enum(item_enum: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
+fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
+    #[cfg(feature = "serde")]
+    let item_enum = {
+        let mut closed = written;
+        strict::close_enum(&mut closed, args);
+        closed
+    };
+    #[cfg(not(feature = "serde"))]
+    let item_enum = written;
     let name = item_enum.ident.clone();
 
     #[cfg(feature = "serde")]
@@ -12509,7 +12586,7 @@ fn discriminated_zod_schema_code(tag_name: &str, members: &[String]) -> String {
         ts_quoted(tag_name),
         members
             .iter()
-            .map(|member| format!("z.strictObject({member})"))
+            .map(|member| format!("{}({member})", zod_own_object()))
             .collect::<Vec<_>>()
             .join(", ")
     )
@@ -12629,6 +12706,7 @@ fn named_content_json_value(
     self_type_name: &str,
     variant_name: &str,
 ) -> proc_macro2::TokenStream {
+    let open = is_nonstrict();
     let object = quote! {
         {
             let mut schema_obj = serde_json::Map::new();
@@ -12638,7 +12716,7 @@ fn named_content_json_value(
             #(#json_fields)*
             schema_obj.insert("properties".to_string(), serde_json::Value::Object(properties));
             schema_obj.insert("required".to_string(), serde_json::Value::Array(required));
-            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
+            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(#open));
             schema_obj
         }
     };
@@ -12747,7 +12825,7 @@ fn render_external_content(
 
             #[cfg(feature = "zod")]
             let zod = variant_flatten_zod(
-                &format!("z.strictObject({{\n{}}})", parts.schema_code),
+                &format!("{}({{\n{}}})", zod_own_object(), parts.schema_code),
                 &member_names(field_defs),
                 &variant.flattened_fields,
             );
@@ -13554,7 +13632,7 @@ fn render_internal_variant(
             .collect();
         #[cfg(feature = "zod")]
         let zod = variant_flatten_zod(
-            &format!("z.strictObject({})", parts.schema_code),
+            &format!("{}({})", zod_own_object(), parts.schema_code),
             &own_keys,
             &variant.flattened_fields,
         );
@@ -13598,7 +13676,8 @@ fn render_internal_variant(
     // base does: it names a `const` of its own, and one macro invocation sees one type.
     #[cfg(feature = "zod")]
     let zod = format!(
-        "z.strictObject({}).and({})",
+        "{}({}).and({})",
+        zod_own_object(),
         parts.schema_code,
         deferred_zod_operand(&inner.zod_type())
     );
@@ -13631,7 +13710,7 @@ fn entries_beside_the_tag(
     let flattened = slice::from_ref(inner);
     #[cfg(feature = "zod")]
     let zod = variant_flatten_zod(
-        &format!("z.strictObject({})", parts.schema_code),
+        &format!("{}({})", zod_own_object(), parts.schema_code),
         &[tag_name.to_owned()],
         flattened,
     );
@@ -13963,7 +14042,7 @@ fn render_untagged_named(
 
     #[cfg(feature = "zod")]
     let zod = {
-        let mut body = String::from("z.strictObject({ ");
+        let mut body = format!("{}({{ ", zod_own_object());
         for fld in field_defs {
             let zod_field_type = fld.zod_type();
             let key = ts_member_key(&ts_member_name(&fld.name));
@@ -14058,6 +14137,7 @@ fn untagged_named_json_value(
             #default_insert
         }
     });
+    let open = is_nonstrict();
     let object = quote! {
         {
             let mut object_schema = serde_json::Map::new();
@@ -14078,7 +14158,7 @@ fn untagged_named_json_value(
             );
             object_schema.insert(
                 "additionalProperties".to_string(),
-                serde_json::Value::Bool(false),
+                serde_json::Value::Bool(#open),
             );
             object_schema
         }
@@ -15076,12 +15156,13 @@ fn tagged_variant_json_object(
 ) -> proc_macro2::TokenStream {
     let discriminator_value_str = discriminator_value.to_owned();
     let tag_name_str = tag_name.to_owned();
+    let open = is_nonstrict();
     quote! {
         {
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert(
                 "additionalProperties".to_string(),
-                serde_json::Value::Bool(false),
+                serde_json::Value::Bool(#open),
             );
             let mut properties = serde_json::Map::new();
             let mut required = ::std::vec::Vec::new();
@@ -15184,7 +15265,7 @@ fn write_adjacent_named_variant_fields(
         parts.schema_code,
         "  {content_key}: {},",
         variant_flatten_zod(
-            &format!("z.strictObject({{\n{}}})", inner.schema_code),
+            &format!("{}({{\n{}}})", zod_own_object(), inner.schema_code),
             &member_names(&variant.field_defs),
             &variant.flattened_fields
         )
@@ -22412,7 +22493,7 @@ fn generate_zod_schema_method(
             show_opts,
         } = written;
         let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-        let own = format!("z.strictObject({{\n{schema_code}}}){show_opts}");
+        let own = format!("{}({{\n{schema_code}}}){show_opts}", zod_own_object());
         let (preamble, expression) = zod_merged_statements(item_name, &own, flatten_schemas);
         // Note: Example injection is handled by the delegating method on the type itself.
         let body = zod_published_binding(

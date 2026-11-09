@@ -51,7 +51,7 @@ use crate::field_type::{
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
-    compute_alias_export_name, compute_item_export_name, option_alias, to_snake_case,
+    compute_alias_export_name, compute_item_export_name, is_nonstrict, option_alias, to_snake_case,
     type_parameters_in_scope,
 };
 
@@ -767,8 +767,12 @@ fn own_tag_property(key: &str, named: &str) -> String {
 
 /// The statement that refuses the first of `left`, the Kotlin expression of the keys of an object
 /// no member read, in the words of the plugin's serializer, which refuses it under the same `Json`:
-/// one whose configuration does not ignore unknown keys, as TypeScript and Zod refuse it.
+/// one whose configuration does not ignore unknown keys, as TypeScript and Zod refuse it. A
+/// `nonstrict` type refuses nothing.
 fn unknown_key_refused(left: &str) -> String {
+    if is_nonstrict() {
+        return "run { }".to_owned();
+    }
     format!(
         "if (!input.json.configuration.ignoreUnknownKeys) {left}.firstOrNull()?.let {{ throw \
          SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}"
@@ -2666,8 +2670,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             .as_ref()
             .map_or_else(String::new, |(key, named)| own_tag_property(key, named));
         format!(
-            "{} {body} {{ {tag}{validated} }} {} {}{alias}",
+            "{}{} {body} {{ {tag}{validated} }} {} {}{alias}",
             read::kept(&export_name),
+            read::ignoring_unknown_keys(),
             kept_unjudged(
                 &export_name,
                 &generic_params,
@@ -3259,7 +3264,8 @@ fn variant_subclass(
         ),
         VariantPayload::Named(fields) => (
             format!(
-                "{annotation}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                "{annotation}{}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                read::opted_in_ignoring_unknown_keys(),
                 data_class_params(fields, Some(plugin))
             ),
             None,

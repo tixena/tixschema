@@ -106,7 +106,7 @@ pub const ROWS: [Row; 33] = [
     ),
 ];
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Formula {
@@ -116,7 +116,7 @@ pub struct Formula {
     pub path: String,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Calculation {

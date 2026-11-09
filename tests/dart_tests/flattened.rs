@@ -141,7 +141,9 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     assert_written(
         &belaying_dart::dart_definition(),
         &format!(
-            "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
+            "Belaying(bracing: Bracing.fromJsonUnjudged((switch (json) {{ final whole => {{ for (final \
+             key in const ['label']) if (whole.containsKey(key)) key: whole[key] }} }})),rest: \
+             {},);",
             keyed_from("json")
         ),
     );

@@ -173,7 +173,9 @@ mod on_a_mobile_surface {
         );
         assert!(
             definition.contains(
-                "factory TaggedMobile.fromJsonUnjudged(Map<String, dynamic> json) { if \
+                "factory TaggedMobile.fromJsonUnjudged(Map<String, dynamic> json) { for \
+                 (final key in json.keys) { if (!const <String>{'kind', 'name'}.contains(key)) \
+                 throw FormatException('Unknown key of a TaggedMobile: $key'); } if \
                  (!json.containsKey('kind')) throw FormatException('missing field `kind`'); if \
                  (json['kind'] != 'TaggedMobile') throw FormatException('expected tag \
                  \"TaggedMobile\", found ' + jsonEncode(json['kind'])); return \

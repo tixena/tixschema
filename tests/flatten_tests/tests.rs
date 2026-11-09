@@ -1007,13 +1007,13 @@ struct FlatOverSelfUntagged {
 /// An untagged enum whose members overlap: one member's key set is a subset of the other's, and
 /// the difference is a key that member omits when it is absent. serde writes the first member that
 /// matches, so the payload it writes for the narrower member is one the wider member admits too.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OverlapNarrow {
     a: String,
 }
 
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OverlapWide {
     a: String,
@@ -1039,7 +1039,7 @@ struct FlatOverOverlap {
 
 /// One object that merges both spellings of a union: a discriminated enum, whose members are
 /// exclusive, and the overlapping untagged one, whose members are not.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
 enum MixedTagged {
@@ -1345,7 +1345,7 @@ struct UntaggedFlatVariantHolder {
 
 /// The members a variant's flattened choice is built from, one key apiece so a payload names which
 /// branch wrote it.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceLeft {
     left: String,
@@ -1357,19 +1357,19 @@ struct ChoiceMiddle {
     middle: bool,
 }
 
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceRight {
     right: i64,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceUp {
     up: String,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChoiceDown {
     down: String,

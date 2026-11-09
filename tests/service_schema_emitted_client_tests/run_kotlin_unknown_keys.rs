@@ -507,19 +507,20 @@ where
     )
 }
 
-/// serde reads every payload, past the keys no member reads.
+/// serde refuses a payload that holds a key no member reads, and reads the others past the keys of
+/// a member it takes into a map or drops.
 #[test]
 fn serde_reads_past_a_key_no_member_reads() {
     let serde_told: Vec<String> = ROWS.iter().map(|row| (row.serde)(row.json)).collect();
     assert_eq!(
         serde_told,
         [
-            "read {\"label\":\"north\"}",
-            "read {\"Furled\":{\"label\":\"north\"}}",
-            "read {\"kind\":\"Furled\",\"label\":\"north\"}",
-            "read {\"kind\":\"Furled\",\"load\":{\"label\":\"north\"}}",
-            "read {\"label\":\"north\"}",
-            "read {\"label\":\"north\"}",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
             "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
             "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
             "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
@@ -532,21 +533,21 @@ fn serde_reads_past_a_key_no_member_reads() {
             "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
             "read {\"label\":\"n\",\"note\":\"a\"}",
             "read {\"other\":1}",
-            "read {\"label\":\"north\",\"note\":\"a\"}",
+            "refused",
             "read {\"label\":\"north\"}",
             "read {\"kind\":\"Furled\",\"label\":\"north\"}",
+            "refused",
+            "refused",
             BITTERED,
-            BITTERED,
-            BITTERED,
-            "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
-            "read {\"north\":{\"label\":\"n\"}}",
+            "refused",
+            "refused",
             "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Gust\",\"speed\":1}",
-            "read {\"kind\":\"Reefed\",\"note\":\"a\",\"label\":\"n\"}",
-            "read {\"kind\":\"Held\",\"label\":\"x\"}",
+            "refused",
+            "refused",
+            "refused",
             "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+            "refused",
+            "refused",
             "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
         ],
         "serde no longer reads each payload as it did"

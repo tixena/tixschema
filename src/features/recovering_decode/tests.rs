@@ -2916,14 +2916,7 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
             "Option<Inner>",
             "let mut declared = :: std :: vec :: Vec :: new () ; if < Inner > :: \
              decode_with_value_named (object) { let mut nested = :: std :: vec :: Vec :: new () ; \
-             let keys = < Inner > :: decode_with_value_fields (object , path , issue , & mut \
-             nested) ; match < Inner as serde :: Deserialize > :: deserialize (serde_json :: \
-             Value :: Object (object . clone ())) { :: core :: result :: Result :: Ok (_) => out . \
-             append (& mut nested) , :: core :: result :: Result :: Err (_) => out . push (issue \
-             (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & \
-             [\"Inner\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: Value :: \
-             Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec \
-             :: new ())) , } declared . extend (keys) ; } declared",
+             let own = < Inner > :: decode_with_value_fields (object , path , issue , & mut nested) ; let gate : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = object . iter () . filter (| (key , _) | own . contains (& key . as_str ())) . map (| (key , entry) | (key . clone () , entry . clone ())) . collect () ; match < Inner as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (gate . clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (refusal) => { if refusal . to_string () . starts_with (\"unknown field \") && ! nested . is_empty () { out . append (& mut nested) ; } else { out . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Inner\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ; } } } declared . extend (own) ; } declared",
         ),
         (
             "Inner",
@@ -4315,31 +4308,7 @@ fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
     for written in [
         "-> :: std :: vec :: Vec < & 'a str > { let mut declared = vec ! [\"title\"] ; match \
          object . get (\"title\") { :: core :: option :: Option :: Some (held) =>",
-        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = \
-         object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . \
-         map (| (key , held) | (key . clone () , held . clone ())) . collect () ; declared . \
-         extend (< Audit > :: decode_with_value_fields (& rest , path , issue , out) . \
-         into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == \
-         key) . map (:: std :: string :: String :: as_str))) ; let taken = entry_schema :: \
-         value_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & \
-         entry_schema :: Asked :: default () , & rest) ; let remaining = taken . as_ref () . \
-         unwrap_or (& rest) ; if < Extra > :: decode_with_value_named (remaining) { let mut \
-         nested = :: std :: vec :: Vec :: new () ; let keys = < Extra > :: \
-         decode_with_value_fields (remaining , path , issue , & mut nested) ; match < Extra as \
-         serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (remaining . \
-         clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core \
-         :: result :: Result :: Err (_) => out . push (issue (\"Mistyped\" , path . to_vec () , \
-         & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: \
-         Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: \
-         Option :: None , :: std :: vec :: Vec :: new ())) , } declared . extend (keys . into_iter \
-         () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . \
-         map (:: std :: string :: String :: as_str))) ; } let taken = entry_schema :: \
-         value_remaining :: < Option < Extra > , _ > (< Option < Extra > as serde :: \
-         Deserialize > :: deserialize , & entry_schema :: Asked :: default () , remaining) ; \
-         let remaining = taken . as_ref () . unwrap_or (remaining) ; declared . extend (< Fill \
-         > :: decode_with_value_fields (remaining , path , issue , out) . into_iter () . \
-         filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map \
-         (:: std :: string :: String :: as_str))) ; declared }",
+        "let rest : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect () ; declared . extend (< Audit > :: decode_with_value_fields (& rest , path , issue , out) . into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; let taken = entry_schema :: value_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & entry_schema :: Asked :: default () , & rest) ; let remaining = taken . as_ref () . unwrap_or (& rest) ; if < Extra > :: decode_with_value_named (remaining) { let mut nested = :: std :: vec :: Vec :: new () ; let own = < Extra > :: decode_with_value_fields (remaining , path , issue , & mut nested) ; let gate : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = remaining . iter () . filter (| (key , _) | own . contains (& key . as_str ())) . map (| (key , entry) | (key . clone () , entry . clone ())) . collect () ; match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (gate . clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (refusal) => { if refusal . to_string () . starts_with (\"unknown field \") && ! nested . is_empty () { out . append (& mut nested) ; } else { out . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ; } } } declared . extend (own . into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; } let taken = entry_schema :: value_remaining :: < Option < Extra > , _ > (< Option < Extra > as serde :: Deserialize > :: deserialize , & entry_schema :: Asked :: default () , remaining) ; let remaining = taken . as_ref () . unwrap_or (remaining) ; declared . extend (< Fill > :: decode_with_value_fields (remaining , path , issue , out) . into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; declared }",
     ] {
         assert!(walk.contains(written), "missing `{written}` in: {walk}");
     }
@@ -4352,7 +4321,7 @@ fn a_flattened_type_is_walked_in_the_outer_object_and_its_keys_are_declared() {
         "{ let mut declared = :: std :: vec :: Vec :: new () ; declared . extend (< Audit > :: \
          decode_with_value_fields (object , path , issue , out)) ;",
         "let taken = boxed_schema :: value_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & boxed_schema :: Asked :: default () , object) ; let remaining = taken . as_ref () . unwrap_or (object) ; if < Extra > :: decode_with_value_named (remaining) {",
-        "match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (remaining . clone ())) {",
+        "match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (gate . clone ())) {",
         "& [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)]",
     ] {
         assert!(
@@ -4413,14 +4382,7 @@ fn a_flattened_option_is_walked_where_its_type_answers_that_the_object_names_it(
         alone.contains(
             "-> :: std :: vec :: Vec < & 'a str > { let mut declared = :: std :: vec :: Vec :: new () \
              ; if < Extra > :: decode_with_value_named (object) { let mut nested = :: std :: vec \
-             :: Vec :: new () ; let keys = < Extra > :: decode_with_value_fields (object , path \
-             , issue , & mut nested) ; match < Extra as serde :: Deserialize > :: deserialize \
-             (serde_json :: Value :: Object (object . clone ())) { :: core :: result :: Result :: \
-             Ok (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (_) => out \
-             . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , \
-             (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: \
-             Value :: Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: \
-             vec :: Vec :: new ())) , } declared . extend (keys) ; } declared }"
+             :: Vec :: new () ; let own = < Extra > :: decode_with_value_fields (object , path , issue , & mut nested) ; let gate : serde_json :: Map < :: std :: string :: String , serde_json :: Value > = object . iter () . filter (| (key , _) | own . contains (& key . as_str ())) . map (| (key , entry) | (key . clone () , entry . clone ())) . collect () ; match < Extra as serde :: Deserialize > :: deserialize (serde_json :: Value :: Object (gate . clone ())) { :: core :: result :: Result :: Ok (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (refusal) => { if refusal . to_string () . starts_with (\"unknown field \") && ! nested . is_empty () { out . append (& mut nested) ; } else { out . push (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (serde_json :: Value :: Object (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new ())) ; } } } declared . extend (own) ; } declared }"
         ),
         "got: {alone}"
     );
@@ -5080,23 +5042,15 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
 fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
     let flattening = bson_fields_walk_of(FLATTENING);
     for written in [
-        "let rest : bson :: Document = object . iter () . filter (| (key , _) | ! matches ! \
-         (key . as_str () , \"title\")) . map (| (key , held) | (key . clone () , held . clone \
-         ())) . collect () ; declared . extend (< Audit > :: decode_with_bson_fields (& rest , \
-         path , issue , out) . into_iter () . filter_map (| key | object . keys () . find (| \
-         own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; let taken \
-         = entry_schema :: bson_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > \
-         :: deserialize , & entry_schema :: Asked :: default () , & rest) ; let remaining = \
-         taken . as_ref () . unwrap_or (& rest) ; if < Extra > :: decode_with_bson_named \
-         (remaining) { let mut nested = :: std :: vec :: Vec :: new () ; let keys = < Extra > :: \
-         decode_with_bson_fields (remaining , path , issue , & mut nested) ;",
+        "let rest : bson :: Document = object . iter () . filter (| (key , _) | ! matches ! (key . as_str () , \"title\")) . map (| (key , held) | (key . clone () , held . clone ())) . collect () ; declared . extend (< Audit > :: decode_with_bson_fields (& rest , path , issue , out) . into_iter () . filter_map (| key | object . keys () . find (| own | own . as_str () == key) . map (:: std :: string :: String :: as_str))) ; let taken = entry_schema :: bson_remaining :: < Audit , _ > (< Audit as serde :: Deserialize > :: deserialize , & entry_schema :: Asked :: default () , & rest) ; let remaining = taken . as_ref () . unwrap_or (& rest) ; if < Extra > :: decode_with_bson_named (remaining) { let mut nested = :: std :: vec :: Vec :: new () ; let own = < Extra > :: decode_with_bson_fields (remaining , path , issue , & mut nested) ;",
         "match < Extra as serde :: Deserialize > :: deserialize (bson :: Deserializer :: new \
-         (bson :: Bson :: Document (remaining . clone ()))) { :: core :: result :: Result :: Ok \
-         (_) => out . append (& mut nested) , :: core :: result :: Result :: Err (_) => out . push \
-         (issue (\"Mistyped\" , path . to_vec () , & [(\"Optional\" , & [] , 1) , (\"Model\" , \
-         & [\"Extra\"] , 0)] , :: core :: option :: Option :: Some (bson :: Bson :: Document \
-         (object . clone ())) , :: core :: option :: Option :: None , :: std :: vec :: Vec :: new \
-         ())) , }",
+         (bson :: Bson :: Document (gate . clone ()))) { :: core :: result :: Result :: Ok (_) => \
+         out . append (& mut nested) , :: core :: result :: Result :: Err (refusal) => { if \
+         refusal . to_string () . starts_with (\"unknown field \") && ! nested . is_empty () { out \
+         . append (& mut nested) ; } else { out . push (issue (\"Mistyped\" , path . to_vec () , & \
+         [(\"Optional\" , & [] , 1) , (\"Model\" , & [\"Extra\"] , 0)] , :: core :: option :: \
+         Option :: Some (bson :: Bson :: Document (object . clone ())) , :: core :: option :: \
+         Option :: None , :: std :: vec :: Vec :: new ())) ; } } }",
     ] {
         assert!(
             flattening.contains(written),

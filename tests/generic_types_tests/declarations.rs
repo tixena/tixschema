@@ -5142,18 +5142,18 @@ fn type_check_a_flattened_or_tagged_shape_is_read_under_zod_as_serde_reads_it() 
         flattened_zod::READ_REPORT,
         "serde reads a row otherwise than the table states"
     );
-    let strict = flattened_zod::serde_report()
-        .lines()
-        .zip(flattened_zod::read_report().lines())
-        .filter(|(serde, zod)| serde != zod)
-        .count();
+    let (serde_report, zod_report) = (flattened_zod::serde_report(), flattened_zod::read_report());
+    let divergent: Vec<&str> = flattened_zod::ROWS
+        .iter()
+        .zip(serde_report.lines().zip(zod_report.lines()))
+        .filter(|(_row, (serde, zod))| serde != zod)
+        .map(|(row, _lines)| row.name)
+        .collect();
     assert_eq!(
-        strict,
-        flattened_zod::ROWS
-            .iter()
-            .filter(|row| row.zod_refuses)
-            .count(),
-        "the rows Zod and serde read otherwise are the rows that hold a key no member reads"
+        divergent,
+        ["block: the tag of another variant"],
+        "serde refuses a key no member reads, as Zod does; the unit variant of an enum under a tag \
+         alone reads past the key of another variant"
     );
     let rows: Vec<(&str, &str, &str)> = flattened_zod::ROWS
         .iter()

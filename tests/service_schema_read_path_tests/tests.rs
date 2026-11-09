@@ -125,6 +125,8 @@ pub enum Untagged {
 pub struct Flattened {
     #[serde(flatten)]
     pub inner: Struct,
+    #[serde(default)]
+    pub note: String,
 }
 
 /// Counts what it is handed.
@@ -164,6 +166,9 @@ pub trait DocumentService<Ctx> {
 
     /// Reads an externally tagged enum.
     async fn read_variants(&self, ctx: &Ctx, req: Variants) -> Result<Tally, TallyError>;
+
+    /// Tags a draft, taking its arguments one by one.
+    async fn tag_draft(&self, ctx: &Ctx, title: String, count: u32) -> Result<Tally, TallyError>;
 }
 
 #[derive(Default)]
@@ -193,6 +198,18 @@ impl DocumentService<()> for Back {
         read_untagged: Untagged,
         read_variants: Variants,
     );
+
+    fn tag_draft(
+        &self,
+        _ctx: &(),
+        title: String,
+        count: u32,
+    ) -> impl Future<Output = Result<Tally, TallyError>> {
+        self.reached.lock().unwrap().push("tag_draft".to_owned());
+        ready(Ok(Tally {
+            drafts: count + u32::try_from(title.len()).unwrap_or(u32::MAX),
+        }))
+    }
 }
 
 struct Captured(Mutex<Option<Value>>);
@@ -359,6 +376,76 @@ fn an_unknown_key_inside_a_list_names_the_key_once_on_every_transport() {
     assert_eq!(over_amqp("check-drafts", &payload), expected);
     assert_eq!(over_ws("check-drafts", &payload), expected);
     assert_eq!(over_http("check-drafts", &payload), expected);
+}
+
+/// The fault `payload` earns for `operation` on every transport, which must be one fault.
+fn faults_everywhere(operation: &str, payload: &Value) -> Value {
+    let fault = faults(operation, payload);
+    assert_eq!(over_http(operation, payload), fault, "http_rest disagrees");
+    fault
+}
+
+#[test]
+fn an_unknown_key_in_a_generated_message_is_refused_and_the_handler_is_not_called() {
+    let payload = json!({ "title": "Plan", "count": 1_u8, "stray": 1_u8 });
+    let back = Back::default();
+    let captured = Captured(Mutex::new(None));
+    poll_once(amqp_transport::dispatch(
+        &back,
+        &(),
+        &amqp_transport::IncomingMessage::new(
+            "tag-draft".to_owned(),
+            serde_json::to_vec(&payload).unwrap(),
+            Vec::new(),
+        ),
+        &captured,
+    ))
+    .unwrap();
+    assert!(back.reached.lock().unwrap().is_empty());
+    let expected = json!({
+        "detail": "'stray': unknown field `stray`, expected `title` or `count`",
+        "field": "stray",
+        "kind": "failed-validation",
+        "operation": "tag-draft",
+    });
+    assert_eq!(captured.0.lock().unwrap().take().unwrap(), expected);
+    assert_eq!(faults_everywhere("tag-draft", &payload), expected);
+}
+
+#[test]
+fn an_unknown_key_in_a_model_nobody_marked_is_refused_inside_a_list() {
+    let payload = json!({ "drafts": [
+        { "references": [{ "name": "a", "stray": 1_u8 }], "title": "Plan" },
+    ] });
+    let expected = json!({
+        "detail": "'drafts.0.references.0.stray': unknown field `stray`, expected `name`",
+        "field": "drafts.0.references.0.stray",
+        "kind": "failed-validation",
+        "operation": "check-drafts",
+    });
+    assert_eq!(faults_everywhere("check-drafts", &payload), expected);
+}
+
+#[test]
+fn an_unknown_key_under_a_flattened_struct_or_a_tag_alone_is_refused_at_the_key() {
+    for (operation, payload) in [
+        ("read-flattened", json!({ "label": "a", "stray": 1_u8 })),
+        (
+            "read-internally-tagged",
+            json!({ "kind": "Loose", "label": "a", "stray": 1_u8 }),
+        ),
+    ] {
+        let fault = faults_everywhere(operation, &payload);
+        assert_eq!(fault["kind"], "failed-validation", "{operation}");
+        assert_eq!(fault["field"], "stray", "{operation}");
+        assert!(
+            fault["detail"]
+                .as_str()
+                .unwrap()
+                .starts_with("'stray': unknown field `stray`"),
+            "{operation}: {fault}"
+        );
+    }
 }
 
 #[test]

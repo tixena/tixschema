@@ -604,12 +604,19 @@ mod flattened_zod_rows {
     fn serde_and_validate_answer_what_the_tables_state() {
         assert_eq!(read_report(), READ_REPORT);
         assert_eq!(checked_report(&checked_cases()), CHECKED_REPORT);
-        let strict = serde_report()
-            .lines()
-            .zip(read_report().lines())
-            .filter(|(serde, zod)| serde != zod)
-            .count();
-        assert_eq!(strict, ROWS.iter().filter(|row| row.zod_refuses).count());
+        let (serde_lines, zod_lines) = (serde_report(), read_report());
+        let divergent: Vec<&str> = ROWS
+            .iter()
+            .zip(serde_lines.lines().zip(zod_lines.lines()))
+            .filter(|(_row, (serde, zod))| serde != zod)
+            .map(|(row, _lines)| row.name)
+            .collect();
+        assert_eq!(
+            divergent,
+            ["block: the tag of another variant"],
+            "serde refuses a key no member reads, as Zod does; the unit variant of an enum under \
+             a tag alone reads past the key of another variant"
+        );
     }
 
     #[test]

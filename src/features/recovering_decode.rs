@@ -1427,27 +1427,38 @@ impl Walker<'_> {
         );
         let named = source.method("named");
         let is_named = self.asked(model, &quote! { <#model>::#named(#argument) });
+        let gate = Ident::new("gate", Span::call_site());
         let (reader, whole) = (
-            source.object_reader(&handed.held),
+            source.object_reader(&gate),
             source.object_value(handed.object),
         );
         let (here, expected) = (path_expression(segments), self.expected(written));
-        let (walk, kept) = if collects {
-            let keys = handed.of_the_object(&quote! { keys });
-            (
-                quote! { let keys = #walked; },
-                quote! { declared.extend(#keys); },
-            )
+        let (held, object_type) = (&handed.held, source.object());
+        let kept = if collects {
+            let keys = handed.of_the_object(&quote! { own });
+            quote! { declared.extend(#keys); }
         } else {
-            (quote! { #walked; }, TokenStream::new())
+            TokenStream::new()
         };
         quote! {
             if #is_named {
                 let mut nested = ::std::vec::Vec::new();
-                #walk
+                let own = #walked;
+                // serde hands a flattened type the entries it declares and no others.
+                let #gate: #object_type = #held
+                    .iter()
+                    .filter(|(key, _)| own.contains(&key.as_str()))
+                    .map(|(key, entry)| (key.clone(), entry.clone()))
+                    .collect();
                 match <#model as serde::Deserialize>::deserialize(#reader) {
                     ::core::result::Result::Ok(_) => out.append(&mut nested),
-                    ::core::result::Result::Err(_) => out.push(issue("Mistyped", #here, #expected, ::core::option::Option::Some(#whole), ::core::option::Option::None, ::std::vec::Vec::new())),
+                    ::core::result::Result::Err(refusal) => {
+                        if refusal.to_string().starts_with("unknown field ") && !nested.is_empty() {
+                            out.append(&mut nested);
+                        } else {
+                            out.push(issue("Mistyped", #here, #expected, ::core::option::Option::Some(#whole), ::core::option::Option::None, ::std::vec::Vec::new()));
+                        }
+                    }
                 }
                 #kept
             }
@@ -3200,12 +3211,14 @@ fn bson_entry_methods(
             #second_read
         }
     };
+    let listed = refused_key_listed(module);
     let helpers = quote! {
         fn decode_with_bson_report(whole: &bson::Bson, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<bson::Bson>> {
             let mut out = ::std::vec::Vec::new();
             Self::#walked(whole, &[], #module::issue_from_parts, &mut out);
             if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
+                && !#listed
             {
                 out.push(#module::Issue::Undescribed { reason });
             }
@@ -3215,6 +3228,29 @@ fn bson_entry_methods(
         #operations
     };
     Entry { helpers, reads }
+}
+
+/// Whether `reason`, serde's refusal, is of a key that an `Unknown` among `out` lists.
+fn refused_key_listed(module: &Ident) -> TokenStream {
+    quote! {
+        reason
+            .strip_prefix("unknown field `")
+            .and_then(|rest| rest.split_once('`'))
+            .or_else(|| {
+                reason
+                    .strip_prefix("invalid value: string \"")
+                    .and_then(|rest| rest.split_once("\", expected "))
+            })
+            .is_some_and(|(key, _)| {
+                out.iter().any(|found| match found {
+                    #module::Issue::Unknown { path, .. } => matches!(
+                        path.0.last(),
+                        ::core::option::Option::Some(#module::Segment::Key(last)) if last == key
+                    ),
+                    _ => false,
+                })
+            })
+    }
 }
 
 /// `bson_leaf`, the bracket rule it decides `Mistyped` by, `bson_digits_settled` and
@@ -3665,12 +3701,14 @@ fn entry_methods(module: &Ident, decider: &Ident, corrects_own: bool) -> Entry {
             #second_read
         }
     };
+    let listed = refused_key_listed(module);
     let helpers = quote! {
         fn decode_with_value_report(value: &serde_json::Value, refused: ::core::option::Option<::std::string::String>) -> ::std::vec::Vec<#module::Issue<serde_json::Value>> {
             let mut out = ::std::vec::Vec::new();
             Self::#walked(value, &[], #module::issue_from_parts, &mut out);
             if let ::core::option::Option::Some(reason) = refused
                 && out.iter().all(|found| matches!(found, #module::Issue::Unknown { .. } | #module::Issue::Mistyped { .. }))
+                && !#listed
             {
                 out.push(#module::Issue::Undescribed { reason });
             }

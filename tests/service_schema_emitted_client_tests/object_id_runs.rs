@@ -20,5 +20,6 @@ pub fn printed(told: Told, read_as: &str, json: &str) -> String {
     match told {
         Told::Refused => "refused".to_owned(),
         Told::Serde => serde_told(read_as, json),
+        Told::Dropped => r#"read {"waxed":{"note":"n"}}"#.to_owned(),
     }
 }

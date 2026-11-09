@@ -35,8 +35,10 @@ use crate::field_type::{
 };
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
+#[cfg(feature = "serde")]
+use crate::utils::is_unconsumed;
 use crate::utils::{
-    MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
+    MapKeyWire, compute_alias_export_name, compute_item_export_name, is_nonstrict, to_snake_case,
     type_parameters_in_scope,
 };
 
@@ -110,6 +112,14 @@ const SWIFT_RESERVED: [&str; 51] = [
 /// The options of the formatter that reads a date of whole seconds.
 #[cfg(feature = "chrono")]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
+
+/// What the own read of a struct is written around: whether the types around it hand it keys it
+/// reads none of, the keys it refuses a key beside, and the functions it names on itself.
+struct OwnRead<'own> {
+    around: bool,
+    closed: Option<Vec<String>>,
+    corrects: &'own [FunctionName],
+}
 
 /// Whether a member is a stored property of its struct or sits in a box.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -214,6 +224,8 @@ struct VariantPayload {
     /// payload: one that names a function, and under a tag alone one whose type takes no keys.
     corrected: Option<(FieldDef, String)>,
     held: Option<String>,
+    /// The keys the payload refuses a key beside, where its read refuses one.
+    keys: Option<Vec<String>>,
     /// Whether Swift holds the payload as an optional, which `try?` reads as `nil` where its read
     /// answered `nil` and where it threw alike.
     optional: bool,
@@ -3082,9 +3094,13 @@ fn struct_body_content(
     own_tag: Option<&(String, String)>,
     validate: &str,
     owner: &str,
-    corrects: &[FunctionName],
-    around: bool,
+    read: OwnRead<'_>,
 ) -> String {
+    let OwnRead {
+        around,
+        closed,
+        corrects,
+    } = read;
     let props = fields.iter().fold(String::new(), |mut acc, field| {
         if field.held == Storage::Boxed {
             write!(
@@ -3137,6 +3153,7 @@ fn struct_body_content(
             named: owner,
             own: corrects,
             twins,
+            closed,
         },
     );
     let encode_method = if needs_encode {
@@ -3339,6 +3356,149 @@ fn indirection(name: &str) -> String {
     )
 }
 
+/// `every` with the keys of a payload added, or `None` where the payload's are not known.
+fn with_keys(every: Option<Vec<String>>, payload: Option<&Vec<String>>) -> Option<Vec<String>> {
+    every
+        .zip(payload)
+        .map(|(held, more)| held.into_iter().chain(more.iter().cloned()).collect())
+}
+
+/// `keys` unless the type is `nonstrict` or names a function on itself, which refuse no key.
+fn closed_when_strict(keys: Option<Vec<String>>, corrects: &[FunctionName]) -> Option<Vec<String>> {
+    if is_nonstrict() || !corrects.is_empty() {
+        None
+    } else {
+        keys
+    }
+}
+
+/// The key type an enum under a tag and a content key reads them through, and the keys it refuses
+/// a key beside.
+fn adjacent_keys(
+    tag_key: &str,
+    content_key: &str,
+    corrects: &[FunctionName],
+) -> (String, Option<Vec<String>>) {
+    let tagging_keys = format!(
+        "private enum SwiftSchemaAdjacentCodingKeys: String, CodingKey {{ \
+         case swiftSchemaContent = {}, swiftSchemaTag = {} }};",
+        swift_quoted(content_key),
+        swift_quoted(tag_key)
+    );
+    let closed = closed_when_strict(
+        Some(vec![tag_key.to_owned(), content_key.to_owned()]),
+        corrects,
+    );
+    (tagging_keys, closed)
+}
+
+/// The attempt that reads, and the arm that writes, an untagged variant that holds nothing: the
+/// `null` serde writes for it.
+fn null_variant(case_name: &str, decode_attempts: &mut String, encode_arms: &mut String) {
+    write!(
+        decode_attempts,
+        "if let single = try? decoder.singleValueContainer(), single.decodeNil() {{ self = .{case_name}; return }}; "
+    )
+    .unwrap();
+    write!(
+        encode_arms,
+        "case .{case_name}: var single = encoder.singleValueContainer(); try single.encodeNil(); "
+    )
+    .unwrap();
+}
+
+/// The call that holds a variant's payload to its bounds, with the function that runs them added
+/// to `choosers`, or `None` where the payload has none. `held` is the enum, the variant and the
+/// payload type.
+fn bound_check(
+    bound: &[String],
+    held: (&str, &str, &str),
+    choosers: &mut String,
+) -> Option<String> {
+    let (export_name, named, ty) = held;
+    (!bound.is_empty()).then(|| {
+        write!(
+            choosers,
+            "private static func swiftSchemaBound{named}(_ payload: {ty}) -> [String] \
+             {{ var errors: [String] = []; {}; return errors }}; ",
+            bound.join("; ")
+        )
+        .unwrap();
+        format!("{export_name}.swiftSchemaBound{named}(value).isEmpty")
+    })
+}
+
+/// The expression an untagged enum tries a variant's struct with, `read`: through the struct's own
+/// read alone, which refuses a key it does not read, where the enum is handed no keys, and
+/// through the read that takes them otherwise.
+fn checked_alone(keys: Option<&Vec<String>>, read: &str) -> String {
+    keys.filter(|_| !is_nonstrict())
+        .and_then(|_| read.strip_suffix(", swiftSchemaWithout: taken)"))
+        .map_or_else(
+            || read.to_owned(),
+            |alone| format!("(taken.isEmpty ? {alone}) : {read})"),
+        )
+}
+
+/// The keys a struct over `fields` refuses a key beside: those of its own members and of those it
+/// flattens. `None` where it refuses none: a `nonstrict` type, a type that names a function, one
+/// under a tag of its own and a type that flattens a member whose keys are not known.
+fn closed_keys(
+    fields: &[SwiftField],
+    own_tag: Option<&(String, String)>,
+    corrects: &[FunctionName],
+) -> Option<Vec<String>> {
+    if is_nonstrict() || !corrects.is_empty() || own_tag.is_some() {
+        return None;
+    }
+    let mut keys: Vec<String> = Vec::new();
+    for field in fields {
+        if field.flatten {
+            let held = if field.field_def.is_optional() {
+                validate::under_option(&field.field_def)
+            } else {
+                field.field_def.clone()
+            };
+            keys.extend(flattened_contribution(&held)?);
+        } else {
+            keys.push(field.wire_name.clone());
+            keys.extend(field.aliases.iter().cloned());
+        }
+    }
+    let mut seen = HashSet::new();
+    keys.retain(|key| seen.insert(key.clone()));
+    Some(keys)
+}
+
+/// Every key a holder takes of the flattened member typed `def`, where they are all known: the keys
+/// its type refuses a key beside, else those it takes.
+fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
+    if !preprocess::functions(def).is_empty()
+        || !preprocess::only_keys(def).is_empty()
+        || leaves_its_keys(def)
+    {
+        return None;
+    }
+    preprocess::closed_keys_of(def).or_else(|| {
+        let taken = preprocess::keys_taken_by(def);
+        (!taken.is_empty()).then_some(taken)
+    })
+}
+
+/// Whether serde leaves the keys of the type `def` holds in the object it reads them from, which
+/// its holder then cannot name.
+#[cfg(feature = "serde")]
+fn leaves_its_keys(def: &FieldDef) -> bool {
+    matches!(&def.field_type, FieldDefType::SiblingType(name, _) if is_unconsumed(name))
+}
+
+/// Whether serde leaves the keys of the type `def` holds in the object it reads them from, which
+/// its holder then cannot name.
+#[cfg(not(feature = "serde"))]
+const fn leaves_its_keys(_def: &FieldDef) -> bool {
+    false
+}
+
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or
 /// a struct-shaped variant payload earns, with the `DateTime` helpers appended when a field needs
 /// them. `rules` is what its `validate()` runs, `corrects` the functions it names on itself, and
@@ -3349,8 +3509,7 @@ fn struct_declaration(
     fields: &[SwiftField],
     own_tag: Option<&(String, String)>,
     rules: &[String],
-    corrects: &[FunctionName],
-    around: bool,
+    read: OwnRead<'_>,
 ) -> String {
     let content = struct_body_content(
         fields,
@@ -3358,8 +3517,7 @@ fn struct_declaration(
         own_tag,
         &validate::method(rules),
         export_name,
-        corrects,
-        around,
+        read,
     );
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
     let mut helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
@@ -3442,14 +3600,19 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     let mut rules = field_rules(&export_name, &fields);
     rules.extend(validate::own_checks(args.check));
     validate::note(&rust_ident, None, !rules.is_empty());
+    let closed = closed_keys(&fields, own_tag.as_ref(), args.preprocess);
+    preprocess::note_closed(&rust_ident, closed.as_deref());
     let body = struct_declaration(
         &export_name,
         &generic_params,
         &fields,
         own_tag.as_ref(),
         &rules,
-        args.preprocess,
-        false,
+        OwnRead {
+            around: false,
+            closed,
+            corrects: args.preprocess,
+        },
     );
     preprocess::note(&rust_ident, read::takes_keys(&body));
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
@@ -3614,6 +3777,11 @@ fn value_wrapper_tokens(
             named: &export_name,
             own: args.preprocess,
             twins,
+            closed: (matches!(wrapped, Wrapped::Slot)
+                && !is_nonstrict()
+                && !value_field.is_optional())
+            .then(|| preprocess::closed_keys_of(value_field))
+            .flatten(),
             ..preprocess::Written::default()
         },
     );
@@ -3905,6 +4073,7 @@ fn resolve_variant_payload(
             converted: None,
             corrected: None,
             held: None,
+            keys: Some(Vec::new()),
             optional: false,
             rules: Vec::new(),
             takes_keys: false,
@@ -3955,14 +4124,18 @@ fn named_payload(
     let generic_params = bounded_generic_params(&named_parameters);
     // Under a tag alone the payload is read from the object the tag is in, so it takes the keys
     // the enum hands it, the tag among them, where no member of its own reads one.
+    let keys = closed_keys(&fields, None, &[]);
     let declared = struct_declaration(
         &struct_name,
         &generic_params,
         &fields,
         None,
         &members,
-        &[],
-        shape.tag_attrs.tag_alone(),
+        OwnRead {
+            around: shape.tag_attrs.tag_alone(),
+            closed: keys.clone(),
+            corrects: &[],
+        },
     );
     let takes_keys = read::takes_keys(&declared);
     aux.push(declared);
@@ -3986,6 +4159,7 @@ fn named_payload(
         converted: None,
         corrected: None,
         held: Some(held_at(&struct_name, &generic_params)),
+        keys,
         optional: false,
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
         takes_keys,
@@ -4050,6 +4224,7 @@ fn slot_payload(
         converted: (slot.converts() || read::holds_a_length(&slot.def)).then_some(slot),
         corrected,
         held: Some(held),
+        keys: flattened_contribution(&field_def),
         optional: held_as_optional(&field_def),
         rules,
         takes_keys: false,
@@ -4105,6 +4280,7 @@ fn slots_payload(
         converted: None,
         corrected: None,
         held: Some(held),
+        keys: None,
         optional: false,
         rules: validate::payload_rules(export_name, step, checked),
         takes_keys: false,
@@ -4271,6 +4447,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             named: export_name,
             own: args.preprocess,
             twins,
+            closed: None,
         },
     );
     let encode_method = format!(
@@ -4342,6 +4519,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let mut ruled: Vec<(String, Vec<String>)> = Vec::new();
     let mut slots: Vec<SwiftFieldShape> = Vec::new();
     let mut twins = Vec::new();
+    let mut variant_keys: Option<Vec<String>> = Some(vec![tag_key.to_owned()]);
     // A payload is read from the object the tag is in, and is not handed the tag.
     let source = read::Source::Beside(preprocess::taken_with(iter::once(tag_key)));
     for variant in &item_enum.variants {
@@ -4359,6 +4537,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
+        variant_keys = with_keys(variant_keys, payload.keys.as_ref());
         if payload.held.is_some() {
             let from = VariantRead {
                 keys: "",
@@ -4403,6 +4582,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             named: export_name,
             own: args.preprocess,
             twins,
+            closed: closed_when_strict(variant_keys, args.preprocess),
         },
     );
     let encode_method = format!(
@@ -4504,12 +4684,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             encode_arms.push_str(&tagged_encode_arm(&case_name, &wire_tag, None));
         }
     }
-    let tagging_keys = format!(
-        "private enum SwiftSchemaAdjacentCodingKeys: String, CodingKey {{ \
-         case swiftSchemaContent = {}, swiftSchemaTag = {} }};",
-        swift_quoted(content_key),
-        swift_quoted(tag_key)
-    );
+    let (tagging_keys, closed) = adjacent_keys(tag_key, content_key, args.preprocess);
     let reads = read::both(
         &format!(
             "let container = try decoder.container(keyedBy: SwiftSchemaAdjacentCodingKeys.self); \
@@ -4521,6 +4696,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             named: export_name,
             own: args.preprocess,
             twins,
+            closed,
         },
     );
     let encode_method = format!(
@@ -4559,6 +4735,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     let mut twins = Vec::new();
     // A payload is read from the decoder of the enum, and is handed the keys the enum is.
     let source = read::Source::Beside(preprocess::taken_with(iter::empty()));
+    let mut variant_keys: Option<Vec<String>> = Some(Vec::new());
     for variant in &item_enum.variants {
         let rust_name = variant.ident.to_string();
         let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
@@ -4572,6 +4749,9 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
+        if payload.held.is_some() {
+            variant_keys = with_keys(variant_keys, payload.keys.as_ref());
+        }
         if let Some(ty) = &payload.held {
             let named = variant.ident.unraw();
             let from = VariantRead {
@@ -4581,17 +4761,15 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             };
             let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
             let reader = format!("swiftSchemaRead{named}");
-            let tried = tried_read(&returned, export_name, &reader, ty, &mut choosers);
-            let check = (!payload.bound.is_empty()).then(|| {
-                write!(
-                    choosers,
-                    "private static func swiftSchemaBound{named}(_ payload: {ty}) -> [String] \
-                     {{ var errors: [String] = []; {}; return errors }}; ",
-                    payload.bound.join("; ")
-                )
-                .unwrap();
-                format!("{export_name}.swiftSchemaBound{named}(value).isEmpty")
-            });
+            let tried = checked_alone(
+                payload.keys.as_ref(),
+                &tried_read(&returned, export_name, &reader, ty, &mut choosers),
+            );
+            let check = bound_check(
+                &payload.bound,
+                (export_name, &named.to_string(), ty),
+                &mut choosers,
+            );
             decode_attempts.push_str(&untagged_attempt(
                 &case_name,
                 &tried,
@@ -4605,16 +4783,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             )
             .unwrap();
         } else {
-            write!(
-                decode_attempts,
-                "if let single = try? decoder.singleValueContainer(), single.decodeNil() {{ self = .{case_name}; return }}; "
-            )
-            .unwrap();
-            write!(
-                encode_arms,
-                "case .{case_name}: var single = encoder.singleValueContainer(); try single.encodeNil(); "
-            )
-            .unwrap();
+            null_variant(&case_name, &mut decode_attempts, &mut encode_arms);
         }
     }
     let reads = read::both(
@@ -4626,6 +4795,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             named: export_name,
             own: args.preprocess,
             twins,
+            closed: closed_when_strict(variant_keys, args.preprocess),
         },
     );
     let encode_method = format!(

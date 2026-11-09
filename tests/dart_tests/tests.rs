@@ -891,9 +891,11 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
          ReservedMembers.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) => \
+         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) { for (final key \
+         in json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
+         FormatException('Unknown key of a ReservedMembers: $key'); } return \
          ReservedMembers(class_: json['class'] as String,in_: json['in'] as String,type: \
-         json['type'] as String,); Map<String, dynamic> toJson() => { 'class': class_,'in': \
+         json['type'] as String,); } Map<String, dynamic> toJson() => { 'class': class_,'in': \
          in_,'type': type, }; List<String> validate() => const []; }"
     );
     assert_eq!(

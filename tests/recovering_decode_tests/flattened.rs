@@ -187,20 +187,20 @@ struct Filed {
     title: String,
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByMail {
     address: String,
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByPhone {
     digits: String,
 }
 
 /// Untagged, every variant an object: two model types and a variant with a field of its own.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Channel {
@@ -234,7 +234,7 @@ struct Releases {
 }
 
 /// A model type that carries no flag: it only ever fills a parameter.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Body {
     text: String,
@@ -288,7 +288,7 @@ enum Queued {
 }
 
 /// Untagged, with a struct variant that flattens a field.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Seen {
@@ -988,7 +988,7 @@ fn two_flattened_types_each_declare_their_keys() {
         "source": "import",
         "title": "t",
     });
-    assert!(serde_reads::<Filed>(&stored));
+    assert!(!serde_reads::<Filed>(&stored));
     let mut out: Vec<filed_schema::Issue<Value>> = Vec::new();
     assert_eq!(
         Filed::decode_with_value_fields(
@@ -1253,7 +1253,7 @@ fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alo
         ]
     );
     let undeclared = json!({ "legacy": true, "title": "t" });
-    assert!(serde_reads::<Whole>(&undeclared));
+    assert!(!serde_reads::<Whole>(&undeclared));
     assert_eq!(
         listed!(Whole, whole_schema, undeclared),
         ["legacy: unknown: found Bool(true)"]

@@ -960,6 +960,59 @@ pub fn forget_checks() {
     NAMED_CHECKS.with(|held| *held.borrow_mut() = NamedChecks::default());
 }
 
+#[cfg(feature = "serde")]
+thread_local! {
+    /// The names `#[model_schema]` has been written on so far whose keys serde does not take off the
+    /// object it reads them from when they are flattened, so that a holder which refuses an unknown
+    /// key refuses them too.
+    static UNCONSUMED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+thread_local! {
+    /// Whether the item being expanded is written `nonstrict`.
+    static NONSTRICT: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// Whether serde leaves the keys of `rust_ident` in the object it reads a holder from when the type is
+/// flattened, where `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn is_unconsumed(rust_ident: &str) -> bool {
+    UNCONSUMED.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether serde leaves the keys of `rust_ident` in the object it is flattened from.
+#[cfg(feature = "serde")]
+pub fn record_unconsumed(rust_ident: &str, unconsumed: bool) {
+    UNCONSUMED.with(|names| {
+        if unconsumed {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether the item being expanded is written `nonstrict`: every surface leaves its own object
+/// open to a key no member declares.
+pub fn is_nonstrict() -> bool {
+    NONSTRICT.with(|held| *held.borrow())
+}
+
+/// Records whether the item being expanded is written `nonstrict`.
+pub fn record_nonstrict(nonstrict: bool) {
+    NONSTRICT.with(|held| *held.borrow_mut() = nonstrict);
+}
+
+/// The Zod constructor of the object a struct or a struct variant is read as.
+#[cfg(feature = "zod")]
+pub fn zod_own_object() -> &'static str {
+    if is_nonstrict() {
+        "z.object"
+    } else {
+        "z.strictObject"
+    }
+}
+
 /// Whether the item being expanded names a check, on itself or on a member.
 pub fn names_a_check() -> bool {
     NAMED_CHECKS.with(|held| held.borrow().named)

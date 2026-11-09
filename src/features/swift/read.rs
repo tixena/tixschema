@@ -305,6 +305,29 @@ pub(super) fn takes_keys(reads: &str) -> bool {
     reads.contains(TAKING)
 }
 
+/// The statements that throw for a key of the object `decoder` holds that is none of `keys`, as
+/// serde does for a type that refuses a key beside its own. A type read as the whole payload a
+/// holder hands it (`SwiftSchemaPayload.read`) is handed the keys of the members beside it, and
+/// refuses none.
+pub(super) fn refusing_unknown(keys: &[String]) -> String {
+    let unlisted = if keys.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "where !{}.contains(unknown.stringValue) ",
+            preprocess::listed(keys)
+        )
+    };
+    format!(
+        "if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ \
+         for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys \
+         {unlisted}{{ throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+         decoder.codingPath + [unknown], debugDescription: \"unknown field \
+         `\\(unknown.stringValue)`\")) }} }}; "
+    )
+}
+
 /// The reads of a type whose own statements are `body`: its own, and the one that judges. Its own
 /// is written twice where it takes the keys the types around the type took, and reads `body`
 /// from what the type's functions answer where it names some. The types they name come first.
@@ -315,11 +338,16 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         held
     });
     let read = format!("{}{twins}{body}", written.beside);
+    let refused = written
+        .closed
+        .as_deref()
+        .filter(|_| written.own.is_empty())
+        .map(refusing_unknown);
     // An untagged enum writes the key type its readers name ahead of them.
     let key = if written.beside.contains("SwiftSchemaAnyKey.self") {
         String::new()
     } else {
-        any_key(&read)
+        any_key(&format!("{read}{}", refused.as_deref().unwrap_or_default()))
     };
     let payload = if !written.own.is_empty() || read.contains("SwiftSchemaPayload") {
         format!("{}; ", preprocess::payload_for(&read))
@@ -328,6 +356,12 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
     };
     let taking = names_taken(body) || names_taken(written.beside);
     let opened = format!("{key}{payload}{twins}");
+    if let Some(refusing) = refused {
+        return format!(
+            "{opened}public {TAKING} {{ {body} }}; public {UNJUDGED} {{ {refusing}\
+             try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }}; {JUDGED}; "
+        );
+    }
     if written.own.is_empty() {
         return if taking {
             format!("{opened}public {TAKING} {{ {body} }}; {ALONE}; {JUDGED}; ")

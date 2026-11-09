@@ -82,14 +82,14 @@ struct Counts {
 }
 
 /// A struct with a named field.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Rev {
     revision: String,
 }
 
 /// A struct that itself flattens a struct, which serde reads as a map.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notes {
     #[serde(flatten)]
@@ -98,7 +98,7 @@ struct Notes {
 }
 
 /// A plain enum: flattened, serde writes the variant's name as a key holding `null`.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Mood {
     Calm,
@@ -106,7 +106,7 @@ enum Mood {
 }
 
 /// Externally tagged: `{"Curved": {"radius": 1.5}}`, `{"Straight": null}`.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum Border {
     Curved { radius: f64 },
@@ -114,7 +114,7 @@ enum Border {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Tint {
@@ -123,7 +123,7 @@ enum Tint {
 }
 
 /// Adjacently tagged: `{"rim": "Dotted", "data": {"gap": 2}}`, `{"rim": "Plain"}`.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "rim", content = "data")]
 enum Rim {
@@ -132,7 +132,7 @@ enum Rim {
 }
 
 /// Untagged, each variant an object with a key of its own.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Via {

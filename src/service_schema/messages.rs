@@ -139,6 +139,7 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool, jsonschema: bool) 
     let named = &declared.ident;
     let sealed = exhaustiveness(non_exhaustive);
     let model_schema = model_schema_attribute(jsonschema);
+    let closed = (!declared.fields.is_empty()).then(|| quote! { #[serde(deny_unknown_fields)] });
     let members = declared.fields.iter().map(|(field, carried)| {
         if is_option_type(carried) {
             // `#[model_schema()]` requires an `Option<T>` field to say what an absent value does on
@@ -160,6 +161,7 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool, jsonschema: bool) 
         #model_schema
         #[derive(::serde::Serialize, ::serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
+        #closed
         #sealed
         pub struct #named {
             #(#members,)*

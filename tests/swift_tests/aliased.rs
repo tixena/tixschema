@@ -36,9 +36,7 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         assert!(surging.contains(held), "no `{held}` in: {surging}");
     }
     let careening = careening_swift::swift_definition();
-    let arms = "switch tag { case \"Berth\", \"Pier\": self = .berth(try \
-                CareeningBerthPayload(swiftSchemaUnjudged: decoder)); case \"Calm\", \"Still\": \
-                self = .calm;  default:";
+    let arms = "switch tag { case \"Berth\", \"Pier\": self = .berth(try CareeningBerthPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); case \"Calm\", \"Still\": self = .calm;  default:";
     assert!(careening.contains(arms), "no `{arms}` in: {careening}");
     let scending = scending_swift::swift_definition();
     for held in [
@@ -118,7 +116,8 @@ fn a_variant_reads_a_member_under_its_alias() {
              {{ self.label = label;  }}; private struct SwiftSchemaAnyKey: CodingKey {{ var \
              stringValue: String; var intValue: Int? {{ nil }}; init?(stringValue: String) {{ \
              self.stringValue = stringValue }}; init?(intValue: Int) {{ nil }} }}; public \
-             init(swiftSchemaUnjudged decoder: Decoder) throws {{ {LABEL_OR_NAME} }};"
+             init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {{ \
+             {LABEL_OR_NAME} }};"
         );
         assert!(text.contains(&held), "no `{held}` in: {text}");
     }
@@ -142,16 +141,7 @@ fn a_member_flattened_after_one_under_an_alias_is_handed_neither_name() {
 fn a_struct_with_no_alias_is_read_as_it_was() {
     assert_eq!(
         pennon_swift::swift_definition(),
-        "public struct Pennon: Codable, Sendable { public let keys: [String]; enum CodingKeys: \
-         String, CodingKey { case keys;  }; public init(keys: [String]) { self.keys = keys;  }; \
-         public init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try \
-         decoder.container(keyedBy: CodingKeys.self); self.keys = try \
-         container.decode([String].self, forKey: .keys) }; public init(from decoder: Decoder) \
-         throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
-         !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
-         codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \
-         \"))) } }; public func validate() -> [String] { [] }; public func \
-         swiftSchemaValidateBound() -> [String] { [] } }; ",
+        "public struct Pennon: Codable, Sendable { public let keys: [String]; enum CodingKeys: String, CodingKey { case keys;  }; public init(keys: [String]) { self.keys = keys;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.keys = try container.decode([String].self, forKey: .keys) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"keys\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } }; ",
         "the text of a struct with no alias"
     );
 }

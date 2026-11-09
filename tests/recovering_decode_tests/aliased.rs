@@ -248,7 +248,7 @@ fn a_type_declared_below_is_walked_by_its_own_walker_or_read_whole() {
             "flagged.number: invalid: expected I32, found String(\"n\"): invalid type: string \"n\", expected i32",
             "flagged.extra: unknown: found Bool(true)",
             "pairs: invalid: expected Unknown, found Object {\"b\": String(\"y\")}: invalid type: string \"y\", expected i32",
-            "plain: invalid: expected Unknown, found Object {\"extra\": Bool(true), \"number\": String(\"n\")}: invalid type: string \"n\", expected i32",
+            "plain: invalid: expected Unknown, found Object {\"extra\": Bool(true), \"number\": String(\"n\")}: unknown field `extra`, expected `number`",
         ]
     );
     let mut calls = 0_u32;

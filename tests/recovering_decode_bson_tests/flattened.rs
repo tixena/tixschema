@@ -256,20 +256,20 @@ struct Filed {
     title: String,
 }
 
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByMail {
     address: String,
 }
 
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ByPhone {
     digits: String,
 }
 
 /// Untagged, every variant a document: two model types and a variant with a field of its own.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Channel {
@@ -311,7 +311,7 @@ struct Releases {
 }
 
 /// A model type that carries no flag: it only ever fills a parameter.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Body {
     text: String,
@@ -365,7 +365,7 @@ enum Queued {
 }
 
 /// Untagged, with a struct variant that flattens a field.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Seen {
@@ -1236,7 +1236,7 @@ fn two_flattened_types_each_declare_their_keys() {
         "source": "import",
         "title": "t",
     };
-    assert!(serde_reads::<Filed>(&stored_row));
+    assert!(!serde_reads::<Filed>(&stored_row));
     let mut out: Vec<filed_schema::Issue<Bson>> = Vec::new();
     assert_eq!(
         Filed::decode_with_bson_fields(&stored_row, &[], filed_schema::issue_from_parts, &mut out),
@@ -1436,7 +1436,7 @@ fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alo
         [invalid("title", "String", Bson::Int32(5))]
     );
     let undeclared = doc! { "legacy": true, "title": "t" };
-    assert!(serde_reads::<Whole>(&undeclared));
+    assert!(!serde_reads::<Whole>(&undeclared));
     assert_eq!(
         listed!(Whole, whole_schema, undeclared),
         [unknown("legacy", Bson::Boolean(true))]

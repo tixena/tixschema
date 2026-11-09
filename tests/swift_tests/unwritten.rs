@@ -54,7 +54,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
                         container.encode(self.note, forKey: .note) };";
     let flemishing = flemishing_swift::swift_definition();
     for held in [
-        "self.braiding = try Braiding(from: decoder) } else { self.braiding = nil }",
+        "self.braiding = try Braiding(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) } else { self.braiding = nil }",
         encoded_note,
     ] {
         assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
@@ -62,7 +62,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
     let splaying = splaying_swift::swift_definition();
     for held in [
         "public let braiding: Braiding;",
-        "self.braiding = try Braiding(from: decoder);",
+        "self.braiding = try Braiding(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]); self.note = try container.decode(String.self, forKey: .note) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"label\", \"note\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder);",
         encoded_note,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");

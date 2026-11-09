@@ -280,7 +280,7 @@ fn test_field_typed_as_a_unit_struct_round_trips_as_an_empty_object() {
 fn test_empty_struct_writes_and_reads_an_empty_object() {
     assert_eq!(serde_json::to_string(&EmptyStruct).unwrap(), "{}");
     serde_json::from_str::<EmptyStruct>("{}").unwrap();
-    serde_json::from_str::<EmptyStruct>(r#"{"extra":1}"#).unwrap();
+    serde_json::from_str::<EmptyStruct>(r#"{"extra":1}"#).unwrap_err();
     serde_json::from_str::<EmptyStruct>("null").unwrap_err();
 }
 

@@ -9,7 +9,7 @@ use core::fmt::Write as _;
 use super::flattened_zod_models::{
     CHECKED_REPORT, ROWS, berthage_dart, block_dart, booking_dart, cargo_dart, checked_cases,
     checked_report, deck_dart, gap_dart, hatch_dart, hold_dart, mole_dart, moorage_dart,
-    paragraph_dart, pause_dart, quote_dart, serde_report, slip_dart, span_dart, tally_dart,
+    paragraph_dart, pause_dart, quote_dart, read_report, slip_dart, span_dart, tally_dart,
     tenancy_dart, tethered_dart, wharf_dart, wharfage_dart,
 };
 use super::run_dart_validate::{analyzed, dart, module};
@@ -89,7 +89,8 @@ fn source(main: &str) -> String {
     module(&definitions(), &[FUNCTIONS, HARNESS], main)
 }
 
-/// Each payload of the rows is read by Dart as serde reads it.
+/// Each payload of the rows is read by Dart as Zod reads it: serde reads the same, but for a key it
+/// reads past beside the unit variant of an enum under a tag alone.
 #[test]
 fn a_flattened_choice_is_read_by_dart_as_serde_reads_it() {
     let mut main = String::from("void main() {\n");
@@ -106,7 +107,7 @@ fn a_flattened_choice_is_read_by_dart_as_serde_reads_it() {
         return;
     };
     assert!(ran, "{printed}");
-    assert_eq!(printed, serde_report(), "the Dart read is not serde's");
+    assert_eq!(printed, read_report(), "the Dart read is not Zod's");
 }
 
 /// Each value of the checked rows is refused by Dart with the messages `validate()` answers.

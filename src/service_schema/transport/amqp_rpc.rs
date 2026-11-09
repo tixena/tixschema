@@ -2214,12 +2214,15 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
                     );
                 }
                 let mut path = refusal.path.clone();
-                if said.starts_with("missing field ") {
+                if said.starts_with("missing field ") || said.starts_with("unknown field ") {
                     if let ::core::option::Option::Some(key) = serde_named_field(said) {
-                        if !path.is_empty() {
-                            path.push('.');
+                        let named = path == key || path.ends_with(&format!(".{key}"));
+                        if !named {
+                            if !path.is_empty() {
+                                path.push('.');
+                            }
+                            path.push_str(key);
                         }
-                        path.push_str(key);
                     }
                 }
                 if path.is_empty() {

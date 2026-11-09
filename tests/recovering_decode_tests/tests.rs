@@ -501,11 +501,11 @@ fn an_issue_the_fix_itself_leaves_fails_the_read() {
     );
 }
 
-/// serde reads the value, so only the second walk's list can fail the read.
+/// serde refuses the value for its undeclared key, so the second walk's list fails the read.
 #[test]
-fn a_value_serde_reads_still_fails_after_fixed_while_an_issue_is_left() {
+fn a_value_serde_refuses_still_fails_after_fixed_while_an_issue_is_left() {
     let stored = json!({ "name": "Loan", "versions": [{ "draft": true, "number": 1_i32 }] });
-    serde_json::from_value::<Ledger>(stored.clone()).unwrap();
+    serde_json::from_value::<Ledger>(stored.clone()).unwrap_err();
     let (read, seen, calls) = ledger_read(stored, ledger_schema::Verdict::Fixed);
     assert_eq!(seen, ["versions[0].draft: unknown: found Bool(true)"]);
     assert_eq!(lines(&read.unwrap_err()), seen);
@@ -513,9 +513,9 @@ fn a_value_serde_reads_still_fails_after_fixed_while_an_issue_is_left() {
 }
 
 #[test]
-fn a_record_serde_reads_with_an_undeclared_nested_key_reaches_the_decider() {
+fn a_record_serde_refuses_for_an_undeclared_nested_key_reaches_the_decider() {
     let stored = json!({ "name": "Loan", "versions": [{ "draft": true, "number": 1_i32 }] });
-    serde_json::from_value::<Ledger>(stored.clone()).unwrap();
+    serde_json::from_value::<Ledger>(stored.clone()).unwrap_err();
     let (read, seen, calls) = ledger_read(stored, ledger_schema::Verdict::Reject);
     assert_eq!(seen, ["versions[0].draft: unknown: found Bool(true)"]);
     assert_eq!(lines(&read.unwrap_err()), seen);
@@ -856,13 +856,11 @@ fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
 #[test]
 fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     let stored = json!({ "cached": 1_i32, "id": "i", "local": 9_i32 });
-    assert_eq!(
-        Shelved::deserialize(&stored).unwrap(),
-        Shelved {
-            cached: 0,
-            id: "i".to_owned(),
-            local: 0,
-        }
+    assert!(
+        Shelved::deserialize(&stored)
+            .unwrap_err()
+            .to_string()
+            .starts_with("unknown field `cached`")
     );
     let read = Shelved::from_value_with(stored, |_raw, _found| shelved_schema::Verdict::Reject);
     assert_eq!(
@@ -923,15 +921,12 @@ fn a_refusal_the_walk_cannot_see_into_is_undescribed() {
 }
 
 #[test]
-fn an_undeclared_key_serde_itself_refuses_is_listed_beside_serdes_message() {
+fn an_undeclared_key_serde_itself_refuses_is_listed_once() {
     let stored = json!({ "name": "Loan", "extra": 1_i32 });
     let read = Strict::from_value_with(stored, |_raw, _found| strict_schema::Verdict::Reject);
     assert_eq!(
         lines(&read.unwrap_err()),
-        [
-            "extra: unknown: found Number(1)",
-            "undescribed: unknown field `extra`, expected `name`",
-        ]
+        ["extra: unknown: found Number(1)"]
     );
 }
 

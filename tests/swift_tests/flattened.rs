@@ -289,9 +289,13 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     let gripping = gripping_swift::swift_definition();
     assert_written(
         &gripping,
-        &format!(
-            "{ALONE} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
-             {flag}self.notch = try Notch(swiftSchemaUnjudged: decoder); {note} }}"
+        &closed(
+            &["label", "mark", "note"],
+            &format!(
+                "let container = try decoder.container(keyedBy: CodingKeys.self); \
+                 {flag}self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                 taken + [\"note\", \"label\"]); {note}"
+            ),
         ),
     );
     let plying = plying_swift::swift_definition();
@@ -367,9 +371,13 @@ fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
     let seaming = seaming_swift::swift_definition();
     assert_written(
         &seaming,
-        &format!(
-            "{ALONE} {{ {}; self.notch = try Notch(swiftSchemaUnjudged: decoder) }}",
-            pennant("flag")
+        &closed(
+            &["label", "mark"],
+            &format!(
+                "{}; self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                 taken + [\"label\"])",
+                pennant("flag")
+            ),
         ),
     );
     assert_written(
@@ -406,17 +414,24 @@ fn a_member_named_after_the_container_is_written_through_self() {
 #[test]
 fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     let payload = |payload: &str, case: &str, wire: &str| {
-        format!("case \"{wire}\": self = .{case}(try {payload}(swiftSchemaUnjudged: decoder)); ")
+        format!(
+            "case \"{wire}\": self = .{case}(try {payload}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken + [\"kind\"])); "
+        )
     };
     let grafting = grafting_swift::swift_definition();
     assert_written(
         &grafting,
-        &format!("{ALONE} {{ self.flag = try Kinded(from: decoder) }}"),
+        &closed(
+            &["kind"],
+            "self.flag = try Kinded(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
+        ),
     );
     assert_written(&grafting, &payload("GraftingHeldPayload", "held", "Held"));
     assert_written(
         &grafting,
-        "case \"Slot\": self = .slot(try Kinded(from: decoder)); ",
+        "case \"Slot\": self = .slot(try Kinded(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+         taken + [\"kind\"])); ",
     );
     assert_no_keyed_container(&grafting);
     let pointing = pointing_swift::swift_definition();
@@ -430,12 +445,15 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     }
     assert_written(
         &pointing,
-        &format!("{ALONE} {{ self.notch = try Notch(swiftSchemaUnjudged: decoder) }}"),
+        &closed(
+            &["mark"],
+            "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
+        ),
     );
     assert_written(
         &pointing,
         &format!(
-            "{ALONE} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
             pennant("flag")
         ),
     );
@@ -625,4 +643,20 @@ fn a_flattened_enum_writes_its_unit_variant_as_its_name_over_null() {
             "the key type is declared once in: {definition}"
         );
     }
+}
+
+/// The two reads of a struct that refuses a key beside `keys`: the one that takes the keys the types
+/// around it took and reads `body`, and the one alone that refuses any other key first.
+fn closed(keys: &[&str], body: &str) -> String {
+    let listed: Vec<String> = keys.iter().map(|key| format!("\"{key}\"")).collect();
+    format!(
+        "{TAKING} {{ {body} }}; {ALONE} {{ if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![{}].contains(unknown.stringValue) {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) }} }}; try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }};",
+        listed.join(", ")
+    )
 }

@@ -568,16 +568,20 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Tide.fromJsonUnjudged(Map<String, dynamic> json) { final tag = json['kind'] as \
          String; switch (tag) { case 'Ebbing': return TideEbbing.fromJsonUnjudged(json); case \
-         'Slack': return TideSlack(); default: throw FormatException('Unknown Tide: ' + tag); } } \
+         'Slack': return json.keys.every((key) => key == 'kind') ? TideSlack() : throw \
+         FormatException('Unknown key of a TideSlack: ' + json.keys.firstWhere((key) => key != \
+         'kind')); default: throw FormatException('Unknown Tide: ' + tag); } } \
          dynamic toJson(); List<String> validate(); } class TideEbbing extends Tide { const \
          TideEbbing({required this.height,}); final int height; factory \
          TideEbbing.fromJson(Map<String, dynamic> json) { final read = \
          TideEbbing.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory TideEbbing.fromJsonUnjudged(Map<String, dynamic> json) => TideEbbing(height: \
+         factory TideEbbing.fromJsonUnjudged(Map<String, dynamic> json) { for (final key in \
+         json.keys) { if (!const <String>{'kind', 'height'}.contains(key)) throw \
+         FormatException('Unknown key of a TideEbbing: $key'); } return TideEbbing(height: \
          (switch (json['height'] as int) { final number when number >= 0 && number <= \
          4294967295 => number, final number => throw FormatException('expected an integer from \
-         0 to 4294967295, found $number') }),); Map<String, dynamic> toJson() => { 'kind': \
+         0 to 4294967295, found $number') }),); } Map<String, dynamic> toJson() => { 'kind': \
          'Ebbing','height': (switch (height) { final number when number >= 0 && number <= \
          4294967295 => number, final number => throw FormatException('expected an integer from \
          0 to 4294967295, found $number') }), }; @override List<String> validate() => const []; \
@@ -592,34 +596,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
 fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     assert_eq!(
         tide_swift::swift_definition(),
-        "public struct TideEbbingPayload: Codable, Sendable { public let height: UInt32; enum \
-         CodingKeys: String, CodingKey { case height;  }; public init(height: UInt32) { \
-         self.height = height;  }; public init(swiftSchemaUnjudged decoder: Decoder) throws { \
-         let container = try decoder.container(keyedBy: CodingKeys.self); self.height = try \
-         container.decode(UInt32.self, forKey: .height) }; public init(from decoder: Decoder) \
-         throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
-         !violations.isEmpty { throw \
-         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> \
-         [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };  public enum Tide: Codable, Sendable { case \
-         ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: String, \
-         CodingKey { case swiftSchemaTag = \"kind\" }; public init(swiftSchemaUnjudged decoder: \
-         Decoder) throws { let container = try decoder.container(keyedBy: \
-         SwiftSchemaTagCodingKeys.self); let tag = try container.decode(String.self, forKey: \
-         .swiftSchemaTag); switch tag { case \"Ebbing\": self = .ebbing(try \
-         TideEbbingPayload(swiftSchemaUnjudged: decoder)); case \"Slack\": self = .slack;  \
-         default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-         decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) } }; public init(from \
-         decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations \
-         = validate(); if !violations.isEmpty { throw \
-         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to \
-         encoder: Encoder) throws { var container = encoder.container(keyedBy: \
-         SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try \
-         container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: encoder); \
-         case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } }; public \
-         func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] \
-         { [] } }"
+        "public struct TideEbbingPayload: Codable, Sendable { public let height: UInt32; enum CodingKeys: String, CodingKey { case height;  }; public init(height: UInt32) { self.height = height;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.height = try container.decode(UInt32.self, forKey: .height) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };  public enum Tide: Codable, Sendable { case ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); let tag = try container.decode(String.self, forKey: .swiftSchemaTag); switch tag { case \"Ebbing\": self = .ebbing(try TideEbbingPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); case \"Slack\": self = .slack;  default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) } }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"kind\", \"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: encoder); case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } }"
     );
 }
 

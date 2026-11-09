@@ -687,7 +687,7 @@ fn main() -> Result<(), WriteError> {
 //! ## Reading records an older writer stored
 //!
 //! An order line stored by older code holds its quantity as text and a key the type no longer
-//! declares. serde stops at the first error and reads past an unknown key. The recovering decode
+//! declares. serde stops at the first error and refuses an unknown key. The recovering decode
 //! lists every issue at its path, hands the list to your code once, and reads the repaired value
 //! again:
 //!
@@ -933,6 +933,10 @@ use service_schema::exec_service_schema;
 ///   features. On an enum they hold each string field and the name of each variant that carries no
 ///   data, and a variant name that breaks them is refused at expansion. They are refused on any
 ///   other struct and on an alias.
+/// - `nonstrict`, or `nonstrict = true` or `nonstrict = false`: reads past a key no member declares,
+///   which every other type refuses on every surface (`#[serde(deny_unknown_fields)]` written by the
+///   macro, `z.strictObject`, `"additionalProperties": false`). A nonstrict type writes none of
+///   them. Written beside a `#[serde(deny_unknown_fields)]` of yours it is refused.
 /// - `no_display`, or `no_display = true` or `no_display = false`: drops the `Display` impl a
 ///   branded newtype gets, for a brand whose inner type has no `Display`.
 /// - `check = ["withinBudget"]`: functions of yours that judge the whole value, each named once.

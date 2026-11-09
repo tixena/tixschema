@@ -115,14 +115,14 @@ pub const LIMBER: [&str; 3] = [
 ];
 
 /// The member the structs below flatten.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Marking {
     pub label: String,
 }
 
 /// The keys a function was handed, which the members below that name one read.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Keying {
     pub keys: Vec<String>,
@@ -248,7 +248,7 @@ pub struct Doubling {
 
 /// An externally tagged enum, which serde reads from the first entry under a variant's name or an
 /// alias of one.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Hatching {
     Bay {
@@ -275,7 +275,7 @@ pub struct Loading {
 /// An externally tagged enum flattened beside a member of its holder's own, which serde reads from
 /// the first entry under a variant's name wherever it is in the object, ignoring every key no
 /// member reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Battening {
     #[serde(flatten)]
@@ -285,7 +285,7 @@ pub struct Battening {
 
 /// [`Battening`] with its enum optional, which serde reads no value of where no entry is under the
 /// name of a variant, and where the entry under one does not read.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Caulking {
     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
@@ -334,7 +334,7 @@ pub struct Trimming {
 }
 
 /// An enum under a tag key alone, which serde reads as a map and so takes no key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Frapping {
@@ -354,7 +354,7 @@ pub struct Mousing {
 }
 
 /// An untagged enum, which serde reads as a map and so takes no key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Chocking {

@@ -110,8 +110,14 @@ fn the_skipped_key_is_written_in_no_payload_and_read_out_of_none() {
         r#"{"id":"1"}"#
     );
 
-    let supplied = serde_json::from_str::<SkippedField>(r#"{"id":"1","internal":["x"]}"#).unwrap();
-    assert_eq!(supplied.internal, Vec::<String>::new());
+    let supplied = serde_json::from_str::<SkippedField>(r#"{"id":"1","internal":["x"]}"#);
+    assert!(
+        supplied
+            .unwrap_err()
+            .to_string()
+            .starts_with("unknown field `internal`"),
+        "a skipped member's key is one no surface lists"
+    );
     let absent = serde_json::from_str::<SkippedField>(r#"{"id":"1"}"#).unwrap();
     assert_eq!(absent.internal, Vec::<String>::new());
 }
@@ -178,9 +184,14 @@ fn the_two_halves_written_together_are_the_same_wire() {
         r#"{"id":"1"}"#
     );
 
-    let supplied =
-        serde_json::from_str::<BothHalvesDropped>(r#"{"id":"1","internal":["x"]}"#).unwrap();
-    assert_eq!(supplied.internal, Vec::<String>::new());
+    let supplied = serde_json::from_str::<BothHalvesDropped>(r#"{"id":"1","internal":["x"]}"#);
+    assert!(
+        supplied
+            .unwrap_err()
+            .to_string()
+            .starts_with("unknown field `internal`"),
+        "a skipped member's key is one no surface lists"
+    );
 }
 
 /// The write half alone reads a supplied key, which is what keeps its member on the surfaces.

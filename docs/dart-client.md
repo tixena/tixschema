@@ -8,6 +8,19 @@ Every type `src/features/dart.rs` writes has `List<String> validate()`, which ru
 `validate()` of the type runs, in its order. `README.md`'s "`validate()` in Dart" section is the
 consumer's view; this is what a change has to keep.
 
+- **A class refuses a key no member reads**, as TypeScript, Zod and serde refuse it
+  (`closed_keys`, `unknown_keys_refused`): `tag_checked_reads` opens the unjudged read of a struct
+  and of a variant's class with a loop that throws `Unknown key of a {Class}: {key}` for a key of
+  the object that is none of its members' names and aliases, its own tag, the tag of the enum it is
+  a variant of and the keys of each member it flattens. A `nonstrict` type, a type that names a
+  `preprocess`, which can rewrite the keys it reads, and a type that flattens a member whose keys
+  are not known, such as a map or a type parameter, refuse nothing. The keys a type refuses a key
+  beside are recorded per type (`DART_CLOSED`, `record_closed_keys`), for a struct and for an enum
+  under a tag alone or untagged, which takes the union of its variants', so that a holder hands a
+  flattened member the entries of those keys alone (`only`, in `constructor_arguments`) and counts
+  them among its own. An enum under a tag and a content key refuses a key beside the two
+  (`beside_the_content`), and a unit variant under a tag alone one beside the tag
+  (`unit_beside_the_tag`).
 - **The dispatch is handed what it reads of the attribute.** `dart_suffix_tokens` builds a
   `DartTypeArgs`: the name, the type's `check`, a brand's or an enum's `minLength`, `maxLength` and
   `pattern`, `default_types`, and `member_meta`, which is `member_prop_meta` with the enum's

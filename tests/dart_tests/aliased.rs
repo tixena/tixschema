@@ -51,7 +51,8 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
                 .to_owned(),
             format!(
                 "factory SurgingBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
-                 {NAME_AS_LABEL} return SurgingBerth(label: named['label'] as String,); }} \
+                 {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'label', 'name'}}.contains(key)) throw \
+                 FormatException('Unknown key of a SurgingBerth: $key'); }} return SurgingBerth(label: named['label'] as String,); }} \
                  @override dynamic toJson() => {{ 'Berth': {{ 'label': label, }} }};"
             ),
             "@override dynamic toJson() => 'Calm';".to_owned(),
@@ -63,11 +64,14 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &[
             "final tag = json['kind'] as String; switch (tag) { case 'Berth' || 'Pier': return \
              CareeningBerth.fromJsonUnjudged(json); case 'Calm' || 'Still': return \
-             CareeningCalm(); default:"
+             json.keys.every((key) => key == 'kind') ? CareeningCalm() : throw \
+             FormatException('Unknown key of a CareeningCalm: ' + json.keys.firstWhere((key) => \
+             key != 'kind')); default:"
                 .to_owned(),
             format!(
                 "factory CareeningBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
-                 {NAME_AS_LABEL} return CareeningBerth(label: named['label'] as String,); }} \
+                 {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'kind', 'label', 'name'}}.contains(key)) throw \
+                 FormatException('Unknown key of a CareeningBerth: $key'); }} return CareeningBerth(label: named['label'] as String,); }} \
                  Map<String, dynamic> toJson() => {{ 'kind': 'Berth','label': label, }};"
             ),
             "@override dynamic toJson() => { 'kind': 'Calm' };".to_owned(),
@@ -143,7 +147,8 @@ fn a_struct_reads_a_member_under_each_alias() {
         &hawsing_dart::dart_definition(),
         &[format!(
             "factory Hawsing.fromJsonUnjudged(Map<String, dynamic> json) {{ {HAWSING_NAMES} \
-             return Hawsing(label: named['label'] as String,note: (named['note'] == null ? null \
+             for (final key in named.keys) {{ if (!const <String>{{'label', 'name', 'title', 'note', 'remark'}}.contains(key)) throw \
+             FormatException('Unknown key of a Hawsing: $key'); }} return Hawsing(label: named['label'] as String,note: (named['note'] == null ? null \
              : named['note'] as String),); }} Map<String, dynamic> toJson() => {{ 'label': \
              label,if (note != null) 'note': (note == null ? null : note), }};"
         )],
@@ -152,7 +157,8 @@ fn a_struct_reads_a_member_under_each_alias() {
         &gybing_dart::dart_definition(),
         &[format!(
             "factory Gybing.fromJsonUnjudged(Map<String, dynamic> json, LabelType \
-             Function(dynamic) labelTypeFromJson) {{ {HAWSING_NAMES} return Gybing(label: \
+             Function(dynamic) labelTypeFromJson) {{ {HAWSING_NAMES} for (final key in named.keys) {{ if (!const <String>{{'label', 'name', 'title', 'note', 'remark'}}.contains(key)) throw \
+             FormatException('Unknown key of a Gybing: $key'); }} return Gybing(label: \
              labelTypeFromJson(named['label']),note: (named['note'] == null ? null : \
              named['note'] as String),); }}"
         )],
@@ -174,10 +180,14 @@ fn a_member_flattened_beside_an_alias_is_handed_the_keys_serde_hands_it() {
     );
     holds_each(
         &fothering_dart::dart_definition(),
-        &["Fothering(hawsing: Hawsing.fromJsonUnjudged(json),tally: \
+        &[
+            "Fothering(hawsing: Hawsing.fromJsonUnjudged((switch (json) { final whole => { for \
+           (final key in const ['label', 'name', 'title', 'note', 'remark']) if \
+           (whole.containsKey(key)) key: whole[key] } })),tally: \
            Pennon.fromJsonUnjudged(withItsKeys(({...json}..remove('label')..remove('name')\
            ..remove('title')..remove('note')..remove('remark')))),);"
-            .to_owned()],
+                .to_owned(),
+        ],
     );
 }
 
@@ -189,7 +199,8 @@ fn an_untagged_enum_reads_a_member_under_its_alias() {
         &veering_dart::dart_definition(),
         &[format!(
             "factory VeeringBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
-             {NAME_AS_LABEL} return VeeringBerth(label: named['label'] as String,); }}"
+             {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'label', 'name'}}.contains(key)) throw \
+                 FormatException('Unknown key of a VeeringBerth: $key'); }} return VeeringBerth(label: named['label'] as String,); }}"
         )],
     );
 }

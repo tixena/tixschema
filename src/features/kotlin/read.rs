@@ -14,6 +14,7 @@ use super::{
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::utils::is_nonstrict;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself.
@@ -422,6 +423,26 @@ pub fn kept(export_name: &str) -> String {
     format!(
         "{OPTED_IN} @Serializable(with = {export_name}Serializer::class) @KeepGeneratedSerializer"
     )
+}
+
+/// The annotation of a class the plugin reads that reads past a key no member reads, which is the
+/// class of a `nonstrict` type, and nothing for any other. A class that [`kept`] annotates is
+/// opted in already.
+pub fn ignoring_unknown_keys() -> &'static str {
+    if is_nonstrict() {
+        " @JsonIgnoreUnknownKeys"
+    } else {
+        ""
+    }
+}
+
+/// [`ignoring_unknown_keys`] for a class that is opted into nothing yet.
+pub fn opted_in_ignoring_unknown_keys() -> &'static str {
+    if is_nonstrict() {
+        "@OptIn(ExperimentalSerializationApi::class) @JsonIgnoreUnknownKeys "
+    } else {
+        ""
+    }
 }
 
 /// [`kept`] for the value class of a brand.

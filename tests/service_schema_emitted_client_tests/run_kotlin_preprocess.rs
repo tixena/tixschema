@@ -560,7 +560,7 @@ pub struct Bonded {
 }
 
 /// A type that names no function, which lists under `keys` what a function of its holder writes.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Loose {
     pub keys: Vec<String>,

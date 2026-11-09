@@ -45,8 +45,10 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
 fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     let flemishing = flemishing_dart::dart_definition();
     for held in [
-        "braiding: (json.keys.any(const ['label'].contains) ? Braiding.fromJsonUnjudged(json) \
-         : null)",
+        "braiding: ((switch (json) { final whole => { for (final key in const ['label']) if \
+         (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['label'].contains) ? \
+         Braiding.fromJsonUnjudged((switch (json) { final whole => { for (final key in const \
+         ['label']) if (whole.containsKey(key)) key: whole[key] } })) : null)",
         "Map<String, dynamic> toJson() => { 'note': note, };",
     ] {
         assert!(flemishing.contains(held), "no `{held}` in: {flemishing}");
@@ -54,7 +56,8 @@ fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     let splaying = splaying_dart::dart_definition();
     for held in [
         "const Splaying({required this.braiding,required this.note,});",
-        "Splaying(braiding: Braiding.fromJsonUnjudged(json),",
+        "Splaying(braiding: Braiding.fromJsonUnjudged((switch (json) { final whole => { for \
+         (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })),",
         "Map<String, dynamic> toJson() => { 'note': note, };",
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");

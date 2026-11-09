@@ -183,8 +183,7 @@ the consumer's view; this is what a change has to keep.
   `src/features/kotlin/texts.rs`, and that of a fixed array of another length in
   `src/features/kotlin/arrays.rs` (below).
 - **The serializer `flatten_merging_serializer` writes refuses a key no member reads**, as the
-  plugin's refuses it under the default `Json` and as TypeScript and Zod refuse it, where serde
-  reads past it: after the members are read, `unknown_key_refused` throws `Encountered an unknown
+  plugin's refuses it under the default `Json` and as TypeScript, Zod and serde refuse it: after the members are read, `unknown_key_refused` throws `Encountered an unknown
   key '{key}'` for the first key of the object no member read, under a `Json` whose
   `configuration.ignoreUnknownKeys` is `false`, so a caller's `Json { ignoreUnknownKeys = true }`
   reads past it, as it reads past it in a class the plugin reads. A flattened struct whose keys
@@ -193,7 +192,10 @@ the consumer's view; this is what a change has to keep.
   (`flatten_enum_field_plan`), so a model either holds, at any depth, refuses a key no member of it
   reads, as it does held under a key. Every other flattened member is read with `lenient`, which
   `FlattenedMember::lenient` declares only where one is, and every model below it reads past such
-  a key: the README states the limit. `flatten_plan`
+  a key: the README states the limit. A `nonstrict` type refuses nothing: the class the plugin
+  reads is annotated `@JsonIgnoreUnknownKeys` (`read::ignoring_unknown_keys`, and
+  `opted_in_ignoring_unknown_keys` for a variant's class) and `unknown_key_refused` writes a no-op
+  for it, as it is read by `is_nonstrict`. `flatten_plan`
   answers what the members read in `FlattenPlan::read`, the terms subtracted from the object: the
   wire name of each own member (an alias is already read as it), the entry a flattened externally
   tagged enum took, and every key `KOTLIN_READ_KEYS` notes for a flattened struct the emitter

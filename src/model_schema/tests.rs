@@ -11663,12 +11663,13 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 9] = [
+    let probes: [proc_macro2::TokenStream; 10] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
+        quote::quote! { nonstrict },
         quote::quote! { default_types(IdType = String) },
         quote::quote! { enable = ["decode_with"] },
         quote::quote! { check = ["withinParcel"] },

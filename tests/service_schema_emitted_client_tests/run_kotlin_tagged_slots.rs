@@ -94,7 +94,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Weighed","cost":"c","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Weighed\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -102,7 +102,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Hired","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Hired\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -110,7 +110,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Merged","note":"n","cost":"c","other":1}"#,
         kotlin: "refused: Encountered an unknown key 'other'",
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Merged\",\"note\":\"n\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -118,7 +118,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Below","barge":"g","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Below\",\"barge\":\"g\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -126,7 +126,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Held","cost":"c","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Waybilled<Tonnage>",
-        serde: "read {\"kind\":\"Held\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {

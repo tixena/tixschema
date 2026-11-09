@@ -88,10 +88,18 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     ];
     assert_eq!(written.len(), 3, "each enum is written ahead of its holder");
     let handed = "({...json}..remove('note')..remove('kind')..remove('body'))";
+    let only = |keys: &str| {
+        format!(
+            "(switch (json) {{ final whole => {{ for (final key in const [{keys}]) if \
+             (whole.containsKey(key)) key: whole[key] }} }})"
+        )
+    };
+    let (cleat_from, bollard_from) = (only("'kind', 'turns'"), only("'kind', 'body'"));
     let expected = format!(
-        "Belaying(cleat: (json.keys.any(const ['kind'].contains) ? Cleat.fromJsonUnjudged(json) : \
-         null),bollard: (json.keys.any(const ['kind', 'body'].contains) ? \
-         Bollard.fromJsonUnjudged(json) : null),bitt: (() {{ try {{ return \
+        "Belaying(cleat: ({cleat_from}.keys.any(const ['kind'].contains) ? \
+         Cleat.fromJsonUnjudged({cleat_from}) : null),bollard: \
+         ({bollard_from}.keys.any(const ['kind', 'body'].contains) ? \
+         Bollard.fromJsonUnjudged({bollard_from}) : null),bitt: (() {{ try {{ return \
          Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})(),note: \
          json['note'] as String,);"
     );

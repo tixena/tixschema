@@ -608,7 +608,7 @@ struct Drawing {
 }
 
 /// Untagged, with a member whose own check takes its variant out.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Contact {
@@ -1201,7 +1201,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
 #[test]
 fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     let stored_row = doc! { "cached": 1_i32, "id": "i", "local": 9_i32 };
-    assert!(serde_reads::<Shelved>(&stored_row));
+    assert!(!serde_reads::<Shelved>(&stored_row));
     let read = Shelved::from_bson_with(stored_row, |_raw, _found| shelved_schema::Verdict::Reject);
     assert_eq!(
         told!(shelved_schema, read.unwrap_err().issues),
@@ -1216,7 +1216,7 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
 fn bson_6_a_rows_own_id_is_a_key_like_any_other() {
     let mut stored_row = plain_row();
     stored_row.insert("_id", oid("6a7cc592ca0574e6efdfe299"));
-    assert!(serde_reads::<Record>(&stored_row));
+    assert!(!serde_reads::<Record>(&stored_row));
     let (read, seen, calls) = read_with(stored_row, reject);
     assert_eq!(
         seen,
@@ -3222,7 +3222,8 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     );
 }
 
-/// serde says which variant reads the document, and that variant alone is walked.
+/// serde says which variant reads the document, and that variant alone is walked. A nonstrict
+/// enum's own struct variant reads past a key it does not declare; a strict model it holds does not.
 #[test]
 fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     let email = doc! { "address": "ann@example.org", "legacy": true };
@@ -3233,11 +3234,18 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
         [unknown("legacy", Bson::Boolean(true))]
     );
     let versioned = doc! { "draft": true, "number": 3_i32 };
-    assert!(serde_reads::<Contact>(&versioned));
-    let listed = Contact::from_bson_with(versioned, |_raw, _found| contact_schema::Verdict::Reject);
+    assert!(!serde_reads::<Contact>(&versioned));
+    let listed = Contact::from_bson_with(versioned.clone(), |_raw, _found| {
+        contact_schema::Verdict::Reject
+    });
     assert_eq!(
         told!(contact_schema, listed.unwrap_err().issues),
-        [unknown("draft", Bson::Boolean(true))]
+        [(
+            "NoVariant",
+            String::new(),
+            String::new(),
+            Some(Bson::Document(versioned))
+        )]
     );
 }
 
@@ -3426,7 +3434,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the_stored_key() {
     use contour_schema::Stored as _;
     let undeclared = doc! { "Round": { "extra": 1_i32, "radius": 1.5_f64 } };
-    assert!(serde_reads::<Contour>(&undeclared));
+    assert!(!serde_reads::<Contour>(&undeclared));
     let read = Contour::from_bson_with(undeclared, |_raw, _found| contour_schema::Verdict::Reject);
     assert_eq!(
         told!(contour_schema, read.unwrap_err().issues),
@@ -3482,7 +3490,7 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
         ),
         (
             doc! { "data": { "gap": 2_i32, "legacy": true }, "kind": "Dotted" },
-            true,
+            false,
             vec![unknown("data.legacy", Bson::Boolean(true))],
         ),
         (

@@ -176,7 +176,7 @@ pub enum Quarter {
 }
 
 /// The member the structs below flatten.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pennant {
     pub label: String,
@@ -191,7 +191,7 @@ pub struct Notch {
 }
 
 /// The keys a function was handed, which the members below that name one read.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Counting {
     pub keys: Vec<String>,
@@ -297,7 +297,7 @@ pub struct Reeving {
 }
 
 /// A struct with a flattened member of its own, which serde reads as a map.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hanking {
     pub marker: String,

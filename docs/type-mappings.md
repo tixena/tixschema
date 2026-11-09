@@ -308,6 +308,8 @@ export const User$Schema = z.strictObject({
 
 ### 6. Serde Attribute Support
 
+`#[model_schema]` writes `#[serde(deny_unknown_fields)]` itself on every struct of named members and every enum it expands, and on the message struct a service generates, so the Rust read refuses a key no member declares, as the Zod `z.strictObject` and the JSON Schema `"additionalProperties": false` do. It leaves the attribute off a type that is `nonstrict`, one that already carries it, one under its own `#[serde(tag = "...")]` or that names a `preprocess`, a struct that reads no key of its own, and one that flattens a member whose keys the expansion cannot see (`src/model_schema/strict.rs`: a map, a type parameter, a member that names a function, a type declared below or in another crate, an alias, and a type serde does not take the keys of, such as an enum under a tag alone, an untagged enum, or a type that flattens a member of its own). `#[model_schema(nonstrict)]` writes `z.object`, `"additionalProperties": true` and no attribute for that type's own object, and leaves the TypeScript type as it was. A unit struct's hand-written `Deserialize` refuses a key unless the type is `nonstrict` (`unit_struct_read`).
+
 The macro respects Serde attributes when the `serde` feature is enabled. Without it no
 `#[serde(...)]` attribute is read, on any surface: every walk of `src/features/serde.rs` the
 surfaces ask iterates `serde_attributes`, which yields none, so a member is named as Rust spells it,

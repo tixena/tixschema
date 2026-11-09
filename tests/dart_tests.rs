@@ -26,6 +26,12 @@ mod tests;
 #[path = "dart_tests/held_numbers.rs"]
 mod held_numbers;
 
+/// The statements the read of a strict class opens with.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "dart_tests/unknown_keys.rs"]
+mod unknown_keys;
+
 #[cfg(test)]
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/bounded_brands.rs"]
