@@ -111,7 +111,7 @@ macro_rules! listens_through_every_entry_point_of {
                     &SETTINGS, stream,
                     &service,
                     async |_request: &$module::McpHttpRequest, call: $module::McpCall| {
-                        Ok::<_, $module::McpDenied>(($ctx)(call))
+                        Ok::<_, $module::McpDenied>($module::McpAdmitted::new(($ctx)(call)))
                     },
                     &mut source,
                 )));
@@ -130,7 +130,7 @@ macro_rules! listens_through_every_entry_point_of {
                     &SETTINGS, stream,
                     &server(),
                     async |_request: &$module::McpHttpRequest, call: $module::McpCall| {
-                        Ok::<_, $module::McpDenied>(($ctx)(call))
+                        Ok::<_, $module::McpDenied>($module::McpAdmitted::new(($ctx)(call)))
                     },
                     &|ctx: &_, part, method: &str, params: &Value| {
                         let held = service.clone();

@@ -388,7 +388,7 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
             &SETTINGS,
             stream,
             &Archive::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(document_mcp::McpAdmitted::new(())),
         ))
     });
     assert_eq!(response.status(), 200);
@@ -414,7 +414,7 @@ fn a_resource_is_read_over_http_by_the_uri_in_its_name_header() {
             &SETTINGS,
             stream,
             &Archive::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(document_mcp::McpAdmitted::new(())),
         ))
     });
     assert_eq!(mismatched.status(), 400);

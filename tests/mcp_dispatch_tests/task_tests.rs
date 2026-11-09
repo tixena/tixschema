@@ -53,7 +53,7 @@ mod over_http {
                 &SETTINGS,
                 stream,
                 &Jobs::default(),
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(job_mcp::McpAdmitted::new(())),
             ))
         });
         assert_eq!(answered.status(), 200);
@@ -64,7 +64,7 @@ mod over_http {
             &SETTINGS,
             &stream,
             &Jobs::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(job_mcp::McpAdmitted::new(())),
         ));
         assert!(streamed.is_none());
         let body = String::from_utf8(stream.streamed().body).unwrap();
@@ -90,7 +90,7 @@ mod over_http {
                 &SETTINGS,
                 stream,
                 &Jobs::default(),
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(job_mcp::McpAdmitted::new(())),
             ))
         });
         assert_eq!(mismatched.status(), 400);
@@ -102,7 +102,7 @@ mod over_http {
                 &SETTINGS,
                 stream,
                 &Jobs::default(),
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(job_mcp::McpAdmitted::new(())),
             ))
         });
         assert_eq!(matched.status(), 200);
@@ -134,7 +134,7 @@ mod over_http {
                     async |request: &job_mcp::McpHttpRequest, call: McpCall| {
                         assert_eq!(request.mcp_name().as_deref(), Some("start-export"));
                         call.progress(1.0_f64, None, None);
-                        Err::<(), _>(denied.clone())
+                        Err::<job_mcp::McpAdmitted<()>, _>(denied.clone())
                     },
                     &|ctx: &(), part, method: &str, params: &Value| {
                         let held = jobs.clone();
@@ -503,7 +503,7 @@ fn over_http_a_task_method_of_a_service_with_no_task_is_a_method_not_found() {
             &counsel_mcp::McpHttpSettings::new(&[], None),
             stream,
             &Counsels::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(counsel_mcp::McpAdmitted::new(())),
         ))
     });
     assert_eq!(response.status(), 404);

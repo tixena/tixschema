@@ -330,7 +330,9 @@ fn http(row: &ListenRow, script: &[Value]) -> Value {
             stream,
             &Stand,
             async |_request: &McpHttpRequest, _call: McpCall| {
-                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+                Ok::<_, mcp_library_dispatcher::McpDenied>(
+                    mcp_library_dispatcher::McpAdmitted::new(()),
+                )
             },
             &mut source,
         ))
@@ -345,7 +347,9 @@ fn plain_http(row: &ListenRow) -> Value {
             stream,
             &Stand,
             async |_request: &McpHttpRequest, _call: McpCall| {
-                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+                Ok::<_, mcp_library_dispatcher::McpDenied>(
+                    mcp_library_dispatcher::McpAdmitted::new(()),
+                )
             },
         ))
     }))
@@ -461,7 +465,9 @@ fn streamed_ordering() -> Value {
             &stream,
             &Stand,
             async |_request: &McpHttpRequest, _call: McpCall| {
-                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+                Ok::<_, mcp_library_dispatcher::McpDenied>(
+                    mcp_library_dispatcher::McpAdmitted::new(()),
+                )
             },
             &mut source,
         )
@@ -511,7 +517,9 @@ fn streamed_departure() -> Value {
             &Stand,
             async |_request: &McpHttpRequest, call: McpCall| {
                 *seen_call.lock().unwrap() = Some(call);
-                Ok::<_, mcp_library_dispatcher::McpDenied>(())
+                Ok::<_, mcp_library_dispatcher::McpDenied>(
+                    mcp_library_dispatcher::McpAdmitted::new(()),
+                )
             },
             &mut source,
         )

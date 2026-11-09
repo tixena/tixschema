@@ -330,7 +330,7 @@ fn listen_over_http(asked: &Value, changes: Vec<McpChange>) -> document_mcp::Mcp
             stream,
             &Archive::default(),
             async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
-                Ok::<_, document_mcp::McpDenied>(())
+                Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
             },
             &mut source,
         ))
@@ -378,7 +378,7 @@ fn over_http_a_service_handed_no_changes_does_not_know_the_method() {
             stream,
             &Archive::default(),
             async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
-                Ok::<_, document_mcp::McpDenied>(())
+                Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
             },
         ))
     });
@@ -460,7 +460,7 @@ fn over_http_the_acknowledgment_and_each_change_are_written_as_they_come() {
             &stream,
             &Archive::default(),
             async |_request: &McpHttpRequest, _call: document_mcp::McpCall| {
-                Ok::<_, document_mcp::McpDenied>(())
+                Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
             },
             &mut source,
         )
@@ -521,7 +521,7 @@ fn over_http_a_listen_whose_write_fails_is_cancelled_and_ends() {
         &Archive::default(),
         async |_request: &McpHttpRequest, call: document_mcp::McpCall| {
             *held_call.lock().unwrap() = Some(call);
-            Ok::<_, document_mcp::McpDenied>(())
+            Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
         },
         &mut source,
     ));

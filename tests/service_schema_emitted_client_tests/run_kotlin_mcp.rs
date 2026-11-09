@@ -7,7 +7,8 @@
 #![cfg(feature = "kotlin")]
 
 use super::mcp_auth_rows::{
-    AUTHORIZATION_SERVER, METADATA_URL, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED, auth_rows,
+    AUTHORIZATION_SERVER, METADATA_URL, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
+    assert_organization_answer, auth_rows,
 };
 use super::mcp_mobile_document;
 use super::mcp_mobile_rows::block_on;
@@ -309,6 +310,14 @@ suspend fun authReport(input: JsonObject): JsonObject {
                 else -> MobileDocumentServiceMcpAdmitted.Denied(MobileDocumentServiceMcpDenied.Forbidden)
             }
         },
+        "organization" to { request, _ ->
+            val organization = request.header("x-organization")
+            when (organization) {
+                null -> MobileDocumentServiceMcpAdmitted.Caller(counted)
+                "banned" -> MobileDocumentServiceMcpAdmitted.Denied(MobileDocumentServiceMcpDenied.Forbidden)
+                else -> MobileDocumentServiceMcpAdmitted.Caller(counted, "$organization-documents")
+            }
+        },
     )
     val oauth = input.getValue("oauth").jsonObject
     val strings = { name: String -> oauth.getValue(name).jsonArray.map { it.jsonPrimitive.content } }
@@ -324,6 +333,7 @@ suspend fun authReport(input: JsonObject): JsonObject {
             ),
         ),
         "keys" to MobileDocumentServiceMcpHttpSettings(listOf(origin)),
+        "organization" to MobileDocumentServiceMcpHttpSettings(listOf(origin)),
     )
     val answers = input.getValue("rows").jsonArray.map { row ->
         val given = row.jsonObject
@@ -990,6 +1000,7 @@ fn the_kotlin_server_answers_every_authorization_case_as_the_rust_dispatcher_doe
             .collect();
         assert_eq!(kotlin_headers, headers, "{}", row.name);
         assert_eq!(kotlin["body"].as_str().unwrap(), body, "{}", row.name);
+        assert_organization_answer(row, status, &body);
         if status != 200 {
             assert_eq!(
                 kotlin["reached"], 0_i32,

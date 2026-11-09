@@ -37,7 +37,9 @@ mod api_key_headers {
                         return Err(McpDenied::NoValidCredentials { scope: None });
                     };
                     match validate_api_key(key, secret) {
-                        Some(account) if account.organization_admin => Ok(()),
+                        Some(account) if account.organization_admin => {
+                            Ok(document_mcp::McpAdmitted::new(()))
+                        }
                         _ => Err(McpDenied::Forbidden),
                     }
                 },
@@ -131,7 +133,10 @@ fn verify_token(token: &str) -> Result<Claims, McpDenied> {
     }
 }
 
-async fn admit_scopes(request: &McpHttpRequest, _call: McpCall) -> Result<(), McpDenied> {
+async fn admit_scopes(
+    request: &McpHttpRequest,
+    _call: McpCall,
+) -> Result<document_mcp::McpAdmitted<()>, McpDenied> {
     let name = request.mcp_name();
     let method = request.header("mcp-method").unwrap_or_default();
     let needed = DocumentServiceSchema::mcp_scopes(method, name.as_deref());
@@ -148,7 +153,7 @@ async fn admit_scopes(request: &McpHttpRequest, _call: McpCall) -> Result<(), Mc
             scope: needed.join(" "),
         });
     }
-    Ok(())
+    Ok(document_mcp::McpAdmitted::new(()))
 }
 
 fn respond_with(asked: &McpHttpRequest, settings: &McpHttpSettings<'_>) -> McpHttpResponse {
@@ -360,7 +365,9 @@ fn a_forbidden_answers_403_with_no_challenge() {
             &SETTINGS,
             stream,
             &Archive::default(),
-            async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+            async |_request: &McpHttpRequest,
+                   _call: McpCall|
+                   -> Result<document_mcp::McpAdmitted<()>, McpDenied> {
                 Err(McpDenied::Forbidden)
             },
         ))
@@ -394,7 +401,9 @@ fn without_oauth_every_denial_answers_its_status_with_no_challenge() {
                 &settings,
                 stream,
                 &Archive::default(),
-                async |_request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+                async |_request: &McpHttpRequest,
+                       _call: McpCall|
+                       -> Result<document_mcp::McpAdmitted<()>, McpDenied> {
                     Err(denied.clone())
                 },
             ))
@@ -428,12 +437,14 @@ fn admit_reads_the_method_and_the_name_ahead_of_the_rule_that_holds_them_to_the_
             &SETTINGS,
             stream,
             &archive,
-            async |request: &McpHttpRequest, _call: McpCall| -> Result<(), McpDenied> {
+            async |request: &McpHttpRequest,
+                   _call: McpCall|
+                   -> Result<document_mcp::McpAdmitted<()>, McpDenied> {
                 seen.lock().unwrap().push((
                     request.header("mcp-method").map(str::to_owned),
                     request.mcp_name(),
                 ));
-                Ok(())
+                Ok(document_mcp::McpAdmitted::new(()))
             },
         ))
     });
@@ -648,7 +659,7 @@ fn the_second_service_denies_and_reads_the_name_as_the_first_does() {
                 &archive,
                 async |request: &billing_mcp::McpHttpRequest, _call: billing_mcp::McpCall| {
                     assert_eq!(request.mcp_name().as_deref(), Some("get-balance"));
-                    Err::<(), _>(denied.clone())
+                    Err::<billing_mcp::McpAdmitted<()>, _>(denied.clone())
                 },
             ))
         });

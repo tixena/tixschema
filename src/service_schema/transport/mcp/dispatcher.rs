@@ -689,20 +689,25 @@ fn answers() -> TokenStream {
         fn response_text(
             id: &::serde_json::Value,
             answered: ::core::result::Result<::serde_json::Value, ::serde_json::Value>,
-            server_name: &str,
+            server: &McpServer<'_>,
         ) -> ::std::string::String {
             canonical(&match answered {
                 ::core::result::Result::Ok(result) => ::serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": with_server_info(result, server_name),
+                    "result": with_server_info(result, server),
                 }),
                 ::core::result::Result::Err(error) => failed(id, error),
             })
         }
 
-        fn with_server_info(mut result: ::serde_json::Value, server_name: &str) -> ::serde_json::Value {
+        /// A name the caller's credentials decided makes a public result private, because another
+        /// caller gets another name.
+        fn with_server_info(mut result: ::serde_json::Value, server: &McpServer<'_>) -> ::serde_json::Value {
             if let ::serde_json::Value::Object(members) = &mut result {
+                if server.named_by_caller && members.get("cacheScope") == ::core::option::Option::Some(&::serde_json::json!("public")) {
+                    members.insert("cacheScope".to_owned(), ::serde_json::json!("private"));
+                }
                 members
                     .entry("resultType")
                     .or_insert_with(|| ::serde_json::Value::String("complete".to_owned()));
@@ -712,7 +717,7 @@ fn answers() -> TokenStream {
                 if let ::serde_json::Value::Object(meta) = meta {
                     meta.insert(
                         SERVER_INFO_KEY.to_owned(),
-                        ::serde_json::json!({ "name": server_name, "version": env!("CARGO_PKG_VERSION") }),
+                        ::serde_json::json!({ "name": server.name(), "version": env!("CARGO_PKG_VERSION") }),
                     );
                 }
             }
@@ -790,7 +795,7 @@ fn discovery() -> TokenStream {
 fn serving(module: &Ident) -> TokenStream {
     quote! {
         /// Everything `serve` does ahead of asking a service.
-        fn begun(text: &str, instructions: ::core::option::Option<&str>, endpoint: &McpEndpoint, server_name: &str, listens: bool) -> Begun {
+        fn begun(text: &str, server: &McpServer<'_>, listens: bool) -> Begun {
             let request = match read_request(text) {
                 ::core::result::Result::Ok(request) => request,
                 ::core::result::Result::Err(refused) => return Begun::Answered(::core::option::Option::Some(canonical(&refused))),
@@ -802,16 +807,16 @@ fn serving(module: &Ident) -> TokenStream {
                 return Begun::Answered(::core::option::Option::Some(canonical(&refused)));
             }
             let answered = match request["method"].as_str().unwrap_or_default() {
-                "server/discover" => ::core::result::Result::Ok(discovered(instructions, endpoint, listens)),
-                "tools/list" => ::core::result::Result::Ok(listed(endpoint, "tools")),
+                "server/discover" => ::core::result::Result::Ok(discovered(server.instructions(), server.endpoint(), listens)),
+                "tools/list" => ::core::result::Result::Ok(listed(server.endpoint(), "tools")),
                 "resources/templates/list" => {
-                    ::core::result::Result::Ok(listed(endpoint, "resourceTemplates"))
+                    ::core::result::Result::Ok(listed(server.endpoint(), "resourceTemplates"))
                 }
-                "prompts/list" => ::core::result::Result::Ok(listed(endpoint, "prompts")),
-                "skills/list" => ::core::result::Result::Ok(listed(endpoint, "skills")),
+                "prompts/list" => ::core::result::Result::Ok(listed(server.endpoint(), "prompts")),
+                "skills/list" => ::core::result::Result::Ok(listed(server.endpoint(), "skills")),
                 "resources/list" => return Begun::Routed(request),
                 "subscriptions/listen" if listens => return Begun::Routed(request),
-                method @ ("tasks/get" | "tasks/cancel" | "tasks/update") if tasked(endpoint) => {
+                method @ ("tasks/get" | "tasks/cancel" | "tasks/update") if tasked(server.endpoint()) => {
                     if named(&request["params"], method).is_some() {
                         return Begun::Routed(request);
                     }
@@ -838,14 +843,14 @@ fn serving(module: &Ident) -> TokenStream {
                     ::core::option::Option::None,
                 )),
             };
-            Begun::Answered(::core::option::Option::Some(response_text(id, answered, server_name)))
+            Begun::Answered(::core::option::Option::Some(response_text(id, answered, server)))
         }
 
         /// What a routed request answers once its services have been asked.
         fn routed_text(
             request: &::serde_json::Value,
             answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
-            server_name: &str,
+            server: &McpServer<'_>,
         ) -> ::core::option::Option<::std::string::String> {
             let method = request["method"].as_str().unwrap_or_default();
             let name = named(&request["params"], method).unwrap_or_default();
@@ -867,7 +872,7 @@ fn serving(module: &Ident) -> TokenStream {
                     })),
                 ))
             });
-            ::core::option::Option::Some(response_text(&request["id"], answered, server_name))
+            ::core::option::Option::Some(response_text(&request["id"], answered, server))
         }
     }
 }
@@ -895,7 +900,7 @@ fn routing() -> TokenStream {
             in_flight: ::core::option::Option<&McpInFlight>,
             listens: bool,
         ) -> ::core::result::Result<::serde_json::Value, ::core::option::Option<::std::string::String>> {
-            match begun(text, server.instructions(), server.endpoint(), server.name(), listens) {
+            match begun(text, server, listens) {
                 Begun::Answered(answered) => ::core::result::Result::Err(answered),
                 Begun::Notified(notice) => {
                     if let ::core::option::Option::Some(table) = in_flight {
@@ -955,12 +960,12 @@ fn routing() -> TokenStream {
             request: &::serde_json::Value,
             call: &McpCall,
             answered: ::core::option::Option<::core::result::Result<::serde_json::Value, ::serde_json::Value>>,
-            server_name: &str,
+            server: &McpServer<'_>,
         ) -> ::core::option::Option<::std::string::String> {
             if call.cancelled() {
                 return ::core::option::Option::None;
             }
-            routed_text(request, answered, server_name)
+            routed_text(request, answered, server)
         }
 
     }
@@ -1039,7 +1044,7 @@ fn serve_fns() -> TokenStream {
             } else {
                 Driven::new(&call, host.writer(), put_to_services(&request, server.endpoint(), &ctx, route)).await
             };
-            finished(&request, &call, answered, server.name())
+            finished(&request, &call, answered, server)
         }
     }
 }
@@ -1113,7 +1118,7 @@ fn answer(contract: &Ident) -> TokenStream {
             } else {
                 Driven::new(&call, writer, put_to_service(&request, svc, &ctx)).await
             };
-            finished(&request, &call, answered, SERVER_NAME)
+            finished(&request, &call, answered, &alone())
         }
 
         /// `put_to_services` for this service alone.
@@ -1157,7 +1162,7 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Stream: McpHttpStream + ::core::marker::Sync,
         {
             answer_http_core(&McpHttpAsk { request, settings, stream }, svc, admit, &mut idle, false).await
@@ -1176,7 +1181,7 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Stream: McpHttpStream + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
         {
@@ -1193,7 +1198,7 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
         where
             Svc: $crate::#contract<Ctx> + ::core::marker::Sync,
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Stream: McpHttpStream + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
         {
@@ -1202,14 +1207,18 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
                 return ::core::option::Option::Some(refused);
             }
             let call = McpCall::of_body(request);
-            let ctx = match admit(request, call.clone()).await {
-                ::core::result::Result::Ok(ctx) => ctx,
+            let McpAdmitted { ctx, server_name } = match admit(request, call.clone()).await {
+                ::core::result::Result::Ok(admitted_as) => admitted_as,
                 ::core::result::Result::Err(denied) => return ::core::option::Option::Some(denial_response(&denied, settings, request)),
+            };
+            let server = match &server_name {
+                ::core::option::Option::Some(name) => alone().named_by_caller(name),
+                ::core::option::Option::None => alone(),
             };
             match admitted(request, listens, &ALONE) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(refused),
                 ::core::result::Result::Ok(text) => {
-                    match started(text, &alone(), ::core::option::Option::None, listens) {
+                    match started(text, &server, ::core::option::Option::None, listens) {
                         ::core::result::Result::Err(answered) => ::core::option::Option::Some(http_response(answered)),
                         ::core::result::Result::Ok(asked_request) => {
                             let work = async {
@@ -1219,7 +1228,7 @@ fn answer_http_fns(contract: &Ident) -> TokenStream {
                                     put_to_service(&asked_request, svc, &ctx).await
                                 }
                             };
-                            http_answer(&asked_request, &call, stream, SERVER_NAME, work).await
+                            http_answer(&asked_request, &call, stream, &server, work).await
                         }
                     }
                 }
@@ -1244,6 +1253,31 @@ fn http_fns() -> TokenStream {
     }
 }
 
+/// What `admit` answers for a request it lets through.
+fn admitted_type() -> TokenStream {
+    quote! {
+        /// What `admit` answers for a request it lets through: the context the services receive
+        /// and, where the caller decides it, the name the server answers as.
+        #[derive(Clone, Debug)]
+        pub struct McpAdmitted<Ctx> {
+            ctx: Ctx,
+            server_name: ::core::option::Option<::std::string::String>,
+        }
+
+        impl<Ctx> McpAdmitted<Ctx> {
+            /// Answers as `server_name`, with every public answer of the request made private.
+            pub const fn named(ctx: Ctx, server_name: ::std::string::String) -> Self {
+                Self { ctx, server_name: ::core::option::Option::Some(server_name) }
+            }
+
+            /// Answers as the name of the server.
+            pub const fn new(ctx: Ctx) -> Self {
+                Self { ctx, server_name: ::core::option::Option::None }
+            }
+        }
+    }
+}
+
 /// The server an endpoint answers as, and what an HTTP server of it is configured with.
 fn server_and_settings_types() -> TokenStream {
     quote! {
@@ -1253,6 +1287,7 @@ fn server_and_settings_types() -> TokenStream {
             endpoint: &'server McpEndpoint,
             instructions: ::core::option::Option<&'server str>,
             name: &'server str,
+            named_by_caller: bool,
         }
 
         impl<'server> McpServer<'server> {
@@ -1271,13 +1306,20 @@ fn server_and_settings_types() -> TokenStream {
                 self.name
             }
 
+            fn named_by_caller<'name>(&self, name: &'name str) -> McpServer<'name>
+            where
+                'server: 'name,
+            {
+                McpServer { endpoint: self.endpoint, instructions: self.instructions, name, named_by_caller: true }
+            }
+
             /// Binds a server to its endpoint, instructions and name.
             pub const fn new(
                 endpoint: &'server McpEndpoint,
                 instructions: ::core::option::Option<&'server str>,
                 name: &'server str,
             ) -> Self {
-                Self { endpoint, instructions, name }
+                Self { endpoint, instructions, name, named_by_caller: false }
             }
         }
 
@@ -1365,6 +1407,7 @@ fn server_and_settings_types() -> TokenStream {
 fn types() -> TokenStream {
     let endpoint = endpoint_type();
     let settings = server_and_settings_types();
+    let admitted = admitted_type();
     quote! {
         #endpoint
 
@@ -1377,6 +1420,8 @@ fn types() -> TokenStream {
         }
 
         #settings
+
+        #admitted
 
         /// Why `admit` refused a request.
         #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1745,7 +1790,7 @@ fn http_serving() -> TokenStream {
         ) -> ::core::option::Option<McpHttpResponse>
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Admit: ::core::marker::Send + ::core::marker::Sync,
             Stream: McpHttpStream + ::core::marker::Sync,
         {
@@ -1765,7 +1810,7 @@ fn http_serving() -> TokenStream {
         ) -> ::core::option::Option<McpHttpResponse>
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Admit: ::core::marker::Send + ::core::marker::Sync,
             Stream: McpHttpStream + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
@@ -1783,7 +1828,7 @@ fn http_serving() -> TokenStream {
         ) -> ::core::option::Option<McpHttpResponse>
         where
             Ctx: ::core::marker::Send + ::core::marker::Sync,
-            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<Ctx, McpDenied>,
+            Admit: ::core::ops::AsyncFn(&McpHttpRequest, McpCall) -> ::core::result::Result<McpAdmitted<Ctx>, McpDenied>,
             Admit: ::core::marker::Send + ::core::marker::Sync,
             Stream: McpHttpStream + ::core::marker::Sync,
             Changes: ::core::ops::AsyncFnMut() -> ::core::option::Option<McpChange>,
@@ -1793,14 +1838,18 @@ fn http_serving() -> TokenStream {
                 return ::core::option::Option::Some(refused);
             }
             let call = McpCall::of_body(request);
-            let ctx = match admit(request, call.clone()).await {
-                ::core::result::Result::Ok(ctx) => ctx,
+            let McpAdmitted { ctx, server_name } = match admit(request, call.clone()).await {
+                ::core::result::Result::Ok(admitted_as) => admitted_as,
                 ::core::result::Result::Err(denied) => return ::core::option::Option::Some(denial_response(&denied, settings, request)),
+            };
+            let server = match &server_name {
+                ::core::option::Option::Some(name) => server.named_by_caller(name),
+                ::core::option::Option::None => *server,
             };
             match admitted(request, listens, server.endpoint) {
                 ::core::result::Result::Err(refused) => ::core::option::Option::Some(refused),
                 ::core::result::Result::Ok(text) => {
-                    match started(text, server, ::core::option::Option::None, listens) {
+                    match started(text, &server, ::core::option::Option::None, listens) {
                         ::core::result::Result::Err(answered) => ::core::option::Option::Some(http_response(answered)),
                         ::core::result::Result::Ok(asked_request) => {
                             let work = async {
@@ -1810,7 +1859,7 @@ fn http_serving() -> TokenStream {
                                     put_to_services(&asked_request, server.endpoint(), &ctx, route).await
                                 }
                             };
-                            http_answer(&asked_request, &call, stream, server.name(), work).await
+                            http_answer(&asked_request, &call, stream, &server, work).await
                         }
                     }
                 }

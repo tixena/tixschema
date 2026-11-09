@@ -181,7 +181,7 @@ void main() async {
     final over = createLibraryServiceMcpHttpDispatcher<void>(
       libraryHandlers,
       settings,
-      (request, call) async => (ctx: null, denied: null),
+      (request, call) async => (ctx: null, denied: null, serverName: null),
       changesOf(row['script'] as List<dynamic>),
     );
     http.add(httpReport(await respondLibraryService(over, httpRequest(row))));
@@ -191,7 +191,7 @@ void main() async {
   final plainOver = createLibraryServiceMcpHttpDispatcher<void>(
     libraryHandlers,
     settings,
-    (request, call) async => (ctx: null, denied: null),
+    (request, call) async => (ctx: null, denied: null, serverName: null),
   );
   final plainResponse = await respondLibraryService(plainOver, httpRequest(firstHttp));
   final plainReply = await dispatch(first['request'] as String, open, lines().write, LibraryServiceMcpInFlight());
@@ -233,7 +233,7 @@ void main() async {
     final over = createLibraryServiceMcpHttpDispatcher<void>(
       libraryHandlers,
       settings,
-      (request, call) async => (ctx: null, denied: null),
+      (request, call) async => (ctx: null, denied: null, serverName: null),
       feed.next,
     );
     var ended = false;
@@ -273,7 +273,7 @@ void main() async {
       settings,
       (request, call) async {
         taken = call;
-        return (ctx: null, denied: null);
+        return (ctx: null, denied: null, serverName: null);
       },
       () => Completer<LibraryServiceMcpChange?>().future,
     );

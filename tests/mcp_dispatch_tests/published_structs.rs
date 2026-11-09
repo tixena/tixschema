@@ -57,6 +57,15 @@ macro_rules! built_and_read_back {
                 );
                 assert_eq!(response.body(), b"ok");
 
+                assert_eq!(
+                    format!("{:?}", dispatcher::McpAdmitted::new(7_u8)),
+                    "McpAdmitted { ctx: 7, server_name: None }"
+                );
+                assert_eq!(
+                    format!("{:?}", dispatcher::McpAdmitted::named(8_u8, "Workspace-acme".to_owned())),
+                    "McpAdmitted { ctx: 8, server_name: Some(\"Workspace-acme\") }"
+                );
+
                 let in_flight = dispatcher::McpInFlight::default();
                 let writer = String::new();
                 let host = dispatcher::McpHost::new(&in_flight, &writer);

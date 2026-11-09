@@ -51,7 +51,7 @@ fn respond(asked: &McpHttpRequest) -> McpHttpResponse {
             &SETTINGS,
             stream,
             &Archive::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(document_mcp::McpAdmitted::new(())),
         ))
     })
 }
@@ -266,7 +266,7 @@ fn an_endpoint_of_two_services_is_served_over_http_too() {
             &SETTINGS,
             stream,
             &document_mcp::McpServer::new(&WORKSPACE, None, "Workspace"),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(document_mcp::McpAdmitted::new(())),
             &|ctx: &(), part, method: &str, params: &Value| {
                 let held = archive.clone();
                 Box::pin(async move {
@@ -291,4 +291,140 @@ fn the_request_reads_a_header_in_any_case() {
     let asked = post(&get_version());
     assert_eq!(asked.header("MCP-METHOD"), Some("tools/call"));
     assert_eq!(asked.header("missing"), None);
+}
+
+fn admitted_as(name: Option<&str>) -> document_mcp::McpAdmitted<()> {
+    name.map_or_else(
+        || document_mcp::McpAdmitted::new(()),
+        |given| document_mcp::McpAdmitted::named((), given.to_owned()),
+    )
+}
+
+fn serve_as(asked: &McpHttpRequest, name: Option<&str>) -> McpHttpResponse {
+    let archive = Archive::default();
+    through(|stream| {
+        block_on(document_mcp::serve_http(
+            asked,
+            &SETTINGS,
+            stream,
+            &document_mcp::McpServer::new(&WORKSPACE, None, "Workspace"),
+            async |_request, _call| Ok(admitted_as(name)),
+            &|ctx: &(), part, method: &str, params: &Value| {
+                let held = archive.clone();
+                Box::pin(async move {
+                    match part {
+                        0 => document_mcp::route(method, params, &held, ctx).await,
+                        1 => billing_mcp::route(method, params, &held, ctx).await,
+                        _ => None,
+                    }
+                })
+            },
+        ))
+    })
+}
+
+fn answer_as(asked: &McpHttpRequest, name: Option<&str>) -> McpHttpResponse {
+    through(|stream| {
+        block_on(document_mcp::answer_http(
+            asked,
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request, _call| Ok(admitted_as(name)),
+        ))
+    })
+}
+
+fn named_in(response: &McpHttpResponse) -> String {
+    assert_eq!(response.status(), 200);
+    body_of(response)["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn discover() -> McpHttpRequest {
+    post(&request(&id(1), "server/discover", json!({})))
+}
+
+#[test]
+fn a_name_admit_gave_is_the_name_of_every_answer_of_the_request() {
+    for message in [
+        request(&id(1), "server/discover", json!({})),
+        request(&id(2), "tools/list", json!({})),
+        request(&id(3), "resources/list", json!({})),
+        call(&id(4), "get-version", &json!({ "document_id": "doc-1" })),
+    ] {
+        let answered = serve_as(&post(&message), Some("Workspace-acme"));
+        assert_eq!(named_in(&answered), "Workspace-acme", "{message}");
+        let unnamed = serve_as(&post(&message), None);
+        assert_eq!(named_in(&unnamed), "Workspace", "{message}");
+    }
+}
+
+#[test]
+fn two_callers_of_one_server_are_answered_under_their_own_names() {
+    let asked = discover();
+    assert_eq!(
+        named_in(&serve_as(&asked, Some("Workspace-acme"))),
+        "Workspace-acme"
+    );
+    assert_eq!(
+        named_in(&serve_as(&asked, Some("Workspace-globex"))),
+        "Workspace-globex"
+    );
+    assert_eq!(named_in(&serve_as(&asked, None)), "Workspace");
+}
+
+#[test]
+fn a_public_answer_is_private_when_admit_named_the_server_and_keeps_its_ttl() {
+    for message in [
+        request(&id(1), "server/discover", json!({})),
+        request(&id(2), "tools/list", json!({})),
+    ] {
+        let named = body_of(&serve_as(&post(&message), Some("Workspace-acme")))["result"].clone();
+        let plain = body_of(&serve_as(&post(&message), None))["result"].clone();
+        assert_eq!(plain["cacheScope"], "public", "{message}");
+        assert_eq!(named["cacheScope"], "private", "{message}");
+        assert_eq!(named["ttlMs"], plain["ttlMs"], "{message}");
+    }
+}
+
+#[test]
+fn an_answer_that_was_private_stays_private_under_a_name_admit_gave() {
+    let message = request(&id(1), "resources/list", json!({}));
+    for name in [None, Some("Workspace-acme")] {
+        let answered = body_of(&serve_as(&post(&message), name));
+        assert_eq!(answered["result"]["cacheScope"], "private", "{name:?}");
+    }
+}
+
+#[test]
+fn a_service_served_alone_answers_the_admitted_name_and_then_its_own() {
+    let asked = discover();
+    let named = answer_as(&asked, Some("DocumentService-acme"));
+    assert_eq!(named_in(&named), "DocumentService-acme");
+    assert_eq!(body_of(&named)["result"]["cacheScope"], "private");
+    let own = answer_as(&asked, None);
+    assert_eq!(named_in(&own), document_mcp::SERVER_NAME);
+    assert_eq!(body_of(&own)["result"]["cacheScope"], "public");
+}
+
+#[test]
+fn a_denied_request_answers_403_with_no_body_and_no_headers() {
+    let asked = discover();
+    let denied = through(|stream| {
+        block_on(document_mcp::answer_http(
+            &asked,
+            &SETTINGS,
+            stream,
+            &Archive::default(),
+            async |_request, _call| {
+                Err::<document_mcp::McpAdmitted<()>, _>(document_mcp::McpDenied::Forbidden)
+            },
+        ))
+    });
+    assert_eq!(denied.status(), 403);
+    assert_eq!(denied.body(), nothing());
+    assert_eq!(denied.headers(), []);
 }

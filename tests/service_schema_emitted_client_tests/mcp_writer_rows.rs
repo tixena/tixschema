@@ -431,7 +431,7 @@ fn http_answer(row: &HttpRow) -> Value {
             stream,
             &Stand,
             async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
-                Ok::<_, dispatcher::McpDenied>(Reporting::of(&call))
+                Ok::<_, dispatcher::McpDenied>(dispatcher::McpAdmitted::new(Reporting::of(&call)))
             },
         ))
     });
@@ -478,7 +478,10 @@ fn streamed_progress() -> Value {
             &stream,
             &Stand,
             async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
-                Ok::<_, dispatcher::McpDenied>(Reporting::gated(&call, Arc::clone(&gate)))
+                Ok::<_, dispatcher::McpDenied>(dispatcher::McpAdmitted::new(Reporting::gated(
+                    &call,
+                    Arc::clone(&gate),
+                )))
             },
         )
         .await;
@@ -514,7 +517,10 @@ fn streamed_failure() -> Value {
             &Stand,
             async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
                 *seen_call.lock().unwrap() = Some(call.clone());
-                Ok::<_, dispatcher::McpDenied>(Reporting::gated(&call, Arc::clone(&gate)))
+                Ok::<_, dispatcher::McpDenied>(dispatcher::McpAdmitted::new(Reporting::gated(
+                    &call,
+                    Arc::clone(&gate),
+                )))
             },
         )
         .await;
@@ -541,13 +547,13 @@ fn streamed_refusal() -> Value {
         async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
             *seen_call.lock().unwrap() = Some(call);
             let counter = Arc::clone(&reached);
-            Ok::<_, dispatcher::McpDenied>(Reporting {
+            Ok::<_, dispatcher::McpDenied>(dispatcher::McpAdmitted::new(Reporting {
                 cancelled: Box::new(|| false),
                 gate: Arc::new(Gate::default()),
                 progress: Box::new(move |_, _, _| {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }),
-            })
+            }))
         },
     ));
     let cancelled = seen_call.lock().unwrap().as_ref().unwrap().cancelled();
@@ -568,7 +574,7 @@ fn streamed_plain() -> Value {
         &stream,
         &Stand,
         async |_request: &dispatcher::McpHttpRequest, call: dispatcher::McpCall| {
-            Ok::<_, dispatcher::McpDenied>(Reporting::of(&call))
+            Ok::<_, dispatcher::McpDenied>(dispatcher::McpAdmitted::new(Reporting::of(&call)))
         },
     ))
     .unwrap();
@@ -855,7 +861,9 @@ fn an_admit_that_denies_by_name_stops_the_request_before_any_handler_runs() {
                 &Stand,
                 async |request: &dispatcher::McpHttpRequest, _call: dispatcher::McpCall| {
                     match request.mcp_name().as_deref() {
-                        Some("forbidden") => Err::<(), _>(dispatcher::McpDenied::Forbidden),
+                        Some("forbidden") => {
+                            Err::<dispatcher::McpAdmitted<()>, _>(dispatcher::McpDenied::Forbidden)
+                        }
                         Some("scoped") => Err(dispatcher::McpDenied::InsufficientScope {
                             scope: "exports:write".to_owned(),
                         }),

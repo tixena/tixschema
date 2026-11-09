@@ -243,6 +243,12 @@ function __p__McpReplied(status: number, body: Record<string, unknown>): __N__Mc
   return { status, text: __p__McpText({ jsonrpc: "2.0", ...body }) };
 }
 
+/** A reply whose public answer is private where the server's name came from the caller. */
+function __p__McpPrivately(body: Record<string, unknown>, named: boolean): Record<string, unknown> {
+  const result = __p__McpObject(body.result);
+  return named && result?.cacheScope === "public" ? { ...body, result: { ...result, cacheScope: "private" } } : body;
+}
+
 function __p__McpRefused(
   id: unknown,
   status: number,
@@ -342,6 +348,7 @@ async function __p__McpListResources(
   id: unknown,
   params: Record<string, unknown> | undefined,
   info: Record<string, unknown>,
+  named: boolean,
   endpoint: __N__McpEndpoint,
   route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
 ): Promise<__N__McpHandled> {
@@ -375,7 +382,7 @@ async function __p__McpListResources(
     }
   }
   result.resources = resources;
-  return __p__McpReplied(200, { id, result });
+  return __p__McpReplied(200, __p__McpPrivately({ id, result }, named));
 }
 
 /** A task state as a task method and a notification write it: under the full task id, with a completed task's result as the `CallToolResult` the starting tool would have answered. */
@@ -452,6 +459,7 @@ async function __p__McpListen(
 async function __p__McpHandle(
   message: Record<string, unknown>,
   serverName: string,
+  named: boolean,
   instructions: string | undefined,
   endpoint: __N__McpEndpoint,
   route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
@@ -477,13 +485,15 @@ async function __p__McpHandle(
   const info = {
     "io.modelcontextprotocol/serverInfo": { name: serverName, version: __p__McpServerVersion },
   };
+  const replied = (status: number, body: Record<string, unknown>): __N__McpHandled =>
+    __p__McpReplied(status, __p__McpPrivately(body, named));
   if (method === "subscriptions/listen" && listening !== undefined) return listening(id, params, info);
   if (method.startsWith("tasks/") && !__p__McpTasked(endpoint)) {
     return __p__McpRefused(id, 404, -32601, `Method not found: ${method}`);
   }
   switch (method) {
     case "server/discover":
-      return __p__McpReplied(200, {
+      return replied(200, {
         id,
         result: {
           _meta: info,
@@ -496,7 +506,7 @@ async function __p__McpHandle(
         },
       });
     case "tools/list":
-      return __p__McpReplied(200, {
+      return replied(200, {
         id,
         result: {
           _meta: info,
@@ -507,7 +517,7 @@ async function __p__McpHandle(
         },
       });
     case "resources/templates/list":
-      return __p__McpReplied(200, {
+      return replied(200, {
         id,
         result: {
           _meta: info,
@@ -520,7 +530,7 @@ async function __p__McpHandle(
         },
       });
     case "prompts/list":
-      return __p__McpReplied(200, {
+      return replied(200, {
         id,
         result: {
           _meta: info,
@@ -531,11 +541,11 @@ async function __p__McpHandle(
         },
       });
     case "resources/list":
-      return __p__McpListResources(id, params, info, endpoint, route);
+      return __p__McpListResources(id, params, info, named, endpoint, route);
     case "skills/list": {
       const skills = endpoint.parts.flatMap((part) => part.skills);
       const dynamic = skills.some((text) => __p__McpObject(__p__McpRead(text))?.resources === "dynamic");
-      return __p__McpReplied(200, {
+      return replied(200, {
         id,
         result: {
           _meta: info,
@@ -563,7 +573,7 @@ async function __p__McpHandle(
         if (answer === undefined) continue;
         if ("error" in answer) return __p__McpReplied(200, { id, error: answer.error });
         const result = __p__McpObject(answer.result);
-        return __p__McpReplied(200, {
+        return replied(200, {
           id,
           result: result === undefined ? answer.result : { ...result, _meta: info },
         });
@@ -650,6 +660,7 @@ export async function __p__McpServe<Ctx>(
     const handled = await __p__McpHandle(
       message,
       serverName,
+      false,
       instructions,
       endpoint,
       async (part, method, params) => {
@@ -1232,8 +1243,8 @@ export type __N__McpHttpStream = {
   write(event: string): Promise<void>;
 };
 
-/** What `admit` answers: the context the handlers run with, or why the request is refused. */
-export type __N__McpAdmitted<Ctx> = { readonly ctx: Ctx } | { readonly denied: __N__McpDenied };";
+/** What `admit` answers: the context the handlers run with and, where the caller decides it, the name the server answers as with every public answer of the request made private, or why the request is refused. */
+export type __N__McpAdmitted<Ctx> = { readonly ctx: Ctx; readonly serverName?: string | undefined } | { readonly denied: __N__McpDenied };";
 
 const SERVE_HTTP: &str = r#"const __p__McpNamedBy = new Map<string, string>([
   ["tools/call", "name"],
@@ -1394,6 +1405,7 @@ export async function __p__McpServeHttp<Ctx>(
   const admitted = await admit(request, call);
   if ("denied" in admitted) return __p__McpDenial(admitted.denied, settings, request);
   const { ctx } = admitted;
+  const callerNamed = admitted.serverName !== undefined;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(request.body);
@@ -1447,7 +1459,8 @@ export async function __p__McpServeHttp<Ctx>(
         };
   const handled = await __p__McpHandle(
     message,
-    serverName,
+    admitted.serverName ?? serverName,
+    callerNamed,
     instructions,
     endpoint,
     async (part, called, given) => {

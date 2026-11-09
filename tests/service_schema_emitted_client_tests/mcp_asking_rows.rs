@@ -1102,7 +1102,7 @@ fn an_admit_that_denies_stops_the_request_before_any_handler_runs() {
                     assert_eq!(request.mcp_name().as_deref(), Some("delete-document"));
                     assert_eq!(request.bearer_token(), None);
                     assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                    Err::<(), _>(denied.clone())
+                    Err::<dispatcher::McpAdmitted<()>, _>(denied.clone())
                 },
             ))
         });
@@ -1178,7 +1178,7 @@ fn an_admit_that_denies_stops_a_preview_before_its_handler_runs() {
                     assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
                     assert_eq!(request.bearer_token(), None);
                     assert_eq!(request.header("mcp-method"), Some("tools/call"));
-                    Err::<(), _>(denied.clone())
+                    Err::<preview_dispatcher::McpAdmitted<()>, _>(denied.clone())
                 },
             ))
         });

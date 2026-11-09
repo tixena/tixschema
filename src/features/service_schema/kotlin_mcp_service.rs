@@ -241,8 +241,9 @@ private fun @P@McpChecked(request: JsonObject): JsonObject? {
   return null
 }
 
-private fun @P@McpWithInfo(result: JsonObject, serverName: String): JsonObject {
+private fun @P@McpWithInfo(result: JsonObject, serverName: String, named: Boolean): JsonObject {
   val members = result.toMutableMap()
+  if (named && (members["cacheScope"] as? JsonPrimitive)?.content == "public") members["cacheScope"] = JsonPrimitive("private")
   if ("resultType" !in members) members["resultType"] = JsonPrimitive("complete")
   val meta = (members["_meta"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
   meta[@P@McpInfoKey] = buildJsonObject {
@@ -525,13 +526,13 @@ const SERVING: &str = r#"private sealed interface @P@McpBegun {
   class Routed(val request: JsonObject) : @P@McpBegun
 }
 
-private fun @P@McpResponseText(id: JsonElement, answered: JsonObject, serverName: String): String =
+private fun @P@McpResponseText(id: JsonElement, answered: JsonObject, serverName: String, named: Boolean): String =
   @P@McpServeText(
     when (val result = answered["result"]) {
       is JsonObject -> buildJsonObject {
         put("id", id)
         put("jsonrpc", "2.0")
-        put("result", @P@McpWithInfo(result, serverName))
+        put("result", @P@McpWithInfo(result, serverName, named))
       }
       else -> @P@McpFailed(id, answered["error"] as JsonObject)
     },
@@ -542,6 +543,7 @@ private fun @P@McpBegin(
   instructions: String?,
   endpoint: @N@McpEndpoint,
   serverName: String,
+  named: Boolean,
   listens: Boolean,
 ): @P@McpBegun {
   val (request, refusal) = @P@McpReadRequest(text)
@@ -574,10 +576,10 @@ private fun @P@McpBegin(
     }
     else -> @P@McpErrorOf(@P@McpErrorObject(-32601, "Method not found: $method", null))
   }
-  return @P@McpBegun.Answered(@P@McpResponseText(id, answered, serverName))
+  return @P@McpBegun.Answered(@P@McpResponseText(id, answered, serverName, named))
 }
 
-private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverName: String): String {
+private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverName: String, named: Boolean): String {
   val method = (request["method"] as JsonPrimitive).content
   val name = @P@McpNamed(@P@McpParams(request), method).orEmpty()
   val unknown = when (method) {
@@ -598,7 +600,7 @@ private fun @P@McpRoutedText(request: JsonObject, answered: JsonObject?, serverN
       },
     ),
   )
-  return @P@McpResponseText(request["id"] ?: JsonNull, resolved, serverName)
+  return @P@McpResponseText(request["id"] ?: JsonNull, resolved, serverName, named)
 }
 
 private fun @P@McpRouted(method: String, answer: JsonObject?): JsonObject? {
@@ -614,6 +616,7 @@ private suspend fun @P@McpAsk(
   request: JsonObject,
   endpoint: @N@McpEndpoint,
   serverName: String,
+  named: Boolean,
   route: suspend (part: Int, method: String, params: JsonObject) -> JsonObject?,
 ): String {
   val method = (request["method"] as JsonPrimitive).content
@@ -637,14 +640,14 @@ private suspend fun @P@McpAsk(
       }
       @P@McpListedResources(start.first, endpoint, page)
     }
-    return @P@McpResponseText(request["id"] ?: JsonNull, listed, serverName)
+    return @P@McpResponseText(request["id"] ?: JsonNull, listed, serverName, named)
   }
   var answered: JsonObject? = null
   for (part in endpoint.catalogs.indices) {
     answered = @P@McpRouted(method, route(part, method, @P@McpParams(request)))
     if (answered != null) break
   }
-  return @P@McpRoutedText(request, answered, serverName)
+  return @P@McpRoutedText(request, answered, serverName, named)
 }
 
 /** The `subscriptions/listen` of one call: the acknowledgment, then what [changes] yields that the client asked for, until it yields `null` or the call is cancelled. */
@@ -732,7 +735,7 @@ suspend fun @P@McpServe(
   host: @N@McpHost,
   route: suspend (call: @N@McpCall, part: Int, method: String, params: JsonObject) -> JsonObject?,
 ): String? {
-  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, host.changes != null)) {
+  val request = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, false, host.changes != null)) {
     is @P@McpBegun.Answered -> return begun.text
     is @P@McpBegun.Notified -> {
       if ((begun.notice["method"] as JsonPrimitive).content == "notifications/cancelled") {
@@ -747,9 +750,9 @@ suspend fun @P@McpServe(
   try {
     val listening = host.changes
     val answered = if (listening != null && (request["method"] as JsonPrimitive).content == "subscriptions/listen") {
-      @P@McpResponseText(request["id"] ?: JsonNull, @P@McpListen(request, endpoint, call, listening), serverName)
+      @P@McpResponseText(request["id"] ?: JsonNull, @P@McpListen(request, endpoint, call, listening), serverName, false)
     } else {
-      @P@McpAsk(request, endpoint, serverName) { part, method, params -> route(call, part, method, params) }
+      @P@McpAsk(request, endpoint, serverName, false) { part, method, params -> route(call, part, method, params) }
     }
     return if (call.cancelled) null else answered
   } finally {
@@ -1077,9 +1080,9 @@ sealed interface @N@McpDenied {
   object Forbidden : @N@McpDenied
 }
 
-/** What `admit` answers: the handlers built for the caller, or why the request is refused. */
+/** What `admit` answers: the handlers built for the caller and, where the caller decides it, the name the server answers as with every public answer of the request made private, or why the request is refused. */
 sealed interface @N@McpAdmitted {
-  data class Caller(val handlers: @N@Handlers) : @N@McpAdmitted
+  data class Caller(val handlers: @N@Handlers, val serverName: String? = null) : @N@McpAdmitted
   data class Denied(val denied: @N@McpDenied) : @N@McpAdmitted
 }
 
@@ -1250,13 +1253,16 @@ suspend fun @P@McpServeHttp(
     if (live.get()) stream.write(text) else held.add(text)
   }
   val call = @N@McpCall(@P@McpBodyToken(request), { event -> give(@P@McpFrame(event)) }, { give(":\n\n") })
-  val caller = when (val admitted = admit(request, call)) {
-    is @N@McpAdmitted.Denied -> return @P@McpDenial(admitted.denied, settings, request)
-    is @N@McpAdmitted.Caller -> admitted.handlers
+  val admitted = when (val given = admit(request, call)) {
+    is @N@McpAdmitted.Denied -> return @P@McpDenial(given.denied, settings, request)
+    is @N@McpAdmitted.Caller -> given
   }
+  val caller = admitted.handlers
+  val named = admitted.serverName != null
+  val answeredAs = admitted.serverName ?: serverName
   val (text, refused) = @P@McpAfterAdmit(request, changes != null, endpoint)
   if (text == null) return refused ?: @P@McpWithoutBody(400)
-  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, serverName, changes != null)) {
+  val asked = when (val begun = @P@McpBegin(text, instructions, endpoint, answeredAs, named, changes != null)) {
     is @P@McpBegun.Answered -> return @P@McpHttpAnswer(begun.text)
     is @P@McpBegun.Notified -> return @P@McpHttpAnswer(null)
     is @P@McpBegun.Routed -> begun.request
@@ -1276,9 +1282,9 @@ suspend fun @P@McpServeHttp(
     }
   }
   val answered = if (changes != null && listens) {
-    @P@McpResponseText(asked["id"] ?: JsonNull, @P@McpListen(asked, endpoint, call, changes), serverName)
+    @P@McpResponseText(asked["id"] ?: JsonNull, @P@McpListen(asked, endpoint, call, changes), answeredAs, named)
   } else {
-    @P@McpAsk(asked, endpoint, serverName) { part, method, params -> route(caller, part, method, params) }
+    @P@McpAsk(asked, endpoint, answeredAs, named) { part, method, params -> route(caller, part, method, params) }
   }
   val written = if (call.cancelled) null else answered
   if (!streams) return @P@McpHttpAnswer(written)

@@ -31,18 +31,18 @@ void main() async {
     countItems: (ctx, req) async => found(BookInfo(pages: 3)),
   );
   const tokens = <String, String>{'read-token': 'documents:read', 'write-token': 'documents:read documents:write'};
-  Future<({void ctx, StacksServiceMcpDenied? denied})> admit(StacksServiceMcpHttpRequest request, StacksServiceMcpCall call) async {
+  Future<({void ctx, StacksServiceMcpDenied? denied, String? serverName})> admit(StacksServiceMcpHttpRequest request, StacksServiceMcpCall call) async {
     final needed = stacksServiceMcpScopes(request.header('mcp-method') ?? '', request.mcpName);
     final token = request.bearerToken;
     if (token == null) {
-      return (ctx: null, denied: StacksServiceMcpNoValidCredentials(scope: needed.isEmpty ? null : needed.join(' ')));
+      return (ctx: null, denied: StacksServiceMcpNoValidCredentials(scope: needed.isEmpty ? null : needed.join(' ')), serverName: null);
     }
     final held = tokens[token];
-    if (held == null) return (ctx: null, denied: const StacksServiceMcpNoValidCredentials());
+    if (held == null) return (ctx: null, denied: const StacksServiceMcpNoValidCredentials(), serverName: null);
     if (needed.any((scope) => !held.split(' ').contains(scope))) {
-      return (ctx: null, denied: StacksServiceMcpInsufficientScope(scope: needed.join(' ')));
+      return (ctx: null, denied: StacksServiceMcpInsufficientScope(scope: needed.join(' ')), serverName: null);
     }
-    return (ctx: null, denied: null);
+    return (ctx: null, denied: null, serverName: null);
   }
 
   final oauth = input['oauth'] as Map<String, dynamic>;

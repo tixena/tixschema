@@ -621,8 +621,8 @@ class @N@McpHost {
   final @N@McpChanges? changes;
 }
 
-/// What `admit` answers: the context the handlers run with in `ctx`, or why the request is refused in `denied`.
-typedef @N@McpAdmit<Ctx> = Future<({Ctx? ctx, @N@McpDenied? denied})> Function(
+/// What `admit` answers: the context the handlers run with in `ctx` and, where the caller decides it, the name the server answers as in `serverName`, with every public answer of the request made private, or why the request is refused in `denied`.
+typedef @N@McpAdmit<Ctx> = Future<({Ctx? ctx, @N@McpDenied? denied, String? serverName})> Function(
   @N@McpHttpRequest request,
   @N@McpCall call,
 );
@@ -780,6 +780,7 @@ bool _@P@McpTasked(@N@McpEndpoint endpoint) => endpoint.catalogs.any((catalog) =
 Future<({String? text, int status})> _@P@McpRespond(
   String text,
   String serverName,
+  bool callerNamed,
   String serverVersion,
   String? instructions,
   @N@McpEndpoint endpoint,
@@ -843,7 +844,7 @@ Future<({String? text, int status})> _@P@McpRespond(
     }
     return answered(_@P@McpObject(<String, String>{
       '_meta': info,
-      'cacheScope': '"public"',
+      'cacheScope': callerNamed ? '"private"' : '"public"',
       'capabilities': _@P@McpJson(capabilities),
       if (instructions != null) 'instructions': _@P@McpJson(instructions),
       'resultType': '"complete"',
@@ -855,7 +856,7 @@ Future<({String? text, int status})> _@P@McpRespond(
   final catalogs = endpoint.catalogs;
   final String? field;
   final List<String> listed;
-  var scope = 'public';
+  var scope = callerNamed ? 'private' : 'public';
   var ttl = 300000;
   switch (method) {
     case 'tools/list':
@@ -924,7 +925,7 @@ Future<({String? text, int status})> _@P@McpRespond(
         final resources = result['resources'];
         if (resources is List) items.addAll(resources.map(_@P@McpJson));
         if (result['ttlMs'] is int) ttl = result['ttlMs'] as int;
-        if (result['cacheScope'] is String) scope = result['cacheScope'] as String;
+        if (result['cacheScope'] is String) scope = callerNamed && result['cacheScope'] == 'public' ? 'private' : result['cacheScope'] as String;
         final following = result['nextCursor'];
         if (following is String && following.isNotEmpty) next = '$part:$following';
       }
@@ -998,6 +999,7 @@ Future<({String? text, int status})> _@P@McpRespond(
     final members = result is Map<String, dynamic> ? Map<String, dynamic>.of(result) : <String, dynamic>{};
     members.putIfAbsent('resultType', () => 'complete');
     members.putIfAbsent('_meta', () => jsonDecode(info));
+    if (callerNamed && members['cacheScope'] == 'public') members['cacheScope'] = 'private';
     return answered(_@P@McpJson(members));
   }
   final asked = named ?? params['name'] ?? params['uri'] ?? method;
@@ -1064,7 +1066,7 @@ Future<String?> @P@McpServe<Ctx>(
   var building = true;
   final changes = host.changes;
   try {
-    final answered = await _@P@McpRespond(text, serverName, @P@McpServerVersion, instructions, endpoint,
+    final answered = await _@P@McpRespond(text, serverName, false, @P@McpServerVersion, instructions, endpoint,
         (part, method, params) {
       if (building) {
         building = false;
@@ -1245,7 +1247,7 @@ Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   }
 
   var routed = false;
-  final answered = await _@P@McpRespond(utf8.decode(request.body), serverName, @P@McpServerVersion, instructions,
+  final answered = await _@P@McpRespond(utf8.decode(request.body), admitted.serverName ?? serverName, admitted.serverName != null, @P@McpServerVersion, instructions,
       endpoint, (part, method, params) async {
     routed = true;
     await begin();

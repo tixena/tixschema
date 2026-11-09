@@ -286,7 +286,7 @@ pub fn rust_http(row: &HttpRow) -> HttpAnswer {
             &settings,
             stream,
             &Lessons,
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_lesson_dispatcher::McpAdmitted::new(())),
         ))
         .unwrap()
     });

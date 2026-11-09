@@ -4,8 +4,8 @@
 
 use super::WriterServiceSchema;
 use super::mcp_auth_rows::{
-    AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
-    auth_rows,
+    AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORGANIZATION_STATUSES, ORIGIN, RESOURCE,
+    SCOPE_QUERIES, SCOPES_SUPPORTED, assert_organization_answer, auth_rows,
 };
 use super::mcp_node_document as document_mcp;
 use super::mcp_writer_rows::{
@@ -207,10 +207,17 @@ async function main() {
       if (key === undefined || secret === undefined) return { denied: { kind: "noValidCredentials" } };
       return key === "admin-key" && secret === "admin-secret" ? { ctx: {} } : { denied: { kind: "forbidden" } };
     },
+    organization: async (request) => {
+      const organization = documentServiceMcpHeader(request, "x-organization");
+      if (organization === undefined) return { ctx: {} };
+      if (organization === "banned") return { denied: { kind: "forbidden" } };
+      return { ctx: {}, serverName: `${organization}-documents` };
+    },
   };
   const settings = {
     oauth: { allowedOrigins: [input.origin], oauth: input.oauth },
     keys: { allowedOrigins: [input.origin] },
+    organization: { allowedOrigins: [input.origin] },
   };
   const answers = [];
   for (const row of input.rows) {
@@ -328,7 +335,7 @@ export const http = createDocumentServiceMcpHttpDispatcher(
   { allowedOrigins: [] },
   async (request: DocumentServiceMcpHttpRequest, call: DocumentServiceMcpCall) =>
     call instanceof DocumentServiceMcpCall && request.path === "/mcp"
-      ? { ctx: 1 }
+      ? ({ ctx: 1, serverName: "Documents-acme" } satisfies DocumentServiceMcpAdmitted<number>)
       : ({ denied: { kind: "forbidden" } } satisfies DocumentServiceMcpAdmitted<number>),
 );
 export const settings: DocumentServiceMcpHttpSettings = {
@@ -1665,6 +1672,7 @@ fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does(
             .collect();
         assert_eq!(node_headers, headers, "{}", row.name);
         assert_eq!(node["body"].as_str().unwrap(), body, "{}", row.name);
+        assert_organization_answer(row, status, &body);
         if status != 200 {
             assert_eq!(node["reached"], 0_i32, "{}: no handler is called", row.name);
         }
@@ -1673,13 +1681,12 @@ fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does(
         .iter()
         .map(|held| held["status"].as_u64().unwrap())
         .collect();
-    assert_eq!(
-        statuses,
-        [
-            200, 200, 405, 401, 401, 401, 401, 401, 200, 200, 403, 403, 403, 403, 403, 200, 400,
-            401, 405, 401, 401, 403, 403, 200, 200, 403
-        ]
-    );
+    let mut expected = vec![
+        200, 200, 405, 401, 401, 401, 401, 401, 200, 200, 403, 403, 403, 403, 403, 200, 400, 401,
+        405, 401, 401, 403, 403, 200, 200, 403,
+    ];
+    expected.extend(ORGANIZATION_STATUSES.map(u64::from));
+    assert_eq!(statuses, expected);
 }
 
 #[test]

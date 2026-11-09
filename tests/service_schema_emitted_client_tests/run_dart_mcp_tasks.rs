@@ -88,7 +88,7 @@ void main() async {
   final http = createJobServiceMcpHttpDispatcher<void>(
     handlers,
     const JobServiceMcpHttpSettings(allowedOrigins: []),
-    (request, call) async => (ctx: null, denied: null),
+    (request, call) async => (ctx: null, denied: null, serverName: null),
   );
   final answers = <String, dynamic>{};
   final calls = <String, dynamic>{};

@@ -37,7 +37,7 @@ macro_rules! exercised {
                     &settings,
                     stream,
                     &$stand,
-                    async |_request, _call| Ok(()),
+                    async |_request, _call| Ok($module::McpAdmitted::new(())),
                 ))
                 .unwrap()
             });
@@ -47,7 +47,7 @@ macro_rules! exercised {
                     &settings,
                     stream,
                     &$module::McpServer::new(&endpoint, None, $module::SERVER_NAME),
-                    async |_request, _call| Ok(()),
+                    async |_request, _call| Ok($module::McpAdmitted::new(())),
                     &|ctx: &(), _part, method: &str, params: &Value| {
                         Box::pin(async move { $module::route(method, params, &$stand, ctx).await })
                     },
@@ -93,17 +93,17 @@ macro_rules! exercised {
             ] {
                 let response = crate::mcp_streams::through(|stream| {
                     poll_once($module::answer_http(
-                        &terms,
-                        &settings,
-                        stream,
-                        &$stand,
-                        async |_request: &$module::McpHttpRequest,
-                               _call: $module::McpCall|
-                               -> Result<(), $module::McpDenied> {
-                            Err(denied.clone())
-                        },
-                    ))
-                    .unwrap()
+                                &terms,
+                                &settings,
+                                stream,
+                                &$stand,
+                                async |_request: &$module::McpHttpRequest,
+                                       _call: $module::McpCall|
+                                       -> Result<$module::McpAdmitted<()>, $module::McpDenied> {
+                                    Err(denied.clone())
+                                },
+                            ))
+                            .unwrap()
                 });
                 assert_eq!(response.status(), status, "{denied:?}");
             }
@@ -555,7 +555,7 @@ pub fn rust_http(row: &HttpRow) -> HttpAnswer {
             &SETTINGS,
             stream,
             &Stand,
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_library_dispatcher::McpAdmitted::new(())),
         ))
         .unwrap()
     });

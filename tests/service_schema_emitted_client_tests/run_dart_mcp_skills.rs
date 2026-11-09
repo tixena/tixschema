@@ -49,7 +49,7 @@ void main() async {
   final over = createLessonServiceMcpHttpDispatcher<void>(
     lessonHandlers,
     LessonServiceMcpHttpSettings(allowedOrigins: [input['origin'] as String]),
-    (request, call) async => (ctx: null, denied: null),
+    (request, call) async => (ctx: null, denied: null, serverName: null),
   );
   final http = <Map<String, dynamic>>[];
   for (final held in input['http'] as List<dynamic>) {

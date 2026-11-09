@@ -111,7 +111,7 @@ pub(super) fn functions() -> TokenStream {
             request: &::serde_json::Value,
             call: &McpCall,
             stream: &Stream,
-            server_name: &str,
+            server: &McpServer<'_>,
             work: Work,
         ) -> ::core::option::Option<McpHttpResponse>
         where
@@ -125,7 +125,7 @@ pub(super) fn functions() -> TokenStream {
                 return ::core::option::Option::None;
             }
             let answered = Driven::new(call, &framed, work).await;
-            let text = finished(request, call, answered, server_name);
+            let text = finished(request, call, answered, server);
             if !streaming {
                 return ::core::option::Option::Some(http_response(text));
             }

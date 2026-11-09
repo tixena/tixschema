@@ -39,7 +39,7 @@ mod over_http {
             &SETTINGS,
             &stream,
             &Counsels::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(counsel_mcp::McpAdmitted::new(())),
         ));
         assert!(answered.is_none());
         let streamed = stream.streamed();
@@ -79,7 +79,7 @@ mod over_http {
                     async |request: &McpHttpRequest, call: McpCall| {
                         assert_eq!(request.mcp_name().as_deref(), Some("greet"));
                         call.progress(1.0_f64, None, None);
-                        Err::<(), _>(denied.clone())
+                        Err::<counsel_mcp::McpAdmitted<()>, _>(denied.clone())
                     },
                     &|ctx: &(), part, method: &str, params: &Value| {
                         let held = counsels.clone();
@@ -101,7 +101,7 @@ mod over_http {
                 &SETTINGS,
                 stream,
                 &counsels,
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(counsel_mcp::McpAdmitted::new(())),
             ))
         });
         assert_eq!(response.status(), 200);
@@ -455,7 +455,7 @@ fn the_mcp_name_header_of_prompts_get_must_match_the_body() {
                 &settings,
                 stream,
                 &Counsels::default(),
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(counsel_mcp::McpAdmitted::new(())),
             ))
         })
     };

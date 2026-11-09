@@ -567,7 +567,7 @@ pub fn rust_http(row: &HttpRow) -> (u16, Vec<(String, String)>, String) {
             &DOCUMENT_SETTINGS,
             stream,
             &Archive,
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_mobile_document::McpAdmitted::new(())),
         ))
     });
     (
@@ -618,7 +618,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             &BILLING_SETTINGS,
             stream,
             &Archive,
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_mobile_billing::McpAdmitted::new(())),
         ))
     });
     let served_over_http = through(|stream| {
@@ -627,7 +627,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             &BILLING_SETTINGS,
             stream,
             &mcp_mobile_billing::McpServer::new(&endpoint, None, mcp_mobile_billing::SERVER_NAME),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_mobile_billing::McpAdmitted::new(())),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 Box::pin(
                     async move { mcp_mobile_billing::route(method, params, &Archive, ctx).await },
@@ -643,7 +643,7 @@ fn the_second_service_answers_alone_and_beside_the_first() {
             &DOCUMENT_SETTINGS,
             stream,
             &mcp_mobile_document::McpServer::new(&WORKSPACE, None, "Workspace"),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(mcp_mobile_document::McpAdmitted::new(())),
             &|ctx: &(), part, method: &str, params: &Value| {
                 Box::pin(async move {
                     match part {
@@ -689,9 +689,10 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
                 &Archive,
                 async |_request: &McpHttpRequest,
                        _call: mcp_mobile_document::McpCall|
-                       -> Result<(), mcp_mobile_document::McpDenied> {
-                    Err(denied.clone())
-                },
+                       -> Result<
+                    mcp_mobile_document::McpAdmitted<()>,
+                    mcp_mobile_document::McpDenied,
+                > { Err(denied.clone()) },
             ))
         });
         assert_eq!(response.status(), status, "{denied:?}");
@@ -717,9 +718,10 @@ fn a_denial_answers_its_status_and_the_name_header_is_read_on_both_services() {
                 &Archive,
                 async |_request: &mcp_mobile_billing::McpHttpRequest,
                        _call: mcp_mobile_billing::McpCall|
-                       -> Result<(), mcp_mobile_billing::McpDenied> {
-                    Err(denied.clone())
-                },
+                       -> Result<
+                    mcp_mobile_billing::McpAdmitted<()>,
+                    mcp_mobile_billing::McpDenied,
+                > { Err(denied.clone()) },
             ))
         });
         assert_eq!(response.status(), status, "{denied:?}");

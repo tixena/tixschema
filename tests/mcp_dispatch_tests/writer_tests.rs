@@ -71,7 +71,7 @@ fn respond(asked: &Value) -> export_mcp::McpHttpResponse {
             stream,
             &Archive::default(),
             async |_request: &McpHttpRequest, call: McpCall| {
-                Ok::<_, export_mcp::McpDenied>(reporting(&call))
+                Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
             },
         ))
     })
@@ -225,7 +225,7 @@ fn an_error_answer_closes_the_event_stream_too() {
             stream,
             &Archive::default(),
             async |_request: &McpHttpRequest, call: McpCall| {
-                Ok::<_, export_mcp::McpDenied>(reporting(&call))
+                Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
             },
         ))
     });
@@ -343,7 +343,7 @@ fn a_call_without_a_token_ignores_progress_in_every_dispatcher() {
             async |_request: &document_mcp::McpHttpRequest, call: document_mcp::McpCall| {
                 call.progress(1.0_f64, None, None);
                 assert!(!call.cancelled());
-                Ok::<_, document_mcp::McpDenied>(())
+                Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
             },
         ))
     });
@@ -358,7 +358,7 @@ fn a_call_without_a_token_ignores_progress_in_every_dispatcher() {
             async |_request: &billing_mcp::McpHttpRequest, call: billing_mcp::McpCall| {
                 call.progress(1.0_f64, Some(2.0_f64), Some("half"));
                 assert!(!call.cancelled());
-                Err::<(), _>(billing_mcp::McpDenied::Forbidden)
+                Err::<billing_mcp::McpAdmitted<()>, _>(billing_mcp::McpDenied::Forbidden)
             },
         ))
     });
@@ -414,7 +414,7 @@ fn serve_http_streams_for_an_endpoint_and_its_admit_may_deny_by_name() {
                     Some("anonymous") => {
                         Err(export_mcp::McpDenied::NoValidCredentials { scope: None })
                     }
-                    _ => Ok(reporting(&call)),
+                    _ => Ok(export_mcp::McpAdmitted::new(reporting(&call))),
                 },
                 &|ctx: &Reporting, part, method: &str, params: &Value| {
                     let held = archive.clone();
@@ -476,10 +476,10 @@ fn over_http_each_progress_event_reaches_the_stream_while_the_handler_still_runs
             async |_request: &McpHttpRequest, call: McpCall| {
                 *held_call.lock().unwrap() = Some(call.clone());
                 let (reporter, gate) = (call, Arc::clone(&released));
-                Ok::<_, export_mcp::McpDenied>(Reporting::new(
+                Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(Reporting::new(
                     move |done, total, message| reporter.progress(done, total, message),
                     move || gate.load(Ordering::SeqCst),
-                ))
+                )))
             },
         )
         .await;
@@ -521,7 +521,7 @@ fn over_http_a_write_that_fails_cancels_the_call_and_drops_the_answer() {
         &Archive::default(),
         async |_request: &McpHttpRequest, call: McpCall| {
             *held_call.lock().unwrap() = Some(call.clone());
-            Ok::<_, export_mcp::McpDenied>(reporting(&call))
+            Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
         },
     ));
     assert!(answered.is_none());
@@ -542,7 +542,7 @@ fn over_http_a_stream_that_cannot_begin_cancels_the_call_before_the_handler_runs
         &archive,
         async |_request: &McpHttpRequest, call: McpCall| {
             *held_call.lock().unwrap() = Some(call.clone());
-            Ok::<_, export_mcp::McpDenied>(reporting(&call))
+            Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
         },
     ));
     assert!(answered.is_none());
@@ -563,7 +563,7 @@ fn a_one_object_answer_is_returned_and_the_stream_is_never_begun() {
         &stream,
         &Archive::default(),
         async |_request: &McpHttpRequest, call: McpCall| {
-            Ok::<_, export_mcp::McpDenied>(reporting(&call))
+            Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
         },
     ))
     .unwrap();
@@ -578,7 +578,7 @@ fn a_one_object_answer_is_returned_and_the_stream_is_never_begun() {
         &stream,
         &export_mcp::McpServer::new(&ONLY_EXPORT, None, "ExportService"),
         async |_request: &McpHttpRequest, call: McpCall| {
-            Ok::<_, export_mcp::McpDenied>(reporting(&call))
+            Ok::<_, export_mcp::McpDenied>(export_mcp::McpAdmitted::new(reporting(&call)))
         },
         &|ctx: &Reporting, part, method: &str, params: &Value| {
             let held = Archive::default();

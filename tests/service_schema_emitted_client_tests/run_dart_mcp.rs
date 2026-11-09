@@ -7,7 +7,7 @@
 use super::WriterServiceSchema;
 use super::mcp_auth_rows::{
     AUTHORIZATION_SERVER, AuthRow, METADATA_URL, ORIGIN, RESOURCE, SCOPE_QUERIES, SCOPES_SUPPORTED,
-    auth_rows,
+    assert_organization_answer, auth_rows,
 };
 use super::mcp_dart_document as document_mcp;
 use super::mcp_dart_services::{
@@ -227,7 +227,7 @@ void main() async {
   final serve = createDartDocumentServiceMcpHttpDispatcher<void>(
     documents,
     const DartDocumentServiceMcpHttpSettings(allowedOrigins: ['https://app.example.com']),
-    (request, call) async => (ctx: null, denied: null),
+    (request, call) async => (ctx: null, denied: null, serverName: null),
   );
   final answers = <String, Map<String, dynamic>>{};
   Future<void> ask(String name, DartDocumentServiceMcpHttpRequest request) async {
@@ -312,28 +312,34 @@ void main() async {
     },
   );
   const tokens = <String, String>{'read-token': 'documents:read', 'write-token': 'documents:read documents:write'};
-  const noCtx = (ctx: null, denied: null);
+  const noCtx = (ctx: null, denied: null, serverName: null);
   final admits = <String, DartDocumentServiceMcpAdmit<void>>{
     'oauth': (request, call) async {
       final needed = dartDocumentServiceMcpScopes(request.header('mcp-method') ?? '', request.mcpName);
       final token = request.bearerToken;
       if (token == null) {
-        return (ctx: null, denied: DartDocumentServiceMcpNoValidCredentials(scope: needed.isEmpty ? null : needed.join(' ')));
+        return (ctx: null, denied: DartDocumentServiceMcpNoValidCredentials(scope: needed.isEmpty ? null : needed.join(' ')), serverName: null);
       }
-      if (token == 'forbidden-token') return (ctx: null, denied: const DartDocumentServiceMcpForbidden());
+      if (token == 'forbidden-token') return (ctx: null, denied: const DartDocumentServiceMcpForbidden(), serverName: null);
       final held = tokens[token];
-      if (held == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials());
+      if (held == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials(), serverName: null);
       if (needed.any((scope) => !held.split(' ').contains(scope))) {
-        return (ctx: null, denied: DartDocumentServiceMcpInsufficientScope(scope: needed.join(' ')));
+        return (ctx: null, denied: DartDocumentServiceMcpInsufficientScope(scope: needed.join(' ')), serverName: null);
       }
       return noCtx;
     },
     'keys': (request, call) async {
       final key = request.header('x-api-key');
       final secret = request.header('x-api-secret');
-      if (key == null || secret == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials());
+      if (key == null || secret == null) return (ctx: null, denied: const DartDocumentServiceMcpNoValidCredentials(), serverName: null);
       if (key == 'admin-key' && secret == 'admin-secret') return noCtx;
-      return (ctx: null, denied: const DartDocumentServiceMcpForbidden());
+      return (ctx: null, denied: const DartDocumentServiceMcpForbidden(), serverName: null);
+    },
+    'organization': (request, call) async {
+      final organization = request.header('x-organization');
+      if (organization == null) return noCtx;
+      if (organization == 'banned') return (ctx: null, denied: const DartDocumentServiceMcpForbidden(), serverName: null);
+      return (ctx: null, denied: null, serverName: '$organization-documents');
     },
   };
   final oauth = input['oauth'] as Map<String, dynamic>;
@@ -348,6 +354,7 @@ void main() async {
       ),
     ),
     'keys': DartDocumentServiceMcpHttpSettings(allowedOrigins: [input['origin'] as String]),
+    'organization': DartDocumentServiceMcpHttpSettings(allowedOrigins: [input['origin'] as String]),
   };
   final answers = <Map<String, dynamic>>[];
   for (final row in input['rows'] as List) {
@@ -619,7 +626,7 @@ void main() async {
   final serve = createWriterServiceMcpHttpDispatcher<WriterServiceMcpCall>(
     handlers,
     const WriterServiceMcpHttpSettings(allowedOrigins: []),
-    (request, call) async => (ctx: call, denied: null),
+    (request, call) async => (ctx: call, denied: null, serverName: null),
   );
   final http = <Map<String, dynamic>>[];
   for (final row in (input['http'] as List).cast<Map<String, dynamic>>()) {
@@ -665,7 +672,7 @@ void main() async {
         const WriterServiceMcpHttpSettings(allowedOrigins: []),
         (request, call) async {
           taken[0] = call;
-          return (ctx: call, denied: null);
+          return (ctx: call, denied: null, serverName: null);
         },
       );
 
@@ -1638,6 +1645,7 @@ fn the_http_server_answers_every_authorization_case_as_the_rust_dispatcher_does(
             .collect();
         assert_eq!(dart_headers, headers, "{}", row.name);
         assert_eq!(dart["body"].as_str().unwrap(), body, "{}", row.name);
+        assert_organization_answer(row, status, &body);
         if status != 200 {
             assert_eq!(dart["reached"], 0_i32, "{}: no handler is called", row.name);
         }

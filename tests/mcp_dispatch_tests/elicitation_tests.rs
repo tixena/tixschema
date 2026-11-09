@@ -65,7 +65,7 @@ mod over_http {
                         assert_eq!(request.mcp_name().as_deref(), Some("document-preview"));
                         assert_eq!(request.bearer_token(), None);
                         assert_eq!(request.header("content-type"), Some("application/json"));
-                        Err::<(), _>(denied.clone())
+                        Err::<approval_mcp::McpAdmitted<()>, _>(denied.clone())
                     },
                     &|ctx: &(), part, method: &str, params: &Value| {
                         let held = approvals.clone();
@@ -86,7 +86,7 @@ mod over_http {
                 &SETTINGS,
                 stream,
                 &approvals,
-                async |_request, _call| Ok(()),
+                async |_request, _call| Ok(approval_mcp::McpAdmitted::new(())),
             ))
         });
         assert_eq!(response.status(), 200);

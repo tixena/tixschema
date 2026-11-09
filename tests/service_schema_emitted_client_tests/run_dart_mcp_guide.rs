@@ -81,7 +81,7 @@ void main() async {
   final http = createGuideServiceMcpHttpDispatcher<void>(
     handlers,
     const GuideServiceMcpHttpSettings(allowedOrigins: []),
-    (request, call) async => (ctx: null, denied: null),
+    (request, call) async => (ctx: null, denied: null, serverName: null),
   );
   final answers = <String, dynamic>{};
   final calls = <String, dynamic>{};

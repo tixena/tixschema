@@ -737,7 +737,7 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             &settings,
             stream,
             &archive,
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(billing_mcp::McpAdmitted::new(())),
         ))
     });
     assert_eq!(response.status(), 200);
@@ -747,7 +747,7 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
             &settings,
             stream,
             &billing_mcp::McpServer::new(&ALONE, None, billing_mcp::SERVER_NAME),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(billing_mcp::McpAdmitted::new(())),
             &|ctx: &(), _part, method: &str, params: &Value| {
                 let held = archive.clone();
                 Box::pin(async move { billing_mcp::route(method, params, &held, ctx).await })
@@ -810,7 +810,7 @@ fn the_futures_of_serve_and_serve_http_are_send() {
             &stream,
             &document_mcp::McpServer::new(&WORKSPACE, None, "Workspace"),
             async |_request: &document_mcp::McpHttpRequest, _call: document_mcp::McpCall| {
-                Ok::<(), document_mcp::McpDenied>(())
+                Ok::<_, document_mcp::McpDenied>(document_mcp::McpAdmitted::new(()))
             },
             &|ctx: &(), part, method: &str, params: &Value| {
                 let held_documents = Arc::clone(&documents);

@@ -380,7 +380,7 @@ fn http_answered(headers: &[(String, String)], body: &str) -> Value {
             &settings,
             stream,
             &Stand::default(),
-            async |_request, _call| Ok(()),
+            async |_request, _call| Ok(dispatcher::McpAdmitted::new(())),
         ))
     });
     json!({ "status": response.status(), "body": String::from_utf8(response.body().to_vec()).unwrap() })
@@ -724,7 +724,7 @@ fn an_admit_that_denies_stops_a_prompt_before_its_handler_runs() {
                     assert_eq!(request.mcp_name().as_deref(), Some("greet"));
                     assert_eq!(request.bearer_token(), None);
                     assert_eq!(request.header("mcp-method"), Some("prompts/get"));
-                    Err::<(), _>(denied.clone())
+                    Err::<dispatcher::McpAdmitted<()>, _>(denied.clone())
                 },
             ))
         });
