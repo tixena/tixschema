@@ -272,20 +272,11 @@ fn driver(cases: &[Case]) -> String {
     written
 }
 
-#[rustversion::since(1.98)]
 fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
 where
     U: Default,
 {
-    value.map_or_default(map)
-}
-
-#[rustversion::before(1.98)]
-fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
-where
-    U: Default,
-{
-    value.map(map).unwrap_or_default()
+    value.map_or_else(U::default, map)
 }
 
 /// What the Rust read answers of `payload` as a `T`: nothing, or its messages.

@@ -556,15 +556,8 @@ fn row_parameter(module_items: proc_macro2::TokenStream) -> String {
 }
 
 #[cfg(feature = "mongodb")]
-#[rustversion::since(1.98)]
 fn parameter_name(found: Option<&syn::TypeParam>) -> String {
-    found.map_or_default(|row| row.ident.to_string())
-}
-
-#[cfg(feature = "mongodb")]
-#[rustversion::before(1.98)]
-fn parameter_name(found: Option<&syn::TypeParam>) -> String {
-    found.map(|row| row.ident.to_string()).unwrap_or_default()
+    found.map_or_else(String::new, |row| row.ident.to_string())
 }
 
 /// What the typed paths add to every type: under `mongodb`, the const that holds them, and

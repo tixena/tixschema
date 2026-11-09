@@ -658,20 +658,11 @@ fn nullable_ts_optional_conflict_ok_when_only_one_set() {
     check_nullable_ts_optional_conflict(&ModelSchemaPropMeta::default()).unwrap();
 }
 
-#[rustversion::since(1.98)]
 fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
 where
     U: Default,
 {
-    value.map_or_default(map)
-}
-
-#[rustversion::before(1.98)]
-fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
-where
-    U: Default,
-{
-    value.map(map).unwrap_or_default()
+    value.map_or_else(U::default, map)
 }
 
 /// Runs the guard over the sole field of `item`, deriving `is_optional` and `is_nullable` the way

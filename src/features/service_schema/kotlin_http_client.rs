@@ -340,15 +340,8 @@ fn error_shape(published: &str, shape: &HttpShape, error: &Type) -> SuccessShape
     }
 }
 
-#[rustversion::since(1.98)]
 fn declaration_line(aux: Option<String>) -> String {
-    aux.map_or_default(|declared| format!("{declared}\n"))
-}
-
-#[rustversion::before(1.98)]
-fn declaration_line(aux: Option<String>) -> String {
-    aux.map(|declared| format!("{declared}\n"))
-        .unwrap_or_default()
+    aux.map_or_else(String::new, |declared| format!("{declared}\n"))
 }
 
 fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {

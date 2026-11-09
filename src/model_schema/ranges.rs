@@ -1541,15 +1541,8 @@ const fn text_key_at(filled: &TextKeyParameter) -> usize {
 }
 
 #[cfg(feature = "serde")]
-#[rustversion::since(1.98)]
 fn parameters_of(item: &Item) -> Vec<String> {
-    item_generics(item).map_or_default(parameter_names)
-}
-
-#[cfg(feature = "serde")]
-#[rustversion::before(1.98)]
-fn parameters_of(item: &Item) -> Vec<String> {
-    item_generics(item).map(parameter_names).unwrap_or_default()
+    item_generics(item).map_or_else(Vec::new, parameter_names)
 }
 
 /// The names of the type parameters `generics` declares.

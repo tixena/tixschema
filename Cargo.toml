@@ -27,7 +27,6 @@ regex = "1.10"
 # The parser `regex::Regex::new` is built on: the `pattern` guard reads its AST. Capped below `0.9`
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
-rustversion = "1"
 # Hashes the files of a skills folder at expansion; nothing of it reaches a consumer at run time.
 sha2 = "0.10"
 

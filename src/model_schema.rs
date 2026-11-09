@@ -11598,20 +11598,11 @@ fn item_plain_doc_lines(doc_lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-#[rustversion::since(1.98)]
 fn flattened_or_empty(
     docs_vec: Option<&[String]>,
     flatten: impl FnOnce(&[String]) -> Vec<String>,
 ) -> Vec<String> {
-    docs_vec.map_or_default(flatten)
-}
-
-#[rustversion::before(1.98)]
-fn flattened_or_empty(
-    docs_vec: Option<&[String]>,
-    flatten: impl FnOnce(&[String]) -> Vec<String>,
-) -> Vec<String> {
-    docs_vec.map(flatten).unwrap_or_default()
+    docs_vec.map_or_else(Vec::new, flatten)
 }
 
 /// An item's doc lines, flattened the way the calling surface reads them, or the exported name
@@ -19022,21 +19013,11 @@ fn check_nullable_ts_optional_conflict(flags: &ModelSchemaPropMeta) -> Result<()
 }
 
 /// The field's name as serde reads it, with no raw prefix; empty for a positional slot.
-#[rustversion::since(1.98)]
 fn field_ident_string(field: &Field) -> String {
     field
         .ident
         .as_ref()
-        .map_or_default(|ident| ident.unraw().to_string())
-}
-
-#[rustversion::before(1.98)]
-fn field_ident_string(field: &Field) -> String {
-    field
-        .ident
-        .as_ref()
-        .map(|ident| ident.unraw().to_string())
-        .unwrap_or_default()
+        .map_or_else(String::new, |ident| ident.unraw().to_string())
 }
 
 /// Hands the field def the two serde facts the object surfaces spend: whether the field's value
