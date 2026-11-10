@@ -19,7 +19,7 @@ tixschema::decode_with_foundation!();
 tixschema::mongodb_foundation!();
 
 /// The labels of the parcels the manifest `raw` holds, or `None` where it holds none.
-#[must_use]
+#[must_use = "the labels read are the whole result"]
 pub fn manifest_labels(raw: serde_json::Value) -> Option<Vec<String>> {
     shelving::Manifest::from_value_with(raw, |_raw, _found| {
         shelving::manifest_schema::Verdict::Reject
@@ -35,7 +35,7 @@ pub fn manifest_labels(raw: serde_json::Value) -> Option<Vec<String>> {
 }
 
 /// The label of the stored parcel `raw` holds, or `None` where it holds none.
-#[must_use]
+#[must_use = "the label read is the whole result"]
 pub fn parcel_label(raw: bson::Document) -> Option<String> {
     shelving::Parcel::from_bson_with(raw, |_raw, _found| shelving::parcel_schema::Verdict::Reject)
         .ok()

@@ -35,7 +35,7 @@ fn header() -> TokenStream {
         const MARK: char = '\u{1}';
         const OPENING: &str = "\"\\u0001bigint:";
         const CLOSING: &str = "\\u0001\"";
-        const POINTERS: [&str; 3] = ["alloc::boxed::Box<", "alloc::rc::Rc<", "alloc::sync::Arc<"];
+        const POINTERS: [&str; 3] = ["Box", "Rc", "Arc"];
         const SAFE: u64 = 9_007_199_254_740_991;
 
         pub(super) fn top() -> Writer {
@@ -72,9 +72,11 @@ fn header() -> TokenStream {
                     .strip_prefix("&mut ")
                     .or_else(|| name.strip_prefix('&'))
                     .or_else(|| {
-                        POINTERS
-                            .iter()
-                            .find_map(|pointer| name.strip_prefix(pointer)?.strip_suffix('>'))
+                        // Only the pointer's own name: `type_name` promises no module path, and
+                        // the standard library moves these between releases.
+                        let (path, held) = name.split_once('<')?;
+                        let pointer = path.strip_prefix("alloc::")?.rsplit("::").next()?;
+                        held.strip_suffix('>').filter(|_| POINTERS.contains(&pointer))
                     })
                 {
                     name = inner;

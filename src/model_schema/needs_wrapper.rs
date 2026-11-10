@@ -127,10 +127,10 @@ fn of_item(item: &Item) -> bool {
     match item {
         Item::Struct(declared) => {
             let parameters = type_parameters_in_scope(&declared.generics);
-            written_as_its_slot(declared).map_or_else(
-                || !matches!(declared.fields, Fields::Named(_)),
-                |slot| of_slot(&slot.ty, &parameters),
-            )
+            written_as_its_slot(declared)
+                .map_or(!matches!(declared.fields, Fields::Named(_)), |slot| {
+                    of_slot(&slot.ty, &parameters)
+                })
         }
         Item::Enum(declared) => of_enum(declared, &type_parameters_in_scope(&declared.generics)),
         Item::Type(declared) => {
@@ -161,22 +161,21 @@ fn of_enum(declared: &syn::ItemEnum, parameters: &[String]) -> bool {
         declared.variants.iter().any(|variant| {
             variant_on_the_wire(variant) && matches!(variant_wire_kind(variant), VariantKind::Unit)
         })
-    } else if matches!(tagging, Tagging::Untagged) {
-        declared
-            .variants
-            .iter()
-            .filter(|variant| variant_on_the_wire(variant))
-            .any(|variant| match variant_wire_kind(variant) {
-                VariantKind::Named => false,
-                VariantKind::TupleSingle => variant
-                    .fields
-                    .iter()
-                    .next()
-                    .is_none_or(|slot| of_slot(&slot.ty, parameters)),
-                VariantKind::TupleMultiple | VariantKind::Unit => true,
-            })
     } else {
-        false
+        matches!(tagging, Tagging::Untagged)
+            && declared
+                .variants
+                .iter()
+                .filter(|variant| variant_on_the_wire(variant))
+                .any(|variant| match variant_wire_kind(variant) {
+                    VariantKind::Named => false,
+                    VariantKind::TupleSingle => variant
+                        .fields
+                        .iter()
+                        .next()
+                        .is_none_or(|slot| of_slot(&slot.ty, parameters)),
+                    VariantKind::TupleMultiple | VariantKind::Unit => true,
+                })
     }
 }
 

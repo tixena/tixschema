@@ -30,9 +30,14 @@ fn the_compiler_names_an_integer_and_the_pointers_to_it_as_the_writer_reads_them
     assert_eq!(type_name::<u64>(), "u64");
     assert_eq!(type_name::<&i64>(), "&i64");
     assert_eq!(type_name::<&&mut i64>(), "&&mut i64");
-    assert_eq!(type_name::<Box<i64>>(), "alloc::boxed::Box<i64>");
-    assert_eq!(type_name::<Rc<i64>>(), "alloc::rc::Rc<i64>");
-    assert_eq!(type_name::<Arc<i64>>(), "alloc::sync::Arc<i64>");
+    for (named, pointer) in [
+        (type_name::<Box<i64>>(), "Box"),
+        (type_name::<Rc<i64>>(), "Rc"),
+        (type_name::<Arc<i64>>(), "Arc"),
+    ] {
+        assert!(named.starts_with("alloc::"), "{named}");
+        assert!(named.ends_with(&format!("::{pointer}<i64>")), "{named}");
+    }
     assert_eq!(type_name::<usize>(), "usize");
     assert_eq!(type_name::<isize>(), "isize");
 }

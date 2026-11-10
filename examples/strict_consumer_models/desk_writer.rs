@@ -23,7 +23,7 @@ impl DeskWriter {
     }
 
     /// A writer whose client has gone where `gone` is true.
-    #[must_use]
+    #[must_use = "a writer records nothing until it is handed to a dispatcher"]
     pub const fn new(gone: bool) -> Self {
         Self {
             events: Mutex::new(Vec::new()),

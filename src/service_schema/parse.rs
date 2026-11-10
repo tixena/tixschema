@@ -8,6 +8,7 @@ use crate::utils::{
     WireScalarKind, is_declared_ident, is_recorded_unit_struct_type, is_recorded_untagged_enum,
     is_wire_scalar_type, rustdoc_text, wire_scalar_kind,
 };
+use core::mem;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident};
 use std::collections::{HashMap, HashSet};
@@ -2794,8 +2795,7 @@ fn parse_path_template(
         match ch {
             '{' => {
                 if !literal.is_empty() {
-                    segments.push(PathSegment::Literal(literal));
-                    literal = String::new();
+                    segments.push(PathSegment::Literal(mem::take(&mut literal)));
                 }
                 let mut name = String::new();
                 loop {
