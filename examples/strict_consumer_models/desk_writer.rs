@@ -1,4 +1,4 @@
-//! A writer for the dispatcher of `DeskService`, written outside the module that expands it.
+//! A writer for the `mcp` dispatcher of `DeskService`, written outside the module that expands it.
 
 use crate::desk_dispatcher::{McpClientGone, McpEventWriter, McpHttpStream};
 use core::future::{Future, ready};

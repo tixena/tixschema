@@ -1,4 +1,4 @@
-//! A service another crate reads, asking for `mcp`.
+//! A service another crate reads, asking for every transport.
 
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
@@ -50,7 +50,7 @@ pub struct TicketCount {
 }
 
 /// Looks tickets up at a desk.
-#[service_schema(non_exhaustive, transports = ["mcp"])]
+#[service_schema(non_exhaustive, transports = ["amqp_rpc", "ws_rpc", "http_rest", "mcp"])]
 pub trait DeskService<Ctx> {
     /// Answers a question a search asked.
     #[service_schema_op(mcp(scopes = ["desk:answer"]))]

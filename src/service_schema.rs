@@ -94,8 +94,12 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                     );
                     // Both halves a transport contributes are `macro_rules!` bodies, so they stay
                     // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
-                    let transports =
-                        transport::emit(&service, &wanted.transports, wanted.openapi.as_ref());
+                    let transports = transport::emit(
+                        &service,
+                        &wanted.transports,
+                        wanted.openapi.as_ref(),
+                        wanted.non_exhaustive,
+                    );
                     // Every language's generated clients are strings rather than callers of
                     // anything private, so they stay at the trait's scope.
                     let generated_clients =

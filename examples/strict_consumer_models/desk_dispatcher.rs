@@ -1,4 +1,4 @@
-//! The dispatcher of `DeskService`, in a public module.
+//! The `mcp` dispatcher of `DeskService`, in a public module.
 
 #![deny(clippy::missing_trait_methods)]
 
