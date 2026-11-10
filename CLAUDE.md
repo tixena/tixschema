@@ -108,9 +108,10 @@ just all
 # Runs, with every feature on: one clippy lint and one test run
 ```
 
-The code is developed on Rust beta, which `rust-toolchain.toml` pins, and linted on beta alone. CI
-runs every test on the floor, `rust-version` in `Cargo.toml` (1.91.1), with no lint and no
-`-D warnings`: `just test-floor` runs the tests there, and `just check-msrv` checks the library.
+The code is developed on Rust beta, which `rust-toolchain.toml` pins, and CI lints and tests on
+beta. The floor, `rust-version` in `Cargo.toml` (1.91.1), is checked by whoever runs the full runs:
+`just check-msrv` checks the library there, and `just test-floor` runs the tests where the
+dev-dependencies build on it.
 
 ### The Full Run (every few days)
 ```bash

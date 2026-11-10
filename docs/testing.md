@@ -273,7 +273,7 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
-Each workflow installs two toolchains: beta, which `rust-toolchain.toml` pins and the code is developed on, and 1.91.1, the floor (`rust-version` in `Cargo.toml`). Every lint step runs on beta, and every test step on the floor. The setup action is given `rustflags: ""`, so `RUSTFLAGS` stays unset: only a lint step, which passes `-D warnings` itself, fails on a warning.
+Each workflow installs beta, which `rust-toolchain.toml` pins and the code is developed on, and runs every lint step and every test step on it. No step runs on the floor, `rust-version` in `Cargo.toml` (1.91.1): the tests' `arky` dev-dependency needs a newer rustc than the floor. The setup action is given `rustflags: ""`, so `RUSTFLAGS` stays unset: only a lint step, which passes `-D warnings` itself, fails on a warning.
 
 A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on, then `just check-mix`:
 

@@ -1,7 +1,7 @@
 name: CI Pipeline
 
-# The gate a change is held to: every feature on, one lint on beta and one test run on the floor
-# (1.91.1), then `just check-mix` on the floor.
+# The gate a change is held to: every feature on, one lint and one test run on beta, then
+# `just check-mix` on beta.
 # The feature sets, the emitted clients' own run and the audit are in `full.yml`.
 on:
   push:
@@ -21,13 +21,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # beta is the toolchain the code is developed and linted on; 1.91.1 is the floor, `rust-version`
-    # in Cargo.toml, which every test step runs on. `rustflags: ""` leaves RUSTFLAGS unset, so only
-    # the lint steps, which pass `-D warnings` themselves, deny a warning.
+    # beta is the toolchain the code is developed, linted and tested on: the tests' `arky`
+    # dev-dependency needs a newer rustc than `rust-version` in Cargo.toml. `rustflags: ""` leaves
+    # RUSTFLAGS unset, so only the lint steps, which pass `-D warnings` themselves, deny a warning.
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        toolchain: 1.91.1, beta
+        toolchain: beta
         components: clippy, rustfmt
         rustflags: ""
 
@@ -70,7 +70,6 @@ jobs:
     - name: Show the toolchains
       run: |
         cargo +beta --version
-        cargo +1.91.1 --version
         node --version
         "$TIXSCHEMA_TSC" --version
         dart --version
@@ -89,7 +88,7 @@ jobs:
     - name: Test with every feature on
       id: test
       env:
-        RUSTUP_TOOLCHAIN: "1.91.1"
+        RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🧪 Testing with every feature on..."
         cargo test --all-features
@@ -97,7 +96,7 @@ jobs:
     - name: Check every feature by itself, and the feature mix
       id: mix
       env:
-        RUSTUP_TOOLCHAIN: "1.91.1"
+        RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🧩 Checking every feature by itself..."
         just check-mix
