@@ -2156,7 +2156,7 @@ fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
     assert!(errors[0].contains("variant `V`"), "got: {}", errors[0]);
     assert!(errors[0].contains("`Hue`"), "got: {}", errors[0]);
     assert!(
-        errors[0].contains("does not write as an object"),
+        errors[0].contains("writes beside the tag as a plain enum"),
         "got: {}",
         errors[0]
     );
@@ -2193,7 +2193,7 @@ fn flattening_a_registered_plain_enum_is_rejected() {
     assert!(error.contains("`Hue`"), "got: {error}");
     assert!(error.contains("#[serde(flatten)]"), "got: {error}");
     assert!(
-        error.contains("does not write as an object"),
+        error.contains("writes flattened as a plain enum"),
         "got: {error}"
     );
 
@@ -2632,11 +2632,10 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
         logged,
         [format!(
             "model_schema: field `weather` of `Logged` carries `#[serde(flatten)]` over \
-             `Weather`, which serde does not write as an object: a plain enum writes its own \
-             variant name, so it contributes no members to the object being written \u{2014} \
-             serde writes that name as a key holding null, which a schema closed around the \
-             remaining fields rejects. Write the field as a named member so the value gets a key \
-             of its own, or flatten a type serde writes as an object. {}",
+             `Weather`, which serde writes flattened as a plain enum: as a key named after the \
+             variant, holding null. TypeScript, Zod and the clients describe a plain enum as the \
+             variant's name, so none of them reads that key. Write the field as a named member so \
+             the value gets a key of its own, or flatten a type serde writes as an object. {}",
             super::FLATTENED_PLAIN_ENUM_SCOPE
         )]
     );
@@ -2650,19 +2649,19 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
             "#[derive(Serialize, Deserialize)] pub struct Charted { pub note: String, \
              #[serde(flatten)] pub climate: Climate }",
             "model_schema: field `climate` of `Charted` carries `#[serde(flatten)]` over \
-             `Climate`, which serde does not write as an object",
+             `Climate`, which serde writes flattened as a plain enum",
         ),
         (
             "#[derive(Serialize, Deserialize)] pub enum Logbook { Noted { note: String, \
              #[serde(flatten)] weather: Weather } }",
             "model_schema: field `weather` of `Logbook` carries `#[serde(flatten)]` over \
-             `Weather`, which serde does not write as an object",
+             `Weather`, which serde writes flattened as a plain enum",
         ),
         (
             "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Reading { \
              Held(Weather) }",
             "model_schema: variant `Held` of internally tagged enum `Reading` wraps `Weather`, \
-             which serde does not write as an object",
+             which serde writes beside the tag as a plain enum",
         ),
     ] {
         let refused = refusal_texts(&expansion_over(source));
@@ -2719,11 +2718,10 @@ fn declare_plain_enum_values() {
 fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> String {
     format!(
         "model_schema: field `{field}` of `{holder}` carries `#[serde(flatten)]` over `{inner}`, \
-         which serde does not write as an object: a plain enum writes its own variant name, so it \
-         contributes no members to the object being written \u{2014} serde writes that name as a \
-         key holding null, which a schema closed around the remaining fields rejects. Write the \
-         field as a named member so the value gets a key of its own, or flatten a type serde \
-         writes as an object. {}",
+         which serde writes flattened as a plain enum: as a key named after the variant, holding \
+         null. TypeScript, Zod and the clients describe a plain enum as the variant's name, so \
+         none of them reads that key. Write the field as a named member so the value gets a key \
+         of its own, or flatten a type serde writes as an object. {}",
         super::FLATTENED_PLAIN_ENUM_SCOPE
     )
 }
@@ -2734,10 +2732,10 @@ fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> Strin
 fn tagged_plain_enum_refusal(holder: &str, inner: &str) -> String {
     format!(
         "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, which \
-         serde does not write as an object: a plain enum writes its own variant name, so nothing \
-         of it joins the tag \u{2014} serde writes that name as a key holding null, which a schema \
-         closed around the tag rejects. Name a `content` key so the value gets an object of its \
-         own, or wrap it in a struct whose fields can sit beside the tag. {}",
+         serde writes beside the tag as a plain enum: as a key named after the variant, holding \
+         null. TypeScript, Zod and the clients describe a plain enum as the variant's name, so \
+         none of them reads that key beside the tag. Name a `content` key so the value gets an \
+         object of its own, or wrap it in a struct whose fields can sit beside the tag. {}",
         super::FLATTENED_PLAIN_ENUM_SCOPE
     )
 }
@@ -20501,7 +20499,7 @@ fn a_direct_flatten_of_a_plain_enum_is_left_to_the_guard_written_for_it() {
         .map(|error| error.to_string())
         .unwrap();
     assert!(
-        written.contains("a plain enum writes its"),
+        written.contains("which serde writes flattened as a plain enum"),
         "got: {written}"
     );
 }

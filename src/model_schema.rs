@@ -7529,12 +7529,11 @@ fn flattened_field_guard_error(
             &field.ty,
             format!(
                 "model_schema: {field_name} of `{type_name}` carries `#[serde(flatten)]` over \
-                 `{inner_name}`, which serde does not write as an object: a plain enum writes its \
-                 own variant name, so it contributes no members to the object being written — \
-                 serde writes that name as a key holding null, which a schema closed around the \
-                 remaining fields rejects. Write the field as a named member so the value gets a \
-                 key of its own, or flatten a type serde writes as an object. \
-                 {FLATTENED_PLAIN_ENUM_SCOPE}"
+                 `{inner_name}`, which serde writes flattened as a plain enum: as a key named \
+                 after the variant, holding null. TypeScript, Zod and the clients describe a \
+                 plain enum as the variant's name, so none of them reads that key. Write the \
+                 field as a named member so the value gets a key of its own, or flatten a type \
+                 serde writes as an object. {FLATTENED_PLAIN_ENUM_SCOPE}"
             ),
         )
         .to_compile_error(),
@@ -13457,12 +13456,12 @@ fn internally_tagged_guard_errors(
                 TaggedContent::Flattened => match slot.plain_enum() {
                     Some(inner_name) => format!(
                         "model_schema: variant `{variant_name}` of internally tagged enum \
-                         `{enum_name}` wraps `{inner_name}`, which serde does not write as an \
-                         object: a plain enum writes its own variant name, so nothing of it joins \
-                         the tag — serde writes that name as a key holding null, which a schema \
-                         closed around the tag rejects. Name a `content` key so the value gets an \
-                         object of its own, or wrap it in a struct whose fields can sit beside the \
-                         tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
+                         `{enum_name}` wraps `{inner_name}`, which serde writes beside the tag as \
+                         a plain enum: as a key named after the variant, holding null. \
+                         TypeScript, Zod and the clients describe a plain enum as the variant's \
+                         name, so none of them reads that key beside the tag. Name a `content` key \
+                         so the value gets an object of its own, or wrap it in a struct whose \
+                         fields can sit beside the tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     ),
                     // serde's tag refuses an `Option` before it reads what the `Option` holds.
                     None => tagged_optional_message(variant_name, enum_name, tag_name, slot)
