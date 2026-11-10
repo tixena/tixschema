@@ -119,7 +119,7 @@ pub struct Crate<CodeType> {
 }
 
 /// A parcel flattened into the object of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crated {
     pub dock: String,
@@ -193,7 +193,7 @@ pub enum Reference {
 }
 
 /// A type flattened into its holder: what it reads under `keys` is what its function was handed.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pinned {
     pub dock: String,
@@ -202,7 +202,7 @@ pub struct Pinned {
 }
 
 /// A choice flattened into the object of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Routed {
     pub dock: String,

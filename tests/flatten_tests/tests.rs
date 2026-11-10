@@ -213,7 +213,7 @@ enum LooseEither {
 
 /// The same union reached through an `Option`, so the object writes one of the members' key sets
 /// beside its own or writes its own alone: two choices, multiplied.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverOptionalUntagged {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -535,7 +535,7 @@ struct UntaggedPickedAliasHolder {
 
 /// A flattened `ObjectId`, whose `$oid` key serde writes beside the object's own.
 #[cfg(feature = "mongodb")]
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlattenedOidHolder {
     id: u32,
@@ -746,7 +746,7 @@ enum MixedEither {
     Partial(MixedPartial),
 }
 
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMixed {
     #[serde(flatten)]
@@ -929,7 +929,7 @@ struct NamedPlainHolder {
 
 /// The same absence over a source that is itself a union: serde writes the matched member's keys or
 /// no keys at all, so the choice the `Option` adds sits outside the choice the enum already offered.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptUnionHolder {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -2165,7 +2165,7 @@ fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
     }
     assert_eq!(
         serde_json::to_string(&schema).unwrap(),
-        r#"{"type":"object","anyOf":[{"type":"object","oneOf":[{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Left"},"left":{"type":"string"}},"required":["own","kind","left"],"additionalProperties":false},{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Right"},"right":{"type":"boolean"}},"required":["own","kind","right"],"additionalProperties":false}]},{"type":"object","properties":{"own":{"type":"string"}},"required":["own"],"additionalProperties":false}]}"#
+        r#"{"type":"object","anyOf":[{"type":"object","oneOf":[{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Left"},"left":{"type":"string"}},"required":["own","kind","left"],"additionalProperties":true},{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Right"},"right":{"type":"boolean"}},"required":["own","kind","right"],"additionalProperties":true}]},{"type":"object","properties":{"own":{"type":"string"}},"required":["own"],"additionalProperties":true}]}"#
     );
 }
 

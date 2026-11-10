@@ -81,7 +81,7 @@ pub struct Bay {
 }
 
 /// A holder that flattens a carton.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Racked {
@@ -92,7 +92,7 @@ pub struct Racked {
 }
 
 /// A holder that flattens that holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stacked {
     #[serde(flatten)]
@@ -121,7 +121,7 @@ pub struct Wrap(pub Carton);
 pub type LaterCarton = Carton;
 
 /// A holder that flattens a carton under its other name.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Aliased {
     #[serde(flatten)]

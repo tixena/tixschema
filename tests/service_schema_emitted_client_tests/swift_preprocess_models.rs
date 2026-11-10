@@ -132,7 +132,7 @@ pub enum Stowed {
 }
 
 /// A holder that flattens a holder that flattens the type whose function lists its keys.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Quayside {
     pub berth: String,
@@ -149,7 +149,7 @@ pub struct Spotted {
 }
 
 /// Two flattened types whose different functions list the keys they are handed.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Duplexed {
     pub dock: String,
@@ -206,7 +206,7 @@ pub struct Lodged {
 pub struct Banded(pub Tagged);
 
 /// A holder that flattens the brand.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Strapped {
     #[serde(flatten)]
