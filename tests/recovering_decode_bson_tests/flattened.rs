@@ -316,15 +316,6 @@ struct Body {
     text: String,
 }
 
-/// A flattened type parameter.
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Letter<T> {
-    #[serde(flatten)]
-    body: T,
-    id: String,
-}
-
 /// Externally tagged, with a struct variant that flattens a field.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -644,29 +635,16 @@ struct Unpicked {
     id: String,
 }
 
-/// An optional flattened type parameter.
-#[model_schema(enable = ["decode_with", "mongodb"], default_types(T = Body))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Tucked<T> {
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    body: Option<T>,
-    id: String,
-}
-
 flagged! {
     Counts => counts_schema,
     DirectId => direct_id_schema,
     DirectMaybe => direct_maybe_schema,
     IdThroughHook => id_through_hook_schema,
-    Letter<ObjectId> => letter_schema,
-    Letter<Option<Body>> => letter_schema,
-    Letter<Option<ObjectId>> => letter_schema,
     MapThroughHook => map_through_hook_schema,
     MaybeId => maybe_id_schema,
     NeverRead => never_read_schema,
     Pocket => pocket_schema,
     ThroughHook => through_hook_schema,
-    Tucked<Body> => tucked_schema,
     Unpicked => unpicked_schema,
 }
 
@@ -765,18 +743,6 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
     assert_eq!(
         read_counting!(Counts, counts_schema, written(&counts), calls),
         Ok(counts)
-    );
-
-    let letter = Letter {
-        body: Body {
-            text: "x".to_owned(),
-        },
-        id: "i".to_owned(),
-    };
-    assert_eq!(written(&letter), doc! { "text": "x", "id": "i" });
-    assert_eq!(
-        read_counting!(Letter<Body>, letter_schema, written(&letter), calls),
-        Ok(letter)
     );
     assert_eq!(calls, 0);
 }
@@ -1123,33 +1089,6 @@ fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
             unknown("first.draft", Bson::Boolean(true)),
         ]
     );
-}
-
-#[test]
-fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
-    let stored_row = doc! { "id": "i", "more": 1_i32, "text": 5_i32 };
-    assert!(!serde_reads::<Letter<Body>>(&stored_row));
-    assert_eq!(
-        listed!(Letter<Body>, letter_schema, stored_row),
-        [invalid(
-            "",
-            "TypeParam(\"T\")",
-            Bson::Document(doc! { "more": 1_i32, "text": 5_i32 })
-        )]
-    );
-
-    let mut calls = 0_u32;
-    let extra_key = doc! { "id": "i", "more": 1_i32, "text": "x" };
-    assert_eq!(
-        read_counting!(Letter<Body>, letter_schema, extra_key, calls),
-        Ok(Letter {
-            body: Body {
-                text: "x".to_owned(),
-            },
-            id: "i".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
 }
 
 /// Each of two flattened types contributes its keys, and one undeclared key is listed once.
@@ -1784,32 +1723,10 @@ fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
         name: "n".to_owned(),
         oid: mark(),
     });
-    reads_what_serde_wrote(&Letter::<ObjectId> {
-        body: mark(),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&Letter::<Option<ObjectId>> {
-        body: Some(mark()),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&Letter::<Option<ObjectId>> {
-        body: None,
-        id: "i".to_owned(),
-    });
 }
 
 #[test]
 fn a_flattened_option_not_seen_that_is_absent_is_no_issue() {
-    reads_what_serde_wrote(&Letter::<Option<Body>> {
-        body: None,
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&Letter::<Option<Body>> {
-        body: Some(Body {
-            text: "t".to_owned(),
-        }),
-        id: "i".to_owned(),
-    });
     reads_what_serde_wrote(&Pocket {
         body: Wrap(None),
         id: "i".to_owned(),
@@ -1840,15 +1757,6 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
         Ok(DirectMaybe {
             id: "i".to_owned(),
             version: None,
-        })
-    );
-    let text_as_number = doc! { "id": "i", "text": 5_i32 };
-    assert!(serde_reads::<Letter<Option<Body>>>(&text_as_number));
-    assert_eq!(
-        read_counting!(Letter<Option<Body>>, letter_schema, text_as_number, calls),
-        Ok(Letter {
-            body: None,
-            id: "i".to_owned(),
         })
     );
     assert_eq!(calls, 0);
@@ -1883,16 +1791,6 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     });
     reads_what_serde_wrote(&Unpicked {
         draft: Draft { pages: 3_i32 },
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&Tucked::<Body> {
-        body: Some(Body {
-            text: "t".to_owned(),
-        }),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&Tucked::<Body> {
-        body: None,
         id: "i".to_owned(),
     });
 }

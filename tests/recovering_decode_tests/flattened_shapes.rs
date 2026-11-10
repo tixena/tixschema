@@ -297,15 +297,6 @@ struct Plain {
     text: String,
 }
 
-/// A flattened type parameter beside a key of the type's own.
-#[model_schema(enable = ["decode_with"], default_types(T = Plain))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Letter<T> {
-    #[serde(flatten)]
-    body: T,
-    id: String,
-}
-
 /// A flattened generic brand filled with an `Option` of a struct.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -455,8 +446,6 @@ flagged! {
     Deeper => deeper_schema,
     Counts => counts_schema,
     Signed => signed_schema,
-    Letter<Plain> => letter_schema,
-    Letter<Option<Plain>> => letter_schema,
     DirectMaybe => direct_maybe_schema,
     Pocket => pocket_schema,
     ThroughHook => through_hook_schema,
@@ -861,21 +850,7 @@ fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads(
 }
 
 #[test]
-fn a_flattened_parameter_filled_with_an_absent_option_is_no_issue() {
-    let letter = Letter::<Option<Plain>> {
-        body: None,
-        id: "i".to_owned(),
-    };
-    let written = serde_json::to_value(&letter).unwrap();
-    assert_eq!(written, json!({ "id": "i" }));
-    let mut calls = 0_u32;
-    let read = read_counting!(Letter<Option<Plain>>, letter_schema, written, calls);
-    assert_eq!(read.ok(), Some(letter));
-    assert_eq!(calls, 0);
-    assert!(agrees::<Letter<Option<Plain>>>(
-        &json!({ "id": "i", "text": "t" })
-    ));
-    // A generic brand reads as whatever fills it, flattened too.
+fn a_flattened_generic_brand_reads_as_what_fills_it() {
     assert!(agrees::<Pocket>(&json!({ "id": "i" })));
     assert!(agrees::<Pocket>(&json!({ "id": "i", "text": "t" })));
 }
@@ -901,20 +876,6 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
         read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
         Ok(maybe)
     );
-
-    let text_as_number = json!({ "id": "i", "text": 5_i32 });
-    let letter = Letter::<Option<Plain>> {
-        body: None,
-        id: "i".to_owned(),
-    };
-    assert_eq!(
-        Letter::<Option<Plain>>::deserialize(&text_as_number).unwrap(),
-        letter
-    );
-    assert_eq!(
-        read_counting!(Letter<Option<Plain>>, letter_schema, text_as_number, calls),
-        Ok(letter)
-    );
     assert_eq!(calls, 0);
 }
 
@@ -926,14 +887,6 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object
         listed!(ThroughHook, through_hook_schema, number_as_text),
         [
             "the value itself: invalid: expected Model(\"Version\"), found Object {\"number\": String(\"3\")}: invalid type: string \"3\", expected i32"
-        ]
-    );
-    let text_as_number = json!({ "id": "i", "text": 5_i32 });
-    assert!(!serde_reads::<Letter<Plain>>(&text_as_number));
-    assert_eq!(
-        listed!(Letter<Plain>, letter_schema, text_as_number),
-        [
-            "the value itself: invalid: expected TypeParam(\"T\"), found Object {\"text\": Number(5)}: invalid type: integer `5`, expected a string"
         ]
     );
 }
@@ -949,8 +902,6 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
         &json!({ "id": "i", "number": 3_i32 })
     ));
     assert!(agrees::<MapThroughHook>(&json!({ "a": 1_i32 })));
-
-    assert!(agrees::<Letter<Plain>>(&json!({ "id": "i", "text": "t" })));
 }
 
 #[test]

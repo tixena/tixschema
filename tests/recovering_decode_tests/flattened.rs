@@ -233,22 +233,6 @@ struct Releases {
     by_name: BTreeMap<String, Version>,
 }
 
-/// A model type that carries no flag: it only ever fills a parameter.
-#[model_schema(nonstrict)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Body {
-    text: String,
-}
-
-/// A flattened type parameter.
-#[model_schema(enable = ["decode_with"], default_types(T = Body))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Letter<T> {
-    #[serde(flatten)]
-    body: T,
-    id: String,
-}
-
 /// Externally tagged, with a struct variant that flattens a field.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -524,19 +508,6 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
     assert_eq!(
         read_counting!(Counts, counts_schema, counts_written, calls),
         Ok(counts)
-    );
-
-    let letter = Letter {
-        body: Body {
-            text: "x".to_owned(),
-        },
-        id: "i".to_owned(),
-    };
-    let letter_written = serde_json::to_value(&letter).unwrap();
-    assert_eq!(letter_written, json!({ "id": "i", "text": "x" }));
-    assert_eq!(
-        read_counting!(Letter<Body>, letter_schema, letter_written, calls),
-        Ok(letter)
     );
     assert_eq!(calls, 0);
 }
@@ -925,31 +896,6 @@ fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
             "first.draft: unknown: found Bool(true)",
         ]
     );
-}
-
-#[test]
-fn a_flattened_type_parameter_is_read_whole_from_the_keys_nothing_else_declares() {
-    let stored = json!({ "id": "i", "more": 1_i32, "text": 5_i32 });
-    assert!(!serde_reads::<Letter<Body>>(&stored));
-    assert_eq!(
-        listed!(Letter<Body>, letter_schema, stored),
-        [
-            "the value itself: invalid: expected TypeParam(\"T\"), found Object {\"more\": Number(1), \"text\": Number(5)}: invalid type: integer `5`, expected a string"
-        ]
-    );
-
-    let mut calls = 0_u32;
-    let extra_key = json!({ "id": "i", "more": 1_i32, "text": "x" });
-    assert_eq!(
-        read_counting!(Letter<Body>, letter_schema, extra_key, calls),
-        Ok(Letter {
-            body: Body {
-                text: "x".to_owned(),
-            },
-            id: "i".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
 }
 
 /// Each of two flattened types contributes its keys, and one undeclared key is listed once.

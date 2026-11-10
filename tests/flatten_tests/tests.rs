@@ -513,16 +513,6 @@ struct UntaggedCarriedHolder {
     own: String,
 }
 
-/// That enum flattened at its holder's own parameter, which the holder's factory binds.
-#[cfg(any(feature = "zod", feature = "typescript"))]
-#[model_schema(default_types(Held = BasePart))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-struct UntaggedCarriedOwnHolder<Held> {
-    #[serde(flatten)]
-    either: MemberUntaggedCarried<Held>,
-    own: String,
-}
-
 /// An untagged enum that declares a parameter, of two members of named fields, each closed to the
 /// other's key where it is flattened.
 #[model_schema(default_types(Load = String), enable = ["jsonschema"])]
@@ -594,24 +584,6 @@ enum SerdeOnlyWaybill<Held> {
 #[derive(Serialize, Debug)]
 #[serde(transparent)]
 struct SerdeOnlyCode(String);
-
-/// A type parameter flattened beside a member, filled where every surface describes what serde
-/// writes: at a struct, and at an `Option` of one.
-#[model_schema(default_types(T = BasePart))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-struct ObjectFilledBag<T> {
-    id: u32,
-    #[serde(flatten)]
-    inner: T,
-}
-
-/// [`ObjectFilledBag`] filled at a struct and at an `Option` of one, which build.
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-struct ObjectFilledBags {
-    held: ObjectFilledBag<BasePart>,
-    maybe: ObjectFilledBag<Option<BasePart>>,
-}
 
 /// And a tagged enum whose every variant carries data, which serde writes as the object its name
 /// tags in every case — admitted where it always was, on every surface.
@@ -3019,11 +2991,6 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_parses_each_member_at
             ["BasePart$Schema", counted],
         ),
         (
-            "UntaggedCarriedOwnHolder",
-            UntaggedCarriedOwnHolder::<BasePart>::zod_schema(),
-            ["held", counted],
-        ),
-        (
             "UntaggedPickedHolder",
             UntaggedPickedHolder::zod_schema(),
             [
@@ -3076,10 +3043,6 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_types_each_member_at_
         (
             "UntaggedCarriedHolder",
             UntaggedCarriedHolder::ts_definition(),
-        ),
-        (
-            "UntaggedCarriedOwnHolder",
-            UntaggedCarriedOwnHolder::<BasePart>::ts_definition(),
         ),
         ("UntaggedPickedAliasHolder", aliased),
     ] {
@@ -3281,28 +3244,6 @@ fn test_serde_refuses_every_write_of_a_parameter_filled_at_a_value_written_as_no
         r#"{"id":1}"#,
         "serde writes `()` flattened as no key"
     );
-}
-
-/// A type parameter flattened beside a member builds filled at a struct and at an `Option` of one,
-/// which serde writes as the struct's keys, or as no key for `None`, and reads back.
-#[test]
-fn test_a_parameter_flattened_at_an_object_or_an_option_of_one_round_trips() {
-    let bags = ObjectFilledBags {
-        held: ObjectFilledBag {
-            id: 1,
-            inner: BasePart {
-                owner: "o".to_owned(),
-            },
-        },
-        maybe: ObjectFilledBag { id: 2, inner: None },
-    };
-    let written = serde_json::to_value(&bags).unwrap();
-    assert_eq!(
-        written,
-        serde_json::json!({ "held": { "id": 1_u32, "owner": "o" }, "maybe": { "id": 2_u32 } })
-    );
-    let back: ObjectFilledBags = serde_json::from_value(written).unwrap();
-    assert_eq!(back, bags);
 }
 
 #[test]

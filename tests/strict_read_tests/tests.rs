@@ -88,14 +88,6 @@ pub enum LenientShape {
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Generic<T> {
-    pub name: String,
-    #[serde(flatten)]
-    pub rest: T,
-}
-
-#[model_schema()]
-#[derive(Serialize, Deserialize, Debug)]
 pub struct Opaque {
     #[serde(flatten)]
     pub below: Below,
@@ -330,14 +322,6 @@ fn a_type_that_flattens_a_struct_declared_below_it_refuses_a_key_neither_declare
     assert_eq!(read::<Opaque>(r#"{"name":"a","id":"b"}"#), Ok(()));
     let refused = read::<Opaque>(r#"{"name":"a","id":"b","stray":1}"#).unwrap_err();
     assert!(refused.contains("unknown field `stray`"), "{refused}");
-}
-
-#[test]
-fn a_type_that_flattens_its_type_parameter_reads_every_key() {
-    assert_eq!(
-        read::<Generic<BTreeMap<String, u32>>>(r#"{"name":"a","north":1}"#),
-        Ok(())
-    );
 }
 
 #[test]

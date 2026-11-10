@@ -27,25 +27,24 @@ use serde_json::Value;
 
 use super::flatten_order_models::{
     BareParcel, ClosedParcel, Hue, Ink, LastParcel, Lid, MapParcel, OpenParcel, Seal, Shape, Stamp,
-    TwoOpenParcel, Wrap, WrappedParcel,
+    TwoOpenParcel,
 };
 #[cfg(feature = "dart")]
 use super::flatten_order_models::{
     bare_parcel_dart, closed_parcel_dart, hue_dart, ink_dart, last_parcel_dart, lid_dart,
     map_parcel_dart, open_parcel_dart, seal_dart, shape_dart, stamp_dart, two_open_parcel_dart,
-    wrap_dart, wrapped_parcel_dart,
 };
 #[cfg(feature = "kotlin")]
 use super::flatten_order_models::{
     bare_parcel_kotlin, closed_parcel_kotlin, hue_kotlin, ink_kotlin, last_parcel_kotlin,
     lid_kotlin, map_parcel_kotlin, open_parcel_kotlin, seal_kotlin, shape_kotlin, stamp_kotlin,
-    two_open_parcel_kotlin, wrap_kotlin, wrapped_parcel_kotlin,
+    two_open_parcel_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::flatten_order_models::{
     bare_parcel_swift, closed_parcel_swift, hue_swift, ink_swift, last_parcel_swift, lid_swift,
     map_parcel_swift, open_parcel_swift, seal_swift, shape_swift, stamp_swift,
-    two_open_parcel_swift, wrap_swift, wrapped_parcel_swift,
+    two_open_parcel_swift,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::{dart, module};
@@ -127,17 +126,6 @@ fn payloads() -> Vec<(&'static str, String)> {
             counts: BTreeMap::from([("north".to_owned(), 2)]),
         },
     );
-    add(
-        "WrappedParcel",
-        &WrappedParcel {
-            label: "n".to_owned(),
-            wrapped: Wrap {
-                inner: Ink {
-                    colour: "red".to_owned(),
-                },
-            },
-        },
-    );
     rows
 }
 
@@ -173,7 +161,6 @@ fn every_payload_serde_writes_reads_back_in_rust_and_holds_to_its_json_schema() 
             "OpenParcel" => OpenParcel::json_schema(),
             "LastParcel" => LastParcel::json_schema(),
             "TwoOpenParcel" => TwoOpenParcel::json_schema(),
-            "WrappedParcel" => WrappedParcel::json_schema(),
             _ => MapParcel::json_schema(),
         };
         let instance: Value = serde_json::from_str(&json).unwrap();
@@ -185,7 +172,6 @@ fn every_payload_serde_writes_reads_back_in_rust_and_holds_to_its_json_schema() 
             "OpenParcel" => written_back::<OpenParcel>(&json),
             "LastParcel" => written_back::<LastParcel>(&json),
             "TwoOpenParcel" => written_back::<TwoOpenParcel>(&json),
-            "WrappedParcel" => written_back::<WrappedParcel>(&json),
             _ => written_back::<MapParcel>(&json),
         };
         assert_eq!(back, json, "{name}");
@@ -226,8 +212,6 @@ fn every_payload_serde_writes_is_read_back_by_the_zod_schema_of_its_holder() {
         (LastParcel::ts_definition(), LastParcel::zod_schema()),
         (TwoOpenParcel::ts_definition(), TwoOpenParcel::zod_schema()),
         (MapParcel::ts_definition(), MapParcel::zod_schema()),
-        (Wrap::<Ink>::ts_definition(), Wrap::<Ink>::zod_schema()),
-        (WrappedParcel::ts_definition(), WrappedParcel::zod_schema()),
     ] {
         parts.push(ts);
         parts.push(zod);
@@ -279,8 +263,6 @@ fn every_payload_serde_writes_is_read_back_in_dart() {
             last_parcel_dart::dart_definition(),
             two_open_parcel_dart::dart_definition(),
             map_parcel_dart::dart_definition(),
-            wrap_dart::dart_definition(),
-            wrapped_parcel_dart::dart_definition(),
         ],
         &[],
         &main,
@@ -323,8 +305,6 @@ fn every_payload_serde_writes_is_read_back_in_kotlin() {
         last_parcel_kotlin::kotlin_definition(),
         two_open_parcel_kotlin::kotlin_definition(),
         map_parcel_kotlin::kotlin_definition(),
-        wrap_kotlin::kotlin_definition(),
-        wrapped_parcel_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -359,8 +339,6 @@ fn every_payload_serde_writes_is_read_back_in_swift() {
         last_parcel_swift::swift_definition(),
         two_open_parcel_swift::swift_definition(),
         map_parcel_swift::swift_definition(),
-        wrap_swift::swift_definition(),
-        wrapped_parcel_swift::swift_definition(),
         main,
     ]
     .join("\n\n");

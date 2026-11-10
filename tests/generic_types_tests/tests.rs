@@ -916,54 +916,11 @@ mod zod {
 }
 
 mod jsonschema {
-    /// `#[serde(flatten)]` is read only where `serde` is, so the merge these pin is only written
-    /// there.
     #[cfg(feature = "serde")]
-    mod flattened_parameter {
-        use super::super::{Carried, FlatReferrer, FlatTextReferrer};
+    mod flattened_beside_a_parameter {
+        use super::super::Carried;
 
-        #[test]
-        fn a_flattened_parameter_merges_the_members_the_reference_site_filled_it_with() {
-            assert_eq!(
-                FlatReferrer::json_schema()["properties"]["held"],
-                serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "tag": { "type": "string" },
-                        "value": { "type": "integer" }
-                    },
-                    "required": ["tag", "value"],
-                    "additionalProperties": false
-                })
-            );
-        }
-
-        /// A non-object filling has no members to merge: one declared below the place that fills
-        /// the parameter, which the expansion does not see, is refused where the document is built.
-        #[test]
-        #[should_panic(
-            expected = "`FlatCarrier`: `#[serde(flatten)]` of `held` is not written as \
-                        an object — its schema describes a `string`, which has no \
-                        members to merge"
-        )]
-        fn a_flattened_parameter_filled_by_a_scalar_is_refused_where_the_filling_is_known() {
-            drop(FlatTextReferrer::json_schema());
-        }
-
-        #[test]
-        fn a_flattened_parameter_merges_the_members_its_declared_default_names() {
-            assert_eq!(
-                serde_json::to_string(
-                    &super::super::FlatDefaulted::<super::super::Envelope>::json_schema()
-                )
-                .unwrap(),
-                "{\"type\":\"object\",\"properties\":{\"tag\":{\"type\":\"string\"},\
-                 \"trace\":{\"type\":\"string\"}},\"required\":[\"tag\",\"trace\"],\
-                 \"additionalProperties\":false}"
-            );
-        }
-
-        /// A flatten source naming a type rather than a parameter is untouched by any of this.
+        /// A flatten source naming a type rather than a parameter describes as it always has.
         #[test]
         fn a_named_flatten_source_beside_a_parameter_describes_as_it_always_has() {
             assert_eq!(
@@ -1775,54 +1732,6 @@ pub struct Refilled<ValueType> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<Box<Refilled<bool>>>,
     pub value: ValueType,
-}
-
-/// A struct whose flattened source is one of its own type parameters, gated on both `serde`
-/// (which reads `#[serde(flatten)]`) and `jsonschema` (which builds the document). The declared
-/// filling is a struct; the fillings below reach it from the reference sites.
-#[cfg(feature = "serde")]
-#[model_schema(default_types(HeldType = Inner<u32>), enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlatCarrier<HeldType> {
-    #[serde(flatten)]
-    pub held: HeldType,
-    pub tag: String,
-}
-
-/// The same struct reached from a field that fills its parameter with an object, which is the
-/// other end a filling can arrive from.
-#[cfg(feature = "serde")]
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlatReferrer {
-    pub held: FlatCarrier<Inner<u32>>,
-}
-
-/// The same struct filled at a brand over text declared below the place that fills it: the
-/// expansion of that place does not see the brand, and the document refuses it.
-#[cfg(feature = "serde")]
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlatTextReferrer {
-    pub held: FlatCarrier<FlatLaterText>,
-}
-
-/// The brand over text [`FlatTextReferrer`] fills [`FlatCarrier`] with.
-#[cfg(feature = "serde")]
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct FlatLaterText(pub String);
-
-/// The same seam with the object filling written in the declaration instead: the default names a
-/// sibling item, so the standalone document is the one place the merge and a declared filling meet.
-#[cfg(feature = "serde")]
-#[model_schema(default_types(HeldType = Envelope), enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlatDefaulted<HeldType> {
-    #[serde(flatten)]
-    pub held: HeldType,
-    pub tag: String,
 }
 
 #[cfg(all(feature = "serde", feature = "zod"))]

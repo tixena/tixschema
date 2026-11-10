@@ -1,0 +1,13 @@
+error: model_schema: type `Order` has flattened `discount` (`Discount`) and flattened `price` (`Price`): flattened `discount` (`Discount`) reads the key `amount`, which flattened `price` (`Price`) writes, and serde reads it as flattened `price` (`Price`)'s, and the Kotlin and Swift reads hand it to both, which then refuse what serde wrote. Rename the key in one of them, or write `discount` or `price` under a key of its own.
+  --> tests/flatten_order_refusals/alias_of_a_key_another_member_writes.rs:26:5
+   |
+26 | /     #[serde(flatten)]
+27 | |     pub discount: Discount,
+   | |__________________________^
+
+error: model_schema: type `Quote` has flattened `discount` (`Discount`) and field `amount`: flattened `discount` (`Discount`) reads the key `amount`, which field `amount` writes, and serde reads it as field `amount`'s, and the Kotlin and Swift reads hand it to both, which then refuse what serde wrote. Rename the key in one of them, or write `discount` under a key of its own.
+  --> tests/flatten_order_refusals/alias_of_a_key_another_member_writes.rs:34:5
+   |
+34 | /     #[serde(flatten)]
+35 | |     pub discount: Discount,
+   | |__________________________^

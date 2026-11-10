@@ -10,8 +10,8 @@
 //!
 //! What a member is, the expansion reads from what `#[model_schema]` recorded when the member's
 //! type was expanded above it. A type it has not met is read from the hidden constant each type
-//! publishes, in a `const` the compiler evaluates, and a type parameter is held to the strictest
-//! rule: last, and the only member beside it that reads every key.
+//! publishes, in a `const` the compiler evaluates. A member whose keys are those of a type
+//! parameter is refused: what fills the parameter is written where no expansion reads it.
 
 use core::cell::RefCell;
 #[cfg(any(feature = "dart", feature = "swift"))]
@@ -2148,36 +2148,24 @@ fn collisions(subject: &str, found: &[Source]) -> Vec<(usize, String)> {
                 .written
                 .iter()
                 .find(|key| reader.keys.read.contains(key))
-                .filter(|_| sees(reader, writer))
             else {
                 continue;
             };
-            let both_take = matches!(
-                (reader.place, writer.place),
-                (
-                    Place::Flattened { at: before, takes: true },
-                    Place::Flattened { at: after, takes: true },
-                ) if before < after
-            );
-            let fix = if let (true, Some(reader_name)) = (both_take, member_name(&reader.label)) {
-                format!(
-                    "Declare `{reader_name}` after every member that writes `{key}`, or rename \
-                     the key in one of them."
-                )
+            let fix = rename_fix(&[reader, writer]);
+            let (reader_label, writer_label) = (&reader.label, &writer.label);
+            let reason = if sees(reader, writer) {
+                format!("serde hands it to {reader_label}, so {writer_label} reads back without it")
             } else {
-                rename_fix(&[reader, writer])
+                format!(
+                    "serde reads it as {writer_label}'s, and the Kotlin and Swift reads hand it to \
+                     both, which then refuse what serde wrote"
+                )
             };
             refused.push((
                 spanned,
                 format!(
-                    "{subject} has {} and {}: {} reads the key `{key}`, which {} writes, and serde \
-                     hands it to {}, so {} reads back without it. {fix}",
-                    reader.label,
-                    writer.label,
-                    reader.label,
-                    writer.label,
-                    reader.label,
-                    writer.label
+                    "{subject} has {reader_label} and {writer_label}: {reader_label} reads the key \
+                     `{key}`, which {writer_label} writes, and {reason}. {fix}"
                 ),
             ));
         }
@@ -3324,6 +3312,10 @@ fn judged_levels<'item>(
 /// The compile errors `item`'s flattened members earn, and those of the fillings it writes of a
 /// type that flattens a type parameter.
 pub(super) fn errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
+    let parameters = parameter_errors(item);
+    if !parameters.is_empty() {
+        return parameters;
+    }
     let mut refused: Vec<TokenStream> = judged_levels(item, args)
         .iter()
         .flat_map(|(level, members)| {
@@ -3342,6 +3334,90 @@ pub(super) fn errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
     }
     refused.extend(filling_errors(item, args));
     refused
+}
+
+/// Whether a value `def` describes writes keys of a type parameter's into the object it is
+/// flattened into: the parameter itself, or a recorded type whose members at that level reach one.
+fn keys_reach_a_parameter(def: &FieldDef, depth: usize) -> bool {
+    if let FieldDefType::TypeParam(_) = &def.field_type {
+        return def.array_depth == 0;
+    }
+    let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
+        return false;
+    };
+    if def.array_depth != 0 || depth > DEPTH {
+        return false;
+    }
+    if let Some(Declared::Alias(target)) = declared(name) {
+        return syn::parse_str::<Type>(&target).is_ok_and(|ty| {
+            keys_reach_a_parameter(
+                &get_field_def("flattened", &ty, ""),
+                depth.saturating_add(1),
+            )
+        });
+    }
+    match recorded(name) {
+        Some(Record::Through { parameters, slot }) => keys_reach_a_parameter(
+            &filled(&slot, &parameters, arguments),
+            depth.saturating_add(1),
+        ),
+        Some(Record::Shape(shape)) => shape.keyed.iter().any(|held| {
+            keys_reach_a_parameter(
+                &filled(held, &shape.parameters, arguments),
+                depth.saturating_add(1),
+            )
+        }),
+        None => false,
+    }
+}
+
+/// The refusal of each member `item` flattens whose keys are those of a type parameter: what
+/// fills the parameter is written where no expansion reads it, so nothing can tell whether the
+/// filling reads back.
+fn parameter_errors(item: &Item) -> Vec<TokenStream> {
+    let (name, generics, levels): (_, _, Vec<&Fields>) = if let Item::Struct(item_struct) = item {
+        (
+            &item_struct.ident,
+            &item_struct.generics,
+            vec![&item_struct.fields],
+        )
+    } else if let Item::Enum(item_enum) = item {
+        (
+            &item_enum.ident,
+            &item_enum.generics,
+            item_enum
+                .variants
+                .iter()
+                .map(|variant| &variant.fields)
+                .collect(),
+        )
+    } else {
+        return Vec::new();
+    };
+    let parameters = parameter_names(generics);
+    levels
+        .into_iter()
+        .flatten()
+        .filter(|field| flattened(field))
+        .filter(|field| keys_reach_a_parameter(&def_of(&field.ty, &parameters), 0))
+        .map(|field| {
+            let member = field
+                .ident
+                .as_ref()
+                .map_or_else(String::new, |ident| format!("`{}` ", ident.unraw()));
+            let message = format!(
+                "type `{}` flattens {member}(`{}`), whose keys are those of a type parameter: \
+                 what fills it is written outside any `#[model_schema]` type, where nothing \
+                 checks it, and a filling that writes a key `{}` already writes, or an `Option` \
+                 of a type that reads `{{}}`, does not read back. Hold the member under a key of \
+                 its own: remove `#[serde(flatten)]`",
+                name.unraw(),
+                spelled(&field.ty),
+                name.unraw(),
+            );
+            syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error()
+        })
+        .collect()
 }
 
 /// The refusal of `item_enum` where a variant flattens a member that reads every key still left,

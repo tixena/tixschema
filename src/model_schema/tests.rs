@@ -336,7 +336,7 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
 /// One type per source serde flattens into a struct, then one enum per form serde writes an enum
 /// in whose struct variant flattens a field, each with the arguments it is declared under.
 #[cfg(feature = "serde")]
-const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
+const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 6] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatEntry { #[serde(flatten)] pub audit: DecodeAudit, \
@@ -346,10 +346,6 @@ const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32> }",
-    ),
-    (
-        "enable = [\"decode_with\", \"mongodb\"], default_types(T = DecodeBody)",
-        "pub struct DecodeFlatEnvelope<T> { #[serde(flatten)] pub body: T, pub id: String }",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -4156,8 +4152,7 @@ fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every
 
 /// The shapes left alone: a generic type filled at a struct and at an `Option` of one, flattened,
 /// and a type whose value is one, flattened and in a tagged slot; a generic type declared below,
-/// flattened and filling a type declared above; and a generic type filled at the holder's own
-/// type parameter.
+/// flattened and filling a type declared above.
 #[cfg(feature = "serde")]
 #[test]
 fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
@@ -4195,11 +4190,6 @@ fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
         (
             "",
             "#[serde(tag = \"kind\")] pub enum ProbeHeldLaterFilled { Held(ProbeLaterFilled) }",
-        ),
-        (
-            "default_types(X = ProbeFields)",
-            "pub struct ProbeFlatOwn<X> { pub id: String, #[serde(flatten)] pub wrap: \
-             ProbeWrap<X> }",
         ),
     ] {
         let expanded = serialized_under(args, accepted);
@@ -4652,8 +4642,8 @@ fn an_untagged_enum_filled_at_its_own_parameter_through_a_wrapper_a_holder_or_an
     }
 }
 
-/// The generic untagged enums left alone: each filled at a struct, filled at a type parameter of
-/// the holder, and one declared below, flattened and held under a tag alone.
+/// The generic untagged enums left alone: each filled at a struct and one declared below, flattened
+/// and held under a tag alone, and one filled at a type parameter of the holder under a tag alone.
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_is_accepted() {
@@ -4675,18 +4665,14 @@ fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_i
             "for {filled}"
         );
     }
-    for accepted in [
-        "pub struct ProbeFlatOwnParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
-         ProbeOwnMember<T> }",
-        "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }",
-    ] {
-        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
-        assert_eq!(
-            compile_error_count(&expanded),
-            0,
-            "for {accepted}, got: {expanded}"
-        );
-    }
+    let accepted =
+        "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }";
+    let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
+    assert_eq!(
+        compile_error_count(&expanded),
+        0,
+        "for {accepted}, got: {expanded}"
+    );
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.
@@ -4983,9 +4969,9 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_through_another_type_is_ref
     }
 }
 
-/// The holders left alone: each filled at a struct, a holder over an enum declared below, a
-/// holder declared below, and each filled at a type parameter of the type that holds it,
-/// flattened and held under a tag alone.
+/// The holders left alone: each filled at a struct, a holder over an enum declared below and a
+/// holder declared below, flattened and held under a tag alone, and one filled at a type parameter
+/// of the type that holds it under a tag alone.
 #[cfg(feature = "serde")]
 #[test]
 fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_declared_below_is_accepted()
@@ -5010,19 +4996,14 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_decl
             "for {filled}"
         );
     }
-    for accepted in [
-        "pub struct ProbeFlatOwnAliasParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
-         ProbeOwnAliasOf<T> }",
-        "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
-         Held(ProbeSlotOwnOf<T>) }",
-    ] {
-        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
-        assert_eq!(
-            compile_error_count(&expanded),
-            0,
-            "for {accepted}, got: {expanded}"
-        );
-    }
+    let accepted = "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
+         Held(ProbeSlotOwnOf<T>) }";
+    let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
+    assert_eq!(
+        compile_error_count(&expanded),
+        0,
+        "for {accepted}, got: {expanded}"
+    );
 }
 
 /// What the record every build with serde writes proves of each flattened type is what the record

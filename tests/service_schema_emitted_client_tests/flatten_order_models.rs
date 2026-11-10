@@ -119,20 +119,3 @@ pub struct MapParcel {
     #[serde(flatten)]
     pub counts: BTreeMap<String, u32>,
 }
-
-/// A type that flattens its type parameter, the one member.
-#[model_schema(enable = ["jsonschema"], default_types(T = Ink))]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Wrap<T> {
-    #[serde(flatten)]
-    pub inner: T,
-}
-
-/// [`Wrap`] filled with a strict struct, beside a key of the holder's own: open.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct WrappedParcel {
-    pub label: String,
-    #[serde(flatten)]
-    pub wrapped: Wrap<Ink>,
-}

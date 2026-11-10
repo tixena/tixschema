@@ -1866,9 +1866,9 @@ const LADINGS: [(&str, &str, &str, bool); 29] = [
 
 /// Each payload of an untagged enum that declares a parameter, written with an argument and
 /// flattened beside a member, the schema it is parsed through and the type it is assigned to, and
-/// whether serde, Zod and TypeScript take it: each member at the argument, directly and at the
-/// holder's own parameter, and not the member alone, a member of another type, or no member.
-const LANDINGS: [(&str, &str, &str, bool); 12] = [
+/// whether serde, Zod and TypeScript take it: each member at the argument, and not the member
+/// alone, a member of another type, or no member.
+const LANDINGS: [(&str, &str, &str, bool); 9] = [
     (
         "DeclaredLanding$Schema",
         "DeclaredLanding",
@@ -1890,24 +1890,6 @@ const LANDINGS: [(&str, &str, &str, bool); 12] = [
     (
         "DeclaredLanding$Schema",
         "DeclaredLanding",
-        r#"{"note":"n","label":3}"#,
-        false,
-    ),
-    (
-        "DeclaredJetty$SchemaDefault",
-        "DeclaredJetty<DeclaredCarton>",
-        r#"{"note":"n","label":"l"}"#,
-        true,
-    ),
-    (
-        "DeclaredJetty$SchemaDefault",
-        "DeclaredJetty<DeclaredCarton>",
-        r#"{"note":"n","count":3}"#,
-        true,
-    ),
-    (
-        "DeclaredJetty$SchemaDefault",
-        "DeclaredJetty<DeclaredCarton>",
         r#"{"note":"n","label":3}"#,
         false,
     ),
@@ -2470,15 +2452,6 @@ pub struct DeclaredLanding {
     pub note: String,
 }
 
-/// [`DeclaredEither`] flattened at its holder's own parameter.
-#[model_schema(default_types(Stowed = DeclaredCarton))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeclaredJetty<Stowed> {
-    #[serde(flatten)]
-    pub either: DeclaredEither<Stowed>,
-    pub note: String,
-}
-
 /// An untagged enum that declares a parameter, of two members of named fields, each closed to the
 /// other's key where it is flattened.
 #[model_schema(default_types(Cargo = String))]
@@ -2678,8 +2651,6 @@ fn hatches_bundle() -> String {
         DeclaredEither::<DeclaredCarton>::zod_schema(),
         DeclaredLanding::ts_definition(),
         DeclaredLanding::zod_schema(),
-        DeclaredJetty::<DeclaredCarton>::ts_definition(),
-        DeclaredJetty::<DeclaredCarton>::zod_schema(),
         DeclaredPick::<String>::ts_definition(),
         DeclaredPick::<String>::zod_schema(),
         DeclaredSlipway::ts_definition(),
@@ -2720,12 +2691,6 @@ fn object_ids_bundle() -> String {
         "type ObjectId = { $oid: string };".to_owned(),
         object_ids::Notation::ts_definition(),
         object_ids::Notation::zod_schema(),
-        object_ids::Cartouche::ts_definition(),
-        object_ids::Cartouche::zod_schema(),
-        object_ids::Waxwork::ts_definition(),
-        object_ids::Waxwork::zod_schema(),
-        object_ids::Impress::ts_definition(),
-        object_ids::Impress::zod_schema(),
         object_ids::Countersigned::<String>::ts_definition(),
         object_ids::Countersigned::<String>::zod_schema(),
         object_ids::Sigil::ts_definition(),
@@ -2748,46 +2713,12 @@ fn object_ids_bundle() -> String {
         object_ids::Sigiled::zod_schema(),
         object_ids::Sigillary::ts_definition(),
         object_ids::Sigillary::zod_schema(),
-        object_ids::Enveloping::<String>::ts_definition(),
-        object_ids::Enveloping::<String>::zod_schema(),
-        object_ids::Waxing::<String>::ts_definition(),
-        object_ids::Waxing::<String>::zod_schema(),
-        object_ids::Rewaxing::<String>::ts_definition(),
-        object_ids::Rewaxing::<String>::zod_schema(),
-        object_ids::Relaying::<String>::ts_definition(),
-        object_ids::Relaying::<String>::zod_schema(),
         object_ids::Wafer::ts_definition(),
         object_ids::Wafer::zod_schema(),
-        object_ids::Lettering::ts_definition(),
-        object_ids::Lettering::zod_schema(),
-        object_ids::Folding::ts_definition(),
-        object_ids::Folding::zod_schema(),
-        object_ids::Cartouching::ts_definition(),
-        object_ids::Cartouching::zod_schema(),
-        object_ids::Rewaxed::ts_definition(),
-        object_ids::Rewaxed::zod_schema(),
-        object_ids::Countersealing::ts_definition(),
-        object_ids::Countersealing::zod_schema(),
-        object_ids::Latewaxed::ts_definition(),
-        object_ids::Latewaxed::zod_schema(),
-        object_ids::Waxworking::ts_definition(),
-        object_ids::Waxworking::zod_schema(),
-        object_ids::Impressing::ts_definition(),
-        object_ids::Impressing::zod_schema(),
-        object_ids::Relayed::ts_definition(),
-        object_ids::Relayed::zod_schema(),
-        object_ids::Crossed::<String>::ts_definition(),
-        object_ids::Crossed::<String>::zod_schema(),
-        object_ids::Crossing::ts_definition(),
-        object_ids::Crossing::zod_schema(),
-        object_ids::Bullae::ts_definition(),
-        object_ids::Bullae::zod_schema(),
         object_ids::Wafered::ts_definition(),
         object_ids::Wafered::zod_schema(),
         object_ids::Wafering::ts_definition(),
         object_ids::Wafering::zod_schema(),
-        object_ids::Enwafered::ts_definition(),
-        object_ids::Enwafered::zod_schema(),
         object_ids::Wafers::ts_definition(),
         object_ids::Wafers::zod_schema(),
         object_ids::Impressed::ts_definition(),
@@ -2796,8 +2727,6 @@ fn object_ids_bundle() -> String {
         object_ids::Belated::zod_schema(),
         object_ids::LateSigil::ts_definition(),
         object_ids::LateSigil::zod_schema(),
-        object_ids::LateCartouche::ts_definition(),
-        object_ids::LateCartouche::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -2814,23 +2743,11 @@ fn object_id_document(read_as: &str) -> serde_json::Value {
         "Stampage" => object_ids::Stampage::json_schema(),
         "Sigiled" => object_ids::Sigiled::json_schema(),
         "Sigillary" => object_ids::Sigillary::json_schema(),
-        "Lettering" => object_ids::Lettering::json_schema(),
-        "Folding" => object_ids::Folding::json_schema(),
-        "Cartouching" => object_ids::Cartouching::json_schema(),
-        "Rewaxed" => object_ids::Rewaxed::json_schema(),
-        "Countersealing" => object_ids::Countersealing::json_schema(),
-        "Latewaxed" => object_ids::Latewaxed::json_schema(),
-        "Waxworking" => object_ids::Waxworking::json_schema(),
-        "Impressing" => object_ids::Impressing::json_schema(),
-        "Relayed" => object_ids::Relayed::json_schema(),
-        "Bullae" => object_ids::Bullae::json_schema(),
-        "Crossing" => object_ids::Crossing::json_schema(),
         "Belated" => object_ids::Belated::json_schema(),
         "Wafered" => object_ids::Wafered::json_schema(),
         "Wafering" => object_ids::Wafering::json_schema(),
         "Wafers" => object_ids::Wafers::json_schema(),
-        "Impressed" => object_ids::Impressed::json_schema(),
-        _ => object_ids::Enwafered::json_schema(),
+        _ => object_ids::Impressed::json_schema(),
     }
 }
 
@@ -5982,8 +5899,8 @@ fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument(
 
 /// An untagged enum that declares a parameter, written with an argument and flattened, is taken by
 /// the Zod schema of its holder under `node` and by its TypeScript type under `tsc --strict` as
-/// serde writes and reads it: each member at the argument, directly and at the holder's own
-/// parameter, and each member of named fields closed to the other's key.
+/// serde writes and reads it: each member at the argument, and each member of named fields closed
+/// to the other's key.
 #[test]
 fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the_argument() {
     let stated: Vec<bool> = LANDINGS.iter().map(|&(_, _, _, taken)| taken).collect();
@@ -5991,8 +5908,7 @@ fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the
         .iter()
         .map(|&(_, typed, json, _)| match typed {
             "DeclaredLanding" => serde_json::from_str::<DeclaredLanding>(json).is_ok(),
-            "DeclaredSlipway" => serde_json::from_str::<DeclaredSlipway>(json).is_ok(),
-            _ => serde_json::from_str::<DeclaredJetty<DeclaredCarton>>(json).is_ok(),
+            _ => serde_json::from_str::<DeclaredSlipway>(json).is_ok(),
         })
         .collect();
     assert_eq!(read, stated, "serde does not take what the rows state");
@@ -6012,10 +5928,8 @@ fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the
     let Some(at) = built_from("landings-payloads", &hatches_bundle()) else {
         return;
     };
-    let mut payloads = String::from(
-        "import type { DeclaredCarton, DeclaredJetty, DeclaredLanding, DeclaredSlipway } from \
-         \"./lib/index.js\";\n",
-    );
+    let mut payloads =
+        String::from("import type { DeclaredLanding, DeclaredSlipway } from \"./lib/index.js\";\n");
     for (position, &(_, typed, json, _)) in LANDINGS.iter().enumerate() {
         let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
     }

@@ -491,7 +491,7 @@ fn an_option_of_a_struct_of_defaulted_members_is_refused_as_read_back_as_some() 
 }
 
 #[test]
-fn a_member_that_reads_a_key_a_later_member_writes_is_refused_with_the_order_that_reads_back() {
+fn a_member_that_reads_a_key_another_member_writes_is_refused_in_either_order() {
     let refused = sole_refusal(
         "#[derive(Serialize, Deserialize)]\npub struct Inked { #[serde(alias = \"at\")] pub \
          colour: u32 }\n#[derive(Serialize, Deserialize)]\npub struct Dated { pub at: u32 }\n\
@@ -503,10 +503,24 @@ fn a_member_that_reads_a_key_a_later_member_writes_is_refused_with_the_order_tha
             "model_schema: type `Stamped` has flattened `ink` (`Inked`) and flattened `date` \
              (`Dated`): flattened `ink` (`Inked`) reads the key `at`, which flattened `date` \
              (`Dated`) writes, and serde hands it to flattened `ink` (`Inked`), so flattened \
-             `date` (`Dated`) reads back without it. Declare `ink` after every member that \
-             writes `at`, or rename the key in one of them."
+             `date` (`Dated`) reads back without it. Rename the key in one of them, or write \
+             `ink` or `date` under a key of its own."
         ),
         "{refused}"
+    );
+    let reordered = sole_refusal(
+        "#[derive(Serialize, Deserialize)]\npub struct Inked { #[serde(alias = \"at\")] pub \
+         colour: u32 }\n#[derive(Serialize, Deserialize)]\npub struct Dated { pub at: u32 }\n\
+         #[derive(Serialize, Deserialize)]\npub struct Stamped { #[serde(flatten)] pub date: \
+         Dated, #[serde(flatten)] pub ink: Inked }",
+    );
+    assert!(
+        reordered.contains(
+            "reads the key `at`, which flattened `date` (`Dated`) writes, and serde reads it as \
+             flattened `date` (`Dated`)'s, and the Kotlin and Swift reads hand it to both, which \
+             then refuse what serde wrote."
+        ),
+        "{reordered}"
     );
 }
 
@@ -564,25 +578,53 @@ fn a_filling_of_a_generic_type_that_writes_a_key_beside_it_is_refused_at_the_fil
     );
 }
 
+/// A member whose keys are those of a type parameter is refused, the parameter written bare, under
+/// an `Option` or a `Box`, in a variant, or through a generic untagged enum that holds it, and a
+/// generic type that holds its parameter under a key is flattened as any struct is.
 #[test]
-fn a_default_filling_that_writes_a_key_beside_it_is_refused_at_the_entry() {
-    let numbered = expansion(
-        "",
-        "#[derive(Serialize, Deserialize)] pub struct Numbered { pub id: u32 }",
-    );
-    assert!(!numbered.contains("compile_error"), "{numbered}");
-    let expanded = expansion(
-        "default_types(T = Numbered)",
-        "#[derive(Serialize, Deserialize)] pub struct Wrap<T> { pub id: u32, #[serde(flatten)] \
-         pub inner: T }",
+fn a_member_whose_keys_are_those_of_a_type_parameter_is_refused() {
+    let either: syn::Item = syn::parse_str(
+        "#[derive(Serialize, Deserialize)]\n#[serde(untagged)]\npub enum Either<T> { Count { \
+         count: u32 }, Held(T) }",
+    )
+    .unwrap();
+    let page: syn::Item =
+        syn::parse_str("#[derive(Serialize, Deserialize)]\npub struct Page<T> { pub item: T }")
+            .unwrap();
+    record(&either, &ModelSchemaArgs::default());
+    record(&page, &ModelSchemaArgs::default());
+    for (holder, member, written) in [
+        ("Stamped", "record", "T"),
+        ("Maybe", "record", "Option<T>"),
+        ("Boxed", "record", "Box<T>"),
+        ("Shelf", "either", "Either<T>"),
+    ] {
+        let refused = sole_refusal(&format!(
+            "#[derive(Serialize, Deserialize)]\npub struct {holder}<T> {{ pub label: String, \
+             #[serde(flatten)] pub {member}: {written} }}"
+        ));
+        assert!(
+            refused.contains(&format!(
+                "type `{holder}` flattens `{member}` (`{written}`), whose keys are those of a type \
+                 parameter"
+            )),
+            "{refused}"
+        );
+    }
+    let refused = sole_refusal(
+        "#[derive(Serialize, Deserialize)]\npub enum Entry<T> { Stamped { created_at: String, \
+         #[serde(flatten)] record: T } }",
     );
     assert!(
-        expanded.contains(
-            "model_schema: type `Wrap`: `default_types` entry `T`: `Numbered` fills `Wrap`, which \
-             then has field `id` and flattened `inner`, which both write the key `id`"
-        ),
-        "{expanded}"
+        refused.contains("type `Entry` flattens `record` (`T`), whose keys are those of a type"),
+        "{refused}"
     );
+    let (_, listing) = classes_of(
+        "#[derive(Serialize, Deserialize)]\npub struct Listing<T> { pub label: String, \
+         #[serde(flatten)] pub page: Page<T> }",
+        &[],
+    );
+    assert_eq!(listing, Vec::<String>::new());
 }
 
 /// The hidden constant the expansion of `source` publishes.
@@ -678,7 +720,7 @@ fn a_seen_member_that_reads_every_key_beside_an_unseen_part_leaves_its_holder_op
         classes,
         [Class::Unseen("the type parameter `T`".to_owned())]
     );
-    assert_eq!(refused, Vec::<String>::new());
+    assert_eq!(refused.len(), 1, "{refused:?}");
     assert_eq!(
         UNSEEN & (REST | REFUSES | ABSORBS | EMPTY | ENTRY | NO_OBJECT),
         0
