@@ -723,6 +723,28 @@ fn a_member_whose_type_flattens_one_declared_below_it_is_refused_beside_another_
     );
 }
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+#[test]
+fn a_closed_holder_of_a_generic_member_declared_below_it_is_warned_unless_nonstrict() {
+    let source = "#[derive(Serialize, Deserialize)] pub struct Haulage { pub label: String, \
+                  #[serde(flatten)] pub haulier: Haulier<String> }";
+    let strict = expansion("", source);
+    assert!(
+        strict.contains(
+            "type `Haulage` flattens `haulier` (`Haulier<String>`), a generic type declared below \
+             `Haulage` or in another crate: the Dart, Kotlin and Swift reads of `Haulage` cannot \
+             learn which keys it takes, so they read past a key no member declares, which the \
+             Rust read refuses. Avoid this shape where you can: declare `Haulier` above \
+             `Haulage`, write `haulier` under a key of its own, or mark `Haulage` \
+             `#[model_schema(nonstrict)]` so that every surface reads past the key."
+        ),
+        "{strict}"
+    );
+    assert!(strict.contains("deprecated"), "{strict}");
+    let open = expansion("nonstrict", source);
+    assert!(!open.contains("TIXSCHEMA_READS_PAST_A_STRAY_KEY"), "{open}");
+}
+
 #[test]
 fn each_shape_no_holder_may_flatten_publishes_its_bit() {
     for (source, bit) in [

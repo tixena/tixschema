@@ -3731,14 +3731,77 @@ fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenSt
     vec![syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error()]
 }
 
+/// A warning, through a `#[deprecated]` constant the compiler names, for each generic member
+/// declared below `level` or in another crate that it flattens while closed: the Dart, Kotlin and
+/// Swift reads learn the keys of such a member only where it is written with no type argument.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+fn generic_unmet_warnings(level: &Level<'_>, members: &[Member<'_>]) -> Vec<TokenStream> {
+    if !(level.closed_by_hand || level.closed_by_macro) {
+        return Vec::new();
+    }
+    members
+        .iter()
+        .filter(|member| member.dynamic.is_some())
+        .filter_map(|member| {
+            let def = under_option(&def_of(&member.field.ty, &[]));
+            let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
+                return None;
+            };
+            if arguments.is_empty()
+                || def.array_depth != 0
+                || is_sequence_wrapper(name)
+                || recorded(name).is_some()
+                || declared(name).is_some()
+            {
+                return None;
+            }
+            let note = format!(
+                "{} flattens {}, a generic type declared below `{}` or in another crate: the \
+                 Dart, Kotlin and Swift reads of `{}` cannot learn which keys it takes, so they \
+                 read past a key no member declares, which the Rust read refuses. Avoid this \
+                 shape where you can: declare `{name}` above `{}`, write `{}` under a key of its \
+                 own, or mark `{}` `#[model_schema(nonstrict)]` so that every surface reads past \
+                 the key.",
+                level.subject,
+                named(member),
+                level.named,
+                level.named,
+                level.named,
+                member.name,
+                level.named
+            );
+            let span = member.field.ty.span();
+            Some(quote_spanned! { span=>
+                const _: () = {
+                    #[deprecated(note = #note)]
+                    const TIXSCHEMA_READS_PAST_A_STRAY_KEY: () = ();
+                    TIXSCHEMA_READS_PAST_A_STRAY_KEY
+                };
+            })
+        })
+        .collect()
+}
+
+/// Nothing, in a build with no Dart, Kotlin or Swift read.
+#[cfg(not(any(feature = "dart", feature = "kotlin", feature = "swift")))]
+const fn generic_unmet_warnings(_level: &Level<'_>, _members: &[Member<'_>]) -> Vec<TokenStream> {
+    Vec::new()
+}
+
 /// The hidden constant `item` publishes, which a holder that cannot see it reads it by, and the
 /// `const` checks of `item`'s own members whose hidden constant answers for them. `item` is
 /// recorded already.
 pub(super) fn tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
-    let checks = judged_levels(item, args)
+    let levels = judged_levels(item, args);
+    let mut checks = levels
         .iter()
         .filter_map(|(level, members)| dynamic_checks(level, members))
         .collect::<Vec<_>>();
+    checks.extend(
+        levels
+            .iter()
+            .flat_map(|(level, members)| generic_unmet_warnings(level, members)),
+    );
     let (name, generics) = if let Item::Struct(item_struct) = item {
         (&item_struct.ident, &item_struct.generics)
     } else if let Item::Enum(item_enum) = item {

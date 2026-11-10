@@ -59,7 +59,7 @@ pub struct Courier {
 
 /// The two parties of a parcel, generic structs of another crate flattened at this type's own
 /// parameter.
-#[model_schema(default_types(IdType = String))]
+#[model_schema(nonstrict, default_types(IdType = String))]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ParcelParties<IdType: Display> {
     #[serde(flatten)]
