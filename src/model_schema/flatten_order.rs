@@ -341,7 +341,6 @@ enum Record {
 struct RecordedLevel {
     /// Each flattened member, by name, as declared.
     flattened: Vec<(String, FieldDef)>,
-    own: Vec<(String, KeySet)>,
     /// The variant it is, for an enum.
     variant: Option<String>,
 }
@@ -1178,7 +1177,6 @@ fn fields_empty(fields: &Fields, container_defaulted: bool, parameters: &[String
 /// The levels of `fields` that flatten a member, for the fillings of the type's parameters.
 fn recorded_level(
     fields: &Fields,
-    rename_all: Option<&str>,
     parameters: &[String],
     variant: Option<String>,
 ) -> Option<RecordedLevel> {
@@ -1192,7 +1190,6 @@ fn recorded_level(
         .collect();
     (!flattened_members.is_empty()).then(|| RecordedLevel {
         flattened: flattened_members,
-        own: own_keys(fields, rename_all),
         variant,
     })
 }
@@ -1314,12 +1311,9 @@ fn struct_record(item_struct: &ItemStruct, args: &ModelSchemaArgs) -> Record {
         shape.keys.extend(&KeySet::both(tag));
         shape.rest = true;
     }
-    shape.levels.extend(recorded_level(
-        &item_struct.fields,
-        rename_all.as_deref(),
-        &parameters,
-        None,
-    ));
+    shape
+        .levels
+        .extend(recorded_level(&item_struct.fields, &parameters, None));
     for (field, _) in parts_of(&Item::Struct(item_struct.clone())) {
         shape.rest = true;
         shape.keyed.push(def_of(&field.ty, &parameters));
@@ -1378,10 +1372,8 @@ fn enum_record(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Record {
             .filter(|variant| variant_on_the_wire(variant))
     };
     for variant in on_the_wire() {
-        let rename_all = variant_rename_all(item_enum, variant);
         shape.levels.extend(recorded_level(
             &variant.fields,
-            rename_all.as_deref(),
             &parameters,
             Some(variant.ident.unraw().to_string()),
         ));
@@ -2905,34 +2897,13 @@ fn filled_refusals_of(shape: &Shape, arguments: &[FieldDef]) -> Vec<String> {
             || "which then".to_owned(),
             |variant| format!("whose variant `{variant}` then"),
         );
+        // A filling writes no key the type's own expansion did not see: a member whose keys are a
+        // type parameter's is refused there.
         let members: Vec<(String, FieldDef)> = level
             .flattened
             .iter()
             .map(|(name, def)| (name.clone(), filled(def, &shape.parameters, arguments)))
             .collect();
-        let mut found = own_sources(&sources_of(level.own.clone()));
-        found.extend(members.iter().enumerate().map(|(at, (name, def))| Source {
-            keys: keys(def, 0),
-            label: format!("flattened `{name}`"),
-            place: Place::Flattened {
-                at,
-                takes: !reads(def, 0).rest,
-            },
-        }));
-        for (_, message) in collisions(&subject, &found) {
-            let filling = "fill it with a type that writes no key another of its members declares";
-            refused.push(if message.ends_with("Rename the key in one of them.") {
-                message.replace(
-                    "Rename the key in one of them.",
-                    &format!("Rename the key in one of them, or {filling}."),
-                )
-            } else {
-                message.replace(
-                    "Rename the key in one of them, or write",
-                    &format!("Rename the key in one of them, {filling}, or write"),
-                )
-            });
-        }
         for (name, def) in &members {
             if def.array_depth == 0
                 && def.is_optional()

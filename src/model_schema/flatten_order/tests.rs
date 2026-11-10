@@ -554,30 +554,6 @@ fn a_variant_of_an_untagged_enum_that_reads_every_object_ahead_of_another_is_ref
     );
 }
 
-#[test]
-fn a_filling_of_a_generic_type_that_writes_a_key_beside_it_is_refused_at_the_filling() {
-    let refused = sole_refusal(
-        "#[derive(Serialize, Deserialize)]\npub struct Wrap<T> { pub id: u32, \
-         #[serde(flatten)] pub inner: T }\n#[derive(Serialize, Deserialize)]\npub struct Numbered \
-         { pub id: u32 }\n#[derive(Serialize, Deserialize)]\npub struct Uses { pub held: \
-         Wrap<Numbered> }",
-    );
-    assert!(
-        refused.contains(
-            "model_schema: type `Uses`: field `held`: `Wrap<Numbered>` fills `Wrap`, which then \
-             has field `id` and flattened `inner`, which both write the key `id`"
-        ),
-        "{refused}"
-    );
-    assert!(
-        refused.contains(
-            "Rename the key in one of them, fill it with a type that writes no key another of its \
-             members declares, or write `inner` under a key of its own."
-        ),
-        "{refused}"
-    );
-}
-
 /// A member whose keys are those of a type parameter is refused, the parameter written bare, under
 /// an `Option` or a `Box`, in a variant, or through a generic untagged enum that holds it, and a
 /// generic type that holds its parameter under a key is flattened as any struct is.
