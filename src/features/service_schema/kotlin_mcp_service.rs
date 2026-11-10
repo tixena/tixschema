@@ -827,9 +827,11 @@ private fun @P@McpMismatch(schema: JsonElement?, value: JsonElement?): List<Stri
     "object" -> {
       if (value !is JsonObject) return emptyList()
       val properties = schema["properties"] as? JsonObject
-      val others = schema["additionalProperties"] as? JsonObject
+      val others = schema["additionalProperties"]
       for ((key, held) in value) {
-        val found = @P@McpMismatch(properties?.get(key) ?: others, held)
+        val declared = properties?.get(key)
+        if (declared == null && (others as? JsonPrimitive)?.content == "false") return listOf(key)
+        val found = @P@McpMismatch(declared ?: others, held)
         if (found != null) return listOf(key) + found
       }
       for (key in schema["required"] as? JsonArray ?: JsonArray(emptyList())) {

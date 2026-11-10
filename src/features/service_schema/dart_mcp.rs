@@ -1925,7 +1925,9 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          final properties = schema['properties'];\n      \
          final others = schema['additionalProperties'];\n      \
          for (final entry in value.entries) {{\n        \
-         final held = properties is Map && properties.containsKey(entry.key) ? properties[entry.key] : others;\n        \
+         final declared = properties is Map && properties.containsKey(entry.key);\n        \
+         if (!declared && others == false) return <String>['${{entry.key}}'];\n        \
+         final held = declared ? properties[entry.key] : others;\n        \
          final found = _{prefix}McpMismatch(held, entry.value);\n        \
          if (found != null) return <String>['${{entry.key}}', ...found];\n      \
          }}\n      \

@@ -25,6 +25,9 @@ const EVENT_PREFIX: &str = "event: message\ndata: ";
 /// in its own terms.
 const FAULTED_ANSWERS: [&str; 2] = ["get_missing_argument", "get_wrong_type"];
 
+/// The tool calls answered with a fault in the result's text, compared without its detail.
+const FAULTED_TOOL_ANSWERS: [&str; 1] = ["tool_version_stray"];
+
 /// The method and name of each scope query every server answers.
 pub const QUERIES: [(&str, Option<&str>); 6] = [
     ("prompts/get", Some("greet")),
@@ -256,6 +259,14 @@ pub fn requests() -> Vec<(&'static str, String)> {
                 json!({ "name": "get-guide-version", "arguments": {} }),
             ),
         ),
+        (
+            "tool_version_stray",
+            request(
+                5,
+                "tools/call",
+                json!({ "name": "get-guide-version", "arguments": { "stray": 1_u8 } }),
+            ),
+        ),
         ("get_string", get("configure-organization", &json!({}))),
         (
             "get_no_arguments",
@@ -472,7 +483,7 @@ fn definition_of(name: &str) -> Option<&'static str> {
         "discover" => Some("DiscoverResult"),
         "prompts_list" => Some("ListPromptsResult"),
         "tools_list" => Some("ListToolsResult"),
-        "tool_version" => Some("CallToolResult"),
+        "tool_version" | "tool_version_stray" => Some("CallToolResult"),
         "complete_argument" => Some("CompleteResult"),
         _ if name.starts_with("get_") => Some("GetPromptResult"),
         _ => None,
@@ -487,6 +498,37 @@ fn without_detail(answer: &Value) -> Value {
     stripped
 }
 
+/// A tool's answer with the detail taken out of the fault its result carries as text.
+fn without_tool_detail(answer: &Value) -> Value {
+    let mut stripped = answer.clone();
+    let text = stripped["result"]["content"][0]["text"].as_str().unwrap();
+    let mut carried: Value = serde_json::from_str(text).unwrap();
+    carried["fault"].as_object_mut().unwrap().remove("detail");
+    stripped["result"]["content"][0]["text"] = carried;
+    if let Some(structured) = stripped["result"]["structuredContent"]["fault"].as_object_mut() {
+        structured.remove("detail");
+    }
+    stripped
+}
+
+/// Holds the answer a language's server gave to the request `name` to the Rust one, `reached`
+/// being what the Rust handlers saw for it.
+fn assert_answer(name: &str, got: &Value, wanted: &Value, reached: &Value) {
+    if FAULTED_ANSWERS.contains(&name) {
+        assert_eq!(without_detail(got), without_detail(wanted), "{name}");
+    } else if FAULTED_TOOL_ANSWERS.contains(&name) {
+        assert_eq!(wanted["result"]["isError"], true, "{name}: {wanted:#}");
+        assert_eq!(*reached, json!([]), "{name} reached the handler");
+        assert_eq!(
+            without_tool_detail(got),
+            without_tool_detail(wanted),
+            "{name}"
+        );
+    } else {
+        assert_eq!(got, wanted, "{name}");
+    }
+}
+
 /// Holds the report of a language's server program to what the Rust dispatcher answered, and
 /// every answer to the official schema.
 pub fn assert_matches(report: &Value) {
@@ -496,12 +538,12 @@ pub fn assert_matches(report: &Value) {
         assert!(found.is_some(), "{name} was not answered: {report:#}");
         let answered = found.unwrap();
         let expected = rust["answers"][name].as_str().unwrap();
-        let (got, wanted) = (read(answered), read(expected));
-        if FAULTED_ANSWERS.contains(&name) {
-            assert_eq!(without_detail(&got), without_detail(&wanted), "{name}");
-        } else {
-            assert_eq!(got, wanted, "{name}");
-        }
+        assert_answer(
+            name,
+            &read(answered),
+            &read(expected),
+            &rust["reached"][name],
+        );
         let message: Value = serde_json::from_str(answered).unwrap();
         if message.get("error").is_some() {
             held_to("JSONRPCErrorResponse", &message);
