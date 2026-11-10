@@ -111,6 +111,7 @@ pub enum TupleNaming {
     Counted,
     /// A name derived from the shape, declared by the item: the accessor that declares a
     /// service's result types.
+    #[cfg(feature = "serde")]
     Declared,
     /// The name derived from the shape, declared by no one here: an accessor that is only
     /// compiled beside the one that declares it.
@@ -1331,6 +1332,7 @@ fn tuple_wrapper_serializer(elements: &[FieldDef], walked: bool) -> String {
 
 /// Names the tuple wrappers the item being expanded writes as `naming` says, until
 /// [`kotlin_declarations`] closes the item.
+#[cfg(feature = "serde")]
 pub fn kotlin_tuple_naming(naming: TupleNaming) {
     KOTLIN_TUPLE_NAMING.with(|held| held.set(naming));
 }

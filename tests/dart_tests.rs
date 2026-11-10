@@ -28,7 +28,7 @@ mod held_numbers;
 
 /// The statements the read of a strict class opens with.
 #[cfg(test)]
-#[cfg(feature = "dart")]
+#[cfg(all(feature = "dart", feature = "serde"))]
 #[path = "dart_tests/unknown_keys.rs"]
 mod unknown_keys;
 

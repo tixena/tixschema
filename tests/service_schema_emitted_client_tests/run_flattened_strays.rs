@@ -2,6 +2,7 @@
 //! Dart, Kotlin and Swift types beside serde: each payload serde writes reads back as the object it
 //! was, and the same payload with a key no member declares is refused, as serde refuses it.
 
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 use core::fmt::Write as _;
 
 use serde::Serialize;
@@ -260,6 +261,7 @@ fn expected() -> Vec<(usize, Value)> {
 }
 
 /// Each line of `printed`, its object read whatever the order of its keys.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 fn objects(printed: &str) -> Vec<(usize, Value)> {
     printed
         .lines()
