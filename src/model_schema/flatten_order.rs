@@ -203,6 +203,9 @@ struct Member<'item> {
     /// For a member that is an `Option`, what it holds and whether that reads from an object that
     /// holds none of its keys, where the expansion sees it.
     optional: Option<Optional>,
+    /// The holder's type parameter its type names that no `default_types` entry fills, where that
+    /// alone keeps its hidden constant from answering for it.
+    unfilled: Option<String>,
     written: String,
 }
 
@@ -828,21 +831,21 @@ fn keys_complete(def: &FieldDef, depth: usize) -> bool {
 
 /// The hidden constant of the keys of `ty`, as a `const` beside the declaration reads it, or
 /// `None` where it cannot name `ty`.
-fn named_keys(ty: &Type, parameters: &[String]) -> Option<TokenStream> {
-    let written = peeled(ty).to_token_stream();
-    if names_the_declaration(written.clone(), parameters) {
-        return None;
-    }
-    let named = with_static_lifetimes(written);
+fn named_keys(ty: &Type, parameters: &[String], defaults: &[(Ident, Type)]) -> Option<TokenStream> {
+    let named = nameable(peeled(ty), parameters, defaults)?;
     let keys = proc_macro2::Ident::new(KEYS, Span::call_site());
     Some(quote! { <#named>::#keys })
 }
 
 /// The hidden constant of the keys of a part `ty` of a type, where the expansion cannot see every
 /// key it writes and can name it.
-fn unseen_keys(ty: &Type, parameters: &[String]) -> Option<TokenStream> {
+fn unseen_keys(
+    ty: &Type,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+) -> Option<TokenStream> {
     (!keys_complete(&def_of(ty, parameters), 0))
-        .then(|| named_keys(ty, parameters))
+        .then(|| named_keys(ty, parameters, defaults))
         .flatten()
 }
 
@@ -1586,17 +1589,69 @@ fn with_static_lifetimes(tokens: TokenStream) -> TokenStream {
         .collect()
 }
 
-/// Whether `tokens` name one of `parameters` or `Self`, which a `const` beside the declaration
-/// cannot name.
-fn names_the_declaration(tokens: TokenStream, parameters: &[String]) -> bool {
-    tokens.into_iter().any(|token| match token {
-        TokenTree::Group(group) => names_the_declaration(group.stream(), parameters),
-        TokenTree::Ident(ident) => {
-            let name = ident.unraw().to_string();
-            name == "Self" || parameters.contains(&name)
-        }
-        TokenTree::Punct(_) | TokenTree::Literal(_) => false,
-    })
+/// `ty` as a `const` beside the declaration names it, or `None` where it is one of `parameters`,
+/// whose hidden constant no filling answers for.
+fn nameable(ty: &Type, parameters: &[String], defaults: &[(Ident, Type)]) -> Option<TokenStream> {
+    let bare = matches!(ty, Type::Path(path) if path.qself.is_none()
+        && path.path.get_ident().is_some_and(|ident| parameters.contains(&ident.unraw().to_string())));
+    if bare {
+        return None;
+    }
+    named_beside(ty.to_token_stream(), parameters, defaults).map(with_static_lifetimes)
+}
+
+/// `tokens` with each of `parameters` written as the type `defaults` fills it with: a type's
+/// hidden constants answer the same at every filling, as a part that is a parameter answers the
+/// strictest reading and flattening one is refused. `None` where they name `Self` or a parameter
+/// `defaults` does not fill.
+fn named_beside(
+    tokens: TokenStream,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+) -> Option<TokenStream> {
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Group(group) => {
+                let mut filled = proc_macro2::Group::new(
+                    group.delimiter(),
+                    named_beside(group.stream(), parameters, defaults)?,
+                );
+                filled.set_span(group.span());
+                Some(TokenStream::from(TokenTree::Group(filled)))
+            }
+            TokenTree::Ident(ident) => {
+                let name = ident.unraw().to_string();
+                if name == "Self" {
+                    None
+                } else if parameters.contains(&name) {
+                    defaults
+                        .iter()
+                        .find(|(declared, _)| *declared == name)
+                        .map(|(_, filling)| filling.to_token_stream())
+                } else {
+                    Some(TokenStream::from(TokenTree::Ident(ident)))
+                }
+            }
+            TokenTree::Punct(_) | TokenTree::Literal(_) => Some(TokenStream::from(token)),
+        })
+        .collect()
+}
+
+/// The first of `parameters` that `ty` names and `defaults` does not fill.
+fn unfilled_parameter<'parameters>(
+    ty: &Type,
+    parameters: &'parameters [String],
+    defaults: &[(Ident, Type)],
+) -> Option<&'parameters str> {
+    let written = written_names(ty.to_token_stream());
+    parameters
+        .iter()
+        .find(|parameter| {
+            written.contains(parameter)
+                && !defaults.iter().any(|(declared, _)| declared == parameter)
+        })
+        .map(String::as_str)
 }
 
 /// What `ty` holds under its outermost wrapper named one of `wrappers`, or `None` where it is no
@@ -1671,12 +1726,12 @@ fn through_argument(ty: &Type) -> Option<&Type> {
 
 /// The hidden constant of `ty`, as a `const` beside the declaration reads it, or `None` where it
 /// cannot name `ty`.
-fn named_flags(ty: &Type, parameters: &[String]) -> Option<TokenStream> {
-    let written = peeled(ty).to_token_stream();
-    if names_the_declaration(written.clone(), parameters) {
-        return None;
-    }
-    let named = with_static_lifetimes(written);
+fn named_flags(
+    ty: &Type,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+) -> Option<TokenStream> {
+    let named = nameable(peeled(ty), parameters, defaults)?;
     let flags = proc_macro2::Ident::new(FLAGS, Span::call_site());
     Some(quote! { <#named>::#flags })
 }
@@ -1813,7 +1868,11 @@ fn written_as(def: &FieldDef, depth: usize) -> Option<FieldDef> {
     }
 }
 
-fn members_of<'item>(level: &Level<'item>, parameters: &[String]) -> Vec<Member<'item>> {
+fn members_of<'item>(
+    level: &Level<'item>,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+) -> Vec<Member<'item>> {
     level
         .fields
         .iter()
@@ -1823,12 +1882,16 @@ fn members_of<'item>(level: &Level<'item>, parameters: &[String]) -> Vec<Member<
             let class = read.class();
             let resolvable = read.unseen.as_ref().is_some_and(|unseen| unseen.resolvable);
             let dynamic = (matches!(class, Class::Unseen(_)) && resolvable)
-                .then(|| named_flags(&field.ty, parameters))
+                .then(|| named_flags(&field.ty, parameters, defaults))
                 .flatten();
+            let unfilled = (matches!(class, Class::Unseen(_)) && resolvable && dynamic.is_none())
+                .then(|| unfilled_parameter(&field.ty, parameters, defaults))
+                .flatten()
+                .map(str::to_owned);
             let dynamic_keys = if read_by_a_function(field) || under_a_cfg(field) {
                 None
             } else {
-                unseen_keys(&field.ty, parameters)
+                unseen_keys(&field.ty, parameters, defaults)
             };
             Member {
                 #[cfg(any(feature = "dart", feature = "swift"))]
@@ -1856,6 +1919,7 @@ fn members_of<'item>(level: &Level<'item>, parameters: &[String]) -> Vec<Member<
                     .as_ref()
                     .map_or_else(String::new, |ident| ident.unraw().to_string()),
                 optional: optional_of(field, parameters),
+                unfilled,
                 written: spelled(&field.ty),
             }
         })
@@ -3428,8 +3492,38 @@ fn judged_levels<'item>(
     levels
         .into_iter()
         .filter_map(|level| {
-            let members = members_of(&level, &parameters);
+            let members = members_of(&level, &parameters, &args.default_types);
             (!members.is_empty()).then_some((level, members))
+        })
+        .collect()
+}
+
+/// The refusal of each flattened member whose hidden constant names a type parameter of `item` no
+/// `default_types` entry fills, which a `const` beside `item` cannot name.
+fn unfilled_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
+    judged_levels(item, args)
+        .iter()
+        .flat_map(|(level, members)| {
+            members
+                .iter()
+                .filter_map(|member| {
+                    let parameter = member.unfilled.as_ref()?;
+                    let message = format!(
+                        "{} flattens {}, {NOT_SEEN}: tixschema reads its keys from its hidden \
+                         constant, which it names with `{parameter}` filled by the type \
+                         `default_types` declares for it, and `{}` declares none. Declare one, \
+                         `#[model_schema(default_types({parameter} = String))]` or any type the \
+                         bounds of `{parameter}` accept.",
+                        level.subject,
+                        named(member),
+                        level.named
+                    );
+                    Some(
+                        syn::Error::new_spanned(member.field, prefixed_guard_message(&message))
+                            .to_compile_error(),
+                    )
+                })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -3440,6 +3534,10 @@ pub(super) fn errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
     let parameters = parameter_errors(item);
     if !parameters.is_empty() {
         return parameters;
+    }
+    let unfilled = unfilled_errors(item, args);
+    if !unfilled.is_empty() {
+        return unfilled;
     }
     let mut refused: Vec<TokenStream> = judged_levels(item, args)
         .iter()
@@ -3646,12 +3744,12 @@ pub(super) fn tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     } else {
         return quote! { #(#checks)* };
     };
-    let value = flags_value(item, &name.to_string(), generics);
-    let keys_value = keys_value(item, &name.to_string(), generics);
+    let value = flags_value(item, &name.to_string(), generics, &args.default_types);
+    let keys_value = keys_value(item, &name.to_string(), generics, &args.default_types);
     let constant = proc_macro2::Ident::new(FLAGS, Span::call_site());
     let keys = proc_macro2::Ident::new(KEYS, Span::call_site());
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let buffered = buffered_checks(item);
+    let buffered = buffered_checks(item, &args.default_types);
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #[doc = " What a holder that flattens this type reads of it: the bits `#[model_schema]` holds the order and the strictness of its flattened members to."]
@@ -3732,7 +3830,12 @@ fn reaches(def: &FieldDef, target: &str, depth: usize) -> bool {
 
 /// The value of the hidden constant of the keys of `item`, named `name`: the keys the expansion sees,
 /// with those of each part it could not see read from that part's own constant.
-fn keys_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
+fn keys_value(
+    item: &Item,
+    name: &str,
+    generics: &Generics,
+    defaults: &[(Ident, Type)],
+) -> TokenStream {
     let parameters = parameter_names(generics);
     let mut own = get_field_def("own", &syn::parse_quote! { u8 }, "");
     own.field_type = FieldDefType::SiblingType(name.to_owned(), Vec::new());
@@ -3756,13 +3859,13 @@ fn keys_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
             if let Item::Struct(item_struct) = item
                 && let Some(slot) = written_as_its_slot(item_struct)
             {
-                parts.extend(unseen_keys(&slot.ty, &parameters));
+                parts.extend(unseen_keys(&slot.ty, &parameters, defaults));
             }
         }
         Some(Record::Shape(_)) => {
             for (field, _) in parts_of(item) {
                 if !read_by_a_function(field) && !under_a_cfg(field) {
-                    parts.extend(unseen_keys(&field.ty, &parameters));
+                    parts.extend(unseen_keys(&field.ty, &parameters, defaults));
                 }
             }
         }
@@ -3808,7 +3911,12 @@ fn keys_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
 
 /// The value of the hidden constant of `item`, named `name`: what a holder reads of it, with each
 /// part the expansion could not see read from that part's own constant.
-fn flags_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
+fn flags_value(
+    item: &Item,
+    name: &str,
+    generics: &Generics,
+    defaults: &[(Ident, Type)],
+) -> TokenStream {
     let parameters = parameter_names(generics);
     let mut dynamic = Vec::new();
     let mut own = get_field_def("own", &syn::parse_quote! { u8 }, "");
@@ -3828,7 +3936,7 @@ fn flags_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
             };
             slot_type
                 .filter(|_| resolvable)
-                .and_then(|ty| named_flags(ty, &parameters))
+                .and_then(|ty| named_flags(ty, &parameters, defaults))
                 .map_or_else(
                     || read.flags(),
                     |named| {
@@ -3849,7 +3957,9 @@ fn flags_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
             for (field, payload) in parts_of(item) {
                 let part = member_reads(field, &parameters);
                 let resolvable = part.unseen.as_ref().is_some_and(|unseen| unseen.resolvable);
-                if let Some(named) = named_flags(&field.ty, &parameters).filter(|_| resolvable) {
+                if let Some(named) =
+                    named_flags(&field.ty, &parameters, defaults).filter(|_| resolvable)
+                {
                     dynamic.push(dynamic_part(&named, payload));
                 } else if payload || part.rest {
                     seen.carry(&part);
@@ -3886,7 +3996,7 @@ fn flags_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
             flags |= ENTRY;
         }
     }
-    flags |= written_flags(item, &parameters, &mut dynamic);
+    flags |= written_flags(item, &parameters, defaults, &mut dynamic);
     if dynamic.is_empty() {
         return quote! { #flags };
     }
@@ -3906,7 +4016,12 @@ fn flags_value(item: &Item, name: &str, generics: &Generics) -> TokenStream {
 /// flatten: a plain enum's variant name, an `Option` whose `None` reads back as `Some`, and a map
 /// keyed by a number or a `bool` at any depth. What a part the expansion could not see answers is
 /// pushed to `dynamic`.
-fn written_flags(item: &Item, parameters: &[String], dynamic: &mut Vec<TokenStream>) -> u16 {
+fn written_flags(
+    item: &Item,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+    dynamic: &mut Vec<TokenStream>,
+) -> u16 {
     let mut flags = 0;
     if super::written_as_a_variant_name(item) {
         flags |= PLAIN;
@@ -3914,7 +4029,7 @@ fn written_flags(item: &Item, parameters: &[String], dynamic: &mut Vec<TokenStre
     if let Some(slot) = optional_slot(item) {
         let held = under_option(&def_of(&slot.ty, parameters));
         let answered = (!keys_complete(&held, 0))
-            .then(|| named_flags(&slot.ty, parameters))
+            .then(|| named_flags(&slot.ty, parameters, defaults))
             .flatten();
         if let Some(named) = answered {
             dynamic.push(quote! { (if #named & #EMPTY != 0 { #OPTION_EMPTY } else { 0 }) });
@@ -3930,7 +4045,7 @@ fn written_flags(item: &Item, parameters: &[String], dynamic: &mut Vec<TokenStre
             flags |= TEXT_KEYS;
         }
         dynamic.extend(
-            unseen_types(&field.ty, parameters)
+            unseen_types(&field.ty, parameters, defaults)
                 .into_iter()
                 .map(|named| quote! { (<#named>::#flags_ident & #TEXT_KEYS) }),
         );
@@ -3976,13 +4091,18 @@ fn under_a_cfg(field: &Field) -> bool {
 
 /// Each type `ty` names that no `#[model_schema]` above recorded, as a `const` beside the
 /// declaration names it: behind a wrapper, in a map's value, in a tuple, and as a type argument.
-fn unseen_types(ty: &Type, parameters: &[String]) -> Vec<TokenStream> {
+fn unseen_types(ty: &Type, parameters: &[String], defaults: &[(Ident, Type)]) -> Vec<TokenStream> {
     let mut found = Vec::new();
-    collect_unseen(ty, parameters, &mut found);
+    collect_unseen(ty, parameters, defaults, &mut found);
     found
 }
 
-fn collect_unseen(ty: &Type, parameters: &[String], found: &mut Vec<TokenStream>) {
+fn collect_unseen(
+    ty: &Type,
+    parameters: &[String],
+    defaults: &[(Ident, Type)],
+    found: &mut Vec<TokenStream>,
+) {
     let wrapping = if let Type::Paren(parenthesized) = ty {
         Some(&*parenthesized.elem)
     } else if let Type::Group(grouped) = ty {
@@ -3997,11 +4117,11 @@ fn collect_unseen(ty: &Type, parameters: &[String], found: &mut Vec<TokenStream>
         None
     };
     if let Some(inner) = wrapping {
-        return collect_unseen(inner, parameters, found);
+        return collect_unseen(inner, parameters, defaults, found);
     }
     if let Type::Tuple(tuple) = ty {
         for inner in &tuple.elems {
-            collect_unseen(inner, parameters, found);
+            collect_unseen(inner, parameters, defaults, found);
         }
         return;
     }
@@ -4014,7 +4134,7 @@ fn collect_unseen(ty: &Type, parameters: &[String], found: &mut Vec<TokenStream>
     if let syn::PathArguments::AngleBracketed(arguments) = &last.arguments {
         for argument in &arguments.args {
             if let syn::GenericArgument::Type(inner) = argument {
-                collect_unseen(inner, parameters, found);
+                collect_unseen(inner, parameters, defaults, found);
             }
         }
     }
@@ -4024,11 +4144,9 @@ fn collect_unseen(ty: &Type, parameters: &[String], found: &mut Vec<TokenStream>
     if last.ident.unraw() != name || recorded(&name).is_some() || declared(&name).is_some() {
         return;
     }
-    let written = ty.to_token_stream();
-    if names_the_declaration(written.clone(), parameters) {
+    let Some(named) = nameable(ty, parameters, defaults) else {
         return;
-    }
-    let named = with_static_lifetimes(written);
+    };
     let tokens = quote! { #named };
     let spelled_out = tokens.to_string();
     if !found.iter().any(|seen| seen.to_string() == spelled_out) {
@@ -4040,7 +4158,7 @@ fn collect_unseen(ty: &Type, parameters: &[String], found: &mut Vec<TokenStream>
 /// untagged, that refuses each member of a variant whose type no `#[model_schema]` above recorded
 /// where its hidden constant says it holds a map keyed by a number or a `bool`, and the payload of
 /// a newtype variant under a tag alone that serde writes as no object.
-fn buffered_checks(item: &Item) -> Option<TokenStream> {
+fn buffered_checks(item: &Item, defaults: &[(Ident, Type)]) -> Option<TokenStream> {
     let Item::Enum(item_enum) = item else {
         return None;
     };
@@ -4069,7 +4187,7 @@ fn buffered_checks(item: &Item) -> Option<TokenStream> {
         let payload = newtype_slot(variant)
             .filter(|slot| read_by_serde(slot) && !read_by_a_function(slot) && !under_a_cfg(slot));
         if let (Some(key), Some(slot)) = (&tag, payload)
-            && let Some(named) = named_flags(&slot.ty, &parameters)
+            && let Some(named) = named_flags(&slot.ty, &parameters, defaults)
                 .filter(|_| !keys_complete(&def_of(&slot.ty, &parameters), 0))
         {
             let message = prefixed_guard_message(&format!(
@@ -4101,7 +4219,7 @@ fn buffered_checks(item: &Item) -> Option<TokenStream> {
                 || format!("slot {position}"),
                 |ident| format!("field `{}`", ident.unraw()),
             );
-            for named in unseen_types(&field.ty, &parameters) {
+            for named in unseen_types(&field.ty, &parameters, defaults) {
                 let message = prefixed_guard_message(&format!(
                     "type `{}`: variant `{}`, {member}: `{}`, declared below `{}`, in another crate, \
                      or with no `#[model_schema]`, holds a map keyed by a number or a `bool`: \

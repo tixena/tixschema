@@ -4,6 +4,8 @@
 
 #![deny(warnings)]
 
+use core::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -57,4 +59,23 @@ pub struct ParcelWeight {
 pub struct DropOff {
     /// The depot the parcel is left at.
     pub depot: String,
+}
+
+/// Who sends a parcel, by an id of the type its holder names, reading past a key it does not
+/// declare: flattened at a holder's type parameter, a holder in another crate reads its keys at
+/// the type its `default_types` fills.
+#[model_schema(nonstrict, default_types(IdType = String))]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ParcelSender<IdType: Display> {
+    /// The sender's id.
+    pub sender_id: IdType,
+}
+
+/// Who receives a parcel, by an id of the type its holder names, reading past a key it does not
+/// declare.
+#[model_schema(nonstrict, default_types(IdType = String))]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ParcelRecipient<IdType: Display> {
+    /// The recipient's id.
+    pub recipient_id: IdType,
 }
