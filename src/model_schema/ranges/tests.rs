@@ -688,11 +688,20 @@ fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_a
         "Wrap<Box<Option<HashMap<String, i32>>>>",
         "Wrap<Held<HashMap<String, i32>>>",
     ] {
+        let refusal = beside_id("Crate", "body");
+        let expected = if flattened.starts_with("Option<") {
+            format!(
+                "{refusal} Under a key of its own, the `Option` takes `#[serde(default, \
+                 skip_serializing_if = \"Option::is_none\")]`."
+            )
+        } else {
+            refusal
+        };
         assert_eq!(
             refused(&format!(
                 "pub struct Crate {{ #[serde(flatten)] pub body: {flattened}, pub id: String }}"
             )),
-            vec![beside_id("Crate", "body")],
+            vec![expected],
             "{flattened}"
         );
     }

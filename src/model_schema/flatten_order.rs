@@ -65,8 +65,13 @@ pub const TEXT_KEYS: u16 = 256;
 /// The bit saying serde writes the type as an `Option` of a value that reads from an object that
 /// holds none of its keys, so that a holder that flattens it reads its `None` back as `Some`.
 pub const OPTION_EMPTY: u16 = 512;
+/// The bit saying the type, or a member serde writes at its level, has no hidden constant: no
+/// `#[model_schema]` expanded it, so no holder can see which keys it writes.
+pub const UNMODELLED: u16 = 1024;
 /// What a type no `#[model_schema]` expanded answers: the strictest reading.
 const NOT_MET: u16 = REST | REFUSES | UNSEEN | EMPTY;
+/// What a type with no hidden constant answers where a holder reads one of it.
+const FALLBACK: u16 = NOT_MET | UNMODELLED;
 /// The hidden constant every type `#[model_schema]` expands publishes.
 const FLAGS: &str = "__TIXSCHEMA_FLATTENED";
 /// The hidden constant of the keys a holder that flattens the type sees it write or read.
@@ -3185,7 +3190,7 @@ fn fallback_trait(fallback: &Ident) -> TokenStream {
     let keys = proc_macro2::Ident::new(KEYS, Span::call_site());
     quote! {
         trait #fallback {
-            const #constant: u16 = #NOT_MET;
+            const #constant: u16 = #FALLBACK;
             const #keys: &'static [&'static str] = &[];
         }
         impl<T: ?::core::marker::Sized> #fallback for T {}
@@ -3218,13 +3223,18 @@ fn dynamic_checks(level: &Level<'_>, members: &[Member<'_>]) -> Option<TokenStre
     if dynamic.is_empty() && key_checks.is_empty() {
         return None;
     }
-    // A member serde writes as no object is refused first, then one whose shape no order reads
-    // back, its order and strictness next: a fix of one leaves the checks after it to say what else
-    // the holder needs.
+    // A member whose keys nothing can see beside another key is refused first, then one serde
+    // writes as no object, then one whose shape no order reads back, its order and strictness
+    // next: a fix of one leaves the checks after it to say what else the holder needs.
     let mut found: Vec<(TokenStream, String)> = dynamic
         .iter()
-        .map(|&(at, flags)| no_object_check(level, &members[at], flags))
+        .filter_map(|&(at, flags)| unmodelled_check(level, members, at, flags))
         .collect();
+    found.extend(
+        dynamic
+            .iter()
+            .map(|&(at, flags)| no_object_check(level, &members[at], flags)),
+    );
     for &(at, flags) in &dynamic {
         found.extend(dynamic_shape_checks(level, members, at, flags));
     }
@@ -3245,8 +3255,9 @@ fn dynamic_checks(level: &Level<'_>, members: &[Member<'_>]) -> Option<TokenStre
         found.extend(dynamic_member_checks(level, members, at, flags));
     }
     let mut merged: Vec<(TokenStream, String)> = Vec::new();
-    for (condition, message) in found {
-        if let Some((held, _)) = merged.iter_mut().find(|(_, said)| *said == message) {
+    for (condition, said) in found {
+        let message = with_option_note(said, members);
+        if let Some((held, _)) = merged.iter_mut().find(|(_, earlier)| *earlier == message) {
             *held = quote! { #held || (#condition) };
         } else {
             merged.push((quote! { (#condition) }, message));
@@ -3278,6 +3289,60 @@ fn dynamic_checks(level: &Level<'_>, members: &[Member<'_>]) -> Option<TokenStre
             #(#checks)*
         };
     })
+}
+
+/// `message` with the attribute an `Option` needs under a key of its own, where it tells a flattened
+/// `Option` of `members` that does not carry it to move there: `#[model_schema]` refuses an
+/// `Option` member that does not say what serde writes for its `None`.
+fn with_option_note(message: String, members: &[Member<'_>]) -> String {
+    let moves_an_option = message.contains("under a key of its own")
+        && members.iter().any(|member| {
+            wrapped(&member.field.ty, &["Option"]).is_some()
+                && !member.field.attrs.iter().any(|attr| {
+                    attr.to_token_stream()
+                        .to_string()
+                        .contains("skip_serializing_if")
+                })
+                && message.contains(&format!("`{}`", member.name))
+        });
+    if moves_an_option {
+        let stop = if message.ends_with('.') { "" } else { "." };
+        format!(
+            "{message}{stop} Under a key of its own, an `Option` takes `#[serde(default, \
+             skip_serializing_if = \"Option::is_none\")]`."
+        )
+    } else {
+        message
+    }
+}
+
+/// The check that the member at `at` of `level`, whose hidden constant is `flags`, has a constant of
+/// its own where another key is written beside it: one with none writes keys no holder sees, and
+/// one of them may be a key written beside it, which then does not read back.
+fn unmodelled_check(
+    level: &Level<'_>,
+    members: &[Member<'_>],
+    at: usize,
+    flags: &TokenStream,
+) -> Option<(TokenStream, String)> {
+    let beside = !level.own_keys.is_empty() || level.leftover.is_some() || members.len() > 1;
+    if !beside {
+        return None;
+    }
+    let member = &members[at];
+    Some((
+        quote! { #flags & #UNMODELLED != 0 },
+        format!(
+            "{} flattens {}, whose keys tixschema cannot see: its type, or one it holds, has no \
+             `#[model_schema]`, or is an alias declared below the type that flattens it or in \
+             another crate. One of those keys may be a key written beside it, and two members \
+             that write one key do not read back. Give the type `#[model_schema()]` and declare \
+             it above, or write `{}` under a key of its own.",
+            level.subject,
+            named(member),
+            member.name
+        ),
+    ))
 }
 
 /// Each level of `item` that flattens a member, with the members it flattens.
@@ -3321,7 +3386,8 @@ pub(super) fn errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
         .flat_map(|(level, members)| {
             level_refusals(level, members)
                 .into_iter()
-                .map(|(at, message)| {
+                .map(|(at, said)| {
+                    let message = with_option_note(said, members);
                     syn::Error::new_spanned(members[at].field, prefixed_guard_message(&message))
                         .to_compile_error()
                 })
@@ -3539,10 +3605,10 @@ pub(super) fn tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
 /// for them: every bit of a payload, which is read whole, and of a member that reads every key.
 fn dynamic_part(named: &TokenStream, payload: bool) -> TokenStream {
     if payload {
-        quote! { (#named & (#REFUSES | #ABSORBS | #UNSEEN | #NO_OBJECT)) }
+        quote! { (#named & (#REFUSES | #ABSORBS | #UNSEEN | #NO_OBJECT | #UNMODELLED)) }
     } else {
         quote! {
-            (if #named & #REST != 0 { #named & (#REFUSES | #ABSORBS | #UNSEEN | #NO_OBJECT) } else { #named & #NO_OBJECT })
+            (if #named & #REST != 0 { #named & (#REFUSES | #ABSORBS | #UNSEEN | #NO_OBJECT | #UNMODELLED) } else { #named & (#NO_OBJECT | #UNMODELLED) })
         }
     }
 }

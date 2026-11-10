@@ -351,15 +351,6 @@ struct FlatOverLaterMaybeFields {
     id: String,
 }
 
-/// The same `Option` through an alias declared below its holder.
-#[model_schema(nonstrict, enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-struct FlatOverLaterMaybeAlias {
-    #[serde(flatten)]
-    held: LaterMaybeAlias,
-    id: String,
-}
-
 /// The same `Option` through a struct of one slot declared below its holder.
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -368,9 +359,6 @@ struct FlatOverLaterMaybeSlot {
     held: LaterMaybeSlot,
     id: String,
 }
-
-#[model_schema(enable = ["jsonschema"])]
-type LaterMaybeAlias = Option<LaterFieldsBelow>;
 
 #[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1746,8 +1734,7 @@ fn test_a_unit_filling_of_an_untagged_enum_flattened_below_its_holder_is_read_as
 }
 
 /// An `Option` of a type declared below its holder offers its absence as before, flattened
-/// directly, through an alias and through a struct of one slot. The holder of the alias is
-/// `nonstrict`: an `Option` publishes no hidden constant, so the alias is read at its strictest.
+/// directly and through a struct of one slot.
 #[test]
 fn test_an_option_flattened_below_its_holder_still_offers_its_absence() {
     let offered = |open: bool| {
@@ -1770,11 +1757,6 @@ fn test_an_option_flattened_below_its_holder_still_offers_its_absence() {
             "FlatOverLaterMaybeFields",
             FlatOverLaterMaybeFields::json_schema as fn() -> serde_json::Value,
             false,
-        ),
-        (
-            "FlatOverLaterMaybeAlias",
-            FlatOverLaterMaybeAlias::json_schema,
-            true,
         ),
         (
             "FlatOverLaterMaybeSlot",

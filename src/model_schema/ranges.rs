@@ -489,6 +489,13 @@ pub fn flattened_range_error(
     Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
 
+/// Whether `ty` is written as an `Option`.
+#[cfg(feature = "serde")]
+fn names_an_option(ty: &Type) -> bool {
+    matches!(ty, Type::Path(path) if path.qself.is_none()
+        && path.path.segments.last().is_some_and(|segment| segment.ident == "Option"))
+}
+
 /// Refuses each map under `#[serde(flatten)]` among `fields` beside another member that writes a
 /// key, or beside `tag`, the tag serde writes at the level of `fields`: serde writes the map's
 /// entries at one level with that key, which no TypeScript type describes. `subject` leads each
@@ -516,7 +523,7 @@ pub fn flattened_map_beside_errors(
                 .enumerate()
                 .find(|(other, _)| *other != index)
                 .and_then(|(_, other)| other.ident.as_ref());
-            let message = match (beside, tag) {
+            let said = match (beside, tag) {
                 (Some(member), _) => format!(
                     "{subject}field `{}`: `#[serde(flatten)]` cannot hold a map beside other \
                      members \u{2014} serde writes the map's entries at one level with `{}`, and \
@@ -531,6 +538,19 @@ pub fn flattened_map_beside_errors(
                     ident.unraw()
                 ),
                 (None, None) => return None,
+            };
+            let carries_skip = field.attrs.iter().any(|attr| {
+                quote::ToTokens::to_token_stream(attr)
+                    .to_string()
+                    .contains("skip_serializing_if")
+            });
+            let message = if names_an_option(&field.ty) && !carries_skip {
+                format!(
+                    "{said} Under a key of its own, the `Option` takes \
+                     `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+                )
+            } else {
+                said
             };
             Some(
                 syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error(),
