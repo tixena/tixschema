@@ -1590,7 +1590,7 @@ fn serde_writes_the_two_shapes_a_row_builds_in_kotlin() {
 /// the emitter writes for the holders it runs.
 #[test]
 fn the_readme_shows_the_functions_and_the_statements_that_compile() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     assert!(
         readme.contains(&format!("```kotlin{TABLE_CHECKS}```")),
         "the README no longer shows the functions the run compiles"
@@ -1659,7 +1659,7 @@ fn a_check_with_no_kotlin_function_does_not_compile() {
         );
     }
     assert!(
-        include_str!("../../README.md")
+        include_str!("../../docs/guide/kotlin.md")
             .contains("```text\nerror: unresolved reference 'withinParcel'.\n```"),
         "the README no longer shows what the compiler says"
     );

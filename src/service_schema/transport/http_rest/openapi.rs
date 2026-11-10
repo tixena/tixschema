@@ -63,11 +63,13 @@ impl Named {
     /// `ty`'s schema as an expression of the run, with each model type it names kept for
     /// `components.schemas`.
     fn described(&mut self, subject: &str, ty: &Type) -> TokenStream {
-        self.names
-            .extend(named_json_schema_modules(ty).into_iter().map(|module| {
-                let span = module.span();
-                quote_spanned! {span=> #module::Schema::JSON_SCHEMA_NAME }
-            }));
+        self.names.extend(
+            named_json_schema_modules(ty)
+                .into_iter()
+                .map(|(module, span)| {
+                    quote_spanned! {span=> #module::Schema::JSON_SCHEMA_NAME }
+                }),
+        );
         type_json_schema_value(subject, ty)
     }
 
@@ -196,7 +198,7 @@ fn path_statements(service: &ServiceDef, named: &mut Named) -> Vec<TokenStream> 
 
 /// The type of the message an operation receives: the one it names, or the one the macro declared
 /// for it.
-fn message_type(operation: &OperationDef) -> Option<Type> {
+pub fn message_type(operation: &OperationDef) -> Option<Type> {
     match &operation.inputs {
         OperationInputs::Named(declared) => Some(declared.as_ref().clone()),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation

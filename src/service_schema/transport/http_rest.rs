@@ -5,7 +5,7 @@ pub mod openapi;
 
 use super::amqp_rpc::{
     Generated, answers, call_arguments, call_message, outbound_refusal, panic_guard, placement_doc,
-    refusal_reader,
+    refusal_reader, refusal_type, reply_reader,
 };
 use super::{OpenApiArguments, Transport};
 use crate::features::service_schema::registry_ident;
@@ -271,6 +271,11 @@ fn dispatcher_items(service: &ServiceDef, openapi: Option<&OpenApiArguments>) ->
         TokenStream::new()
     };
     let dispatch = dispatch_fn(service, has_stream, has_multipart, &module, openapi);
+    let refusal_type = if service.operations.is_empty() {
+        TokenStream::new()
+    } else {
+        refusal_type()
+    };
     // Every type, trait and impl ahead of every function: a strict consumer's lints would otherwise
     // see a function declared ahead of a type.
     quote! {
@@ -280,6 +285,7 @@ fn dispatcher_items(service: &ServiceDef, openapi: Option<&OpenApiArguments>) ->
         #outgoing
         #route
         #fault_handler
+        #refusal_type
         #path_token
         #query_helpers
         #decoding_helper
@@ -848,7 +854,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
     // The message is read with no judgement of its own, and the validator answers next.
     let decode_and_validate = quote! {
         let carried: ::serde_json::Value = #value_expr;
-        let received: $crate::#module::#message_alias = match $crate::#module::#reader(carried) {
+        let received: $crate::#module::#message_alias = match read_tracked(carried, |tracked| $crate::#module::#reader(tracked)) {
             ::core::result::Result::Ok(received) => received,
             ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
         };
@@ -952,7 +958,7 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
             };
             match ::serde_json::from_value(source) {
                 ::core::result::Result::Ok(value) => value,
-                ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
+                ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &Refusal { path: ::std::string::String::new(), error: rejected })),
             }
         };
     }
@@ -1003,7 +1009,7 @@ fn from_body_expr(wire: &str) -> TokenStream {
     quote! {
         match ::serde_json::from_slice(request.body()) {
             ::core::result::Result::Ok(value) => value,
-            ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &rejected)),
+            ::core::result::Result::Err(rejected) => return handler.on_fault(&refused_payload(#wire, &Refusal { path: ::std::string::String::new(), error: rejected })),
         }
     }
 }
@@ -1557,7 +1563,9 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
         TokenStream::new()
     };
     let fault_mirror_fn = if declares_a_reply {
-        client_fault_mirror_fn(&generated)
+        let mut functions = client_fault_mirror_fn(&generated);
+        functions.extend(reply_reader());
+        functions
     } else {
         TokenStream::new()
     };
@@ -2367,10 +2375,10 @@ fn declared_error_read_block(
 ) -> TokenStream {
     if shape.error_header_out.is_empty() {
         quote! {
-            return match ::serde_json::from_slice::<#error>(response.body()) {
+            return match read_reply::<#error>(response.body()) {
                 ::core::result::Result::Ok(declared) => ::core::result::Result::Err(#call_error::Operation(declared)),
                 ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
-                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                    #fault::undeserializable_payload(#wire, &rejected),
                 )),
             };
         }
@@ -2388,14 +2396,14 @@ fn declared_error_read_block(
             1,
         );
         quote! {
-            match ::serde_json::from_slice::<#head>(response.body()) {
+            match read_reply::<#head>(response.body()) {
                 ::core::result::Result::Ok(declared_error) => {
                     #header_lets
                     return ::core::result::Result::Err(#call_error::Operation((declared_error, #(#header_idents),*)));
                 }
                 ::core::result::Result::Err(rejected) => {
                     return ::core::result::Result::Err(#call_error::Fault(
-                        #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                        #fault::undeserializable_payload(#wire, &rejected),
                     ));
                 }
             }
@@ -2477,10 +2485,10 @@ fn reply_decode(
             quote! { return ::core::result::Result::Ok(#success); }
         } else {
             quote! {
-                return match ::serde_json::from_slice::<#success>(response.body()) {
+                return match read_reply::<#success>(response.body()) {
                     ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
                     ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
-                        #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                        #fault::undeserializable_payload(#wire, &rejected),
                     )),
                 };
             }
@@ -2501,13 +2509,13 @@ fn reply_decode(
             1,
         );
         quote! {
-            return match ::serde_json::from_slice::<#first>(response.body()) {
+            return match read_reply::<#first>(response.body()) {
                 ::core::result::Result::Ok(value) => {
                     #header_lets
                     ::core::result::Result::Ok((value, #(#header_idents),*))
                 }
                 ::core::result::Result::Err(rejected) => ::core::result::Result::Err(#call_error::Fault(
-                    #fault::undeserializable_payload(#wire, &rejected.to_string()),
+                    #fault::undeserializable_payload(#wire, &rejected),
                 )),
             };
         }

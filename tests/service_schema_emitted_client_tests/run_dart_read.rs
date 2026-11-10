@@ -272,20 +272,11 @@ fn driver(cases: &[Case]) -> String {
     written
 }
 
-#[rustversion::since(1.98)]
 fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
 where
     U: Default,
 {
-    value.map_or_default(map)
-}
-
-#[rustversion::before(1.98)]
-fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
-where
-    U: Default,
-{
-    value.map(map).unwrap_or_default()
+    value.map_or_else(U::default, map)
 }
 
 /// What the Rust read answers of `payload` as a `T`: nothing, or its messages.
@@ -808,7 +799,7 @@ fn the_ws_client_answers_a_fault_for_a_reply_that_breaks_a_rule() {
 #[test]
 fn the_readme_shows_the_reads_that_are_emitted_and_what_they_print() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

@@ -27,7 +27,8 @@ regex = "1.10"
 # The parser `regex::Regex::new` is built on: the `pattern` guard reads its AST. Capped below `0.9`
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
-rustversion = "1"
+# Hashes the files of a skills folder at expansion; nothing of it reaches a consumer at run time.
+sha2 = "0.10"
 
 [dev-dependencies]
 mongodb = ">=3.7"
@@ -38,6 +39,7 @@ bson2 = { package = "bson", version = "2.15", features = ["chrono-0_4"] }
 # transparent-wrapper coverage rests on cannot be read off an `Rc`/`Arc` field at all.
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+serde_path_to_error = "0.1"
 chrono = { version = ">=0.4.40", features = ["serde"] }
 # Test-only: the tests declare `IndexMap` and `IndexSet` fields. The `indexmap` feature below adds no
 # dependency: the generated code names the consumer's own.
@@ -58,6 +60,9 @@ futures = ">=0.3.33"
 # as `lapin` above.
 axum = { version = "0.8.9", features = ["ws"] }
 tokio-tungstenite = "0.30.0"
+# Test-only: reads back the frontmatter a generated skill writes, as YAML, to hold it to the entry
+# the server lists for it.
+yaml_serde = "0.10"
 # Holds each crate of `tests/foundation_refusals/` to the errors rustc prints for it. An exact
 # version, the lock file being untracked: a release at least two weeks old when it was added.
 trybuild = "=1.0.121"

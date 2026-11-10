@@ -495,21 +495,21 @@ fn an_object_of_one_key_and_a_tuple_of_its_length_are_read_as_serde_reads_them()
     assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
-/// An enum declared below its holder is read from the object its holder hands it, and is refused
-/// where that object holds a key beside its entry, which serde reads.
+/// An enum declared below its holder is read from the object its holder hands it, and the holder
+/// refuses a key beside its entry, as serde refuses it, naming the keys the enum publishes.
 #[test]
 fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
     assert_eq!(
         serde_written::<Overcast>(BESIDE),
-        r#"read {"note":"a","Bay":{"label":"n"}}"#,
-        "serde no longer reads the entry beside another key"
+        "unknown field `north` at line 1 column 42",
+        "serde no longer refuses the key beside the entry"
     );
     let Some((ran, printed)) = told_by_dart("refusals-beside", &[(BESIDE, "Overcast")]) else {
         return;
     };
     assert!(ran, "{printed}");
     assert_eq!(
-        printed, "0: FormatException: more than one key for Hazing\n",
+        printed, "0: FormatException: Unknown key of a Overcast: north\n",
         "the Dart read no longer refuses the key beside the entry"
     );
 }
@@ -519,7 +519,7 @@ fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
 #[test]
 fn the_readme_shows_refusals_the_run_measures() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

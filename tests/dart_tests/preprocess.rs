@@ -8,6 +8,7 @@ use serde_json::Value;
 use tixschema::model_schema;
 
 use super::held_numbers::u32_held;
+use super::unknown_keys::refusing;
 
 /// What a judged read does with the value its unjudged read answered.
 const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
@@ -462,9 +463,10 @@ fn a_holder_reads_a_model_through_the_models_own_read() {
     assert_written(
         &manifest_dart::dart_definition(),
         &format!(
-            "{}=> Manifest(parcel: Parcel.fromJsonUnjudged(json['parcel']),); Map<String, \
-             dynamic> toJson() =>",
-            plain_pair("Manifest", "Map<String, dynamic>", "json")
+            "{}{{ {}return Manifest(parcel: Parcel.fromJsonUnjudged(json['parcel']),); }} \
+             Map<String, dynamic> toJson() =>",
+            plain_pair("Manifest", "Map<String, dynamic>", "json"),
+            refusing("Manifest", &["parcel"])
         ),
     );
 }
@@ -478,7 +480,7 @@ fn a_fields_function_is_called_ahead_of_the_fields_read_whatever_it_holds() {
     assert_written(
         &ticket_dart::dart_definition(),
         &format!(
-            "{}=> Ticket(code_list: ((json.containsKey('codeList') ? unwrapped(json['codeList']) \
+            "{}{{ {}return Ticket(code_list: ((json.containsKey('codeList') ? unwrapped(json['codeList']) \
              : null) as List<dynamic>).map((e) => e as String).toList(),held_parcel: \
              Parcel.fromJsonUnjudged((json.containsKey('heldParcel') ? \
              unwrapped(json['heldParcel']) : null)),item_label: (json.containsKey('itemLabel') ? \
@@ -488,8 +490,18 @@ fn a_fields_function_is_called_ahead_of_the_fields_read_whatever_it_holds() {
              {seat}), final tuple => throw FormatException('invalid length ${{tuple.length}}, \
              expected 2') }},short_note: switch (json.containsKey('shortNote') ? \
              trimmed(json['shortNote']) : null) {{ final corrected => (corrected == null ? null : \
-             corrected as String) }},); Map<String, dynamic> toJson() =>",
+             corrected as String) }},); }} Map<String, dynamic> toJson() =>",
             plain_pair("Ticket", "Map<String, dynamic>", "json"),
+            refusing(
+                "Ticket",
+                &[
+                    "codeList",
+                    "heldParcel",
+                    "itemLabel",
+                    "seatPair",
+                    "shortNote"
+                ]
+            ),
             seat = u32_held("tuple[1] as int")
         ),
     );
@@ -626,9 +638,10 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
     assert_written(
         &transfer,
         &format!(
-            "{}=> TransferRoad(plate: (json.containsKey('plate') ? trimmed(json['plate']) : null) \
-             as String,); @override dynamic toJson() =>",
-            plain_pair("TransferRoad", "Map<String, dynamic>", "json")
+            "{}{{ {}return TransferRoad(plate: (json.containsKey('plate') ? trimmed(json['plate']) \
+             : null) as String,); }} @override dynamic toJson() =>",
+            plain_pair("TransferRoad", "Map<String, dynamic>", "json"),
+            refusing("TransferRoad", &["plate"])
         ),
     );
 }
@@ -700,9 +713,10 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
     assert_written(
         &reference,
         &format!(
-            "{}=> ReferenceNamed(name: (json.containsKey('name') ? trimmed(json['name']) : null) \
-             as String,); Map<String, dynamic> toJson() =>",
-            plain_pair("ReferenceNamed", "Map<String, dynamic>", "json")
+            "{}{{ {}return ReferenceNamed(name: (json.containsKey('name') ? trimmed(json['name']) \
+             : null) as String,); }} Map<String, dynamic> toJson() =>",
+            plain_pair("ReferenceNamed", "Map<String, dynamic>", "json"),
+            refusing("ReferenceNamed", &["name"])
         ),
     );
 }
@@ -793,9 +807,9 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
     assert_written(
         &keyed_dart::dart_definition(),
         &format!(
-            "{}=> Keyed(codes: (json['codes'] as List<dynamic>).map((e) => \
+            "{}{{ {}return Keyed(codes: (json['codes'] as List<dynamic>).map((e) => \
              codeTypeFromJson2(e)).toList(),label: (json.containsKey('label') ? \
-             codeTypeFromJson(json['label']) : null) as String,); Map<String, dynamic> \
+             codeTypeFromJson(json['label']) : null) as String,); }} Map<String, dynamic> \
              toJson(dynamic Function(CodeType) codeTypeToJson) =>",
             pair(
                 "Keyed",
@@ -803,7 +817,8 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
                 "json",
                 ", CodeType Function(dynamic) codeTypeFromJson2",
                 ", codeTypeFromJson2"
-            )
+            ),
+            refusing("Keyed", &["codes", "label"])
         ),
     );
 }

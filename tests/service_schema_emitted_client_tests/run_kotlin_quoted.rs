@@ -112,7 +112,7 @@ fn a_name_that_holds_a_quote_is_read_and_written_back_as_serde_writes_it() {
 #[test]
 fn the_readme_shows_the_payload_the_run_reads() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/kotlin.md"),
         "#### The read in the Kotlin client",
         "#### `preprocess` in the Kotlin client",
     );

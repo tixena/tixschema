@@ -1,0 +1,5 @@
+error: model_schema: `nonstrict` and `#[serde(deny_unknown_fields)]` are both written on this type: `nonstrict` reads past a key no member declares and `deny_unknown_fields` refuses it, so remove one of them
+ --> tests/foundation_refusals/nonstrict_beside_deny_unknown_fields.rs:8:9
+  |
+8 | #[serde(deny_unknown_fields)]
+  |         ^^^^^^^^^^^^^^^^^^^

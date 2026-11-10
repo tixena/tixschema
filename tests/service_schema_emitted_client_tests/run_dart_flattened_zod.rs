@@ -89,7 +89,8 @@ fn source(main: &str) -> String {
     module(&definitions(), &[FUNCTIONS, HARNESS], main)
 }
 
-/// Each payload of the rows is read by Dart as serde reads it.
+/// Each payload of the rows is read by Dart as serde reads it, a key beside the unit variant of an
+/// enum under a tag alone read past, where Zod refuses it.
 #[test]
 fn a_flattened_choice_is_read_by_dart_as_serde_reads_it() {
     let mut main = String::from("void main() {\n");

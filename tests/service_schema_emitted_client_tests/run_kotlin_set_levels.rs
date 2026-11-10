@@ -46,7 +46,7 @@ fn a_set_is_one_list_level_in_the_kotlin_types() {
         "    row(\"broken\", {broken_name}.serializer(), \"\"\"{broken_json}\"\"\")"
     );
     main.push_str(
-        "    println(Shelf(listOf(Entry(\"a\")), mapOf(), null, listOf(), KotlinTuple211(listOf(), 1.toUByte())).validate())\n}\n",
+        "    println(Shelf(listOf(Entry(\"a\")), mapOf(), null, listOf(), KotlinTuple211ServiceSchemaEmittedClientTests(listOf(), 1.toUByte())).validate())\n}\n",
     );
     let mut parts = vec![
         KOTLIN_IMPORTS.to_owned(),

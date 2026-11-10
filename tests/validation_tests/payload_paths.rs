@@ -443,7 +443,7 @@ mod a_message_names_the_path_in_the_payload {
     /// Each message the README and the crate's rustdoc show for a path is one a run answers.
     #[test]
     fn the_documents_show_the_paths_validate_reports() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         assert!(
             readme.contains(&format!("```text\n{MANIFEST_REPORT}\n```")),
             "the README no longer shows the manifest's report"

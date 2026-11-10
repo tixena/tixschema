@@ -1,0 +1,897 @@
+//! What a service that asks for `mcp` is refused at expansion, each refusal naming the operation.
+
+use super::mcp_tools::{is_task_handle, is_task_state};
+use super::parse::{
+    McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, ServiceDef, option_inner,
+    wire_key, written,
+};
+use super::skills::name_problem;
+use quote::ToTokens as _;
+use syn::{Ident, Type};
+
+const SKILL_DESCRIPTION_LIMIT: usize = 1024;
+const TOOL_NAME_LIMIT: usize = 128;
+const WRAPPED_KEY: &str = "value";
+
+/// Every refusal of `service`, joined, or `None` where it holds none.
+pub fn refusals(service: &ServiceDef) -> Option<syn::Error> {
+    let mut refused: Vec<syn::Error> = Vec::new();
+    for (position, operation) in service.operations.iter().enumerate() {
+        refused.extend(operation_refusals(operation));
+        refused.extend(resource_refusals(service, position, operation));
+        refused.extend(prompt_refusals(operation));
+        refused.extend(task_refusals(service, operation));
+        refused.extend(skill_refusals(service, position, operation));
+        let kind = if operation.is_mcp_tool() {
+            "tool"
+        } else if operation.is_mcp_prompt() {
+            "prompt"
+        } else {
+            continue;
+        };
+        let name = operation.mcp_tool_name();
+        if let Some(first) = service.operations[..position].iter().find(|earlier| {
+            earlier.is_mcp_tool() == operation.is_mcp_tool()
+                && earlier.is_mcp_prompt() == operation.is_mcp_prompt()
+                && earlier.mcp_tool_name() == name
+        }) {
+            refused.push(syn::Error::new(
+                operation.ident.span(),
+                format!(
+                    "service_schema: operations `{}` and `{}` are both the {kind} `{name}`, and this \
+                     service asks for `mcp`\n       \
+                     a server lists each {kind} name once; write `mcp(name = \"...\")` on one of them",
+                    first.ident, operation.ident
+                ),
+            ));
+        }
+    }
+    refused.into_iter().reduce(|mut collected, refusal| {
+        collected.combine(refusal);
+        collected
+    })
+}
+
+fn operation_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    if operation.doc.is_none() {
+        refused.push(syn::Error::new(
+            ident.span(),
+            format!(
+                "service_schema: operation `{ident}` has no rustdoc, and this service asks for \
+                 `mcp`\n       \
+                 a tool's description is its method's rustdoc; write a `///` comment on the method"
+            ),
+        ));
+    }
+    let kind = if operation.is_mcp_tool() {
+        "tool"
+    } else if operation.is_mcp_prompt() {
+        "prompt"
+    } else {
+        return refused;
+    };
+    let name = operation.mcp_tool_name();
+    if name.chars().count() > TOOL_NAME_LIMIT || !name.chars().all(is_tool_name_character) {
+        refused.push(syn::Error::new(
+            ident.span(),
+            format!(
+                "service_schema: operation `{ident}` is the {kind} `{name}`, and this service asks for \
+                 `mcp`\n       \
+                 a {kind} name is at most {TOOL_NAME_LIMIT} characters of `A-Z`, `a-z`, `0-9`, `_`, \
+                 `-` and `.`; write `mcp(name = \"...\")` with one"
+            ),
+        ));
+    }
+    if operation.is_mcp_prompt() {
+        refused.extend(scope_refusals(operation));
+        return refused;
+    }
+    refused.extend(header_refusals(operation));
+    refused.extend(scope_refusals(operation));
+    refused.extend(interview_refusals(operation));
+    refused.extend(content_refusals(operation));
+    refused
+}
+
+fn interview_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(interview) = &operation.mcp.interview else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    if matches!(operation.outcome, OperationOutcome::OneWay) {
+        refused.push(refusal(
+            ident,
+            "is one way and writes `interview(...)` in `mcp(...)`",
+            "an interview is an arm of the declared error, and a one way operation declares none",
+        ));
+    }
+    if operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.error_header_out.is_empty())
+    {
+        refused.push(refusal(
+            ident,
+            "writes `interview(...)` in `mcp(...)` and binds `error_header_out`",
+            "the arm that asks is the whole declared error, so no header can ride beside it",
+        ));
+    }
+    if let Some(answers) = &interview.answers {
+        let held = match &operation.inputs {
+            OperationInputs::Generated(fields) => fields
+                .iter()
+                .find(|(field, _)| written(field) == written(answers)),
+            OperationInputs::Empty | OperationInputs::Named(_) => None,
+        };
+        match held {
+            None => refused.push(refusal(
+                ident,
+                &format!(
+                    "writes `interview(answers = {})` in `mcp(...)`, and `{}` is no argument of it",
+                    written(answers),
+                    written(answers)
+                ),
+                "name one of the operation's own arguments, which is not the message",
+            )),
+            Some((_, ty)) if option_inner(ty).is_none() => refused.push(refusal(
+                ident,
+                &format!(
+                    "asks with `{}` and its type `{}` is no `Option`",
+                    written(answers),
+                    type_text(ty)
+                ),
+                "the first call has no answer yet, so the argument is an `Option` of the form's type",
+            )),
+            Some(_) => {}
+        }
+    }
+    refused
+}
+
+fn content_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    if operation.mcp.content.is_none() {
+        return Vec::new();
+    }
+    let mut refused = Vec::new();
+    match &operation.outcome {
+        OperationOutcome::OneWay => refused.push(refusal(
+            ident,
+            "is one way and writes `content` in `mcp(...)`",
+            "a content tool answers blocks, and a one way operation answers none",
+        )),
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } => {
+            let text = type_text(success);
+            let blocks = text
+                .strip_prefix("Vec<")
+                .and_then(|rest| rest.strip_suffix('>'))
+                .is_some_and(|inner| inner.rsplit("::").next() == Some("McpContent"));
+            if text != "(Vec<u8>,String)" && !blocks {
+                refused.push(refusal(
+                    ident,
+                    "writes `content` in `mcp(...)` and answers a success it cannot write as blocks",
+                    "answer a `(Vec<u8>, String)` of bytes and their content type, or a \
+                     `Vec<McpContent>` of the type the service module declares",
+                ));
+            }
+        }
+    }
+    if operation
+        .http
+        .as_ref()
+        .is_some_and(|binding| !binding.header_out.is_empty())
+    {
+        refused.push(refusal(
+            ident,
+            "writes `content` in `mcp(...)` and binds `header_out`",
+            "a content tool answers blocks, and no header rides beside them",
+        ));
+    }
+    refused
+}
+
+fn scope_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    for (position, (scope, span)) in operation.mcp.scopes.iter().enumerate() {
+        let found = if scope.is_empty() {
+            Some("an empty scope".to_owned())
+        } else if operation.mcp.scopes[..position]
+            .iter()
+            .any(|(earlier, _)| earlier == scope)
+        {
+            Some(format!("the scope \"{scope}\" twice"))
+        } else if scope
+            .chars()
+            .any(|letter| letter == ' ' || letter == '"' || letter == '\\' || letter.is_control())
+        {
+            Some(format!(
+                "the scope \"{}\", which holds a space, a quote, a backslash or a control character",
+                scope.escape_debug()
+            ))
+        } else {
+            None
+        };
+        if let Some(problem) = found {
+            refused.push(syn::Error::new(
+                *span,
+                format!(
+                    "service_schema: operation `{ident}` writes {problem} in `mcp(scopes = [...])`\n       \
+                     a scope is one token a token's `scope` claim lists, separated by spaces; write \
+                     each scope once, with none of those characters"
+                ),
+            ));
+        }
+    }
+    refused
+}
+
+const fn is_tool_name_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+}
+
+fn header_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(binding) = operation.http.as_ref() else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    for (list, written_under) in [
+        (&binding.header_out, "the success"),
+        (&binding.error_header_out, "the error"),
+    ] {
+        if list.iter().any(|name| name == WRAPPED_KEY) {
+            refused.push(value_refusal(ident, "header_out", written_under));
+        }
+    }
+    let message = match &operation.inputs {
+        OperationInputs::Named(_) => Some("the message"),
+        OperationInputs::Empty | OperationInputs::Generated(_) => None,
+    };
+    for header in &binding.header_in {
+        if let Some(written_under) = message.filter(|_| header.name == WRAPPED_KEY) {
+            refused.push(value_refusal(ident, "header_in", written_under));
+        }
+        if let OperationInputs::Generated(fields) = &operation.inputs
+            && let Some((field, _)) = fields
+                .iter()
+                .find(|(field, _)| wire_key(field) == header.name)
+        {
+            refused.push(syn::Error::new(
+                ident.span(),
+                format!(
+                    "service_schema: operation `{ident}` binds the `header_in` name \"{}\", and this \
+                     service asks for `mcp`\n       \
+                     the tool's input already holds the key \"{}\" for the argument `{}`; bind the \
+                     header under another name",
+                    header.name,
+                    header.name,
+                    written(field)
+                ),
+            ));
+        }
+    }
+    refused
+}
+
+fn value_refusal(operation: &Ident, binding: &str, written_under: &str) -> syn::Error {
+    syn::Error::new(
+        operation.span(),
+        format!(
+            "service_schema: operation `{operation}` binds the name \"{WRAPPED_KEY}\" on `{binding}`, \
+             and this service asks for `mcp`\n       \
+             {written_under} is written under \"{WRAPPED_KEY}\" there; bind the header under \
+             another name"
+        ),
+    )
+}
+
+fn type_text(ty: &Type) -> String {
+    ty.to_token_stream().to_string().replace(' ', "")
+}
+
+fn refusal(operation: &Ident, what: &str, advice: &str) -> syn::Error {
+    syn::Error::new(
+        operation.span(),
+        format!(
+            "service_schema: operation `{operation}` {what}, and this service asks for \
+             `mcp`\n       {advice}"
+        ),
+    )
+}
+
+/// What an operation that writes a skill at run time is refused for.
+fn skill_refusals(
+    service: &ServiceDef,
+    position: usize,
+    operation: &OperationDef,
+) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some((name, span)) = &operation.mcp.skill else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    if let Some(problem) = name_problem(name) {
+        refused.push(syn::Error::new(
+            *span,
+            format!(
+                "service_schema: operation `{ident}` is the skill `{name}`, which {problem}, and \
+                 this service asks for `mcp`\n       \
+                 a skill's name is 1 to 64 characters of `a-z`, `0-9` and `-`, with no `-` at \
+                 either end and no two together"
+            ),
+        ));
+    }
+    if operation
+        .doc
+        .as_ref()
+        .is_some_and(|doc| doc.chars().count() > SKILL_DESCRIPTION_LIMIT)
+    {
+        refused.push(refusal(
+            ident,
+            &format!(
+                "is the skill `{name}` and its rustdoc is over {SKILL_DESCRIPTION_LIMIT} characters"
+            ),
+            "a skill's description is its method's rustdoc, and holds at most 1024 characters",
+        ));
+    }
+    if service
+        .skills
+        .as_ref()
+        .is_some_and(|folder| folder.skills.iter().any(|held| held.name == *name))
+    {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}`, which the skills folder also holds"),
+            "a server lists each skill once; rename the operation's skill or the folder's",
+        ));
+    }
+    if let Some(first) = service.operations[..position].iter().find(|earlier| {
+        earlier
+            .mcp
+            .skill
+            .as_ref()
+            .is_some_and(|(held, _)| held == name)
+    }) {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}`, which `{}` already is", first.ident),
+            "a server lists each skill once; write another name on one of them",
+        ));
+    }
+    refused.extend(skill_shape_refusals(operation, name));
+    refused
+}
+
+/// What the signature and bindings of an operation that writes the skill `name` are refused for.
+fn skill_shape_refusals(operation: &OperationDef, name: &str) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    let path_only = matches!(
+        &operation.inputs,
+        OperationInputs::Named(declared) if type_text(declared) == "String"
+    );
+    if !path_only {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and takes more than the path of a file"),
+            "take one `path: String`, the file's path relative to the skill's root",
+        ));
+    }
+    match &operation.outcome {
+        OperationOutcome::OneWay => refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and is one way"),
+            "a skill's file is the operation's answer, so it declares a success and an error",
+        )),
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } if !matches!(type_text(success).as_str(), "String" | "(Vec<u8>,String)") => {
+            refused.push(refusal(
+                ident,
+                &format!("is the skill `{name}` and answers a success a skill's file cannot"),
+                "answer a `String` for text, or a `(Vec<u8>, String)` of bytes and their content type",
+            ));
+        }
+        OperationOutcome::Reply {
+            error: _error,
+            success: _success,
+        } => {}
+    }
+    if !operation.mcp.header.is_empty()
+        || operation.http.as_ref().is_some_and(|binding| {
+            !binding.header_in.is_empty()
+                || !binding.header_out.is_empty()
+                || !binding.error_header_out.is_empty()
+        })
+    {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and binds a header"),
+            "a skill's file is read by its path alone; drop the header binding",
+        ));
+    }
+    if !operation.mcp.scopes.is_empty() {
+        refused.push(refusal(
+            ident,
+            &format!("is the skill `{name}` and writes `scopes` in `mcp(...)`"),
+            "a skill is listed and read for every caller; drop the scopes",
+        ));
+    }
+    refused
+}
+
+/// What a resource, a resource listing or a completion operation is refused for.
+fn resource_refusals(
+    service: &ServiceDef,
+    position: usize,
+    operation: &OperationDef,
+) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mcp = &operation.mcp;
+    let mut refused = Vec::new();
+    if !operation.is_mcp_tool()
+        && !operation.is_mcp_prompt()
+        && (mcp.content.is_some() || mcp.interview.is_some())
+    {
+        refused.push(refusal(
+            ident,
+            "is a resource, a listing or a completion and writes `content` or `interview(...)`",
+            "only a tool answers blocks or asks the user",
+        ));
+    }
+    let kinds = usize::from(mcp.resource.is_some())
+        + usize::from(mcp.list_resources)
+        + usize::from(mcp.prompt.is_some())
+        + usize::from(mcp.completes.is_some())
+        + usize::from(mcp.skill.is_some());
+    if kinds > 1 {
+        refused.push(refusal(
+            ident,
+            "is more than one of `resource`, `list_resources`, `prompt`, `completes` and `skill` \
+             in `mcp(...)`",
+            "an operation is one of them; split it into one operation each",
+        ));
+        return refused;
+    }
+    let success = match &operation.outcome {
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } => Some(type_text(success)),
+        OperationOutcome::OneWay => None,
+    };
+    if let Some(resource) = &mcp.resource {
+        if !matches!(success.as_deref(), Some("String" | "(Vec<u8>,String)")) {
+            refused.push(refusal(
+                ident,
+                &format!("is the resource `{}` and answers a success a resource cannot", resource.uri),
+                "answer a `String` for text, or a `(Vec<u8>, String)` of bytes and their content type",
+            ));
+        }
+        if let Some(first) = service.operations[..position].iter().find(|earlier| {
+            earlier
+                .mcp
+                .resource
+                .as_ref()
+                .is_some_and(|held| held.shape() == resource.shape())
+        }) {
+            refused.push(refusal(
+                ident,
+                &format!(
+                    "is the resource `{}`, which `{}` already is",
+                    resource.uri, first.ident
+                ),
+                "a server reads each URI through one operation; write another URI on one of them",
+            ));
+        }
+    }
+    if mcp.list_resources {
+        refused.extend(listing_refusals(
+            service,
+            position,
+            operation,
+            success.as_deref(),
+        ));
+    }
+    if let Some(completes) = &mcp.completes {
+        refused.extend(completes_refusals(
+            service,
+            operation,
+            completes,
+            success.as_deref(),
+        ));
+    }
+    refused
+}
+
+/// What an operation that lists resources is refused for.
+fn listing_refusals(
+    service: &ServiceDef,
+    position: usize,
+    operation: &OperationDef,
+    success: Option<&str>,
+) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    if let Some(first) = service.operations[..position]
+        .iter()
+        .find(|earlier| earlier.mcp.list_resources)
+    {
+        refused.push(refusal(
+            ident,
+            &format!("lists resources, which `{}` already does", first.ident),
+            "a service lists its resources through one operation",
+        ));
+    }
+    let page = success.is_some_and(|text| text.rsplit("::").next() == Some("McpResourcePage"));
+    if !page {
+        refused.push(refusal(
+            ident,
+            "lists resources and answers a success a listing cannot",
+            "answer the `McpResourcePage` the service module declares",
+        ));
+    }
+    let cursor = match &operation.inputs {
+        OperationInputs::Empty => true,
+        OperationInputs::Named(declared) => {
+            option_inner(declared).is_some_and(|inner| type_text(inner) == "String")
+        }
+        OperationInputs::Generated(_) => false,
+    };
+    if !cursor {
+        refused.push(refusal(
+            ident,
+            "lists resources and takes more than a cursor",
+            "take no argument, or one `cursor: Option<String>`",
+        ));
+    }
+    refused
+}
+
+fn completes_refusals(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    completes: &super::parse::McpCompletes,
+    success: Option<&str>,
+) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    let target = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == completes.operation);
+    match completes.kind {
+        McpCompletesKind::Resource => {
+            match target.and_then(|candidate| candidate.mcp.resource.as_ref()) {
+                None => refused.push(refusal(
+                    ident,
+                    &format!(
+                        "completes `{}`, which is no resource template of the service",
+                        completes.operation
+                    ),
+                    "name an operation of this service that writes `mcp(resource = \"...{placeholder}...\")`",
+                )),
+                Some(resource)
+                    if !resource
+                        .placeholder_names()
+                        .contains(&completes.parameter.as_str()) =>
+                {
+                    refused.push(refusal(
+                        ident,
+                        &format!(
+                            "completes `{}` for `{}`, and the URI `{}` holds no such placeholder",
+                            completes.operation, completes.parameter, resource.uri
+                        ),
+                        "name a placeholder of the template",
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+        McpCompletesKind::Prompt => {
+            match target.and_then(|candidate| candidate.mcp.prompt.as_ref()) {
+                None => refused.push(refusal(
+                    ident,
+                    &format!(
+                        "completes `{}`, which is no prompt of the service",
+                        completes.operation
+                    ),
+                    "name an operation of this service that writes `mcp(prompt)`",
+                )),
+                Some(prompt)
+                    if !prompt
+                        .arguments
+                        .iter()
+                        .any(|(argument, _)| written(argument) == completes.parameter) =>
+                {
+                    refused.push(refusal(
+                        ident,
+                        &format!(
+                            "completes `{}` for `{}`, and the prompt takes no such argument",
+                            completes.operation, completes.parameter
+                        ),
+                        "name an argument of the prompt, as the operation spells it",
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    if success != Some("Vec<String>") {
+        refused.push(refusal(
+            ident,
+            "completes a parameter and answers a success a completion cannot",
+            "answer a `Vec<String>` of suggestions",
+        ));
+    }
+    let typed_and_chosen =
+        matches!(&operation.inputs, OperationInputs::Generated(fields) if fields.len() == 2);
+    if !typed_and_chosen {
+        refused.push(refusal(
+            ident,
+            "completes a parameter and does not take two arguments",
+            "take the text typed so far, then the values already chosen: \
+             `typed: String, chosen: HashMap<String, String>`",
+        ));
+    }
+    refused
+}
+
+/// What a prompt is refused for beyond its name: its arguments, its success, a one-way outcome, a
+/// header binding and any key of `mcp(...)` a prompt cannot carry.
+fn prompt_refusals(operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(prompt) = &operation.mcp.prompt else {
+        return Vec::new();
+    };
+    let mut refused = Vec::new();
+    for (argument, ty) in &prompt.arguments {
+        let text = type_text(ty);
+        let strings =
+            text == "String" || option_inner(ty).is_some_and(|inner| type_text(inner) == "String");
+        if !strings {
+            refused.push(refusal(
+                ident,
+                &format!("is a prompt and takes `{}: {text}`", written(argument)),
+                "MCP sends a prompt's arguments as strings only; take a `String`, or an \
+                 `Option<String>` for one that may be left out",
+            ));
+        }
+    }
+    match &operation.outcome {
+        OperationOutcome::OneWay => refused.push(refusal(
+            ident,
+            "is one way and writes `prompt` in `mcp(...)`",
+            "a prompt answers messages, and a one way operation answers none",
+        )),
+        OperationOutcome::Reply {
+            success,
+            error: _error,
+        } => {
+            let text = type_text(success);
+            let messages = text
+                .strip_prefix("Vec<")
+                .and_then(|rest| rest.strip_suffix('>'))
+                .is_some_and(|inner| inner.rsplit("::").next() == Some("McpPromptMessage"));
+            if text != "String" && !messages {
+                refused.push(refusal(
+                    ident,
+                    "is a prompt and answers a success a prompt cannot write as messages",
+                    "answer a `String` for one user message, or a `Vec<McpPromptMessage>` of the \
+                     type the service module declares",
+                ));
+            }
+        }
+    }
+    if operation.http.as_ref().is_some_and(|binding| {
+        !binding.header_in.is_empty()
+            || !binding.header_out.is_empty()
+            || !binding.error_header_out.is_empty()
+    }) {
+        refused.push(refusal(
+            ident,
+            "is a prompt and binds a header",
+            "a prompt's arguments and messages cross as they are; bind no `header_in`, \
+             `header_out` or `error_header_out`",
+        ));
+    }
+    let mcp = &operation.mcp;
+    let beside = [
+        ("read_only", mcp.read_only),
+        ("idempotent", mcp.idempotent),
+        ("destructive", mcp.destructive.is_some()),
+        ("open_world", mcp.open_world.is_some()),
+        ("header", !mcp.header.is_empty()),
+        ("mime_type", mcp.mime_type.is_some()),
+        ("ttl_ms", mcp.ttl_ms.is_some()),
+        ("cache_scope", mcp.cache_scope.is_some()),
+        ("content", mcp.content.is_some()),
+        ("interview", mcp.interview.is_some()),
+        ("task", mcp.task.is_some()),
+    ];
+    for (key, written_here) in beside {
+        if written_here {
+            refused.push(refusal(
+                ident,
+                &format!("is a prompt and writes `{key}` in `mcp(...)`"),
+                "a prompt takes `title`, `name`, `icon` and `scopes` beside `prompt`",
+            ));
+        }
+    }
+    refused
+}
+
+/// What an operation that starts a task, or answers a task's state, is refused for.
+fn task_refusals(service: &ServiceDef, operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let Some(task) = &operation.mcp.task else {
+        return unstarted_task_refusals(service, operation);
+    };
+    let mut refused = Vec::new();
+    if !operation.is_mcp_tool() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` and is not a tool",
+            "a task is started by a tool; drop the other flag of the operation",
+        ));
+    }
+    if !is_task_handle(operation) || operation.mcp.content.is_some() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` in `mcp(...)` and does not answer an `McpTask`",
+            "answer the `McpTask` of the type the service module declares, with no `content`",
+        ));
+    }
+    if operation.mcp.interview.is_some() {
+        refused.push(refusal(
+            ident,
+            "writes `task(...)` and `interview(...)` in `mcp(...)`",
+            "a task handle is the whole success; ask the user from the operation named in \
+             `task(update = ...)`",
+        ));
+    }
+    let Some(get) = &task.get else {
+        refused.push(syn::Error::new(
+            task.span,
+            format!(
+                "service_schema: operation `{ident}` writes `task(...)` without `get`, and this \
+                 service asks for `mcp`\n       \
+                 write `task(get = \"<operation>\")`, naming the operation that answers `tasks/get`"
+            ),
+        ));
+        return refused;
+    };
+    refused.extend(named_task_refusals(service, ident, "get", get));
+    if let Some(cancel) = &task.cancel {
+        refused.extend(named_task_refusals(service, ident, "cancel", cancel));
+    }
+    if let Some(update) = &task.update {
+        refused.extend(update_refusals(service, ident, update));
+    }
+    refused
+}
+
+/// What an `McpTask` or an `McpTaskState` no `task(...)` accounts for is refused for.
+fn unstarted_task_refusals(service: &ServiceDef, operation: &OperationDef) -> Vec<syn::Error> {
+    let ident = &operation.ident;
+    let mut refused = Vec::new();
+    if is_task_handle(operation) {
+        refused.push(refusal(
+            ident,
+            "answers an `McpTask` and writes no `task(...)` in `mcp(...)`",
+            "write `mcp(task(get = \"<operation>\"))` to name the operation that answers \
+             `tasks/get`",
+        ));
+    }
+    let named_by_a_task = service.operations.iter().any(|starter| {
+        starter
+            .mcp
+            .task
+            .as_ref()
+            .is_some_and(|task| task.get.as_deref() == Some(written(ident).as_str()))
+    });
+    if is_task_state(operation) && !named_by_a_task {
+        refused.push(refusal(
+            ident,
+            "answers an `McpTaskState` and no operation names it in `task(get = ...)`",
+            "name it from the operation that starts the task, or answer another type",
+        ));
+    }
+    refused
+}
+
+/// The operation `key` of a `task(...)` names: a tool of the trait that takes the task's id as one
+/// `String` and answers a state (`get`) or nothing (`cancel`).
+fn named_task_refusals(
+    service: &ServiceDef,
+    ident: &Ident,
+    key: &str,
+    named: &str,
+) -> Vec<syn::Error> {
+    let Some(target) = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == named)
+    else {
+        return vec![refusal(
+            ident,
+            &format!("writes `task({key} = \"{named}\")` and the service has no such operation"),
+            "name an operation of the trait",
+        )];
+    };
+    let takes_the_id =
+        matches!(&target.inputs, OperationInputs::Named(held) if type_text(held) == "String");
+    let answers = if key == "get" {
+        is_task_state(target)
+    } else {
+        matches!(
+            &target.outcome,
+            OperationOutcome::Reply { success, error: _error } if type_text(success) == "()"
+        )
+    };
+    if target.is_mcp_tool() && takes_the_id && answers {
+        return Vec::new();
+    }
+    let answer = if key == "get" {
+        "an `McpTaskState<T>`"
+    } else {
+        "an empty success"
+    };
+    vec![refusal(
+        ident,
+        &format!(
+            "writes `task({key} = \"{named}\")`, and `{named}` is not a tool that takes the \
+             task's id as one `String` and answers {answer}"
+        ),
+        &format!(
+            "declare `{named}(&self, ctx, task_id: String)` answering {answer}; the `taskId` it \
+             receives is the id the start tool answered"
+        ),
+    )]
+}
+
+/// The operation `task(update = ...)` names: a tool of the trait that takes the id, the key of the
+/// request answered, the action and the answer as text, and answers nothing.
+fn update_refusals(service: &ServiceDef, ident: &Ident, named: &str) -> Vec<syn::Error> {
+    let shaped = service
+        .operations
+        .iter()
+        .find(|candidate| written(&candidate.ident) == named)
+        .is_some_and(|target| {
+            let types = match &target.inputs {
+                OperationInputs::Generated(fields) => {
+                    fields.iter().map(|(_, ty)| type_text(ty)).collect()
+                }
+                OperationInputs::Empty | OperationInputs::Named(_) => Vec::new(),
+            };
+            let answers_nothing = matches!(
+                &target.outcome,
+                OperationOutcome::Reply { success, error: _error } if type_text(success) == "()"
+            );
+            target.is_mcp_tool()
+                && types == ["String", "String", "String", "Option<String>"]
+                && answers_nothing
+        });
+    if shaped {
+        return Vec::new();
+    }
+    vec![refusal(
+        ident,
+        &format!(
+            "writes `task(update = \"{named}\")`, and `{named}` is not a tool of the right shape"
+        ),
+        &format!(
+            "declare `{named}(&self, ctx, task_id: String, key: String, action: String, \
+             content: Option<String>)` answering `()`: the id, the key of the request answered, \
+             `accept`, `decline` or `cancel`, and the JSON text of the answer"
+        ),
+    )]
+}

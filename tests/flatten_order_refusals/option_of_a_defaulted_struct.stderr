@@ -1,0 +1,6 @@
+error: model_schema: type `Stamp` flattens `ink` (`Option<Ink>`): `Ink` reads from an object that holds none of its keys, so serde writes `None` as no key and reads it back as `Some`. Give `Ink` a member serde requires, flatten `Ink` without the `Option`, or write `ink` under a key of its own.
+  --> tests/flatten_order_refusals/option_of_a_defaulted_struct.rs:18:5
+   |
+18 | /     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+19 | |     pub ink: Option<Ink>,
+   | |________________________^

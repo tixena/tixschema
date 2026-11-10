@@ -611,7 +611,7 @@ fn a_service_whose_names_hold_a_quote_is_carried_as_declared() {
 /// The README's sentence on a name that holds a quote shows the declaration the run makes.
 #[test]
 fn the_readme_shows_the_declaration_the_run_makes() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     for shown in [
         r#"message = "le$vy'it\"q\\x""#,
         r#"path = "/le$vy'it\"q\\x/{label}""#,

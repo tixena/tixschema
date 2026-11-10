@@ -107,7 +107,7 @@ struct Drawing {
 }
 
 /// Untagged, with a member whose own check takes its variant out.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Contact {
@@ -688,13 +688,13 @@ fn a_tagged_enum_is_an_object_whose_other_keys_are_the_variants() {
         ]
     );
     let internal = json!({ "extra": 1_i32, "kind": "Clear" });
-    assert!(serde_reads::<Fill>(&internal));
+    assert!(!serde_reads::<Fill>(&internal));
     assert_eq!(
         listed!(Fill, fill_schema, internal),
         ["extra: unknown: found Number(1)"]
     );
     let adjacent = json!({ "extra": 1_i32, "kind": "Hairline" });
-    assert!(serde_reads::<Stroke>(&adjacent));
+    assert!(!serde_reads::<Stroke>(&adjacent));
     assert_eq!(
         listed!(Stroke, stroke_schema, adjacent),
         ["extra: unknown: found Number(1)"]
@@ -953,7 +953,8 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     );
 }
 
-/// serde says which variant reads the value, and that variant alone is walked.
+/// serde says which variant reads the value, and that variant alone is walked. A nonstrict enum's
+/// own struct variant reads past a key it does not declare; a strict model it holds does not.
 #[test]
 fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     let email = json!({ "address": "ann@example.org", "legacy": true });
@@ -968,13 +969,12 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
         ["legacy: unknown: found Bool(true)"]
     );
     let versioned = json!({ "draft": true, "number": 3_i32 });
-    assert_eq!(
-        serde_json::from_value::<Contact>(versioned.clone()).unwrap(),
-        Contact::Versioned(Version { number: 3_i32 })
-    );
+    serde_json::from_value::<Contact>(versioned.clone()).unwrap_err();
     assert_eq!(
         listed!(Contact, contact_schema, versioned),
-        ["draft: unknown: found Bool(true)"]
+        [
+            "the value itself: no variant: found Object {\"draft\": Bool(true), \"number\": Number(3)}, tried Email, Phone, Versioned"
+        ]
     );
     let mut calls = 0_u32;
     for (stored, token) in [
@@ -1320,7 +1320,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
 #[test]
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_under_the_stored_key() {
     let undeclared = json!({ "Round": { "extra": 1_i32, "radius": 1.5_f64 } });
-    assert!(serde_reads::<Contour>(&undeclared));
+    assert!(!serde_reads::<Contour>(&undeclared));
     assert_eq!(
         listed!(Contour, contour_schema, undeclared),
         ["Round.extra: unknown: found Number(1)"]

@@ -172,6 +172,11 @@ mod swift_read_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
 mod run_kotlin;
 
+/// The Kotlin of this crate and of a crate apart, compiled into one package.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_crates_apart.rs"]
+mod run_kotlin_crates_apart;
+
 #[cfg(test)]
 #[cfg(slow_tests)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_ws_headers.rs"]
@@ -604,12 +609,19 @@ mod flattened_zod_rows {
     fn serde_and_validate_answer_what_the_tables_state() {
         assert_eq!(read_report(), READ_REPORT);
         assert_eq!(checked_report(&checked_cases()), CHECKED_REPORT);
-        let strict = serde_report()
-            .lines()
-            .zip(read_report().lines())
-            .filter(|(serde, zod)| serde != zod)
-            .count();
-        assert_eq!(strict, ROWS.iter().filter(|row| row.zod_refuses).count());
+        let (serde_lines, zod_lines) = (serde_report(), read_report());
+        let divergent: Vec<&str> = ROWS
+            .iter()
+            .zip(serde_lines.lines().zip(zod_lines.lines()))
+            .filter(|(_row, (serde, zod))| serde != zod)
+            .map(|(row, _lines)| row.name)
+            .collect();
+        assert_eq!(
+            divergent,
+            Vec::<&str>::new(),
+            "serde refuses a key no member reads, as Zod does, beside the unit variant of an enum \
+             under a tag alone among them"
+        );
     }
 
     #[test]
@@ -945,8 +957,8 @@ mod aliased_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_aliased.rs"]
 mod run_kotlin_aliased;
 
-/// A map that is the one member of its object, optional too, and a member that names a function
-/// flattened at each place a member can be handed fewer keys than its object holds.
+/// A map that is the one member of its object, and a member that names a function flattened at
+/// each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/flattened_models.rs"]
@@ -1136,13 +1148,6 @@ mod run_swift_own_tags;
 #[path = "swift_tests/flattened_models.rs"]
 mod swift_flattened_models;
 
-/// A flattened struct that reads a key a member of its holder's own, a struct flattened ahead of
-/// it or the tag of the variant that flattens it took, read by the Dart, Kotlin and Swift runs.
-#[cfg(test)]
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
-#[path = "swift_tests/shared_key_models.rs"]
-mod shared_key_models;
-
 /// Those members, and the structs with a flattened member of their own that read a key taken
 /// around them, read and written back by the emitted Swift types.
 #[cfg(test)]
@@ -1226,6 +1231,26 @@ mod run_swift_skipped_variants;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_skipped_variants.rs"]
 mod run_kotlin_skipped_variants;
+
+/// One holder of each class of flattened members the macro accepts.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/flatten_order_models.rs"]
+mod flatten_order_models;
+
+/// Those holders written by serde and read back by JSON Schema, Zod, Dart, Kotlin and Swift.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_flatten_order.rs"]
+mod run_flatten_order;
+
+/// Holders of a flattened member of each kind serde reads a stray key through.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/flattened_stray_models.rs"]
+mod flattened_stray_models;
+
+/// Those holders read by serde, Dart, Kotlin and Swift, with and without a stray key.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_flattened_strays.rs"]
+mod run_flattened_strays;
 
 /// A key no member reads, refused by the emitted Kotlin types under the default `Json` as Zod
 /// refuses it. Declared after the modules that declare the members its models flatten.
@@ -1483,6 +1508,11 @@ use run_node_http_service::{
     catalog_client_service_schema, scale_client_service_schema,
 };
 #[cfg(test)]
+use run_node_mcp::{
+    ArchiveService, BillingService, DocumentService, DocumentServiceSchema, archive_service_schema,
+    billing_service_schema, document_service_schema,
+};
+#[cfg(test)]
 use run_node_number_brands::{
     WharfClientService, WharfFilingClientService, wharf_client_service_schema,
     wharf_filing_client_service_schema,
@@ -1557,27 +1587,6 @@ mod run_swift_all_flattened;
 #[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
 mod run_kotlin_all_flattened;
 
-/// A plain enum flattened into a holder declared above it.
-#[cfg(test)]
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-#[path = "service_schema_emitted_client_tests/plain_enum_below_models.rs"]
-mod plain_enum_below_models;
-
-/// That enum, under the Dart analyzer.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_below.rs"]
-mod run_dart_plain_enum_below;
-
-/// Those models, read and written back by the emitted Swift types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_below.rs"]
-mod run_swift_plain_enum_below;
-
-/// Those models, read and written back by the emitted Kotlin types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_below.rs"]
-mod run_kotlin_plain_enum_below;
-
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "service_schema_emitted_client_tests/member_named_rows.rs"]
@@ -1607,3 +1616,504 @@ mod run_swift_member_named;
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_member_named.rs"]
 mod run_kotlin_member_named;
+
+/// Where an HTTP host of an emitted `mcp` dispatcher streams to.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_streams.rs"]
+mod mcp_streams;
+
+/// The requests every emitted `mcp` server's authorization is measured with.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_auth_rows.rs"]
+mod mcp_auth_rows;
+
+#[cfg(test)]
+#[path = "mcp_fault_cases/cases.rs"]
+mod cases;
+
+/// The emitted `mcp` server and client run by node: the requests of the design, every answer held
+/// to the 2026-07-28 schema, and two services behind one endpoint.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_node_mcp.rs"]
+mod run_node_mcp;
+
+/// `LibraryService` and `DepotService`, which declare resources, templates, a listing and a
+/// completion, and `BareService`, which declares none: the Rust twins the TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_library_service.rs"]
+mod mcp_library_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_dispatcher.rs"]
+mod mcp_library_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_depot_dispatcher.rs"]
+mod mcp_depot_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_bare_dispatcher.rs"]
+mod mcp_bare_dispatcher;
+
+/// The requests the resource runs send, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_rows.rs"]
+mod mcp_library_rows;
+
+#[cfg(test)]
+use mcp_library_service::{
+    BareService, BareServiceSchema, DepotService, DepotServiceSchema, LibraryService,
+    LibraryServiceSchema, MirrorService, MirrorServiceSchema, bare_service_schema,
+    depot_service_schema, library_service_schema, mirror_service_schema,
+};
+
+/// `StacksService`, whose resources, template, listing and completion declare scopes, and its
+/// Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_stacks_service.rs"]
+mod mcp_stacks_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_stacks_dispatcher.rs"]
+mod mcp_stacks_dispatcher;
+
+#[cfg(test)]
+use mcp_stacks_service::{StacksService, StacksServiceSchema, stacks_service_schema};
+
+/// `LessonService`, which ships a skills folder and writes two skills at run time, and its Rust
+/// dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_lesson_service.rs"]
+mod mcp_lesson_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_lesson_dispatcher.rs"]
+mod mcp_lesson_dispatcher;
+
+#[cfg(test)]
+use mcp_lesson_service::{LessonService, LessonServiceSchema, lesson_service_schema};
+
+/// The requests `subscriptions/listen` is held to on every server, and the Rust dispatcher's
+/// answers to them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_listen_rows.rs"]
+mod mcp_listen_rows;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_listen.rs"]
+mod run_node_mcp_listen;
+
+/// `ShelfService`, whose template and completion a request can fail to read or the validator can
+/// refuse, and its Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_service.rs"]
+mod mcp_shelf_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_shelf_dispatcher.rs"]
+mod mcp_shelf_dispatcher;
+
+#[cfg(test)]
+use mcp_shelf_service::{ShelfService, ShelfServiceSchema, shelf_service_schema};
+
+#[cfg(test)]
+#[path = "mcp_fault_cases/resource_cases.rs"]
+mod resource_cases;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, templates,
+/// a listing and a completion.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_resources.rs"]
+mod run_node_mcp_resources;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_skills.rs"]
+mod run_node_mcp_skills;
+
+/// The emitted TypeScript `mcp` server run beside the Rust dispatcher over resources, a template,
+/// a listing and a completion that declare scopes.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_scopes.rs"]
+mod run_node_mcp_scopes;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_listen.rs"]
+mod run_dart_mcp_listen;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_resources.rs"]
+mod run_dart_mcp_resources;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_skills.rs"]
+mod run_dart_mcp_skills;
+
+/// The emitted Dart `mcp` server run beside the Rust dispatcher over resources, a template, a
+/// listing and a completion that declare scopes.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_scopes.rs"]
+mod run_dart_mcp_scopes;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over `subscriptions/listen`.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_listen.rs"]
+mod run_kotlin_mcp_listen;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, templates, a
+/// listing and a completion.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_resources.rs"]
+mod run_kotlin_mcp_resources;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over skills.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_skills.rs"]
+mod run_kotlin_mcp_skills;
+
+/// `WriterService`, whose handler reports progress, and the rows the emitted TypeScript, Dart and
+/// Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_writer_rows.rs"]
+mod mcp_writer_rows;
+
+/// The `WriterService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_writer_dispatcher.rs"]
+mod mcp_writer_dispatcher;
+
+#[cfg(test)]
+use mcp_writer_rows::{WriterService, WriterServiceSchema, writer_service_schema};
+
+/// `AskingService`, whose operations ask the user and answer content blocks, and the rows the
+/// emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_asking_rows.rs"]
+mod mcp_asking_rows;
+
+/// The `AskingService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_asking_dispatcher.rs"]
+mod mcp_asking_dispatcher;
+
+/// The `PreviewService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_preview_dispatcher.rs"]
+mod mcp_preview_dispatcher;
+
+#[cfg(test)]
+use mcp_asking_rows::{
+    AskingService, AskingServiceSchema, PreviewService, PreviewServiceSchema,
+    asking_service_schema, preview_service_schema,
+};
+
+/// The emitted TypeScript `mcp` server and client run by node on the asking service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_asking.rs"]
+mod run_node_mcp_asking;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the asking service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_asking.rs"]
+mod run_dart_mcp_asking;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the asking service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_asking.rs"]
+mod run_kotlin_mcp_asking;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the asking service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_asking.rs"]
+mod run_swift_mcp_asking;
+
+/// The `DocumentService` dispatcher the emitted TypeScript server is measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_node_document.rs"]
+mod mcp_node_document;
+
+/// The emitted Kotlin `mcp` server run beside the Rust dispatcher over resources, a template, a
+/// listing and a completion that declare scopes.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_scopes.rs"]
+mod run_kotlin_mcp_scopes;
+
+/// The services the Dart `mcp` server and client are run on.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_dart_services.rs"]
+mod mcp_dart_services;
+
+/// The `DartDocumentService` dispatcher the emitted Dart server is measured against.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/mcp_dart_document.rs"]
+mod mcp_dart_document;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp.rs"]
+mod run_dart_mcp;
+
+// What a service generates reaches the trait and its module through `$crate`, this binary's root.
+#[cfg(all(test, feature = "dart"))]
+use mcp_dart_services::{
+    AuditService, DartBillingService, DartDocumentService, DartDocumentServiceSchema,
+    TaggingService, audit_service_schema, dart_billing_service_schema,
+    dart_document_service_schema, tagging_service_schema,
+};
+
+/// `MobileDocumentService` and `MobileBillingService`, both asking for `mcp`: the Rust twins the
+/// emitted Kotlin server and the Kotlin and Swift clients are measured against.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_service.rs"]
+mod mcp_mobile_service;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_document.rs"]
+mod mcp_mobile_document;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_billing.rs"]
+mod mcp_mobile_billing;
+
+/// The rows both `mcp` runs read: the requests a client sends, the answers the Rust dispatcher
+/// gives them, and the check of every message against the official schema.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_rows.rs"]
+mod mcp_mobile_rows;
+
+/// The requests the Kotlin `mcp` server is sent, and the answers the Rust dispatcher gives them.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/mcp_mobile_server_rows.rs"]
+mod mcp_mobile_server_rows;
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+use mcp_mobile_service::{
+    MobileBillingService, MobileBillingServiceSchema, MobileDocumentService,
+    MobileDocumentServiceSchema, mobile_billing_service_schema, mobile_document_service_schema,
+};
+
+/// The emitted Kotlin `mcp` server and client, run beside the Rust dispatcher and client.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp.rs"]
+mod run_kotlin_mcp;
+
+/// The emitted Swift `mcp` client, run beside the Rust dispatcher.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp.rs"]
+mod run_swift_mcp;
+
+/// `JobService`, whose operations start a task and report, cancel and answer it, and the rows the
+/// emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_task_rows.rs"]
+mod mcp_task_rows;
+
+/// The `JobService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_task_dispatcher.rs"]
+mod mcp_task_dispatcher;
+
+#[cfg(test)]
+use mcp_task_rows::{JobService, JobServiceSchema, job_service_schema};
+
+/// The emitted TypeScript `mcp` server and client run by node on the task service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_tasks.rs"]
+mod run_node_mcp_tasks;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the task service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_tasks.rs"]
+mod run_dart_mcp_tasks;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the task service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_tasks.rs"]
+mod run_kotlin_mcp_tasks;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the task service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_tasks.rs"]
+mod run_swift_mcp_tasks;
+
+/// `GuideService`, whose operations are prompts and the completion of a prompt's argument, and the
+/// rows the emitted TypeScript, Dart and Kotlin servers are measured against.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_guide_rows.rs"]
+mod mcp_guide_rows;
+
+/// The `GuideService` dispatcher the emitted servers are measured against.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_guide_dispatcher.rs"]
+mod mcp_guide_dispatcher;
+
+#[cfg(test)]
+use mcp_guide_rows::{GuideService, GuideServiceSchema, guide_service_schema};
+
+/// The emitted TypeScript `mcp` server and client run by node on the guide service.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_guide.rs"]
+mod run_node_mcp_guide;
+
+/// The emitted Dart `mcp` server and client run by the Dart VM on the guide service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_guide.rs"]
+mod run_dart_mcp_guide;
+
+/// The emitted Kotlin `mcp` server and client run under a Kotlin toolchain on the guide service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_guide.rs"]
+mod run_kotlin_mcp_guide;
+
+/// The emitted Swift `mcp` client run under a Swift toolchain on the guide service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_guide.rs"]
+mod run_swift_mcp_guide;
+
+/// `ShelfWireService`, which asks for `mcp` beside every other transport and answers content blocks
+/// and prompt messages, and the stand-in that answers it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/mcp_wire_service.rs"]
+mod mcp_wire_service;
+
+/// The `ShelfWireService` dispatchers and clients of every transport, each expanded out of its
+/// macro into a module of its own.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_amqp_client.rs"]
+mod mcp_wire_amqp_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_amqp_transport.rs"]
+mod mcp_wire_amqp_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_http_rest_client.rs"]
+mod mcp_wire_http_rest_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_http_rest_transport.rs"]
+mod mcp_wire_http_rest_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_ws_rpc_client.rs"]
+mod mcp_wire_ws_rpc_client;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_ws_rpc_transport.rs"]
+mod mcp_wire_ws_rpc_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_mcp_transport.rs"]
+mod mcp_wire_mcp_transport;
+
+#[cfg(test)]
+use mcp_wire_service::{ShelfWireService, ShelfWireServiceSchema, shelf_wire_service_schema};
+
+/// What the Rust dispatchers and clients of `ShelfWireService` write and read on every transport.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_wire_rust.rs"]
+mod mcp_wire_rust;
+
+/// The emitted TypeScript clients and servers of the shelf service on `http_rest` and `ws_rpc`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_mcp_wire.rs"]
+mod run_node_mcp_wire;
+
+/// The emitted Dart `http_rest` and `ws_rpc` clients and attachment of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_wire.rs"]
+mod run_dart_mcp_wire;
+
+/// The emitted Kotlin `http_rest` and `ws_rpc` clients and attachment of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_mcp_wire.rs"]
+mod run_kotlin_mcp_wire;
+
+/// The emitted Swift `http_rest` and `ws_rpc` clients of the shelf service.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_mcp_wire.rs"]
+mod run_swift_mcp_wire;
+
+/// The `mcp` clients of `LibraryService` hold a method for its tool and for nothing else.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_library_clients.rs"]
+mod mcp_library_clients;
+
+#[cfg(test)]
+#[macro_use]
+#[path = "mcp_dispatch_tests/published_structs.rs"]
+mod published_structs;
+
+#[cfg(test)]
+mod published {
+    built_and_read_back!(
+        mcp_asking_dispatcher,
+        mcp_bare_dispatcher,
+        mcp_depot_dispatcher,
+        mcp_guide_dispatcher,
+        mcp_lesson_dispatcher,
+        mcp_library_dispatcher,
+        mcp_preview_dispatcher,
+        mcp_shelf_dispatcher,
+        mcp_stacks_dispatcher,
+        mcp_task_dispatcher,
+        mcp_wire_mcp_transport,
+        mcp_writer_dispatcher,
+    );
+}
+
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+mod published_mobile {
+    built_and_read_back!(mcp_mobile_billing, mcp_mobile_document);
+}

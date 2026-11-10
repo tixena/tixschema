@@ -434,7 +434,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         let refused = serde_json::from_str::<Crate<Crate<u32>>>(&payload)
             .unwrap_err()
             .to_string();
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         for shown in [
             format!("outer.validate();\n// {:?}\n", outer.validate()),
             format!(
@@ -453,7 +453,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     /// run answers, and the refusal they quote is the one the emitter's doc comment records.
     #[test]
     fn the_documents_show_validate_at_every_filling() {
-        let readme = include_str!("../../README.md");
+        let readme = concat!(
+            include_str!("../../docs/guide/generics-and-brands.md"),
+            include_str!("../../docs/guide/validation.md")
+        );
         assert!(
             readme.contains(&format!("```text\n{BRAND_REPORT}\n```")),
             "the README no longer shows the brand's report"

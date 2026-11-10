@@ -293,7 +293,7 @@ fn an_id_stored_as_text_still_fails_after_fixed_while_it_is_left() {
     assert_eq!(calls, 1);
 }
 
-/// Value 6: a record that decodes, but carries a key its model does not declare.
+/// Value 6: a record serde refuses for a key its model does not declare.
 #[test]
 fn value_6_an_undeclared_nested_key_reaches_the_decider() {
     let stored = json!({
@@ -302,7 +302,7 @@ fn value_6_an_undeclared_nested_key_reaches_the_decider() {
         "createdAt": "2025-10-04T17:46:40Z",
         "versions": [{ "number": 1_i32, "draft": true }],
     });
-    serde_json::from_value::<Record>(stored.clone()).unwrap();
+    serde_json::from_value::<Record>(stored.clone()).unwrap_err();
     let (read, seen, calls) = read_with(stored, reject);
     assert_eq!(seen, ["versions[0].draft: unknown: found Bool(true)"]);
     assert_eq!(

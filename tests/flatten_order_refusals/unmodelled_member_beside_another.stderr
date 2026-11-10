@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `loose` (`Loose`), whose keys tixschema cannot see: its type, or one it holds, has no `#[model_schema]`, or is an alias declared below the type that flattens it or in another crate. One of those keys may be a key written beside it, and two members that write one key do not read back. Give the type `#[model_schema()]` and declare it above, or write `loose` under a key of its own.
+  --> tests/flatten_order_refusals/unmodelled_member_beside_another.rs:25:16
+   |
+25 |     pub loose: Loose,
+   |                ^^^^^ evaluation of `_` failed here

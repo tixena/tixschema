@@ -5,7 +5,6 @@
 //! generated module throws as it is imported.
 
 #![cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
-
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -40,7 +39,7 @@ fn a_slot_reaching_the_struct_is_read_behind_a_lazy() {
                    z.array(NestsInASlot$Schema))]);";
     let zod = NestsInASlot::zod_schema();
     assert!(zod.contains(written), "got: {zod}");
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/nested-recursive-and-aliased-types.md");
     assert!(
         readme.contains(written),
         "the README no longer shows: {written}"

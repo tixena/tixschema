@@ -3,12 +3,12 @@
 use alloc::collections::{BTreeSet, VecDeque};
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "mongodb")]
+use mongodb::bson::oid::ObjectId;
+use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tixschema::model_schema;
-
-#[cfg(feature = "mongodb")]
-use mongodb::bson::oid::ObjectId;
 
 /// The members of `StringArrayUnion`, in the order the union declares them.
 const STRING_ARRAY_MEMBERS: [&str; 3] = ["rows", "slugs", "tags"];
@@ -23,16 +23,6 @@ const WRAPPED_MEMBERS: [&str; 3] = ["ids", "ordered", "queued"];
 #[serde(transparent)]
 pub struct DateString(pub String);
 
-// The migration target: an entry whose flattened variant carries `Vec<DateValue>`.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DataElementSampleValueEntry {
-    data_element_id: String,
-    #[serde(flatten)]
-    variant: DataElementSampleValueVariant,
-}
-
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "dataType")]
@@ -41,6 +31,16 @@ enum DataElementSampleValueVariant {
         #[serde(rename = "sampleValues")]
         sample_values: Vec<DateValue>,
     },
+}
+
+// The migration target: an entry whose flattened variant carries `Vec<DateValue>`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DataElementSampleValueEntry {
+    data_element_id: String,
+    #[serde(flatten)]
+    variant: DataElementSampleValueVariant,
 }
 
 // A date sample value: an ISO date string OR an epoch number (TupleSingle members).
@@ -518,6 +518,79 @@ pub enum UntaggedLoneSlotWire {
 #[serde(untagged)]
 pub enum UntaggedUnitWire {
     Lone,
+}
+
+/// A nonstrict untagged enum whose variant that requires a key is declared ahead of the one that
+/// reads every object: serde reads each variant back.
+#[model_schema(nonstrict)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum Allowance {
+    Fixed {
+        percent: u32,
+    },
+    Open {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+}
+
+// Read by a hand-written `Deserialize` that tries the whole number first, so serde's variant order
+// never applies: `Exact` reads back after `Approximate`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Measurement {
+    Approximate(f64),
+    Exact(i64),
+}
+
+impl<'de> Deserialize<'de> for Measurement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        value
+            .as_i64()
+            .map(Self::Exact)
+            .or_else(|| value.as_f64().map(Self::Approximate))
+            .ok_or_else(|| D::Error::custom("a measurement is a number"))
+    }
+}
+
+// Read by a hand-written `Deserialize` that looks for `limit` first: `Bounded` reads back after
+// `Any`, which reads every object.
+#[model_schema(nonstrict)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+enum Quota {
+    Any {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+    Bounded {
+        limit: u32,
+    },
+}
+
+impl<'de> Deserialize<'de> for Quota {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(found) = value.get("limit").and_then(serde_json::Value::as_u64) {
+            return u32::try_from(found)
+                .map(|limit| Self::Bounded { limit })
+                .map_err(D::Error::custom);
+        }
+        let note = value
+            .get("note")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        Ok(Self::Any { note })
+    }
 }
 
 // A list an untagged member holds, under a bound that counts it: a newtype variant's slot, a named
@@ -1809,7 +1882,7 @@ fn test_untagged_slot_constraint_is_reported_under_no_name() {
 
     let shown = format!("// {:?}", MimeType::Other(String::new()).validate());
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/validation.md").contains(&shown),
         "the README no longer shows {shown}"
     );
 }
@@ -2122,7 +2195,7 @@ fn test_an_untagged_enums_own_check_is_reported_under_no_name() {
         vec!["too short: minimum length is 1, got 0"]
     );
 
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/enums.md");
     for reported in [
         ContentKind::Other(String::new()).validate(),
         ContentKind::Other("a".repeat(21)).validate(),
@@ -2464,5 +2537,37 @@ fn test_an_untagged_list_member_writes_its_count_in_zod() {
         ),
     ] {
         assert!(zod.contains(&member), "{member} is not in:\n{zod}");
+    }
+}
+
+#[test]
+fn an_untagged_enum_a_hand_written_deserialize_reads_keeps_the_order_it_declares() {
+    for measurement in [Measurement::Approximate(2.5), Measurement::Exact(4)] {
+        let written = serde_json::to_string(&measurement).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Measurement>(&written).unwrap(),
+            measurement
+        );
+    }
+    for quota in [Quota::Any { note: None }, Quota::Bounded { limit: 3 }] {
+        let written = serde_json::to_string(&quota).unwrap();
+        assert_eq!(serde_json::from_str::<Quota>(&written).unwrap(), quota);
+    }
+}
+
+#[test]
+fn a_variant_that_requires_a_key_declared_ahead_of_one_that_reads_every_object_reads_back() {
+    for allowance in [
+        Allowance::Fixed { percent: 5 },
+        Allowance::Open { note: None },
+        Allowance::Open {
+            note: Some("staff".to_owned()),
+        },
+    ] {
+        let written = serde_json::to_string(&allowance).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Allowance>(&written).unwrap(),
+            allowance
+        );
     }
 }

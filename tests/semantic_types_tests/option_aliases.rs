@@ -255,7 +255,7 @@ fn kotlin_writes_one_nullable_mark_over_an_alias_of_an_option() {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_readme_states_what_a_holder_writes_for_an_alias_of_an_option() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/nested-recursive-and-aliased-types.md");
     let handlead = Handlead::ts_definition();
     let alias = plummet_schema::Schema::ts_definition();
     let listed = format!("listed: z.array(z.nullable({COUNT}))");

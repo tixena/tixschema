@@ -75,6 +75,7 @@ const COMPONENTS: &str = "#/components/schemas/";
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Document {
+    /// The identifier the folder files the document under.
     pub id: String,
     pub tags: Vec<String>,
     pub title: String,
@@ -876,6 +877,10 @@ fn every_type_the_document_service_names_is_written_once_and_referenced_by_name(
     assert_eq!(
         document["components"]["schemas"]["Document"],
         Document::json_schema()
+    );
+    assert_eq!(
+        document["components"]["schemas"]["Document"]["properties"]["id"]["description"],
+        "The identifier the folder files the document under."
     );
 }
 

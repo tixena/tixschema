@@ -3,12 +3,14 @@
 //! holding both halves, mirroring [`super::dart_ws_client`] over Kotlin's own coroutine and
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
 
-use super::kotlin_http_client::{held_copies, kotlin_held, read_serializer};
+use super::kotlin_http_client::{
+    held_copies, kotlin_held, read_serializer, unjudged_read_serializer,
+};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
-    kotlin_quoted, kotlin_typename,
+    TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
+    kotlin_property_name, kotlin_quoted, kotlin_tuple_naming, kotlin_typename,
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -21,13 +23,14 @@ use syn::Type;
 
 /// One `header_out`/`error_header_out` entry: its local identifier (`headerOut0`, ...), its wire
 /// name, and its declared type.
-struct HeaderElement {
-    kotlin_prop: String,
-    ty: Type,
-    wire_name: String,
+pub(super) struct HeaderElement {
+    pub kotlin_prop: String,
+    pub ty: Type,
+    pub wire_name: String,
 }
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Named);
     let methods_apart = noted(left_to_http_rest(declared, "method", on_one_line));
     let handlers_apart = noted(left_to_http_rest(declared, "handler", on_one_line));
     let service = &declared.enveloped();
@@ -1173,7 +1176,7 @@ fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> S
 
 /// The message's Kotlin type: the type the operation named, or the one the macro declared for an
 /// operation that named none.
-fn message_kotlin_typename(operation: &OperationDef) -> String {
+pub(super) fn message_kotlin_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => kotlin_type_of(declared),
         OperationInputs::Empty | OperationInputs::Generated(_) => {
@@ -1188,14 +1191,14 @@ fn message_kotlin_typename(operation: &OperationDef) -> String {
     }
 }
 
-fn kotlin_type_of(ty: &Type) -> String {
+pub(super) fn kotlin_type_of(ty: &Type) -> String {
     kotlin_typename(&kotlin_field_def("value", ty))
 }
 
 /// The `KSerializer` the client writes the message with and the dispatcher reads it with,
 /// [`read_serializer`] of the type the operation named, a `char` and a date in the form serde
 /// writes, or `serializer<T>()` of the one the macro declared.
-fn message_serializer(operation: &OperationDef) -> String {
+pub(super) fn message_serializer(operation: &OperationDef) -> String {
     if let OperationInputs::Named(declared) = &operation.inputs {
         read_serializer(declared)
     } else {
@@ -1203,9 +1206,18 @@ fn message_serializer(operation: &OperationDef) -> String {
     }
 }
 
+/// [`message_serializer`] with each model it holds read by its unjudged serializer.
+pub(super) fn message_unjudged_serializer(operation: &OperationDef) -> String {
+    if let OperationInputs::Named(declared) = &operation.inputs {
+        unjudged_read_serializer(declared)
+    } else {
+        message_serializer(operation)
+    }
+}
+
 /// The type a header tuple carries in its body slot: the tuple's first element, or `ty` itself
 /// where no headers were declared.
-fn body_type(headers: usize, ty: &Type) -> &Type {
+pub(super) fn body_type(headers: usize, ty: &Type) -> &Type {
     if headers == 0 {
         return ty;
     }
@@ -1215,7 +1227,11 @@ fn body_type(headers: usize, ty: &Type) -> &Type {
 }
 
 /// `names`' own declared header elements, matched against `whole`'s trailing tuple elements.
-fn header_elements(names: &[String], whole: &Type, ident_prefix: &str) -> Vec<HeaderElement> {
+pub(super) fn header_elements(
+    names: &[String],
+    whole: &Type,
+    ident_prefix: &str,
+) -> Vec<HeaderElement> {
     let elements: Vec<&Type> = tuple_elements(whole).into_iter().flatten().collect();
     names
         .iter()

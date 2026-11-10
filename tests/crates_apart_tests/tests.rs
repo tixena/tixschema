@@ -2,12 +2,14 @@
 //! whose types are never stored, read through that crate's own library and held by a stored type
 //! here.
 
-use core::fmt::Debug;
+use core::fmt::{Debug, Display};
 use invoice_schema::DecodeWith as _;
 
 use bson::{Bson, doc};
 use invoice_lookup_schema::DecodeWith as _;
-use invoice_lookups::{InvoiceLookup, Parcel, invoice_lookup_schema};
+use invoice_lookups::{
+    InvoiceLookup, Parcel, ParcelRecipient, ParcelSender, invoice_lookup_schema,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use stored_customers::Customer;
@@ -34,6 +36,36 @@ pub struct Invoice {
 pub struct LookupLog {
     pub lookup: InvoiceLookup,
     pub number: String,
+}
+
+/// A delivery of this crate, naming a type of another by its path.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Delivery {
+    pub first: invoice_lookups::DropOff,
+    #[model_schema_prop(nullable)]
+    pub last: Option<::invoice_lookups::DropOff>,
+    pub stops: Vec<invoice_lookups::DropOff>,
+}
+
+/// A courier of this crate, flattening a type of another named by its path.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Courier {
+    #[serde(flatten)]
+    pub drop_off: invoice_lookups::DropOff,
+    pub name: String,
+}
+
+/// The two parties of a parcel, generic structs of another crate flattened at this type's own
+/// parameter.
+#[model_schema(nonstrict, default_types(IdType = String))]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ParcelParties<IdType: Display> {
+    #[serde(flatten)]
+    pub recipient: ParcelRecipient<IdType>,
+    #[serde(flatten)]
+    pub sender: ParcelSender<IdType>,
 }
 
 /// Each issue among `handed` that is `Invalid`, as its path, its expected type and the value it
@@ -219,4 +251,66 @@ fn an_issue_inside_a_type_of_a_crate_that_names_no_bson_is_reported_at_its_full_
     );
     assert_eq!(paths, ["parcels[0].label"]);
     assert_eq!(read.map_err(|refused| refused.issues.len()), Err(1));
+}
+
+#[test]
+fn a_type_of_another_crate_named_by_its_path_is_described_through_its_crates_schema_module() {
+    let drop_off = json!({
+        "additionalProperties": false,
+        "properties": {
+            "depot": { "description": "The depot the parcel is left at.", "type": "string" },
+        },
+        "required": ["depot"],
+        "type": "object",
+    });
+    assert_eq!(
+        Delivery::json_schema(),
+        json!({
+            "additionalProperties": false,
+            "properties": {
+                "first": drop_off,
+                "last": { "anyOf": [drop_off, { "type": "null" }] },
+                "stops": { "items": drop_off, "type": "array" },
+            },
+            "required": ["first", "last", "stops"],
+            "type": "object",
+        })
+    );
+}
+
+#[test]
+fn a_type_of_another_crate_named_by_its_path_is_flattened_through_its_crates_schema_module() {
+    assert_eq!(
+        Courier::json_schema(),
+        json!({
+            "additionalProperties": false,
+            "properties": {
+                "depot": { "description": "The depot the parcel is left at.", "type": "string" },
+                "name": { "type": "string" },
+            },
+            "required": ["name", "depot"],
+            "type": "object",
+        })
+    );
+}
+
+#[test]
+fn generic_members_of_another_crate_flattened_at_the_holders_parameter_read_back() {
+    let parties = ParcelParties {
+        recipient: ParcelRecipient {
+            recipient_id: "rcp-7".to_owned(),
+        },
+        sender: ParcelSender {
+            sender_id: "snd-2".to_owned(),
+        },
+    };
+    let written = serde_json::to_value(&parties).map_err(|error| error.to_string());
+    assert_eq!(
+        written,
+        Ok(json!({ "recipient_id": "rcp-7", "sender_id": "snd-2" }))
+    );
+    let read = written.and_then(|value| {
+        serde_json::from_value::<ParcelParties<String>>(value).map_err(|error| error.to_string())
+    });
+    assert_eq!(read, Ok(parties));
 }

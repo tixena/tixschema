@@ -163,13 +163,13 @@ pub enum Shackling {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Ratcheting {
+    Bare {
+        label: String,
+    },
     Furled {
         label: String,
         #[serde(default, skip_serializing)]
         spare: Option<u32>,
-    },
-    Struck {
-        label: String,
     },
 }
 

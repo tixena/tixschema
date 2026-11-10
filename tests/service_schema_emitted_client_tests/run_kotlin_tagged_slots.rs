@@ -94,7 +94,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Weighed","cost":"c","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Weighed\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -102,7 +102,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Hired","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Hired\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -110,7 +110,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Merged","note":"n","cost":"c","other":1}"#,
         kotlin: "refused: Encountered an unknown key 'other'",
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Merged\",\"note\":\"n\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -118,7 +118,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Below","barge":"g","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Docketed",
-        serde: "read {\"kind\":\"Below\",\"barge\":\"g\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -126,7 +126,7 @@ const ROWS: [Row; 9] = [
         json: r#"{"kind":"Held","cost":"c","other":1}"#,
         kotlin: UNKNOWN_AT,
         read_as: "Waybilled<Tonnage>",
-        serde: "read {\"kind\":\"Held\",\"cost\":\"c\"}",
+        serde: "refused",
         zod: "refused",
     },
     Row {
@@ -458,7 +458,7 @@ fn zod_reads_the_slot_beside_the_tag() {
 /// and shows the payload it reads and the refusal it measures.
 #[test]
 fn the_readme_shows_the_slot_the_run_reads() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     let (read_as, read) = WRITTEN[0];
     let refused = &ROWS[0];
     assert!(
@@ -485,7 +485,10 @@ fn the_readme_shows_the_slot_the_run_reads() {
 /// entries with.
 #[test]
 fn the_readme_shows_the_entries_the_runs_read_and_refuse() {
-    let readme = include_str!("../../README.md");
+    let readme = concat!(
+        include_str!("../../docs/guide/dart.md"),
+        include_str!("../../docs/guide/swift.md")
+    );
     let [tag_alone, two_entries, _] = &ENTRIES_REFUSED;
     assert!(
         WRITTEN.contains(&("Docketed", r#"{"kind":"External","Loose":null}"#))
@@ -515,7 +518,7 @@ fn the_readme_shows_the_entries_the_runs_read_and_refuse() {
 #[cfg(feature = "mongodb")]
 #[test]
 fn the_readme_shows_the_object_id_the_runs_read_and_refuse() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/flatten.md");
     for shown in [
         format!(
             "Serde writes `{}` for `#[serde(tag = \"kind\")] pub enum Stamping {{ Held(ObjectId) \

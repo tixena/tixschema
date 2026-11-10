@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `shape` (`Shape`) and `hue` (`Hue`), and each reads every key still left: `Shape` refuses a key it does not declare, so it refuses the keys of `hue` (`Hue`) in every order. Mark `Shape` `#[model_schema(nonstrict)]`, with the struct each of its newtype variants holds and each member it flattens.
+  --> tests/flatten_order_refusals/member_declared_below_beside_another.rs:19:16
+   |
+19 |     pub shape: Shape,
+   |                ^^^^^ evaluation of `_` failed here

@@ -183,7 +183,7 @@ fn each_member_that_writes_a_map_keyed_by_a_u64_carries_the_note() {
 
 #[test]
 fn the_readme_shows_the_note_the_macro_writes() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/models.md");
     let declared = Histogram::ts_definition();
     assert!(
         readme.contains(&format!("```typescript\n{declared}\n```")),

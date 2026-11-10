@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` is written `#[serde(deny_unknown_fields)]` and flattens `postmark` (`Postmark`), whose keys serde leaves in the object it reads it from, so the type refuses them even with no other member beside it. Take `#[serde(deny_unknown_fields)]` off `Parcel`: tixschema leaves it off a type that flattens such a member.
+  --> tests/flatten_order_refusals/closed_by_hand_over_a_rest_member.rs:26:5
+   |
+26 | /     #[serde(flatten)]
+27 | |     pub postmark: Postmark,
+   | |__________________________^

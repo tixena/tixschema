@@ -77,7 +77,7 @@ fn the_readme_shows_what_the_parcel_of_its_preprocess_emits() {
         }
     };
     let emitted = corrected_by(&parcel, &["withoutFragile"]);
-    let readme = include_str!("../../../../README.md");
+    let readme = include_str!("../../../../docs/guide/kotlin.md");
     let declares = "\ndata class Parcel(@Serializable(with = ParcelLabelPreprocess::class) ";
     let opens = "```kotlin\n";
     let block = readme

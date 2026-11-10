@@ -17,10 +17,9 @@ mod paths;
 )))]
 mod stored_forms;
 
-use std::collections::HashMap;
-
 use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tixschema::model_schema;
 
 /// The compiler errors the README quotes, each beside the file whose doc comments record it under
@@ -266,7 +265,10 @@ fn invoice(number: &str, customer: &str, total: f64) -> Invoice {
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    concat!(
+        include_str!("../../docs/guide/recovering-decode.md"),
+        include_str!("../../docs/guide/mongodb-operations.md")
+    )
 }
 
 /// This file, read back so a pinned declaration can be held against the one that compiles.

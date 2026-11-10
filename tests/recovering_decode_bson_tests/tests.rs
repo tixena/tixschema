@@ -323,6 +323,36 @@ struct Shelved {
     local: u8,
 }
 
+/// A strict type: serde refuses a key it does not declare.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Applicant {
+    national_id: String,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Office {
+    code: String,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Franking {
+    office: Office,
+}
+
+/// Flattens the strict `Franking` through an `Option`, which serde reads as `None` where it refuses
+/// `Franking`.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Parcel {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    franking: Option<Franking>,
+    label: String,
+}
+
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
@@ -403,23 +433,6 @@ struct Referenced {
     pair: PairRef,
     status: StatusRef,
 }
-
-/// A flattened brand over text declared below, which serde refuses to flatten at every read: one
-/// declared above is refused in every build with serde.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Carded {
-    #[serde(flatten)]
-    id: CardCode,
-    name: String,
-}
-
-/// A brand over text declared below the type that flattens it, so no expansion of that type sees
-/// it.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(transparent)]
-struct CardCode(String);
 
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -608,7 +621,7 @@ struct Drawing {
 }
 
 /// Untagged, with a member whose own check takes its variant out.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+#[model_schema(enable = ["decode_with", "mongodb"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Contact {
@@ -1201,7 +1214,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
 #[test]
 fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
     let stored_row = doc! { "cached": 1_i32, "id": "i", "local": 9_i32 };
-    assert!(serde_reads::<Shelved>(&stored_row));
+    assert!(!serde_reads::<Shelved>(&stored_row));
     let read = Shelved::from_bson_with(stored_row, |_raw, _found| shelved_schema::Verdict::Reject);
     assert_eq!(
         told!(shelved_schema, read.unwrap_err().issues),
@@ -1213,10 +1226,62 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
 }
 
 #[test]
+fn an_undeclared_key_of_a_strict_type_is_one_unknown_issue_from_bson() {
+    let stored_row = doc! { "nationalId": "1", "legacy": true };
+    assert!(!serde_reads::<Applicant>(&stored_row));
+    let read =
+        Applicant::from_bson_with(stored_row, |_raw, _found| applicant_schema::Verdict::Reject);
+    assert_eq!(
+        told!(applicant_schema, read.unwrap_err().issues),
+        [unknown("legacy", Bson::Boolean(true))]
+    );
+}
+
+#[test]
+fn a_decider_that_drops_an_undeclared_key_of_a_strict_type_reads_the_row() {
+    use applicant_schema::{Issue, Stored as _, Verdict};
+
+    let mut calls = 0_u32;
+    let read =
+        Applicant::from_bson_with(doc! { "nationalId": "1", "legacy": true }, |raw, found| {
+            calls += 1;
+            for issue in found {
+                let Issue::Unknown {
+                    path,
+                    found: _found,
+                } = issue
+                else {
+                    return Verdict::Reject;
+                };
+                raw.remove_at(path);
+            }
+            Verdict::Fixed
+        });
+    assert_eq!(
+        read,
+        Ok(Applicant {
+            national_id: "1".to_owned(),
+        })
+    );
+    assert_eq!(calls, 1);
+}
+
+#[test]
+fn an_undeclared_key_inside_a_flattened_strict_type_is_one_unknown_issue_from_bson() {
+    let stored_row = doc! { "office": { "code": "SJ", "legacy": true }, "label": "l" };
+    assert!(serde_reads::<Parcel>(&stored_row));
+    let read = Parcel::from_bson_with(stored_row, |_raw, _found| parcel_schema::Verdict::Reject);
+    assert_eq!(
+        told!(parcel_schema, read.unwrap_err().issues),
+        [unknown("office.legacy", Bson::Boolean(true))]
+    );
+}
+
+#[test]
 fn bson_6_a_rows_own_id_is_a_key_like_any_other() {
     let mut stored_row = plain_row();
     stored_row.insert("_id", oid("6a7cc592ca0574e6efdfe299"));
-    assert!(serde_reads::<Record>(&stored_row));
+    assert!(!serde_reads::<Record>(&stored_row));
     let (read, seen, calls) = read_with(stored_row, reject);
     assert_eq!(
         seen,
@@ -2234,17 +2299,6 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
 }
 
 #[test]
-fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
-    let stored_row = doc! { "name": "n" };
-    assert!(!serde_reads::<Carded>(&stored_row));
-    let read = Carded::from_bson_with(stored_row, |_raw, _found| carded_schema::Verdict::Reject);
-    assert_eq!(
-        told!(carded_schema, read.unwrap_err().issues),
-        [undescribed()]
-    );
-}
-
-#[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
     let assigned = Assigned {
         current: Current {
@@ -3037,7 +3091,7 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
 #[test]
 fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
     let internal = doc! { "extra": 1_i32, "kind": "Clear" };
-    assert!(serde_reads::<Fill>(&internal));
+    assert!(!serde_reads::<Fill>(&internal));
     let read = Fill::from_bson_with(internal, |_raw, _found| fill_schema::Verdict::Reject);
     assert_eq!(
         told!(fill_schema, read.unwrap_err().issues),
@@ -3222,7 +3276,8 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     );
 }
 
-/// serde says which variant reads the document, and that variant alone is walked.
+/// serde says which variant reads the document, and that variant alone is walked. A nonstrict
+/// enum's own struct variant reads past a key it does not declare; a strict model it holds does not.
 #[test]
 fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     let email = doc! { "address": "ann@example.org", "legacy": true };
@@ -3233,11 +3288,18 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
         [unknown("legacy", Bson::Boolean(true))]
     );
     let versioned = doc! { "draft": true, "number": 3_i32 };
-    assert!(serde_reads::<Contact>(&versioned));
-    let listed = Contact::from_bson_with(versioned, |_raw, _found| contact_schema::Verdict::Reject);
+    assert!(!serde_reads::<Contact>(&versioned));
+    let listed = Contact::from_bson_with(versioned.clone(), |_raw, _found| {
+        contact_schema::Verdict::Reject
+    });
     assert_eq!(
         told!(contact_schema, listed.unwrap_err().issues),
-        [unknown("draft", Bson::Boolean(true))]
+        [(
+            "NoVariant",
+            String::new(),
+            String::new(),
+            Some(Bson::Document(versioned))
+        )]
     );
 }
 
@@ -3426,7 +3488,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
 fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the_stored_key() {
     use contour_schema::Stored as _;
     let undeclared = doc! { "Round": { "extra": 1_i32, "radius": 1.5_f64 } };
-    assert!(serde_reads::<Contour>(&undeclared));
+    assert!(!serde_reads::<Contour>(&undeclared));
     let read = Contour::from_bson_with(undeclared, |_raw, _found| contour_schema::Verdict::Reject);
     assert_eq!(
         told!(contour_schema, read.unwrap_err().issues),
@@ -3482,7 +3544,7 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
         ),
         (
             doc! { "data": { "gap": 2_i32, "legacy": true }, "kind": "Dotted" },
-            true,
+            false,
             vec![unknown("data.legacy", Bson::Boolean(true))],
         ),
         (

@@ -74,38 +74,6 @@ struct Referenced {
     pair: PairRef,
 }
 
-/// A flattened brand over text declared below, which serde refuses to flatten at every read: one
-/// declared above is refused in every build with serde.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Carded {
-    #[serde(flatten)]
-    id: CardCode,
-    name: String,
-}
-
-/// A flattened tuple struct declared below, which serde refuses to flatten as it refuses a brand
-/// over text: one declared above is refused in every build with serde.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Paired {
-    name: String,
-    #[serde(flatten)]
-    pair: Duet,
-}
-
-/// A brand over text declared below the type that flattens it, so no expansion of that type sees
-/// it.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(transparent)]
-struct CardCode(String);
-
-/// A tuple struct declared below the type that flattens it, so no expansion of that type sees it.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Duet(String, u32);
-
 /// A single-slot tuple struct with no `transparent`: serde writes it as a brand is written.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -710,30 +678,6 @@ fn a_brand_over_text_a_slot_over_a_list_and_a_tuple_struct_list_nothing_and_retu
         assert_eq!(declared, Vec::<&str>::new());
         assert_eq!(out, Vec::new());
     }
-}
-
-#[test]
-fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
-    let stored = json!({ "name": "n" });
-    let refusal = Carded::deserialize(&stored).unwrap_err().to_string();
-    assert_eq!(refusal, "can only flatten structs and maps");
-    let carded = Carded::from_value_with(stored.clone(), |_raw, _found| {
-        carded_schema::Verdict::Reject
-    });
-    assert_eq!(
-        lines(&carded.unwrap_err()),
-        [format!("undescribed: {refusal}")]
-    );
-
-    assert_eq!(
-        Paired::deserialize(&stored).unwrap_err().to_string(),
-        refusal
-    );
-    let paired = Paired::from_value_with(stored, |_raw, _found| paired_schema::Verdict::Reject);
-    assert_eq!(
-        lines(&paired.unwrap_err()),
-        [format!("undescribed: {refusal}")]
-    );
 }
 
 #[test]

@@ -10,6 +10,7 @@ use core::cell::RefCell;
 
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, texts};
 use crate::field_type::FieldDef;
+use crate::utils::crate_tag;
 
 thread_local! {
     /// The class each length the item being expanded reads is read through, so every array of
@@ -64,7 +65,7 @@ pub fn serializer(length: usize) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinArray{index}");
+        let named = format!("KotlinArray{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declaration(&named, length)));
         written.push((length, named.clone()));
         named

@@ -1,0 +1,13 @@
+error: model_schema: type `Handover` flattens `recipient` (`invoice_lookups::ParcelRecipient<IdType>`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: tixschema reads its keys from its hidden constant, which it names with `IdType` filled by the type `default_types` declares for it, and `Handover` declares none. Declare one, `#[model_schema(default_types(IdType = String))]` or any type the bounds of `IdType` accept.
+  --> tests/flatten_order_refusals/generic_members_in_another_crate_with_no_default.rs:12:5
+   |
+12 | /     #[serde(flatten)]
+13 | |     pub recipient: invoice_lookups::ParcelRecipient<IdType>,
+   | |___________________________________________________________^
+
+error: model_schema: type `Handover` flattens `sender` (`invoice_lookups::ParcelSender<IdType>`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: tixschema reads its keys from its hidden constant, which it names with `IdType` filled by the type `default_types` declares for it, and `Handover` declares none. Declare one, `#[model_schema(default_types(IdType = String))]` or any type the bounds of `IdType` accept.
+  --> tests/flatten_order_refusals/generic_members_in_another_crate_with_no_default.rs:14:5
+   |
+14 | /     #[serde(flatten)]
+15 | |     pub sender: invoice_lookups::ParcelSender<IdType>,
+   | |_____________________________________________________^

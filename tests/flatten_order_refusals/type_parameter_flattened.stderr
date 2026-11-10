@@ -1,0 +1,27 @@
+error: model_schema: type `Stamped` flattens `record` (`T`), whose keys are those of a type parameter: what fills it is written outside any `#[model_schema]` type, where nothing checks it, and a filling that writes a key `Stamped` already writes, or an `Option` of a type that reads `{}`, does not read back. Hold the member under a key of its own: remove `#[serde(flatten)]`
+  --> tests/flatten_order_refusals/type_parameter_flattened.rs:11:5
+   |
+11 | /     #[serde(flatten)]
+12 | |     pub record: T,
+   | |_________________^
+
+error: model_schema: type `Maybe` flattens `record` (`Option<T>`), whose keys are those of a type parameter: what fills it is written outside any `#[model_schema]` type, where nothing checks it, and a filling that writes a key `Maybe` already writes, or an `Option` of a type that reads `{}`, does not read back. Hold the member under a key of its own: remove `#[serde(flatten)]`
+  --> tests/flatten_order_refusals/type_parameter_flattened.rs:19:5
+   |
+19 | /     #[serde(flatten)]
+20 | |     pub record: Option<T>,
+   | |_________________________^
+
+error: model_schema: type `Entry` flattens `record` (`T`), whose keys are those of a type parameter: what fills it is written outside any `#[model_schema]` type, where nothing checks it, and a filling that writes a key `Entry` already writes, or an `Option` of a type that reads `{}`, does not read back. Hold the member under a key of its own: remove `#[serde(flatten)]`
+  --> tests/flatten_order_refusals/type_parameter_flattened.rs:28:9
+   |
+28 | /         #[serde(flatten)]
+29 | |         record: T,
+   | |_________________^
+
+error: model_schema: type `Shelf` flattens `either` (`Either<T>`), whose keys are those of a type parameter: what fills it is written outside any `#[model_schema]` type, where nothing checks it, and a filling that writes a key `Shelf` already writes, or an `Option` of a type that reads `{}`, does not read back. Hold the member under a key of its own: remove `#[serde(flatten)]`
+  --> tests/flatten_order_refusals/type_parameter_flattened.rs:45:5
+   |
+45 | /     #[serde(flatten)]
+46 | |     pub either: Either<T>,
+   | |_________________________^

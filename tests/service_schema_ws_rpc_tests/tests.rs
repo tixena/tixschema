@@ -391,7 +391,8 @@ fn a_payload_that_is_not_the_message_becomes_a_failed_validation_fault() {
         &serde_json::json!({
             "error": {
                 "fault": {
-                    "detail": "invalid type: integer `7`, expected a string",
+                    "detail": "'document_id': invalid type: integer `7`, expected a string",
+                    "field": "document_id",
                     "kind": "failed-validation",
                     "operation": "watch",
                 },

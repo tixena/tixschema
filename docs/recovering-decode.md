@@ -12,7 +12,7 @@ in it, and a callback supplied with the call rejects the record or fixes it once
 answering one issue. `enable = ["decode_with", "mongodb"]` adds, under `mongodb`, the type's typed
 MongoDB paths, the filters and updates they build, and the operations that read and write its
 rows; without the `mongodb` feature the entry adds nothing. What every flagged type shares is a
-support library its crate writes once. `README.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
+support library its crate writes once. `docs/guide/recovering-decode.md`'s "Recovering Decode" and "MongoDB Operations and Typed Filters"
 sections are the consumer's view; this is what a change to the emitter has to keep. "The flag"
 below is the entry `"decode_with"`, and a flagged type is one that lists it.
 
@@ -366,7 +366,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind
   its variant in an enum, and the key as written. A type that lists `"mongodb"` and keys a map by
   its own type parameter is not refused, by decision: no expansion sees what fills the parameter,
-  and the README states the error a write and a read of such a row answer at run time.
+  and the guide states the error a write and a read of such a row answer at run time.
   - `bson_refused_keys` finds each map (`is_map_wrapper`) a member serde writes or reads holds,
     behind `Option`, a list, a tuple, a transparent wrapper, a map's value, both arms of a std
     `Result` (`written_std_result`, the `Ok` first) and the bound of a std range
@@ -421,11 +421,11 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     that argument only in a `PhantomData` or in a member serde never writes, an assumption the
     owner reviews. A model or an alias declared below, or of another crate, is not read at its
     arguments.
-  - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the README's `Roster` to
+  - `tests/foundation_refusals/number_keyed_map_with_mongodb.rs` holds the guide's `Roster` to
     the error, `held_number_keyed_map_with_mongodb.rs` beside it a held model's, the unit tests
     in `src/model_schema/tests.rs` each position, each key, each held model, each held alias,
     each generic model and alias read at its arguments and each member and variant read past, and
-    `tests/mongodb_operation_tests/readme/operations.rs` the README's text: the declaration and
+    `tests/mongodb_operation_tests/readme/operations.rs` the guide's text: the declaration and
     the error, the keys stored as their text, a type that lists `"decode_with"` alone, and a map
     keyed by the type's own parameter, with the error each major answers at run time.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
@@ -516,13 +516,13 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   nothing, and says so once on the process's own stderr. `just test-mongodb` refuses to stand
   down, and sits outside `all` and `ci`: no MongoDB server comes with a clone or with the CI
   runner.
-- **The README's examples are pinned.** Each is held as one text with the code that compiles, and
+- **The guide's examples are pinned.** Each is held as one text with the code that compiles, and
   what it prints is run: `tests/recovering_decode_bson_tests/readme.rs` (the callback) and
   `readme_resolvers.rs` (the resolvers), `tests/mongodb_operation_tests/readme.rs` with
   `readme/paths.rs`, `readme/operations.rs` and `readme/stored_forms.rs` (the model, every table
   of documents, the operations, what each failure is told as), and
   `tests/mongodb_query_tests/readme.rs` (a hooked date). A table row of a document is read off
-  the call by `stringify!`, so the README's cell is the code. A line that ends in the `bson`
+  the call by `stringify!`, so the guide's cell is the code. A line that ends in the `bson`
   library's own wording is shown under each major, and each binary holds the run to its own
-  through its `BSON_MAJOR`. The README's operations run against a collection in
+  through its `BSON_MAJOR`. The guide's operations run against a collection in
   `live_the_readme_examples_run_against_a_collection`, which stands down like every live check.

@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `tally` (`MaybeTally`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: serde writes `MaybeTally` as an `Option` of a value that reads from an object that holds none of its keys, so it writes `None` flattened as no key and reads it back as `Some`. Write `tally` under a key of its own.
+  --> tests/flatten_order_refusals/option_of_a_map_declared_below.rs:12:16
+   |
+12 |     pub tally: MaybeTally,
+   |                ^^^^^^^^^^ evaluation of `_` failed here

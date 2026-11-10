@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `mark` (`Mark`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: `Mark` is an externally tagged enum with a unit variant, which serde writes flattened as an entry of the variant's name over `null`, and the Zod, Dart and Swift reads of `Parcel` read that entry only for an enum declared above it. Declare `Mark` above `Parcel`, give each unit variant of it a field, or write `mark` under a key of its own.
+  --> tests/flatten_order_refusals/enum_with_a_unit_variant_declared_below.rs:11:15
+   |
+11 |     pub mark: Mark,
+   |               ^^^^ evaluation of `_` failed here

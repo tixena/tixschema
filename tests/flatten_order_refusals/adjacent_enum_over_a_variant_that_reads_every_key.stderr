@@ -1,0 +1,6 @@
+error: model_schema: type `Label`: variant `Marked` flattens `mark` (`Mark`), which reads every key still left, so tixschema cannot write `#[serde(deny_unknown_fields)]` on `Label` without refusing the keys of `mark` there, and serde reads that attribute for every variant of an enum at once: it then reads past a key no member declares beside the tag `form` and the content key `body` as well. Mark `Label` `#[model_schema(nonstrict)]`, or hold the members of `Marked` in a struct of their own and write `Marked` as a newtype variant over it.
+  --> tests/flatten_order_refusals/adjacent_enum_over_a_variant_that_reads_every_key.rs:20:9
+   |
+20 | /         #[serde(flatten)]
+21 | |         mark: Mark,
+   | |__________________^

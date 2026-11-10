@@ -429,3 +429,128 @@ fn a_type_that_lists_the_entry_answers_its_document() {
         })
     );
 }
+
+/// A field's rustdoc is its property's `description`; a field with none has no key.
+#[test]
+fn a_fields_rustdoc_is_its_propertys_description() {
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct CommentArgs {
+        pub bare: String,
+        /// Path to the document
+        pub file: String,
+        /// Names from the registry who must see this in their pending queue.
+        #[serde(default)]
+        pub to: Vec<String>,
+    }
+
+    let schema = CommentArgs::json_schema();
+    assert_eq!(
+        schema["properties"]["to"],
+        serde_json::json!({
+            "default": [],
+            "description": "Names from the registry who must see this in their pending queue.",
+            "items": { "type": "string" },
+            "type": "array"
+        })
+    );
+    assert_eq!(
+        schema["properties"]["file"]["description"],
+        "Path to the document"
+    );
+    assert!(schema["properties"]["bare"].get("description").is_none());
+}
+
+/// The lines are joined with newlines and the `rust example` block is left out.
+#[test]
+fn a_many_line_rustdoc_joins_its_lines_and_leaves_out_its_examples() {
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Documented {
+        /// First line.
+        /// Second line.
+        ///
+        /// ```rust example
+        /// "ignored"
+        /// ```
+        /// Last line.
+        pub value: String,
+    }
+
+    assert_eq!(
+        Documented::json_schema()["properties"]["value"]["description"],
+        "First line.\nSecond line.\n\nLast line."
+    );
+}
+
+/// A member typed with another model keeps its `$ref` and gains `description` beside it.
+#[test]
+fn a_member_that_is_a_reference_keeps_its_ref_and_gains_a_description() {
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct Holder {
+        /// Where it ships.
+        pub address: Address,
+    }
+
+    let property = &Holder::json_schema()["properties"]["address"];
+    assert_eq!(property["description"], "Where it ships.");
+    assert_eq!(property["type"], "object");
+}
+
+/// A named variant's members carry their rustdoc under every tagging.
+#[test]
+fn the_members_of_a_named_variant_carry_their_rustdoc_under_every_tagging() {
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    pub enum External {
+        Named {
+            /// External member.
+            id: String,
+        },
+    }
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum Internal {
+        Named {
+            /// Internal member.
+            id: String,
+        },
+    }
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(tag = "kind", content = "data")]
+    pub enum Adjacent {
+        Named {
+            /// Adjacent member.
+            id: String,
+        },
+    }
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum Untagged {
+        Named {
+            /// Untagged member.
+            id: String,
+        },
+    }
+
+    for (schema, text) in [
+        (External::json_schema(), "External member."),
+        (Internal::json_schema(), "Internal member."),
+        (Adjacent::json_schema(), "Adjacent member."),
+        (Untagged::json_schema(), "Untagged member."),
+    ] {
+        assert!(
+            schema
+                .to_string()
+                .contains(&format!("\"description\":\"{text}\"")),
+            "{text} missing from {schema}"
+        );
+    }
+}

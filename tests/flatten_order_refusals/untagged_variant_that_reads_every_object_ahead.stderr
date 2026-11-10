@@ -1,0 +1,8 @@
+error: model_schema: type `Shelving`: variant `Any` of the untagged `Shelving` reads every object, as every member it flattens reads from an object that holds none of its keys, and it refuses no key it does not declare, so serde never reads variant `Stamped`, declared after it, which serde writes as an object. Declare `Any` after every other variant.
+  --> tests/flatten_order_refusals/untagged_variant_that_reads_every_object_ahead.rs:18:5
+   |
+18 | /     Any {
+19 | |         #[serde(flatten)]
+20 | |         extra: BTreeMap<String, u32>,
+21 | |     },
+   | |_____^

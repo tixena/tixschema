@@ -28,8 +28,9 @@ struct CountedParcel {
     label: String,
 }
 
-/// A parcel flattened into the object of its holder.
-#[model_schema(enable = ["decode_with"])]
+/// A parcel flattened into the object of its holder: `nonstrict`, as the parcel, which names a
+/// function on itself, is handed every key still left.
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct StoredCrated {
     dock: String,

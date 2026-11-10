@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `mark` (`Mark`) beside other keys, and `Mark` holds `Stamp`, which was declared below `Mark`, in another crate, or with no `#[model_schema]`: the Swift read of `Mark` was written before it could see which keys `Stamp` reads, and hands it the keys beside `mark` that serde does not. Declare `Stamp` above `Mark`, or write `mark` under a key of its own.
+  --> tests/flatten_order_refusals/untagged_payload_declared_below_beside_a_key.rs:19:5
+   |
+19 | /     #[serde(flatten)]
+20 | |     pub mark: Mark,
+   | |__________________^

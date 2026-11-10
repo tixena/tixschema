@@ -2,17 +2,13 @@
 //! the holder's own members take and the entries each member flattened ahead of it took, as serde
 //! hands it, and an externally tagged enum the one entry of that object it reads, an optional one
 //! no value where that object holds no such entry. A map is the one member of its object, and is
-//! read from every key, an optional one as no value where an entry does not read. `toJson` writes
-//! each flattened member at its place. The reads are run under the Dart SDK in
+//! read from every key. `toJson` writes each flattened member at its place. The reads are run under the Dart SDK in
 //! `tests/service_schema_emitted_client_tests/run_dart_flattened.rs`.
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use super::flattened_models::limber_dart;
 use super::flattened_models::{
-    battening_dart, belaying_dart, bilging_dart, caulking_dart, clamping_dart, doubling_dart,
-    dunnage_dart, fastening_dart, freeboard_dart, hawsehole_dart, hoisting_dart, kedging_dart,
-    lacing_dart, loading_dart, mousing_dart, rigging_dart, scuppering_dart, shoring_dart,
-    spare_dart, steeving_dart, trimming_dart, twin_dart,
+    battening_dart, belaying_dart, caulking_dart, clamping_dart, fastening_dart, hawsehole_dart,
+    hoisting_dart, kedging_dart, lacing_dart, loading_dart, mousing_dart, rigging_dart,
+    shoring_dart, spare_dart, trimming_dart, twin_dart,
 };
 use super::held_numbers::u8_held;
 
@@ -54,6 +50,14 @@ fn without_first(source: &str, names: &str) -> String {
     )
 }
 
+/// The entries of the object `source` names under one of `keys`, in the object's order.
+fn only(source: &str, keys: &str) -> String {
+    format!(
+        "(switch ({source}) {{ final whole => {{ for (final key in const [{keys}]) if \
+         (whole.containsKey(key)) key: whole[key] }} }})"
+    )
+}
+
 /// Asserts that `definition` holds `fragment`.
 fn assert_written(definition: &str, fragment: &str) {
     assert!(
@@ -86,8 +90,9 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &clamping_dart::dart_definition(),
         &format!(
-            "Clamping(marking: Marking.fromJsonUnjudged(json),note: json['note'] as String,other: \
+            "Clamping(marking: Marking.fromJsonUnjudged({}),note: json['note'] as String,other: \
              {},);",
+            only("({...json}..remove('note'))", "'label'"),
             keyed_from("({...json}..remove('note')..remove('label'))")
         ),
     );
@@ -101,14 +106,10 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &twin_dart::dart_definition(),
         &format!(
-            "Twin(marking: Marking.fromJsonUnjudged(json),other: {},);",
+            "Twin(marking: Marking.fromJsonUnjudged({}),other: {},);",
+            only("json", "'label'"),
             keyed_from("({...json}..remove('label'))")
         ),
-    );
-    assert_written(
-        &doubling_dart::dart_definition(),
-        "Doubling(marking: Marking.fromJsonUnjudged(json),twice: \
-         Marking.fromJsonUnjudged(json),);",
     );
 }
 
@@ -120,8 +121,9 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     assert_written(
         &hoisting_dart::dart_definition(),
         &format!(
-            "Hoisting(extra: {},marking: Marking.fromJsonUnjudged(json),);",
-            keyed_from("json")
+            "Hoisting(extra: {},marking: Marking.fromJsonUnjudged({}),);",
+            keyed_from("json"),
+            only("json", "'label'")
         ),
     );
     assert_written(
@@ -179,7 +181,8 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
         &trimming_dart::dart_definition(),
         &format!(
             "Trimming(hatching: Hatching.fromJsonUnjudged({hatching}),marking: \
-             Marking.fromJsonUnjudged(json),rest: {},);",
+             Marking.fromJsonUnjudged({}),rest: {},);",
+            only(&after_the_enum, "'label'"),
             keyed_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
         ),
     );
@@ -244,70 +247,6 @@ fn a_function_after_an_enum_read_as_a_map_is_handed_every_key() {
         &format!(
             "Shoring(chocking: Chocking.fromJsonUnjudged(json),rest: {},);",
             keyed_from("json")
-        ),
-    );
-}
-
-/// A read that answers no value wherever `read` throws.
-fn or_null(read: &str) -> String {
-    format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()")
-}
-
-/// An optional map is read from every key of its object in a closure that answers `null` where an
-/// entry does not read, alone in its struct and as the one member of a variant under its name,
-/// under a content key and untagged, and keyed by a plain enum. It is written entry by entry where
-/// it holds a value, and as no entry where it holds none.
-#[test]
-fn an_optional_map_is_null_where_an_entry_does_not_read() {
-    let dunnage = dunnage_dart::dart_definition();
-    assert_written(
-        &dunnage,
-        &format!("Dunnage(counts: {},);", or_null(&counts_from("json"))),
-    );
-    assert_written(
-        &dunnage,
-        &format!(
-            "toJson() => {{ if (counts != null) ...((counts == null ? null : \
-             Map<String, dynamic>.fromEntries((counts!).entries.map((e) => MapEntry(e.key, \
-             {})))) as Map<String, dynamic>), }};",
-            u8_held("e.value")
-        ),
-    );
-    for (definition, class) in [
-        (steeving_dart::dart_definition(), "SteevingOpen"),
-        (freeboard_dart::dart_definition(), "FreeboardOpen"),
-        (scuppering_dart::dart_definition(), "ScupperingOpen"),
-    ] {
-        assert_written(
-            &definition,
-            &format!("{class}(counts: {},);", or_null(&counts_from("json"))),
-        );
-    }
-    assert_written(
-        &bilging_dart::dart_definition(),
-        &format!(
-            "Bilging(counts: {},);",
-            or_null(&format!(
-                "Map<Garboard, int>.fromEntries(json.entries.map((e) => \
-                 MapEntry(Garboard.fromJson(e.key), {})))",
-                u8_held("e.value as int")
-            ))
-        ),
-    );
-}
-
-/// An optional map of models is read in the closure, each model with no judgement.
-#[cfg(any(feature = "typescript", feature = "zod"))]
-#[test]
-fn an_optional_map_of_models_reads_each_unjudged_in_the_closure() {
-    assert_written(
-        &limber_dart::dart_definition(),
-        &format!(
-            "Limber(notches: {},);",
-            or_null(
-                "Map<String, Scantling>.fromEntries(json.entries.map((e) => MapEntry(e.key, \
-                 Scantling.fromJsonUnjudged(e.value))))"
-            )
         ),
     );
 }

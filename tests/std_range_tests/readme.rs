@@ -5,7 +5,7 @@ use super::models::Spanned;
 use super::validate::SIGNPOSTED_REPORTS;
 
 /// The README, as this test reads it.
-const README: &str = include_str!("../../README.md");
+const README: &str = include_str!("../../docs/guide/models.md");
 
 /// The declaration the README shows, which `models.rs` compiles.
 const DECLARED: &str = "#[model_schema(enable = [\"jsonschema\"])]

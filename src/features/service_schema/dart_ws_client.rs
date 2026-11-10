@@ -63,7 +63,7 @@ fn noted(note: Option<&str>) -> String {
     note.map_or_else(String::new, |said| format!("/// {said}\n"))
 }
 
-fn has_one_way(service: &ServiceDef) -> bool {
+pub(super) fn has_one_way(service: &ServiceDef) -> bool {
     service
         .operations
         .iter()
@@ -536,7 +536,7 @@ fn header_value_decode_stmts(
 
 /// The response alone, or the response plus every `header_out` element read off the reply's own
 /// `headers` — mirrors `dart_http_client`'s own `success_decode_block`.
-fn success_decode_block(
+pub(super) fn success_decode_block(
     result: &str,
     fn_prefix: &str,
     wire: &str,
@@ -595,7 +595,7 @@ fn success_decode_block(
 }
 
 /// [`success_decode_block`]'s own twin for the declared error and `error_header_out`.
-fn declared_error_decode_stmts(
+pub(super) fn declared_error_decode_stmts(
     result: &str,
     fn_prefix: &str,
     wire: &str,
@@ -744,7 +744,7 @@ fn reply_write_stmt(
 
 /// Splits a header-tuple `record` into its head and a `Map` of the rest under their own header
 /// names, a `null` element omitted — or, with no declared headers, encodes `ty` whole.
-fn split_reply_record(
+pub(super) fn split_reply_record(
     record: &str,
     head_local: &str,
     headers_local: &str,
@@ -780,7 +780,7 @@ fn split_reply_record(
 }
 
 /// One push into a header map: unconditional, or guarded on non-`null` for an `Option` element.
-fn header_out_push_stmt(local: &str, header: &str, ident: &str, ty: &Type) -> String {
+pub(super) fn header_out_push_stmt(local: &str, header: &str, ident: &str, ty: &Type) -> String {
     let name = quoted(header);
     option_inner(ty).map_or_else(
         || {
@@ -901,7 +901,7 @@ fn header_in_read_stmts(
 }
 
 /// The `, local` arguments a handler call appends after `decoded`.
-fn header_call_args(header_locals: &[String]) -> String {
+pub(super) fn header_call_args(header_locals: &[String]) -> String {
     header_locals.iter().fold(String::new(), |mut args, local| {
         let _ = write!(args, ", {local}");
         args
@@ -1162,7 +1162,7 @@ fn failed_validation_fault_helper(named: &str, fn_prefix: &str) -> String {
 /// The message's Dart type: the type the operation named, or the one the macro declared for an
 /// operation that named none — mirrors `dart_http_client`'s own `message_dart_typename`.
 /// The message `req` encoded for a frame's payload.
-fn message_encode(operation: &OperationDef) -> String {
+pub(super) fn message_encode(operation: &OperationDef) -> String {
     message_type(operation).map_or_else(
         || "req.toJson()".to_owned(),
         |ty| dart_json_encode(&ty, "req", true),
@@ -1170,7 +1170,7 @@ fn message_encode(operation: &OperationDef) -> String {
 }
 
 /// The message decoded out of a frame's dynamically typed `payload`.
-fn message_decode(operation: &OperationDef, payload: &str) -> String {
+pub(super) fn message_decode(operation: &OperationDef, payload: &str) -> String {
     let req_ty = message_dart_typename(operation);
     message_type(operation).map_or_else(
         || format!("{req_ty}.fromJson({payload} as Map<String, dynamic>)"),
@@ -1178,7 +1178,7 @@ fn message_decode(operation: &OperationDef, payload: &str) -> String {
     )
 }
 
-fn message_dart_typename(operation: &OperationDef) -> String {
+pub(super) fn message_dart_typename(operation: &OperationDef) -> String {
     match &operation.inputs {
         OperationInputs::Named(declared) => dart_type_of(declared),
         OperationInputs::Empty | OperationInputs::Generated(_) => {
@@ -1195,6 +1195,6 @@ fn message_dart_typename(operation: &OperationDef) -> String {
 
 /// `ty`'s own Dart type name, read through the same `FieldDef` walk every field's type goes
 /// through — mirrors `dart_http_client`'s own `dart_type_of`.
-fn dart_type_of(ty: &Type) -> String {
+pub(super) fn dart_type_of(ty: &Type) -> String {
     dart_typename(&get_field_def("value", ty, ""))
 }

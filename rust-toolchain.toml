@@ -1,0 +1,5 @@
+# The toolchain this repository is developed and linted on. CI also runs the tests on the floor,
+# `rust-version` in Cargo.toml, and lints on this toolchain alone.
+[toolchain]
+channel = "beta"
+components = ["clippy", "rustfmt"]

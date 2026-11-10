@@ -5,7 +5,7 @@
 ### 10. The Swift `validate()`
 
 Every Swift type the emitter writes has `public func validate() -> [String]`, which runs what the
-Rust `validate()` of the type runs, in its order and in its words. `README.md`'s "`validate()` in
+Rust `validate()` of the type runs, in its order and in its words. `docs/guide/swift.md`'s "`validate()` in
 the Swift client" section is the consumer's view; this is what a change to the emitter has to keep.
 
 - **The emitter is handed what it reads.** `swift_suffix_tokens` in `src/model_schema.rs` builds a
@@ -58,9 +58,11 @@ the Swift client" section is the consumer's view; this is what a change to the e
 
 ### 11. The Swift read
 
+The Swift read of a strict type refuses a key no member reads, as the Rust, Zod, Dart and Kotlin reads do. A type whose keys are known (`closed_keys` in `src/features/swift.rs`: its own members, and those it flattens whose type was written above and refuses a key itself or takes known keys) writes its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)` reads the members and refuses nothing, and `init(swiftSchemaUnjudged:)` refuses a key outside the list, then calls it with no key taken. A holder, an enum under a tag and a lone slot read a type beside other keys through the first, and refuse the keys of the whole object once, in the second; a list element, a map value and a member read the type through the second. An enum under a tag alone, or under a tag and a content key, and an untagged enum refuse a key none of their variants reads in their second read; an untagged enum tries a variant's struct through its second read, and where the enum is itself handed keys, through `swiftSchemaOnly`, which refuses a key that is neither the struct's nor taken and then reads the struct through its first read, as serde tries a strict variant on the keys its holder leaves. A `nonstrict` type, a type that names a function on itself, a struct under its own tag and a type that flattens a member whose keys are not known refuse nothing. The case of a unit variant of a strict enum under a tag alone refuses a key that is neither the tag nor one the types around the enum took (`unit_beside_the_tag`), as the Rust read the macro writes for that variant does, whatever its other variants hold. Where the Swift registries hold no keys of a flattened member (`flattened_contribution`), the macro's classifier answers them (`flatten_order::flattened_keys`): an externally tagged enum's variant names, a struct of one slot's slot, and, for a member serde hands every key its holder leaves, the keys of one that refuses a key beside its own, a strict struct that flattens one, enum under a tag alone or untagged enum among them. A member that reads past a key leaves the holder refusing nothing. One declared below its holder or in another crate is listed by a placeholder (`unmet_keys`, `member_keys::of`), which `swift_definition()` replaces with the keys the type publishes in `__TIXSCHEMA_KEYS`.
+
 Every Swift type the emitter writes has two reads: `init(swiftSchemaUnjudged:)` is the type's own,
 and `init(from:)` runs it and then `validate()`, throwing `DecodingError.dataCorrupted` with every
-message joined by `; ` under the decoder's own coding path. `README.md`'s "A Swift read refuses
+message joined by `; ` under the decoder's own coding path. `docs/guide/swift.md`'s "A Swift read refuses
 what `validate()` refuses" section is the consumer's view; this is what a change to the emitter has
 to keep.
 
@@ -120,7 +122,7 @@ to keep.
   no key to leave out: one that is no `Option` is read as any flattened member is. Where no member
   is encoded under a key, it opens the object with
   `_ = encoder.container(keyedBy: CodingKeys.self)`. A member under `skip_serializing_if` is
-  encoded wherever it holds a value: no client calls the Rust function, and the README states the
+  encoded wherever it holds a value: no client calls the Rust function, and the guide states the
   limit.
 - **The container of a struct's keys is declared where a statement uses it.**
   `struct_body_content` writes `let container` ahead of the read's statements and
@@ -155,10 +157,10 @@ to keep.
   (`preprocess::note_keys`), serde's own list from
   `keys_taken_when_flattened`, and none for a member that names a function. A struct that names a
   `preprocess` on itself is read by serde as a value, and one with a flattened member of its own
-  as a map: each records none. A type the emitter has not written takes none, and the README
+  as a map: each records none. A type the emitter has not written takes none, and the guide
   states the limit. `encode(to:)` writes each flattened member at its place, through its shape
-  (`written_from`): a key two of them hold is written once, with the last value, where serde
-  writes it twice. A flattened `Option` is written under `if let held` (`encode_statement`): the
+  (`written_from`); a key two of them hold is refused at expansion (`model_schema/flatten_order.rs`),
+  so no holder the emitter writes holds one. A flattened `Option` is written under `if let held` (`encode_statement`): the
   keys of the value it holds, and nothing for `nil`, where `Optional`'s own `encode(to:)` writes
   one value over its holder's keys. A holder with no member written under a key opens its object
   all the same. `tests/swift_tests/flattened_options.rs` pins the text, and
@@ -216,7 +218,7 @@ to keep.
   which `struct_declaration` takes) or where one of its reads names `taken`, so `handed_reads`
   writes its reads twice there, the second time with every member withheld from; one whose
   reads name none, and that nothing around hands keys, reads its members from its decoder.
-- **A flattened `ObjectId` is read from its `$oid` key alone**, as the README's `ObjectId` refuses
+- **A flattened `ObjectId` is read from its `$oid` key alone**, as the guide's `ObjectId` refuses
   any other key, where serde reads past one flattened. `preprocess::only_keys` answers `$oid` for
   an `ObjectId` and for a brand, a struct of one slot or an alias over one written above
   (`ONLY_KEYS`, `preprocess::note_only_keys`), and `present_statement` reads such a member from
@@ -228,7 +230,7 @@ to keep.
   over one written above that declares no parameter (`ONLY_NAMED`), is read from `$oid` alone,
   and any other filling as before. The test names no type, so a crate with no `ObjectId` builds.
   A type declared below the one that reads it is read as any other flattened member is, and the
-  README states the limit.
+  guide states the limit.
 - **A flattened externally tagged enum is read from its one entry.** `enum_swift_tokens` records,
   for an enum written above its holder, the names serde reads its variants under flattened
   (`preprocess::note_entries`, from `flattened_entries`): `variant_names_when_flattened`, none for
@@ -266,7 +268,7 @@ to keep.
   `default` writes the value as before.
   `struct_body_content` declares the key type where the reads declare none
   (`read::any_key_written`). An enum declared below its holder writes no entry for its unit
-  variant, and the README states the limit. A member under a function reads the entry back
+  variant, and the guide states the limit. A member under a function reads the entry back
   through the enum's own read, which refuses it, as the Zod schema refuses it. `alias_swift_tokens`
   records an alias of such an enum with the enum's `UNIT_ENTRIES` and `ENTRIES`, so the alias is
   read and written the same way, and `value_wrapper_tokens` a brand and a struct of one slot over
@@ -403,7 +405,7 @@ to keep.
   shape to the text of its twin written with `Vec`, and `run_swift_sequences.rs` reads and writes
   each under the toolchain.
 - **The tests.** `src/features/swift/read/tests.rs` holds each `Source` and `Presence`, and the
-  README's block to what the emitter writes for the documents' parcel;
+  guide's block to what the emitter writes for the documents' parcel;
   `tests/swift_tests/read.rs` pins the text of each shape;
   `tests/service_schema_emitted_client_tests/run_swift_read.rs` compiles the emitted types with
   `-warnings-as-errors`, holds each read to the Rust `validate()` of the value and to the Rust
@@ -424,7 +426,7 @@ ahead of the value read from it. A function is called under the name the attribu
 `func trimmed(_ payload: Any) -> Any`, on the Swift values of a JSON value: a `[String: Any]`, an
 `[Any]`, a `String`, a `Bool`, an `Int64` for a number one holds, a `Double` for any other, and an
 `NSNull`. The documents call the key a last resort, and a change keeps them saying so.
-`README.md`'s "`preprocess` in the Swift client" section is the consumer's view; this is what a
+`docs/guide/preprocess.md`'s "`preprocess` in the Swift client" section is the consumer's view; this is what a
 change to the emitter has to keep.
 
 - **The emitter is handed the type's functions.** `swift_suffix_tokens` puts `args.preprocess` in
@@ -526,3 +528,15 @@ change to the emitter has to keep.
   `_parcelPreprocessNote(_ swiftSchemaPayload: Any) -> Any`) that names the module's function.
   A check on a member is typed by the member's Swift type, and carries the type's parameters it
   names. A function that meets no member is called by its own name.
+
+### 13. The Swift `mcp` client
+
+`src/features/service_schema/swift_mcp_client.rs` writes `swift_mcp_client()` on a service that asks for `mcp`, behind the `swift` feature. There is no Swift server.
+
+- **The transport writes `send` only.** `{Service}McpTransport.send` is handed a `{Service}McpMessage` holding the JSON-RPC text and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` values, and answers the server's text.
+- **The client is an actor** that numbers its requests in its own state, with one method per tool and per prompt: a tool sends `tools/call`, and a prompt sends `prompts/get` with the text members of its message.
+- **Each answer is one of `swift_http_client()`'s own results**, `Result<Success, {Service}{Operation}Failure>`: `isError: false` is the success, the declared error is `.declared`, and a fault, text that is no JSON and a failing `send` are `.fault` with `undeserializable-payload` or `transport-failure`. The Swift client only reads replies, so it carries no argument path; the `mcp` servers that read arguments are the Rust, TypeScript, Dart and Kotlin ones. A one-way method throws `{Service}Refusal`.
+- **Markers.** The accessor writes `@MCP_VERSION@` and each `@MCP_WRAPPED_n@` (`wrapped_{operation}()`) when it runs in the consuming program, so a method packs its message flat or under `value` as the Rust client does.
+- **Value types.** `McpContent`, `McpResourceContents`, `McpRole`, `McpPromptMessage`, `McpTask`, `McpTaskError`, `McpTaskState<Result>` and the page types `{Service}McpResource` and `{Service}McpResourcePage` are `Codable` types `swift_mcp_content()` publishes once per bundle. An image or audio block is read back into the pair through `McpPair`, and a list of blocks through `McpBlocks`.
+- **Names.** A local a method writes is in the `TAKEN_BY_A_METHOD` list of `swift_http_client.rs`.
+- **The tests.** `tests/service_schema_emitted_client_tests/run_swift_mcp.rs` compiles the emitted client and holds each answer to the Rust dispatcher's; `run_swift_mcp_guide.rs`, `run_swift_mcp_asking.rs`, `run_swift_mcp_tasks.rs` and `run_swift_mcp_wire.rs` do the same for prompts, elicitation, tasks and the value types on the other transports.

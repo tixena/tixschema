@@ -5,6 +5,8 @@ mod client;
 #[cfg(feature = "dart")]
 mod dart_http_client;
 #[cfg(feature = "dart")]
+mod dart_mcp;
+#[cfg(feature = "dart")]
 mod dart_result;
 #[cfg(feature = "dart")]
 mod dart_ws_client;
@@ -17,7 +19,21 @@ mod http_service;
 #[cfg(feature = "kotlin")]
 mod kotlin_http_client;
 #[cfg(feature = "kotlin")]
+mod kotlin_mcp_client;
+#[cfg(feature = "kotlin")]
+mod kotlin_mcp_service;
+#[cfg(feature = "kotlin")]
 mod kotlin_ws_client;
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    all(feature = "typescript", feature = "zod")
+))]
+mod mcp_scopes;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+mod mcp_ts_client;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+mod mcp_ts_service;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod message;
 mod result;
@@ -25,6 +41,8 @@ mod result;
 mod service;
 #[cfg(feature = "swift")]
 mod swift_http_client;
+#[cfg(feature = "swift")]
+mod swift_mcp_client;
 #[cfg(feature = "swift")]
 mod swift_type;
 #[cfg(feature = "swift")]
@@ -36,6 +54,7 @@ mod ws_server;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 mod ws_service;
 
+use crate::service_schema::mcp_tools::{form_assertions, registry_items as mcp_registry_items};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::service_schema::parse::OperationDef;
 use crate::service_schema::parse::ServiceDef;
@@ -52,10 +71,11 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub fn emit(
-    service: &ServiceDef,
+    declared: &ServiceDef,
     non_exhaustive: bool,
     openapi: Option<&OpenApiArguments>,
 ) -> TokenStream {
+    let service = &declared.with_page_named();
     let named = service.ident.to_string();
     let registry = registry_ident(service);
     let rustdoc = registry_rustdoc(&named);
@@ -538,6 +558,355 @@ pub fn openapi_seam(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStre
             #method
         }
     }
+}
+
+/// `mcp_tools()`, `wrapped_{operation}()` and `MCP_NAMES` on the service's registry, for a service
+/// that asked for `mcp`.
+pub fn mcp_seam(service: &ServiceDef) -> TokenStream {
+    let registry = registry_ident(service);
+    let items = mcp_registry_items(service);
+    let forms = form_assertions(service);
+    let published = &service.with_page_named();
+    let typescript = mcp_ts_seam(published);
+    let dart = dart_mcp_seam(published);
+    let kotlin = kotlin_mcp_seam(published);
+    let swift = swift_mcp_seam(published);
+    quote! {
+        #forms
+
+        impl #registry {
+            #items
+
+            #typescript
+
+            #dart
+
+            #kotlin
+
+            #swift
+        }
+    }
+}
+
+/// `{accessor}()` on the service's registry, which publishes the `McpContent` type of the language
+/// where an operation answers a list of blocks: the type a bundle names once, beside the
+/// service's own accessors.
+#[cfg(any(
+    all(feature = "typescript", feature = "zod"),
+    feature = "kotlin",
+    feature = "swift"
+))]
+fn mcp_content_accessor(
+    service: &ServiceDef,
+    accessor: &str,
+    text: &'static str,
+    pages: String,
+    tasks: &'static str,
+) -> Option<TokenStream> {
+    use crate::service_schema::mcp_tools::{has_tasks, is_content_list, is_prompt_messages};
+
+    let listed = service
+        .operations
+        .iter()
+        .any(|operation| is_content_list(operation) || is_prompt_messages(operation));
+    let written = [
+        listed.then(|| text.to_owned()),
+        Some(pages),
+        has_tasks(service).then(|| tasks.to_owned()),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|held| !held.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
+    let name = format_ident!("{accessor}");
+    let doc = " The `McpContent`, `McpRole` and `McpPromptMessage` types a list of blocks of an `mcp(content)` operation and a prompt's messages are written in, the `{Service}McpResource` and `{Service}McpResourcePage` types a listing answers, and the `McpTask` and `McpTaskState` types a task is written in.";
+    (!written.is_empty()).then(|| {
+        quote! {
+            #[doc = #doc]
+            pub fn #name() -> ::std::string::String {
+                #written.to_owned()
+            }
+        }
+    })
+}
+
+/// The Kotlin server and client of an `mcp` service, published where the `kotlin` feature is on.
+#[cfg(feature = "kotlin")]
+fn kotlin_mcp_seam(service: &ServiceDef) -> TokenStream {
+    let server = kotlin_mcp_service::accessor(service);
+    let client = kotlin_mcp_client::accessor(service);
+    let content = mcp_content_accessor(
+        service,
+        "kotlin_mcp_content",
+        kotlin_mcp_service::CONTENT_TYPE,
+        kotlin_mcp_service::page_types(service),
+        kotlin_mcp_service::TASK_TYPE,
+    );
+    quote! {
+        #content
+        #server
+        #client
+    }
+}
+
+#[cfg(not(feature = "kotlin"))]
+fn kotlin_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The Swift client of an `mcp` service, published where the `swift` feature is on.
+#[cfg(feature = "swift")]
+fn swift_mcp_seam(service: &ServiceDef) -> TokenStream {
+    let client = swift_mcp_client::accessor(service);
+    let content = mcp_content_accessor(
+        service,
+        "swift_mcp_content",
+        swift_mcp_client::CONTENT_TYPE,
+        swift_mcp_client::page_types(service),
+        swift_mcp_client::TASK_TYPE,
+    );
+    quote! {
+        #content
+        #client
+    }
+}
+
+#[cfg(not(feature = "swift"))]
+fn swift_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The two `replace` calls of `ts_mcp_service()` that write the skills over their markers.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn ts_skill_replacements() -> TokenStream {
+    let skills = mcp_ts_service::SKILLS_MARKER;
+    let skill_files = mcp_ts_service::SKILL_FILES_MARKER;
+    quote! {
+                .replace(
+            #skills,
+            &Self::mcp_skills()
+                .iter()
+                .map(|skill| ::serde_json::Value::String(skill.to_string()).to_string())
+                .collect::<::std::vec::Vec<_>>()
+                .join(", "),
+        )
+        .replace(
+            #skill_files,
+            &Self::mcp_skill_files()
+                .iter()
+                .map(|file| {
+                    ::std::format!(
+                        "[{}, {}]",
+                        ::serde_json::Value::String(
+                            file["uri"].as_str().unwrap_or_default().to_owned()
+                        ),
+                        ::serde_json::Value::String(file.to_string())
+                    )
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", "),
+        )
+    }
+}
+
+/// One `.replace` per operation that asks with a form, writing `mcp_form_{operation}()` over its marker.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_form_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .interview
+                .as_ref()
+                .is_some_and(|interview| interview.answers.is_some())
+        })
+        .map(|operation| {
+            let marker = mcp_ts_service::form_marker(operation);
+            let method = format_ident!(
+                "mcp_form_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! {
+                .replace(
+                    #marker,
+                    &::serde_json::Value::String(Self::#method().to_string()).to_string(),
+                )
+            }
+        })
+        .collect()
+}
+
+/// One `.replace` for the tag key, the wire name and the content key of the arm each interview
+/// operation asks with, writing `mcp_arm_tag_{operation}()`, `mcp_arm_wire_{operation}()` and
+/// `mcp_arm_content_{operation}()` over their markers.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_arm_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::written;
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| operation.mcp.interview.is_some())
+        .flat_map(|operation| {
+            [
+                ("TAG", "mcp_arm_tag"),
+                ("WIRE", "mcp_arm_wire"),
+                ("CONTENT", "mcp_arm_content"),
+            ]
+            .map(|(part, head)| {
+                let marker = mcp_ts_service::arm_marker(operation, part);
+                let method = format_ident!(
+                    "{head}_{}",
+                    written(&operation.ident),
+                    span = operation.ident.span()
+                );
+                quote! {
+                    .replace(
+                        #marker,
+                        &::serde_json::Value::String(Self::#method().to_owned()).to_string(),
+                    )
+                }
+            })
+        })
+        .collect()
+}
+
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_wrapped_replacements(service: &ServiceDef) -> Vec<TokenStream> {
+    use crate::service_schema::parse::{OperationInputs, written};
+
+    service
+        .operations
+        .iter()
+        .filter(|operation| matches!(operation.inputs, OperationInputs::Named(_)))
+        .map(|operation| {
+            let marker = mcp_ts_service::wrapped_marker(operation);
+            let method = format_ident!(
+                "wrapped_{}",
+                written(&operation.ident),
+                span = operation.ident.span()
+            );
+            quote! {
+                .replace(#marker, if Self::#method() { "true" } else { "false" })
+            }
+        })
+        .collect()
+}
+
+/// `ts_mcp_service()` and `ts_mcp_client()`, which read `mcp_tools()`, `MCP_INSTRUCTIONS` and
+/// each `wrapped_{operation}()` over their markers when they run in the consuming program.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn mcp_ts_seam(service: &ServiceDef) -> TokenStream {
+    let server = mcp_ts_service::emit(service).join("\n\n");
+    let client = mcp_ts_client::emit(service).join("\n\n");
+    let version = mcp_ts_service::VERSION_MARKER;
+    let instructions = mcp_ts_service::INSTRUCTIONS_MARKER;
+    let tools = mcp_ts_service::TOOLS_MARKER;
+    let resources = mcp_ts_service::RESOURCES_MARKER;
+    let templates = mcp_ts_service::TEMPLATES_MARKER;
+    let prompts = mcp_ts_service::PROMPTS_MARKER;
+    let skill_replacements = ts_skill_replacements();
+    let wrapped = mcp_ts_wrapped_replacements(service);
+    let forms = mcp_ts_form_replacements(service);
+    let arms = mcp_ts_arm_replacements(service);
+    let content = mcp_content_accessor(
+        service,
+        "ts_mcp_content",
+        mcp_ts_service::CONTENT_TYPE,
+        mcp_ts_service::page_types(service),
+        mcp_ts_service::TASK_TYPE,
+    );
+    quote! {
+        #content
+
+        #[doc = " The service's generated MCP server for TypeScript: the part it puts on an"]
+        #[doc = " endpoint, the endpoint with its shared-name check, `serve` and `serveHttp`,"]
+        #[doc = " and the factories that drive `create{Service}Dispatcher`."]
+        pub fn ts_mcp_service() -> ::std::string::String {
+            #server
+                .replace(
+                    #version,
+                    &::serde_json::Value::String(::core::env!("CARGO_PKG_VERSION").to_owned())
+                        .to_string(),
+                )
+                .replace(
+                    #instructions,
+                    &Self::MCP_INSTRUCTIONS.map_or_else(
+                        || "undefined".to_owned(),
+                        |text| ::serde_json::Value::String(text.to_owned()).to_string(),
+                    ),
+                )
+                .replace(
+                    #tools,
+                    &Self::mcp_tools()
+                        .iter()
+                        .map(|tool| ::serde_json::Value::String(tool.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #resources,
+                    &Self::mcp_resources()
+                        .iter()
+                        .map(|resource| ::serde_json::Value::String(resource.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #templates,
+                    &Self::mcp_resource_templates()
+                        .iter()
+                        .map(|template| ::serde_json::Value::String(template.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                .replace(
+                    #prompts,
+                    &Self::mcp_prompts()
+                        .iter()
+                        .map(|prompt| ::serde_json::Value::String(prompt.to_string()).to_string())
+                        .collect::<::std::vec::Vec<_>>()
+                        .join(", "),
+                )
+                #skill_replacements
+                #(#wrapped)*
+                #(#forms)*
+                #(#arms)*
+        }
+
+        #[doc = " The service's generated MCP client for TypeScript: the transport seam and"]
+        #[doc = " the client with one method per operation."]
+        pub fn ts_mcp_client() -> ::std::string::String {
+            #client
+                .replace(
+                    #version,
+                    &::serde_json::Value::String(::core::env!("CARGO_PKG_VERSION").to_owned())
+                        .to_string(),
+                )
+                #(#wrapped)*
+        }
+    }
+}
+
+#[cfg(not(all(feature = "typescript", feature = "zod")))]
+fn mcp_ts_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(feature = "dart")]
+fn dart_mcp_seam(service: &ServiceDef) -> TokenStream {
+    dart_mcp::seam(service)
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_mcp_seam(_service: &ServiceDef) -> TokenStream {
+    TokenStream::new()
 }
 
 /// `<Service>Schema`, the type every surface of the service is published on.

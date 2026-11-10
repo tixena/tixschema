@@ -1,12 +1,19 @@
 //! A library a strict consumer writes: models another crate reads, in a public module, and models
-//! this crate alone reads, in a private one, with both support libraries written at its root.
+//! this crate alone reads, in a private one, with both support libraries written at its root. A
+//! service asking for `mcp` is in a module of its own, its dispatcher, client and a writer in public ones.
 
 pub mod billing;
+#[macro_use]
+pub mod desk;
+pub mod desk_client;
+pub mod desk_dispatcher;
+pub mod desk_writer;
 mod shelving;
 
-use shelving::manifest_schema::DecodeWith as _;
-
 extern crate bson2 as bson;
+
+use desk::{DeskService, DeskServiceSchema, desk_service_schema};
+use shelving::manifest_schema::DecodeWith as _;
 
 tixschema::decode_with_foundation!();
 tixschema::mongodb_foundation!();

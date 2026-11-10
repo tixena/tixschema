@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `mark` (`Option<Mark>`): `Mark` reads every key still left and refuses one it does not declare, and serde reads a flattened `Option` as `None` wherever what it holds refuses the object it is handed, so a key no member declares turns the value into `None` rather than being refused. Mark `Mark` `#[model_schema(nonstrict)]`, flatten `Mark` without the `Option`, or write `mark` under a key of its own.
+  --> tests/flatten_order_refusals/option_of_a_refusing_member.rs:17:5
+   |
+17 | /     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+18 | |     pub mark: Option<Mark>,
+   | |__________________________^

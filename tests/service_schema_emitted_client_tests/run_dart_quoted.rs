@@ -129,7 +129,7 @@ fn the_emitted_types_have_no_issue() {
 #[test]
 fn the_readme_shows_the_payload_the_run_reads() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

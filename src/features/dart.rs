@@ -14,6 +14,8 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Lit, Varia
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::JSON_NUMBER;
+#[cfg(feature = "serde")]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::{
     FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
 };
@@ -24,6 +26,7 @@ use crate::features::serde::{
     written_slots,
 };
 use crate::features::text_forms::TextForm;
+use crate::features::unmet_keys_filled;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
@@ -31,9 +34,11 @@ use crate::field_type::{
 };
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
+#[cfg(feature = "serde")]
+use crate::utils::is_unconsumed;
 use crate::utils::{
-    MapKeyWire, compute_alias_export_name, compute_item_export_name, to_snake_case,
-    type_parameters_in_scope,
+    MapKeyWire, compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict,
+    to_snake_case, type_parameters_in_scope,
 };
 
 #[cfg(feature = "serde")]
@@ -480,6 +485,10 @@ thread_local! {
     /// What serde takes off its holder's object for each struct and enum a class has been emitted
     /// for, read flattened.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
+
+    /// The keys each struct, and each enum under a tag alone or none, emitted so far refuses a key
+    /// beside: every key its read takes, a flattened member's among them.
+    static DART_CLOSED: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
     /// How each type a class has been emitted for reads each of its type parameters flattened,
     /// itself or through a type that does, in the order declared.
@@ -960,7 +969,10 @@ fn dart_module_tokens(
     };
     let module_ident = dart_module_ident(rust_ident, span);
     let holder = defaults.holder();
-    if holder.is_empty() {
+    let written = Ident::new("written", proc_macro2::Span::call_site());
+    let escaped = [('\\', "\\\\"), ('\'', "\\'"), ('$', "\\$")];
+    let (beside, keys) = unmet_keys_filled(&written, &module_ident, quoted, '\'', &escaped);
+    if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn dart_definition() -> ::std::string::String {
@@ -969,12 +981,12 @@ fn dart_module_tokens(
             }
         };
     }
-    let written = Ident::new("written", proc_macro2::Span::call_site());
-    let replaced = substituted(
-        &quote! { SerdeDefaults },
-        &written,
-        &[('\\', "\\\\"), ('\'', "\\'"), ('$', "\\$")],
-    );
+    let mut replaced = if holder.is_empty() {
+        TokenStream::new()
+    } else {
+        substituted(&quote! { SerdeDefaults }, &written, &escaped)
+    };
+    replaced.extend(keys);
     let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
@@ -988,6 +1000,7 @@ fn dart_module_tokens(
         }
 
         #values
+        #beside
     }
 }
 
@@ -1129,6 +1142,152 @@ fn record_taken_keys(rust_ident: &str, taken: Taken) {
     DART_TAKEN_KEYS.with(|recorded| {
         recorded.borrow_mut().insert(rust_ident.to_owned(), taken);
     });
+}
+
+/// Records the keys the type `rust_ident` refuses a key beside, for a holder emitted after it, and
+/// forgets them where it refuses none.
+fn record_closed_keys(rust_ident: &str, keys: Option<Vec<String>>) {
+    DART_CLOSED.with(|recorded| {
+        if let Some(closed) = keys {
+            recorded.borrow_mut().insert(rust_ident.to_owned(), closed);
+        } else {
+            recorded.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// The keys a flattened member typed `def` refuses a key beside, where its type was emitted above
+/// and takes `taken`: its own record, else the keys it takes.
+fn closed_keys_of(def: &FieldDef, taken: &[String]) -> Option<Vec<String>> {
+    closed_record_of(def).or_else(|| (!taken.is_empty()).then(|| taken.to_vec()))
+}
+
+/// The keys a flattened member typed `def` refuses a key beside, where its type was emitted above
+/// and refuses one.
+fn closed_record_of(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    if def.array_depth != 0 {
+        return None;
+    }
+    DART_CLOSED.with(|recorded| recorded.borrow().get(name).cloned())
+}
+
+/// Every key a holder takes of the flattened member typed `def`, where they are all known.
+fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
+    if !member_functions(def).is_empty() {
+        return None;
+    }
+    #[cfg(feature = "serde")]
+    if let Some(keys) = member_keys::of(def) {
+        return Some(keys);
+    }
+    let taken = taken_by(def);
+    // An externally tagged enum takes one entry under a variant's name, whatever it leaves.
+    if let Taken::FirstOf(names) = &taken {
+        return Some(names.concat());
+    }
+    if leaves_its_keys(def) {
+        return None;
+    }
+    match taken {
+        Taken::Only(_) | Taken::FirstOf(_) => None,
+        Taken::Keys(keys) => closed_keys_of(def, &keys),
+        Taken::Tagged(_) => closed_record_of(def),
+    }
+}
+
+/// Whether serde leaves the keys of the type a flattened member `def` holds in the object it
+/// reads them from, which its holder then cannot name.
+#[cfg(feature = "serde")]
+fn leaves_its_keys(def: &FieldDef) -> bool {
+    matches!(&def.field_type, FieldDefType::SiblingType(name, _) if is_unconsumed(name))
+}
+
+/// Whether serde leaves the keys of the type a flattened member `def` holds in the object it
+/// reads them from, which its holder then cannot name.
+#[cfg(not(feature = "serde"))]
+const fn leaves_its_keys(_def: &FieldDef) -> bool {
+    false
+}
+
+/// The keys a class over `fields` refuses a key beside, `beside` among them: the keys of its own
+/// members and of those it flattens. `None` where it refuses none: a `nonstrict` type, a type that
+/// names a function, which can rewrite the keys it reads, and a type that flattens a member whose
+/// keys are not known.
+fn closed_keys(
+    fields: &[DartField],
+    beside: &[&str],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    if is_nonstrict() || !corrects.own.is_empty() {
+        return None;
+    }
+    let mut keys: Vec<String> = beside.iter().map(|key| (*key).to_owned()).collect();
+    for field in fields {
+        if field.flatten {
+            keys.extend(flattened_contribution(field.wire_def())?);
+        } else {
+            keys.push(field.wire_name.clone());
+            keys.extend(field.aliases.iter().cloned());
+        }
+    }
+    let mut seen = HashSet::new();
+    keys.retain(|key| seen.insert(key.clone()));
+    Some(keys)
+}
+
+/// The keys a struct over `fields` refuses a key beside, as [`closed_keys`] answers them, and none
+/// for one under a tag of its own `own_tag`, past whose unknown keys serde reads.
+fn struct_closed_keys(
+    fields: &[DartField],
+    own_tag: Option<&(String, String)>,
+    beside: &[&str],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    own_tag
+        .is_none()
+        .then(|| closed_keys(fields, beside, corrects))
+        .flatten()
+}
+
+/// The keys a variant holding `payload` refuses a key beside, where they are all known.
+fn variant_keys(payload: &VariantPayload, corrects: &Corrects<'_>) -> Option<Vec<String>> {
+    match payload {
+        VariantPayload::Unit => Some(Vec::new()),
+        VariantPayload::Named(fields) => closed_keys(fields, &[], &corrects.of_a_variant()),
+        VariantPayload::Value(held) => flattened_contribution(held),
+    }
+}
+
+/// The keys an enum refuses a key beside, `beside` and those of each variant in `variants`, where
+/// the enum names no function and every variant refuses a key beside keys it knows.
+fn closed_union(
+    variants: &[Option<Vec<String>>],
+    beside: &[String],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    if is_nonstrict() || !corrects.own.is_empty() {
+        return None;
+    }
+    let mut keys = beside.to_vec();
+    for variant in variants {
+        keys.extend(variant.clone()?);
+    }
+    let mut seen = HashSet::new();
+    keys.retain(|key| seen.insert(key.clone()));
+    Some(keys)
+}
+
+/// The statements that refuse a key of the object `object` that is none of `keys`.
+fn unknown_keys_refused(class: &str, object: &str, keys: &[String]) -> String {
+    format!(
+        "for (final key in {object}.keys) {{ if (!const <String>{{{}}}.contains(key)) throw \
+         FormatException('Unknown key of a {}: $key'); }} ",
+        listed_names(keys),
+        dart_escaped(class, '\'')
+    )
 }
 
 /// The tag, then the content key where it has one, of an enum under a tag key: what a flattened
@@ -1337,20 +1496,6 @@ fn hands_to_none(def: &FieldDef) -> bool {
     } else {
         matches!(def.field_type, FieldDefType::Map(..))
     }
-}
-
-/// Whether a member typed `def`, flattened into its holder, is read from the whole object the
-/// holder reads, as TypeScript and Zod read it: a struct, and an enum under a tag key, whose class
-/// was emitted above and that hands that object to no function. One that hands it to a function
-/// is handed what serde hands it.
-fn reads_the_whole(def: &FieldDef) -> bool {
-    let FieldDefType::SiblingType(name, _) = &def.field_type else {
-        return false;
-    };
-    hands_to_none(def)
-        && (DART_TAKEN_KEYS
-            .with(|recorded| matches!(recorded.borrow().get(name), Some(Taken::Keys(_))))
-            || DART_TAG_KEYS.with(|recorded| recorded.borrow().contains_key(name)))
 }
 
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
@@ -1859,6 +2004,13 @@ pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
 }
 
+/// [`dart_json_decode`] reading each declared type by its `fromJsonUnjudged`, which throws for what
+/// does not read and never for what `validate()` refuses.
+#[cfg(feature = "serde")]
+pub fn dart_json_decode_unjudged(ty: &syn::Type, expr: &str) -> String {
+    dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Unjudged)
+}
+
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
 #[cfg(feature = "serde")]
@@ -2194,7 +2346,7 @@ fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
             counter.set(next);
             next
         });
-        let named = format!("DartResult{index}");
+        let named = format!("DartResult{index}{}", crate_tag());
         let held: Vec<&str> = RESULT_ARMS
             .into_iter()
             .zip(shape)
@@ -3707,8 +3859,16 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             // A flattened member is walked whatever it writes.
             let decode = match taken_by(def) {
                 Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    let whole = if reads_the_whole(def) { json } else { &handed };
-                    let decode = flattened_decode(def, whole, &taken);
+                    // serde hands a member that leaves its keys every key still left, and one that
+                    // takes its own keys those keys alone.
+                    let known = closed_record_of(def)
+                        .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
+                        .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
+                    let kept = match known {
+                        Some(read) => only(&handed, &read),
+                        None => handed,
+                    };
+                    let decode = flattened_decode(def, &kept, &taken);
                     for key in taken {
                         if !taken_ahead.contains(&key) {
                             taken_ahead.push(key);
@@ -3860,18 +4020,30 @@ fn tag_checked_reads(
         |naming| (format!("{naming} "), named.as_str()),
     );
     let arguments = constructor_arguments(fields, read_from, tag_key);
+    let beside: Vec<&str> = tag_key
+        .into_iter()
+        .chain(own_tag.map(|(key, _)| key.as_str()))
+        .collect();
+    let closed = struct_closed_keys(fields, own_tag, &beside, corrects);
+    let refused = closed.as_deref().map_or_else(String::new, |keys| {
+        unknown_keys_refused(class_name, read_from, keys)
+    });
     let answer = match own_tag {
         Some((key, held)) => Answer::Statements(format!(
-            "{naming}{} return {class_name}({arguments});",
+            "{naming}{refused}{} return {class_name}({arguments});",
             own_tag_held(read_from, key, held)
         )),
-        None if naming.is_empty() => Answer::Value(format!("{class_name}({arguments})")),
-        None => Answer::Statements(format!("{naming}return {class_name}({arguments});")),
+        None if naming.is_empty() && refused.is_empty() => {
+            Answer::Value(format!("{class_name}({arguments})"))
+        }
+        None => Answer::Statements(format!(
+            "{naming}{refused}return {class_name}({arguments});"
+        )),
     };
     let unjudged = unjudged_read(
         corrects,
         " as Map<String, dynamic>",
-        !fields.is_empty() || own_tag.is_some(),
+        !fields.is_empty() || own_tag.is_some() || !refused.is_empty(),
         &answer,
     );
     read_pair(
@@ -4033,6 +4205,11 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     let mut rules = field_elements(&fields, &[], Asked::Rules, &mut helpers);
     rules.extend(own_check_elements(args.check));
     let corrects = Corrects::of(args.preprocess);
+    let own_tag_key: Vec<&str> = own_tag.iter().map(|(key, _)| key.as_str()).collect();
+    record_closed_keys(
+        &rust_ident,
+        struct_closed_keys(&fields, own_tag.as_ref(), &own_tag_key, &corrects),
+    );
     let body = class_body(
         &export_name,
         &generic_params,
@@ -4391,6 +4568,24 @@ fn tagged_variant_steps(wire_tag: &str, shape: &TagShape<'_>) -> Vec<Step> {
     )
 }
 
+/// The read of the unit variant `built`: under a tag alone, a strict enum refuses a key beside the
+/// tag, as its Rust read does.
+fn unit_beside_the_tag(
+    export_name: &str,
+    shape: &TagShape<'_>,
+    corrects: &Corrects<'_>,
+    built: &str,
+) -> String {
+    if shape.merge_tag_into_object && corrects.own.is_empty() && !is_nonstrict() {
+        format!(
+            "(() {{ {}return {built}; }})()",
+            unknown_keys_refused(export_name, &corrects.json, &[shape.tag_key.to_owned()])
+        )
+    } else {
+        built.to_owned()
+    }
+}
+
 /// The Dart tokens for one tagged-union variant: the subclass definition, and the arm of the
 /// base's unjudged dispatch (everything after the `case` of its names). `corrects` holds the names
 /// the base's read declares, which the read of a variant with named members declares too.
@@ -4432,14 +4627,16 @@ fn tagged_variant_tokens(
             let built = format!("{subclass_name}{generic_params}()");
             // Under a content key Zod reads the variant as a strict object of the tag alone, so a
             // content is refused, `null` among it, which serde reads.
-            let read = match held {
-                Some(holds_content) => format!(
-                    "{holds_content} ? throw FormatException('{export_name}: ' + {} + ' takes no \
-                     value') : {built}",
-                    corrects.tag
-                ),
-                None => built,
-            };
+            let read = held.map_or_else(
+                || unit_beside_the_tag(export_name, shape, corrects, &built),
+                |holds_content| {
+                    format!(
+                        "{holds_content} ? throw FormatException('{export_name}: ' + {} + ' takes \
+                         no value') : {built}",
+                        corrects.tag
+                    )
+                },
+            );
             (class_text, read)
         }
         VariantPayload::Named(fields) => {
@@ -4507,6 +4704,69 @@ fn tagged_variant_tokens(
     }
 }
 
+/// The keys an enum under a tag alone refuses a key beside, where each variant's are known.
+fn closed_beside_the_tag(
+    shape: &TagShape<'_>,
+    variants: &[Option<Vec<String>>],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    shape
+        .merge_tag_into_object
+        .then(|| closed_union(variants, &[shape.tag_key.to_owned()], corrects))
+        .flatten()
+}
+
+/// The keys an enum under a tag refuses a key beside: the tag and the content key where it has
+/// one, else those of its variants.
+fn closed_by_tagging(
+    shape: &TagShape<'_>,
+    variants: &[Option<Vec<String>>],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    shape.content_key.map_or_else(
+        || closed_beside_the_tag(shape, variants, corrects),
+        |content| {
+            (corrects.own.is_empty() && !is_nonstrict())
+                .then(|| vec![shape.tag_key.to_owned(), content.to_owned()])
+        },
+    )
+}
+
+/// The dispatch of an externally tagged enum: serde and Zod read the variant from an object of one
+/// key, and refuse any other.
+fn external_dispatch(
+    export_name: &str,
+    corrects: &Corrects<'_>,
+    string_arms: &[String],
+    map_arms: &[String],
+) -> String {
+    let (json, map, tag) = (&corrects.json, &corrects.map, &corrects.tag);
+    format!(
+        "if ({json} is String) {{ switch ({json}) \
+         {{ {} default: throw FormatException('Unknown {export_name}: ' + {json}); }} }} \
+         final {map} = {json} as Map<String, dynamic>; if ({map}.isEmpty) {{ throw \
+         FormatException('empty object for {export_name}'); }} if ({map}.length > 1) {{ \
+         throw FormatException('more than one key for {export_name}'); }} \
+         final {tag} = {map}.keys.first; switch ({tag}) \
+         {{ {} default: throw FormatException('Unknown {export_name}: ' + {tag}); }}",
+        string_arms.join(" "),
+        map_arms.join(" "),
+    )
+}
+
+/// The statements that refuse a key beside the tag and the content key of an enum under both, and
+/// none for an enum under any other tagging or a `nonstrict` one.
+fn beside_the_content(export_name: &str, shape: &TagShape<'_>, corrects: &Corrects<'_>) -> String {
+    match shape.content_key {
+        Some(content) if corrects.own.is_empty() && !is_nonstrict() => unknown_keys_refused(
+            export_name,
+            &corrects.json,
+            &[shape.tag_key.to_owned(), content.to_owned()],
+        ),
+        Some(_) | None => String::new(),
+    }
+}
+
 /// The Dart tokens a tagged enum (internal, adjacent, or the default external form) earns: a
 /// `sealed` base class whose unjudged read dispatches on the tag and whose `fromJson` judges
 /// what it answers, and one subclass per variant.
@@ -4531,7 +4791,7 @@ fn tagged_enum_dart_source(
     let codec = generic_codec(&type_parameters);
     let corrects = Corrects::of(args.preprocess);
 
-    let mut subclasses = Vec::new();
+    let (mut subclasses, mut variant_payloads) = (Vec::new(), Vec::new());
     let mut is_string_dispatch_arms = Vec::new();
     let mut map_dispatch_arms = Vec::new();
     // Internal and adjacent tagging read the tag off a named key of the object; external tagging
@@ -4550,6 +4810,7 @@ fn tagged_enum_dart_source(
             &tagged_variant_steps(&wire_tag, &shape),
             args.check,
         );
+        variant_payloads.push(variant_keys(&payload, &corrects));
         let (class_text, from_json) = tagged_variant_tokens(
             export_name,
             &generic_params,
@@ -4585,22 +4846,17 @@ fn tagged_enum_dart_source(
         record_writes_a_name(rust_ident);
     }
 
-    let (json, map, tag) = (&corrects.json, &corrects.map, &corrects.tag);
+    let (json, tag) = (&corrects.json, &corrects.tag);
     let (payload_ty, held_as, dispatch) = if is_external {
         // serde and Zod read the variant from an object of one key, and refuse any other.
         (
             "dynamic",
             "",
-            format!(
-                "if ({json} is String) {{ switch ({json}) \
-                 {{ {} default: throw FormatException('Unknown {export_name}: ' + {json}); }} }} \
-                 final {map} = {json} as Map<String, dynamic>; if ({map}.isEmpty) {{ throw \
-                 FormatException('empty object for {export_name}'); }} if ({map}.length > 1) {{ \
-                 throw FormatException('more than one key for {export_name}'); }} \
-                 final {tag} = {map}.keys.first; switch ({tag}) \
-                 {{ {} default: throw FormatException('Unknown {export_name}: ' + {tag}); }}",
-                is_string_dispatch_arms.join(" "),
-                map_dispatch_arms.join(" "),
+            external_dispatch(
+                export_name,
+                &corrects,
+                &is_string_dispatch_arms,
+                &map_dispatch_arms,
             ),
         )
     } else {
@@ -4608,13 +4864,18 @@ fn tagged_enum_dart_source(
             payload_kind(&corrects, "Map<String, dynamic>"),
             " as Map<String, dynamic>",
             format!(
-                "final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
+                "{}final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
                  throw FormatException('Unknown {export_name}: ' + {tag}); }}",
+                beside_the_content(export_name, &shape, &corrects),
                 quoted(tag_key),
                 map_dispatch_arms.join(" "),
             ),
         )
     };
+    record_closed_keys(
+        rust_ident,
+        closed_by_tagging(&shape, &variant_payloads, &corrects),
+    );
     let unjudged = unjudged_read(&corrects, held_as, true, &Answer::Statements(dispatch));
     let reads = read_pair(export_name, payload_ty, &codec, &unjudged);
 
@@ -4649,6 +4910,7 @@ fn untagged_enum_dart_source(
 
     let mut subclasses = Vec::new();
     let mut attempts = Vec::new();
+    let mut variant_payloads = Vec::new();
     let mut reads_unit = false;
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
@@ -4656,6 +4918,7 @@ fn untagged_enum_dart_source(
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
         reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
         enter_variant_core_scope(&subclass_name, &payload);
+        variant_payloads.push(variant_keys(&payload, &corrects));
         let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
         let validate = format!(
@@ -4720,6 +4983,7 @@ fn untagged_enum_dart_source(
     }
 
     note_reads_a_unit(rust_ident, reads_unit);
+    record_closed_keys(rust_ident, closed_union(&variant_payloads, &[], &corrects));
     let unjudged = unjudged_read(
         &corrects,
         "",

@@ -14,6 +14,7 @@ use super::{
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::utils::is_nonstrict;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself.
@@ -424,6 +425,26 @@ pub fn kept(export_name: &str) -> String {
     )
 }
 
+/// The annotation of a class the plugin reads that reads past a key no member reads, which is the
+/// class of a `nonstrict` type, and nothing for any other. A class that [`kept`] annotates is
+/// opted in already.
+pub fn ignoring_unknown_keys() -> &'static str {
+    if is_nonstrict() {
+        " @JsonIgnoreUnknownKeys"
+    } else {
+        ""
+    }
+}
+
+/// [`ignoring_unknown_keys`] for a class that is opted into nothing yet.
+pub fn opted_in_ignoring_unknown_keys() -> &'static str {
+    if is_nonstrict() {
+        "@OptIn(ExperimentalSerializationApi::class) @JsonIgnoreUnknownKeys "
+    } else {
+        ""
+    }
+}
+
 /// [`kept`] for the value class of a brand.
 pub fn kept_inline(export_name: &str) -> String {
     format!(
@@ -688,7 +709,7 @@ fn unjudged_of(name: &str) -> Option<String> {
 }
 
 /// The `KSerializer` of a value typed `field`, each model it holds read by its unjudged one.
-fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
+pub(super) fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) -> String {
     let scalar = if let FieldDefType::SiblingType(name, written) = &field.field_type {
         if let [element] = written.as_slice()
             && is_sequence_wrapper(name)

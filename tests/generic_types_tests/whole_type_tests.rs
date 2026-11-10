@@ -445,7 +445,12 @@ mod readme {
     use super::Node;
 
     fn readme() -> &'static str {
-        include_str!("../../README.md")
+        concat!(
+            include_str!("../../docs/guide/enums.md"),
+            include_str!("../../docs/guide/nested-recursive-and-aliased-types.md"),
+            include_str!("../../docs/guide/generics-and-brands.md"),
+            include_str!("../../docs/guide/checks.md")
+        )
     }
 
     /// The README declares this, and the generator writes that. Each line is matched whole on both

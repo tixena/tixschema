@@ -15,10 +15,9 @@ use super::flattened_models::serving_swift;
 use super::flattened_models::{
     anchoring_swift, baling_swift, bowsing_swift, boxing_swift, clewing_swift, dredging_swift,
     faking_swift, fending_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
-    halyard_swift, hanking_swift, kedging_swift, marling_swift, marrying_swift, mousing_swift,
-    parceling_swift, plying_swift, pointing_swift, ratlining_swift, reeling_swift, seaming_swift,
-    slacking_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift, tailing_swift,
-    toggling_swift, trussing_swift, twinning_swift, whipping_swift, winching_swift, worming_swift,
+    hanking_swift, kedging_swift, marling_swift, mousing_swift, parceling_swift, pointing_swift,
+    seaming_swift, snaking_swift, splaying_swift, stopping_swift, stropping_swift, toggling_swift,
+    twinning_swift, worming_swift,
 };
 
 /// The read a holder that takes no keys the types around it took reads with.
@@ -289,40 +288,27 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     let gripping = gripping_swift::swift_definition();
     assert_written(
         &gripping,
-        &format!(
-            "{ALONE} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
-             {flag}self.notch = try Notch(swiftSchemaUnjudged: decoder); {note} }}"
+        &closed(
+            &["label", "mark", "note"],
+            &format!(
+                "let container = try decoder.container(keyedBy: CodingKeys.self); \
+                 {flag}self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                 taken + [\"note\", \"label\"]); {note}"
+            ),
         ),
     );
-    let plying = plying_swift::swift_definition();
-    assert_written(&plying, &format!("{ahead}{}", pennant("twice")));
-    assert_written(&plying, ALONE);
-    for definition in [splaying, twinning, gripping, plying] {
+    for definition in [splaying, twinning, gripping] {
         assert_written(&definition, "try self.flag.encode(to: encoder); try ");
     }
 }
 
 /// A struct flattened first is read from the whole object its holder reads, beside a member of
-/// its holder's own whose key it reads and one whose key it does not, as TypeScript and Zod read
-/// it, and one that names a function from the payload without its holder's own keys, as serde
-/// hands it. In a holder of no member of its own a member that names a function after it is read
-/// without the keys the types around the holder took, where another read of the holder takes
-/// them, and the holder declares no container of its keys.
+/// its holder's own whose key it does not read, as TypeScript and Zod read it. In a holder of no
+/// member of its own a member that names a function after it is read without the keys the types
+/// around the holder took, where another read of the holder takes them, and the holder declares no
+/// container of its keys.
 #[test]
 fn a_struct_flattened_first_is_read_from_the_whole_object_and_a_function_without_its_keys() {
-    let label = "self.label = try container.decode(String.self, forKey: .label)";
-    let whipping = whipping_swift::swift_definition();
-    assert_written(&whipping, &format!("{}; {label}", pennant("flag")));
-    assert_written(&whipping, ALONE);
-    assert_written(
-        &marrying_swift::swift_definition(),
-        &format!(
-            "let flagPayload = try SwiftSchemaPayload(from: decoder, \
-             without: taken + [\"label\"]).value; \
-             self.flag = try SwiftSchemaPayload.read(Pennant.self, from: asGiven(flagPayload), \
-             at: decoder.codingPath); {label}"
-        ),
-    );
     let hanking = hanking_swift::swift_definition();
     assert_written(
         &hanking,
@@ -352,11 +338,6 @@ fn a_struct_flattened_first_is_read_from_the_whole_object_and_a_function_without
          try self.flag.encode(to: encoder); try self.tally.encode(to: encoder) }",
     );
     assert_no_keyed_container(&stropping);
-    assert_written(
-        &ratlining_swift::swift_definition(),
-        "self.stropping = try Stropping(swiftSchemaUnjudged: decoder, \
-         swiftSchemaWithout: taken + [\"label\"])",
-    );
 }
 
 /// A struct whose every member is a flattened struct reads each from the whole object, the
@@ -367,9 +348,13 @@ fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
     let seaming = seaming_swift::swift_definition();
     assert_written(
         &seaming,
-        &format!(
-            "{ALONE} {{ {}; self.notch = try Notch(swiftSchemaUnjudged: decoder) }}",
-            pennant("flag")
+        &closed(
+            &["label", "mark"],
+            &format!(
+                "{}; self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                 taken + [\"label\"])",
+                pennant("flag")
+            ),
         ),
     );
     assert_written(
@@ -406,17 +391,16 @@ fn a_member_named_after_the_container_is_written_through_self() {
 #[test]
 fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     let payload = |payload: &str, case: &str, wire: &str| {
-        format!("case \"{wire}\": self = .{case}(try {payload}(swiftSchemaUnjudged: decoder)); ")
+        format!(
+            "case \"{wire}\": self = .{case}(try {payload}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken + [\"kind\"])); "
+        )
     };
     let grafting = grafting_swift::swift_definition();
     assert_written(
         &grafting,
-        &format!("{ALONE} {{ self.flag = try Kinded(from: decoder) }}"),
-    );
-    assert_written(&grafting, &payload("GraftingHeldPayload", "held", "Held"));
-    assert_written(
-        &grafting,
-        "case \"Slot\": self = .slot(try Kinded(from: decoder)); ",
+        "case \"Slot\": self = .slot(try Kinded(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+         taken + [\"kind\"])); ",
     );
     assert_no_keyed_container(&grafting);
     let pointing = pointing_swift::swift_definition();
@@ -430,84 +414,21 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     }
     assert_written(
         &pointing,
-        &format!("{ALONE} {{ self.notch = try Notch(swiftSchemaUnjudged: decoder) }}"),
+        &closed(
+            &["mark"],
+            "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
+        ),
     );
     assert_written(
         &pointing,
         &format!(
-            "{ALONE} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
             pennant("flag")
         ),
     );
     assert_written(
         &pointing,
         "case \"Slot\": self = .slot(try Pennant(from: decoder)); ",
-    );
-}
-
-/// An optional map, the one member of its struct or of a variant under its name, under a content
-/// key or untagged, is read entry by entry as a map is, and is `nil` wherever an entry does not
-/// read: under a key Swift wraps too, and of models read with no judgement. `nil` writes nothing.
-#[test]
-fn an_optional_map_is_nil_wherever_an_entry_does_not_read() {
-    let trussing = trussing_swift::swift_definition();
-    let counts = format!(
-        "{TAKING} {{ do {{ {} }} catch {{ self.counts = nil }} }}",
-        entries_read(
-            "counts",
-            "UInt8",
-            "try keyed.decode(UInt8.self, forKey: entry)",
-        )
-    );
-    assert_written(&trussing, &counts);
-    assert_written(
-        &trussing,
-        "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
-         CodingKeys.self); if let held = self.counts { try held.encode(to: encoder) } }",
-    );
-    let halyard = halyard_swift::swift_definition();
-    assert_written(&halyard, &counts);
-    assert_written(
-        &halyard,
-        "case \"Open\": self = .open(try HalyardOpenPayload(swiftSchemaUnjudged: \
-         container.superDecoder(forKey: key)));",
-    );
-    let tailing = tailing_swift::swift_definition();
-    assert_written(&tailing, &counts);
-    assert_written(
-        &tailing,
-        "self = .open(try TailingOpenPayload(swiftSchemaUnjudged: \
-         container.superDecoder(forKey: .swiftSchemaContent)));",
-    );
-    let slacking = slacking_swift::swift_definition();
-    assert_written(&slacking, &counts);
-    assert_written(
-        &slacking,
-        "if let value = try? SlackingOpenPayload(swiftSchemaUnjudged: decoder, \
-         swiftSchemaWithout: taken) { self = .open(value); return };",
-    );
-    let reeling = reeling_swift::swift_definition();
-    assert_written(
-        &reeling,
-        &format!(
-            "{TAKING} {{ do {{ self.counts = try ReelingCountsKeyedMap(swiftSchemaUnjudged: \
-             decoder, swiftSchemaWithout: taken).storage }} catch {{ self.counts = nil }} }}"
-        ),
-    );
-    assert_written(
-        &reeling,
-        "if let held = self.counts { try ReelingCountsKeyedMap(storage: held).encode(to: encoder) }",
-    );
-    assert_written(
-        &winching_swift::swift_definition(),
-        &format!(
-            "{TAKING} {{ do {{ {} }} catch {{ self.notches = nil }} }}",
-            entries_read(
-                "notches",
-                "Notch",
-                "try Notch(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry))",
-            )
-        ),
     );
 }
 
@@ -625,4 +546,20 @@ fn a_flattened_enum_writes_its_unit_variant_as_its_name_over_null() {
             "the key type is declared once in: {definition}"
         );
     }
+}
+
+/// The two reads of a struct that refuses a key beside `keys`: the one that takes the keys the types
+/// around it took and reads `body`, and the one alone that refuses any other key first.
+fn closed(keys: &[&str], body: &str) -> String {
+    let listed: Vec<String> = keys.iter().map(|key| format!("\"{key}\"")).collect();
+    format!(
+        "{TAKING} {{ {body} }}; {ALONE} {{ if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![{}].contains(unknown.stringValue) {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) }} }}; try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }};",
+        listed.join(", ")
+    )
 }

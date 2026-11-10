@@ -22,6 +22,13 @@ const BROKEN_LEDGER: &str =
 const BROKEN_ENTRIES: &str =
     "'entries.1.label': an entry has a label; 'entries.2.label': an entry has a label";
 
+/// Two sound entries and nothing else, as a holder of `entries` alone writes them.
+const ENTRIES_ONLY: &str = r#"{"entries":[{"id":"a","label":"x"},{"id":"b","label":"y"}]}"#;
+
+/// [`BROKEN_LEDGER`]'s entries and nothing else.
+const BROKEN_ENTRIES_ONLY: &str =
+    r#"{"entries":[{"id":"a","label":"x"},{"id":"b","label":""},{"id":"c","label":""}]}"#;
+
 /// Two sound entries, as a holder writes them under `entries`.
 const ENTRIES: &str = r#"{"entries":[{"id":"a","label":"x"},{"id":"b","label":"y"}],"held":[]}"#;
 
@@ -174,11 +181,11 @@ fn a_type_that_holds_itself_under_a_container_default_is_judged_once_per_node() 
 #[test]
 fn a_parameter_bounded_where_it_is_declared_reads_its_model_unjudged() {
     assert_eq!(
-        checks_of_reading::<DisplayedLedger<String>>(ENTRIES),
+        checks_of_reading::<DisplayedLedger<String>>(ENTRIES_ONLY),
         [2, 0, 0]
     );
     assert_eq!(
-        refusal_of_reading::<DisplayedLedger<String>>(BROKEN_LEDGER),
+        refusal_of_reading::<DisplayedLedger<String>>(BROKEN_ENTRIES_ONLY),
         BROKEN_ENTRIES
     );
 }
@@ -216,7 +223,7 @@ fn a_member_that_names_a_preprocess_is_corrected_and_judged_once() {
     );
     assert_eq!(corrections_taken(), 1);
     assert_eq!(
-        refusal_of_reading::<Corrected<String>>(BROKEN_LEDGER),
+        refusal_of_reading::<Corrected<String>>(BROKEN_ENTRIES_ONLY),
         BROKEN_ENTRIES
     );
     assert_eq!(corrections_taken(), 1);
@@ -224,9 +231,9 @@ fn a_member_that_names_a_preprocess_is_corrected_and_judged_once() {
 
 #[test]
 fn a_concrete_filling_is_read_as_it_was() {
-    assert_eq!(checks_of_reading::<StringLedger>(ENTRIES), [2, 0, 0]);
+    assert_eq!(checks_of_reading::<StringLedger>(ENTRIES_ONLY), [2, 0, 0]);
     assert_eq!(
-        refusal_of_reading::<StringLedger>(BROKEN_LEDGER),
+        refusal_of_reading::<StringLedger>(BROKEN_ENTRIES_ONLY),
         BROKEN_ENTRIES
     );
 }

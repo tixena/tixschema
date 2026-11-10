@@ -339,7 +339,7 @@ fn the_issue_of_a_check_holds_its_path_its_value_and_its_reason() {
 /// What the README says a read lists for a broken check is what a read lists.
 #[test]
 fn the_readme_shows_where_a_broken_check_is_listed() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/recovering-decode.md");
     let mut shown: Vec<String> = Vec::new();
     let read = CheckedParcel::from_value_with(outside(), |_, found| {
         for issue in found {

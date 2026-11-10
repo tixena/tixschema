@@ -4,9 +4,6 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use tixschema::model_schema;
-
 use crate::tests::{
     adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift, by_u32_swift,
     correlation_id_swift, envelope_swift, external_tagged_swift, flattened_extra_swift,
@@ -14,6 +11,8 @@ use crate::tests::{
     tuple_point_swift, untagged_swift, user_data_swift, window_request_swift, with_flatten_swift,
     with_nullable_swift,
 };
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
 /// What every emitted type with no rule declares.
 const NO_RULE: &str = "public func validate() -> [String] { [] }";
@@ -176,11 +175,22 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
             "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
             "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
             "self.label = label;  }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws ",
-            "{ let container = try decoder.container(keyedBy: CodingKeys.self); ",
+            "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; ",
+            "var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = ",
+            "stringValue }; init?(intValue: Int) { nil } }; ",
+            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) ",
+            "throws { let container = try decoder.container(keyedBy: CodingKeys.self); ",
             "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
             "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
             "self.label = try container.decode(String.self, forKey: .label) }; ",
+            "public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty ",
+            r#"&& decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { "#,
+            "for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ",
+            r#"!["fragileItemCodes", "itemCodeList", "label"].contains(unknown.stringValue) "#,
+            "{ throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: ",
+            "decoder.codingPath + [unknown], debugDescription: ",
+            r#""unknown field `\(unknown.stringValue)`")) } }; try self.init("#,
+            "swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
             "public init(from decoder: Decoder) throws { ",
             "try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); ",
             "if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(",
@@ -224,7 +234,7 @@ fn a_holder_runs_what_it_holds_under_the_place_it_holds_it_at() {
     ] {
         assert!(swift.contains(written), "{written} is not in: {swift}");
         assert!(
-            include_str!("../../README.md").contains(written),
+            include_str!("../../docs/guide/swift.md").contains(written),
             "the README no longer shows: {written}"
         );
     }

@@ -37,7 +37,7 @@ use super::{
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
-use crate::field_type::{MissingKey, is_set_wrapper};
+use crate::field_type::{MissingKey, Scope, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
@@ -64,13 +64,12 @@ use super::{
     VariantKind, check_variant_slot_wire_is_readable, parse_serde_key_omission, variant_wire_kind,
 };
 
-#[cfg(feature = "zod")]
-use core::slice::from_ref;
-use syn::spanned::Spanned as _;
-
 #[cfg(feature = "serde")]
 use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
+#[cfg(feature = "zod")]
+use core::slice::from_ref;
+use syn::spanned::Spanned as _;
 
 /// The slot `$slot` of `Lettered::Held` under a tag alone, the refusals the expansion raises for
 /// it, and what serde answers for a write of `$value` through the same declaration.
@@ -336,7 +335,7 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
 /// One type per source serde flattens into a struct, then one enum per form serde writes an enum
 /// in whose struct variant flattens a field, each with the arguments it is declared under.
 #[cfg(feature = "serde")]
-const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
+const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 6] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatEntry { #[serde(flatten)] pub audit: DecodeAudit, \
@@ -346,10 +345,6 @@ const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 7] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeFlatBag { #[serde(flatten)] pub extra: HashMap<String, i32> }",
-    ),
-    (
-        "enable = [\"decode_with\", \"mongodb\"], default_types(T = DecodeBody)",
-        "pub struct DecodeFlatEnvelope<T> { #[serde(flatten)] pub body: T, pub id: String }",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -559,7 +554,7 @@ fn as_number_is_refused_on_a_date_the_millisecond_hook_reads_no_value_of() {
     }
     let answered = format!("error: {}", as_number_hook_refusal("Vec<DateTime<Utc>>"));
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/chrono.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for field in [
@@ -608,7 +603,7 @@ fn a_bound_on_a_date_under_as_number_is_refused_as_the_milliseconds_it_is_writte
     );
     let answered = format!("error: {}", refused[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/chrono.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
 }
@@ -658,20 +653,11 @@ fn nullable_ts_optional_conflict_ok_when_only_one_set() {
     check_nullable_ts_optional_conflict(&ModelSchemaPropMeta::default()).unwrap();
 }
 
-#[rustversion::since(1.98)]
 fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
 where
     U: Default,
 {
-    value.map_or_default(map)
-}
-
-#[rustversion::before(1.98)]
-fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
-where
-    U: Default,
-{
-    value.map(map).unwrap_or_default()
+    value.map_or_else(U::default, map)
 }
 
 /// Runs the guard over the sole field of `item`, deriving `is_optional` and `is_nullable` the way
@@ -746,7 +732,7 @@ fn a_field_of_an_alias_of_an_option_declared_above_is_held_to_the_key_guards_as_
     let message = guard_result(&bare).unwrap_err().to_string();
     assert!(message.contains("T | undefined"), "got: {message}");
     assert!(
-        include_str!("../../README.md").contains(&format!("error: {message}")),
+        include_str!("../../docs/guide/upgrading.md").contains(&format!("error: {message}")),
         "the README no longer quotes: {message}"
     );
     let nullable: syn::ItemStruct = syn::parse_quote! {
@@ -2152,7 +2138,7 @@ fn internally_tagged_empty_tuple_variant_is_refused_in_serdes_words() {
         );
     }
     assert!(
-        include_str!("../../README.md").contains(refusal),
+        include_str!("../../docs/guide/enums.md").contains(refusal),
         "the README no longer quotes this refusal:\n{refusal}"
     );
 }
@@ -2169,7 +2155,7 @@ fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
     assert!(errors[0].contains("variant `V`"), "got: {}", errors[0]);
     assert!(errors[0].contains("`Hue`"), "got: {}", errors[0]);
     assert!(
-        errors[0].contains("does not write as an object"),
+        errors[0].contains("writes beside the tag as a plain enum"),
         "got: {}",
         errors[0]
     );
@@ -2206,7 +2192,7 @@ fn flattening_a_registered_plain_enum_is_rejected() {
     assert!(error.contains("`Hue`"), "got: {error}");
     assert!(error.contains("#[serde(flatten)]"), "got: {error}");
     assert!(
-        error.contains("does not write as an object"),
+        error.contains("writes flattened as a plain enum"),
         "got: {error}"
     );
 
@@ -2460,7 +2446,7 @@ fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
             errors[0]
         );
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/troubleshooting.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -2645,17 +2631,16 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
         logged,
         [format!(
             "model_schema: field `weather` of `Logged` carries `#[serde(flatten)]` over \
-             `Weather`, which serde does not write as an object: a plain enum writes its own \
-             variant name, so it contributes no members to the object being written \u{2014} \
-             serde writes that name as a key holding null, which a schema closed around the \
-             remaining fields rejects. Write the field as a named member so the value gets a key \
-             of its own, or flatten a type serde writes as an object. {}",
+             `Weather`, which serde writes flattened as a plain enum: as a key named after the \
+             variant, holding null. TypeScript, Zod and the clients describe a plain enum as the \
+             variant's name, so none of them reads that key. Write the field as a named member so \
+             the value gets a key of its own, or flatten a type serde writes as an object. {}",
             super::FLATTENED_PLAIN_ENUM_SCOPE
         )]
     );
     let answered = format!("error: {}", logged[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/upgrading.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (source, refusal) in [
@@ -2663,19 +2648,19 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
             "#[derive(Serialize, Deserialize)] pub struct Charted { pub note: String, \
              #[serde(flatten)] pub climate: Climate }",
             "model_schema: field `climate` of `Charted` carries `#[serde(flatten)]` over \
-             `Climate`, which serde does not write as an object",
+             `Climate`, which serde writes flattened as a plain enum",
         ),
         (
             "#[derive(Serialize, Deserialize)] pub enum Logbook { Noted { note: String, \
              #[serde(flatten)] weather: Weather } }",
             "model_schema: field `weather` of `Logbook` carries `#[serde(flatten)]` over \
-             `Weather`, which serde does not write as an object",
+             `Weather`, which serde writes flattened as a plain enum",
         ),
         (
             "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub enum Reading { \
              Held(Weather) }",
             "model_schema: variant `Held` of internally tagged enum `Reading` wraps `Weather`, \
-             which serde does not write as an object",
+             which serde writes beside the tag as a plain enum",
         ),
     ] {
         let refused = refusal_texts(&expansion_over(source));
@@ -2732,11 +2717,10 @@ fn declare_plain_enum_values() {
 fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> String {
     format!(
         "model_schema: field `{field}` of `{holder}` carries `#[serde(flatten)]` over `{inner}`, \
-         which serde does not write as an object: a plain enum writes its own variant name, so it \
-         contributes no members to the object being written \u{2014} serde writes that name as a \
-         key holding null, which a schema closed around the remaining fields rejects. Write the \
-         field as a named member so the value gets a key of its own, or flatten a type serde \
-         writes as an object. {}",
+         which serde writes flattened as a plain enum: as a key named after the variant, holding \
+         null. TypeScript, Zod and the clients describe a plain enum as the variant's name, so \
+         none of them reads that key. Write the field as a named member so the value gets a key \
+         of its own, or flatten a type serde writes as an object. {}",
         super::FLATTENED_PLAIN_ENUM_SCOPE
     )
 }
@@ -2747,10 +2731,10 @@ fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> Strin
 fn tagged_plain_enum_refusal(holder: &str, inner: &str) -> String {
     format!(
         "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, which \
-         serde does not write as an object: a plain enum writes its own variant name, so nothing \
-         of it joins the tag \u{2014} serde writes that name as a key holding null, which a schema \
-         closed around the tag rejects. Name a `content` key so the value gets an object of its \
-         own, or wrap it in a struct whose fields can sit beside the tag. {}",
+         serde writes beside the tag as a plain enum: as a key named after the variant, holding \
+         null. TypeScript, Zod and the clients describe a plain enum as the variant's name, so \
+         none of them reads that key beside the tag. Name a `content` key so the value gets an \
+         object of its own, or wrap it in a struct whose fields can sit beside the tag. {}",
         super::FLATTENED_PLAIN_ENUM_SCOPE
     )
 }
@@ -2791,7 +2775,7 @@ fn a_flattened_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_i
     for refused in [&slot, &filled] {
         let answered = format!("error: {}", refused[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            include_str!("../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -2883,7 +2867,7 @@ fn a_tagged_newtype_variant_over_a_value_serde_writes_as_a_plain_enum_is_refused
     for refused in [&slot, &filled] {
         let answered = format!("error: {}", refused[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            include_str!("../../docs/guide/enums.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -3011,7 +2995,7 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
     );
     let answered = format!("error: {}", carded[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/flatten.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3031,7 +3015,7 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
     );
     let answered_felt = format!("error: {}", felt[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered_felt),
+        include_str!("../../docs/guide/upgrading.md").contains(&answered_felt),
         "the README no longer quotes: {answered_felt}"
     );
     assert_eq!(
@@ -3196,7 +3180,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeEither { \
          Fields(ProbeFields), Text(String) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeObjects { \
-         Fields(ProbeFields), Body(ProbeBody) }",
+         Body(ProbeBody), Counted { count: u32 } }",
     ] {
         let expanded = expansion_over(declared);
         assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
@@ -3216,7 +3200,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
     );
     let answered = format!("error: {}", reading[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3412,7 +3396,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
     );
     let answered = format!("error: {}", optional[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, inner) in [
@@ -3554,7 +3538,7 @@ fn a_unit_beside_a_tag_or_flattened_is_refused_in_the_words_of_what_serde_writes
     );
     let answered = format!("error: {}", in_place[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for inner in ["ProbeUnitHeld", "ProbeWrap<()>"] {
@@ -3724,7 +3708,7 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_i
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3779,7 +3763,7 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused
     );
     let answered = format!("error: {}", optional[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, slot) in [
@@ -3947,7 +3931,7 @@ fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, slot, inner, named) in [
@@ -4063,7 +4047,7 @@ fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build_with_s
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/flatten.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, flattened, inner, named) in [
@@ -4165,8 +4149,7 @@ fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every
 
 /// The shapes left alone: a generic type filled at a struct and at an `Option` of one, flattened,
 /// and a type whose value is one, flattened and in a tagged slot; a generic type declared below,
-/// flattened and filling a type declared above; and a generic type filled at the holder's own
-/// type parameter.
+/// flattened and filling a type declared above.
 #[cfg(feature = "serde")]
 #[test]
 fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
@@ -4204,11 +4187,6 @@ fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
         (
             "",
             "#[serde(tag = \"kind\")] pub enum ProbeHeldLaterFilled { Held(ProbeLaterFilled) }",
-        ),
-        (
-            "default_types(X = ProbeFields)",
-            "pub struct ProbeFlatOwn<X> { pub id: String, #[serde(flatten)] pub wrap: \
-             ProbeWrap<X> }",
         ),
     ] {
         let expanded = serialized_under(args, accepted);
@@ -4327,7 +4305,11 @@ fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_ever
     ] {
         let answered = format!("error: {quoted}");
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4400,24 +4382,41 @@ fn an_untagged_member_over_a_generic_type_filled_through_a_chain_or_at_an_option
 }
 
 /// The untagged members left alone: one over a generic type filled at a struct, and one over a
-/// generic type declared below, flattened and held under a tag alone.
+/// generic type declared below, flattened and held under a tag alone. The Swift read of the one
+/// declared below hands it every key beside it, so a build with Swift refuses it flattened beside a
+/// key.
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_is_accepted() {
     declare_filled_members();
     for held in ["ProbeFieldsMember", "ProbeLaterMember"] {
-        for accepted in [
-            format!(
-                "pub struct ProbeFlat{held} {{ pub id: String, #[serde(flatten)] pub m: {held} }}"
-            ),
-            format!("#[serde(tag = \"kind\")] pub enum ProbeHeld{held} {{ Held({held}) }}"),
-        ] {
-            let expanded = serialized_under("", &accepted);
+        let tagged =
+            format!("#[serde(tag = \"kind\")] pub enum ProbeHeld{held} {{ Held({held}) }}");
+        let expanded = serialized_under("", &tagged);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {tagged}, got: {expanded}"
+        );
+        let flattened = format!(
+            "pub struct ProbeFlat{held} {{ pub id: String, #[serde(flatten)] pub m: {held} }}"
+        );
+        let refused = refusal_texts(&serialized_under("", &flattened));
+        if cfg!(feature = "swift") && held == "ProbeLaterMember" {
             assert_eq!(
-                compile_error_count(&expanded),
-                0,
-                "for {accepted}, got: {expanded}"
+                refused,
+                [format!(
+                    "model_schema: type `ProbeFlat{held}` flattens `m` (`{held}`) beside other \
+                     keys, and `{held}` holds `ProbeWrapUnseen`, which was declared below \
+                     `{held}`, in another crate, or with no `#[model_schema]`: the Swift read of \
+                     `{held}` was written before it could see which keys `ProbeWrapUnseen` \
+                     reads, and hands it the keys beside `m` that serde does not. Declare \
+                     `ProbeWrapUnseen` above `{held}`, or write `m` under a key of its own."
+                )],
+                "for {flattened}"
             );
+        } else {
+            assert_eq!(refused, Vec::<String>::new(), "for {flattened}");
         }
     }
 }
@@ -4575,7 +4574,11 @@ fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every
     for quoted in branch_refusals("OwnMember", "ProbeOwnMember<String>", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4644,8 +4647,8 @@ fn an_untagged_enum_filled_at_its_own_parameter_through_a_wrapper_a_holder_or_an
     }
 }
 
-/// The generic untagged enums left alone: each filled at a struct, filled at a type parameter of
-/// the holder, and one declared below, flattened and held under a tag alone.
+/// The generic untagged enums left alone: each filled at a struct and one declared below, flattened
+/// and held under a tag alone, and one filled at a type parameter of the holder under a tag alone.
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_is_accepted() {
@@ -4667,18 +4670,14 @@ fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_i
             "for {filled}"
         );
     }
-    for accepted in [
-        "pub struct ProbeFlatOwnParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
-         ProbeOwnMember<T> }",
-        "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }",
-    ] {
-        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
-        assert_eq!(
-            compile_error_count(&expanded),
-            0,
-            "for {accepted}, got: {expanded}"
-        );
-    }
+    let accepted =
+        "#[serde(tag = \"kind\")] pub enum ProbeHeldOwnParameter<T> { Held(ProbeOwnMember<T>) }";
+    let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
+    assert_eq!(
+        compile_error_count(&expanded),
+        0,
+        "for {accepted}, got: {expanded}"
+    );
 }
 
 /// No local build is of the clients alone, so the gates are read off the sources.
@@ -4775,7 +4774,11 @@ fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_ev
     for quoted in branch_refusals("SlotText", "ProbeSlotText", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4928,7 +4931,11 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refu
     for quoted in branch_refusals("OwnAliasOf", "ProbeOwnAliasOf<String>", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4975,9 +4982,9 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_through_another_type_is_ref
     }
 }
 
-/// The holders left alone: each filled at a struct, a holder over an enum declared below, a
-/// holder declared below, and each filled at a type parameter of the type that holds it,
-/// flattened and held under a tag alone.
+/// The holders left alone: each filled at a struct, a holder over an enum declared below and a
+/// holder declared below, flattened and held under a tag alone, and one filled at a type parameter
+/// of the type that holds it under a tag alone.
 #[cfg(feature = "serde")]
 #[test]
 fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_declared_below_is_accepted()
@@ -5002,19 +5009,14 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_decl
             "for {filled}"
         );
     }
-    for accepted in [
-        "pub struct ProbeFlatOwnAliasParameter<T> { pub id: String, #[serde(flatten)] pub wrap: \
-         ProbeOwnAliasOf<T> }",
-        "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
-         Held(ProbeSlotOwnOf<T>) }",
-    ] {
-        let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
-        assert_eq!(
-            compile_error_count(&expanded),
-            0,
-            "for {accepted}, got: {expanded}"
-        );
-    }
+    let accepted = "#[serde(tag = \"kind\")] pub enum ProbeHeldSlotOwnParameter<T> { \
+         Held(ProbeSlotOwnOf<T>) }";
+    let expanded = serialized_under("default_types(T = ProbeFields)", accepted);
+    assert_eq!(
+        compile_error_count(&expanded),
+        0,
+        "for {accepted}, got: {expanded}"
+    );
 }
 
 /// What the record every build with serde writes proves of each flattened type is what the record
@@ -5038,11 +5040,11 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nullable { Obj(Plain), \
          Maybe(Option<Plain>) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Named { Obj(Plain), \
-         Slug(Slug), Hue(Hue), Bare(Bare), Bag(Bag), Maybe(MaybePlain) }",
+         Slug(Slug), Bare(Bare), Bag(Bag), Maybe(MaybePlain) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nested { Inner(Scalar), \
-         Obj(Plain) }",
+         Tagged(Tagged) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Objects { First(Plain), \
-         Second(Plain) }",
+         Second(Tagged) }",
         "pub type SlugAlias = Slug;",
         "pub type ScalarAlias = Scalar;",
         "pub type Ids = Vec<String>;",
@@ -6106,7 +6108,12 @@ fn the_readme_states_the_refusal_of_a_json_value_as_the_build_answers_it() {
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0].0);
     assert_eq!(
-        include_str!("../../README.md").matches(&answered).count(),
+        concat!(
+            include_str!("../../docs/guide/models.md"),
+            include_str!("../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -6259,7 +6266,7 @@ fn the_readme_states_the_refusal_of_an_undescribable_primitive_as_the_build_answ
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/models.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
 }
@@ -8541,7 +8548,7 @@ fn a_range_on_a_bool_or_a_char_field_is_refused() {
 /// The README prints each refusal, held here to what the guard says.
 #[test]
 fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/validation.md");
     let on_a_list: syn::ItemStruct = syn::parse_quote! {
         struct Article {
             #[model_schema_prop(minLength = 1, pattern = "^[a-z]+$")]
@@ -9164,7 +9171,8 @@ fn a_literal_beside_a_rule_is_refused() {
     });
     assert_eq!(shown.len(), 1, "got: {shown:?}");
     assert!(
-        include_str!("../../README.md").contains(&format!("error: {}\n", shown[0])),
+        include_str!("../../docs/guide/literals-and-type-names.md")
+            .contains(&format!("error: {}\n", shown[0])),
         "the README no longer shows the refusal: {}",
         shown[0]
     );
@@ -11672,12 +11680,13 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 9] = [
+    let probes: [proc_macro2::TokenStream; 10] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
+        quote::quote! { nonstrict },
         quote::quote! { default_types(IdType = String) },
         quote::quote! { enable = ["decode_with"] },
         quote::quote! { check = ["withinParcel"] },
@@ -12201,7 +12210,7 @@ fn an_enum_with_no_string_check_is_not_refused() {
 
 #[test]
 fn a_unit_variants_name_that_breaks_the_enums_check_is_a_build_error() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/enums.md");
     let sized = expansion_under(
         "minLength = 2, maxLength = 3",
         "pub enum Size { S, Xl, Xxxxl }",
@@ -12388,7 +12397,11 @@ fn an_enums_string_check_that_reaches_nothing_is_refused() {
         }
     }
     assert!(
-        include_str!("../../README.md").contains(
+        concat!(
+            include_str!("../../docs/guide/enums.md"),
+            include_str!("../../docs/guide/flatten.md")
+        )
+        .contains(
             "error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check \
              holds each variant written with no data and each field written as a string or a \
              path that carries no `literal`, and `Shape` has neither\n"
@@ -13293,7 +13306,7 @@ fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_n
             "for {source}, got: {expanded}"
         );
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/mongodb-operations.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -16057,7 +16070,7 @@ fn the_readme_shows_the_refusal_of_an_index_map_written_with_the_feature_off() {
         super::gated_name_message("IndexMap", "indexmap", "a map")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -16197,7 +16210,7 @@ fn the_readme_shows_the_refusal_of_a_chrono_type_written_with_the_feature_off() 
         super::gated_name_message("NaiveDate", "chrono", "a date or a time")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -16210,7 +16223,7 @@ fn the_readme_shows_the_refusal_of_an_object_id_written_with_the_feature_off() {
         super::gated_name_message("ObjectId", "mongodb", "a MongoDB ObjectId")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -17846,6 +17859,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
     super::FieldDef {
         array_lengths: Vec::new(),
         docs: String::new(),
+        description: None,
         field_type: FieldDefType::SiblingType(wrapper.to_owned(), vec![element]),
         array_depth: 0,
         model_schema_prop_meta: None,
@@ -17857,6 +17871,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
+        scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
     }
 }
@@ -20482,7 +20497,7 @@ fn a_direct_flatten_of_a_value_written_in_place_is_refused_by_its_own_keyword() 
         if spelled == "(String, u32)" {
             let answered = format!("error: {refused}");
             assert!(
-                include_str!("../../README.md").contains(&answered),
+                include_str!("../../docs/guide/flatten.md").contains(&answered),
                 "the README no longer quotes: {answered}"
             );
         }
@@ -20510,7 +20525,7 @@ fn a_direct_flatten_of_a_plain_enum_is_left_to_the_guard_written_for_it() {
         .map(|error| error.to_string())
         .unwrap();
     assert!(
-        written.contains("a plain enum writes its"),
+        written.contains("which serde writes flattened as a plain enum"),
         "got: {written}"
     );
 }
@@ -21557,14 +21572,29 @@ fn compile_error_count(tokens: &proc_macro2::TokenStream) -> usize {
     count
 }
 
-/// The diagnostics `tokens` carries, told from the attribute values and refusal stubs that are
-/// string literals too by the prefix every diagnostic this crate writes opens with.
+/// The message of every `compile_error!` `tokens` carries: an assertion the compiler evaluates
+/// against a type the expansion did not see refuses nothing by itself.
 #[cfg(feature = "serde")]
 fn refusal_texts(tokens: &proc_macro2::TokenStream) -> Vec<String> {
-    literal_texts(tokens)
-        .into_iter()
-        .filter(|text| text.starts_with("model_schema: "))
-        .collect()
+    let mut texts = Vec::new();
+    let (mut named, mut invoked) = (false, false);
+    for tree in tokens.clone() {
+        if let proc_macro2::TokenTree::Group(group) = &tree {
+            if invoked {
+                texts.extend(
+                    literal_texts(&group.stream())
+                        .into_iter()
+                        .filter(|text| text.starts_with("model_schema: ")),
+                );
+            } else {
+                texts.extend(refusal_texts(&group.stream()));
+            }
+        }
+        invoked = named
+            && matches!(&tree, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '!');
+        named = matches!(&tree, proc_macro2::TokenTree::Ident(ident) if ident == "compile_error");
+    }
+    texts
 }
 
 /// The all-unit enum of the untagged case, written under `attributes`.
@@ -21918,7 +21948,7 @@ fn the_readme_shows_the_transparent_direction_refusal() {
         "error: model_schema: type `Split`: {}",
         transparent_direction_refusal("field `count`", "field `text`")
     );
-    assert!(include_str!("../../README.md").contains(&shown));
+    assert!(include_str!("../../docs/guide/generics-and-brands.md").contains(&shown));
 }
 
 #[cfg(feature = "serde")]
@@ -22914,7 +22944,7 @@ fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
         );
         assert_refused_without_member_keys("", source, &refusal);
         assert!(
-            name != "Becalm" || include_str!("../../README.md").contains(&refusal),
+            name != "Becalm" || include_str!("../../docs/guide/enums.md").contains(&refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -22980,7 +23010,7 @@ fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
         let refusal = untagged_variant_refusal(enum_name, "Loose");
         assert_refused_without_member_keys("", source, &refusal);
         assert!(
-            enum_name != "Mixed" || include_str!("../../README.md").contains(&refusal),
+            enum_name != "Mixed" || include_str!("../../docs/guide/enums.md").contains(&refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -23023,7 +23053,7 @@ fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
                        whole enum.";
         assert_refused_without_member_keys("", source, refusal);
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/enums.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }

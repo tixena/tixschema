@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel`: variant `Counted`, field `counts`: `Counts`, declared below `Parcel`, in another crate, or with no `#[model_schema]`, holds a map keyed by a number or a `bool`: serde reads an enum under a tag alone from a copy of the payload it buffers, where every key is text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`.
+  --> tests/flatten_order_refusals/tagged_variant_over_a_map_keyed_by_a_number_declared_below.rs:13:23
+   |
+13 |     Counted { counts: Counts },
+   |                       ^^^^^^ evaluation of `_` failed here

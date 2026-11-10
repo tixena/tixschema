@@ -3,7 +3,7 @@
 //! Each `#[model_schema]` item earns `kotlin_definition()` inside a `{snake_case}_kotlin` module
 //! beside it (never a direct inherent `impl` — see `features::kotlin::kotlin_module_tokens`).
 
-use alloc::collections::BTreeMap;
+use core::fmt::Debug;
 use std::collections::HashMap;
 
 #[cfg(feature = "mongodb")]
@@ -18,26 +18,25 @@ use super::corrected_options_models::{moused_kotlin, reeved_kotlin, wormed_kotli
 use super::flattened_models::Ensign;
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
-    CHOCKED, CLEATING, Cathead, Chafing, Chock, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
+    CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
     Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying, GAFFING,
-    GONFALON, Gaffing, Gammoning, Gasketing, Gonfalon, HEAVING, HITCHING, Hawsepipe, Heaving,
-    Hitching, Jibing, Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, Nipping, PAYLOAD,
-    PENNANT_TAGS, Pennant, ProbeLocker, Quaying, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED,
-    STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing, Semaphore, Sheeting,
-    Slinging, Snubbing, Splicing, Stoppering, Stowing, Striking, Stropping, Swaying, Tacking,
-    UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, read_of,
+    GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching, Jibing, Knotting,
+    LOCKER, Lanyarding, Luffing, MARLINE, Netting, PAYLOAD, PENNANT_TAGS, Pennant, Quaying,
+    Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
+    Scudding, Seizing, Semaphore, Sheeting, Snubbing, Splicing, Stowing, Striking, Stropping,
+    Swaying, Tacking, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping,
+    Yawing, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
     belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
     cathead_kotlin, chafing_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin,
     dressing_kotlin, emptied_locker_kotlin, flag_kotlin, fraying_kotlin, gaffing_kotlin,
-    gammoning_kotlin, gasketing_kotlin, gonfalon_kotlin, hawsepipe_kotlin, heaving_kotlin,
-    hitching_kotlin, knotting_kotlin, luffing_kotlin, netting_kotlin, nipping_kotlin,
-    pennant_kotlin, probe_locker_kotlin, quaying_kotlin, rousing_kotlin, scarfing_kotlin,
-    scudding_kotlin, seizing_kotlin, semaphore_kotlin, slinging_kotlin, splicing_kotlin,
-    stoppering_kotlin, stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin,
-    whipping_kotlin, yawing_kotlin,
+    gammoning_kotlin, gonfalon_kotlin, heaving_kotlin, hitching_kotlin, knotting_kotlin,
+    luffing_kotlin, netting_kotlin, pennant_kotlin, quaying_kotlin, rousing_kotlin,
+    scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin, splicing_kotlin,
+    stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
+    yawing_kotlin,
 };
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
@@ -470,10 +469,30 @@ fn test_object_id_type_is_constructible() {
     assert_ne!(has_id.id.to_hex(), String::new());
 }
 
+/// The name of this crate as each helper the Kotlin emitter numbers carries it after its number.
+pub fn crate_tag() -> String {
+    env!("CARGO_CRATE_NAME")
+        .split('_')
+        .map(|part| {
+            let mut letters = part.chars();
+            letters.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(letters).collect()
+            })
+        })
+        .collect()
+}
+
 /// `kotlin` with the number serializers it declares renamed `KotlinNumber1`, `KotlinNumber2`, in
-/// the order they first appear: the counter that names them runs across the items of a crate.
+/// the order they first appear, and the crate's name taken off every numbered helper: the counter
+/// that numbers them runs across the items of a crate.
 pub fn renumbered(kotlin: &str) -> String {
-    let Ok(pattern) = regex::Regex::new(r"KotlinNumber(\d+)") else {
+    let tag = crate_tag();
+    let (Ok(pattern), Ok(helper)) = (
+        regex::Regex::new(&format!(r"KotlinNumber(\d+){tag}")),
+        regex::Regex::new(&format!(
+            r"(Kotlin(?:Text|Array|Tuple|Unit|Range|Result)\d+){tag}"
+        )),
+    ) else {
         return kotlin.to_owned();
     };
     let mut order: Vec<String> = Vec::new();
@@ -483,21 +502,20 @@ pub fn renumbered(kotlin: &str) -> String {
             order.push(digits);
         }
     }
-    pattern
-        .replace_all(kotlin, |found: &regex::Captures<'_>| {
-            let at = order
-                .iter()
-                .position(|digits| *digits == found[1])
-                .unwrap_or(0);
-            format!("KotlinNumber{}", at + 1)
-        })
-        .into_owned()
+    let numbered = pattern.replace_all(kotlin, |found: &regex::Captures<'_>| {
+        let at = order
+            .iter()
+            .position(|digits| *digits == found[1])
+            .unwrap_or(0);
+        format!("KotlinNumber{}", at + 1)
+    });
+    helper.replace_all(&numbered, "$1").into_owned()
 }
 
 /// `kotlin` without the annotation that reads a number or a `bool` through its serializer, so a
 /// test of the types a declaration writes reads them as the Kotlin types they are.
 pub fn without_number_readers(kotlin: &str) -> String {
-    regex::Regex::new(r"@Serializable\(with = KotlinNumber\d+::class\) ").map_or_else(
+    regex::Regex::new(r"@Serializable\(with = KotlinNumber\d+\w*::class\) ").map_or_else(
         |_| kotlin.to_owned(),
         |pattern| pattern.replace_all(kotlin, "").into_owned(),
     )
@@ -906,21 +924,14 @@ fn every_flattened_fixture_is_written_as_serde_writes_it() {
 /// own: a function after a struct is handed the keys neither the struct nor its holder took, a
 /// struct with a member serde never writes among them, the struct's own tag and the key of a
 /// member it never reads among those it did not, and one ahead of a struct, or after a struct
-/// that takes no key, every key. A struct after a struct, or beside a member of its holder's own,
-/// that reads the same key is refused, and an optional one reads no value, nor does one whose tag
-/// alone is in the object.
+/// that takes no key, every key. An optional struct whose tag alone is in the object reads no
+/// value.
 #[test]
 fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
     let whipping: Whipping = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(whipping.tally.keys, ["north"]);
     let rousing: Rousing = serde_json::from_str(UNWRITTEN).unwrap();
     assert_eq!(rousing.tally.keys, ["north"]);
-    assert_eq!(
-        serde_json::from_str::<Gasketing>(UNWRITTEN)
-            .unwrap_err()
-            .to_string(),
-        "missing field `label` at line 1 column 34"
-    );
     let hitching: Hitching = serde_json::from_str(HITCHING).unwrap();
     assert_eq!(hitching.tally.keys, ["north"]);
     let bending: Bending = serde_json::from_str(PAYLOAD).unwrap();
@@ -931,17 +942,6 @@ fn serde_hands_a_flattened_member_the_keys_no_member_ahead_of_it_took() {
     let brailing: Brailing = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(brailing.tally.keys, ["label", "north"]);
     assert_eq!(read_of::<Stropping>(STROPPING), STROPPING);
-    for refused in [
-        serde_json::from_str::<Stoppering>(PAYLOAD).unwrap_err(),
-        serde_json::from_str::<Nipping>(PAYLOAD).unwrap_err(),
-    ] {
-        assert_eq!(
-            refused.to_string(),
-            "missing field `label` at line 1 column 23"
-        );
-    }
-    let slinging: Slinging = serde_json::from_str(PAYLOAD).unwrap();
-    assert_eq!(slinging.spare, None);
     let dipping: Dipping = serde_json::from_str(ENSIGN).unwrap();
     assert_eq!(dipping.tally.keys, ["kind", "north"]);
     let gammoning: Gammoning = serde_json::from_str(MARLINE).unwrap();
@@ -1110,27 +1110,11 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
     }
 }
 
-/// What serde reads of an optional map, the one member, from each of [`LOCKER`]: the map where
-/// every entry reads as a count, and `None` where one does not, which it writes as no entry. Under
-/// a function it reads the map from what the function answers: it refuses an entry that does not
-/// read as a count, and reads `null` as `None`.
+/// What serde reads of an optional map, the one member, under a function from each of [`LOCKER`]:
+/// the map from what the function answers, refusing an entry that does not read as a count, and
+/// `null` read as `None`.
 #[test]
-fn serde_reads_an_optional_flattened_map_as_none_where_an_entry_does_not_read() {
-    let read = LOCKER.map(|payload| serde_json::from_str::<ProbeLocker>(payload).unwrap().counts);
-    assert_eq!(
-        read,
-        [
-            Some(BTreeMap::new()),
-            Some(BTreeMap::from([("north".to_owned(), 2)])),
-            None,
-            None,
-            None
-        ]
-    );
-    assert_eq!(
-        LOCKER.map(read_of::<ProbeLocker>),
-        ["{}", r#"{"north":2}"#, "{}", "{}", "{}"]
-    );
+fn serde_reads_an_optional_flattened_map_under_a_function_from_what_it_answers() {
     assert_eq!(
         LOCKER.map(read_of::<CorrectedLocker>),
         ["{}", r#"{"north":2}"#, "refused", "refused", "refused"]
@@ -1143,27 +1127,13 @@ fn serde_reads_an_optional_flattened_map_as_none_where_an_entry_does_not_read() 
     assert_eq!(emptied, [None, None, None, None, None]);
 }
 
-/// An optional map, the one member, writes no entry where it holds no value, and is read as
-/// `null` wherever an entry does not read as its value. Under a function it is read from what the
-/// function answers, and as `null` where that is `null`.
+/// An optional map, the one member, under a function is read from what the function answers, and
+/// as `null` where that is `null`.
 #[test]
 #[cfg(feature = "serde")]
-fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
+fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
     let entries = "mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }";
     for (kotlin, held) in [
-        (
-            renumbered(&probe_locker_kotlin::kotlin_definition()),
-            "buildJsonObject { value.counts?.forEach { (k, v) -> put(k, \
-             output.json.encodeToJsonElement(KotlinNumber1, v)) } }"
-                .to_owned(),
-        ),
-        (
-            renumbered(&probe_locker_kotlin::kotlin_definition()),
-            format!(
-                "val counts = runCatching {{ obj.{entries} }}.getOrNull(); \
-                 return ProbeLocker(counts = counts) }}"
-            ),
-        ),
         (
             renumbered(&corrected_locker_kotlin::kotlin_definition()),
             format!(
@@ -1187,8 +1157,7 @@ fn an_optional_flattened_map_is_read_as_null_where_an_entry_does_not_read() {
 
 /// What serde reads of a map keyed by a plain enum, the one member, from each of [`CHOCKED`] and
 /// [`SNUBBED`]: a key a variant is written under, its `rename` and the enum's `rename_all`
-/// among them, written back as it was read, and a key no variant is written under refused, or
-/// read as `None` where the map is optional.
+/// among them, written back as it was read, and a key no variant is written under refused.
 #[test]
 fn serde_reads_a_flattened_map_keyed_by_an_enum_under_the_names_its_variants_are_written_under() {
     assert_eq!(
@@ -1207,27 +1176,6 @@ fn serde_reads_a_flattened_map_keyed_by_an_enum_under_the_names_its_variants_are
             .to_string(),
         "unknown variant `Bow`, expected `Port` or `Starboard` at line 1 column 9"
     );
-    let read = CHOCKED.map(|payload| serde_json::from_str::<Hawsepipe>(payload).unwrap().lines);
-    assert_eq!(
-        read,
-        [
-            Some(BTreeMap::new()),
-            Some(BTreeMap::from([(Chock::Port, 2)])),
-            Some(BTreeMap::from([(Chock::Port, 2), (Chock::Starboard, 3)])),
-            None,
-            None
-        ]
-    );
-    assert_eq!(
-        CHOCKED.map(read_of::<Hawsepipe>),
-        [
-            "{}",
-            r#"{"Port":2}"#,
-            r#"{"Port":2,"Starboard":3}"#,
-            "{}",
-            "{}"
-        ]
-    );
     assert_eq!(
         SNUBBED.map(read_of::<Snubbing>),
         [r#"{"bow":2}"#, r#"{"open_water":2}"#, "refused"]
@@ -1235,7 +1183,7 @@ fn serde_reads_a_flattened_map_keyed_by_an_enum_under_the_names_its_variants_are
 }
 
 /// A flattened map keyed by a plain enum, the one member, writes each key as the text the key's
-/// serializer writes and reads it back through that serializer, optional or not.
+/// serializer writes and reads it back through that serializer.
 #[test]
 #[cfg(feature = "serde")]
 fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serializer() {
@@ -1253,17 +1201,6 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
         (
             renumbered(&cathead_kotlin::kotlin_definition()),
             format!("val lines = obj.{entries}; return Cathead(lines = lines) }}"),
-        ),
-        (
-            renumbered(&hawsepipe_kotlin::kotlin_definition()),
-            format!("buildJsonObject {{ value.lines?.{entry_written} }}"),
-        ),
-        (
-            renumbered(&hawsepipe_kotlin::kotlin_definition()),
-            format!(
-                "val lines = runCatching {{ obj.{entries} }}.getOrNull(); \
-                 return Hawsepipe(lines = lines) }}"
-            ),
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
@@ -1347,29 +1284,6 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
             renumbered(&bending_kotlin::kotlin_definition()),
             labelling.to_owned(),
         ),
-        (
-            renumbered(&stoppering_kotlin::kotlin_definition()),
-            labelling.to_owned(),
-        ),
-        (
-            renumbered(&stoppering_kotlin::kotlin_definition()),
-            "val twice = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
-                .to_owned(),
-        ),
-        (
-            renumbered(&nipping_kotlin::kotlin_definition()),
-            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
-                .to_owned(),
-        ),
-        (
-            renumbered(&slinging_kotlin::kotlin_definition()),
-            "val spare = if (obj.keys.any { it in spareKeys }) \
-             input.json.decodeFromJsonElement(LabellingUnjudged, JsonObject(obj.filterKeys { it \
-             in setOf(\"label\") })) else null;"
-                .to_owned(),
-        ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     }
@@ -1391,12 +1305,6 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
             renumbered(&rousing_kotlin::kotlin_definition()),
             "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - hauledKeys)));",
-        ),
-        (renumbered(&gasketing_kotlin::kotlin_definition()), hauled),
-        (
-            renumbered(&gasketing_kotlin::kotlin_definition()),
-            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") }));",
         ),
         (
             renumbered(&brailing_kotlin::kotlin_definition()),
@@ -1609,10 +1517,43 @@ fn an_optional_type_that_names_a_function_is_read_from_what_the_function_answers
     }
 }
 
+/// Asserts that serde refused each payload of `read` at the place held beside the key it names.
+fn assert_refused_keys<T>(read: &[Result<T, serde_json::Error>], refused: &[(usize, &str)])
+where
+    T: Debug,
+{
+    for &(at, key) in refused {
+        let said = read[at].as_ref().unwrap_err().to_string();
+        assert!(
+            said.starts_with(&format!("unknown field `{key}`")),
+            "{said}"
+        );
+    }
+}
+
+/// What serde reads of each payload of [`Belting`]: the enum's entry, a refusal of a key no member
+/// reads, and no value where no entry is under a variant's name.
+fn assert_belted(bay: &Tacking) {
+    let belted = BELTING.map(|payload| {
+        serde_json::from_str::<Belting>(payload)
+            .map(|read| read.tacking)
+            .map_err(|refused| refused.to_string())
+    });
+    assert_eq!(
+        belted,
+        [
+            Ok(Some(bay.clone())),
+            Err("unknown field `Other` at line 1 column 22".to_owned()),
+            Ok(None)
+        ]
+    );
+}
+
 /// What serde reads of each holder of a flattened externally tagged enum: the first entry, in the
 /// object's order, under a name a variant is read under, its alias included, is the enum's, and
 /// every other entry is left to the members after it. A holder with no such entry is refused, and
-/// an optional enum reads no value.
+/// so is one of no member that reads every key with a key none of its members reads, a second
+/// variant's entry among them; an optional enum reads no value.
 #[test]
 fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     let bay = || Tacking::Bay {
@@ -1633,18 +1574,18 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
         [
             Some(&bay()),
             Some(&bay()),
-            Some(&bay()),
-            Some(&bay()),
+            None,
+            None,
             Some(&Tacking::Calm),
             Some(&Tacking::Held("x".to_owned()))
         ]
     );
+    assert_refused_keys(&stowed, &[(2, "north"), (3, "Dock")]);
     assert_eq!(
         stowed[6].as_ref().unwrap_err().to_string(),
         "no variant of enum Tacking found in flattened data at line 1 column 12"
     );
-    let belted = BELTING.map(|payload| serde_json::from_str::<Belting>(payload).unwrap().tacking);
-    assert_eq!(belted, [Some(bay()), None, None]);
+    assert_belted(&bay());
     let heaved = HEAVING.map(|payload| {
         let read: Heaving = serde_json::from_str(payload).unwrap();
         (read.tacking, read.tally.keys)
@@ -1710,27 +1651,31 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
 
 /// What serde reads of a flattened enum under a tag and a content key, which it reads as a struct
 /// of the two keys: a function after it is handed every other key, and a struct after it reads its
-/// own. Of entries under two names of a flattened externally tagged enum, serde reads the first.
+/// own. A holder of only members that take their own keys refuses a key none of them reads, and
+/// so refuses entries under two names of a flattened externally tagged enum.
 #[test]
 fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_of_two_entries() {
     let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
     assert_eq!(chafing.tally.keys, ["north"]);
     let frayed = FRAYING.map(|payload| {
-        let read: Fraying = serde_json::from_str(payload).unwrap();
-        read.labelling.label
+        serde_json::from_str::<Fraying>(payload)
+            .map(|read| read.labelling.label)
+            .map_err(|refused| refused.to_string())
     });
-    assert_eq!(frayed, ["m", "m"]);
-    let stowed =
-        UNDER_TWO_NAMES.map(|payload| serde_json::from_str::<Stowing>(payload).unwrap().tacking);
-    let named = |label: &str| label.to_owned();
     assert_eq!(
-        stowed,
+        frayed,
         [
-            Tacking::Bay { label: named("n") },
-            Tacking::Dock { label: named("s") },
-            Tacking::Dock { label: named("s") }
+            Ok("m".to_owned()),
+            Err("unknown field `north` at line 1 column 58".to_owned())
         ]
     );
+    for payload in UNDER_TWO_NAMES {
+        let refused = serde_json::from_str::<Stowing>(payload).unwrap_err();
+        assert!(
+            refused.to_string().starts_with("unknown field `"),
+            "{payload}: {refused}"
+        );
+    }
 }
 
 /// A flattened enum under a tag and a content key takes both keys: a function after it is handed
@@ -1946,7 +1891,8 @@ fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
 
 /// What serde reads of each enum with a flattened member in a variant, written back: a map's
 /// entries and a struct's keys at the variant's own level, under every tagging that builds one,
-/// each written back where serde writes the variant's own members.
+/// each written back where serde writes the variant's own members. A variant whose flattened
+/// members all take their own keys refuses a key none of its members reads.
 #[test]
 fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
     let read = [
@@ -1963,9 +1909,6 @@ fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
             r#"{"Counted":{}}"#,
             r#"{"Counted":{"north":2}}"#,
             "refused",
-            r#"{"Spare":{}}"#,
-            r#"{"Spare":{"north":2}}"#,
-            r#"{"Spare":{}}"#,
             r#"{"Labelled":{"label":"n","note":"a"}}"#,
             r#"{"Labelled":{"label":"n","note":"a"}}"#,
             r#"{"Labelled":{"label":"n","note":"a"}}"#,
@@ -1974,22 +1917,20 @@ fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
             r#"{"kind":"Counted","held":{}}"#,
             r#"{"kind":"Counted","held":{"north":2}}"#,
             "refused",
-            r#"{"kind":"Spare","held":{"north":2}}"#,
-            r#"{"kind":"Spare","held":{}}"#,
             r#"{"kind":"Labelled","held":{"label":"n","note":"a"}}"#,
             "refused",
             r#"{"kind":"Tallied","held":{"label":"n","keys":["north"]}}"#,
             "refused",
             r#"{"label":"n","note":"a"}"#,
             r#"{"north":2}"#,
+            "refused",
             "{}",
-            "{}",
-            "{}",
+            "refused",
             r#"{"label":"n","note":"a"}"#,
             r#"{"kind":"Labelled","label":"n","note":"a"}"#,
             r#"{"kind":"Labelled","label":"n","note":"a"}"#,
             r#"{"kind":"Hoisted","label":"n"}"#,
-            r#"{"kind":"Hoisted","label":"n"}"#,
+            "refused",
             "refused",
             r#"{"Counted":{}}"#,
             r#"{"Counted":{"north":2}}"#,
@@ -2024,7 +1965,7 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
             renumbered(&gaffing_kotlin::kotlin_definition()),
             "\"Counted\" -> input.json.decodeFromJsonElement(serializer<GaffingCounted>(), data); \
              \"Labelled\" -> input.json.decodeFromJsonElement(serializer<GaffingLabelled>(), \
-             data);",
+             data) else -> throw",
         ),
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),

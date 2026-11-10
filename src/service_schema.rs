@@ -1,9 +1,17 @@
 //! `#[service_schema]`: a service declared once as a trait, read once, and handed to the emitters.
 
 #[cfg(feature = "serde")]
+mod mcp_refusals;
+#[cfg(feature = "serde")]
+pub mod mcp_tools;
+#[cfg(feature = "serde")]
+pub mod message_shape;
+#[cfg(feature = "serde")]
 mod messages;
 #[cfg(feature = "serde")]
 pub mod parse;
+#[cfg(feature = "serde")]
+pub mod skills;
 #[cfg(feature = "serde")]
 pub mod support;
 #[cfg(feature = "serde")]
@@ -12,7 +20,7 @@ pub mod transport;
 #[cfg(feature = "serde")]
 use crate::features::service_schema::emit as emit_generated_clients;
 #[cfg(feature = "serde")]
-use crate::features::service_schema::openapi_seam;
+use crate::features::service_schema::{mcp_seam, openapi_seam};
 use proc_macro2::TokenStream;
 #[cfg(feature = "serde")]
 use quote::quote;
@@ -46,15 +54,22 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
     // Both readings are answered together, so a service that asks for a transport nobody has and
     // declares a bad operation is told about each rather than about whichever was read first.
     match (asked, parse::parse_service(&declared)) {
-        (Ok(wanted), Ok(service)) => {
+        (Ok(wanted), Ok(mut service)) => {
             // Both wire-carrier gaps are answered together, for the same reason as above: a service
             // tripping both is told about each rather than about whichever was read first.
+            let skills_refusal = read_skills(&mut service, &wanted);
             let combined_refusal = [
+                skills_refusal,
                 multipart_envelope_refusal(&service, &wanted.transports),
                 stream_envelope_refusal(&service, &wanted.transports),
                 reserved_header_out_refusal(&service, &wanted.transports),
                 openapi_transport_refusal(&wanted),
                 openapi_path_refusal(&service, wanted.openapi.as_ref()),
+                wanted
+                    .transports
+                    .contains(&transport::Transport::Mcp)
+                    .then(|| mcp_refusals::refusals(&service))
+                    .flatten(),
             ]
             .into_iter()
             .flatten()
@@ -64,12 +79,19 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
             });
             combined_refusal.map_or_else(
                 || {
+                    let mcp = wanted.transports.contains(&transport::Transport::Mcp);
                     let openapi = wanted.openapi.is_some();
-                    let messages = messages::emit(&service, wanted.non_exhaustive, openapi);
+                    let jsonschema = openapi || mcp;
+                    let messages = messages::emit(&service, wanted.non_exhaustive, jsonschema);
                     // The module is handed the asked-for list as well: it anchors, at the
                     // declaration, the root names a transport's macro reaches through `$crate`.
-                    let support =
-                        support::emit(&service, &wanted.transports, wanted.non_exhaustive, openapi);
+                    let support = support::emit(
+                        &service,
+                        &wanted.transports,
+                        wanted.non_exhaustive,
+                        openapi,
+                        jsonschema,
+                    );
                     // Both halves a transport contributes are `macro_rules!` bodies, so they stay
                     // at the trait's scope; `#[macro_export]` hoists each name to the crate root.
                     let transports =
@@ -82,6 +104,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         .openapi
                         .as_ref()
                         .map(|arguments| openapi_seam(&service, arguments));
+                    let tools = mcp.then(|| mcp_seam(&service));
                     // A bare `Value` or `Map` on the wire is asked of the compiler: no proc macro
                     // can tell whether the name is `serde_json`'s.
                     let any_json_checks = parse::any_json_checks(&service);
@@ -93,6 +116,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                         #transports
                         #generated_clients
                         #document
+                        #tools
                     }
                 },
                 // Caught here, ahead of every transport's own macros, rather than left for
@@ -117,6 +141,31 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
                 #contract
             }
         }
+    }
+}
+
+/// Reads the skills folder `mcp(skills = "...")` names into `service`, or refuses it: unreadable,
+/// holding no skill, or written on a service that does not ask for `mcp`.
+#[cfg(feature = "serde")]
+fn read_skills(
+    service: &mut parse::ServiceDef,
+    wanted: &transport::ServiceArguments,
+) -> Option<syn::Error> {
+    let folder = wanted.skills.as_ref()?;
+    if !wanted.transports.contains(&transport::Transport::Mcp) {
+        return Some(syn::Error::new(
+            folder.span(),
+            "service_schema: `mcp(skills = \"...\")` ships skills through the `mcp` transport, and \
+             this service does not ask for it\n       \
+             add \"mcp\" to `transports`, or remove `mcp(skills = ...)`",
+        ));
+    }
+    match skills::read_folder(folder) {
+        Ok(read) => {
+            service.skills = Some(read);
+            None
+        }
+        Err(refusal) => Some(refusal),
     }
 }
 
@@ -179,7 +228,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
 ///
 /// ```text
 /// error: service_schema: operation `upload_document` declares a multipart file part, and this service also declares `amqp_rpc`
-///               a file part has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
+///               a file part has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` answers with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
 ///   --> tests/zz_probe.rs:22:14
 ///    |
 /// 22 |     async fn upload_document(
@@ -228,7 +277,7 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
 ///
 /// ```text
 /// error: service_schema: operation `upload_document` declares a multipart file part, and this service also declares `ws_rpc`
-///               a file part has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
+///               a file part has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers with - drop them from `transports`, or drop the `part(...)` binding and `body = "multipart"` from this operation
 ///   --> tests/zz_probe.rs:22:14
 ///    |
 /// 22 |     async fn upload_document(
@@ -271,10 +320,35 @@ fn multipart_envelope_message(operation: &Ident, envelopes: &[transport::Transpo
     format!(
         "service_schema: operation `{operation}` declares a multipart file part, and this \
          service also declares {named}\n       \
-         a file part has no carrier inside the `{{ ok, value, error }}` envelope those \
-         transports answer with - drop them from `transports`, or drop the `part(...)` binding \
-         and `body = \"multipart\"` from this operation"
+         a file part has no carrier inside {carriers} - drop them from `transports`, or drop \
+         the `part(...)` binding and `body = \"multipart\"` from this operation",
+        carriers = carriers(envelopes),
     )
+}
+
+/// What each refused transport answers with: the `{ ok, value, error }` envelope of `amqp_rpc` and
+/// `ws_rpc`, and the tool result of `mcp`.
+#[cfg(feature = "serde")]
+fn carriers(refused: &[transport::Transport]) -> String {
+    let envelope = refused
+        .iter()
+        .filter(|named| !matches!(named, transport::Transport::Mcp))
+        .map(|named| format!("`{}`", named.name()))
+        .collect::<Vec<_>>();
+    let mut phrases = Vec::new();
+    if !envelope.is_empty() {
+        phrases.push(format!(
+            "the `{{ ok, value, error }}` envelope {} answers with",
+            envelope.join(" and ")
+        ));
+    }
+    if refused
+        .iter()
+        .any(|named| matches!(named, transport::Transport::Mcp))
+    {
+        phrases.push("the tool result `mcp` answers with".to_owned());
+    }
+    phrases.join(", nor inside ")
 }
 
 /// The transports a service declared that answer inside the `{ ok, value, error }` envelope, in
@@ -289,7 +363,9 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
         .filter(|declared| {
             matches!(
                 declared,
-                transport::Transport::AmqpRpc | transport::Transport::WsRpc
+                transport::Transport::AmqpRpc
+                    | transport::Transport::Mcp
+                    | transport::Transport::WsRpc
             )
         })
         .collect()
@@ -344,7 +420,7 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
 ///
 /// ```text
 /// error: service_schema: operation `get_content` declares a streamed body, and this service also declares `amqp_rpc`
-///               a streamed body has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop `body = "stream"` from this operation
+///               a streamed body has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` answers with - drop them from `transports`, or drop `body = "stream"` from this operation
 ///   --> tests/zz_probe.rs:16:14
 ///    |
 /// 16 |     async fn get_content(
@@ -386,7 +462,7 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
 ///
 /// ```text
 /// error: service_schema: operation `get_content` declares a streamed body, and this service also declares `ws_rpc`
-///               a streamed body has no carrier inside the `{ ok, value, error }` envelope those transports answer with - drop them from `transports`, or drop `body = "stream"` from this operation
+///               a streamed body has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers with - drop them from `transports`, or drop `body = "stream"` from this operation
 ///   --> tests/zz_probe.rs:16:14
 ///    |
 /// 16 |     async fn get_content(
@@ -429,9 +505,9 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
     format!(
         "service_schema: operation `{operation}` declares a streamed body, and this service \
          also declares {named}\n       \
-         a streamed body has no carrier inside the `{{ ok, value, error }}` envelope those \
-         transports answer with - drop them from `transports`, or drop `body = \"stream\"` from \
-         this operation"
+         a streamed body has no carrier inside {carriers} - drop them from `transports`, or \
+         drop `body = \"stream\"` from this operation",
+        carriers = carriers(envelopes),
     )
 }
 
@@ -738,6 +814,12 @@ fn generated_clients(
 
 #[cfg(test)]
 mod feature_tests;
+
+#[cfg(test)]
+mod mcp_tests;
+
+#[cfg(test)]
+mod skill_tests;
 
 #[cfg(test)]
 mod tests;

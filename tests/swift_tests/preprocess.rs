@@ -74,7 +74,7 @@ pub struct Pallet {
 }
 
 /// A type that names no function and holds no type that names one.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bay {
     pub keys: Vec<String>,
@@ -129,8 +129,9 @@ pub struct Aliased {
     pub dock: String,
 }
 
-/// A holder declared above the type it flattens, which names a function.
-#[model_schema()]
+/// A holder declared above the type it flattens, which names a function: `nonstrict`, as that type
+/// is handed every key still left.
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ahead {
     #[serde(flatten)]
@@ -412,7 +413,9 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
                 r#"debugDescription: "a preprocess answered a value that is not JSON")) }; "#,
             ),
             concat!(
-                "do { return try JSONDecoder().decode(type, from: written) } ",
+                "let reader = JSONDecoder(); ",
+                r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] = true; "#,
+                "do { return try reader.decode(type, from: written) } ",
                 "catch DecodingError.typeMismatch(let asked, let context) { ",
                 "throw DecodingError.typeMismatch(asked, placed(context)) } ",
                 "catch DecodingError.valueNotFound(let asked, let context) { ",
@@ -486,7 +489,8 @@ fn a_type_that_names_no_function_is_written_as_it_was() {
     assert!(!swift.contains("swiftSchemaWithout"), "got: {swift}");
     assert!(!swift.contains("swiftSchemaCorrected"), "got: {swift}");
     let holder = loads_swift::swift_definition();
-    assert!(!holder.contains("swiftSchemaWithout"), "got: {holder}");
+    assert!(!holder.contains("SwiftSchemaPayload"), "got: {holder}");
+    assert!(!holder.contains("swiftSchemaCorrected"), "got: {holder}");
 }
 
 /// A member's function is called where the key is held: an optional member, nullable or not, is
@@ -560,7 +564,10 @@ fn a_member_is_read_from_what_its_functions_answer_in_the_way_it_was_read() {
         ],
     );
     // A type that names a function on a member alone has one read of its own.
-    assert!(!swift.contains("swiftSchemaWithout"), "got: {swift}");
+    assert!(
+        !swift.contains("SwiftSchemaPayload(from: decoder, without:"),
+        "got: {swift}"
+    );
     assert!(!swift.contains("swiftSchemaCorrected"), "got: {swift}");
 }
 

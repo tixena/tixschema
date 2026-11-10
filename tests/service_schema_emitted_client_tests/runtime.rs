@@ -24,6 +24,21 @@ static STOOD_DOWN: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 /// workspace by [`ran_with_modules`], since Node's ESM resolver does not consult `NODE_PATH`.
 pub const NODE_MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 
+/// The project [`compiled_with_modules`] compiles: strict, every `.ts` file beside it, `zod`
+/// resolved through the `node_modules` symlinked in.
+const COMPILED_PROJECT: &str = r#"{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["*.ts"]
+}
+"#;
+
 /// Names the compiler, the runtime, and the directory holding the serialization compiler plugin jar
 /// and the jars a Kotlin toolchain needs.
 #[cfg(feature = "kotlin")]
@@ -84,6 +99,17 @@ fn run_in(
     source: &str,
     at: &Path,
 ) -> Option<String> {
+    run_in_with_stderr(var, fallback, entry, source, at).map(|(written, _)| written)
+}
+
+/// [`run_in`], answering what the process wrote to stderr beside what it wrote to stdout.
+fn run_in_with_stderr(
+    var: &str,
+    fallback: &'static str,
+    entry: &str,
+    source: &str,
+    at: &Path,
+) -> Option<(String, String)> {
     let chosen = env::var(var).ok();
     let runtime = chosen.clone().unwrap_or_else(|| fallback.to_owned());
     fs::write(at.join(entry), source).unwrap();
@@ -105,7 +131,23 @@ fn run_in(
         String::from_utf8_lossy(&reported.stdout),
         String::from_utf8_lossy(&reported.stderr)
     );
-    Some(String::from_utf8_lossy(&reported.stdout).into_owned())
+    Some((
+        String::from_utf8_lossy(&reported.stdout).into_owned(),
+        String::from_utf8_lossy(&reported.stderr).into_owned(),
+    ))
+}
+
+#[cfg(feature = "dart")]
+/// [`ran`], answering what the process wrote to stderr beside what it wrote to stdout.
+pub fn ran_with_stderr(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    entry: &str,
+    source: &str,
+) -> Option<(String, String)> {
+    let at = workspace(named);
+    run_in_with_stderr(var, fallback, entry, source, &at)
 }
 
 /// Writes `entry` into a workspace of its own and runs it under the named runtime. See [`run_in`].
@@ -171,6 +213,53 @@ pub fn ran_with_modules(
     let at = workspace(named);
     symlink(modules, at.join("node_modules")).unwrap();
     run_in(var, fallback, entry, source, &at)
+}
+
+/// Writes `files` into a workspace of its own with `modules` symlinked in as `node_modules` and
+/// compiles them under `--strict` with the compiler `var` names, answering whether it succeeded and
+/// what it said. `None` and a compiler named in `var` that cannot be started are what they are to
+/// [`run_in`].
+pub fn compiled_with_modules(
+    named: &str,
+    var: &str,
+    files: &[(&str, &str)],
+    modules: &Path,
+) -> Option<(bool, String)> {
+    let at = workspace(named);
+    symlink(modules, at.join("node_modules")).unwrap();
+    fs::write(
+        at.join("package.json"),
+        "{ \"type\": \"module\", \"private\": true }\n",
+    )
+    .unwrap();
+    fs::write(at.join("tsconfig.json"), COMPILED_PROJECT).unwrap();
+    for (called, written) in files {
+        fs::write(at.join(called), written).unwrap();
+    }
+    let chosen = env::var(var).ok();
+    let compiler = chosen.clone().unwrap_or_else(|| "tsc".to_owned());
+    let run = Command::new(&compiler)
+        .args(["--pretty", "false", "-p", "tsconfig.json"])
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{var} names `{compiler}`, and no compiler could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down(var, "tsc");
+        return None;
+    };
+    Some((
+        reported.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&reported.stdout),
+            String::from_utf8_lossy(&reported.stderr)
+        ),
+    ))
 }
 
 /// Says `notice` on the process's own stderr, which `cargo test` does not capture — but only the

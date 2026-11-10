@@ -751,7 +751,7 @@ fn an_alias_of_a_string_declared_below_its_holder_does_not_build() {
 /// they read.
 #[test]
 fn the_readme_shows_what_these_runs_compile_and_read() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/swift.md");
     for shown in [
         SHOWN_FUNCTIONS,
         ALIAS_BELOW_ERROR,

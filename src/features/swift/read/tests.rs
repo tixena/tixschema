@@ -280,7 +280,7 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
         }
     };
     let written = emitted(&parcel);
-    let readme = include_str!("../../../../README.md");
+    let readme = include_str!("../../../../docs/guide/swift.md");
     for shown in [
         "public init(label: String, itemCodeList: [String], fragileItemCodes: [String])",
         "public init(swiftSchemaUnjudged decoder: Decoder) throws {",

@@ -280,10 +280,10 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
         "got: {swift}"
     );
     assert!(swift.contains(
-        "case \"Foo\": self = .foo(try InternalTaggedFooPayload(swiftSchemaUnjudged: decoder))"
+        "case \"Foo\": self = .foo(try InternalTaggedFooPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"type\"]))"
     ));
     assert!(
-        swift.contains("case \"Reset\": self = .reset"),
+        swift.contains("case \"Reset\": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"type\" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self = .reset"),
         "got: {swift}"
     );
     assert!(
@@ -330,12 +330,16 @@ fn an_untagged_enum_tries_each_member_in_turn() {
         swift.contains("public enum Untagged: Codable, Sendable"),
         "got: {swift}"
     );
-    assert!(
-        swift.contains("if let value = try? UntaggedCountPayload(swiftSchemaUnjudged: decoder)")
-    );
-    assert!(
-        swift.contains("if let value = try? UntaggedTextPayload(swiftSchemaUnjudged: decoder)")
-    );
+    assert!(swift.contains(
+        "if let value = try? (taken.isEmpty ? UntaggedCountPayload(swiftSchemaUnjudged: \
+             decoder) : Untagged.swiftSchemaOnly(decoder, [\"count\"], taken, \
+             UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
+    ));
+    assert!(swift.contains(
+        "if let value = try? (taken.isEmpty ? UntaggedTextPayload(swiftSchemaUnjudged: \
+             decoder) : Untagged.swiftSchemaOnly(decoder, [\"text\"], taken, \
+             UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
+    ));
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
 }
 
@@ -465,7 +469,10 @@ fn a_nullable_field_always_writes_its_key_even_when_nil() {
 fn a_flattened_field_decodes_from_its_holders_whole_object_and_encodes_through_the_same_encoder() {
     let swift = with_flatten_swift::swift_definition();
     assert!(
-        swift.contains("self.extra = try FlattenedExtra(from: decoder)"),
+        swift.contains(
+            "self.extra = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+             taken + [\"id\"])"
+        ),
         "got: {swift}"
     );
     assert!(
@@ -610,20 +617,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
 fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     assert_eq!(
         reserved_members_swift::swift_definition(),
-        "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public \
-         let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case \
-         `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: \
-         String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; public \
-         init(swiftSchemaUnjudged decoder: Decoder) throws { let container = try \
-         decoder.container(keyedBy: CodingKeys.self); self.`class` = try \
-         container.decode(String.self, forKey: .`class`); self.`in` = try \
-         container.decode(String.self, forKey: .`in`); self.type = try \
-         container.decode(String.self, forKey: .type) }; public init(from decoder: Decoder) \
-         throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
-         !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-         decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public \
-         func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] \
-         { [] } }; "
+        "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try container.decode(String.self, forKey: .type) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } }; "
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),

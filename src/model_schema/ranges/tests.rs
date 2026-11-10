@@ -16,86 +16,7 @@ const NONE: [&str; 0] = [];
 /// flattens the parameter, the parameter, the key beside it, the filling, and what serde writes it
 /// as.
 #[cfg(feature = "serde")]
-const NON_OBJECT_FILLINGS: [(&str, &str, &str, &str, &str, WrittenAsNoObject); 28] = [
-    (
-        "Bag<String>",
-        "Bag",
-        "T",
-        MEMBER,
-        "String",
-        merged("string"),
-    ),
-    ("Bag<u32>", "Bag", "T", MEMBER, "u32", merged("integer")),
-    ("Bag<f64>", "Bag", "T", MEMBER, "f64", merged("number")),
-    ("Bag<bool>", "Bag", "T", MEMBER, "bool", merged("boolean")),
-    ("Bag<char>", "Bag", "T", MEMBER, "char", merged("string")),
-    (
-        "Bag<Vec<u8>>",
-        "Bag",
-        "T",
-        MEMBER,
-        "Vec<u8>",
-        merged("array"),
-    ),
-    (
-        "Bag<(u8, u8)>",
-        "Bag",
-        "T",
-        MEMBER,
-        "(u8, u8)",
-        merged("array"),
-    ),
-    (
-        "Bag<()>",
-        "Bag",
-        "T",
-        MEMBER,
-        "()",
-        WrittenAsNoObject::Unit { beside_tag: false },
-    ),
-    (
-        "Bag<Option<String>>",
-        "Bag",
-        "T",
-        MEMBER,
-        "Option<String>",
-        merged("string"),
-    ),
-    ("Bag<Code>", "Bag", "T", MEMBER, "Code", merged("string")),
-    ("Bag<Tally>", "Bag", "T", MEMBER, "Tally", merged("integer")),
-    (
-        "Bag<CodeAlias>",
-        "Bag",
-        "T",
-        MEMBER,
-        "CodeAlias",
-        merged("string"),
-    ),
-    (
-        "Bag<TextOrCrate>",
-        "Bag",
-        "T",
-        MEMBER,
-        "TextOrCrate",
-        WrittenAsNoObject::TextMember { beside_tag: false },
-    ),
-    (
-        "Vec<Bag<String>>",
-        "Bag",
-        "T",
-        MEMBER,
-        "String",
-        merged("string"),
-    ),
-    ("Wrap<String>", "Wrap", "T", "", "String", merged("string")),
-    (
-        "Tagged<String>",
-        "Tagged",
-        "T",
-        TAG,
-        "String",
-        merged("string"),
-    ),
+const NON_OBJECT_FILLINGS: [(&str, &str, &str, &str, &str, WrittenAsNoObject); 12] = [
     (
         "Waybill<String>",
         "Waybill",
@@ -194,10 +115,6 @@ const NON_OBJECT_FILLINGS: [(&str, &str, &str, &str, &str, WrittenAsNoObject); 2
     ),
 ];
 
-/// What a refusal says of a parameter flattened beside `id`.
-#[cfg(feature = "serde")]
-const MEMBER: &str = " beside `id`";
-
 /// What a refusal says of a parameter flattened or held beside the tag `kind`.
 #[cfg(feature = "serde")]
 const TAG: &str = " beside the tag `kind`";
@@ -289,12 +206,27 @@ fn texts(tokens: TokenStream) -> Vec<String> {
         .collect()
 }
 
-/// The diagnostics this crate writes into `tokens`.
+/// The message of every `compile_error!` this crate writes into `tokens`: an assertion the
+/// compiler evaluates against a type the expansion did not see refuses nothing by itself.
 fn refusals(tokens: TokenStream) -> Vec<String> {
-    texts(tokens)
-        .into_iter()
-        .filter(|text| text.starts_with("model_schema: "))
-        .collect()
+    let mut found = Vec::new();
+    let (mut named, mut invoked) = (false, false);
+    for tree in tokens {
+        if let TokenTree::Group(group) = &tree {
+            if invoked {
+                found.extend(
+                    texts(group.stream())
+                        .into_iter()
+                        .filter(|text| text.starts_with("model_schema: ")),
+                );
+            } else {
+                found.extend(refusals(group.stream()));
+            }
+        }
+        invoked = named && matches!(&tree, TokenTree::Punct(punct) if punct.as_char() == '!');
+        named = matches!(&tree, TokenTree::Ident(ident) if ident == "compile_error");
+    }
+    found
 }
 
 #[test]
@@ -551,9 +483,12 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_member_as_the_build_answers_i
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -597,17 +532,30 @@ fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member(
     }
 }
 
+/// A type declared below its holder is refused by no expansion, and read, at the holder, through
+/// the hidden constant of what it reads flattened, in checks the compiler evaluates.
 #[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_below_its_holder_is_not_looked_into() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
-    assert_eq!(
-        refused(
-            "pub struct Unseen { #[serde(flatten)] pub marking: ShelfMark, \
-             #[serde(flatten)] pub spare: SpareBelow }"
-        ),
-        NONE
-    );
+    let source = "#[derive(Serialize, Deserialize)] pub struct Unseen { #[serde(flatten)] pub \
+                  marking: ShelfMark, #[serde(flatten)] pub spare: SpareBelow }";
+    assert_eq!(refusals(expanded(source)), NONE);
+    let checked: Vec<String> = texts(expanded(source))
+        .into_iter()
+        .filter(|text| text.starts_with("model_schema: "))
+        .collect();
+    assert_ne!(checked, NONE);
+    for check in &checked {
+        assert!(
+            check.starts_with("model_schema: type `Unseen` flattens `spare` (`SpareBelow`)")
+                || check.starts_with(
+                    "model_schema: type `Unseen` has flattened `marking` (`ShelfMark`) and \
+                     flattened `spare` (`SpareBelow`)"
+                ),
+            "{check}"
+        );
+    }
     assert_eq!(
         refused("pub struct SpareBelow { #[serde(flatten)] pub rest: BTreeMap<String, u8> }"),
         NONE
@@ -621,17 +569,6 @@ fn beside_id(holder: &str, field: &str) -> String {
         "model_schema: type `{holder}`: field `{field}`: `#[serde(flatten)]` cannot hold a map \
          beside other members \u{2014} serde writes the map's entries at one level with `id`, and \
          no TypeScript type describes both. Write the map under a key of its own."
-    )
-}
-
-/// The refusal of `filling` filling the type parameter `T` that `Letter` flattens beside `id`, in
-/// the place `subject` names.
-#[cfg(feature = "serde")]
-fn filling_letter(subject: &str, filling: &str) -> String {
-    format!(
-        "model_schema: {subject}: `Letter` flattens its type parameter `T` beside `id`, and \
-         `{filling}` fills it with a map \u{2014} serde writes the map's entries at one level \
-         with `id`, and no TypeScript type describes both. Write the map under a key of its own."
     )
 }
 
@@ -746,36 +683,32 @@ fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_a
         refused_generic("#[serde(untagged)] pub enum Either<T> { Captioned(Captioned), Other(T) }"),
         NONE
     );
-    assert_eq!(
-        refused_flattening(
-            "pub struct Loose<T> { #[serde(flatten, skip_serializing_if = \"Option::is_none\")] \
-             pub body: Option<T> }"
-        ),
-        NONE
-    );
     for flattened in [
         "Wrap<HashMap<String, i32>>",
         "Held<HashMap<String, i32>>",
         "Either<HashMap<String, i32>>",
-        "Loose<HashMap<String, i32>>",
         "Option<Wrap<Box<HashMap<String, i32>>>>",
         "Wrap<Box<Option<HashMap<String, i32>>>>",
         "Wrap<Held<HashMap<String, i32>>>",
     ] {
+        let refusal = beside_id("Crate", "body");
+        let expected = if flattened.starts_with("Option<") {
+            format!(
+                "{refusal} Under a key of its own, the `Option` takes `#[serde(default, \
+                 skip_serializing_if = \"Option::is_none\")]`."
+            )
+        } else {
+            refusal
+        };
         assert_eq!(
             refused(&format!(
                 "pub struct Crate {{ #[serde(flatten)] pub body: {flattened}, pub id: String }}"
             )),
-            vec![beside_id("Crate", "body")],
+            vec![expected],
             "{flattened}"
         );
     }
-    for flattened in [
-        "Wrap<Plain>",
-        "Held<Plain>",
-        "Either<Plain>",
-        "Loose<Plain>",
-    ] {
+    for flattened in ["Wrap<Plain>", "Held<Plain>", "Either<Plain>"] {
         assert_eq!(
             refused(&format!(
                 "pub struct Crate {{ #[serde(flatten)] pub body: {flattened}, pub id: String }}"
@@ -790,163 +723,8 @@ fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_a
     );
 }
 
-#[cfg(feature = "serde")]
-#[test]
-fn a_type_parameter_flattened_beside_a_member_is_refused_where_a_map_fills_it() {
-    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
-    assert_eq!(
-        refused_flattening(
-            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
-        ),
-        NONE
-    );
-    for (letter, filling) in [
-        ("Letter<HashMap<String, i32>>", "HashMap<String, i32>"),
-        ("Vec<Letter<HashMap<String, i32>>>", "HashMap<String, i32>"),
-        (
-            "Option<Letter<BTreeMap<String, u8>>>",
-            "BTreeMap<String, u8>",
-        ),
-        (
-            "HashMap<String, Letter<Box<HashMap<String, i32>>>>",
-            "Box<HashMap<String, i32>>",
-        ),
-    ] {
-        assert_eq!(
-            refused(&format!("pub struct Post {{ pub letter: {letter} }}")),
-            vec![filling_letter("type `Post`: field `letter`", filling)],
-            "{letter}"
-        );
-    }
-    assert_eq!(
-        refused("pub struct Post { pub letter: Letter<Plain> }"),
-        NONE
-    );
-    assert_eq!(
-        generic_at(
-            "T",
-            "Plain",
-            "#[derive(Serialize, Deserialize)] pub enum Envelope<T> { \
-             Sealed { #[serde(flatten)] body: T, id: String }, \
-             Open { #[serde(flatten)] body: T, note: String } }"
-        ),
-        NONE
-    );
-    assert_eq!(
-        refused("pub struct Mailed { pub envelope: Envelope<HashMap<String, i32>> }").len(),
-        1
-    );
-    assert_eq!(
-        refused("pub enum Posted { Sent { letter: (u8, Letter<HashMap<String, i32>>) } }"),
-        vec![filling_letter(
-            "type `Posted`: variant `Sent`, field `letter`",
-            "HashMap<String, i32>"
-        )]
-    );
-    assert_eq!(
-        refusals(expanded("type Mailbag = Letter<HashMap<String, i32>>;")),
-        vec![filling_letter("type `Mailbag`", "HashMap<String, i32>")]
-    );
-    assert_eq!(
-        refused(
-            "pub struct Skipped { #[serde(skip)] pub letter: Option<Letter<HashMap<String, i32>>> }"
-        ),
-        NONE
-    );
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn a_type_parameter_flattened_beside_a_member_is_refused_at_a_default_that_is_a_map() {
-    assert_eq!(
-        refused_with_default(
-            "HashMap<String, i32>",
-            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
-        ),
-        vec![filling_letter(
-            "type `Letter`: `default_types` entry `T`",
-            "HashMap<String, i32>"
-        )]
-    );
-    assert_eq!(
-        refused_with_default(
-            "Plain",
-            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
-        ),
-        NONE
-    );
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn a_parameter_handed_on_to_a_type_that_flattens_it_is_refused_where_a_map_fills_it() {
-    let _: Vec<String> = refused("pub struct Plain { pub text: String }");
-    let _: Vec<String> = refused_generic("#[serde(transparent)] pub struct Wrap<T>(T);");
-    assert_eq!(
-        refused_flattening(
-            "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }"
-        ),
-        NONE
-    );
-    assert_eq!(
-        generic_at(
-            "U",
-            "Plain",
-            "#[derive(Serialize, Deserialize)] pub struct Bag<U> { pub letters: \
-             Vec<Letter<Box<Option<U>>>> }"
-        ),
-        NONE
-    );
-    assert_eq!(
-        refused("pub struct Sack { pub bag: Bag<HashMap<String, i32>> }"),
-        vec![filling_letter(
-            "type `Sack`: field `bag`",
-            "HashMap<String, i32>"
-        )]
-    );
-    assert_eq!(refused("pub struct Sack { pub bag: Bag<Plain> }"), NONE);
-    assert_eq!(
-        refused("pub struct Post { pub letter: Letter<Wrap<HashMap<String, i32>>> }"),
-        vec![filling_letter(
-            "type `Post`: field `letter`",
-            "Wrap<HashMap<String, i32>>"
-        )]
-    );
-}
-
-#[cfg(feature = "serde")]
-#[test]
-fn a_type_parameter_flattened_beside_a_tag_is_refused_where_a_map_fills_it() {
-    assert_eq!(
-        refused_flattening(
-            "#[serde(tag = \"kind\")] pub struct Hull<T> { #[serde(flatten)] pub body: T }"
-        ),
-        NONE
-    );
-    let beside_kind = |subject: &str| {
-        format!(
-            "model_schema: type `{subject}`: `Hull` flattens its type parameter `T` beside the \
-             tag `kind`, and `HashMap<String, i32>` fills it with a map \u{2014} serde writes \
-             the tag and the map's entries at one level, and no TypeScript type describes both. \
-             Write the map under a key of its own."
-        )
-    };
-    assert_eq!(
-        refused("pub struct Dock { pub hull: Hull<HashMap<String, i32>> }"),
-        vec![beside_kind("Dock`: field `hull")]
-    );
-    assert_eq!(
-        refused(
-            "pub struct Slip { #[serde(flatten)] pub hull: Hull<HashMap<String, i32>>, \
-             pub id: String }"
-        ),
-        vec![beside_kind("Slip`: field `hull")]
-    );
-}
-
 /// The README quotes each refusal of a map that reaches a flattened member through an untagged
-/// enum, a generic brand or a type parameter as the build answers it: the type parameter's in the
-/// list of what an upgrade asks of a crate as well.
+/// enum or a generic brand as the build answers it.
 #[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answers_them() {
@@ -956,9 +734,6 @@ fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answ
          Tallied(HashMap<String, i32>) }",
     );
     let _: Vec<String> = refused_generic("#[serde(transparent)] pub struct Wrap<T>(T);");
-    let _: Vec<String> = refused_flattening(
-        "pub struct Letter<T> { #[serde(flatten)] pub body: T, pub id: String }",
-    );
     for (source, quoted) in [
         (
             "pub struct Scoreboard { pub id: String, #[serde(flatten)] pub scores: Scores }",
@@ -969,16 +744,12 @@ fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answ
              pub id: String }",
             1,
         ),
-        (
-            "pub struct Post { pub letter: Letter<HashMap<String, i32>> }",
-            2,
-        ),
     ] {
         let messages = refused(source);
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert_eq!(
-            include_str!("../../../README.md")
+            include_str!("../../../docs/guide/flatten.md")
                 .matches(&answered)
                 .count(),
             quoted,
@@ -991,19 +762,9 @@ fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answ
 #[test]
 fn a_generic_type_declared_below_its_filling_is_not_looked_into() {
     assert_eq!(
-        refused("pub struct Post { pub letter: LetterBelow<HashMap<String, i32>> }"),
-        NONE
-    );
-    assert_eq!(
         refused(
             "pub struct Crate { #[serde(flatten)] pub body: WrapBelow<HashMap<String, i32>>, \
              pub id: String }"
-        ),
-        NONE
-    );
-    assert_eq!(
-        refused_flattening(
-            "pub struct LetterBelow<T> { #[serde(flatten)] pub body: T, pub id: String }"
         ),
         NONE
     );
@@ -1082,9 +843,12 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_tag_as_the_build_answers_it()
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1135,19 +899,43 @@ fn a_map_flattened_alone_beside_a_tag_is_refused_whatever_it_holds() {
 #[test]
 fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
-    for source in [
+    // Strict, the enum would refuse a key beside its tag and its content key, which serde reads
+    // for every variant at once, and so for the map.
+    let transom = refused(
         "#[serde(tag = \"kind\", content = \"held\")] pub enum Transom { Open { \
          #[serde(flatten)] counts: BTreeMap<String, u8> } }",
+    );
+    assert_eq!(transom.len(), 1, "{transom:?}");
+    assert!(
+        transom[0].starts_with(
+            "model_schema: type `Transom`: variant `Open` flattens `counts` (`BTreeMap<String, \
+             u8>`), which reads every key still left"
+        ),
+        "{}",
+        transom[0]
+    );
+    for source in [
         "pub enum Coaming { Open { #[serde(flatten)] counts: BTreeMap<String, u8> } }",
         "#[serde(untagged)] pub enum Bilge { Open { #[serde(flatten)] \
          counts: BTreeMap<String, u8> } }",
         "pub struct Thwart { #[serde(flatten)] pub counts: BTreeMap<String, u8> }",
-        "#[serde(tag = \"kind\")] pub struct Marked { #[serde(flatten)] pub marking: ShelfMark }",
         "#[serde(tag = \"kind\")] pub enum Marking { Open { #[serde(flatten)] \
          marking: ShelfMark } }",
     ] {
         assert_eq!(refused(source), NONE, "{source}");
     }
+    // A struct under a tag of its own says `nonstrict`, as serde cannot refuse a key beside it.
+    assert_eq!(
+        refusals(super::super::exec_model_schema(
+            syn::parse_str("nonstrict").unwrap(),
+            syn::parse_str(
+                "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub struct Marked { \
+                 #[serde(flatten)] pub marking: ShelfMark }"
+            )
+            .unwrap(),
+        )),
+        NONE
+    );
 }
 
 /// The refusal of the lone slot of the variant `Counted` of `holder`, written `slot`, under the tag
@@ -1328,7 +1116,8 @@ fn filled_entry(
 
 /// Declares the types the fillings of a flattened type parameter are read against: an externally
 /// tagged enum with a unit variant and one without, a struct, a plain enum, an untagged enum with a
-/// member over the first, a brand and an alias of it, and the types that flatten a parameter.
+/// member over the first, a brand and an alias of it, and the generic enum that holds a parameter in
+/// the lone slot of a variant under a tag alone.
 #[cfg(feature = "serde")]
 fn declare_entry_fillings() {
     for declared in [
@@ -1352,20 +1141,6 @@ fn declare_entry_fillings() {
         NONE
     );
     assert_eq!(
-        refused_with_default(
-            "Crate",
-            "pub struct Bag<T> { pub id: u32, #[serde(flatten)] pub inner: T }"
-        ),
-        NONE
-    );
-    assert_eq!(
-        refused_with_default(
-            "Crate",
-            "pub struct Wrap<T> { #[serde(flatten)] pub inner: T }"
-        ),
-        NONE
-    );
-    assert_eq!(
         generic_at(
             "U",
             "Crate",
@@ -1373,27 +1148,17 @@ fn declare_entry_fillings() {
         ),
         NONE
     );
-    assert_eq!(
-        refused_with_default(
-            "Crate",
-            "#[serde(tag = \"kind\")] pub struct Tagged<T> { #[serde(flatten)] pub inner: T }"
-        ),
-        NONE
-    );
 }
 
-/// A type parameter flattened, beside a member, beside a tag or alone, and one held by the lone
-/// slot of a variant under a tag alone, is refused where a value serde writes a variant of as an
-/// entry of its name over `null` fills it: an externally tagged enum with a unit variant, itself,
+/// A type parameter held by the lone slot of a variant under a tag alone is refused where a value
+/// serde writes a variant of as an entry of its name over `null` fills it: an externally tagged enum with a unit variant, itself,
 /// under an `Option` or through an alias or a brand, a plain enum, and an untagged enum with a
 /// member over one.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_variant_written_as_an_entry_fills_it()
- {
+fn a_type_parameter_beside_a_tag_is_refused_where_a_variant_written_as_an_entry_fills_it() {
     declare_entry_fillings();
     let tag = " beside the tag `kind`";
-    let member = " beside `id`";
     for (written, flattens, parameter, beside, filling, named) in [
         ("Waybill<Pallet>", "Waybill", "Held", tag, "Pallet", true),
         (
@@ -1422,26 +1187,6 @@ fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_variant_written
             true,
         ),
         ("Waybill<Plainly>", "Waybill", "Held", tag, "Plainly", false),
-        ("Bag<Pallet>", "Bag", "T", member, "Pallet", true),
-        (
-            "Bag<Option<Pallet>>",
-            "Bag",
-            "T",
-            member,
-            "Option<Pallet>",
-            true,
-        ),
-        ("Bag<Either>", "Bag", "T", member, "Either", false),
-        (
-            "Tagged<Option<Pallet>>",
-            "Tagged",
-            "T",
-            tag,
-            "Option<Pallet>",
-            true,
-        ),
-        ("Wrap<Pallet>", "Wrap", "T", "", "Pallet", true),
-        ("Wrap<Plainly>", "Wrap", "T", "", "Plainly", false),
     ] {
         assert_eq!(
             refused(&format!("pub struct Manifest {{ pub held: {written} }}")),
@@ -1467,36 +1212,18 @@ fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_variant_written
             true
         )]
     );
-    assert_eq!(
-        refused_with_default(
-            "Pallet",
-            "pub struct Sack<T> { #[serde(flatten)] pub inner: T }"
-        ),
-        vec![filled_entry(
-            "type `Sack`: `default_types` entry `T`",
-            "Sack",
-            "T",
-            "",
-            "Pallet",
-            true
-        )]
-    );
 }
 
-/// Every other filling of those parameters builds: an enum whose every variant holds a value, a
-/// struct, a map flattened alone, and a type declared below.
+/// Every other filling of that parameter builds: an enum whose every variant holds a value, a struct,
+/// and a type declared below.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_parameter_flattened_or_beside_a_tag_builds_at_every_other_filling() {
+fn a_type_parameter_beside_a_tag_builds_at_every_other_filling() {
     declare_entry_fillings();
     for built in [
         "Waybill<Stacking>",
         "Waybill<Crate>",
         "Waybill<PalletBelow>",
-        "Bag<Crate>",
-        "Bag<Stacking>",
-        "Wrap<Stacking>",
-        "Wrap<HashMap<String, u8>>",
         "Outer<Crate>",
     ] {
         assert_eq!(
@@ -1522,15 +1249,6 @@ fn filled_non_object(
         "model_schema: {subject}: `{flattens}` flattens its type parameter `{parameter}`{beside}, \
          and `{filling}` fills it with {written} Write it under a key of its own."
     )
-}
-
-/// A value its schema describes by `keyword`, flattened beside members of `Bag`.
-#[cfg(feature = "serde")]
-const fn merged(keyword: &'static str) -> WrittenAsNoObject {
-    WrittenAsNoObject::Whole {
-        beside_tag: false,
-        keyword,
-    }
 }
 
 /// A value its schema describes by `keyword`, held beside the tag `kind`.
@@ -1561,15 +1279,12 @@ fn declare_non_object_fillings() {
     assert_eq!(refusals(expanded("type CrateMaybe = Option<Crate>;")), NONE);
 }
 
-/// A type parameter flattened, beside a member, beside a tag or alone, and one held by the lone
-/// slot of a variant under a tag alone, is refused where a value serde writes as no object fills
-/// it, as the same value flattened or held there is refused, and the lone slot's where an `Option`
-/// fills it, of which serde refuses every write there: in a member, in an alias and in a
-/// `default_types` entry.
+/// A type parameter held by the lone slot of a variant under a tag alone is refused where a value
+/// serde writes as no object fills it, as the same value held there is refused, and where an
+/// `Option` fills it, of which serde refuses every write there.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_value_written_as_no_object_fills_it()
- {
+fn a_type_parameter_beside_a_tag_is_refused_where_a_value_written_as_no_object_fills_it() {
     declare_non_object_fillings();
     for (written, flattens, parameter, beside, filling, as_written) in NON_OBJECT_FILLINGS {
         assert_eq!(
@@ -1585,51 +1300,15 @@ fn a_type_parameter_flattened_or_beside_a_tag_is_refused_where_a_value_written_a
             "{written}"
         );
     }
-    assert_eq!(
-        refusals(expanded("type Sacked = Bag<String>;")),
-        vec![filled_non_object(
-            "type `Sacked`",
-            "Bag",
-            "T",
-            MEMBER,
-            "String",
-            &merged("string").words()
-        )]
-    );
-    assert_eq!(
-        refused_with_default(
-            "String",
-            "pub struct Sack<T> { pub id: u32, #[serde(flatten)] pub inner: T }"
-        ),
-        vec![filled_non_object(
-            "type `Sack`: `default_types` entry `T`",
-            "Sack",
-            "T",
-            MEMBER,
-            "String",
-            &merged("string").words()
-        )]
-    );
 }
 
-/// A value serde writes as an object fills those parameters, and an `Option` of one fills a
-/// parameter flattened, beside a member or beside a struct's own tag: serde writes `None` there as
-/// no key, and reads it back. A holder's own parameter, and a type declared below, build.
+/// A value serde writes as an object fills that parameter, and so do a holder's own parameter and a
+/// type declared below.
 #[cfg(feature = "serde")]
 #[test]
-fn a_type_parameter_flattened_or_beside_a_tag_builds_at_an_object_or_an_option_of_one_flattened() {
+fn a_type_parameter_beside_a_tag_builds_at_an_object() {
     declare_non_object_fillings();
-    for built in [
-        "Bag<Crate>",
-        "Bag<Option<Crate>>",
-        "Wrap<Option<Crate>>",
-        "Tagged<Crate>",
-        "Tagged<Option<Crate>>",
-        "Waybill<Crate>",
-        "Waybill<CodeBelow>",
-        "Bag<CodeBelow>",
-        "Outer<Crate>",
-    ] {
+    for built in ["Waybill<Crate>", "Waybill<CodeBelow>", "Outer<Crate>"] {
         assert_eq!(
             refused(&format!("pub struct Manifest {{ pub held: {built} }}")),
             NONE,
@@ -1640,35 +1319,32 @@ fn a_type_parameter_flattened_or_beside_a_tag_builds_at_an_object_or_an_option_o
         generic_at(
             "U",
             "Crate",
-            "#[derive(Serialize, Deserialize)] pub struct Handed<U> { pub bag: Bag<U>, pub bill: \
-             Waybill<U> }"
+            "#[derive(Serialize, Deserialize)] pub struct Handed<U> { pub bill: Waybill<U> }"
         ),
         NONE
     );
 }
 
-/// The README quotes the refusal of a type parameter flattened beside a member filled at text, and
-/// of one held by the lone slot of a variant under a tag alone filled at an `Option`, as the build
-/// answers each, in its section and in the list of what an upgrade asks of a crate.
+/// The README quotes the refusal of a type parameter held by the lone slot of a variant under a tag
+/// alone filled at an `Option` as the build answers it, in its section and in the list of what an
+/// upgrade asks of a crate.
 #[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_filling_written_as_no_object_as_the_build_answers_it() {
     declare_non_object_fillings();
-    for source in [
-        "pub struct Holders { pub text: Bag<String> }",
-        "pub struct Billed { pub bill: Waybill<Option<Pallet>> }",
-    ] {
-        let messages = refused(source);
-        assert_eq!(messages.len(), 1, "{source}: {messages:?}");
-        let answered = format!("error: {}", messages[0]);
-        assert_eq!(
-            include_str!("../../../README.md")
-                .matches(&answered)
-                .count(),
-            2,
-            "the README no longer quotes: {answered}"
-        );
-    }
+    let messages = refused("pub struct Billed { pub bill: Waybill<Option<Pallet>> }");
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let answered = format!("error: {}", messages[0]);
+    assert_eq!(
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
+        2,
+        "the README no longer quotes: {answered}"
+    );
 }
 
 /// The README quotes the refusal of a type parameter beside a tag filled at an externally tagged
@@ -1694,9 +1370,12 @@ fn the_readme_states_the_refusal_of_a_filling_written_as_an_entry_as_the_build_a
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1782,9 +1461,12 @@ fn the_readme_states_the_refusal_of_a_slot_that_writes_a_map_beside_a_tag_as_the
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/enums.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -2115,7 +1797,7 @@ fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_as_the_build_answers
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert!(
-            include_str!("../../../README.md").contains(&answered),
+            include_str!("../../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -2199,70 +1881,25 @@ fn a_type_parameter_that_keys_a_map_below_a_flatten_is_refused_where_a_number_fi
 #[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_read_below_a_flatten_is_refused_where_its_filling_holds_a_number_key() {
-    assert_eq!(
-        refused_flattening("pub struct Spread<T> { #[serde(flatten)] pub rest: T }"),
-        NONE
-    );
     assert_eq!(refused_generic("pub struct Inner<T> { pub held: T }"), NONE);
     assert_eq!(
         refused_generic("pub struct Wrapper<T> { #[serde(flatten)] pub inner: Inner<T> }"),
         NONE
     );
     assert_eq!(
-        refused("pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }"),
-        NONE
-    );
-    let below = |subject: &str, reads: &str, filling: &str, filled_with: &str| {
-        read_below(subject, reads, false, filling, filled_with)
-    };
-    assert_eq!(
-        refused("pub struct Dock { pub spread: Spread<BTreeMap<u32, u8>> }"),
-        vec![below(
-            "type `Dock`: field `spread`: ",
-            "Spread",
-            "BTreeMap<u32, u8>",
-            " with a map keyed by `u32`"
-        )]
-    );
-    assert_eq!(
         refused("pub struct Berth { pub wrapper: Wrapper<Vec<HashMap<bool, u8>>> }"),
-        vec![below(
+        vec![read_below(
             "type `Berth`: field `wrapper`: ",
             "Wrapper",
+            false,
             "Vec<HashMap<bool, u8>>",
             " with a map keyed by `bool`"
         )]
     );
     assert_eq!(
-        refused("pub struct Moor { pub spread: Spread<Charted> }"),
-        vec![below(
-            "type `Moor`: field `spread`: ",
-            "Spread",
-            "Charted",
-            ", which holds a map keyed by a number or a `bool` (field `marks`, a map keyed by \
-             `i16`)"
-        )]
-    );
-    assert_eq!(
-        refused_generic("pub struct Keyed<T> { pub spread: Spread<BTreeMap<T, u8>> }"),
+        refused("pub struct Mole { pub wrapper: Wrapper<u32> }"),
         NONE
     );
-    assert_eq!(
-        refused("pub struct Pier { pub keyed: Keyed<i8> }"),
-        vec![read_below(
-            "type `Pier`: field `keyed`: ",
-            "Keyed",
-            true,
-            "i8",
-            ""
-        )]
-    );
-    for source in [
-        "pub struct Wharf { pub spread: Spread<BTreeMap<String, u8>> }",
-        "pub struct Mole { pub wrapper: Wrapper<u32> }",
-    ] {
-        assert_eq!(refused(source), NONE, "{source}");
-    }
 }
 
 /// The refusal of a member of a variant serde reads from the copy of the payload it buffers, where
@@ -2493,7 +2130,7 @@ fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_in_a_buffered_enum()
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert!(
-            include_str!("../../../README.md").contains(&answered),
+            include_str!("../../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }

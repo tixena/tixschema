@@ -5,9 +5,6 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use tixschema::model_schema;
-
 use crate::tests::{
     FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
     by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
@@ -20,9 +17,20 @@ use crate::validate::{
     reading_swift, sealed_swift,
 };
 use crate::validate::{Slug, marker_swift, routing_swift, sealed_slug_swift, slug_swift};
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
 /// What opens the read of a type alone.
 const UNJUDGED: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws";
+
+/// What opens the read of a type that takes the keys the types around it took.
+const TAKING: &str =
+    "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
+
+/// The key type the reads of a type that refuses a key name.
+const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var \
+                       intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = \
+                       stringValue }; init?(intValue: Int) { nil } }";
 
 /// The read every caller makes: the type's own read, then `validate()` on the value read.
 const JUDGED: &str = concat!(
@@ -182,23 +190,50 @@ fn holds(swift: &str, written: &[&str]) {
     }
 }
 
+/// The reads of a struct that refuses a key beside `keys`, whose own read is the `block`: the
+/// key type, the read that takes the keys the types around it took, and the one alone that
+/// refuses any other key first.
+fn closed(keys: &[&str], block: &str) -> String {
+    let unlisted = if keys.is_empty() {
+        String::new()
+    } else {
+        let listed: Vec<String> = keys.iter().map(|key| format!("\"{key}\"")).collect();
+        format!(
+            "where ![{}].contains(unknown.stringValue) ",
+            listed.join(", ")
+        )
+    };
+    format!(
+        "{ANY_KEY}; {TAKING} {block}; {UNJUDGED} {{ if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys \
+         {unlisted}{{ throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+         decoder.codingPath + [unknown], debugDescription: \"unknown field \
+         `\\(unknown.stringValue)`\")) }} }}; try self.init(swiftSchemaUnjudged: decoder, \
+         swiftSchemaWithout: []) }}"
+    )
+}
+
 /// The memberwise initializer, the type's own read, then the read that judges. `encode(to:)`
 /// stays the one Swift synthesizes.
 #[test]
 fn a_struct_reads_its_members_then_judges_the_value_it_read() {
     let swift = parcel_swift::swift_definition();
     let written = format!(
-        "{}{UNJUDGED} {}; {JUDGED}; public func validate() -> [String] {{ ",
+        "{}{}; {JUDGED}; public func validate() -> [String] {{ ",
         concat!(
             "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
             "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
             "self.label = label;  }; ",
         ),
-        concat!(
-            "{ let container = try decoder.container(keyedBy: CodingKeys.self); ",
-            "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
-            "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
-            "self.label = try container.decode(String.self, forKey: .label) }",
+        closed(
+            &["fragileItemCodes", "itemCodeList", "label"],
+            concat!(
+                "{ let container = try decoder.container(keyedBy: CodingKeys.self); ",
+                "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
+                "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
+                "self.label = try container.decode(String.self, forKey: .label) }",
+            )
         ),
     );
     assert!(swift.contains(&written), "{written} is not in: {swift}");
@@ -210,7 +245,10 @@ fn a_struct_reads_its_members_then_judges_the_value_it_read() {
 #[test]
 fn a_holder_reads_each_model_it_names_unjudged() {
     let swift = manifest_swift::swift_definition();
-    let readme = include_str!("../../README.md");
+    let readme = concat!(
+        include_str!("../../docs/guide/swift.md"),
+        include_str!("../../docs/guide/object-id.md")
+    );
     for statements in [
         vec![
             "_ = try container.decodeNil(forKey: .firstParcel)",
@@ -416,7 +454,7 @@ fn an_absent_key_and_a_null_of_an_optional_and_a_nullable_member_are_read_as_nil
         &anchorage_swift::swift_definition(),
         &[
             "self.anchorNote = try container.decodeIfPresent(String.self, forKey: .anchorNote); ",
-            "self.flattened = try FlattenedExtra(from: decoder); ",
+            "self.flattened = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"anchorNote\", \"heldParcel\"]); if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) { self.heldParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil } }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"anchorNote\", \"reason\", \"heldParcel\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
             concat!(
                 "if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
@@ -526,11 +564,15 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
 fn a_flattened_struct_is_read_from_its_holders_whole_object() {
     holds(
         &berthed_swift::swift_definition(),
-        &["self.parcel = try Parcel(swiftSchemaUnjudged: decoder); "],
+        &[
+            "self.parcel = try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"quay\"]); self.quay = try container.decode(String.self, forKey: .quay) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"fragileItemCodes\", \"itemCodeList\", \"label\", \"quay\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+        ],
     );
     holds(
         &with_flatten_swift::swift_definition(),
-        &["self.extra = try FlattenedExtra(from: decoder); "],
+        &[
+            "self.extra = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"id\"]); self.id = try container.decode(String.self, forKey: .id) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"reason\", \"id\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+        ],
     );
 }
 
@@ -624,7 +666,7 @@ fn a_tuple_struct_reads_its_slots_unjudged() {
 #[test]
 fn a_unit_struct_has_both_reads() {
     let swift = idle_swift::swift_definition();
-    let written = format!("public init() {{  }}; {UNJUDGED} {{  }}; {JUDGED}; ");
+    let written = format!("public init() {{  }}; {}; {JUDGED}; ", closed(&[], "{  }"));
     assert!(swift.contains(&written), "{written} is not in: {swift}");
 }
 
@@ -660,9 +702,9 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
     holds(
         &lifted_swift::swift_definition(),
         &[
-            r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder)); "#,
-            r#"case "Loose": self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder)); "#,
-            r#"case "Unladen": self = .unladen; "#,
+            r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])); "#,
+            r#"case "Loose": self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])); "#,
+            r#"case "Unladen": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != "kind" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: "unknown field `\(unknown.stringValue)`")) } }; self = .unladen; "#,
             JUDGED,
         ],
     );
@@ -731,7 +773,9 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
             "Sorted.swiftSchemaBoundCoded(value).isEmpty { self = .coded(value); return }; ",
         ),
         concat!(
-            "if let value = try? SortedCountedPayload(swiftSchemaUnjudged: decoder), ",
+            "if let value = try? (taken.isEmpty ? SortedCountedPayload(swiftSchemaUnjudged: decoder) ",
+            ": Sorted.swiftSchemaOnly(decoder, [\"sortedCount\"], taken, ",
+            "SortedCountedPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))), ",
             "Sorted.swiftSchemaBoundCounted(value).isEmpty { self = .counted(value); return }; ",
         ),
         concat!(
@@ -739,12 +783,14 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
             "{ self = .listed(value); return }; ",
         ),
         concat!(
-            "if let value = try? Parcel(swiftSchemaUnjudged: decoder) ",
+            "if let value = try? (taken.isEmpty ? Parcel(swiftSchemaUnjudged: decoder) ",
+            ": Sorted.swiftSchemaOnly(decoder, [\"fragileItemCodes\", \"itemCodeList\", \"label\"], ",
+            "taken, Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
             "{ self = .whole(value); return }; ",
         ),
         "if let value = try? String(from: decoder) { self = .wordy(value); return }; ",
     ];
-    let written = format!("{UNJUDGED} {{ {}", attempts.concat());
+    let written = format!("{TAKING} {{ {}", attempts.concat());
     assert!(swift.contains(&written), "{written} is not in: {swift}");
     holds(
         &swift,
@@ -783,11 +829,15 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         &untagged_swift::swift_definition(),
         &[
             concat!(
-                "if let value = try? UntaggedCountPayload(swiftSchemaUnjudged: decoder) ",
+                "if let value = try? (taken.isEmpty ? UntaggedCountPayload(swiftSchemaUnjudged: decoder) : ",
+                "Untagged.swiftSchemaOnly(decoder, [\"count\"], taken, ",
+                "UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
                 "{ self = .count(value); return }; ",
             ),
             concat!(
-                "if let value = try? UntaggedTextPayload(swiftSchemaUnjudged: decoder) ",
+                "if let value = try? (taken.isEmpty ? UntaggedTextPayload(swiftSchemaUnjudged: decoder) : ",
+                "Untagged.swiftSchemaOnly(decoder, [\"text\"], taken, ",
+                "UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
                 "{ self = .text(value); return }; ",
             ),
         ],

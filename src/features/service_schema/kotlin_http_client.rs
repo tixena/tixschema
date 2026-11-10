@@ -7,8 +7,9 @@
 use super::result::result_name;
 use super::{on_one_line, text_types};
 use crate::features::kotlin::{
-    kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name, kotlin_property_name,
-    kotlin_quoted, kotlin_read_serializer, kotlin_typename,
+    TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
+    kotlin_property_name, kotlin_quoted, kotlin_read_serializer, kotlin_tuple_naming,
+    kotlin_typename, kotlin_unjudged_read_serializer,
 };
 use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -24,9 +25,10 @@ use core::fmt::Write as _;
 use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
-/// REST client's, the `ws_rpc` client's and the `ws_rpc` dispatcher's.
-const TAKEN_BY_A_METHOD: [&str; 36] = [
+/// REST client's, the `ws_rpc` client's and dispatcher's, and the `mcp` client's and route's.
+const TAKEN_BY_A_METHOD: [&str; 53] = [
     "answered",
+    "arguments",
     "assigned",
     "body",
     "contentRange",
@@ -43,7 +45,21 @@ const TAKEN_BY_A_METHOD: [&str; 36] = [
     "incomingHeaders",
     "isServiceFault",
     "it",
+    "mcpAnswered",
+    "mcpArguments",
+    "mcpBody",
+    "mcpDeclined",
+    "mcpHeaders",
+    "mcpMethod",
+    "mcpNamed",
+    "mcpParams",
+    "mcpRefused",
+    "mcpResponse",
+    "mcpSource",
+    "members",
+    "message",
     "ok",
+    "outcome",
     "parts",
     "path",
     "query",
@@ -55,12 +71,14 @@ const TAKEN_BY_A_METHOD: [&str; 36] = [
     "replyHeaders",
     "req",
     "response",
+    "sent",
     "shared",
     "status",
     "thrown",
     "transport",
     "uncarried",
     "unexpected",
+    "unwritten",
     "value",
 ];
 
@@ -83,6 +101,8 @@ struct HeaderOutField {
 }
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
+    kotlin_tuple_naming(TupleNaming::Declared);
+    kotlin_tuple_naming(TupleNaming::Declared);
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_stream = service_declares_a_stream(service);
@@ -164,7 +184,7 @@ fn result_interfaces(service: &ServiceDef, named: &str) -> Vec<String> {
 
 /// Whether a reply operation's success carries nothing at all: the same condition that earns the
 /// unit `data object Ok` member instead of a `data class Ok(val value: ...)`.
-fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> bool {
+pub(super) fn carries_no_value(operation: &OperationDef, shape: &HttpShape) -> bool {
     let OperationOutcome::Reply {
         success,
         error: _error,
@@ -320,15 +340,8 @@ fn error_shape(published: &str, shape: &HttpShape, error: &Type) -> SuccessShape
     }
 }
 
-#[rustversion::since(1.98)]
 fn declaration_line(aux: Option<String>) -> String {
-    aux.map_or_default(|declared| format!("{declared}\n"))
-}
-
-#[rustversion::before(1.98)]
-fn declaration_line(aux: Option<String>) -> String {
-    aux.map(|declared| format!("{declared}\n"))
-        .unwrap_or_default()
+    aux.map_or_else(String::new, |declared| format!("{declared}\n"))
 }
 
 fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
@@ -1278,6 +1291,11 @@ fn kotlin_type_of(ty: &Type) -> String {
 /// array of one length it holds, composed, so a text or an array of another is refused.
 pub(super) fn read_serializer(ty: &Type) -> String {
     kotlin_read_serializer(&kotlin_field_def("value", ty))
+}
+
+/// The `KSerializer` a value typed `ty` is read with and judged by nothing.
+pub(super) fn unjudged_read_serializer(ty: &Type) -> String {
+    kotlin_unjudged_read_serializer(&kotlin_field_def("value", ty))
 }
 
 /// The Kotlin expression that renders `ty`'s value at `expr` as URL- or header-safe text: an

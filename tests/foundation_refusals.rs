@@ -6,11 +6,12 @@
 //! type that does not list `"jsonschema"` asked for its document or held by one that does, and a
 //! service whose `openapi` lacks `http_rest`, is written with a value, names a path that is no
 //! route or that an operation answers with `GET`, writes a key it does not take, whose operation
-//! names a type that does not list `"jsonschema"`, or whose `<Service>Schema` the crate root does
-//! not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
+//! asks with a form that is not flat or is no model type, whose operation
+//! names a type that does not list `"jsonschema"`, as does one that asks for `mcp`, or whose
+//! `<Service>Schema` the crate root does not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
 //! which is no brand without the `serde` feature, and a path placeholder that names no member a
-//! declared message reads under a key of its own.
+//! declared message reads under a key of its own, and two services that share a prompt name.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
@@ -148,7 +149,12 @@ mod tests {
             );
         }
         assert!(
-            include_str!("../README.md").contains(&format!("error[E0080]: {}", expected[0])),
+            concat!(
+                include_str!("../docs/guide/http-rest.md"),
+                include_str!("../docs/guide/recovering-decode.md"),
+                include_str!("../docs/guide/mongodb-operations.md")
+            )
+            .contains(&format!("error[E0080]: {}", expected[0])),
             "the README no longer quotes: {}",
             expected[0]
         );

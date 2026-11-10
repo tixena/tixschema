@@ -5,7 +5,7 @@ use super::models::REPORT;
 
 /// The README's section, up to the one after it.
 fn section() -> &'static str {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/models.md");
     let opens = readme
         .find("### A Key Read as Its Default (`#[serde(default)]`)")
         .unwrap();

@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use crate::date_hook;
-
 use window_schema::{Filter, WriteError};
 
 /// The function the README builds two filters with, character for character.
@@ -68,7 +67,7 @@ fn closing_before(instant: DateTime<Utc>) -> Result<[Filter<Window>; 2], WriteEr
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    include_str!("../../docs/guide/mongodb-operations.md")
 }
 
 #[test]

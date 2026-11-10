@@ -300,8 +300,7 @@ fn the_swift_read_of_a_variant_over_an_option_takes_the_nil_it_reads() {
         (
             drogued_swift::swift_definition(),
             [
-                "do { let value = try Drogued.swiftSchemaReadHeld(decoder); self = .held(value); \
-                 return } catch {}; ",
+                "do { let value = try Drogued.swiftSchemaReadHeld(decoder, taken); self = .held(value); return } catch {}; ",
                 "do { let value = try Drogued.swiftSchemaReadListed(decoder); self = \
                  .listed(value); return } catch {}; ",
             ],

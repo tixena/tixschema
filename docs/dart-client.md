@@ -5,9 +5,27 @@
 #### `validate()` on the Dart types
 
 Every type `src/features/dart.rs` writes has `List<String> validate()`, which runs what the Rust
-`validate()` of the type runs, in its order. `README.md`'s "`validate()` in Dart" section is the
+`validate()` of the type runs, in its order. `docs/guide/dart.md`'s "`validate()` in Dart" section is the
 consumer's view; this is what a change has to keep.
 
+- **A class refuses a key no member reads**, as TypeScript, Zod and serde refuse it
+  (`closed_keys`, `unknown_keys_refused`): `tag_checked_reads` opens the unjudged read of a struct
+  and of a variant's class with a loop that throws `Unknown key of a {Class}: {key}` for a key of
+  the object that is none of its members' names and aliases, its own tag, the tag of the enum it is
+  a variant of and the keys of each member it flattens. A `nonstrict` type, a type that names a
+  `preprocess`, which can rewrite the keys it reads, a struct under its own tag, which serde reads
+  past a key beside, and a type that flattens a member whose keys are not known, such as a map or
+  a type parameter, refuse nothing. A member whose type is declared below the holder or in another
+  crate is listed by a placeholder (`member_keys::of`), which `dart_definition()` replaces with
+  the keys the type publishes in `__TIXSCHEMA_KEYS` (`member_keys::filled`); the `const` beside a
+  closed holder refuses a type no `#[model_schema]` expanded, so every such type publishes them. The unit variant of a strict enum under a tag alone refuses
+  every key but the tag (`unit_beside_the_tag`), as the Rust read the macro writes for it does. The keys a type refuses a
+  key beside are recorded per type (`DART_CLOSED`, `record_closed_keys`), for a struct and for an
+  enum under a tag alone or untagged, which takes the union of its variants'. A holder hands each
+  flattened member `handed`, the object without its own keys and those the members ahead of it
+  took, as serde hands it, and a member that takes its own keys the entries of those keys alone
+  of it (`only`, in `constructor_arguments`). An enum under a tag and a content key refuses a key
+  beside the two (`beside_the_content`).
 - **The dispatch is handed what it reads of the attribute.** `dart_suffix_tokens` builds a
   `DartTypeArgs`: the name, the type's `check`, a brand's or an enum's `minLength`, `maxLength` and
   `pattern`, `default_types`, and `member_meta`, which is `member_prop_meta` with the enum's
@@ -61,14 +79,14 @@ consumer's view; this is what a change has to keep.
   `tests/service_schema_emitted_client_tests/run_dart_validate.rs` runs the emitted source under
   the Dart SDK: a value under a named field, in a list, in a map and in an optional is compared
   with what Rust's `validate()` answers of it, a slot and a variant's member are written out, and
-  the README's section is held to the text. `dart analyze` passes every shape whose codec it
+  the guide's section is held to the text. `dart analyze` passes every shape whose codec it
   passed before. Each value is read with `fromJsonUnjudged`: `fromJson` refuses a broken one.
 
 #### The Dart read refuses what `validate()` refuses
 
 `fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
 `validate()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
-read joins it. `README.md`'s "The Dart read refuses what `validate()` refuses" section is the
+read joins it. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
 consumer's view; this is what a change has to keep.
 
 - **One writer of the pair.** `read_pair` writes `fromJson` over `fromJsonUnjudged` for a class, a
@@ -154,7 +172,7 @@ consumer's view; this is what a change has to keep.
   named members sharing it. `collect_dart_fields` pushes no nullable level on a flattened one,
   which has no key to leave out, so one that is no `Option` is read as any flattened member is
   and its constructor parameter is `required`. A member under `skip_serializing_if` is written
-  wherever it holds a value: no client calls the Rust function, and the README states the limit.
+  wherever it holds a value: no client calls the Rust function, and the guide states the limit.
 - **Every flattened member is read at its place, in the order declared**, as serde reads it
   (`constructor_arguments`): from the object without the tag, the keys the holder's own members
   take and the entries each member flattened ahead of it took. That is what a function a member
@@ -210,7 +228,7 @@ consumer's view; this is what a change has to keep.
     that does not read, as TypeScript and Zod refuse it, where serde reads `None`. Its variable,
     `entry`, calls no function either.
   - `Taken::Only` of an `ObjectId` (`object_id_keys`), and of a brand or an alias over one that
-    `value_wrapper_tokens` records, `$oid`: the README's `ObjectId` refuses
+    `value_wrapper_tokens` records, `$oid`: the guide's `ObjectId` refuses
     any other key, where serde reads past one flattened, so `only` hands it an object of that key
     alone, and `without` removes it from what the members after it are handed. An optional one
     is looked for by the key, as a struct is. A holder hands such a value the same way through
@@ -255,9 +273,9 @@ consumer's view; this is what a change has to keep.
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
   flattened member of its own as a map: each records none. A type the emitter has not written
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
-  and an optional one is read in the closure, and the README states both. `toJson` writes each
-  flattened member at its place: a key two of them hold is written once, with the last value,
-  where serde writes it twice. `run_dart_flattened_options.rs` pins the read of a flattened
+  and an optional one is read in the closure, and the guide states both. `toJson` writes each
+  flattened member at its place; a key two of them hold is refused at expansion
+  (`model_schema/flatten_order.rs`), so no holder the emitter writes holds one. `run_dart_flattened_options.rs` pins the read of a flattened
   `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
   models of `tests/swift_tests/flattened_options_models.rs`, which the `dart_tests` binary cannot
   declare beside the `Veering` of `kotlin_tests/aliased_models.rs`, and of `Cringle`, an enum
@@ -266,7 +284,7 @@ consumer's view; this is what a change has to keep.
 - **No cast is written of a value Dart types `Map<String, dynamic>` already**, a cast `dart
   analyze` reports as unnecessary. `joined_entries` spreads what a flattened member, and the lone
   slot of a variant under a tag alone, writes as it is where `writes_an_object` answers: a map, the
-  README's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
+  guide's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
   `Map<String, dynamic>`. An optional one is cast to the map it holds. A brand, an alias, a tuple struct and an enum answer `dynamic` from
   `toJson` and are spread through `as Map<String, dynamic>`, and so is a type the emitter has not
   written: a struct declared below its holder keeps the cast, which the analyzer reports. A
@@ -337,7 +355,7 @@ consumer's view; this is what a change has to keep.
   `tests/service_schema_emitted_client_tests/run_dart_read.rs` runs the reads under the Dart
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
-  serde takes, a reply that breaks a rule through both clients, and the README's section.
+  serde takes, a reply that breaks a rule through both clients, and the guide's section.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
   `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A map of
@@ -358,7 +376,7 @@ consumer's view; this is what a change has to keep.
 its members name, under the names the attribute writes, each a function of the consumer's own:
 `dynamic trimmed(dynamic payload)`. `fromJson` calls that read, so both correct the payload, and
 `validate()` judges what the functions answered. The order of one read is Rust's: the type's
-functions, each member's as it is read, the value, then `validate()`. `README.md`'s "A
+functions, each member's as it is read, the value, then `validate()`. `docs/guide/preprocess.md`'s "A
 `preprocess` in the Dart client" section is the consumer's view, which calls the key a last
 resort; this is what a change has to keep.
 
@@ -421,6 +439,22 @@ resort; this is what a change has to keep.
   `tests/pattern_preprocess_tests/models.rs` and runs them under the Dart SDK: the sample and the
   shared table of positions print what the Rust read prints, two rows apart (`NOT_READ`), with
   the keys a flattened type is handed, the calls of one read counted, a function named after a
-  name of the read, a reply through both clients, and the README's section. Its module is
+  name of the read, a reply through both clients, and the guide's section. Its module is
   declared last in the binary: its models take names the modules above it declare, and an
   expansion reads a type by its name.
+
+#### The `mcp` server and client
+
+`src/features/service_schema/dart_mcp.rs` writes `dart_mcp_service()` and `dart_mcp_client()` on the registry of a service that asks for `mcp`.
+
+- **Two halves of the text.** The emitted text holds markers for what only a compiled type knows: the tool list (`mcp_tools()`, one Dart string literal per tool with `$` written `\$`), the names (`MCP_NAMES`), the instructions, the crate version (`env!("CARGO_PKG_VERSION")`) and `wrapped_{operation}()`. The accessor writes them over the markers when it runs in the consuming program, as `ts_http_service()` writes `openapi()`. An operation whose wrapping depends on the type it names reads a `const` table of its answers; one whose message is generated, or which binds a `header_in`, has it fixed at expansion.
+- **The server reuses the WebSocket attachment's seams.** Each tool is a private function that reads the message with `message_decode`, the read of `dart_ws_client.rs` (the generated type's `fromJson`, which judges), then the `header_in` arguments, calls the handler, and renders the outcome with `split_reply_record` as the attachment does. A `FormatException` from the read, and any other error of it, answers `failed-validation`: `_McpMismatch` walks the tool's JSON schema from the catalog (`_McpMessageSchema`) beside the arguments and names the dotted path of the first value that does not match (`drafts.1.title`) as the field, and the detail opens with that path in single quotes. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field. Where the walk finds none, the fault names no field. A wrapped message missing its `value` key answers `failed-validation` with the field `value`.
+- **Keys are sorted.** `_McpJson` writes every object with its keys in order, the bytes a `serde_json` build without `preserve_order` writes. Tool, resource and prompt texts are embedded as they were handed in, so a schema keeps the digits Rust wrote; `mcp_tools()`, `mcp_resources()` and `mcp_resource_templates()` return their members in key order for that reason.
+- **Resources.** `resource_functions` writes one private function for each resource, template, listing and completion, built as a tool's is (`message_decode`, the handler, the outcome rendered by `dart_json_encode`) and answering a `-32602` where a tool answers a tool error: `_McpUnread` for a fault, `_McpRefused` for a declared error. `_McpRead` tries a fixed URI ahead of the templates, `_McpCaptured` matches a template as the Rust dispatcher does, and a `(Vec<u8>, String)` success is `base64Encode` of the record's bytes. `{Service}McpResource` and `{Service}McpResourcePage` are written once per service that lists, named after it.
+- **`serve` is the whole of the protocol around a route**: `-32600`, a notification, the `_meta` keys (`-32602`), the version (`-32022`), `server/discover`, the four list methods, `resources/list` with its `"<service>:<cursor>"` cursor (asking each service from the one the cursor names until one lists), and the routed methods, which ask each service's route in order; a routed request names nothing to answer with `-32602`, as the Rust `serve` does. `serveHttp` adds the rules of the Streamable HTTP transport in front, and answers the status each rule names: the metadata document first, then the method and `Origin` rules, then `admit`, then the rest. A denial is a `DocumentServiceMcpNoValidCredentials`, `DocumentServiceMcpInsufficientScope` or `DocumentServiceMcpForbidden`, written as the Rust dispatcher writes it.
+- **The writer.** `DocumentServiceMcpCall` holds the `progressToken`, the writer and a cancelled flag; `progress` writes `notifications/progress` itself through `_McpJson` and is awaited, and a write that throws sets the flag. `serve` reads the message ahead of `_McpRespond`, marks the request a `notifications/cancelled` names in `DocumentServiceMcpInFlight`, and builds the `Ctx` and lists the request in the table on the first route call (`tools/call`, `resources/read`, `resources/list`, `prompts/get`, `completion/complete`, `skills/get`, the three task methods and `subscriptions/listen` alike), so a request answered ahead of any service (`server/discover`, the list methods, a refusal) never builds one. `serveHttp` takes the `DocumentServiceMcpHttpStream` of the host and hands `admit` a call that holds what it writes until the stream has begun; a routed request that carries a token (or a `subscriptions/listen`) calls `begin` on its first route call, writes each event as it happens, and answers `null`.
+- **Asking and content.** A tool that asks takes `params` as well as the arguments: `answers_stmt` reads `inputResponses` into `members` ahead of the message's read, and the declared error is held as `declaredBody` for `_McpAsking`, which answers `input_required` when the tag key `mcp_variant_tag` publishes for the arm holds the name serde writes it under. A content tool answers `_McpBlocks` (a list of `McpContent.toJson()`) or `_McpMedia` (an image or audio pair); the client reads a pair from the structured value or from its one block with `_McpPair`, and a list through `McpContent.fromJson`, which `dart_mcp_content()` publishes.
+- **The endpoint is a `const` class over a `Set<String>`**: Dart evaluates a `const` set at compile time and refuses a repeated element.
+- **The client** numbers its requests with `_nextId`, sends `tools/call` and `prompts/get` through `send`, and reads the answer with the decode statements of the WebSocket client (`success_decode_block`, `declared_error_decode_stmts`), whose fault helper is replaced by one that answers `undeserializable-payload` (the client's own read of a reply, which names no argument).
+- **Names.** A header argument is named through `dart_parameter`; the locals the server and client write around it (`arguments`, `members`, `source`, `result`, `parsed`, `failure`, `structured`, `text`) are in `TAKEN_BY_A_METHOD`.
+- **The tests.** `tests/service_schema_emitted_client_tests/run_dart_mcp.rs` runs the server and the client under the Dart SDK on the services of `mcp_dart_services.rs`; every answer is validated against the vendored 2026-07-28 schema, and the shared-name `const` endpoint is compiled and refused. `run_dart_mcp_resources.rs` sends the requests of `mcp_library_rows.rs` to the server and holds each answer to the Rust dispatcher's, on the services of `mcp_library_service.rs`.

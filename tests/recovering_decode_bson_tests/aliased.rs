@@ -73,11 +73,11 @@ pub type Properties = bson::Document;
 #[model_schema(name = "Properties")]
 pub type PropertiesData = HashMap<String, String>;
 
-/// A document behind a plain alias, flattened: it takes every key nothing else declares.
-#[model_schema(enable = ["decode_with", "mongodb"])]
+/// A document behind a plain alias, flattened alone: it takes every key. `nonstrict`, as
+/// tixschema does not see through a plain alias that the type is a map.
+#[model_schema(nonstrict, enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Block {
-    name: String,
     #[serde(flatten)]
     properties: Properties,
 }
@@ -178,23 +178,18 @@ fn an_alias_tixschema_never_sees_is_read_whole() {
     );
 }
 
-/// Flattened, the document takes every key nothing else declares, so none of them is unknown.
+/// Flattened alone, the document takes every key, so none of them is unknown.
 #[test]
 fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     let mut calls = 0_u32;
-    let stored_row = doc! { "name": "n", "a": 1_i32, "b": [true] };
+    let stored_row = doc! { "a": 1_i32, "b": [true] };
     assert_eq!(
         read_counting!(Block, block_schema, stored_row, calls),
         Ok(Block {
-            name: "n".to_owned(),
             properties: doc! { "a": 1_i32, "b": [true] },
         })
     );
     assert_eq!(calls, 0);
-    assert_eq!(
-        listed!(Block, block_schema, doc! { "name": 7_i32, "a": 1_i32 }),
-        [invalid("name", "String", Bson::Int32(7_i32))]
-    );
 }
 
 #[test]

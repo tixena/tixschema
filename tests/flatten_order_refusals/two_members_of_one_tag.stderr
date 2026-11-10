@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` has flattened `shape` (`Shape`) and flattened `hue` (`Hue`), which both write the key `form`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, or write `shape` or `hue` under a key of its own.
+  --> tests/flatten_order_refusals/two_members_of_one_tag.rs:25:5
+   |
+25 | /     #[serde(flatten)]
+26 | |     pub hue: Hue,
+   | |________________^

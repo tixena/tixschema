@@ -36,6 +36,8 @@ use syn::{
 
 use self::preprocess::Plugin;
 use self::validate::{Member, Rules};
+#[cfg(feature = "serde")]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -44,15 +46,20 @@ use crate::features::serde::{
     written_slots,
 };
 use crate::features::text_forms::TextForm;
+use crate::features::unmet_keys_filled;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
+#[cfg(feature = "serde")]
+use crate::model_schema::flatten_order::{
+    flattened_keys, reads_past_the_keys_left, refuses_the_keys_left,
+};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
-    compute_alias_export_name, compute_item_export_name, option_alias, to_snake_case,
-    type_parameters_in_scope,
+    compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict, option_alias,
+    to_snake_case, type_parameters_in_scope,
 };
 
 #[cfg(feature = "serde")]
@@ -96,6 +103,19 @@ const VALIDATE_DECLARED: &str = "{ fun validate(): List<String> }";
 
 /// The payload a serializer that corrects the plugin's reads, `transformDeserialize`'s parameter.
 const ELEMENT: &str = "element";
+
+/// How an item names the wrapper of a tuple, and whether it declares it.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum TupleNaming {
+    /// A number of the item's own, declared by the item: a model type's.
+    Counted,
+    /// A name derived from the shape, declared by the item: the accessor that declares a
+    /// service's result types.
+    Declared,
+    /// The name derived from the shape, declared by no one here: an accessor that is only
+    /// compiled beside the one that declares it.
+    Named,
+}
 
 /// What `#[model_schema(...)]` wrote on an item, as this module reads it.
 pub struct KotlinArgs<'args> {
@@ -283,6 +303,9 @@ thread_local! {
     /// invocations — never reset, since every tuple wrapper this module ever writes lands in the
     /// same consuming file and must not collide with any other item's.
     static KOTLIN_TUPLE_COUNTER: Cell<u32> = const { Cell::new(0) };
+    /// How the item being expanded names and declares the wrapper of a tuple. Reset to
+    /// [`TupleNaming::Counted`] with [`KOTLIN_TUPLE_AUX`].
+    static KOTLIN_TUPLE_NAMING: Cell<TupleNaming> = const { Cell::new(TupleNaming::Counted) };
     /// The class each kind of range the item being expanded writes is declared as, by the members
     /// it declares, so every range of one kind names one class. Cleared with
     /// [`KOTLIN_TUPLE_AUX`].
@@ -531,6 +554,51 @@ fn taken_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
     KOTLIN_TAKEN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
 }
 
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn refuses_the_keys_left(_def: &FieldDef) -> bool {
+    false
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn reads_past_the_keys_left(_def: &FieldDef) -> bool {
+    false
+}
+
+/// The keys of a flattened member whose type is declared below its holder or in another crate, as
+/// the placeholder `kotlin_definition()` fills.
+#[cfg(feature = "serde")]
+fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
+    recorded_keys(&flatten_base_field(def))
+        .is_none()
+        .then(|| member_keys::of(def))
+        .flatten()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn unmet_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
+}
+
+/// The keys the macro's classifier answers for a flattened member typed `def` the emitter noted
+/// nothing of, a struct of one slot over a struct among them, where it names no function.
+fn unrecorded_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let noted =
+        recorded_keys(def).is_some_and(|keys| !keys.is_empty()) || recorded_tag_keys(def).is_some();
+    if noted || !preprocess::of(def).is_empty() {
+        return None;
+    }
+    flattened_keys(def)
+}
+
 /// Whether a flattened member typed `def` is read from the whole object its holder reads, as
 /// TypeScript and Zod read it: a struct, and an enum under a tag key, the emitter wrote that hands
 /// its object to no function.
@@ -751,8 +819,12 @@ fn own_tag_property(key: &str, named: &str) -> String {
 
 /// The statement that refuses the first of `left`, the Kotlin expression of the keys of an object
 /// no member read, in the words of the plugin's serializer, which refuses it under the same `Json`:
-/// one whose configuration does not ignore unknown keys, as TypeScript and Zod refuse it.
+/// one whose configuration does not ignore unknown keys, as TypeScript and Zod refuse it. A
+/// `nonstrict` type refuses nothing.
 fn unknown_key_refused(left: &str) -> String {
+    if is_nonstrict() {
+        return "run { }".to_owned();
+    }
     format!(
         "if (!input.json.configuration.ignoreUnknownKeys) {left}.firstOrNull()?.let {{ throw \
          SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}"
@@ -1257,6 +1329,41 @@ fn tuple_wrapper_serializer(elements: &[FieldDef], walked: bool) -> String {
     }
 }
 
+/// Names the tuple wrappers the item being expanded writes as `naming` says, until
+/// [`kotlin_declarations`] closes the item.
+pub fn kotlin_tuple_naming(naming: TupleNaming) {
+    KOTLIN_TUPLE_NAMING.with(|held| held.set(naming));
+}
+
+/// `shape` without the numbers of the helpers an item numbers for itself (`KotlinNumber627`), which
+/// differ between the items that name one tuple.
+fn unnumbered(shape: &str) -> String {
+    let mut written = String::with_capacity(shape.len());
+    let mut rest = shape;
+    while let Some(at) = rest.find("Kotlin") {
+        let (before, after) = rest.split_at(at);
+        written.push_str(before);
+        let name_end = after
+            .find(|letter: char| !letter.is_ascii_alphabetic())
+            .unwrap_or(after.len());
+        let (name, tail) = after.split_at(name_end);
+        written.push_str(name);
+        rest = tail.trim_start_matches(|letter: char| letter.is_ascii_digit());
+    }
+    written.push_str(rest);
+    written
+}
+
+/// A name for `shape` that no counter and no build changes: the FNV-1a hash of its text.
+fn shape_name(shape: &str) -> String {
+    let hash = unnumbered(shape)
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |held, byte| {
+            (held ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    format!("{hash:016x}")
+}
+
 /// The wrapper of a Tuple-shaped field, and the type parameters it declares: queues a wrapper
 /// `data class` plus the `KSerializer` that reads and writes it as a JSON array, once per shape in
 /// the item being expanded. Monotonically numbered so two fields named alike in two different
@@ -1327,21 +1434,28 @@ fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
     }) {
         return (named, parameters);
     }
-    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
-        let next = counter.get() + 1;
-        counter.set(next);
-        next
-    });
-    let wrapper_name = format!("KotlinTuple{index}");
-    let class_text = tuple_wrapper_declarations(
-        &wrapper_name,
-        &parameters,
-        &params,
-        &encode_entries,
-        &decode_entries,
-        elements.len(),
-    );
-    KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
+    let naming = KOTLIN_TUPLE_NAMING.with(Cell::get);
+    let wrapper_name = if naming == TupleNaming::Counted {
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        format!("KotlinTuple{index}{}", crate_tag())
+    } else {
+        format!("KotlinTupleOf{}", shape_name(&shape))
+    };
+    if naming != TupleNaming::Named {
+        let class_text = tuple_wrapper_declarations(
+            &wrapper_name,
+            &parameters,
+            &params,
+            &encode_entries,
+            &decode_entries,
+            elements.len(),
+        );
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(class_text));
+    }
     KOTLIN_TUPLES.with(|tuples| {
         tuples.borrow_mut().push((shape, wrapper_name.clone()));
     });
@@ -1415,12 +1529,17 @@ fn unit_typename() -> String {
     }) {
         return named;
     }
-    let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
-        let next = counter.get() + 1;
-        counter.set(next);
-        next
-    });
-    let named = format!("KotlinUnit{index}");
+    let naming = KOTLIN_TUPLE_NAMING.with(Cell::get);
+    let named = if naming == TupleNaming::Counted {
+        let index = KOTLIN_TUPLE_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        format!("KotlinUnit{index}{}", crate_tag())
+    } else {
+        "KotlinUnitOf".to_owned()
+    };
     let serializer = format!("{named}Serializer");
     let declared = format!(
         "@Serializable(with = {serializer}::class) object {named} \
@@ -1433,7 +1552,9 @@ fn unit_typename() -> String {
          throw SerializationException(\"invalid type: \" + payload + \", expected unit\"); \
          return {named} }} }}"
     );
-    KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
+    if naming != TupleNaming::Named {
+        KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
+    }
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().push((String::new(), named.clone())));
     named
 }
@@ -1458,7 +1579,7 @@ fn range_class(kind: RangeKind) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinRange{index}");
+        let named = format!("KotlinRange{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| {
             aux.borrow_mut().push(format!(
                 "@Serializable data class {named}<Bound>({members})"
@@ -1497,7 +1618,7 @@ fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinResult{index}");
+        let named = format!("KotlinResult{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(result_declarations(&named, shape)));
         written.push((shape, named.clone()));
         named
@@ -1650,6 +1771,7 @@ pub fn kotlin_declarations() -> Vec<String> {
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
+    KOTLIN_TUPLE_NAMING.with(|held| held.set(TupleNaming::Counted));
     texts::clear();
     arrays::clear();
     KOTLIN_TUPLE_AUX.with(RefCell::take)
@@ -1662,6 +1784,13 @@ pub fn kotlin_declarations() -> Vec<String> {
 #[cfg(feature = "serde")]
 pub fn kotlin_read_serializer(field: &FieldDef) -> String {
     kotlin_serializer_expr(field, &[])
+}
+
+/// The `KSerializer` that reads a value typed `field` with no judgement: [`kotlin_read_serializer`]
+/// with each model it holds replaced by its `{Type}Unjudged`.
+#[cfg(feature = "serde")]
+pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
+    read::unjudged_serializer(field, &[])
 }
 
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
@@ -1691,7 +1820,10 @@ fn kotlin_module_tokens(
         .join(" ");
     let module_ident = kotlin_module_ident(rust_ident, span);
     let holder = defaults.holder();
-    if holder.is_empty() {
+    let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
+    let escaped = [('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")];
+    let (beside, keys) = unmet_keys_filled(&written, &module_ident, kotlin_quoted, '"', &escaped);
+    if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn kotlin_definition() -> ::std::string::String {
@@ -1700,12 +1832,12 @@ fn kotlin_module_tokens(
             }
         };
     }
-    let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
-    let replaced = substituted(
-        &quote! { SerdeDefaults },
-        &written,
-        &[('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")],
-    );
+    let mut replaced = if holder.is_empty() {
+        TokenStream::new()
+    } else {
+        substituted(&quote! { SerdeDefaults }, &written, &escaped)
+    };
+    replaced.extend(keys);
     let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
@@ -1719,6 +1851,7 @@ fn kotlin_module_tokens(
         }
 
         #values
+        #beside
     }
 }
 
@@ -1991,6 +2124,7 @@ fn flatten_struct_field_plan(
     prop: &str,
     type_parameters: &[String],
     rest: &str,
+    refusing: bool,
 ) -> FlattenedMember {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
@@ -2007,9 +2141,12 @@ fn flatten_struct_field_plan(
     } else {
         handed
     };
-    let known = read_keys(&base);
+    let known = read_keys(&base).or_else(|| unrecorded_keys(&base));
+    // A member that reads every key left and refuses one it does not declare is handed those keys,
+    // as serde hands them, and read under the caller's `Json`, so it refuses a key no member reads.
+    let reader = if refusing { "input.json" } else { "lenient" };
     let decoded = known.as_ref().map_or_else(
-        || format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})"),
+        || format!("{reader}.decodeFromJsonElement({inner_serializer}, {corrected})"),
         |keys| {
             format!(
                 "input.json.decodeFromJsonElement({inner_serializer}, \
@@ -2352,18 +2489,30 @@ fn flatten_plan(
                 }
                 plan.push(member);
             } else {
-                let handed = if reads_the_whole(&flatten_base_field(&field.field_def)) {
+                let base = flatten_base_field(&field.field_def);
+                let refusing = !field.field_def.is_optional() && refuses_the_keys_left(&base);
+                let handed = if reads_the_whole(&base) && !refusing {
                     "obj"
                 } else {
                     &rest
                 };
-                let member = flatten_struct_field_plan(field, &prop, type_parameters, handed);
+                let member =
+                    flatten_struct_field_plan(field, &prop, type_parameters, handed, refusing);
                 if !preprocess::takes_no_key(&field.field_def) {
                     let _ = write!(taken, " - {}", member.taken);
                 }
                 plan.push(member);
+                // A member that reads every key left and refuses none leaves its holder refusing none.
+                if reads_past_the_keys_left(&base) {
+                    members_read = None;
+                }
                 members_read = members_read
-                    .zip(read_keys(&field.field_def).or_else(|| taken_tag_keys(&field.field_def)))
+                    .zip(
+                        read_keys(&field.field_def)
+                            .or_else(|| taken_tag_keys(&field.field_def))
+                            .or_else(|| unrecorded_keys(&flatten_base_field(&field.field_def)))
+                            .or_else(|| unmet_keys(&field.field_def)),
+                    )
                     .map(|(mut so_far, keys)| {
                         let _ = write!(so_far, " - {}", kotlin_set_of(&keys));
                         so_far
@@ -2593,8 +2742,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             .as_ref()
             .map_or_else(String::new, |(key, named)| own_tag_property(key, named));
         format!(
-            "{} {body} {{ {tag}{validated} }} {} {}{alias}",
+            "{}{} {body} {{ {tag}{validated} }} {} {}{alias}",
             read::kept(&export_name),
+            read::ignoring_unknown_keys(),
             kept_unjudged(
                 &export_name,
                 &generic_params,
@@ -3186,7 +3336,8 @@ fn variant_subclass(
         ),
         VariantPayload::Named(fields) => (
             format!(
-                "{annotation}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                "{annotation}{}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                read::opted_in_ignoring_unknown_keys(),
                 data_class_params(fields, Some(plugin))
             ),
             None,

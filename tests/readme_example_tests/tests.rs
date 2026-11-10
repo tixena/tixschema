@@ -3,17 +3,16 @@
 #![cfg(all(feature = "serde", feature = "typescript"))]
 
 mod services;
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
 
 /// The predicate bullet: the key goes missing when the predicate fires, so the member is described
 /// under an optional key rather than left untouched.
-const PREDICATE_BULLET: &str = "- `#[serde(skip_serializing_if = \"...\")]` -- the key is left out of the payload when the predicate fires, and serde reads the missing key as the member's `default`: Zod writes `roles: z.array(z.string()).prefault([]),`, the TypeScript member is `roles: Array<string>;`, and the JSON Schema states the `\"default\"` and leaves the key out of `required`. An `Option` field keeps `T | undefined` unless [`ts_optional`](#ts_optional) asks otherwise";
+const PREDICATE_BULLET: &str = "- `#[serde(skip_serializing_if = \"...\")]` -- the key is left out of the payload when the predicate fires, and serde reads the missing key as the member's `default`: Zod writes `roles: z.array(z.string()).prefault([]),`, the TypeScript member is `roles: Array<string>;`, and the JSON Schema states the `\"default\"` and leaves the key out of `required`. An `Option` field keeps `T | undefined` unless [`ts_optional`](optional-and-nullable-keys.md#optional-typescript-keys-ts_optional) asks otherwise";
 
 /// The bare-`skip` bullet, whose claim is an absence on every surface.
-const SKIP_BULLET: &str = "- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. No rule of what a surface describes is held to its type: a `u64` under `swift` or `kotlin`, a std type with no schema, a map keyed by a value serde writes as no string and a JSON value all build there. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](#a-variant-serde-neither-writes-nor-reads)";
+const SKIP_BULLET: &str = "- `#[serde(skip)]` -- the key is written into no payload and read out of none, so no surface describes the member at all: no TypeScript member, no Zod key, and neither a `properties` nor a `required` entry. No rule of what a surface describes is held to its type: a `u64` under `swift` or `kotlin`, a std type with no schema, a map keyed by a value serde writes as no string and a JSON value all build there. On a tuple-struct or tuple-variant slot it takes the slot out of the described tuple, which shortens the arity -- and a variant declaring one slot becomes a unit variant, which is what serde writes for it. On a variant, the variant is described on no surface and read and written by no client: see [A Variant Serde Neither Writes Nor Reads](enums.md#a-variant-serde-neither-writes-nor-reads)";
 
 /// The write-half bullet, which lands where the predicate bullet does.
 const WRITE_HALF_BULLET: &str = "- `#[serde(skip_serializing)]` -- the write half of `skip`: the key is left out of every payload while a supplied one is still read, and every surface answers as it does for `skip_serializing_if`";
@@ -58,7 +57,15 @@ pub struct ReadHalfDropped {
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    concat!(
+        include_str!("../../docs/guide/models.md"),
+        include_str!("../../docs/guide/generics-and-brands.md"),
+        include_str!("../../docs/guide/services.md"),
+        include_str!("../../docs/guide/examples.md"),
+        include_str!("../../docs/guide/object-id.md"),
+        include_str!("../../docs/guide/chrono.md"),
+        include_str!("../../docs/guide/serde-attributes.md")
+    )
 }
 
 /// The README declares this, and the generator writes that.
@@ -85,15 +92,15 @@ fn assert_readme_declares_and_shows(declaration: &str, emission: &str, members: 
 /// The "A Struct's Own Tag" example: the key serde writes the struct's name under is a member.
 #[test]
 fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Serialize, Deserialize)]
     #[serde(tag = "kind")]
     pub struct Tagged {
         pub name: String,
     }
 
-    let declaration = "#[model_schema()]\n#[derive(Serialize, Deserialize)]\n#[serde(tag = \
-                       \"kind\")]\npub struct Tagged {\n    pub name: String,\n}";
+    let declaration = "#[model_schema(nonstrict)]\n#[derive(Serialize, Deserialize)]\n#[serde(tag \
+                       = \"kind\")]\npub struct Tagged {\n    pub name: String,\n}";
     assert_readme_declares_and_shows(
         declaration,
         &Tagged::ts_definition(),
@@ -108,7 +115,7 @@ fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
         declaration,
         &Tagged::zod_schema(),
         &[
-            "const Tagged$RawSchema = z.strictObject({",
+            "const Tagged$RawSchema = z.object({",
             "  kind: z.literal(\"Tagged\"),",
             "  name: z.string(),",
             "});",
@@ -199,8 +206,12 @@ fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     })
     .unwrap();
     assert_eq!(written, r#"{"id":"1"}"#);
-    let read_back = serde_json::from_str::<FullySkipped>(r#"{"id":"1","roles":["x"]}"#).unwrap();
+    let read_back = serde_json::from_str::<FullySkipped>(r#"{"id":"1"}"#).unwrap();
     assert_eq!(read_back.roles, Vec::<String>::new());
+    let refused = serde_json::from_str::<FullySkipped>(r#"{"id":"1","roles":["x"]}"#)
+        .err()
+        .map(|error| error.to_string());
+    assert!(refused.is_some_and(|reason| reason.starts_with("unknown field `roles`")));
     let skipped = FullySkipped::ts_definition();
     assert!(!skipped.contains("roles"), "Got: {skipped}");
 

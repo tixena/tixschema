@@ -100,6 +100,21 @@ fn test_my_feature() {
 }
 ```
 
+### Flattened Members
+
+`src/model_schema/flatten_order/tests.rs` holds the decision table of flattened members to every
+sequence of member classes, and each member kind to its class. `tests/flatten_matrix_part*_tests.rs`
+hold every shape of flattened members a plain-serde measure found reading back that
+`#[model_schema]` declares, eight binaries so cargo builds them side by side, over the helpers of
+`tests/flatten_matrix/harness.rs`: each row is written, read back equal, and read with a stray key
+first as the measure states, but for the unit variant of a strict enum under a tag alone, which
+the macro reads refusing the stray key serde's own derive read past. They were generated once from
+that measure and are edited as any other test. `tests/flatten_order_refusals/` holds what rustc
+prints for each refusal, a member declared below its holder or in another crate among them, whose
+refusal the `const` beside the holder prints, and
+`service_schema_emitted_client_tests/run_flatten_order.rs` reads one holder of each accepted class
+on every client.
+
 ### Validation in Every Build
 
 [tests/every_build_validation_tests.rs](../tests/every_build_validation_tests.rs) holds every build
@@ -118,6 +133,38 @@ Rust spells it and every enum as externally tagged, so `validate.rs` holds those
 `#[cfg(feature = "serde")]` / `#[cfg(not(feature = "serde"))]` pair of constants. A new shape, or a
 new place a rule is held, gets a model and a test here, under no other gate. `just check-mix` runs
 the binary with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`.
+
+### Testing the `mcp` Transport
+
+Every MCP answer a test reads is held to the official schema of revision 2026-07-28, vendored as
+[tests/mcp_declaration_tests/mcp-schema-2026-07-28.json](../tests/mcp_declaration_tests/mcp-schema-2026-07-28.json),
+and every task message to the tasks extension's schema beside it, through the `jsonschema`
+dev-dependency (`schema_errors` in `tests/mcp_dispatch_tests/support.rs`). A new message is checked
+there by its `$defs` name before any test compares its bytes.
+
+- `tests/mcp_declaration_tests.rs`: `mcp_tools()`, `wrapped_{operation}()` and `MCP_NAMES`, each
+  tool held to the official `Tool` definition, and `needs_wrapper()`, `mcp_form_value()` and
+  `mcp_form_flat()` on every kind of model type.
+- `tests/mcp_dispatch_tests.rs`: the Rust dispatcher and client, one file per feature under
+  `tests/mcp_dispatch_tests/` (tools, resources, prompts, elicitation, the writer, subscriptions,
+  tasks, skills, authorization over HTTP).
+- `tests/mcp_client_tests.rs`: a crate that declares the service and a crate that calls it, apart.
+- `tests/mcp_fault_cases/`: the one table of the faults every server answers. Both
+  `tests/mcp_dispatch_tests.rs` and `tests/service_schema_emitted_client_tests.rs` include it by
+  `#[path]`, so the Rust, TypeScript, Dart and Kotlin servers are held to the same rows. A new fault
+  rule is a row here, never a copy in one run.
+- `tests/service_schema_emitted_client_tests/`: the TypeScript, Dart and Kotlin servers and the five
+  clients under their own toolchains (`just test-emitted`). Each `mcp_*_rows.rs` file sends the same
+  requests to a server and to the Rust dispatcher, and asserts the same bytes. `mcp_streams.rs`
+  holds the streams that record each `begin` and `write` with the handler still running, so an
+  order is asserted with no clock. Every service there is one test binary, and a `macro_rules!` name
+  is global to its crate, so a new service takes a name no other service of the binary uses.
+- `tests/foundation_refusals/mcp_*.rs`: what rustc prints for a name two services of one endpoint
+  share, a form that is not flat or not a model type, and a type that does not list `jsonschema`.
+- `tests/mcp_skills/` and `tests/mcp_skills_refused/`: the skills folders a service reads, and the
+  folders it refuses.
+- `examples/strict_consumer_models/desk*.rs`: a module that exports the dispatcher and the client,
+  linted by the package's own clippy table.
 
 ### Running Single Tests During Development
 
@@ -226,11 +273,13 @@ fn test_complex_nested() {
 
 ## CI/CD Integration
 
+Each workflow installs two toolchains: beta, which `rust-toolchain.toml` pins and the code is developed on, and 1.91.1, the floor (`rust-version` in `Cargo.toml`). Every lint step runs on beta, and every test step on the floor. The setup action is given `rustflags: ""`, so `RUSTFLAGS` stays unset: only a lint step, which passes `-D warnings` itself, fails on a warning.
+
 A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on, then `just check-mix`:
 
-1. `cargo clippy --all-targets --all-features -- -D warnings`
-2. `cargo test --all-features`
-3. `just check-mix`, not part of `just all`, in three steps:
+1. `cargo clippy --all-targets --all-features -- -D warnings`, on beta
+2. `cargo test --all-features`, on the floor
+3. `just check-mix`, not part of `just all`, on the floor, in three steps:
    - `cargo hack check --each-feature` compiles this package's library, no test, once with no feature, once with the default, once with every feature, and once with each feature by itself
    - the same line over `bson3/`, with `--tests`, compiles that package's tests, against version 3 of the `bson` library, and tixschema, a dev-dependency there, under the same features; no test runs
    - `tests/every_build_validation_tests.rs` runs with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`
@@ -243,7 +292,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 3. `cargo test --verbose` (basic tests)
 4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
-6. `just test-slow` (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
+6. `just lint-slow` on beta, then `just run-slow` on the floor (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status
 
@@ -251,7 +300,7 @@ The gate lints and tests one feature selection of one package. `just check-mix` 
 
 `just check-all` builds what the first two lines of `just check-mix` build, over every combination of the features in place of each feature by itself: this package's library, then the tests of `bson3/` and tixschema. `just ci` runs it, and neither workflow does.
 
-Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `test-slow`.
+Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `run-slow`.
 
 The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of either workflow runs it.
 

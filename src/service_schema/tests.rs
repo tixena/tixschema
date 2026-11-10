@@ -225,6 +225,20 @@ const GET_AT_A_ROOT_PLACEHOLDER_SERVICE: &str = r#"
     }
 "#;
 
+const CONTENT_AND_PROMPT_SERVICE: &str = "
+    pub trait CardService<Ctx> {
+        /// Shows one card.
+        #[service_schema_op(mcp(content))]
+        async fn show_card(&self, ctx: &Ctx, card_id: String)
+            -> Result<Vec<card_service_schema::McpContent>, CardError>;
+
+        /// Greets one person.
+        #[service_schema_op(mcp(prompt))]
+        async fn greet(&self, ctx: &Ctx, name: String)
+            -> Result<Vec<card_service_schema::McpPromptMessage>, CardError>;
+    }
+";
+
 /// One item as either macro body emits it: what its doc attributes said, everything ahead of the
 /// block it opens, the keyword that opened it, and that block.
 struct EmittedItem {
@@ -262,6 +276,16 @@ fn expansion_over_amqp_rpc_non_exhaustive(source: &str) -> TokenStream {
         quote! { transports = ["amqp_rpc"], non_exhaustive },
         declared(source).to_token_stream(),
     )
+}
+
+/// The expansion of a service that asked for `mcp` alone, with or without `non_exhaustive`.
+fn expansion_over_mcp(source: &str, non_exhaustive: bool) -> String {
+    let arguments = if non_exhaustive {
+        quote! { non_exhaustive, transports = ["mcp"] }
+    } else {
+        quote! { transports = ["mcp"] }
+    };
+    exec_service_schema(arguments, declared(source).to_token_stream()).to_string()
 }
 
 /// The same expansion for a service that asked for `http_rest`, which is what carries both a
@@ -550,20 +574,11 @@ fn named_input(operation: &OperationDef) -> Option<&Type> {
     }
 }
 
-#[rustversion::since(1.98)]
 fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
 where
     U: Default,
 {
-    value.map_or_default(map)
-}
-
-#[rustversion::before(1.98)]
-fn mapped_or_default<T, U>(value: Option<T>, map: impl FnOnce(T) -> U) -> U
-where
-    U: Default,
-{
-    value.map(map).unwrap_or_default()
+    value.map_or_else(U::default, map)
 }
 
 fn refusals(source: &str) -> Vec<String> {
@@ -607,7 +622,7 @@ fn the_generated_module_reaches_the_author_s_declarations_through_super() {
          Got: {emitted}"
     );
     // The README states the requirement where it documents the construct, so the two cannot drift.
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     assert!(
         readme.contains("**A service is declared at module scope, never inside a function body.**")
             && readme
@@ -1306,7 +1321,9 @@ fn the_readme_states_the_refusal_of_a_json_value_in_an_operation_as_the_build_an
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0].0);
     assert_eq!(
-        include_str!("../../README.md").matches(&answered).count(),
+        include_str!("../../docs/guide/models.md")
+            .matches(&answered)
+            .count(),
         1,
         "the README no longer quotes: {answered}"
     );
@@ -1918,9 +1935,9 @@ fn a_streamed_body_beside_both_envelope_transports_is_refused_once_naming_both()
         refused.to_string(),
         "service_schema: operation `get_content` declares a streamed body, and this service \
          also declares `amqp_rpc`, `ws_rpc`\n       \
-         a streamed body has no carrier inside the `{ ok, value, error }` envelope those \
-         transports answer with - drop them from `transports`, or drop `body = \"stream\"` from \
-         this operation"
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope \
+         `amqp_rpc` and `ws_rpc` answers with - drop them from `transports`, or drop \
+         `body = \"stream\"` from this operation"
     );
 }
 
@@ -1935,9 +1952,111 @@ fn a_multipart_file_part_beside_both_envelope_transports_is_refused_once_naming_
         refused.to_string(),
         "service_schema: operation `upload_document` declares a multipart file part, and this \
          service also declares `amqp_rpc`, `ws_rpc`\n       \
-         a file part has no carrier inside the `{ ok, value, error }` envelope those \
-         transports answer with - drop them from `transports`, or drop the `part(...)` binding \
-         and `body = \"multipart\"` from this operation"
+         a file part has no carrier inside the `{ ok, value, error }` envelope \
+         `amqp_rpc` and `ws_rpc` answers with - drop them from `transports`, or drop the \
+         `part(...)` binding and `body = \"multipart\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_mcp_alone_names_the_tool_result() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `mcp`\n       \
+         a streamed body has no carrier inside the tool result `mcp` answers with - drop them \
+         from `transports`, or drop `body = \"stream\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_an_envelope_transport_and_mcp_names_both_carriers() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::AmqpRpc, Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `amqp_rpc`, `mcp`\n       \
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` \
+         answers with, nor inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop `body = \"stream\"` from this operation"
+    );
+}
+
+#[test]
+fn a_streamed_body_beside_ws_rpc_alone_names_the_envelope() {
+    let refused = stream_envelope_refusal(
+        &service(STREAM_SERVICE),
+        &[Transport::WsRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `get_content` declares a streamed body, and this service \
+         also declares `ws_rpc`\n       \
+         a streamed body has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` \
+         answers with - drop them from `transports`, or drop `body = \"stream\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_mcp_alone_names_the_tool_result() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `mcp`\n       \
+         a file part has no carrier inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop the `part(...)` binding and `body = \"multipart\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_an_envelope_transport_and_mcp_names_both_carriers() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::AmqpRpc, Transport::Mcp, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `amqp_rpc`, `mcp`\n       \
+         a file part has no carrier inside the `{ ok, value, error }` envelope `amqp_rpc` \
+         answers with, nor inside the tool result `mcp` answers with - drop them from \
+         `transports`, or drop the `part(...)` binding and `body = \"multipart\"` from this \
+         operation"
+    );
+}
+
+#[test]
+fn a_multipart_file_part_beside_ws_rpc_alone_names_the_envelope() {
+    let refused = multipart_envelope_refusal(
+        &service(MULTIPART_SERVICE),
+        &[Transport::WsRpc, Transport::HttpRest],
+    )
+    .unwrap();
+    assert_eq!(
+        refused.to_string(),
+        "service_schema: operation `upload_document` declares a multipart file part, and this \
+         service also declares `ws_rpc`\n       \
+         a file part has no carrier inside the `{ ok, value, error }` envelope `ws_rpc` answers \
+         with - drop them from `transports`, or drop the `part(...)` binding and \
+         `body = \"multipart\"` from this operation"
     );
 }
 
@@ -2145,7 +2264,7 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
     // The message's own read would refuse a broken bound as a payload serde cannot read. The
     // arm reads it unjudged, so the validator is what answers for it, with its field.
     let deserialized = emitted
-        .find("$ crate :: billing_service_schema :: unjudged_get_open_balance (& mut payload)")
+        .find("$ crate :: billing_service_schema :: unjudged_get_open_balance (tracked)")
         .unwrap();
     let validated = emitted
         .find("$ crate :: billing_service_schema :: validated_get_open_balance (& received)")
@@ -2167,7 +2286,38 @@ fn an_arm_validates_before_it_calls_and_faults_on_both_ways_the_message_can_be_w
          result :: Result < GetOpenBalanceMessage , D :: Error >",
         "< GetOpenBalanceMessage > :: model_schema_read_unjudged (deserializer)",
         // What follows the message in the payload is refused, as `from_slice` refuses it.
-        ". and_then (| read | payload . end () . map (| () | read))",
+        ". and_then (| read | payload . end () . map (| () | read) . map_err",
+    ] {
+        assert!(
+            emitted.contains(written),
+            "missing `{written}`, got: {emitted}"
+        );
+    }
+}
+
+#[test]
+fn a_list_a_map_and_an_optional_message_are_read_element_by_element_and_validated_element_by_element()
+ {
+    let emitted = expanded_over_amqp_rpc(
+        "
+        pub trait BatchService<Ctx> {
+            async fn check_many(&self, ctx: &Ctx, req: Vec<Item>) -> Result<Done, BatchError>;
+            async fn check_named(&self, ctx: &Ctx, req: HashMap<String, Item>) -> Result<Done, BatchError>;
+            async fn check_maybe(&self, ctx: &Ctx, req: Option<Item>) -> Result<Done, BatchError>;
+            async fn check_one(&self, ctx: &Ctx, req: Item) -> Result<Done, BatchError>;
+        }
+    ",
+    );
+    for written in [
+        "struct Held (Item) ;",
+        "< Item > :: model_schema_read_unjudged (deserializer) . map (Held)",
+        "let read : Vec < Held > =",
+        "let read : HashMap < String , Held > =",
+        "let read : Option < Held > =",
+        "for item in received . iter () { if let :: core :: result :: Result :: Err (found) = item . validate ()",
+        "for item in received . values () {",
+        "if let :: core :: option :: Option :: Some (item) = received . as_ref () {",
+        "< CheckOneMessage > :: model_schema_read_unjudged (deserializer)",
     ] {
         assert!(
             emitted.contains(written),
@@ -2326,16 +2476,17 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
     );
     assert!(
         emitted.contains(
-            "let named = $ crate :: billing_service_schema :: named_field (said) . or_else \
-             (|| serde_named_field (said))"
-        ),
+            "if let :: core :: option :: Option :: Some (field) = $ crate :: \
+             billing_service_schema :: named_field (said)"
+        ) && emitted.contains("serde_named_field (said)"),
         "a serde refusal is read for a field by the reader a violation is read by — a hook hands \
          serde a validator's message verbatim — and, failing that, by serde's own naming. \
          Got: {emitted}"
     );
     assert!(
-        emitted
-            .contains("if matches ! (refusal . classify () , :: serde_json :: error :: Category"),
+        emitted.contains(
+            "if matches ! (refusal . error . classify () , :: serde_json :: error :: Category"
+        ),
         "which fault a refusal is comes off serde_json's own classification of it rather than off \
          the shape of the sentence it wrote. Got: {emitted}"
     );
@@ -2582,7 +2733,7 @@ fn the_emitted_trait_names_the_operation_a_missing_implementation_is_refused_for
 
 #[test]
 fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     for (source, shown) in [
         (
             "pub trait CustomerService<Ctx> {
@@ -2710,11 +2861,17 @@ fn every_runtime_crate_the_client_reaches_is_written_from_the_root_and_tracing_i
         ":: core :: future :: Future",
         ":: serde :: Serialize",
         ":: serde :: de :: DeserializeOwned",
-        ":: serde_json :: from_slice",
+        ":: serde_json :: Deserializer :: from_slice",
+        ":: serde_path_to_error :: deserialize",
     ] {
         assert!(code.contains(reached), "got: {code}");
     }
-    for crate_root in ["core :: ", "serde :: ", "serde_json :: "] {
+    for crate_root in [
+        "core :: ",
+        "serde :: ",
+        "serde_json :: ",
+        "serde_path_to_error :: ",
+    ] {
         assert_eq!(
             code.matches(crate_root).count(),
             code.matches(&format!(":: {crate_root}")).count(),
@@ -3910,8 +4067,8 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
 
     let client = published_macro_over_http_rest(HTTP_SERVICE, "document_service_http_rest_client");
     for fragment in [
-        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < VersionResponse > (response . body ()) { :: core :: result :: \
+        "let status = response . status () ; if status == 200u16 { return match read_reply :: \
+         < VersionResponse > (response . body ()) { :: core :: result :: \
          Result :: Ok (value) => { let header_out_0 : String = match response . header \
          (\"etag\") { :: core :: option :: Option :: Some (text) => match :: serde_json :: \
          from_value (:: serde_json :: Value :: String ((text) . to_owned ())) { :: core :: \
@@ -3924,13 +4081,12 @@ fn a_json_operations_expansion_is_unchanged_at_the_token_level() {
          CallError :: Fault ($ crate :: document_service_schema :: ServiceFault :: \
          undeserializable_payload (\"get-version\" , \"a declared response header was missing\" \
          ,))) , } ; :: core :: result :: Result :: Ok ((value , header_out_0)) }",
-        "let status = response . status () ; if status == 200u16 { return match :: serde_json \
-         :: from_slice :: < CreateDocumentResponse > (response . body ()) { :: core :: result \
+        "let status = response . status () ; if status == 200u16 { return match read_reply :: \
+         < CreateDocumentResponse > (response . body ()) { :: core :: result \
          :: Result :: Ok (value) => :: core :: result :: Result :: Ok (value) , :: core :: \
          result :: Result :: Err (rejected) => :: core :: result :: Result :: Err ($ crate :: \
          document_service_schema :: CallError :: Fault ($ crate :: document_service_schema :: \
-         ServiceFault :: undeserializable_payload (\"create-document\" , & rejected . to_string \
-         ()) ,)) , } ; }",
+         ServiceFault :: undeserializable_payload (\"create-document\" , & rejected) ,)) , } ; }",
     ] {
         assert!(
             client.contains(fragment),
@@ -3975,6 +4131,49 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
 fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
     let emitted = expansion_over_amqp_rpc(INVOICE_SERVICE).to_string();
     assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
+}
+
+#[test]
+fn the_non_exhaustive_flag_seals_the_content_and_prompt_types() {
+    let emitted = expansion_over_mcp(CONTENT_AND_PROMPT_SERVICE, true);
+    for sealed in [
+        "# [non_exhaustive] pub enum McpContent",
+        "# [non_exhaustive] pub enum McpResourceContents",
+        "# [non_exhaustive] pub enum McpRole",
+        "# [non_exhaustive] pub struct McpPromptMessage",
+    ] {
+        assert!(
+            emitted.contains(sealed),
+            "missing `{sealed}`. Got: {emitted}"
+        );
+    }
+}
+
+#[test]
+fn the_default_expansion_seals_neither_the_content_nor_the_prompt_types() {
+    let emitted = expansion_over_mcp(CONTENT_AND_PROMPT_SERVICE, false);
+    for unsealed in [
+        "# [derive (Clone , Debug , Eq , PartialEq)] pub enum McpContent",
+        "# [derive (Clone , Debug , Eq , PartialEq)] pub enum McpResourceContents",
+        "pub enum McpRole",
+        "pub struct McpPromptMessage",
+    ] {
+        assert!(
+            emitted.contains(unsealed),
+            "missing `{unsealed}`. Got: {emitted}"
+        );
+    }
+    for sealed in [
+        "enum McpContent",
+        "enum McpResourceContents",
+        "enum McpRole",
+        "struct McpPromptMessage",
+    ] {
+        assert!(
+            !emitted.contains(&format!("# [non_exhaustive] pub {sealed}")),
+            "`{sealed}` is sealed. Got: {emitted}"
+        );
+    }
 }
 
 #[test]

@@ -5,11 +5,19 @@
 extern crate alloc;
 
 pub mod checks;
+#[cfg(feature = "serde")]
+pub mod flatten_order;
 pub mod judged_read;
 #[cfg(all(feature = "serde", feature = "zod"))]
 pub mod literal_union;
+#[cfg(feature = "serde")]
+pub mod mcp_form;
+#[cfg(feature = "serde")]
+pub mod needs_wrapper;
 pub mod preprocess;
 pub mod ranges;
+#[cfg(feature = "serde")]
+pub mod strict;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -46,10 +54,10 @@ use crate::field_type::{RESULT_ARMS, RangeKind};
 use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
     field_type::{
-        BoundKind, FieldDef, FieldDefType, MissingKey, VariantKind, classify_variant,
+        BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
         format_number_literal, get_field_def, held_literal, is_plain_enum,
     },
-    utils::{get_field_docs, get_variant_docs, strip_examples_from_docs},
+    utils::{get_field_docs, get_variant_docs, rustdoc_description, strip_examples_from_docs},
 };
 
 use crate::field_type::is_undescribable_primitive;
@@ -83,6 +91,7 @@ use crate::utils::{
 use crate::utils::{
     escape_js_regex_literal, publishes_zod_factory, record_zod_default_arguments,
     record_zod_factory, record_zod_preprocess, zod_default_arguments, zod_factory_argument,
+    zod_own_object,
 };
 
 #[cfg(feature = "arky")]
@@ -112,7 +121,9 @@ use crate::utils::{
     record_union_parameters, record_value_parameter, recorded_non_object_wire, union_parameters,
     value_parameter,
 };
-use crate::utils::{TrivialPattern, record_field_validator, trivial_pattern};
+use crate::utils::{
+    TrivialPattern, is_nonstrict, record_field_validator, record_nonstrict, trivial_pattern,
+};
 
 use crate::features::serde::brand_slot;
 #[cfg(all(feature = "serde", feature = "chrono"))]
@@ -265,6 +276,7 @@ const KNOWN_ARGS: &[&str] = &[
     "minLength",
     "maxLength",
     "no_display",
+    "nonstrict",
     "default_types",
     "enable",
     "check",
@@ -337,9 +349,10 @@ const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
 /// one declaration named there knows what was and was not checked around it.
 #[cfg(feature = "serde")]
 const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with serde, and only a \
-     plain enum declared above reaches it: one declared below, or in another crate, is not \
-     refused here, and where a schema surface is on it keeps its TypeScript and Zod \
-     intersection, and is refused by the JSON surface when the merge runs.";
+     plain enum declared above reaches it: one declared below, or in another crate, is refused by \
+     the `const` beside the type that holds it, and one no `#[model_schema]` expanded is not \
+     refused, and where a schema surface is on it keeps its TypeScript and Zod intersection, and \
+     is refused by the JSON surface when the merge runs.";
 
 /// What the refusal of a flattened value written in place, which no name stands for, says about
 /// its own reach.
@@ -360,8 +373,9 @@ const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build wit
 /// What the refusal of a flattened type serde writes as no object says about its own reach.
 #[cfg(feature = "serde")]
 const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with serde, and only a \
-     type declared above reaches it: one declared below, or in another crate, is not refused \
-     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
+     type declared above reaches it: one declared below, or in another crate, is refused by the \
+     `const` beside the type that holds it, and one no `#[model_schema]` expanded is not refused, \
+     and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
      refused by the JSON surface when the merge runs.";
 
 /// What a refusal of a newtype variant under a tag alone over a value serde writes as `()` says
@@ -374,7 +388,10 @@ const TAGGED_UNIT_WRITTEN: &str = "beside the tag serde writes the variant as th
 /// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
 /// about its own reach, which is the reach of the refusal of a value written as no object.
 #[cfg(feature = "serde")]
-const TAGGED_OPTIONAL_SCOPE: &str = FLATTENED_NON_OBJECT_SCOPE;
+const TAGGED_OPTIONAL_SCOPE: &str = "This refusal holds in every build with serde, and only a type \
+     declared above reaches it: one declared below, or in another crate, is not refused here, and \
+     where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by \
+     the JSON surface when the merge runs.";
 
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
@@ -1101,6 +1118,9 @@ struct ModelSchemaArgs {
     /// Opt-out of the branded newtype `Display` impl (and its inner-type assertion) for brands
     /// whose inner type is a container rather than a scalar.
     no_display: bool,
+    /// Opt-out of the closed object: a value of the type may carry a key no member declares, and
+    /// every reader reads past it.
+    nonstrict: bool,
     /// `pattern` in the spelling every surface reads the same way, or as it was written when it
     /// earned a `pattern_rejection`.
     pattern: Option<String>,
@@ -1112,6 +1132,15 @@ struct ModelSchemaArgs {
     /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
     /// check is spanned there.
     string_check: Option<(&'static str, proc_macro2::Span)>,
+}
+
+/// How a unit struct's own `Deserialize` reads: whether it judges the value with `validate()`, and
+/// whether it refuses a key, which no member declares.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy)]
+struct UnitRead {
+    publishes_validate: bool,
+    strict: bool,
 }
 
 /// One `#[serde(flatten)]` source as a surface writes it: the spelling of what its members are, and
@@ -1690,7 +1719,7 @@ impl ExampleTest {
             module,
             name,
             value_ty,
-            ..
+            json_schema: _json_schema,
         }) = subject.filter(|_| validates)
         else {
             return bridge;
@@ -1968,6 +1997,8 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.max_length = Some(length_arg(meta, "maxLength")?);
     } else if path.is_ident("no_display") {
         result.no_display = flag_arg(meta, "no_display")?;
+    } else if path.is_ident("nonstrict") {
+        result.nonstrict = flag_arg(meta, "nonstrict")?;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
     } else if path.is_ident("enable") {
@@ -2330,6 +2361,17 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = preprocess_refusal_output(&item, &parsed_args) {
         return output;
     }
+    // `nonstrict` reads past the key `deny_unknown_fields` refuses, so both on one type is refused.
+    #[cfg(feature = "serde")]
+    if let Some(output) = refused(&strict::conflict_errors(&item, &parsed_args)) {
+        return output;
+    }
+    // A flattened member serde would not read back where it is declared, or as strict as it is, is
+    // refused with the fix: the order, the strictness or the shape.
+    #[cfg(feature = "serde")]
+    if let Some(output) = refused(&flatten_order::errors(&item, &parsed_args)) {
+        return output;
+    }
     // `decode_with` generates methods on the type it is written on, and `"arky"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
     if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
@@ -2347,6 +2389,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
+    record_nonstrict(reads_past_a_stray(&item, &parsed_args));
+    #[cfg(feature = "serde")]
+    strict::record(&item, &parsed_args);
+    #[cfg(feature = "serde")]
+    flatten_order::record(&item, &parsed_args);
+    #[cfg(feature = "serde")]
+    needs_wrapper::record(&item);
+    #[cfg(feature = "serde")]
+    mcp_form::record(&item);
     // Whether a filling satisfies the bounds its parameter declares, and whether a range written by
     // its bare name is the std one, are asked of the compiler: no proc macro can answer either.
     let filling_bound_checks = asked_of_the_compiler(&item, &parsed_args);
@@ -2362,11 +2413,29 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
+    let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
-    quote! { #width_checked #dart_tokens #swift_tokens #kotlin_tokens }
+    quote! { #width_checked #wrapper_tokens #dart_tokens #swift_tokens #kotlin_tokens }
+}
+
+/// The items `item` earns that holders and services read, which every build with serde writes:
+/// `needs_wrapper()`, `mcp_form_value()`, and the hidden constant of what a holder reads of it
+/// flattened, with the checks of its own flattened members that constant answers for.
+#[cfg(feature = "serde")]
+fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let wrapper = needs_wrapper::items(item);
+    let form = mcp_form::items(item);
+    let flattened = flatten_order::tokens(item, args);
+    let units = strict::unit_reads(item, args);
+    quote! { #wrapper #form #flattened #units }
+}
+
+#[cfg(not(feature = "serde"))]
+fn needs_wrapper_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
+    TokenStream::new()
 }
 
 /// The expansion of `item` by its shape, or the refusal of a string check its shape cannot carry.
@@ -2941,8 +3010,9 @@ fn json_schema_examples(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenSt
 
 /// The `examples` keyword an item that republishes the sibling binding `name` shows: the member
 /// the sibling's own document holds, where it holds one.
-fn sibling_json_schema_examples(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+fn sibling_json_schema_examples(name: &str, written: &FieldDef) -> proc_macro2::TokenStream {
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     quote_spanned! {span=>
         #module_ident::Schema::json_schema().get("examples").cloned()
     }
@@ -2963,7 +3033,7 @@ fn republished_json_examples(field: &FieldDef) -> Option<proc_macro2::TokenStrea
     let FieldDefType::SiblingType(name, _) = &field.field_type else {
         return None;
     };
-    shows_sibling_examples(field).then(|| sibling_json_schema_examples(name, field.type_span))
+    shows_sibling_examples(field).then(|| sibling_json_schema_examples(name, field))
 }
 
 /// [`republished_json_examples`] for the slot of a tuple struct, which serde writes as the slot's
@@ -3178,20 +3248,15 @@ where
 }
 
 /// `Schema` and its `impl` of `schema_impl_items`, or `None` where none of them writes a method.
-fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> Option<TokenStream> {
-    schema_impl_items
-        .iter()
-        .any(|item| !item.is_empty())
-        .then(|| {
-            quote! {
-                #[non_exhaustive]
-                pub struct Schema;
+fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> TokenStream {
+    quote! {
+        #[non_exhaustive]
+        pub struct Schema;
 
-                impl Schema {
-                    #(#schema_impl_items)*
-                }
-            }
-        })
+        impl Schema {
+            #(#schema_impl_items)*
+        }
+    }
 }
 
 /// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
@@ -6165,6 +6230,18 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     type_path.path.get_ident().cloned()
 }
 
+/// Whether serde reads past a key no member of `item` declares.
+#[cfg(feature = "serde")]
+fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
+    strict::reads_past_a_stray(item, args)
+}
+
+/// Without serde nothing flattens, and `nonstrict` alone says it.
+#[cfg(not(feature = "serde"))]
+const fn reads_past_a_stray(_item: &Item, args: &ModelSchemaArgs) -> bool {
+    args.nonstrict
+}
+
 /// Why a const handed to a written type as an argument is refused: where the const does render,
 /// where this one stands instead, what each surface would emit, and the way out.
 fn const_parameter_argument_message(name: &str) -> String {
@@ -7465,12 +7542,11 @@ fn flattened_field_guard_error(
             &field.ty,
             format!(
                 "model_schema: {field_name} of `{type_name}` carries `#[serde(flatten)]` over \
-                 `{inner_name}`, which serde does not write as an object: a plain enum writes its \
-                 own variant name, so it contributes no members to the object being written — \
-                 serde writes that name as a key holding null, which a schema closed around the \
-                 remaining fields rejects. Write the field as a named member so the value gets a \
-                 key of its own, or flatten a type serde writes as an object. \
-                 {FLATTENED_PLAIN_ENUM_SCOPE}"
+                 `{inner_name}`, which serde writes flattened as a plain enum: as a key named \
+                 after the variant, holding null. TypeScript, Zod and the clients describe a \
+                 plain enum as the variant's name, so none of them reads that key. Write the \
+                 field as a named member so the value gets a key of its own, or flatten a type \
+                 serde writes as an object. {FLATTENED_PLAIN_ENUM_SCOPE}"
             ),
         )
         .to_compile_error(),
@@ -8495,6 +8571,9 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
 
+    #[cfg(feature = "serde")]
+    strict::close_struct(&mut item_struct, args);
+
     let (item_name, module_name, module_ident) =
         struct_module_idents(&name, args.name_override.as_deref());
     register_struct(&name, &item_name, &module_name, Surface::object());
@@ -8525,7 +8604,13 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
     // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
     #[cfg(feature = "serde")]
-    let unit_struct_impls = unit_struct_impls_for(&mut item_struct, !args.check.is_empty());
+    let unit_struct_impls = unit_struct_impls_for(
+        &mut item_struct,
+        UnitRead {
+            publishes_validate: !args.check.is_empty(),
+            strict: !args.nonstrict,
+        },
+    );
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
@@ -8787,13 +8872,61 @@ fn enum_output_with_decode(
 #[cfg(feature = "serde")]
 fn unit_struct_impls_for(
     item_struct: &mut syn::ItemStruct,
-    publishes_validate: bool,
+    read: UnitRead,
 ) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
         record_unit_struct(&item_struct.ident.to_string());
-        return unit_struct_serde_impls(item_struct, publishes_validate);
+        return unit_struct_serde_impls(item_struct, read);
+    }
+    if read.strict
+        && matches!(&item_struct.fields, syn::Fields::Named(named) if named.named.is_empty())
+    {
+        return empty_struct_read(item_struct, read);
     }
     quote! {}
+}
+
+/// Takes `Deserialize` off the derive of a braced struct of no member and answers with a read that
+/// refuses every key: serde's derive would declare an enum of no variant for the keys, which
+/// `clippy::empty_enums` refuses in the consumer's crate.
+#[cfg(feature = "serde")]
+fn empty_struct_read(
+    item_struct: &mut syn::ItemStruct,
+    read: UnitRead,
+) -> proc_macro2::TokenStream {
+    if !derives_deserialize(&item_struct.attrs) {
+        return quote! {};
+    }
+    let mut kept_attrs = Vec::with_capacity(item_struct.attrs.len());
+    for attr in item_struct.attrs.drain(..) {
+        let listed = attr
+            .path()
+            .is_ident("derive")
+            .then(|| attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated));
+        let Some(Ok(paths)) = listed else {
+            kept_attrs.push(attr);
+            continue;
+        };
+        let kept_paths: Vec<syn::Path> = paths
+            .into_iter()
+            .filter(|path| {
+                path.segments
+                    .last()
+                    .is_none_or(|segment| segment.ident != "Deserialize")
+            })
+            .collect();
+        if !kept_paths.is_empty() {
+            kept_attrs.push(syn::parse_quote! { #[derive(#(#kept_paths),*)] });
+        }
+    }
+    item_struct.attrs = kept_attrs;
+    if !derives_serialize(&item_struct.attrs) {
+        item_struct
+            .attrs
+            .retain(|attr| !attr.path().is_ident("serde"));
+    }
+    let name = &item_struct.ident;
+    unit_struct_read(name, read, &quote! { #name {} })
 }
 
 /// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
@@ -8811,7 +8944,7 @@ fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenSt
 #[cfg(feature = "serde")]
 fn unit_struct_serde_impls(
     item_struct: &mut syn::ItemStruct,
-    publishes_validate: bool,
+    read: UnitRead,
 ) -> proc_macro2::TokenStream {
     let name = &item_struct.ident;
     let type_name = name.to_string();
@@ -8860,7 +8993,7 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| unit_struct_read(name, publishes_validate));
+    let deserialize_impl = reads.then(|| unit_struct_read(name, read, &quote! { #name }));
 
     quote! {
         #serialize_impl
@@ -8868,12 +9001,50 @@ fn unit_struct_serde_impls(
     }
 }
 
-/// The `Deserialize` of the unit struct `name`, which reads `{}`: alone, or after
-/// `model_schema_read_unjudged` where the struct publishes `validate()` or names a `preprocess`.
+/// The `Deserialize` of the struct `name` of no member, which reads `{}` as `built`: alone, or
+/// after `model_schema_read_unjudged` where the struct publishes `validate()` or names a
+/// `preprocess`.
 #[cfg(feature = "serde")]
-fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2::TokenStream {
+fn unit_struct_read(
+    name: &syn::Ident,
+    how: UnitRead,
+    built: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let UnitRead {
+        publishes_validate,
+        strict,
+    } = how;
     let type_name = name.to_string();
     let expecting = format!("an empty object for `{type_name}`");
+    let entries = if strict {
+        quote! {
+            struct UnknownKey(::core::convert::Infallible);
+            impl<'de> ::serde::Deserialize<'de> for UnknownKey {
+                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
+                    struct KeyVisitor;
+                    impl<'de> ::serde::de::Visitor<'de> for KeyVisitor {
+                        type Value = UnknownKey;
+                        fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                            formatter.write_str("no key")
+                        }
+                        fn visit_str<E: ::serde::de::Error>(self, key: &str) -> ::core::result::Result<Self::Value, E> {
+                            ::core::result::Result::Err(E::unknown_field(key, &[]))
+                        }
+                    }
+                    deserializer.deserialize_identifier(KeyVisitor)
+                }
+            }
+            match map.next_key::<UnknownKey>()? {
+                ::core::option::Option::Some(unknown) => match unknown.0 {},
+                ::core::option::Option::None => ::core::result::Result::Ok(#built),
+            }
+        }
+    } else {
+        quote! {
+            while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
+            ::core::result::Result::Ok(#built)
+        }
+    };
     let read = quote! {
         struct UnitStructVisitor;
         impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
@@ -8885,8 +9056,7 @@ fn unit_struct_read(name: &syn::Ident, publishes_validate: bool) -> proc_macro2:
                 self,
                 mut map: A,
             ) -> ::core::result::Result<Self::Value, A::Error> {
-                while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-                ::core::result::Result::Ok(#name)
+                #entries
             }
         }
         deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
@@ -11457,7 +11627,15 @@ fn counted_by(ty: &syn::Type) -> Option<Counted> {
 }
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
-fn process_enum(item_enum: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
+fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
+    #[cfg(feature = "serde")]
+    let item_enum = {
+        let mut closed = written;
+        strict::close_enum(&mut closed, args);
+        closed
+    };
+    #[cfg(not(feature = "serde"))]
+    let item_enum = written;
     let name = item_enum.ident.clone();
 
     #[cfg(feature = "serde")]
@@ -11581,20 +11759,11 @@ fn item_plain_doc_lines(doc_lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-#[rustversion::since(1.98)]
 fn flattened_or_empty(
     docs_vec: Option<&[String]>,
     flatten: impl FnOnce(&[String]) -> Vec<String>,
 ) -> Vec<String> {
-    docs_vec.map_or_default(flatten)
-}
-
-#[rustversion::before(1.98)]
-fn flattened_or_empty(
-    docs_vec: Option<&[String]>,
-    flatten: impl FnOnce(&[String]) -> Vec<String>,
-) -> Vec<String> {
-    docs_vec.map(flatten).unwrap_or_default()
+    docs_vec.map_or_else(Vec::new, flatten)
 }
 
 /// An item's doc lines, flattened the way the calling surface reads them, or the exported name
@@ -12095,10 +12264,8 @@ fn plain_enum_output(
     // A plain enum publishes `enum_members()` from an `impl` of its own rather than through
     // `assemble_schema_output`, so it repeats the declaration's parameters itself.
     let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
-    let module_items = schema_module_items(
-        schema_struct(schema_impl_items).unwrap_or_default(),
-        &decode_with.schema_module,
-    );
+    let module_items =
+        schema_module_items(schema_struct(schema_impl_items), &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
     let output = quote! {
         #item_enum
@@ -12503,7 +12670,7 @@ fn discriminated_zod_schema_code(tag_name: &str, members: &[String]) -> String {
         ts_quoted(tag_name),
         members
             .iter()
-            .map(|member| format!("z.strictObject({member})"))
+            .map(|member| format!("{}({member})", zod_own_object()))
             .collect::<Vec<_>>()
             .join(", ")
     )
@@ -12623,6 +12790,7 @@ fn named_content_json_value(
     self_type_name: &str,
     variant_name: &str,
 ) -> proc_macro2::TokenStream {
+    let open = is_nonstrict();
     let object = quote! {
         {
             let mut schema_obj = serde_json::Map::new();
@@ -12632,7 +12800,7 @@ fn named_content_json_value(
             #(#json_fields)*
             schema_obj.insert("properties".to_string(), serde_json::Value::Object(properties));
             schema_obj.insert("required".to_string(), serde_json::Value::Array(required));
-            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
+            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(#open));
             schema_obj
         }
     };
@@ -12741,7 +12909,7 @@ fn render_external_content(
 
             #[cfg(feature = "zod")]
             let zod = variant_flatten_zod(
-                &format!("z.strictObject({{\n{}}})", parts.schema_code),
+                &format!("{}({{\n{}}})", zod_own_object(), parts.schema_code),
                 &member_names(field_defs),
                 &variant.flattened_fields,
             );
@@ -13301,12 +13469,12 @@ fn internally_tagged_guard_errors(
                 TaggedContent::Flattened => match slot.plain_enum() {
                     Some(inner_name) => format!(
                         "model_schema: variant `{variant_name}` of internally tagged enum \
-                         `{enum_name}` wraps `{inner_name}`, which serde does not write as an \
-                         object: a plain enum writes its own variant name, so nothing of it joins \
-                         the tag — serde writes that name as a key holding null, which a schema \
-                         closed around the tag rejects. Name a `content` key so the value gets an \
-                         object of its own, or wrap it in a struct whose fields can sit beside the \
-                         tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
+                         `{enum_name}` wraps `{inner_name}`, which serde writes beside the tag as \
+                         a plain enum: as a key named after the variant, holding null. \
+                         TypeScript, Zod and the clients describe a plain enum as the variant's \
+                         name, so none of them reads that key beside the tag. Name a `content` key \
+                         so the value gets an object of its own, or wrap it in a struct whose \
+                         fields can sit beside the tag. {FLATTENED_PLAIN_ENUM_SCOPE}"
                     ),
                     // serde's tag refuses an `Option` before it reads what the `Option` holds.
                     None => tagged_optional_message(variant_name, enum_name, tag_name, slot)
@@ -13548,7 +13716,7 @@ fn render_internal_variant(
             .collect();
         #[cfg(feature = "zod")]
         let zod = variant_flatten_zod(
-            &format!("z.strictObject({})", parts.schema_code),
+            &format!("{}({})", zod_own_object(), parts.schema_code),
             &own_keys,
             &variant.flattened_fields,
         );
@@ -13592,7 +13760,8 @@ fn render_internal_variant(
     // base does: it names a `const` of its own, and one macro invocation sees one type.
     #[cfg(feature = "zod")]
     let zod = format!(
-        "z.strictObject({}).and({})",
+        "{}({}).and({})",
+        zod_own_object(),
         parts.schema_code,
         deferred_zod_operand(&inner.zod_type())
     );
@@ -13625,7 +13794,7 @@ fn entries_beside_the_tag(
     let flattened = slice::from_ref(inner);
     #[cfg(feature = "zod")]
     let zod = variant_flatten_zod(
-        &format!("z.strictObject({})", parts.schema_code),
+        &format!("{}({})", zod_own_object(), parts.schema_code),
         &[tag_name.to_owned()],
         flattened,
     );
@@ -13957,7 +14126,7 @@ fn render_untagged_named(
 
     #[cfg(feature = "zod")]
     let zod = {
-        let mut body = String::from("z.strictObject({ ");
+        let mut body = format!("{}({{ ", zod_own_object());
         for fld in field_defs {
             let zod_field_type = fld.zod_type();
             let key = ts_member_key(&ts_member_name(&fld.name));
@@ -14034,7 +14203,10 @@ fn untagged_named_json_value(
 ) -> proc_macro2::TokenStream {
     let property_inserts = field_defs.iter().map(|fld| {
         let name_str = fld.name.clone();
-        let value = nullable_slot_json_schema_value(fld, field_json_schema_value(fld));
+        let value = described_json_schema_value(
+            fld,
+            nullable_slot_json_schema_value(fld, field_json_schema_value(fld)),
+        );
         let required_insert = if fld.key_is_required() {
             quote! {
                 required.push(serde_json::Value::String(#name_str.to_string()));
@@ -14049,6 +14221,7 @@ fn untagged_named_json_value(
             #default_insert
         }
     });
+    let open = is_nonstrict();
     let object = quote! {
         {
             let mut object_schema = serde_json::Map::new();
@@ -14069,7 +14242,7 @@ fn untagged_named_json_value(
             );
             object_schema.insert(
                 "additionalProperties".to_string(),
-                serde_json::Value::Bool(false),
+                serde_json::Value::Bool(#open),
             );
             object_schema
         }
@@ -14151,10 +14324,9 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
             let literal = bigint_literal_const(fld);
             quote! { serde_json::json!({ "type": "integer", "const": #literal }) }
         }
-        FieldDefType::SiblingType(name, arguments) => named_field_json_schema_value(
-            fld,
-            &sibling_json_schema_value(name, arguments, fld.type_span),
-        ),
+        FieldDefType::SiblingType(name, arguments) => {
+            named_field_json_schema_value(fld, &sibling_json_schema_value(name, arguments, fld))
+        }
         FieldDefType::String => string_field_json_schema_value(fld),
         FieldDefType::Char => {
             quote! { serde_json::json!({ "type": "string", "minLength": 1, "maxLength": 1 }) }
@@ -14328,6 +14500,7 @@ fn untagged_member_field_def(
 ) -> (FieldDef, Vec<proc_macro2::TokenStream>) {
     let (mut field_def, written_def) =
         untagged_member_field_defs(field, final_field_name, ctx.type_parameters);
+    field_def.description = rustdoc_description(&field.attrs);
     apply_serde_key_omission(
         &mut field_def,
         field,
@@ -15066,12 +15239,13 @@ fn tagged_variant_json_object(
 ) -> proc_macro2::TokenStream {
     let discriminator_value_str = discriminator_value.to_owned();
     let tag_name_str = tag_name.to_owned();
+    let open = is_nonstrict();
     quote! {
         {
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert(
                 "additionalProperties".to_string(),
-                serde_json::Value::Bool(false),
+                serde_json::Value::Bool(#open),
             );
             let mut properties = serde_json::Map::new();
             let mut required = ::std::vec::Vec::new();
@@ -15174,7 +15348,7 @@ fn write_adjacent_named_variant_fields(
         parts.schema_code,
         "  {content_key}: {},",
         variant_flatten_zod(
-            &format!("z.strictObject({{\n{}}})", inner.schema_code),
+            &format!("{}({{\n{}}})", zod_own_object(), inner.schema_code),
             &member_names(&variant.field_defs),
             &variant.flattened_fields
         )
@@ -15652,6 +15826,15 @@ fn sibling_schema_module_ident(name: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(module_name.as_str(), span)
 }
 
+/// The schema module of the type `name`, reached through the path `scope` it was written under.
+pub fn sibling_schema_module(
+    name: &str,
+    scope: &Scope,
+    span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    scope.reaching(&sibling_schema_module_ident(name, span), span)
+}
+
 /// `described`, a named type's own schema, narrowed from inside an `allOf` by the length and
 /// pattern bounds written on the field holding it, or `described` alone where none was written.
 fn named_field_json_schema_value(
@@ -15688,9 +15871,10 @@ fn named_field_json_schema_value(
 fn sibling_json_schema_value(
     name: &str,
     arguments: &[FieldDef],
-    span: proc_macro2::Span,
+    written: &FieldDef,
 ) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     // Named where the run declares them, not on the field's type: a type handed into a
     // `macro_rules!` body carries its call site's hygiene, under which no binding is found.
     let run = quote! { in_flight, hoisted_defs, pointer_prefix };
@@ -15733,12 +15917,17 @@ pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::Tok
 /// an `Option`, a list or a reference, and each type handed to a generic type, a tuple, a map, a
 /// range or a `Result`.
 #[cfg(feature = "serde")]
-pub fn named_json_schema_modules(ty: &syn::Type) -> Vec<Ident> {
-    fn collect(fld: &FieldDef, found: &mut Vec<Ident>) {
+pub fn named_json_schema_modules(
+    ty: &syn::Type,
+) -> Vec<(proc_macro2::TokenStream, proc_macro2::Span)> {
+    fn collect(fld: &FieldDef, found: &mut Vec<(proc_macro2::TokenStream, proc_macro2::Span)>) {
         match &fld.field_type {
             FieldDefType::SiblingType(name, arguments) => {
                 if arguments.is_empty() {
-                    found.push(sibling_schema_module_ident(name, fld.type_span));
+                    found.push((
+                        sibling_schema_module(name, &fld.scope, fld.type_span),
+                        fld.type_span,
+                    ));
                 }
                 for argument in arguments {
                     collect(argument, found);
@@ -15895,7 +16084,7 @@ fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let meta = value.model_schema_prop_meta.as_ref()?;
     let measured = meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some();
     if let FieldDefType::SiblingType(name, arguments) = &value.field_type {
-        let described = sibling_json_schema_value(name, arguments, value.type_span);
+        let described = sibling_json_schema_value(name, arguments, value);
         return measured.then(|| named_field_json_schema_value(value, &described));
     }
     if matches!(value.field_type, FieldDefType::String) {
@@ -16401,7 +16590,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
             MapMemberItem::Value(sibling_json_schema_value(
                 value_type_name,
                 value_args,
-                value.type_span,
+                value,
             ))
         }
         // The one `$oid` object every position spells, which a member carries as written.
@@ -16781,7 +16970,7 @@ fn build_sibling_type_field_schema(
     generate_type_schema(
         fld,
         field_name_str,
-        &named_field_json_schema_value(fld, &sibling_json_schema_value(name, lst, fld.type_span)),
+        &named_field_json_schema_value(fld, &sibling_json_schema_value(name, lst, fld)),
     )
 }
 
@@ -16984,11 +17173,55 @@ fn build_field_schema(fld: &FieldDef) -> proc_macro2::TokenStream {
         quote! {}
     };
     let default_code = default_json_insert(fld);
+    let description_code = description_json_insert(fld);
 
     quote! {
         #schema_code
         #required_code
         #default_code
+        #description_code
+    }
+}
+
+/// The statements that state, in the member `fld` the local `properties` holds, the rustdoc as its
+/// `description`, beside a `$ref` where the member is one, and nothing for a member with no rustdoc.
+fn description_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    let field_name_str = &fld.name;
+    fld.description.as_ref().map(|text| {
+        quote! {
+            if let ::core::option::Option::Some(serde_json::Value::Object(described)) =
+                properties.get_mut(#field_name_str)
+            {
+                described.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(#text.to_string()),
+                );
+            }
+        }
+    })
+}
+
+/// `value`, a member's schema, with the member's rustdoc as its `description`; `value` alone where
+/// there is none, or where the schema is not an object.
+#[cfg(feature = "serde")]
+fn described_json_schema_value(
+    fld: &FieldDef,
+    value: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let Some(text) = &fld.description else {
+        return value;
+    };
+    quote! {
+        {
+            let mut described: serde_json::Value = #value;
+            if let ::core::option::Option::Some(object) = described.as_object_mut() {
+                object.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(#text.to_string()),
+                );
+            }
+            described
+        }
     }
 }
 
@@ -19007,21 +19240,11 @@ fn check_nullable_ts_optional_conflict(flags: &ModelSchemaPropMeta) -> Result<()
 }
 
 /// The field's name as serde reads it, with no raw prefix; empty for a positional slot.
-#[rustversion::since(1.98)]
 fn field_ident_string(field: &Field) -> String {
     field
         .ident
         .as_ref()
-        .map_or_default(|ident| ident.unraw().to_string())
-}
-
-#[rustversion::before(1.98)]
-fn field_ident_string(field: &Field) -> String {
-    field
-        .ident
-        .as_ref()
-        .map(|ident| ident.unraw().to_string())
-        .unwrap_or_default()
+        .map_or_else(String::new, |ident| ident.unraw().to_string())
 }
 
 /// Hands the field def the two serde facts the object surfaces spend: whether the field's value
@@ -20104,6 +20327,7 @@ fn process_field(
     let field_docs = build_jsdoc_body(get_field_docs(field).as_deref(), &final_name);
 
     let mut field_def = get_field_def(&final_name, &field.ty, &field_docs);
+    field_def.description = rustdoc_description(&field.attrs);
 
     // Resolve `Self` references to the concrete type name so recursive fields (e.g. `Vec<Self>`)
     // are treated exactly like `Vec<EnclosingType>`.
@@ -21225,8 +21449,8 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
             label: name.clone(),
             map: false,
             optional: fld.is_optional(),
-            unit_member: unit_member_record(name, fld.type_span),
-            value: sibling_json_schema_value(name, arguments, fld.type_span),
+            unit_member: unit_member_record(name, fld),
+            value: sibling_json_schema_value(name, arguments, fld),
         };
     }
     // A map joins as its own description, as it is described under a key; a key no surface
@@ -21273,8 +21497,9 @@ const fn flattened_object_id(_fld: &FieldDef) -> Option<proc_macro2::TokenStream
 /// Whether the type `name` stands for publishes the record of an untagged enum with a member
 /// serde writes as `()`, read where the merge runs: a type without it answers through the
 /// block-local trait, an inherent const being found ahead of a trait's.
-fn unit_member_record(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+fn unit_member_record(name: &str, written: &FieldDef) -> proc_macro2::TokenStream {
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
     let recorded = quote_spanned! {span=> #module_ident::Schema::#record };
     quote! {
@@ -21338,7 +21563,7 @@ fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
         && !def.is_optional()
         && !is_sequence_wrapper(name)
     {
-        let forwarded = unit_member_record(name, def.type_span);
+        let forwarded = unit_member_record(name, &def);
         return quote! { pub const #record: bool = #forwarded; };
     }
     proc_macro2::TokenStream::new()
@@ -21373,9 +21598,7 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         }
         FieldDefType::SiblingType(name, arguments) => {
             return Some(named_key_text(&sibling_json_schema_value(
-                name,
-                arguments,
-                key.type_span,
+                name, arguments, key,
             )));
         }
         FieldDefType::Boolean => BOOLEAN_KEY_PATTERN,
@@ -22368,7 +22591,7 @@ fn generate_zod_schema_method(
             show_opts,
         } = written;
         let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
-        let own = format!("z.strictObject({{\n{schema_code}}}){show_opts}");
+        let own = format!("{}({{\n{schema_code}}}){show_opts}", zod_own_object());
         let (preamble, expression) = zod_merged_statements(item_name, &own, flatten_schemas);
         // Note: Example injection is handled by the delegating method on the type itself.
         let body = zod_published_binding(

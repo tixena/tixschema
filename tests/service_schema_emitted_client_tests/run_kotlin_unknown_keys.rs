@@ -2,8 +2,8 @@
 //! `-Werror`, under the default `Json` and under `Json { ignoreUnknownKeys = true }`, beside what
 //! serde reads and what the generated Zod schema answers of the same payload. The default `Json`
 //! refuses the key, as Zod and the plugin's own serializer refuse it, and the other reads past it,
-//! as the plugin's reads past it. A flattened map, and a flattened type whose keys are not known,
-//! take every key they are handed.
+//! as the plugin's reads past it. A flattened map takes every key it is handed, and a flattened
+//! struct that flattens a member of its own refuses one it does not declare, as serde reads it.
 
 #![cfg(all(feature = "kotlin", feature = "serde"))]
 
@@ -15,10 +15,9 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    BELTING, Belting, DRESSING, Dressing, GAFFING, Gaffing, Netting, PAYLOAD, STOWING, SWAYING,
-    Slinging, Stowing, Swaying, WHELPING, Whelping, belting_kotlin, dressing_kotlin, ensign_kotlin,
-    gaffing_kotlin, netting_kotlin, slinging_kotlin, stowing_kotlin, swaying_kotlin,
-    tacking_kotlin, whelping_kotlin,
+    BELTING, Belting, DRESSING, Dressing, GAFFING, Gaffing, Netting, STOWING, SWAYING, Stowing,
+    Swaying, WHELPING, Whelping, belting_kotlin, dressing_kotlin, ensign_kotlin, gaffing_kotlin,
+    netting_kotlin, stowing_kotlin, swaying_kotlin, tacking_kotlin, whelping_kotlin,
 };
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::flattened_models::{Ensign, Tacking};
@@ -67,11 +66,11 @@ const TWO_VARIANTS: &str =
 /// in a struct, in a variant under each tagging and beside a flattened struct, where the struct
 /// and the struct it flattens are under their own tag, and beside a flattened enum; the payloads
 /// serde writes of those, which hold none; a key a flattened map reads, and one handed to a
-/// flattened type whose keys are not known; a key no member reads in a model held one and two
+/// flattened struct that flattens a member of its own; a key no member reads in a model held one and two
 /// levels inside a flattened struct, in the variant of a flattened enum and as a flattened map's
 /// value; and a key beside the tag of an enum under a tag alone, of each shape of variant, and
 /// beside the tag and the content of one under a tag and a content key.
-const ROWS: [Row; 34] = [
+const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","other":1}"#,
@@ -131,10 +130,10 @@ const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
         json: r#"{"kind":"Garnetting","label":"north","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
         named: "Garnetting",
         serde: written_back::<Garnetting>,
-        zod: "refused",
+        zod: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
     },
     Row {
         ignoring: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
@@ -147,10 +146,10 @@ const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
         json: r#"{"north":2,"label":"n","kind":"Ensign","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
         named: "Dressing",
         serde: written_back::<Dressing>,
-        zod: "refused",
+        zod: "read {\"north\":2,\"kind\":\"Ensign\",\"label\":\"n\"}",
     },
     Row {
         ignoring: "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
@@ -177,20 +176,12 @@ const ROWS: [Row; 34] = [
         zod: "refused",
     },
     Row {
-        ignoring: "read {\"label\":\"n\"}",
-        json: PAYLOAD,
-        kotlin: "refused: Encountered an unknown key 'north'",
-        named: "Slinging",
-        serde: written_back::<Slinging>,
-        zod: "refused",
-    },
-    Row {
         ignoring: "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
-        json: GAFFING[7],
-        kotlin: "refused: Encountered an unknown key 'north'",
+        json: GAFFING[4],
+        kotlin: "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
         named: "Gaffing",
         serde: written_back::<Gaffing>,
-        zod: "refused",
+        zod: "read {\"Labelled\":{\"note\":\"a\",\"label\":\"n\"}}",
     },
     Row {
         ignoring: "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
@@ -203,10 +194,10 @@ const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"label\":\"n\",\"note\":\"a\"}",
         json: SWAYING[5],
-        kotlin: "read {}",
+        kotlin: "read {\"label\":\"n\",\"note\":\"a\"}",
         named: "Swaying",
         serde: written_back::<Swaying>,
-        zod: "read {}",
+        zod: "read {\"note\":\"a\",\"label\":\"n\"}",
     },
     Row {
         ignoring: "read {\"other\":1}",
@@ -219,7 +210,7 @@ const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"label\":\"north\",\"note\":\"a\"}",
         json: r#"{"label":"north","note":"a","other":1}"#,
-        kotlin: "read {\"label\":\"north\",\"note\":\"a\"}",
+        kotlin: "refused: Encountered an unknown key 'other'",
         named: "Parcelling",
         serde: written_back::<Parcelling>,
         zod: "refused",
@@ -365,7 +356,7 @@ const UNKNOWN_AT: &str = "refused: Encountered an unknown key 'other' at path: $
 
 /// [`Furling`] under its own tag: a struct the Kotlin emitter writes the serializer of, whose tag
 /// is a key it reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Garnetting {
@@ -390,7 +381,8 @@ pub struct Trucking {
     pub note: String,
 }
 
-/// [`Trucking`] flattened: the Kotlin emitter knows no key it reads, so its holder takes every key.
+/// [`Trucking`] flattened: it reads every key its holder leaves and refuses one it does not declare,
+/// as serde reads it.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parcelling {
@@ -507,46 +499,46 @@ where
     )
 }
 
-/// serde reads every payload, past the keys no member reads.
+/// serde refuses a payload that holds a key no member reads, and reads the others past the keys of
+/// a member it takes into a map or drops.
 #[test]
 fn serde_reads_past_a_key_no_member_reads() {
     let serde_told: Vec<String> = ROWS.iter().map(|row| (row.serde)(row.json)).collect();
     assert_eq!(
         serde_told,
         [
-            "read {\"label\":\"north\"}",
-            "read {\"Furled\":{\"label\":\"north\"}}",
-            "read {\"kind\":\"Furled\",\"label\":\"north\"}",
-            "read {\"kind\":\"Furled\",\"load\":{\"label\":\"north\"}}",
-            "read {\"label\":\"north\"}",
-            "read {\"label\":\"north\"}",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
             "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
             "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
             "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
             "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
-            "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
-            "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
-            "read {\"note\":\"a\"}",
-            "read {\"label\":\"n\"}",
+            "refused",
+            "refused",
+            "refused",
             "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
-            "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
+            "refused",
             "read {\"label\":\"n\",\"note\":\"a\"}",
             "read {\"other\":1}",
-            "read {\"label\":\"north\",\"note\":\"a\"}",
+            "refused",
             "read {\"label\":\"north\"}",
             "read {\"kind\":\"Furled\",\"label\":\"north\"}",
+            "refused",
+            "refused",
             BITTERED,
-            BITTERED,
-            BITTERED,
-            "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
-            "read {\"north\":{\"label\":\"n\"}}",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
+            "refused",
             "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Gust\",\"speed\":1}",
-            "read {\"kind\":\"Reefed\",\"note\":\"a\",\"label\":\"n\"}",
-            "read {\"kind\":\"Held\",\"label\":\"x\"}",
-            "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Lull\"}",
-            "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
+            "refused",
+            "refused",
             "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
         ],
         "serde no longer reads each payload as it did"
@@ -587,7 +579,6 @@ fn a_key_no_member_reads_is_refused_in_kotlin_under_the_default_json() {
         gaffing_kotlin::kotlin_definition(),
         swaying_kotlin::kotlin_definition(),
         whelping_kotlin::kotlin_definition(),
-        slinging_kotlin::kotlin_definition(),
         tacking_kotlin::kotlin_definition(),
         stowing_kotlin::kotlin_definition(),
         belting_kotlin::kotlin_definition(),
@@ -646,8 +637,6 @@ fn zod_module() -> String {
         Swaying::zod_schema(),
         Whelping::ts_definition(),
         Whelping::zod_schema(),
-        Slinging::ts_definition(),
-        Slinging::zod_schema(),
         Tacking::ts_definition(),
         Tacking::zod_schema(),
         Stowing::ts_definition(),
@@ -729,7 +718,7 @@ fn zod_refuses_a_key_no_member_reads() {
 /// row the run above measures.
 #[test]
 fn the_readme_shows_the_refusal_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     let thrown = ROWS[0].kotlin.strip_prefix("refused: ").unwrap();
     let shown = format!(
         "`{}` is refused with `SerializationException: {thrown}`",
@@ -752,12 +741,12 @@ fn the_readme_shows_the_refusal_the_run_measures() {
 /// show payloads the run measures, refused under the default `Json`.
 #[test]
 fn the_readme_shows_the_nested_and_tagged_refusals_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     for (at, json) in [
-        (22, ROWS[22].json),
-        (32, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),
-        (31, r#"{"kind":"Lull","other":1}"#),
-        (26, r#"{"kind":"Lull","other":1}"#),
+        (21, ROWS[21].json),
+        (31, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),
+        (30, r#"{"kind":"Lull","other":1}"#),
+        (25, r#"{"kind":"Lull","other":1}"#),
     ] {
         assert!(
             ROWS[at].json == json && ROWS[at].kotlin.starts_with("refused"),

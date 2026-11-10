@@ -495,8 +495,9 @@ fn a_body_under_the_rust_name_does_not_reach_the_member() {
     assert_eq!(request.header("X-Trace"), Some("abc"));
     assert_eq!(request.headers().len(), 1);
     let response = poll_once(dispatch(&BoundBackEnd, &(), &request, &Noted)).unwrap();
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body(), br#"{"id":"d1"}"#);
+    assert_eq!(response.status(), 499);
+    let body = String::from_utf8_lossy(response.body());
+    assert!(body.contains("unknown field `document_id`"), "got: {body}");
 }
 
 #[test]

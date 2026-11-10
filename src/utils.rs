@@ -15,11 +15,20 @@ use regex_syntax::ast::{
 use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+use std::env;
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::FunctionName;
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+use crate::rename_rule::RenameRule;
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemEnum;
@@ -787,6 +796,12 @@ thread_local! {
     /// `#[serde(flatten)]`.
     static NON_OBJECT_WIRES: RefCell<HashMap<String, NonObjectWire>> =
         RefCell::new(HashMap::new());
+    /// Each name `#[model_schema]` has been written on, with whether serde writes its value as
+    /// something other than a JSON object.
+    static NEEDS_WRAPPER: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    /// Each name `#[model_schema]` has been written on, with whether it is a choice among plain
+    /// names, which a form field may hold.
+    static MCP_FORM_VALUES: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes as what
     /// fills their type parameter at the position held. Kept in every build that reads
     /// `#[serde(tag)]`.
@@ -950,6 +965,75 @@ thread_local! {
 #[cfg(feature = "serde")]
 pub fn forget_checks() {
     NAMED_CHECKS.with(|held| *held.borrow_mut() = NamedChecks::default());
+}
+
+#[cfg(feature = "serde")]
+thread_local! {
+    /// Each name `#[model_schema]` has been written on whose keys serde leaves on the object when it
+    /// is flattened, so that a holder that refuses an unknown key refuses them too.
+    static UNCONSUMED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+thread_local! {
+    /// Whether the item being expanded is written `nonstrict`.
+    static NONSTRICT: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// Whether serde leaves the keys of `rust_ident` in the object it reads a holder from when the type is
+/// flattened, where `#[model_schema]` has been written on it above.
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+pub fn is_unconsumed(rust_ident: &str) -> bool {
+    UNCONSUMED.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether serde leaves the keys of `rust_ident` in the object it is flattened from.
+#[cfg(feature = "serde")]
+pub fn record_unconsumed(rust_ident: &str, unconsumed: bool) {
+    UNCONSUMED.with(|names| {
+        if unconsumed {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// The crate being compiled, in `PascalCase`, which each helper an emitter numbers carries after
+/// its number: two crates' outputs written into one package then declare no name twice. Empty
+/// where no crate is being compiled.
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+pub fn crate_tag() -> String {
+    env::var("CARGO_CRATE_NAME").map_or_else(
+        |_| String::new(),
+        |name| RenameRule::PascalCase.apply_to_field(&name),
+    )
+}
+
+/// Whether the item being expanded is written `nonstrict`: every surface leaves its own object
+/// open to a key no member declares.
+pub fn is_nonstrict() -> bool {
+    NONSTRICT.with(|held| *held.borrow())
+}
+
+/// Records whether the item about to be expanded is written `nonstrict`, and forgets the members
+/// whose keys the item expanded before named by a placeholder.
+pub fn record_nonstrict(nonstrict: bool) {
+    NONSTRICT.with(|held| *held.borrow_mut() = nonstrict);
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    ))]
+    member_keys::reset();
+}
+
+/// The Zod constructor of the object a struct or a struct variant is read as.
+#[cfg(feature = "zod")]
+pub fn zod_own_object() -> &'static str {
+    if is_nonstrict() {
+        "z.object"
+    } else {
+        "z.strictObject"
+    }
 }
 
 /// Whether the item being expanded names a check, on itself or on a member.
@@ -1137,6 +1221,36 @@ pub fn record_plain_enum(rust_ident: &str, plain: bool) {
         } else {
             names.borrow_mut().remove(rust_ident);
         }
+    });
+}
+
+/// Whether serde writes a value of `rust_ident` as something other than a JSON object, where
+/// `#[model_schema]` has been written on it above.
+#[cfg(feature = "serde")]
+pub fn recorded_needs_wrapper(rust_ident: &str) -> Option<bool> {
+    NEEDS_WRAPPER.with(|names| names.borrow().get(rust_ident).copied())
+}
+
+/// Records whether serde writes a value of `rust_ident` as something other than a JSON object.
+#[cfg(feature = "serde")]
+pub fn record_needs_wrapper(rust_ident: &str, wrapped: bool) {
+    NEEDS_WRAPPER.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), wrapped);
+    });
+}
+
+/// Whether `rust_ident` is a choice among plain names, where `#[model_schema]` has been written
+/// on it above.
+#[cfg(feature = "serde")]
+pub fn recorded_mcp_form_value(rust_ident: &str) -> Option<bool> {
+    MCP_FORM_VALUES.with(|names| names.borrow().get(rust_ident).copied())
+}
+
+/// Records whether `rust_ident` is a choice among plain names.
+#[cfg(feature = "serde")]
+pub fn record_mcp_form_value(rust_ident: &str, value: bool) {
+    MCP_FORM_VALUES.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned(), value);
     });
 }
 
@@ -2163,6 +2277,44 @@ fn transform_example_code(code: &str) -> String {
     }
 
     result.trim().to_owned()
+}
+
+/// The rustdoc in `attrs`: each `///` line with the single space after it removed, joined with
+/// newlines. `None` where there is none, or where it holds no text.
+pub fn rustdoc_text(attrs: &[Attribute]) -> Option<String> {
+    let lines: Vec<String> = attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("doc"))
+        .filter_map(|attribute| {
+            let Meta::NameValue(pair) = &attribute.meta else {
+                return None;
+            };
+            let Expr::Lit(syn::ExprLit {
+                lit: Lit::Str(text),
+                attrs: _attrs,
+            }) = &pair.value
+            else {
+                return None;
+            };
+            let line = text.value();
+            Some(line.strip_prefix(' ').unwrap_or(&line).to_owned())
+        })
+        .collect();
+    lines
+        .iter()
+        .any(|line| !line.trim().is_empty())
+        .then(|| lines.join("\n"))
+}
+
+/// The rustdoc in `attrs` as a JSON Schema `description`: [`rustdoc_text`] with the `rust example`
+/// blocks left out, and `None` where no text remains.
+pub fn rustdoc_description(attrs: &[Attribute]) -> Option<String> {
+    let text = rustdoc_text(attrs)?;
+    let lines: Vec<String> = text.lines().map(ToOwned::to_owned).collect();
+    let kept = strip_examples_from_docs(&lines);
+    kept.iter()
+        .any(|line| !line.trim().is_empty())
+        .then(|| kept.join("\n"))
 }
 
 /// Every doc body the crate writes — an item's, an alias's, a field's, an enum variant's, and the

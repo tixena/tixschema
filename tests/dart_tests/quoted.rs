@@ -151,7 +151,11 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
 fn a_flattened_members_names_are_escaped_in_its_holders_dart_text() {
     holds_each(
         &tithed_dart::dart_definition(),
-        &["Tithed(leveed: Leveed.fromJsonUnjudged(json),"],
+        &[
+            "Tithed(leveed: Leveed.fromJsonUnjudged((switch (({...json}..remove('no\\'te'))) { \
+             final whole => { for (final key in const ['cost\\$usd']) if (whole.containsKey(key)) \
+             key: whole[key] } })),",
+        ],
     );
     holds_each(
         &mulcted_dart::dart_definition(),

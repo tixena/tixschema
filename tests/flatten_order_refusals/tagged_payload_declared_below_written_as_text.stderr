@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Label`: variant `Coded` holds `Code`, declared below `Label`, in another crate, or with no `#[model_schema]`, which serde does not write as an object, so nothing of it joins the tag `kind`. Name a `content` key so the value gets an object of its own, or wrap it in a struct whose fields can sit beside the tag.
+  --> tests/flatten_order_refusals/tagged_payload_declared_below_written_as_text.rs:11:11
+   |
+11 |     Coded(Code),
+   |           ^^^^ evaluation of `_` failed here

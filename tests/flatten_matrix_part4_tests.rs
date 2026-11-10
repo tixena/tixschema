@@ -1,0 +1,32959 @@
+//! The fifth of eight parts of the shapes of flattened members serde was measured to read
+//! back that `#[model_schema]` declares, generated once from that measure: each holder's
+//! rows are written, read back equal, and read with a stray key first, which the holder refuses
+//! (`R`), reads past (`E`) or reads into a map (`U`), as the measure found, but for the unit
+//! variant of a strict enum under a tag alone, which `#[model_schema]` reads refusing the key
+//! that serde's own derive reads past.
+
+#![cfg(feature = "serde")]
+
+extern crate alloc;
+
+#[cfg(test)]
+#[path = "flatten_matrix/harness.rs"]
+mod harness;
+
+#[cfg(test)]
+mod holders {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::harness::{Sample, check, rows1, rows2, rows3};
+
+    /// Each holder of this part, written, read back and read with a stray key first.
+    const HOLDERS: [fn() -> Vec<String>; 1106] = [
+        holder4, holder12, holder20, holder28, holder36, holder44, holder52, holder60, holder68,
+        holder76, holder84, holder92, holder100, holder108, holder116, holder124, holder132,
+        holder140, holder148, holder156, holder164, holder172, holder180, holder188, holder196,
+        holder204, holder212, holder220, holder228, holder236, holder244, holder252, holder260,
+        holder268, holder276, holder284, holder292, holder300, holder308, holder316, holder324,
+        holder332, holder340, holder348, holder356, holder364, holder372, holder380, holder388,
+        holder396, holder404, holder412, holder420, holder428, holder436, holder444, holder452,
+        holder460, holder468, holder476, holder484, holder492, holder500, holder508, holder516,
+        holder524, holder532, holder540, holder548, holder556, holder564, holder572, holder580,
+        holder588, holder596, holder604, holder612, holder620, holder628, holder636, holder644,
+        holder652, holder660, holder668, holder676, holder684, holder692, holder700, holder708,
+        holder716, holder724, holder732, holder740, holder748, holder756, holder764, holder772,
+        holder780, holder788, holder796, holder804, holder812, holder820, holder828, holder836,
+        holder844, holder852, holder860, holder868, holder876, holder884, holder892, holder900,
+        holder908, holder916, holder924, holder932, holder940, holder948, holder956, holder964,
+        holder972, holder980, holder988, holder996, holder1004, holder1012, holder1020, holder1028,
+        holder1036, holder1044, holder1052, holder1060, holder1068, holder1076, holder1084,
+        holder1092, holder1100, holder1108, holder1116, holder1124, holder1132, holder1140,
+        holder1148, holder1156, holder1164, holder1172, holder1180, holder1188, holder1196,
+        holder1204, holder1212, holder1220, holder1228, holder1236, holder1244, holder1252,
+        holder1260, holder1268, holder1276, holder1284, holder1292, holder1300, holder1308,
+        holder1316, holder1324, holder1332, holder1340, holder1348, holder1356, holder1364,
+        holder1372, holder1380, holder1388, holder1396, holder1404, holder1412, holder1420,
+        holder1428, holder1436, holder1444, holder1452, holder1460, holder1468, holder1476,
+        holder1484, holder1492, holder1500, holder1508, holder1516, holder1524, holder1532,
+        holder1540, holder1548, holder1556, holder1564, holder1572, holder1580, holder1588,
+        holder1596, holder1604, holder1612, holder1620, holder1628, holder1636, holder1644,
+        holder1652, holder1660, holder1668, holder1676, holder1684, holder1692, holder1700,
+        holder1708, holder1716, holder1724, holder1732, holder1740, holder1748, holder1756,
+        holder1764, holder1772, holder1780, holder1788, holder1796, holder1804, holder1812,
+        holder1820, holder1828, holder1836, holder1844, holder1852, holder1860, holder1868,
+        holder1876, holder1884, holder1892, holder1900, holder1908, holder1916, holder1924,
+        holder1932, holder1940, holder1948, holder1956, holder1964, holder1972, holder1980,
+        holder1988, holder1996, holder2004, holder2012, holder2020, holder2028, holder2036,
+        holder2044, holder2052, holder2060, holder2068, holder2076, holder2084, holder2092,
+        holder2100, holder2108, holder2116, holder2124, holder2132, holder2140, holder2148,
+        holder2156, holder2164, holder2172, holder2180, holder2188, holder2196, holder2204,
+        holder2212, holder2220, holder2228, holder2236, holder2244, holder2252, holder2260,
+        holder2268, holder2276, holder2284, holder2292, holder2300, holder2308, holder2316,
+        holder2324, holder2332, holder2340, holder2348, holder2356, holder2364, holder2372,
+        holder2380, holder2388, holder2396, holder2404, holder2412, holder2420, holder2428,
+        holder2436, holder2444, holder2452, holder2460, holder2468, holder2476, holder2484,
+        holder2492, holder2500, holder2508, holder2516, holder2524, holder2532, holder2540,
+        holder2548, holder2556, holder2564, holder2572, holder2580, holder2588, holder2596,
+        holder2604, holder2612, holder2620, holder2628, holder2636, holder2644, holder2652,
+        holder2660, holder2668, holder2676, holder2684, holder2692, holder2700, holder2708,
+        holder2716, holder2724, holder2732, holder2740, holder2748, holder2756, holder2764,
+        holder2772, holder2780, holder2788, holder2796, holder2804, holder2812, holder2820,
+        holder2828, holder2836, holder2844, holder2852, holder2860, holder2868, holder2876,
+        holder2884, holder2892, holder2900, holder2908, holder2916, holder2924, holder2932,
+        holder2940, holder2948, holder2956, holder2964, holder2972, holder2980, holder2988,
+        holder2996, holder3004, holder3012, holder3020, holder3028, holder3036, holder3044,
+        holder3052, holder3060, holder3068, holder3076, holder3084, holder3092, holder3100,
+        holder3108, holder3116, holder3124, holder3132, holder3140, holder3148, holder3156,
+        holder3164, holder3172, holder3180, holder3188, holder3196, holder3204, holder3212,
+        holder3220, holder3228, holder3236, holder3244, holder3252, holder3260, holder3268,
+        holder3276, holder3284, holder3292, holder3300, holder3308, holder3316, holder3324,
+        holder3332, holder3340, holder3348, holder3356, holder3364, holder3372, holder3380,
+        holder3388, holder3396, holder3404, holder3412, holder3420, holder3428, holder3436,
+        holder3444, holder3452, holder3460, holder3468, holder3476, holder3484, holder3492,
+        holder3500, holder3508, holder3516, holder3524, holder3532, holder3540, holder3548,
+        holder3556, holder3564, holder3572, holder3580, holder3588, holder3596, holder3604,
+        holder3612, holder3620, holder3628, holder3636, holder3644, holder3652, holder3660,
+        holder3668, holder3676, holder3684, holder3692, holder3700, holder3708, holder3716,
+        holder3724, holder3732, holder3740, holder3748, holder3756, holder3764, holder3772,
+        holder3780, holder3788, holder3796, holder3804, holder3812, holder3820, holder3828,
+        holder3836, holder3844, holder3852, holder3860, holder3868, holder3876, holder3884,
+        holder3892, holder3900, holder3908, holder3916, holder3924, holder3932, holder3940,
+        holder3948, holder3956, holder3964, holder3972, holder3980, holder3988, holder3996,
+        holder4004, holder4012, holder4020, holder4028, holder4036, holder4044, holder4052,
+        holder4060, holder4068, holder4076, holder4084, holder4092, holder4100, holder4108,
+        holder4116, holder4124, holder4132, holder4140, holder4148, holder4156, holder4164,
+        holder4172, holder4180, holder4188, holder4196, holder4204, holder4212, holder4220,
+        holder4228, holder4236, holder4244, holder4252, holder4260, holder4268, holder4276,
+        holder4284, holder4292, holder4300, holder4308, holder4316, holder4324, holder4332,
+        holder4340, holder4348, holder4356, holder4364, holder4372, holder4380, holder4388,
+        holder4396, holder4404, holder4412, holder4420, holder4428, holder4436, holder4444,
+        holder4452, holder4460, holder4468, holder4476, holder4484, holder4492, holder4500,
+        holder4508, holder4516, holder4524, holder4532, holder4540, holder4548, holder4556,
+        holder4564, holder4572, holder4580, holder4588, holder4596, holder4604, holder4612,
+        holder4620, holder4628, holder4636, holder4644, holder4652, holder4660, holder4668,
+        holder4676, holder4684, holder4692, holder4700, holder4708, holder4716, holder4724,
+        holder4732, holder4740, holder4748, holder4756, holder4764, holder4772, holder4780,
+        holder4788, holder4796, holder4804, holder4812, holder4820, holder4828, holder4836,
+        holder4844, holder4852, holder4860, holder4868, holder4876, holder4884, holder4892,
+        holder4900, holder4908, holder4916, holder4924, holder4932, holder4940, holder4948,
+        holder4956, holder4964, holder4972, holder4980, holder4988, holder4996, holder5004,
+        holder5012, holder5020, holder5028, holder5036, holder5044, holder5052, holder5060,
+        holder5068, holder5076, holder5084, holder5092, holder5100, holder5108, holder5116,
+        holder5124, holder5132, holder5140, holder5148, holder5156, holder5164, holder5172,
+        holder5180, holder5188, holder5196, holder5204, holder5212, holder5220, holder5228,
+        holder5236, holder5244, holder5252, holder5260, holder5268, holder5276, holder5284,
+        holder5292, holder5300, holder5308, holder5316, holder5324, holder5332, holder5340,
+        holder5348, holder5356, holder5364, holder5372, holder5380, holder5388, holder5396,
+        holder5404, holder5412, holder5420, holder5428, holder5436, holder5444, holder5452,
+        holder5460, holder5468, holder5476, holder5484, holder5492, holder5500, holder5508,
+        holder5516, holder5524, holder5532, holder5540, holder5548, holder5556, holder5564,
+        holder5572, holder5580, holder5588, holder5596, holder5604, holder5612, holder5620,
+        holder5628, holder5636, holder5644, holder5652, holder5660, holder5668, holder5676,
+        holder5684, holder5692, holder5700, holder5708, holder5716, holder5724, holder5732,
+        holder5740, holder5748, holder5756, holder5764, holder5772, holder5780, holder5788,
+        holder5796, holder5804, holder5812, holder5820, holder5828, holder5836, holder5844,
+        holder5852, holder5860, holder5868, holder5876, holder5884, holder5892, holder5900,
+        holder5908, holder5916, holder5924, holder5932, holder5940, holder5948, holder5956,
+        holder5964, holder5972, holder5980, holder5988, holder5996, holder6004, holder6012,
+        holder6020, holder6028, holder6036, holder6044, holder6052, holder6060, holder6068,
+        holder6076, holder6084, holder6092, holder6100, holder6108, holder6116, holder6124,
+        holder6132, holder6140, holder6148, holder6156, holder6164, holder6172, holder6180,
+        holder6188, holder6196, holder6204, holder6212, holder6220, holder6228, holder6236,
+        holder6244, holder6252, holder6260, holder6268, holder6276, holder6284, holder6292,
+        holder6300, holder6308, holder6316, holder6324, holder6332, holder6340, holder6348,
+        holder6356, holder6364, holder6372, holder6380, holder6388, holder6396, holder6404,
+        holder6412, holder6420, holder6428, holder6436, holder6444, holder6452, holder6460,
+        holder6468, holder6476, holder6484, holder6492, holder6500, holder6508, holder6516,
+        holder6524, holder6532, holder6540, holder6548, holder6556, holder6564, holder6572,
+        holder6580, holder6588, holder6596, holder6604, holder6612, holder6620, holder6628,
+        holder6636, holder6644, holder6652, holder6660, holder6668, holder6676, holder6684,
+        holder6692, holder6700, holder6708, holder6716, holder6724, holder6732, holder6740,
+        holder6748, holder6756, holder6764, holder6772, holder6780, holder6788, holder6796,
+        holder6804, holder6812, holder6820, holder6828, holder6836, holder6844, holder6852,
+        holder6860, holder6868, holder6876, holder6884, holder6892, holder6900, holder6908,
+        holder6916, holder6924, holder6932, holder6940, holder6948, holder6956, holder6964,
+        holder6972, holder6980, holder6988, holder6996, holder7004, holder7012, holder7020,
+        holder7028, holder7036, holder7044, holder7052, holder7060, holder7068, holder7076,
+        holder7084, holder7092, holder7100, holder7108, holder7116, holder7124, holder7132,
+        holder7140, holder7148, holder7156, holder7164, holder7172, holder7180, holder7188,
+        holder7196, holder7204, holder7212, holder7220, holder7228, holder7236, holder7244,
+        holder7252, holder7260, holder7268, holder7276, holder7284, holder7292, holder7300,
+        holder7308, holder7316, holder7324, holder7332, holder7340, holder7348, holder7356,
+        holder7364, holder7372, holder7380, holder7388, holder7396, holder7404, holder7412,
+        holder7420, holder7428, holder7436, holder7444, holder7452, holder7460, holder7468,
+        holder7476, holder7484, holder7492, holder7500, holder7508, holder7516, holder7524,
+        holder7532, holder7540, holder7548, holder7556, holder7564, holder7572, holder7580,
+        holder7588, holder7596, holder7604, holder7612, holder7620, holder7628, holder7636,
+        holder7644, holder7652, holder7660, holder7668, holder7676, holder7684, holder7692,
+        holder7700, holder7708, holder7716, holder7724, holder7732, holder7740, holder7748,
+        holder7756, holder7764, holder7772, holder7780, holder7788, holder7796, holder7804,
+        holder7812, holder7820, holder7828, holder7836, holder7844, holder7852, holder7860,
+        holder7868, holder7876, holder7884, holder7892, holder7900, holder7908, holder7916,
+        holder7924, holder7932, holder7940, holder7948, holder7956, holder7964, holder7972,
+        holder7980, holder7988, holder7996, holder8004, holder8012, holder8020, holder8028,
+        holder8036, holder8044, holder8052, holder8060, holder8068, holder8076, holder8084,
+        holder8092, holder8100, holder8108, holder8116, holder8124, holder8132, holder8140,
+        holder8148, holder8156, holder8164, holder8172, holder8180, holder8188, holder8196,
+        holder8204, holder8212, holder8220, holder8228, holder8236, holder8244, holder8252,
+        holder8260, holder8268, holder8276, holder8284, holder8292, holder8300, holder8308,
+        holder8316, holder8324, holder8332, holder8340, holder8348, holder8356, holder8364,
+        holder8372, holder8380, holder8388, holder8396, holder8404, holder8412, holder8420,
+        holder8428, holder8436, holder8444, holder8452, holder8460, holder8468, holder8476,
+        holder8484, holder8492, holder8500, holder8508, holder8516, holder8524, holder8532,
+        holder8540, holder8548, holder8556, holder8564, holder8572, holder8580, holder8588,
+        holder8596, holder8604, holder8612, holder8620, holder8628, holder8636, holder8644,
+        holder8652, holder8660, holder8668, holder8676, holder8684, holder8692, holder8700,
+        holder8708, holder8716, holder8724, holder8732, holder8740, holder8748, holder8756,
+        holder8764, holder8772, holder8780, holder8788, holder8796, holder8804, holder8812,
+        holder8820, holder8828, holder8836, holder8844,
+    ];
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CAW10NN {
+        #[serde(rename = "a10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "a10_c")]
+    pub enum CA10NN {
+        Dot,
+        Rect {
+            #[serde(rename = "a10_a")]
+            a: u32,
+        },
+        Wrap(CAW10NN),
+    }
+    impl Sample for CA10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 40 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CAW10NN { b: 45 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CAW10SS {
+        #[serde(rename = "a10_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "a10_c")]
+    pub enum CA10SS {
+        Dot,
+        Rect {
+            #[serde(rename = "a10_a")]
+            a: u32,
+        },
+        Wrap(CAW10SS),
+    }
+    impl Sample for CA10SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 40 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CAW10SS { b: 45 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFTW10NNN {
+        #[serde(rename = "ft10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CFTI10NNN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft10_a")]
+            a: u32,
+        },
+        Wrap(CFTW10NNN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFT10NNN {
+        #[serde(flatten)]
+        pub inner: CFTI10NNN,
+        #[serde(rename = "ft10_own")]
+        pub own: u32,
+    }
+    impl Sample for CFT10NNN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 80,
+                        inner: CFTI10NNN::Rect { a: 82 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 80,
+                        inner: CFTI10NNN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 80,
+                        inner: CFTI10NNN::Wrap(CFTW10NNN { b: 85 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CTW10NN {
+        #[serde(rename = "t10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CT10NN {
+        Dot,
+        Rect {
+            #[serde(rename = "t10_a")]
+            a: u32,
+        },
+        Wrap(CTW10NN),
+    }
+    impl Sample for CT10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 50 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CTW10NN { b: 55 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CTW10SS {
+        #[serde(rename = "t10_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CT10SS {
+        Dot,
+        Rect {
+            #[serde(rename = "t10_a")]
+            a: u32,
+        },
+        Wrap(CTW10SS),
+    }
+    impl Sample for CT10SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 50 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CTW10SS { b: 55 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CEW11SS {
+        #[serde(rename = "e11_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum CE11SS {
+        #[serde(rename = "e11_dot")]
+        Dot,
+        #[serde(rename = "shared")]
+        Rect {
+            #[serde(rename = "e11_a")]
+            a: u32,
+        },
+        #[serde(rename = "e11_wrap")]
+        Wrap(CEW11SS),
+    }
+    impl Sample for CE11SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 31 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CEW11SS { b: 36 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFOY11NN {
+        #[serde(rename = "fo11_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFOX11NN {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFO11NN {
+        #[serde(flatten)]
+        pub x: CFOX11NN,
+        #[serde(flatten)]
+        pub y: CFOY11NN,
+    }
+    impl Sample for CFO11NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: CFOX11NN { a: 111 },
+                    y: CFOY11NN { b: 136 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFPI11NN {
+        #[serde(rename = "fp11_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFP11NN {
+        #[serde(flatten)]
+        pub inner: CFPI11NN,
+        #[serde(rename = "shared")]
+        pub own: u32,
+    }
+    impl Sample for CFP11NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 111,
+                    inner: CFPI11NN { a: 76 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFPI11SS {
+        #[serde(rename = "fp11_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFP11SS {
+        #[serde(flatten)]
+        pub inner: CFPI11SS,
+        #[serde(rename = "shared")]
+        pub own: u32,
+    }
+    impl Sample for CFP11SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 111,
+                    inner: CFPI11SS { a: 76 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CP11N {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for CP11N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 111 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CP11S {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for CP11S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 111 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CEW10NN {
+        #[serde(rename = "e10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum CE10NN {
+        #[serde(rename = "e10_dot")]
+        Dot,
+        #[serde(rename = "shared")]
+        Rect {
+            #[serde(rename = "e10_a")]
+            a: u32,
+        },
+        #[serde(rename = "e10_wrap")]
+        Wrap(CEW10NN),
+    }
+    impl Sample for CE10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 30 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CEW10NN { b: 35 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CAW11NN {
+        #[serde(rename = "a11_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "a11_c")]
+    pub enum CA11NN {
+        Dot,
+        Rect {
+            #[serde(rename = "a11_a")]
+            a: u32,
+        },
+        Wrap(CAW11NN),
+    }
+    impl Sample for CA11NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CAW11NN { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CAW11SS {
+        #[serde(rename = "a11_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", content = "a11_c")]
+    pub enum CA11SS {
+        Dot,
+        Rect {
+            #[serde(rename = "a11_a")]
+            a: u32,
+        },
+        Wrap(CAW11SS),
+    }
+    impl Sample for CA11SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CAW11SS { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFTW11NNN {
+        #[serde(rename = "ft11_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CFTI11NNN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft11_a")]
+            a: u32,
+        },
+        Wrap(CFTW11NNN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFT11NNN {
+        #[serde(flatten)]
+        pub inner: CFTI11NNN,
+        #[serde(rename = "ft11_own")]
+        pub own: u32,
+    }
+    impl Sample for CFT11NNN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 81,
+                        inner: CFTI11NNN::Rect { a: 83 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 81,
+                        inner: CFTI11NNN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 81,
+                        inner: CFTI11NNN::Wrap(CFTW11NNN { b: 86 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CTW11NN {
+        #[serde(rename = "t11_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CT11NN {
+        Dot,
+        Rect {
+            #[serde(rename = "t11_a")]
+            a: u32,
+        },
+        Wrap(CTW11NN),
+    }
+    impl Sample for CT11NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 51 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CTW11NN { b: 56 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CTW11SS {
+        #[serde(rename = "t11_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind")]
+    pub enum CT11SS {
+        Dot,
+        Rect {
+            #[serde(rename = "t11_a")]
+            a: u32,
+        },
+        Wrap(CTW11SS),
+    }
+    impl Sample for CT11SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 51 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CTW11SS { b: 56 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CEW10SS {
+        #[serde(rename = "e10_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum CE10SS {
+        #[serde(rename = "e10_dot")]
+        Dot,
+        #[serde(rename = "shared")]
+        Rect {
+            #[serde(rename = "e10_a")]
+            a: u32,
+        },
+        #[serde(rename = "e10_wrap")]
+        Wrap(CEW10SS),
+    }
+    impl Sample for CE10SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 30 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(CEW10SS { b: 35 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFOY10NN {
+        #[serde(rename = "fo10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFOX10NN {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFO10NN {
+        #[serde(flatten)]
+        pub x: CFOX10NN,
+        #[serde(flatten)]
+        pub y: CFOY10NN,
+    }
+    impl Sample for CFO10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: CFOX10NN { a: 110 },
+                    y: CFOY10NN { b: 135 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFPI10NN {
+        #[serde(rename = "fp10_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CFP10NN {
+        #[serde(flatten)]
+        pub inner: CFPI10NN,
+        #[serde(rename = "shared")]
+        pub own: u32,
+    }
+    impl Sample for CFP10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 110,
+                    inner: CFPI10NN { a: 75 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct COI10N {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for COI10N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct COI10S {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for COI10S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CP10N {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for CP10N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CP10S {
+        #[serde(rename = "shared")]
+        pub a: u32,
+    }
+    impl Sample for CP10S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct CVW10NN {
+        #[serde(rename = "v10_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum CV10NN {
+        Rect {
+            #[serde(rename = "shared")]
+            a: u32,
+        },
+        Wrap(CVW10NN),
+    }
+    impl Sample for CV10NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 110 }),
+                ("Wrap".to_owned(), Self::Wrap(CVW10NN { b: 145 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW0NN {
+        #[serde(rename = "a0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a0_t", content = "a0_c")]
+    pub enum A0NN {
+        Dot,
+        Rect {
+            #[serde(rename = "a0_a")]
+            a: u32,
+        },
+        Wrap(AW0NN),
+    }
+    impl Sample for A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 30 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW0NN { b: 35 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW0SS {
+        #[serde(rename = "a0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a0_t", content = "a0_c")]
+    pub enum A0SS {
+        Dot,
+        Rect {
+            #[serde(rename = "a0_a")]
+            a: u32,
+        },
+        Wrap(AW0SS),
+    }
+    impl Sample for A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 30 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW0SS { b: 35 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW0NN {
+        #[serde(rename = "e0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E0NN {
+        #[serde(rename = "e0_dot")]
+        Dot,
+        #[serde(rename = "e0_rect")]
+        Rect {
+            #[serde(rename = "e0_a")]
+            a: u32,
+        },
+        #[serde(rename = "e0_wrap")]
+        Wrap(EW0NN),
+    }
+    impl Sample for E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 20 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW0NN { b: 25 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW0SS {
+        #[serde(rename = "e0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E0SS {
+        #[serde(rename = "e0_dot")]
+        Dot,
+        #[serde(rename = "e0_rect")]
+        Rect {
+            #[serde(rename = "e0_a")]
+            a: u32,
+        },
+        #[serde(rename = "e0_wrap")]
+        Wrap(EW0SS),
+    }
+    impl Sample for E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 20 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW0SS { b: 25 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY0NN {
+        #[serde(rename = "fo0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX0NN {
+        #[serde(rename = "fo0_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO0NN {
+        #[serde(flatten)]
+        pub x: FOX0NN,
+        #[serde(flatten)]
+        pub y: FOY0NN,
+    }
+    impl Sample for FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX0NN { a: 120 },
+                    y: FOY0NN { b: 125 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY0SS {
+        #[serde(rename = "fo0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX0SS {
+        #[serde(rename = "fo0_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO0SS {
+        #[serde(flatten)]
+        pub x: FOX0SS,
+        #[serde(flatten)]
+        pub y: FOY0SS,
+    }
+    impl Sample for FO0SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX0SS { a: 120 },
+                    y: FOY0SS { b: 125 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI0NN {
+        #[serde(rename = "fp0_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP0NN {
+        #[serde(flatten)]
+        pub inner: FPI0NN,
+        #[serde(rename = "fp0_own")]
+        pub own: u32,
+    }
+    impl Sample for FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 60,
+                    inner: FPI0NN { a: 65 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FTW0NNN {
+        #[serde(rename = "ft0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "ft0_t")]
+    pub enum FTI0NNN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft0_a")]
+            a: u32,
+        },
+        Wrap(FTW0NNN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FT0NNN {
+        #[serde(flatten)]
+        pub inner: FTI0NNN,
+        #[serde(rename = "ft0_own")]
+        pub own: u32,
+    }
+    impl Sample for FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NNN::Rect { a: 72 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NNN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NNN::Wrap(FTW0NNN { b: 75 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI0N {
+        #[serde(rename = "o0_a")]
+        pub a: u32,
+    }
+    impl Sample for OI0N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI0S {
+        #[serde(rename = "o0_a")]
+        pub a: u32,
+    }
+    impl Sample for OI0S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P0N {
+        #[serde(rename = "p0_a")]
+        pub a: u32,
+    }
+    impl Sample for P0N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 10 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P0S {
+        #[serde(rename = "p0_a")]
+        pub a: u32,
+    }
+    impl Sample for P0S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 10 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW0NN {
+        #[serde(rename = "t0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t0_t")]
+    pub enum T0NN {
+        Dot,
+        Rect {
+            #[serde(rename = "t0_a")]
+            a: u32,
+        },
+        Wrap(TW0NN),
+    }
+    impl Sample for T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 40 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW0NN { b: 45 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW0SS {
+        #[serde(rename = "t0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t0_t")]
+    pub enum T0SS {
+        Dot,
+        Rect {
+            #[serde(rename = "t0_a")]
+            a: u32,
+        },
+        Wrap(TW0SS),
+    }
+    impl Sample for T0SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 40 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW0SS { b: 45 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW0NN {
+        #[serde(rename = "v0_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V0NN {
+        Rect {
+            #[serde(rename = "v0_a")]
+            a: u32,
+        },
+        Wrap(VW0NN),
+    }
+    impl Sample for V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 130 }),
+                ("Wrap".to_owned(), Self::Wrap(VW0NN { b: 135 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW1NN {
+        #[serde(rename = "a1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a1_t", content = "a1_c")]
+    pub enum A1NN {
+        Dot,
+        Rect {
+            #[serde(rename = "a1_a")]
+            a: u32,
+        },
+        Wrap(AW1NN),
+    }
+    impl Sample for A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 31 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW1NN { b: 36 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW1SS {
+        #[serde(rename = "a1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a1_t", content = "a1_c")]
+    pub enum A1SS {
+        Dot,
+        Rect {
+            #[serde(rename = "a1_a")]
+            a: u32,
+        },
+        Wrap(AW1SS),
+    }
+    impl Sample for A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 31 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW1SS { b: 36 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW1NN {
+        #[serde(rename = "e1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E1NN {
+        #[serde(rename = "e1_dot")]
+        Dot,
+        #[serde(rename = "e1_rect")]
+        Rect {
+            #[serde(rename = "e1_a")]
+            a: u32,
+        },
+        #[serde(rename = "e1_wrap")]
+        Wrap(EW1NN),
+    }
+    impl Sample for E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 21 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW1NN { b: 26 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW1SS {
+        #[serde(rename = "e1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E1SS {
+        #[serde(rename = "e1_dot")]
+        Dot,
+        #[serde(rename = "e1_rect")]
+        Rect {
+            #[serde(rename = "e1_a")]
+            a: u32,
+        },
+        #[serde(rename = "e1_wrap")]
+        Wrap(EW1SS),
+    }
+    impl Sample for E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 21 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW1SS { b: 26 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY1NN {
+        #[serde(rename = "fo1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX1NN {
+        #[serde(rename = "fo1_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO1NN {
+        #[serde(flatten)]
+        pub x: FOX1NN,
+        #[serde(flatten)]
+        pub y: FOY1NN,
+    }
+    impl Sample for FO1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX1NN { a: 121 },
+                    y: FOY1NN { b: 126 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY1SS {
+        #[serde(rename = "fo1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX1SS {
+        #[serde(rename = "fo1_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO1SS {
+        #[serde(flatten)]
+        pub x: FOX1SS,
+        #[serde(flatten)]
+        pub y: FOY1SS,
+    }
+    impl Sample for FO1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX1SS { a: 121 },
+                    y: FOY1SS { b: 126 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI1NN {
+        #[serde(rename = "fp1_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP1NN {
+        #[serde(flatten)]
+        pub inner: FPI1NN,
+        #[serde(rename = "fp1_own")]
+        pub own: u32,
+    }
+    impl Sample for FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 61,
+                    inner: FPI1NN { a: 66 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI1SS {
+        #[serde(rename = "fp1_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP1SS {
+        #[serde(flatten)]
+        pub inner: FPI1SS,
+        #[serde(rename = "fp1_own")]
+        pub own: u32,
+    }
+    impl Sample for FP1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 61,
+                    inner: FPI1SS { a: 66 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FTW1NNN {
+        #[serde(rename = "ft1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "ft1_t")]
+    pub enum FTI1NNN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft1_a")]
+            a: u32,
+        },
+        Wrap(FTW1NNN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FT1NNN {
+        #[serde(flatten)]
+        pub inner: FTI1NNN,
+        #[serde(rename = "ft1_own")]
+        pub own: u32,
+    }
+    impl Sample for FT1NNN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NNN::Rect { a: 73 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NNN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NNN::Wrap(FTW1NNN { b: 76 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI1N {
+        #[serde(rename = "o1_a")]
+        pub a: u32,
+    }
+    impl Sample for OI1N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 111 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI1S {
+        #[serde(rename = "o1_a")]
+        pub a: u32,
+    }
+    impl Sample for OI1S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 111 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P1N {
+        #[serde(rename = "p1_a")]
+        pub a: u32,
+    }
+    impl Sample for P1N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 11 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P1S {
+        #[serde(rename = "p1_a")]
+        pub a: u32,
+    }
+    impl Sample for P1S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 11 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW1NN {
+        #[serde(rename = "t1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t1_t")]
+    pub enum T1NN {
+        Dot,
+        Rect {
+            #[serde(rename = "t1_a")]
+            a: u32,
+        },
+        Wrap(TW1NN),
+    }
+    impl Sample for T1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW1NN { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW1SS {
+        #[serde(rename = "t1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t1_t")]
+    pub enum T1SS {
+        Dot,
+        Rect {
+            #[serde(rename = "t1_a")]
+            a: u32,
+        },
+        Wrap(TW1SS),
+    }
+    impl Sample for T1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW1SS { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW1NN {
+        #[serde(rename = "v1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V1NN {
+        Rect {
+            #[serde(rename = "v1_a")]
+            a: u32,
+        },
+        Wrap(VW1NN),
+    }
+    impl Sample for V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 131 }),
+                ("Wrap".to_owned(), Self::Wrap(VW1NN { b: 136 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW1SS {
+        #[serde(rename = "v1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V1SS {
+        Rect {
+            #[serde(rename = "v1_a")]
+            a: u32,
+        },
+        Wrap(VW1SS),
+    }
+    impl Sample for V1SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 131 }),
+                ("Wrap".to_owned(), Self::Wrap(VW1SS { b: 136 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW2NN {
+        #[serde(rename = "a2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a2_t", content = "a2_c")]
+    pub enum A2NN {
+        Dot,
+        Rect {
+            #[serde(rename = "a2_a")]
+            a: u32,
+        },
+        Wrap(AW2NN),
+    }
+    impl Sample for A2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 32 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW2NN { b: 37 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct AW2SS {
+        #[serde(rename = "a2_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "a2_t", content = "a2_c")]
+    pub enum A2SS {
+        Dot,
+        Rect {
+            #[serde(rename = "a2_a")]
+            a: u32,
+        },
+        Wrap(AW2SS),
+    }
+    impl Sample for A2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 32 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(AW2SS { b: 37 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW2NN {
+        #[serde(rename = "e2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E2NN {
+        #[serde(rename = "e2_dot")]
+        Dot,
+        #[serde(rename = "e2_rect")]
+        Rect {
+            #[serde(rename = "e2_a")]
+            a: u32,
+        },
+        #[serde(rename = "e2_wrap")]
+        Wrap(EW2NN),
+    }
+    impl Sample for E2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 22 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW2NN { b: 27 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct EW2SS {
+        #[serde(rename = "e2_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub enum E2SS {
+        #[serde(rename = "e2_dot")]
+        Dot,
+        #[serde(rename = "e2_rect")]
+        Rect {
+            #[serde(rename = "e2_a")]
+            a: u32,
+        },
+        #[serde(rename = "e2_wrap")]
+        Wrap(EW2SS),
+    }
+    impl Sample for E2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 22 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(EW2SS { b: 27 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY2NN {
+        #[serde(rename = "fo2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX2NN {
+        #[serde(rename = "fo2_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO2NN {
+        #[serde(flatten)]
+        pub x: FOX2NN,
+        #[serde(flatten)]
+        pub y: FOY2NN,
+    }
+    impl Sample for FO2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX2NN { a: 122 },
+                    y: FOY2NN { b: 127 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY2SS {
+        #[serde(rename = "fo2_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX2SS {
+        #[serde(rename = "fo2_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO2SS {
+        #[serde(flatten)]
+        pub x: FOX2SS,
+        #[serde(flatten)]
+        pub y: FOY2SS,
+    }
+    impl Sample for FO2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX2SS { a: 122 },
+                    y: FOY2SS { b: 127 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI2NN {
+        #[serde(rename = "fp2_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP2NN {
+        #[serde(flatten)]
+        pub inner: FPI2NN,
+        #[serde(rename = "fp2_own")]
+        pub own: u32,
+    }
+    impl Sample for FP2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 62,
+                    inner: FPI2NN { a: 67 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI2SS {
+        #[serde(rename = "fp2_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP2SS {
+        #[serde(flatten)]
+        pub inner: FPI2SS,
+        #[serde(rename = "fp2_own")]
+        pub own: u32,
+    }
+    impl Sample for FP2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 62,
+                    inner: FPI2SS { a: 67 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FTW2NNN {
+        #[serde(rename = "ft2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "ft2_t")]
+    pub enum FTI2NNN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft2_a")]
+            a: u32,
+        },
+        Wrap(FTW2NNN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FT2NNN {
+        #[serde(flatten)]
+        pub inner: FTI2NNN,
+        #[serde(rename = "ft2_own")]
+        pub own: u32,
+    }
+    impl Sample for FT2NNN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 72,
+                        inner: FTI2NNN::Rect { a: 74 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 72,
+                        inner: FTI2NNN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 72,
+                        inner: FTI2NNN::Wrap(FTW2NNN { b: 77 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI2N {
+        #[serde(rename = "o2_a")]
+        pub a: u32,
+    }
+    impl Sample for OI2N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 112 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct OI2S {
+        #[serde(rename = "o2_a")]
+        pub a: u32,
+    }
+    impl Sample for OI2S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("Some".to_owned(), Self { a: 112 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P2N {
+        #[serde(rename = "p2_a")]
+        pub a: u32,
+    }
+    impl Sample for P2N {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 12 })]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct P2S {
+        #[serde(rename = "p2_a")]
+        pub a: u32,
+    }
+    impl Sample for P2S {
+        fn samples() -> Vec<(String, Self)> {
+            vec![("-".to_owned(), Self { a: 12 })]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW2NN {
+        #[serde(rename = "t2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t2_t")]
+    pub enum T2NN {
+        Dot,
+        Rect {
+            #[serde(rename = "t2_a")]
+            a: u32,
+        },
+        Wrap(TW2NN),
+    }
+    impl Sample for T2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 42 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW2NN { b: 47 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW2SS {
+        #[serde(rename = "t2_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t2_t")]
+    pub enum T2SS {
+        Dot,
+        Rect {
+            #[serde(rename = "t2_a")]
+            a: u32,
+        },
+        Wrap(TW2SS),
+    }
+    impl Sample for T2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 42 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW2SS { b: 47 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW2NN {
+        #[serde(rename = "v2_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V2NN {
+        Rect {
+            #[serde(rename = "v2_a")]
+            a: u32,
+        },
+        Wrap(VW2NN),
+    }
+    impl Sample for V2NN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 132 }),
+                ("Wrap".to_owned(), Self::Wrap(VW2NN { b: 137 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW2SS {
+        #[serde(rename = "v2_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V2SS {
+        Rect {
+            #[serde(rename = "v2_a")]
+            a: u32,
+        },
+        Wrap(VW2SS),
+    }
+    impl Sample for V2SS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 132 }),
+                ("Wrap".to_owned(), Self::Wrap(VW2SS { b: 137 })),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY0NS {
+        #[serde(rename = "fo0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX0NS {
+        #[serde(rename = "fo0_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO0NS {
+        #[serde(flatten)]
+        pub x: FOX0NS,
+        #[serde(flatten)]
+        pub y: FOY0NS,
+    }
+    impl Sample for FO0NS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX0NS { a: 120 },
+                    y: FOY0NS { b: 125 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI0NS {
+        #[serde(rename = "fp0_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP0NS {
+        #[serde(flatten)]
+        pub inner: FPI0NS,
+        #[serde(rename = "fp0_own")]
+        pub own: u32,
+    }
+    impl Sample for FP0NS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 60,
+                    inner: FPI0NS { a: 65 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI0SN {
+        #[serde(rename = "fp0_a")]
+        pub a: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP0SN {
+        #[serde(flatten)]
+        pub inner: FPI0SN,
+        #[serde(rename = "fp0_own")]
+        pub own: u32,
+    }
+    impl Sample for FP0SN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 60,
+                    inner: FPI0SN { a: 65 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FTW0NSS {
+        #[serde(rename = "ft0_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "ft0_t")]
+    pub enum FTI0NSS {
+        Dot,
+        Rect {
+            #[serde(rename = "ft0_a")]
+            a: u32,
+        },
+        Wrap(FTW0NSS),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FT0NSS {
+        #[serde(flatten)]
+        pub inner: FTI0NSS,
+        #[serde(rename = "ft0_own")]
+        pub own: u32,
+    }
+    impl Sample for FT0NSS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NSS::Rect { a: 72 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NSS::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 70,
+                        inner: FTI0NSS::Wrap(FTW0NSS { b: 75 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOY1NS {
+        #[serde(rename = "fo1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FOX1NS {
+        #[serde(rename = "fo1_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FO1NS {
+        #[serde(flatten)]
+        pub x: FOX1NS,
+        #[serde(flatten)]
+        pub y: FOY1NS,
+    }
+    impl Sample for FO1NS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    x: FOX1NS { a: 121 },
+                    y: FOY1NS { b: 126 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FPI1NS {
+        #[serde(rename = "fp1_a")]
+        pub a: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FP1NS {
+        #[serde(flatten)]
+        pub inner: FPI1NS,
+        #[serde(rename = "fp1_own")]
+        pub own: u32,
+    }
+    impl Sample for FP1NS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![(
+                "-".to_owned(),
+                Self {
+                    own: 61,
+                    inner: FPI1NS { a: 66 },
+                },
+            )]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FTW1NSN {
+        #[serde(rename = "ft1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "ft1_t")]
+    pub enum FTI1NSN {
+        Dot,
+        Rect {
+            #[serde(rename = "ft1_a")]
+            a: u32,
+        },
+        Wrap(FTW1NSN),
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct FT1NSN {
+        #[serde(flatten)]
+        pub inner: FTI1NSN,
+        #[serde(rename = "ft1_own")]
+        pub own: u32,
+    }
+    impl Sample for FT1NSN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                (
+                    "Rect".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NSN::Rect { a: 73 },
+                    },
+                ),
+                (
+                    "Dot".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NSN::Dot,
+                    },
+                ),
+                (
+                    "Wrap".to_owned(),
+                    Self {
+                        own: 71,
+                        inner: FTI1NSN::Wrap(FTW1NSN { b: 76 }),
+                    },
+                ),
+            ]
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW1NS {
+        #[serde(rename = "t1_b")]
+        pub b: u32,
+    }
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t1_t")]
+    pub enum T1NS {
+        Dot,
+        Rect {
+            #[serde(rename = "t1_a")]
+            a: u32,
+        },
+        Wrap(TW1NS),
+    }
+    impl Sample for T1NS {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW1NS { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct TW1SN {
+        #[serde(rename = "t1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "t1_t")]
+    pub enum T1SN {
+        Dot,
+        Rect {
+            #[serde(rename = "t1_a")]
+            a: u32,
+        },
+        Wrap(TW1SN),
+    }
+    impl Sample for T1SN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 41 }),
+                ("Dot".to_owned(), Self::Dot),
+                ("Wrap".to_owned(), Self::Wrap(TW1SN { b: 46 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct VW1SN {
+        #[serde(rename = "v1_b")]
+        pub b: u32,
+    }
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum V1SN {
+        Rect {
+            #[serde(rename = "v1_a")]
+            a: u32,
+        },
+        Wrap(VW1SN),
+    }
+    impl Sample for V1SN {
+        fn samples() -> Vec<(String, Self)> {
+            vec![
+                ("Rect".to_owned(), Self::Rect { a: 131 }),
+                ("Wrap".to_owned(), Self::Wrap(VW1SN { b: 136 })),
+            ]
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0A0NN {
+        #[serde(flatten)]
+        pub held: A0NN,
+    }
+    impl Sample for IN0A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0A0SS {
+        #[serde(flatten)]
+        pub held: A0SS,
+    }
+    impl Sample for IN0A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0E0NN {
+        #[serde(flatten)]
+        pub held: E0NN,
+    }
+    impl Sample for IN0E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0E0SS {
+        #[serde(flatten)]
+        pub held: E0SS,
+    }
+    impl Sample for IN0E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FO0NN {
+        #[serde(flatten)]
+        pub held: FO0NN,
+    }
+    impl Sample for IN0FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FO0SS {
+        #[serde(flatten)]
+        pub held: FO0SS,
+    }
+    impl Sample for IN0FO0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FP0NN {
+        #[serde(flatten)]
+        pub held: FP0NN,
+    }
+    impl Sample for IN0FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FT0NNN {
+        #[serde(flatten)]
+        pub held: FT0NNN,
+    }
+    impl Sample for IN0FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT0NNN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0OptOI0N {
+        #[serde(flatten)]
+        pub held: Option<OI0N>,
+    }
+    impl Sample for IN0OptOI0N {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0N>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0OptOI0S {
+        #[serde(flatten)]
+        pub held: Option<OI0S>,
+    }
+    impl Sample for IN0OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0P0N {
+        #[serde(flatten)]
+        pub held: P0N,
+    }
+    impl Sample for IN0P0N {
+        fn samples() -> Vec<(String, Self)> {
+            <P0N>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0P0S {
+        #[serde(flatten)]
+        pub held: P0S,
+    }
+    impl Sample for IN0P0S {
+        fn samples() -> Vec<(String, Self)> {
+            <P0S>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0T0NN {
+        #[serde(flatten)]
+        pub held: T0NN,
+    }
+    impl Sample for IN0T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0V0NN {
+        #[serde(flatten)]
+        pub held: V0NN,
+    }
+    impl Sample for IN0V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1A0NN {
+        #[serde(flatten)]
+        pub held: A0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1A0SS {
+        #[serde(flatten)]
+        pub held: A0SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1E0NN {
+        #[serde(flatten)]
+        pub held: E0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1E0SS {
+        #[serde(flatten)]
+        pub held: E0SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FO0NN {
+        #[serde(flatten)]
+        pub held: FO0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FP0NN {
+        #[serde(flatten)]
+        pub held: FP0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FT0NNN {
+        #[serde(flatten)]
+        pub held: FT0NNN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT0NNN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1OptOI0N {
+        #[serde(flatten)]
+        pub held: Option<OI0N>,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1OptOI0N {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0N>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1OptOI0S {
+        #[serde(flatten)]
+        pub held: Option<OI0S>,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1P0N {
+        #[serde(flatten)]
+        pub held: P0N,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1P0N {
+        fn samples() -> Vec<(String, Self)> {
+            <P0N>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1P0S {
+        #[serde(flatten)]
+        pub held: P0S,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1P0S {
+        fn samples() -> Vec<(String, Self)> {
+            <P0S>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1T0NN {
+        #[serde(flatten)]
+        pub held: T0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1T0SS {
+        #[serde(flatten)]
+        pub held: T0SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1T0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <T0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1V0NN {
+        #[serde(flatten)]
+        pub held: V0NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V0NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0E0SS {
+        #[serde(flatten)]
+        pub held: E0SS,
+    }
+    impl Sample for IS0E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0OptOI0S {
+        #[serde(flatten)]
+        pub held: Option<OI0S>,
+    }
+    impl Sample for IS0OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1E0SS {
+        #[serde(flatten)]
+        pub held: E0SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E0SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1OptOI0S {
+        #[serde(flatten)]
+        pub held: Option<OI0S>,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI0S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0A1SS {
+        #[serde(flatten)]
+        pub held: A1SS,
+    }
+    impl Sample for IN0A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0E1SS {
+        #[serde(flatten)]
+        pub held: E1SS,
+    }
+    impl Sample for IN0E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FO1SS {
+        #[serde(flatten)]
+        pub held: FO1SS,
+    }
+    impl Sample for IN0FO1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FP1NN {
+        #[serde(flatten)]
+        pub held: FP1NN,
+    }
+    impl Sample for IN0FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0FP1SS {
+        #[serde(flatten)]
+        pub held: FP1SS,
+    }
+    impl Sample for IN0FP1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0OptOI1N {
+        #[serde(flatten)]
+        pub held: Option<OI1N>,
+    }
+    impl Sample for IN0OptOI1N {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI1N>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0P1N {
+        #[serde(flatten)]
+        pub held: P1N,
+    }
+    impl Sample for IN0P1N {
+        fn samples() -> Vec<(String, Self)> {
+            <P1N>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0T1NN {
+        #[serde(flatten)]
+        pub held: T1NN,
+    }
+    impl Sample for IN0T1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN0V1NN {
+        #[serde(flatten)]
+        pub held: V1NN,
+    }
+    impl Sample for IN0V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1A1NN {
+        #[serde(flatten)]
+        pub held: A1NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1E1NN {
+        #[serde(flatten)]
+        pub held: E1NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FO1NN {
+        #[serde(flatten)]
+        pub held: FO1NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FO1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FP1NN {
+        #[serde(flatten)]
+        pub held: FP1NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1FT1NNN {
+        #[serde(flatten)]
+        pub held: FT1NNN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1FT1NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT1NNN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1OptOI1S {
+        #[serde(flatten)]
+        pub held: Option<OI1S>,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1OptOI1S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI1S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1P1S {
+        #[serde(flatten)]
+        pub held: P1S,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1P1S {
+        fn samples() -> Vec<(String, Self)> {
+            <P1S>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1T1SS {
+        #[serde(flatten)]
+        pub held: T1SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1T1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <T1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1V1NN {
+        #[serde(flatten)]
+        pub held: V1NN,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V1NN>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IN1V1SS {
+        #[serde(flatten)]
+        pub held: V1SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IN1V1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <V1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0A1SS {
+        #[serde(flatten)]
+        pub held: A1SS,
+    }
+    impl Sample for IS0A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0E1SS {
+        #[serde(flatten)]
+        pub held: E1SS,
+    }
+    impl Sample for IS0E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0OptOI1S {
+        #[serde(flatten)]
+        pub held: Option<OI1S>,
+    }
+    impl Sample for IS0OptOI1S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI1S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS0P1S {
+        #[serde(flatten)]
+        pub held: P1S,
+    }
+    impl Sample for IS0P1S {
+        fn samples() -> Vec<(String, Self)> {
+            <P1S>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1A1SS {
+        #[serde(flatten)]
+        pub held: A1SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1E1SS {
+        #[serde(flatten)]
+        pub held: E1SS,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E1SS>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1OptOI1S {
+        #[serde(flatten)]
+        pub held: Option<OI1S>,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1OptOI1S {
+        fn samples() -> Vec<(String, Self)> {
+            <Option<OI1S>>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct IS1P1S {
+        #[serde(flatten)]
+        pub held: P1S,
+        #[serde(rename = "i_own")]
+        pub own: u32,
+    }
+    impl Sample for IS1P1S {
+        fn samples() -> Vec<(String, Self)> {
+            <P1S>::samples()
+                .into_iter()
+                .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4 {
+        #[serde(flatten)]
+        pub m0: CT10SS,
+        #[serde(rename = "shared")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder12 {
+        #[serde(flatten)]
+        pub m0: CA10NN,
+        #[serde(flatten)]
+        pub m1: CFP11SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder20 {
+        #[serde(flatten)]
+        pub m0: CA10SS,
+        #[serde(flatten)]
+        pub m1: CE11SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder28 {
+        #[serde(flatten)]
+        pub m0: CA10SS,
+        #[serde(flatten)]
+        pub m1: CP11S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder36 {
+        #[serde(flatten)]
+        pub m0: CE10SS,
+        #[serde(flatten)]
+        pub m1: CA11NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder44 {
+        #[serde(flatten)]
+        pub m0: CFO10NN,
+        #[serde(flatten)]
+        pub m1: CT11NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder52 {
+        #[serde(flatten)]
+        pub m0: CFT10NNN,
+        #[serde(flatten)]
+        pub m1: CFP11NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder60 {
+        #[serde(flatten)]
+        pub m0: Option<COI10N>,
+        #[serde(flatten)]
+        pub m1: CFT11NNN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder68 {
+        #[serde(flatten)]
+        pub m0: CP10N,
+        #[serde(flatten)]
+        pub m1: CA11NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder76 {
+        #[serde(flatten)]
+        pub m0: CP10S,
+        #[serde(flatten)]
+        pub m1: CT11NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder84 {
+        #[serde(flatten)]
+        pub m0: CT10NN,
+        #[serde(flatten)]
+        pub m1: CP11N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder92 {
+        #[serde(flatten)]
+        pub m0: CA10NN,
+        #[serde(flatten)]
+        pub m1: CE11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder100 {
+        #[serde(flatten)]
+        pub m0: CA10NN,
+        #[serde(flatten)]
+        pub m1: CP11S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder108 {
+        #[serde(flatten)]
+        pub m0: CA10SS,
+        #[serde(flatten)]
+        pub m1: CFP11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder116 {
+        #[serde(flatten)]
+        pub m0: CE10NN,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder124 {
+        #[serde(flatten)]
+        pub m0: CE10SS,
+        #[serde(flatten)]
+        pub m1: CT11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder132 {
+        #[serde(flatten)]
+        pub m0: CFP10NN,
+        #[serde(flatten)]
+        pub m1: CT11NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder140 {
+        #[serde(flatten)]
+        pub m0: CFT10NNN,
+        #[serde(flatten)]
+        pub m1: CP11S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder148 {
+        #[serde(flatten)]
+        pub m0: Option<COI10S>,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder156 {
+        #[serde(flatten)]
+        pub m0: CP10N,
+        #[serde(flatten)]
+        pub m1: CT11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder164 {
+        #[serde(flatten)]
+        pub m0: CT10NN,
+        #[serde(flatten)]
+        pub m1: CFO11NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder172 {
+        #[serde(flatten)]
+        pub m0: CV10NN,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder180 {
+        #[serde(flatten)]
+        pub m0: CA10NN,
+        #[serde(flatten)]
+        pub m1: CP11S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder188 {
+        #[serde(flatten)]
+        pub m0: CE10NN,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder196 {
+        #[serde(flatten)]
+        pub m0: CP10N,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder204 {
+        #[serde(flatten)]
+        pub m0: CA10NN,
+        #[serde(flatten)]
+        pub m1: CP11S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder212 {
+        #[serde(flatten)]
+        pub m0: CE10NN,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder220 {
+        #[serde(flatten)]
+        pub m0: CP10N,
+        #[serde(flatten)]
+        pub m1: CA11SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder228 {
+        #[serde(flatten)]
+        pub m0: FO0SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder236 {
+        #[serde(flatten)]
+        pub m0: P0S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder244 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder252 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder260 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder268 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder276 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder284 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder292 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder300 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder308 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder316 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder324 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder332 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FP1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder340 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder348 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder356 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder364 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder372 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder380 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder388 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder396 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder404 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder412 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder420 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FO1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder428 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder436 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder444 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder452 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder460 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder468 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder476 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder484 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder492 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder500 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder508 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: V1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder516 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder524 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder532 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder540 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder548 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder556 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder564 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder572 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder580 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder588 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder596 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder604 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FO1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder612 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder620 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder628 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder636 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder644 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder652 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder660 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder668 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder676 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder684 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder692 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder700 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder708 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder716 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder724 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder732 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder740 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder748 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder756 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder764 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder772 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder780 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder788 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder796 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder804 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder812 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder820 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder828 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder836 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder844 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder852 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder860 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder868 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder876 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder884 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder892 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder900 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder908 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder916 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder924 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder932 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder940 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder948 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder956 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder964 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder972 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder980 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder988 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder996 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1004 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1012 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1020 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1028 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1036 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1044 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1052 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1060 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1068 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1076 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1084 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1092 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1100 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1108 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1116 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1124 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1132 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1140 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1148 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1156 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1164 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1172 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1180 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1188 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1196 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1204 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1212 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1220 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1228 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1236 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1244 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1252 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1260 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1268 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1276 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1284 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1292 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1300 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1308 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1316 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1324 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1332 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1340 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1348 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1356 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1364 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1372 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1380 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1388 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1396 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1404 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1412 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1420 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1428 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1436 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1444 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1452 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1460 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1468 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1476 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1484 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1492 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1500 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1508 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1516 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1524 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1532 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1540 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1548 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1556 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1564 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1572 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1580 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1588 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1596 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1604 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1612 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1620 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1628 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1636 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1644 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1652 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1660 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1668 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1676 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1684 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1692 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1700 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1708 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1716 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1724 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1732 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1740 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1748 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1756 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1764 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1772 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1780 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1788 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1796 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1804 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1812 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1820 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1828 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1836 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1844 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1852 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1860 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1868 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1876 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1884 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1892 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1900 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1908 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1916 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1924 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1932 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1940 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1948 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1956 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1964 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1972 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1980 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1988 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder1996 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2004 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2012 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2020 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2028 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2036 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2044 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2052 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2060 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2068 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2076 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2084 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2092 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2100 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2108 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2116 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2124 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2132 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2140 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2148 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2156 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2164 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2172 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2180 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2188 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2196 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2204 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2212 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2220 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2228 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2236 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2244 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2252 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2260 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2268 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2276 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2284 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2292 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2300 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2308 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2316 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2324 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2332 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2340 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2348 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2356 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2364 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2372 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2380 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2388 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2396 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2404 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2412 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2420 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2428 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2436 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2444 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2452 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2460 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2468 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2476 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2484 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2492 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2500 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2508 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2516 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2524 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2532 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2540 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2548 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2556 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2564 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2572 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2580 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2588 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2596 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2604 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2612 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2620 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2628 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2636 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2644 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2652 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2660 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2668 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2676 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2684 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2692 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2700 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2708 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2716 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2724 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2732 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: T2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2740 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2748 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2756 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2764 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2772 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2780 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2788 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2796 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2804 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2812 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2820 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2828 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2836 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2844 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2852 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2860 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2868 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2876 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2884 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2892 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: V2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2900 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2908 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2916 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2924 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2932 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2940 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2948 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2956 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2964 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2972 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2980 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2988 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder2996 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3004 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3012 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3020 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3028 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3036 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3044 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3052 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3060 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3068 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3076 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3084 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3092 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3100 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3108 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3116 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3124 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3132 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3140 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3148 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3156 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3164 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3172 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3180 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3188 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3196 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3204 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3212 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3220 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3228 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3236 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3244 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3252 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3260 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3268 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3276 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3284 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3292 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3300 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3308 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3316 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3324 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3332 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3340 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3348 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3356 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3364 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3372 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3380 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3388 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3396 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3404 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3412 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3420 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3428 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3436 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3444 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3452 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3460 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3468 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3476 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3484 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3492 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3500 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3508 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3516 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3524 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3532 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3540 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3548 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3556 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3564 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3572 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3580 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3588 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3596 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3604 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3612 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3620 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3628 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3636 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3644 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3652 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3660 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3668 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3676 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3684 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3692 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3700 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3708 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3716 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3724 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3732 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3740 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3748 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3756 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3764 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3772 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3780 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3788 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3796 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3804 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3812 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3820 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3828 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3836 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3844 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3852 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3860 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3868 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3876 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3884 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3892 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3900 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3908 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3916 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3924 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3932 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3940 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3948 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3956 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3964 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3972 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3980 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3988 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder3996 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4004 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4012 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4020 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4028 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4036 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4044 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4052 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4060 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4068 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4076 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4084 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4092 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4100 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4108 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4116 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4124 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4132 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4140 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4148 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4156 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4164 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4172 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4180 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4188 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4196 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4204 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4212 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4220 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4228 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4236 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4244 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4252 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4260 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4268 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4276 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4284 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4292 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4300 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4308 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4316 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4324 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4332 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4340 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4348 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4356 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4364 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4372 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4380 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4388 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4396 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4404 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4412 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4420 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4428 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4436 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4444 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4452 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4460 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4468 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4476 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4484 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4492 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4500 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4508 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4516 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4524 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4532 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4540 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4548 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4556 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4564 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4572 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4580 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4588 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4596 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4604 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4612 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4620 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4628 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4636 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4644 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4652 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4660 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4668 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4676 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4684 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4692 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4700 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4708 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4716 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4724 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4732 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4740 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4748 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4756 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4764 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4772 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4780 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4788 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4796 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4804 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4812 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4820 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4828 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4836 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4844 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4852 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4860 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4868 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4876 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4884 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4892 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4900 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4908 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4916 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4924 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4932 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4940 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4948 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4956 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4964 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4972 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4980 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4988 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder4996 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5004 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5012 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5020 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5028 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5036 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5044 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5052 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5060 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5068 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5076 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5084 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5092 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5100 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5108 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5116 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5124 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5132 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5140 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5148 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5156 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5164 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5172 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5180 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5188 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5196 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5204 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: V2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5212 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5220 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5228 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5236 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5244 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5252 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5260 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5268 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5276 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5284 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5292 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: T2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5300 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: FO2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5308 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5316 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5324 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5332 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema(nonstrict)]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5340 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5348 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5356 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5364 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5372 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5380 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5388 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5396 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5404 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5412 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5420 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5428 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5436 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5444 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5452 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5460 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5468 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5476 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5484 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5492 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5500 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5508 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5516 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5524 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5532 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5540 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5548 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5556 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5564 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5572 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5580 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5588 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5596 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5604 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5612 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(flatten)]
+        pub m2: FT2NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5620 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: A2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5628 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5636 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: FO2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5644 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: V2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5652 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: Option<OI2N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5660 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: E2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5668 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5676 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: FP2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5684 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: A2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5692 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(flatten)]
+        pub m2: Option<OI2S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5700 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: E2SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5708 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(flatten)]
+        pub m2: T2NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5716 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5724 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5732 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5740 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5748 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5756 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5764 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5772 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5780 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5788 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5796 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5804 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5812 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5820 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5828 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5836 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5844 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5852 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5860 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5868 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5876 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5884 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5892 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5900 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5908 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5916 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5924 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5932 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5940 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5948 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5956 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5964 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5972 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5980 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5988 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder5996 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6004 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6012 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6020 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6028 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6036 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6044 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6052 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6060 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6068 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6076 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6084 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6092 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6100 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6108 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6116 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6124 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6132 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6140 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6148 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6156 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6164 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6172 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6180 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6188 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6196 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6204 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6212 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6220 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6228 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6236 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6244 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6252 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6260 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6268 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6276 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6284 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6292 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6300 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6308 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6316 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6324 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6332 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6340 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6348 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6356 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6364 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6372 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6380 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6388 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6396 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6404 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6412 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6420 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6428 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6436 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6444 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6452 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6460 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6468 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6476 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6484 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6492 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6500 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6508 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6516 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6524 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6532 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6540 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6548 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6556 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6564 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6572 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6580 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6588 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6596 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6604 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6612 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6620 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6628 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6636 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6644 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6652 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6660 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6668 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6676 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6684 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6692 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6700 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6708 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6716 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6724 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6732 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(flatten)]
+        pub m2: P2N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6740 {
+        #[serde(flatten)]
+        pub m0: FT0NSS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6748 {
+        #[serde(flatten)]
+        pub m0: FP0SN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6756 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6764 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1SN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6772 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NSN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6780 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6788 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1SN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6796 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6804 {
+        #[serde(flatten)]
+        pub m0: FO0NS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6812 {
+        #[serde(flatten)]
+        pub m0: FO0NS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6820 {
+        #[serde(flatten)]
+        pub m0: FP0NS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6828 {
+        #[serde(flatten)]
+        pub m0: FP0NS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6836 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FO1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6844 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1SN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6852 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FT1NSN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6860 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FP1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6868 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: V1SN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6876 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: T1NS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6884 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6892 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: T1SN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6900 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: FT1NSN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6908 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: FP1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6916 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: V1SN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6924 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: T1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6932 {
+        #[serde(flatten)]
+        pub m0: FO0NS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6940 {
+        #[serde(flatten)]
+        pub m0: FO0NS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6948 {
+        #[serde(flatten)]
+        pub m0: FP0NS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6956 {
+        #[serde(flatten)]
+        pub m0: FP0NS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6964 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: FO1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6972 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: T1SN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6980 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: FT1NSN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6988 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: FP1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder6996 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: V1SN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7004 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: T1NS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7012 {
+        #[serde(flatten)]
+        pub m0: IN0A0NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7020 {
+        #[serde(flatten)]
+        pub m0: IN0FT0NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7028 {
+        #[serde(flatten)]
+        pub m0: IN0V0NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7036 {
+        #[serde(flatten)]
+        pub m0: IN1FP0NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7044 {
+        #[serde(flatten)]
+        pub m0: IN1T0SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7052 {
+        #[serde(flatten)]
+        pub m0: IS0OptOI0S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7060 {
+        #[serde(flatten)]
+        pub m0: IS1OptOI0S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7068 {
+        #[serde(flatten)]
+        pub m0: IN0FO0SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7076 {
+        #[serde(flatten)]
+        pub m0: IN0T0NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7084 {
+        #[serde(flatten)]
+        pub m0: IN1FO0NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7092 {
+        #[serde(flatten)]
+        pub m0: IN1P0S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7100 {
+        #[serde(flatten)]
+        pub m0: IS0E0SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7108 {
+        #[serde(flatten)]
+        pub m0: IS1E0SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7116 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7124 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7132 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7140 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7148 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IS0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7156 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IS1A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7164 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7172 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7180 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7188 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7196 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN1V1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7204 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IS0P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7212 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IS1P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7220 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN0FP1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7228 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN0V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7236 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN1FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7244 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN1T1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7252 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IS0OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7260 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IS1OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7268 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN0FO1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7276 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7284 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7292 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7300 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IS0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7308 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IS1E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7316 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7324 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7332 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7340 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7348 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7356 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7364 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN1V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7372 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7380 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7388 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7396 {
+        #[serde(flatten)]
+        pub m0: IN0A0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7404 {
+        #[serde(flatten)]
+        pub m0: IN0A0SS,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7412 {
+        #[serde(flatten)]
+        pub m0: IN0A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7420 {
+        #[serde(flatten)]
+        pub m0: IN0E0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7428 {
+        #[serde(flatten)]
+        pub m0: IN0E0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7436 {
+        #[serde(flatten)]
+        pub m0: IN0E0SS,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7444 {
+        #[serde(flatten)]
+        pub m0: IN0FO0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7452 {
+        #[serde(flatten)]
+        pub m0: IN0FO0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7460 {
+        #[serde(flatten)]
+        pub m0: IN0FP0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7468 {
+        #[serde(flatten)]
+        pub m0: IN0FP0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7476 {
+        #[serde(flatten)]
+        pub m0: IN0FT0NNN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7484 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0N,
+        #[serde(flatten)]
+        pub m1: E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7492 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0N,
+        #[serde(flatten)]
+        pub m1: P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7500 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0S,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7508 {
+        #[serde(flatten)]
+        pub m0: IN0P0N,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7516 {
+        #[serde(flatten)]
+        pub m0: IN0P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7524 {
+        #[serde(flatten)]
+        pub m0: IN0P0S,
+        #[serde(flatten)]
+        pub m1: E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7532 {
+        #[serde(flatten)]
+        pub m0: IN0P0S,
+        #[serde(flatten)]
+        pub m1: T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7540 {
+        #[serde(flatten)]
+        pub m0: IN0T0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7548 {
+        #[serde(flatten)]
+        pub m0: IN0V0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7556 {
+        #[serde(flatten)]
+        pub m0: IN0V0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7564 {
+        #[serde(flatten)]
+        pub m0: IN1A0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7572 {
+        #[serde(flatten)]
+        pub m0: IN1A0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7580 {
+        #[serde(flatten)]
+        pub m0: IN1A0SS,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7588 {
+        #[serde(flatten)]
+        pub m0: IN1E0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7596 {
+        #[serde(flatten)]
+        pub m0: IN1E0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7604 {
+        #[serde(flatten)]
+        pub m0: IN1E0SS,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7612 {
+        #[serde(flatten)]
+        pub m0: IN1FO0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7620 {
+        #[serde(flatten)]
+        pub m0: IN1FO0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7628 {
+        #[serde(flatten)]
+        pub m0: IN1FP0NN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7636 {
+        #[serde(flatten)]
+        pub m0: IN1FP0NN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7644 {
+        #[serde(flatten)]
+        pub m0: IN1FT0NNN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7652 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0N,
+        #[serde(flatten)]
+        pub m1: A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7660 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0N,
+        #[serde(flatten)]
+        pub m1: P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7668 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0S,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7676 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0S,
+        #[serde(flatten)]
+        pub m1: V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7684 {
+        #[serde(flatten)]
+        pub m0: IN1P0N,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7692 {
+        #[serde(flatten)]
+        pub m0: IN1P0S,
+        #[serde(flatten)]
+        pub m1: E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7700 {
+        #[serde(flatten)]
+        pub m0: IN1P0S,
+        #[serde(flatten)]
+        pub m1: P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7708 {
+        #[serde(flatten)]
+        pub m0: IN1T0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7716 {
+        #[serde(flatten)]
+        pub m0: IN1V0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7724 {
+        #[serde(flatten)]
+        pub m0: IN1V0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7732 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7740 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7748 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7756 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7764 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IS0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7772 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IS1A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7780 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7788 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7796 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7804 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7812 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN1V1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7820 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IS0P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7828 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IS1P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7836 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN0FP1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7844 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN0V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7852 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN1FP1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7860 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN1T1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7868 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IS0OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7876 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IS1OptOI1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7884 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN0FO1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7892 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7900 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7908 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7916 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IS0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7924 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IS1E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7932 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7940 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7948 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7956 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7964 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7972 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7980 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN1V1NN,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7988 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN0FP1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder7996 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN0V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8004 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN1FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8012 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IN1T1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8020 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IS0OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8028 {
+        #[serde(flatten)]
+        pub m0: A0NN,
+        #[serde(flatten)]
+        pub m1: IS1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8036 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN0FO1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8044 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8052 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8060 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8068 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IS0E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8076 {
+        #[serde(flatten)]
+        pub m0: A0SS,
+        #[serde(flatten)]
+        pub m1: IS1E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8084 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8092 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8100 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8108 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8116 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IS0A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8124 {
+        #[serde(flatten)]
+        pub m0: E0NN,
+        #[serde(flatten)]
+        pub m1: IS1A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8132 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8140 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8148 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8156 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8164 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IN1V1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8172 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IS0P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8180 {
+        #[serde(flatten)]
+        pub m0: E0SS,
+        #[serde(flatten)]
+        pub m1: IS1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8188 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8196 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8204 {
+        #[serde(flatten)]
+        pub m0: FO0NN,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8212 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN0FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8220 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8228 {
+        #[serde(flatten)]
+        pub m0: FP0NN,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8236 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8244 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8252 {
+        #[serde(flatten)]
+        pub m0: FT0NNN,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8260 {
+        #[serde(flatten)]
+        pub m0: IN0A0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8268 {
+        #[serde(flatten)]
+        pub m0: IN0A0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8276 {
+        #[serde(flatten)]
+        pub m0: IN0A0SS,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8284 {
+        #[serde(flatten)]
+        pub m0: IN0A0SS,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8292 {
+        #[serde(flatten)]
+        pub m0: IN0E0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8300 {
+        #[serde(flatten)]
+        pub m0: IN0E0SS,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8308 {
+        #[serde(flatten)]
+        pub m0: IN0E0SS,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8316 {
+        #[serde(flatten)]
+        pub m0: IN0FO0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8324 {
+        #[serde(flatten)]
+        pub m0: IN0FP0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8332 {
+        #[serde(flatten)]
+        pub m0: IN0FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8340 {
+        #[serde(flatten)]
+        pub m0: IN0FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8348 {
+        #[serde(flatten)]
+        pub m0: IN0FT0NNN,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8356 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0N,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8364 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0S,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8372 {
+        #[serde(flatten)]
+        pub m0: IN0OptOI0S,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8380 {
+        #[serde(flatten)]
+        pub m0: IN0P0N,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8388 {
+        #[serde(flatten)]
+        pub m0: IN0P0N,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8396 {
+        #[serde(flatten)]
+        pub m0: IN0P0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8404 {
+        #[serde(flatten)]
+        pub m0: IN0T0NN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8412 {
+        #[serde(flatten)]
+        pub m0: IN0T0NN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8420 {
+        #[serde(flatten)]
+        pub m0: IN0V0NN,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8428 {
+        #[serde(flatten)]
+        pub m0: IN1A0NN,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8436 {
+        #[serde(flatten)]
+        pub m0: IN1A0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8444 {
+        #[serde(flatten)]
+        pub m0: IN1A0SS,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8452 {
+        #[serde(flatten)]
+        pub m0: IN1A0SS,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8460 {
+        #[serde(flatten)]
+        pub m0: IN1E0NN,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8468 {
+        #[serde(flatten)]
+        pub m0: IN1E0SS,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8476 {
+        #[serde(flatten)]
+        pub m0: IN1E0SS,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8484 {
+        #[serde(flatten)]
+        pub m0: IN1FO0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8492 {
+        #[serde(flatten)]
+        pub m0: IN1FO0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8500 {
+        #[serde(flatten)]
+        pub m0: IN1FP0NN,
+        #[serde(flatten)]
+        pub m1: Option<OI1N>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8508 {
+        #[serde(flatten)]
+        pub m0: IN1FT0NNN,
+        #[serde(flatten)]
+        pub m1: E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8516 {
+        #[serde(flatten)]
+        pub m0: IN1FT0NNN,
+        #[serde(flatten)]
+        pub m1: P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8524 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0N,
+        #[serde(flatten)]
+        pub m1: FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8532 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0S,
+        #[serde(flatten)]
+        pub m1: A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8540 {
+        #[serde(flatten)]
+        pub m0: IN1OptOI0S,
+        #[serde(flatten)]
+        pub m1: Option<OI1S>,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8548 {
+        #[serde(flatten)]
+        pub m0: IN1P0N,
+        #[serde(flatten)]
+        pub m1: E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8556 {
+        #[serde(flatten)]
+        pub m0: IN1P0N,
+        #[serde(flatten)]
+        pub m1: T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8564 {
+        #[serde(flatten)]
+        pub m0: IN1P0S,
+        #[serde(flatten)]
+        pub m1: FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8572 {
+        #[serde(flatten)]
+        pub m0: IN1T0NN,
+        #[serde(flatten)]
+        pub m1: A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8580 {
+        #[serde(flatten)]
+        pub m0: IN1T0NN,
+        #[serde(flatten)]
+        pub m1: P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8588 {
+        #[serde(flatten)]
+        pub m0: IN1V0NN,
+        #[serde(flatten)]
+        pub m1: FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8596 {
+        #[serde(flatten)]
+        pub m0: IN1V0NN,
+        #[serde(flatten)]
+        pub m1: V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8604 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN0FP1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8612 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN0V1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8620 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN1FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8628 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IN1T1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8636 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IS0OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8644 {
+        #[serde(flatten)]
+        pub m0: Option<OI0N>,
+        #[serde(flatten)]
+        pub m1: IS1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8652 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN0FO1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8660 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN0T1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8668 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN1FO1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8676 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8684 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IS0E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8692 {
+        #[serde(flatten)]
+        pub m0: Option<OI0S>,
+        #[serde(flatten)]
+        pub m1: IS1E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8700 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN0E1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8708 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN0P1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8716 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8724 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8732 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IS0A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8740 {
+        #[serde(flatten)]
+        pub m0: P0N,
+        #[serde(flatten)]
+        pub m1: IS1A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8748 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN0A1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8756 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8764 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8772 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN1FT1NNN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8780 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IN1V1SS,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8788 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IS0P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8796 {
+        #[serde(flatten)]
+        pub m0: P0S,
+        #[serde(flatten)]
+        pub m1: IS1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8804 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN0OptOI1N,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8812 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN1E1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8820 {
+        #[serde(flatten)]
+        pub m0: T0NN,
+        #[serde(flatten)]
+        pub m1: IN1P1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8828 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN0FP1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8836 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN1A1NN,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Holder8844 {
+        #[serde(flatten)]
+        pub m0: V0NN,
+        #[serde(flatten)]
+        pub m1: IN1OptOI1S,
+        #[serde(rename = "h_own")]
+        pub own: u32,
+    }
+
+    #[test]
+    fn each_holder_reads_back_and_meets_the_stray_key_as_measured() {
+        let failed: Vec<String> = HOLDERS.iter().flat_map(|holder| holder()).collect();
+        assert_eq!(failed, Vec::<String>::new());
+    }
+
+    fn holder4() -> Vec<String> {
+        check(
+            "collide1:C1NX:CT10_SS",
+            &rows1(|m0: CT10SS| Holder4 { own: 7, m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder12() -> Vec<String> {
+        check(
+            "collide2:C2N0:CA10_NN|CFP11_SS",
+            &rows2(|m0: CA10NN, m1: CFP11SS| Holder12 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder20() -> Vec<String> {
+        check(
+            "collide2:C2N0:CA10_SS|CE11_SS nonstrict",
+            &rows2(|m0: CA10SS, m1: CE11SS| Holder20 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder28() -> Vec<String> {
+        check(
+            "collide2:C2N0:CA10_SS|CP11_S nonstrict",
+            &rows2(|m0: CA10SS, m1: CP11S| Holder28 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder36() -> Vec<String> {
+        check(
+            "collide2:C2N0:CE10_SS|CA11_NN nonstrict",
+            &rows2(|m0: CE10SS, m1: CA11NN| Holder36 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder44() -> Vec<String> {
+        check(
+            "collide2:C2N0:CFO10_NN|CT11_NN",
+            &rows2(|m0: CFO10NN, m1: CT11NN| Holder44 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder52() -> Vec<String> {
+        check(
+            "collide2:C2N0:CFT10_NNN|CFP11_NN",
+            &rows2(|m0: CFT10NNN, m1: CFP11NN| Holder52 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder60() -> Vec<String> {
+        check(
+            "collide2:C2N0:CO10_N|CFT11_NNN",
+            &rows2(|m0: Option<COI10N>, m1: CFT11NNN| Holder60 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder68() -> Vec<String> {
+        check(
+            "collide2:C2N0:CP10_N|CA11_NN nonstrict",
+            &rows2(|m0: CP10N, m1: CA11NN| Holder68 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder76() -> Vec<String> {
+        check(
+            "collide2:C2N0:CP10_S|CT11_NN",
+            &rows2(|m0: CP10S, m1: CT11NN| Holder76 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder84() -> Vec<String> {
+        check(
+            "collide2:C2N0:CT10_NN|CP11_N",
+            &rows2(|m0: CT10NN, m1: CP11N| Holder84 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder92() -> Vec<String> {
+        check(
+            "collide2:C2N1:CA10_NN|CE11_SS nonstrict",
+            &rows2(|m0: CA10NN, m1: CE11SS| Holder92 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder100() -> Vec<String> {
+        check(
+            "collide2:C2N1:CA10_NN|CP11_S nonstrict",
+            &rows2(|m0: CA10NN, m1: CP11S| Holder100 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder108() -> Vec<String> {
+        check(
+            "collide2:C2N1:CA10_SS|CFP11_SS",
+            &rows2(|m0: CA10SS, m1: CFP11SS| Holder108 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder116() -> Vec<String> {
+        check(
+            "collide2:C2N1:CE10_NN|CA11_SS nonstrict",
+            &rows2(|m0: CE10NN, m1: CA11SS| Holder116 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder124() -> Vec<String> {
+        check(
+            "collide2:C2N1:CE10_SS|CT11_SS",
+            &rows2(|m0: CE10SS, m1: CT11SS| Holder124 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder132() -> Vec<String> {
+        check(
+            "collide2:C2N1:CFP10_NN|CT11_NN",
+            &rows2(|m0: CFP10NN, m1: CT11NN| Holder132 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder140() -> Vec<String> {
+        check(
+            "collide2:C2N1:CFT10_NNN|CP11_S",
+            &rows2(|m0: CFT10NNN, m1: CP11S| Holder140 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder148() -> Vec<String> {
+        check(
+            "collide2:C2N1:CO10_S|CA11_SS nonstrict",
+            &rows2(|m0: Option<COI10S>, m1: CA11SS| Holder148 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder156() -> Vec<String> {
+        check(
+            "collide2:C2N1:CP10_N|CT11_SS",
+            &rows2(|m0: CP10N, m1: CT11SS| Holder156 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder164() -> Vec<String> {
+        check(
+            "collide2:C2N1:CT10_NN|CFO11_NN",
+            &rows2(|m0: CT10NN, m1: CFO11NN| Holder164 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder172() -> Vec<String> {
+        check(
+            "collide2:C2N1:CV10_NN|CA11_SS",
+            &rows2(|m0: CV10NN, m1: CA11SS| Holder172 { own: 7, m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder180() -> Vec<String> {
+        check(
+            "collide2:C2S0:CA10_NN|CP11_S",
+            &rows2(|m0: CA10NN, m1: CP11S| Holder180 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder188() -> Vec<String> {
+        check(
+            "collide2:C2S0:CE10_NN|CA11_SS",
+            &rows2(|m0: CE10NN, m1: CA11SS| Holder188 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder196() -> Vec<String> {
+        check(
+            "collide2:C2S0:CP10_N|CA11_SS",
+            &rows2(|m0: CP10N, m1: CA11SS| Holder196 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder204() -> Vec<String> {
+        check(
+            "collide2:C2S1:CA10_NN|CP11_S",
+            &rows2(|m0: CA10NN, m1: CP11S| Holder204 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder212() -> Vec<String> {
+        check(
+            "collide2:C2S1:CE10_NN|CA11_SS",
+            &rows2(|m0: CE10NN, m1: CA11SS| Holder212 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder220() -> Vec<String> {
+        check(
+            "collide2:C2S1:CP10_N|CA11_SS",
+            &rows2(|m0: CP10N, m1: CA11SS| Holder220 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder228() -> Vec<String> {
+        check(
+            "main1:H1N0:FO0_SS",
+            &rows1(|m0: FO0SS| Holder228 { m0 }),
+            &[("-", 'R')],
+        )
+    }
+
+    fn holder236() -> Vec<String> {
+        check(
+            "main1:H1N0:P0_S nonstrict",
+            &rows1(|m0: P0S| Holder236 { m0 }),
+            &[("-", 'E')],
+        )
+    }
+
+    fn holder244() -> Vec<String> {
+        check(
+            "main1:H1N1:E0_SS nonstrict",
+            &rows1(|m0: E0SS| Holder244 { own: 7, m0 }),
+            &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
+        )
+    }
+
+    fn holder252() -> Vec<String> {
+        check(
+            "main1:H1N1:P0_N nonstrict",
+            &rows1(|m0: P0N| Holder252 { own: 7, m0 }),
+            &[("-", 'E')],
+        )
+    }
+
+    fn holder260() -> Vec<String> {
+        check(
+            "main1:H1S0:E0_NN",
+            &rows1(|m0: E0NN| Holder260 { m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder268() -> Vec<String> {
+        check(
+            "main1:H1S1:E0_NN",
+            &rows1(|m0: E0NN| Holder268 { own: 7, m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder276() -> Vec<String> {
+        check(
+            "main2:H2N0:A0_NN|E1_NN nonstrict",
+            &rows2(|m0: A0NN, m1: E1NN| Holder276 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder284() -> Vec<String> {
+        check(
+            "main2:H2N0:A0_NN|O1_S nonstrict",
+            &rows2(|m0: A0NN, m1: Option<OI1S>| Holder284 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder292() -> Vec<String> {
+        check(
+            "main2:H2N0:A0_SS|A1_SS nonstrict",
+            &rows2(|m0: A0SS, m1: A1SS| Holder292 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder300() -> Vec<String> {
+        check(
+            "main2:H2N0:A0_SS|O1_N nonstrict",
+            &rows2(|m0: A0SS, m1: Option<OI1N>| Holder300 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder308() -> Vec<String> {
+        check(
+            "main2:H2N0:E0_NN|A1_NN nonstrict",
+            &rows2(|m0: E0NN, m1: A1NN| Holder308 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder316() -> Vec<String> {
+        check(
+            "main2:H2N0:E0_NN|FT1_NNN",
+            &rows2(|m0: E0NN, m1: FT1NNN| Holder316 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder324() -> Vec<String> {
+        check(
+            "main2:H2N0:E0_NN|V1_SS",
+            &rows2(|m0: E0NN, m1: V1SS| Holder324 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder332() -> Vec<String> {
+        check(
+            "main2:H2N0:E0_SS|FP1_SS",
+            &rows2(|m0: E0SS, m1: FP1SS| Holder332 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder340() -> Vec<String> {
+        check(
+            "main2:H2N0:E0_SS|V1_NN",
+            &rows2(|m0: E0SS, m1: V1NN| Holder340 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder348() -> Vec<String> {
+        check(
+            "main2:H2N0:FO0_NN|FT1_NNN",
+            &rows2(|m0: FO0NN, m1: FT1NNN| Holder348 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder356() -> Vec<String> {
+        check(
+            "main2:H2N0:FP0_NN|A1_SS",
+            &rows2(|m0: FP0NN, m1: A1SS| Holder356 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder364() -> Vec<String> {
+        check(
+            "main2:H2N0:FP0_NN|P1_N",
+            &rows2(|m0: FP0NN, m1: P1N| Holder364 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder372() -> Vec<String> {
+        check(
+            "main2:H2N0:FT0_NNN|FO1_NN",
+            &rows2(|m0: FT0NNN, m1: FO1NN| Holder372 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder380() -> Vec<String> {
+        check(
+            "main2:H2N0:FT0_NNN|V1_NN",
+            &rows2(|m0: FT0NNN, m1: V1NN| Holder380 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder388() -> Vec<String> {
+        check(
+            "main2:H2N0:O0_N|FP1_SS",
+            &rows2(|m0: Option<OI0N>, m1: FP1SS| Holder388 { m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder396() -> Vec<String> {
+        check(
+            "main2:H2N0:O0_N|V1_NN",
+            &rows2(|m0: Option<OI0N>, m1: V1NN| Holder396 { m0, m1 }),
+            &[
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder404() -> Vec<String> {
+        check(
+            "main2:H2N0:O0_S|FP1_NN",
+            &rows2(|m0: Option<OI0S>, m1: FP1NN| Holder404 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder412() -> Vec<String> {
+        check(
+            "main2:H2N0:O0_S|T1_SS",
+            &rows2(|m0: Option<OI0S>, m1: T1SS| Holder412 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder420() -> Vec<String> {
+        check(
+            "main2:H2N0:P0_N|FO1_SS",
+            &rows2(|m0: P0N, m1: FO1SS| Holder420 { m0, m1 }),
+            &[("-,-", 'R')],
+        )
+    }
+
+    fn holder428() -> Vec<String> {
+        check(
+            "main2:H2N0:P0_N|T1_NN",
+            &rows2(|m0: P0N, m1: T1NN| Holder428 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder436() -> Vec<String> {
+        check(
+            "main2:H2N0:P0_S|FO1_NN",
+            &rows2(|m0: P0S, m1: FO1NN| Holder436 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder444() -> Vec<String> {
+        check(
+            "main2:H2N0:P0_S|P1_S nonstrict",
+            &rows2(|m0: P0S, m1: P1S| Holder444 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder452() -> Vec<String> {
+        check(
+            "main2:H2N0:T0_NN|E1_SS",
+            &rows2(|m0: T0NN, m1: E1SS| Holder452 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder460() -> Vec<String> {
+        check(
+            "main2:H2N0:T0_NN|T1_NN",
+            &rows2(|m0: T0NN, m1: T1NN| Holder460 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder468() -> Vec<String> {
+        check(
+            "main2:H2N0:V0_NN|FT1_NNN",
+            &rows2(|m0: V0NN, m1: FT1NNN| Holder468 { m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder476() -> Vec<String> {
+        check(
+            "main2:H2N1:A0_NN|A1_SS nonstrict",
+            &rows2(|m0: A0NN, m1: A1SS| Holder476 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder484() -> Vec<String> {
+        check(
+            "main2:H2N1:A0_NN|O1_N nonstrict",
+            &rows2(|m0: A0NN, m1: Option<OI1N>| Holder484 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder492() -> Vec<String> {
+        check(
+            "main2:H2N1:A0_SS|A1_NN nonstrict",
+            &rows2(|m0: A0SS, m1: A1NN| Holder492 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder500() -> Vec<String> {
+        check(
+            "main2:H2N1:A0_SS|FT1_NNN",
+            &rows2(|m0: A0SS, m1: FT1NNN| Holder500 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder508() -> Vec<String> {
+        check(
+            "main2:H2N1:A0_SS|V1_SS",
+            &rows2(|m0: A0SS, m1: V1SS| Holder508 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder516() -> Vec<String> {
+        check(
+            "main2:H2N1:E0_NN|FP1_SS",
+            &rows2(|m0: E0NN, m1: FP1SS| Holder516 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder524() -> Vec<String> {
+        check(
+            "main2:H2N1:E0_NN|V1_NN",
+            &rows2(|m0: E0NN, m1: V1NN| Holder524 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder532() -> Vec<String> {
+        check(
+            "main2:H2N1:E0_SS|FP1_NN",
+            &rows2(|m0: E0SS, m1: FP1NN| Holder532 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder540() -> Vec<String> {
+        check(
+            "main2:H2N1:E0_SS|T1_SS",
+            &rows2(|m0: E0SS, m1: T1SS| Holder540 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder548() -> Vec<String> {
+        check(
+            "main2:H2N1:FO0_NN|FP1_NN",
+            &rows2(|m0: FO0NN, m1: FP1NN| Holder548 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder556() -> Vec<String> {
+        check(
+            "main2:H2N1:FP0_NN|A1_NN",
+            &rows2(|m0: FP0NN, m1: A1NN| Holder556 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder564() -> Vec<String> {
+        check(
+            "main2:H2N1:FP0_NN|O1_S",
+            &rows2(|m0: FP0NN, m1: Option<OI1S>| Holder564 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder572() -> Vec<String> {
+        check(
+            "main2:H2N1:FT0_NNN|E1_SS",
+            &rows2(|m0: FT0NNN, m1: E1SS| Holder572 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder580() -> Vec<String> {
+        check(
+            "main2:H2N1:FT0_NNN|T1_NN",
+            &rows2(|m0: FT0NNN, m1: T1NN| Holder580 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder588() -> Vec<String> {
+        check(
+            "main2:H2N1:O0_N|FP1_NN",
+            &rows2(|m0: Option<OI0N>, m1: FP1NN| Holder588 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder596() -> Vec<String> {
+        check(
+            "main2:H2N1:O0_N|T1_SS",
+            &rows2(|m0: Option<OI0N>, m1: T1SS| Holder596 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder604() -> Vec<String> {
+        check(
+            "main2:H2N1:O0_S|FO1_SS",
+            &rows2(|m0: Option<OI0S>, m1: FO1SS| Holder604 { own: 7, m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder612() -> Vec<String> {
+        check(
+            "main2:H2N1:O0_S|T1_NN",
+            &rows2(|m0: Option<OI0S>, m1: T1NN| Holder612 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder620() -> Vec<String> {
+        check(
+            "main2:H2N1:P0_N|FO1_NN",
+            &rows2(|m0: P0N, m1: FO1NN| Holder620 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder628() -> Vec<String> {
+        check(
+            "main2:H2N1:P0_N|P1_S nonstrict",
+            &rows2(|m0: P0N, m1: P1S| Holder628 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder636() -> Vec<String> {
+        check(
+            "main2:H2N1:P0_S|E1_SS nonstrict",
+            &rows2(|m0: P0S, m1: E1SS| Holder636 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder644() -> Vec<String> {
+        check(
+            "main2:H2N1:P0_S|P1_N nonstrict",
+            &rows2(|m0: P0S, m1: P1N| Holder644 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder652() -> Vec<String> {
+        check(
+            "main2:H2N1:T0_NN|E1_NN",
+            &rows2(|m0: T0NN, m1: E1NN| Holder652 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder660() -> Vec<String> {
+        check(
+            "main2:H2N1:T0_NN|P1_S",
+            &rows2(|m0: T0NN, m1: P1S| Holder660 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder668() -> Vec<String> {
+        check(
+            "main2:H2N1:V0_NN|FP1_NN",
+            &rows2(|m0: V0NN, m1: FP1NN| Holder668 { own: 7, m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder676() -> Vec<String> {
+        check(
+            "main2:H2S0:A0_NN|A1_NN",
+            &rows2(|m0: A0NN, m1: A1NN| Holder676 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder684() -> Vec<String> {
+        check(
+            "main2:H2S0:A0_SS|A1_NN",
+            &rows2(|m0: A0SS, m1: A1NN| Holder684 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder692() -> Vec<String> {
+        check(
+            "main2:H2S0:E0_NN|A1_NN",
+            &rows2(|m0: E0NN, m1: A1NN| Holder692 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder700() -> Vec<String> {
+        check(
+            "main2:H2S0:E0_SS|A1_NN",
+            &rows2(|m0: E0SS, m1: A1NN| Holder700 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder708() -> Vec<String> {
+        check(
+            "main2:H2S0:O0_N|A1_NN",
+            &rows2(|m0: Option<OI0N>, m1: A1NN| Holder708 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder716() -> Vec<String> {
+        check(
+            "main2:H2S0:O0_S|A1_NN",
+            &rows2(|m0: Option<OI0S>, m1: A1NN| Holder716 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder724() -> Vec<String> {
+        check(
+            "main2:H2S0:P0_N|A1_NN",
+            &rows2(|m0: P0N, m1: A1NN| Holder724 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder732() -> Vec<String> {
+        check(
+            "main2:H2S0:P0_S|A1_NN",
+            &rows2(|m0: P0S, m1: A1NN| Holder732 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder740() -> Vec<String> {
+        check(
+            "main2:H2S1:A0_NN|A1_NN",
+            &rows2(|m0: A0NN, m1: A1NN| Holder740 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder748() -> Vec<String> {
+        check(
+            "main2:H2S1:A0_SS|A1_NN",
+            &rows2(|m0: A0SS, m1: A1NN| Holder748 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder756() -> Vec<String> {
+        check(
+            "main2:H2S1:E0_NN|A1_NN",
+            &rows2(|m0: E0NN, m1: A1NN| Holder756 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder764() -> Vec<String> {
+        check(
+            "main2:H2S1:E0_SS|A1_NN",
+            &rows2(|m0: E0SS, m1: A1NN| Holder764 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder772() -> Vec<String> {
+        check(
+            "main2:H2S1:O0_N|A1_NN",
+            &rows2(|m0: Option<OI0N>, m1: A1NN| Holder772 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder780() -> Vec<String> {
+        check(
+            "main2:H2S1:O0_S|A1_NN",
+            &rows2(|m0: Option<OI0S>, m1: A1NN| Holder780 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder788() -> Vec<String> {
+        check(
+            "main2:H2S1:P0_N|A1_NN",
+            &rows2(|m0: P0N, m1: A1NN| Holder788 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder796() -> Vec<String> {
+        check(
+            "main2:H2S1:P0_S|A1_NN",
+            &rows2(|m0: P0S, m1: A1NN| Holder796 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder804() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|A1_NN|A2_NN nonstrict",
+            &rows3(|m0: A0NN, m1: A1NN, m2: A2NN| Holder804 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder812() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|A1_NN|FT2_NNN",
+            &rows3(|m0: A0NN, m1: A1NN, m2: FT2NNN| Holder812 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder820() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|A1_NN|V2_SS",
+            &rows3(|m0: A0NN, m1: A1NN, m2: V2SS| Holder820 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder828() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|A1_SS|FP2_SS",
+            &rows3(|m0: A0NN, m1: A1SS, m2: FP2SS| Holder828 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder836() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|A1_SS|V2_NN",
+            &rows3(|m0: A0NN, m1: A1SS, m2: V2NN| Holder836 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder844() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|E1_NN|FP2_NN",
+            &rows3(|m0: A0NN, m1: E1NN, m2: FP2NN| Holder844 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder852() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|E1_NN|T2_SS",
+            &rows3(|m0: A0NN, m1: E1NN, m2: T2SS| Holder852 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'R'),
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Dot", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Dot", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Dot", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Dot", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Dot", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Dot", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Dot", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Dot", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder860() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|E1_SS|FO2_SS",
+            &rows3(|m0: A0NN, m1: E1SS, m2: FO2SS| Holder860 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder868() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|E1_SS|T2_NN",
+            &rows3(|m0: A0NN, m1: E1SS, m2: T2NN| Holder868 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder876() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|FO1_NN|FO2_NN",
+            &rows3(|m0: A0NN, m1: FO1NN, m2: FO2NN| Holder876 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder884() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|FO1_NN|V2_NN",
+            &rows3(|m0: A0NN, m1: FO1NN, m2: V2NN| Holder884 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder892() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|FP1_NN|O2_N",
+            &rows3(|m0: A0NN, m1: FP1NN, m2: Option<OI2N>| Holder892 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder900() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|FT1_NNN|E2_NN",
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: E2NN| Holder900 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder908() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|FT1_NNN|P2_S",
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: P2S| Holder908 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder916() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|O1_N|FO2_SS",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: FO2SS| Holder916 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder924() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|O1_N|T2_NN",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: T2NN| Holder924 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder932() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|O1_S|FO2_NN",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: FO2NN| Holder932 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder940() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|O1_S|P2_S nonstrict",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: P2S| Holder940 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder948() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|P1_N|E2_SS nonstrict",
+            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder948 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder956() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|P1_N|P2_N nonstrict",
+            &rows3(|m0: A0NN, m1: P1N, m2: P2N| Holder956 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder964() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|P1_S|E2_NN nonstrict",
+            &rows3(|m0: A0NN, m1: P1S, m2: E2NN| Holder964 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder972() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|P1_S|O2_S nonstrict",
+            &rows3(|m0: A0NN, m1: P1S, m2: Option<OI2S>| Holder972 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder980() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|T1_NN|A2_SS",
+            &rows3(|m0: A0NN, m1: T1NN, m2: A2SS| Holder980 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder988() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|T1_NN|P2_N",
+            &rows3(|m0: A0NN, m1: T1NN, m2: P2N| Holder988 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder996() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|V1_NN|FO2_NN",
+            &rows3(|m0: A0NN, m1: V1NN, m2: FO2NN| Holder996 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1004() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_NN|V1_NN|V2_NN",
+            &rows3(|m0: A0NN, m1: V1NN, m2: V2NN| Holder1004 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1012() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|A1_NN|FP2_SS",
+            &rows3(|m0: A0SS, m1: A1NN, m2: FP2SS| Holder1012 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder1020() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|A1_NN|V2_NN",
+            &rows3(|m0: A0SS, m1: A1NN, m2: V2NN| Holder1020 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1028() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|A1_SS|FP2_NN",
+            &rows3(|m0: A0SS, m1: A1SS, m2: FP2NN| Holder1028 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1036() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|A1_SS|T2_SS",
+            &rows3(|m0: A0SS, m1: A1SS, m2: T2SS| Holder1036 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'R'),
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Dot", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Dot", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Dot", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Dot", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Dot", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Dot", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Dot", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Dot", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder1044() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|E1_NN|FO2_SS",
+            &rows3(|m0: A0SS, m1: E1NN, m2: FO2SS| Holder1044 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder1052() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|E1_NN|T2_NN",
+            &rows3(|m0: A0SS, m1: E1NN, m2: T2NN| Holder1052 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1060() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|E1_SS|FO2_NN",
+            &rows3(|m0: A0SS, m1: E1SS, m2: FO2NN| Holder1060 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1068() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|E1_SS|P2_S nonstrict",
+            &rows3(|m0: A0SS, m1: E1SS, m2: P2S| Holder1068 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1076() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|FO1_NN|E2_SS",
+            &rows3(|m0: A0SS, m1: FO1NN, m2: E2SS| Holder1076 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1084() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|FO1_NN|T2_NN",
+            &rows3(|m0: A0SS, m1: FO1NN, m2: T2NN| Holder1084 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1092() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|FP1_NN|FT2_NNN",
+            &rows3(|m0: A0SS, m1: FP1NN, m2: FT2NNN| Holder1092 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1100() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|FT1_NNN|A2_SS",
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: A2SS| Holder1100 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1108() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|FT1_NNN|P2_N",
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: P2N| Holder1108 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1116() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|O1_N|FO2_NN",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: FO2NN| Holder1116 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1124() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|O1_N|P2_S nonstrict",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: P2S| Holder1124 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1132() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|O1_S|E2_SS nonstrict",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder1132 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1140() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|O1_S|P2_N nonstrict",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: P2N| Holder1140 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1148() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|P1_N|E2_NN nonstrict",
+            &rows3(|m0: A0SS, m1: P1N, m2: E2NN| Holder1148 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1156() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|P1_N|O2_S nonstrict",
+            &rows3(|m0: A0SS, m1: P1N, m2: Option<OI2S>| Holder1156 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1164() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|P1_S|A2_SS nonstrict",
+            &rows3(|m0: A0SS, m1: P1S, m2: A2SS| Holder1164 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1172() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|P1_S|O2_N nonstrict",
+            &rows3(|m0: A0SS, m1: P1S, m2: Option<OI2N>| Holder1172 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1180() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|T1_NN|A2_NN",
+            &rows3(|m0: A0SS, m1: T1NN, m2: A2NN| Holder1180 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1188() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|T1_NN|O2_S",
+            &rows3(|m0: A0SS, m1: T1NN, m2: Option<OI2S>| Holder1188 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1196() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|V1_NN|E2_SS",
+            &rows3(|m0: A0SS, m1: V1NN, m2: E2SS| Holder1196 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1204() -> Vec<String> {
+        check(
+            "main3:H3N0:A0_SS|V1_NN|T2_NN",
+            &rows3(|m0: A0SS, m1: V1NN, m2: T2NN| Holder1204 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1212() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|A1_NN|FP2_NN",
+            &rows3(|m0: E0NN, m1: A1NN, m2: FP2NN| Holder1212 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1220() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|A1_NN|T2_SS",
+            &rows3(|m0: E0NN, m1: A1NN, m2: T2SS| Holder1220 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'R'),
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Dot", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Dot", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Dot", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Dot", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Dot", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Dot", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Dot", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Dot", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder1228() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|A1_SS|FO2_SS",
+            &rows3(|m0: E0NN, m1: A1SS, m2: FO2SS| Holder1228 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder1236() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|A1_SS|T2_NN",
+            &rows3(|m0: E0NN, m1: A1SS, m2: T2NN| Holder1236 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1244() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|E1_NN|FO2_NN",
+            &rows3(|m0: E0NN, m1: E1NN, m2: FO2NN| Holder1244 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1252() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|E1_NN|P2_S nonstrict",
+            &rows3(|m0: E0NN, m1: E1NN, m2: P2S| Holder1252 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1260() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|E1_SS|E2_SS nonstrict",
+            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder1260 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1268() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|E1_SS|P2_N nonstrict",
+            &rows3(|m0: E0NN, m1: E1SS, m2: P2N| Holder1268 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1276() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|FO1_NN|E2_NN",
+            &rows3(|m0: E0NN, m1: FO1NN, m2: E2NN| Holder1276 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1284() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|FO1_NN|P2_S",
+            &rows3(|m0: E0NN, m1: FO1NN, m2: P2S| Holder1284 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder1292() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|FP1_NN|FP2_NN",
+            &rows3(|m0: E0NN, m1: FP1NN, m2: FP2NN| Holder1292 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder1300() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|FT1_NNN|A2_NN",
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: A2NN| Holder1300 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1308() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|FT1_NNN|O2_S",
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: Option<OI2S>| Holder1308 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1316() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|O1_N|E2_SS nonstrict",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder1316 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1324() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|O1_N|P2_N nonstrict",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: P2N| Holder1324 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1332() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|O1_S|E2_NN nonstrict",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2NN| Holder1332 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1340() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|O1_S|O2_S nonstrict",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder1340 { m0, m1, m2 }),
+            &[
+                ("Dot,None,None", 'E'),
+                ("Dot,None,Some", 'E'),
+                ("Dot,Some,None", 'E'),
+                ("Dot,Some,Some", 'E'),
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1348() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|P1_N|A2_SS nonstrict",
+            &rows3(|m0: E0NN, m1: P1N, m2: A2SS| Holder1348 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1356() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|P1_N|O2_N nonstrict",
+            &rows3(|m0: E0NN, m1: P1N, m2: Option<OI2N>| Holder1356 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1364() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|P1_S|A2_NN nonstrict",
+            &rows3(|m0: E0NN, m1: P1S, m2: A2NN| Holder1364 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1372() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|P1_S|FT2_NNN",
+            &rows3(|m0: E0NN, m1: P1S, m2: FT2NNN| Holder1372 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1380() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|P1_S|V2_SS",
+            &rows3(|m0: E0NN, m1: P1S, m2: V2SS| Holder1380 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'R'),
+                ("Dot,-,Wrap", 'R'),
+                ("Rect,-,Rect", 'R'),
+                ("Rect,-,Wrap", 'R'),
+                ("Wrap,-,Rect", 'R'),
+                ("Wrap,-,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder1388() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|T1_NN|O2_N",
+            &rows3(|m0: E0NN, m1: T1NN, m2: Option<OI2N>| Holder1388 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1396() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|V1_NN|E2_NN",
+            &rows3(|m0: E0NN, m1: V1NN, m2: E2NN| Holder1396 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1404() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_NN|V1_NN|P2_S",
+            &rows3(|m0: E0NN, m1: V1NN, m2: P2S| Holder1404 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1412() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|A1_NN|FO2_SS",
+            &rows3(|m0: E0SS, m1: A1NN, m2: FO2SS| Holder1412 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder1420() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|A1_NN|T2_NN",
+            &rows3(|m0: E0SS, m1: A1NN, m2: T2NN| Holder1420 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1428() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|A1_SS|FO2_NN",
+            &rows3(|m0: E0SS, m1: A1SS, m2: FO2NN| Holder1428 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1436() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|A1_SS|P2_S nonstrict",
+            &rows3(|m0: E0SS, m1: A1SS, m2: P2S| Holder1436 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1444() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|E1_NN|E2_SS nonstrict",
+            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder1444 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1452() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|E1_NN|P2_N nonstrict",
+            &rows3(|m0: E0SS, m1: E1NN, m2: P2N| Holder1452 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1460() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|E1_SS|E2_NN nonstrict",
+            &rows3(|m0: E0SS, m1: E1SS, m2: E2NN| Holder1460 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1468() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|E1_SS|O2_S nonstrict",
+            &rows3(|m0: E0SS, m1: E1SS, m2: Option<OI2S>| Holder1468 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1476() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|FO1_NN|A2_SS",
+            &rows3(|m0: E0SS, m1: FO1NN, m2: A2SS| Holder1476 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1484() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|FO1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: FO1NN, m2: P2N| Holder1484 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder1492() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|FP1_NN|FO2_NN",
+            &rows3(|m0: E0SS, m1: FP1NN, m2: FO2NN| Holder1492 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder1500() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|FP1_NN|V2_NN",
+            &rows3(|m0: E0SS, m1: FP1NN, m2: V2NN| Holder1500 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1508() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|FT1_NNN|O2_N",
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: Option<OI2N>| Holder1508 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1516() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|O1_N|E2_NN nonstrict",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2NN| Holder1516 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1524() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|O1_N|O2_S nonstrict",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: Option<OI2S>| Holder1524 { m0, m1, m2 }),
+            &[
+                ("Dot,None,None", 'E'),
+                ("Dot,None,Some", 'E'),
+                ("Dot,Some,None", 'E'),
+                ("Dot,Some,Some", 'E'),
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1532() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|O1_S|A2_SS nonstrict",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: A2SS| Holder1532 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1540() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|O1_S|O2_N nonstrict",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: Option<OI2N>| Holder1540 { m0, m1, m2 }),
+            &[
+                ("Dot,None,None", 'E'),
+                ("Dot,None,Some", 'E'),
+                ("Dot,Some,None", 'E'),
+                ("Dot,Some,Some", 'E'),
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1548() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|P1_N|A2_NN nonstrict",
+            &rows3(|m0: E0SS, m1: P1N, m2: A2NN| Holder1548 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1556() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|P1_N|FT2_NNN",
+            &rows3(|m0: E0SS, m1: P1N, m2: FT2NNN| Holder1556 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1564() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|P1_N|V2_SS",
+            &rows3(|m0: E0SS, m1: P1N, m2: V2SS| Holder1564 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'R'),
+                ("Dot,-,Wrap", 'R'),
+                ("Rect,-,Rect", 'R'),
+                ("Rect,-,Wrap", 'R'),
+                ("Wrap,-,Rect", 'R'),
+                ("Wrap,-,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder1572() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|P1_S|FP2_SS",
+            &rows3(|m0: E0SS, m1: P1S, m2: FP2SS| Holder1572 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder1580() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|P1_S|V2_NN",
+            &rows3(|m0: E0SS, m1: P1S, m2: V2NN| Holder1580 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1588() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|T1_NN|FT2_NNN",
+            &rows3(|m0: E0SS, m1: T1NN, m2: FT2NNN| Holder1588 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1596() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|V1_NN|A2_SS",
+            &rows3(|m0: E0SS, m1: V1NN, m2: A2SS| Holder1596 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1604() -> Vec<String> {
+        check(
+            "main3:H3N0:E0_SS|V1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: V1NN, m2: P2N| Holder1604 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1612() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|A1_NN|FO2_NN",
+            &rows3(|m0: FO0NN, m1: A1NN, m2: FO2NN| Holder1612 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1620() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|A1_NN|V2_NN",
+            &rows3(|m0: FO0NN, m1: A1NN, m2: V2NN| Holder1620 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1628() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|A1_SS|O2_N",
+            &rows3(|m0: FO0NN, m1: A1SS, m2: Option<OI2N>| Holder1628 { m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1636() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|E1_NN|E2_NN",
+            &rows3(|m0: FO0NN, m1: E1NN, m2: E2NN| Holder1636 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1644() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|E1_NN|P2_S",
+            &rows3(|m0: FO0NN, m1: E1NN, m2: P2S| Holder1644 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1652() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|E1_SS|FP2_NN",
+            &rows3(|m0: FO0NN, m1: E1SS, m2: FP2NN| Holder1652 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1660() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|FO1_NN|A2_NN",
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: A2NN| Holder1660 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1668() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|FO1_NN|O2_S",
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: Option<OI2S>| Holder1668 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder1676() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|FP1_NN|E2_SS",
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: E2SS| Holder1676 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1684() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|FP1_NN|T2_NN",
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: T2NN| Holder1684 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1692() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|FT1_NNN|FT2_NNN",
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: FT2NNN| Holder1692 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1700() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|O1_N|A2_SS",
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: A2SS| Holder1700 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1708() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|O1_N|P2_N",
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: P2N| Holder1708 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder1716() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|O1_S|FO2_NN",
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: FO2NN| Holder1716 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder1724() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|O1_S|V2_NN",
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: V2NN| Holder1724 { m0, m1, m2 }),
+            &[
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1732() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|P1_N|O2_N",
+            &rows3(|m0: FO0NN, m1: P1N, m2: Option<OI2N>| Holder1732 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder1740() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|P1_S|E2_NN",
+            &rows3(|m0: FO0NN, m1: P1S, m2: E2NN| Holder1740 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1748() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|P1_S|P2_S",
+            &rows3(|m0: FO0NN, m1: P1S, m2: P2S| Holder1748 { m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder1756() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|T1_NN|FP2_NN",
+            &rows3(|m0: FO0NN, m1: T1NN, m2: FP2NN| Holder1756 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1764() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|V1_NN|A2_NN",
+            &rows3(|m0: FO0NN, m1: V1NN, m2: A2NN| Holder1764 { m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1772() -> Vec<String> {
+        check(
+            "main3:H3N0:FO0_NN|V1_NN|O2_S",
+            &rows3(|m0: FO0NN, m1: V1NN, m2: Option<OI2S>| Holder1772 { m0, m1, m2 }),
+            &[
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1780() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|A1_NN|E2_SS",
+            &rows3(|m0: FP0NN, m1: A1NN, m2: E2SS| Holder1780 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1788() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|A1_NN|T2_NN",
+            &rows3(|m0: FP0NN, m1: A1NN, m2: T2NN| Holder1788 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1796() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|A1_SS|FT2_NNN",
+            &rows3(|m0: FP0NN, m1: A1SS, m2: FT2NNN| Holder1796 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1804() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|E1_NN|A2_SS",
+            &rows3(|m0: FP0NN, m1: E1NN, m2: A2SS| Holder1804 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1812() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|E1_NN|P2_N",
+            &rows3(|m0: FP0NN, m1: E1NN, m2: P2N| Holder1812 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1820() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|E1_SS|FO2_NN",
+            &rows3(|m0: FP0NN, m1: E1SS, m2: FO2NN| Holder1820 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1828() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|E1_SS|V2_NN",
+            &rows3(|m0: FP0NN, m1: E1SS, m2: V2NN| Holder1828 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1836() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|FO1_NN|O2_N",
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: Option<OI2N>| Holder1836 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder1844() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|FP1_NN|E2_NN",
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: E2NN| Holder1844 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1852() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|FP1_NN|P2_S",
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: P2S| Holder1852 { m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder1860() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|FT1_NNN|FP2_NN",
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: FP2NN| Holder1860 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1868() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|O1_N|A2_NN",
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: A2NN| Holder1868 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1876() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|O1_N|O2_S",
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: Option<OI2S>| Holder1876 { m0, m1, m2 }),
+            &[
+                ("-,None,None", 'E'),
+                ("-,None,Some", 'E'),
+                ("-,Some,None", 'E'),
+                ("-,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1884() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|O1_S|E2_SS",
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: E2SS| Holder1884 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1892() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|O1_S|T2_NN",
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: T2NN| Holder1892 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1900() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|P1_N|FT2_NNN",
+            &rows3(|m0: FP0NN, m1: P1N, m2: FT2NNN| Holder1900 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1908() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|P1_S|A2_SS",
+            &rows3(|m0: FP0NN, m1: P1S, m2: A2SS| Holder1908 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder1916() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|P1_S|P2_N",
+            &rows3(|m0: FP0NN, m1: P1S, m2: P2N| Holder1916 { m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder1924() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|T1_NN|FO2_NN",
+            &rows3(|m0: FP0NN, m1: T1NN, m2: FO2NN| Holder1924 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder1932() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|T1_NN|V2_NN",
+            &rows3(|m0: FP0NN, m1: T1NN, m2: V2NN| Holder1932 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1940() -> Vec<String> {
+        check(
+            "main3:H3N0:FP0_NN|V1_NN|O2_N",
+            &rows3(|m0: FP0NN, m1: V1NN, m2: Option<OI2N>| Holder1940 { m0, m1, m2 }),
+            &[
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1948() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|A1_NN|E2_NN",
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: E2NN| Holder1948 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1956() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|A1_NN|P2_S",
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: P2S| Holder1956 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1964() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|A1_SS|FP2_NN",
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: FP2NN| Holder1964 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder1972() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|E1_NN|A2_NN",
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: A2NN| Holder1972 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1980() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|E1_NN|O2_S",
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: Option<OI2S>| Holder1980 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder1988() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|E1_SS|E2_SS",
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: E2SS| Holder1988 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder1996() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|E1_SS|T2_NN",
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: T2NN| Holder1996 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2004() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|FO1_NN|FT2_NNN",
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: FT2NNN| Holder2004 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2012() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|FP1_NN|A2_SS",
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: A2SS| Holder2012 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2020() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|FP1_NN|P2_N",
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: P2N| Holder2020 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder2028() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|FT1_NNN|FO2_NN",
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: FO2NN| Holder2028 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2036() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|FT1_NNN|V2_NN",
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: V2NN| Holder2036 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2044() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|O1_N|O2_N",
+            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: Option<OI2N>| Holder2044 { m0, m1, m2 }),
+            &[
+                ("Dot,None,None", 'E'),
+                ("Dot,None,Some", 'E'),
+                ("Dot,Some,None", 'E'),
+                ("Dot,Some,Some", 'E'),
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2052() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|O1_S|E2_NN",
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: E2NN| Holder2052 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2060() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|O1_S|P2_S",
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: P2S| Holder2060 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2068() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|P1_N|FP2_NN",
+            &rows3(|m0: FT0NNN, m1: P1N, m2: FP2NN| Holder2068 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder2076() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|P1_S|A2_NN",
+            &rows3(|m0: FT0NNN, m1: P1S, m2: A2NN| Holder2076 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2084() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|P1_S|O2_S",
+            &rows3(|m0: FT0NNN, m1: P1S, m2: Option<OI2S>| Holder2084 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2092() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|T1_NN|E2_SS",
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: E2SS| Holder2092 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2100() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|T1_NN|T2_NN",
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: T2NN| Holder2100 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2108() -> Vec<String> {
+        check(
+            "main3:H3N0:FT0_NNN|V1_NN|FT2_NNN",
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: FT2NNN| Holder2108 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2116() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|A1_NN|A2_SS nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: A2SS| Holder2116 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2124() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|A1_NN|O2_N nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: Option<OI2N>| Holder2124 { m0, m1, m2 }),
+            &[
+                ("None,Dot,None", 'E'),
+                ("None,Dot,Some", 'E'),
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Dot,None", 'E'),
+                ("Some,Dot,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2132() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|A1_SS|A2_NN nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: A2NN| Holder2132 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2140() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|A1_SS|FT2_NNN",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FT2NNN| Holder2140 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2148() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|A1_SS|V2_SS",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: V2SS| Holder2148 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'R'),
+                ("None,Dot,Wrap", 'R'),
+                ("None,Rect,Rect", 'R'),
+                ("None,Rect,Wrap", 'R'),
+                ("None,Wrap,Rect", 'R'),
+                ("None,Wrap,Wrap", 'R'),
+                ("Some,Dot,Rect", 'R'),
+                ("Some,Dot,Wrap", 'R'),
+                ("Some,Rect,Rect", 'R'),
+                ("Some,Rect,Wrap", 'R'),
+                ("Some,Wrap,Rect", 'R'),
+                ("Some,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2156() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|E1_NN|FP2_SS",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FP2SS| Holder2156 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder2164() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|E1_NN|V2_NN",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: V2NN| Holder2164 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2172() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|E1_SS|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: FP2NN| Holder2172 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2180() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|E1_SS|T2_SS",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: T2SS| Holder2180 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'R'),
+                ("None,Dot,Rect", 'R'),
+                ("None,Dot,Wrap", 'R'),
+                ("None,Rect,Dot", 'R'),
+                ("None,Rect,Rect", 'R'),
+                ("None,Rect,Wrap", 'R'),
+                ("None,Wrap,Dot", 'R'),
+                ("None,Wrap,Rect", 'R'),
+                ("None,Wrap,Wrap", 'R'),
+                ("Some,Dot,Dot", 'R'),
+                ("Some,Dot,Rect", 'R'),
+                ("Some,Dot,Wrap", 'R'),
+                ("Some,Rect,Dot", 'R'),
+                ("Some,Rect,Rect", 'R'),
+                ("Some,Rect,Wrap", 'R'),
+                ("Some,Wrap,Dot", 'R'),
+                ("Some,Wrap,Rect", 'R'),
+                ("Some,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2188() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|FO1_NN|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: FP2NN| Holder2188 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2196() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|FP1_NN|A2_NN",
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: A2NN| Holder2196 { m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2204() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|FP1_NN|O2_S",
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: Option<OI2S>| Holder2204 { m0, m1, m2 }),
+            &[
+                ("None,-,None", 'E'),
+                ("None,-,Some", 'E'),
+                ("Some,-,None", 'E'),
+                ("Some,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2212() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|FT1_NNN|E2_SS",
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: E2SS| Holder2212 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2220() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|FT1_NNN|T2_NN",
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: T2NN| Holder2220 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2228() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|O1_N|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: FP2NN| Holder2228 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'E'),
+                ("None,Some,-", 'E'),
+                ("Some,None,-", 'E'),
+                ("Some,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2236() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|O1_N|T2_SS",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: T2SS| Holder2236 { m0, m1, m2 }),
+            &[
+                ("None,None,Dot", 'R'),
+                ("None,None,Rect", 'R'),
+                ("None,None,Wrap", 'R'),
+                ("None,Some,Dot", 'R'),
+                ("None,Some,Rect", 'R'),
+                ("None,Some,Wrap", 'R'),
+                ("Some,None,Dot", 'R'),
+                ("Some,None,Rect", 'R'),
+                ("Some,None,Wrap", 'R'),
+                ("Some,Some,Dot", 'R'),
+                ("Some,Some,Rect", 'R'),
+                ("Some,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2244() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|O1_S|FO2_SS",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: FO2SS| Holder2244 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder2252() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|O1_S|T2_NN",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: T2NN| Holder2252 { m0, m1, m2 }),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2260() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|P1_N|FO2_NN",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: FO2NN| Holder2260 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2268() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|P1_N|P2_S nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: P2S| Holder2268 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2276() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|P1_S|E2_SS nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder2276 { m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2284() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|P1_S|P2_N nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: P2N| Holder2284 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2292() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|T1_NN|E2_NN",
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: E2NN| Holder2292 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2300() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|T1_NN|P2_S",
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: P2S| Holder2300 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2308() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_N|V1_NN|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: FP2NN| Holder2308 { m0, m1, m2 }),
+            &[
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2316() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|A1_NN|A2_NN nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: A2NN| Holder2316 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2324() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|A1_NN|FT2_NNN",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FT2NNN| Holder2324 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2332() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|A1_NN|V2_SS",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: V2SS| Holder2332 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'R'),
+                ("None,Dot,Wrap", 'R'),
+                ("None,Rect,Rect", 'R'),
+                ("None,Rect,Wrap", 'R'),
+                ("None,Wrap,Rect", 'R'),
+                ("None,Wrap,Wrap", 'R'),
+                ("Some,Dot,Rect", 'R'),
+                ("Some,Dot,Wrap", 'R'),
+                ("Some,Rect,Rect", 'R'),
+                ("Some,Rect,Wrap", 'R'),
+                ("Some,Wrap,Rect", 'R'),
+                ("Some,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2340() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|A1_SS|FP2_SS",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FP2SS| Holder2340 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder2348() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|A1_SS|V2_NN",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: V2NN| Holder2348 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2356() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|E1_NN|FP2_NN",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: FP2NN| Holder2356 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2364() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|E1_NN|T2_SS",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: T2SS| Holder2364 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'R'),
+                ("None,Dot,Rect", 'R'),
+                ("None,Dot,Wrap", 'R'),
+                ("None,Rect,Dot", 'R'),
+                ("None,Rect,Rect", 'R'),
+                ("None,Rect,Wrap", 'R'),
+                ("None,Wrap,Dot", 'R'),
+                ("None,Wrap,Rect", 'R'),
+                ("None,Wrap,Wrap", 'R'),
+                ("Some,Dot,Dot", 'R'),
+                ("Some,Dot,Rect", 'R'),
+                ("Some,Dot,Wrap", 'R'),
+                ("Some,Rect,Dot", 'R'),
+                ("Some,Rect,Rect", 'R'),
+                ("Some,Rect,Wrap", 'R'),
+                ("Some,Wrap,Dot", 'R'),
+                ("Some,Wrap,Rect", 'R'),
+                ("Some,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2372() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|E1_SS|FO2_SS",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: FO2SS| Holder2372 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder2380() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|E1_SS|T2_NN",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: T2NN| Holder2380 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2388() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|FO1_NN|FO2_NN",
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: FO2NN| Holder2388 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2396() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|FO1_NN|V2_NN",
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: V2NN| Holder2396 { m0, m1, m2 }),
+            &[
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2404() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|FP1_NN|O2_N",
+            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: Option<OI2N>| Holder2404 { m0, m1, m2 }),
+            &[
+                ("None,-,None", 'E'),
+                ("None,-,Some", 'E'),
+                ("Some,-,None", 'E'),
+                ("Some,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2412() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|FT1_NNN|E2_NN",
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: E2NN| Holder2412 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2420() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|FT1_NNN|P2_S",
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: P2S| Holder2420 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2428() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|O1_N|FO2_SS",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: FO2SS| Holder2428 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder2436() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|O1_N|T2_NN",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: T2NN| Holder2436 { m0, m1, m2 }),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2444() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|O1_S|FO2_NN",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: FO2NN| Holder2444 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'E'),
+                ("None,Some,-", 'E'),
+                ("Some,None,-", 'E'),
+                ("Some,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2452() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|O1_S|P2_S nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: P2S| Holder2452 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'E'),
+                ("None,Some,-", 'E'),
+                ("Some,None,-", 'E'),
+                ("Some,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2460() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|P1_N|E2_SS nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder2460 { m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2468() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|P1_N|P2_N nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: P2N| Holder2468 { m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder2476() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|P1_S|E2_NN nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2NN| Holder2476 { m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2484() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|P1_S|O2_S nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: Option<OI2S>| Holder2484 { m0, m1, m2 }),
+            &[
+                ("None,-,None", 'E'),
+                ("None,-,Some", 'E'),
+                ("Some,-,None", 'E'),
+                ("Some,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2492() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|T1_NN|A2_SS",
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: A2SS| Holder2492 { m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2500() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|T1_NN|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: P2N| Holder2500 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2508() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|V1_NN|FO2_NN",
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: FO2NN| Holder2508 { m0, m1, m2 }),
+            &[
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2516() -> Vec<String> {
+        check(
+            "main3:H3N0:O0_S|V1_NN|V2_NN",
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: V2NN| Holder2516 { m0, m1, m2 }),
+            &[
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2524() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|A1_NN|FP2_SS",
+            &rows3(|m0: P0N, m1: A1NN, m2: FP2SS| Holder2524 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder2532() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|A1_NN|V2_NN",
+            &rows3(|m0: P0N, m1: A1NN, m2: V2NN| Holder2532 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2540() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|A1_SS|FP2_NN",
+            &rows3(|m0: P0N, m1: A1SS, m2: FP2NN| Holder2540 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2548() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|A1_SS|T2_SS",
+            &rows3(|m0: P0N, m1: A1SS, m2: T2SS| Holder2548 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'R'),
+                ("-,Dot,Rect", 'R'),
+                ("-,Dot,Wrap", 'R'),
+                ("-,Rect,Dot", 'R'),
+                ("-,Rect,Rect", 'R'),
+                ("-,Rect,Wrap", 'R'),
+                ("-,Wrap,Dot", 'R'),
+                ("-,Wrap,Rect", 'R'),
+                ("-,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2556() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|E1_NN|FO2_SS",
+            &rows3(|m0: P0N, m1: E1NN, m2: FO2SS| Holder2556 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder2564() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|E1_NN|T2_NN",
+            &rows3(|m0: P0N, m1: E1NN, m2: T2NN| Holder2564 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2572() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|E1_SS|FO2_NN",
+            &rows3(|m0: P0N, m1: E1SS, m2: FO2NN| Holder2572 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2580() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|E1_SS|P2_S nonstrict",
+            &rows3(|m0: P0N, m1: E1SS, m2: P2S| Holder2580 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2588() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|FO1_NN|E2_SS",
+            &rows3(|m0: P0N, m1: FO1NN, m2: E2SS| Holder2588 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2596() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|FO1_NN|T2_NN",
+            &rows3(|m0: P0N, m1: FO1NN, m2: T2NN| Holder2596 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2604() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|FP1_NN|FT2_NNN",
+            &rows3(|m0: P0N, m1: FP1NN, m2: FT2NNN| Holder2604 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2612() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|FT1_NNN|A2_SS",
+            &rows3(|m0: P0N, m1: FT1NNN, m2: A2SS| Holder2612 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2620() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|FT1_NNN|P2_N",
+            &rows3(|m0: P0N, m1: FT1NNN, m2: P2N| Holder2620 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2628() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|O1_N|FO2_NN",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: FO2NN| Holder2628 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder2636() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|O1_N|P2_S nonstrict",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: P2S| Holder2636 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder2644() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|O1_S|E2_SS nonstrict",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder2644 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2652() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|O1_S|P2_N nonstrict",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: P2N| Holder2652 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder2660() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|P1_N|E2_NN nonstrict",
+            &rows3(|m0: P0N, m1: P1N, m2: E2NN| Holder2660 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2668() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|P1_N|O2_S nonstrict",
+            &rows3(|m0: P0N, m1: P1N, m2: Option<OI2S>| Holder2668 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder2676() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|P1_S|A2_SS nonstrict",
+            &rows3(|m0: P0N, m1: P1S, m2: A2SS| Holder2676 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2684() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|P1_S|O2_N nonstrict",
+            &rows3(|m0: P0N, m1: P1S, m2: Option<OI2N>| Holder2684 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder2692() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|T1_NN|A2_NN",
+            &rows3(|m0: P0N, m1: T1NN, m2: A2NN| Holder2692 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2700() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|T1_NN|O2_S",
+            &rows3(|m0: P0N, m1: T1NN, m2: Option<OI2S>| Holder2700 { m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2708() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|V1_NN|E2_SS",
+            &rows3(|m0: P0N, m1: V1NN, m2: E2SS| Holder2708 { m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2716() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_N|V1_NN|T2_NN",
+            &rows3(|m0: P0N, m1: V1NN, m2: T2NN| Holder2716 { m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2724() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|A1_NN|FP2_NN",
+            &rows3(|m0: P0S, m1: A1NN, m2: FP2NN| Holder2724 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2732() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|A1_NN|T2_SS",
+            &rows3(|m0: P0S, m1: A1NN, m2: T2SS| Holder2732 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'R'),
+                ("-,Dot,Rect", 'R'),
+                ("-,Dot,Wrap", 'R'),
+                ("-,Rect,Dot", 'R'),
+                ("-,Rect,Rect", 'R'),
+                ("-,Rect,Wrap", 'R'),
+                ("-,Wrap,Dot", 'R'),
+                ("-,Wrap,Rect", 'R'),
+                ("-,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder2740() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|A1_SS|FO2_SS",
+            &rows3(|m0: P0S, m1: A1SS, m2: FO2SS| Holder2740 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder2748() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|A1_SS|T2_NN",
+            &rows3(|m0: P0S, m1: A1SS, m2: T2NN| Holder2748 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2756() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|E1_NN|FO2_NN",
+            &rows3(|m0: P0S, m1: E1NN, m2: FO2NN| Holder2756 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2764() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|E1_NN|P2_S nonstrict",
+            &rows3(|m0: P0S, m1: E1NN, m2: P2S| Holder2764 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2772() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|E1_SS|E2_SS nonstrict",
+            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder2772 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2780() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|E1_SS|P2_N nonstrict",
+            &rows3(|m0: P0S, m1: E1SS, m2: P2N| Holder2780 { m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2788() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|FO1_NN|E2_NN",
+            &rows3(|m0: P0S, m1: FO1NN, m2: E2NN| Holder2788 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2796() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|FO1_NN|P2_S",
+            &rows3(|m0: P0S, m1: FO1NN, m2: P2S| Holder2796 { m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder2804() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|FP1_NN|FP2_NN",
+            &rows3(|m0: P0S, m1: FP1NN, m2: FP2NN| Holder2804 { m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder2812() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|FT1_NNN|A2_NN",
+            &rows3(|m0: P0S, m1: FT1NNN, m2: A2NN| Holder2812 { m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2820() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|FT1_NNN|O2_S",
+            &rows3(|m0: P0S, m1: FT1NNN, m2: Option<OI2S>| Holder2820 { m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2828() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|O1_N|E2_SS nonstrict",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder2828 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2836() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|O1_N|P2_N nonstrict",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: P2N| Holder2836 { m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder2844() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|O1_S|E2_NN nonstrict",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2NN| Holder2844 { m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2852() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|O1_S|O2_S nonstrict",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: Option<OI2S>| Holder2852 { m0, m1, m2 }),
+            &[
+                ("-,None,None", 'E'),
+                ("-,None,Some", 'E'),
+                ("-,Some,None", 'E'),
+                ("-,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2860() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|P1_N|A2_SS nonstrict",
+            &rows3(|m0: P0S, m1: P1N, m2: A2SS| Holder2860 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2868() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|P1_N|O2_N nonstrict",
+            &rows3(|m0: P0S, m1: P1N, m2: Option<OI2N>| Holder2868 { m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder2876() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|P1_S|A2_NN nonstrict",
+            &rows3(|m0: P0S, m1: P1S, m2: A2NN| Holder2876 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2884() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|P1_S|FT2_NNN",
+            &rows3(|m0: P0S, m1: P1S, m2: FT2NNN| Holder2884 { m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder2892() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|P1_S|V2_SS",
+            &rows3(|m0: P0S, m1: P1S, m2: V2SS| Holder2892 { m0, m1, m2 }),
+            &[("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
+        )
+    }
+
+    fn holder2900() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|T1_NN|O2_N",
+            &rows3(|m0: P0S, m1: T1NN, m2: Option<OI2N>| Holder2900 { m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2908() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|V1_NN|E2_NN",
+            &rows3(|m0: P0S, m1: V1NN, m2: E2NN| Holder2908 { m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2916() -> Vec<String> {
+        check(
+            "main3:H3N0:P0_S|V1_NN|P2_S",
+            &rows3(|m0: P0S, m1: V1NN, m2: P2S| Holder2916 { m0, m1, m2 }),
+            &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder2924() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|A1_NN|FP2_NN",
+            &rows3(|m0: T0NN, m1: A1NN, m2: FP2NN| Holder2924 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder2932() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|A1_SS|A2_NN",
+            &rows3(|m0: T0NN, m1: A1SS, m2: A2NN| Holder2932 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2940() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|A1_SS|O2_S",
+            &rows3(|m0: T0NN, m1: A1SS, m2: Option<OI2S>| Holder2940 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder2948() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|E1_NN|E2_SS",
+            &rows3(|m0: T0NN, m1: E1NN, m2: E2SS| Holder2948 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2956() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|E1_NN|T2_NN",
+            &rows3(|m0: T0NN, m1: E1NN, m2: T2NN| Holder2956 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2964() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|E1_SS|FT2_NNN",
+            &rows3(|m0: T0NN, m1: E1SS, m2: FT2NNN| Holder2964 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2972() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|FO1_NN|A2_SS",
+            &rows3(|m0: T0NN, m1: FO1NN, m2: A2SS| Holder2972 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder2980() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|FO1_NN|P2_N",
+            &rows3(|m0: T0NN, m1: FO1NN, m2: P2N| Holder2980 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder2988() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|FP1_NN|FO2_NN",
+            &rows3(|m0: T0NN, m1: FP1NN, m2: FO2NN| Holder2988 { m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder2996() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|FP1_NN|V2_NN",
+            &rows3(|m0: T0NN, m1: FP1NN, m2: V2NN| Holder2996 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3004() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|FT1_NNN|O2_N",
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: Option<OI2N>| Holder3004 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3012() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|O1_N|E2_NN",
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: E2NN| Holder3012 { m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3020() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|O1_N|P2_S",
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: P2S| Holder3020 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3028() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|O1_S|FP2_NN",
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: FP2NN| Holder3028 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3036() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|P1_N|A2_NN",
+            &rows3(|m0: T0NN, m1: P1N, m2: A2NN| Holder3036 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3044() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|P1_N|O2_S",
+            &rows3(|m0: T0NN, m1: P1N, m2: Option<OI2S>| Holder3044 { m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3052() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|P1_S|E2_SS",
+            &rows3(|m0: T0NN, m1: P1S, m2: E2SS| Holder3052 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3060() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|P1_S|T2_NN",
+            &rows3(|m0: T0NN, m1: P1S, m2: T2NN| Holder3060 { m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3068() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|T1_NN|FT2_NNN",
+            &rows3(|m0: T0NN, m1: T1NN, m2: FT2NNN| Holder3068 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3076() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|V1_NN|A2_SS",
+            &rows3(|m0: T0NN, m1: V1NN, m2: A2SS| Holder3076 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3084() -> Vec<String> {
+        check(
+            "main3:H3N0:T0_NN|V1_NN|P2_N",
+            &rows3(|m0: T0NN, m1: V1NN, m2: P2N| Holder3084 { m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3092() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|A1_NN|FO2_NN",
+            &rows3(|m0: V0NN, m1: A1NN, m2: FO2NN| Holder3092 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3100() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|A1_NN|V2_NN",
+            &rows3(|m0: V0NN, m1: A1NN, m2: V2NN| Holder3100 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3108() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|A1_SS|O2_N",
+            &rows3(|m0: V0NN, m1: A1SS, m2: Option<OI2N>| Holder3108 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3116() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|E1_NN|E2_NN",
+            &rows3(|m0: V0NN, m1: E1NN, m2: E2NN| Holder3116 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3124() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|E1_NN|P2_S",
+            &rows3(|m0: V0NN, m1: E1NN, m2: P2S| Holder3124 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3132() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|E1_SS|FP2_NN",
+            &rows3(|m0: V0NN, m1: E1SS, m2: FP2NN| Holder3132 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3140() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|FO1_NN|A2_NN",
+            &rows3(|m0: V0NN, m1: FO1NN, m2: A2NN| Holder3140 { m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3148() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|FO1_NN|O2_S",
+            &rows3(|m0: V0NN, m1: FO1NN, m2: Option<OI2S>| Holder3148 { m0, m1, m2 }),
+            &[
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3156() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|FP1_NN|E2_SS",
+            &rows3(|m0: V0NN, m1: FP1NN, m2: E2SS| Holder3156 { m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3164() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|FP1_NN|T2_NN",
+            &rows3(|m0: V0NN, m1: FP1NN, m2: T2NN| Holder3164 { m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3172() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|FT1_NNN|FT2_NNN",
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: FT2NNN| Holder3172 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3180() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|O1_N|A2_SS",
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: A2SS| Holder3180 { m0, m1, m2 }),
+            &[
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3188() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|O1_N|P2_N",
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: P2N| Holder3188 { m0, m1, m2 }),
+            &[
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3196() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|O1_S|FO2_NN",
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: FO2NN| Holder3196 { m0, m1, m2 }),
+            &[
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3204() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|O1_S|V2_NN",
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: V2NN| Holder3204 { m0, m1, m2 }),
+            &[
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3212() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|P1_N|O2_N",
+            &rows3(|m0: V0NN, m1: P1N, m2: Option<OI2N>| Holder3212 { m0, m1, m2 }),
+            &[
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3220() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|P1_S|E2_NN",
+            &rows3(|m0: V0NN, m1: P1S, m2: E2NN| Holder3220 { m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3228() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|P1_S|P2_S",
+            &rows3(|m0: V0NN, m1: P1S, m2: P2S| Holder3228 { m0, m1, m2 }),
+            &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3236() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|T1_NN|FP2_NN",
+            &rows3(|m0: V0NN, m1: T1NN, m2: FP2NN| Holder3236 { m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3244() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|V1_NN|A2_NN",
+            &rows3(|m0: V0NN, m1: V1NN, m2: A2NN| Holder3244 { m0, m1, m2 }),
+            &[
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3252() -> Vec<String> {
+        check(
+            "main3:H3N0:V0_NN|V1_NN|O2_S",
+            &rows3(|m0: V0NN, m1: V1NN, m2: Option<OI2S>| Holder3252 { m0, m1, m2 }),
+            &[
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3260() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|A1_NN|E2_SS nonstrict",
+            &rows3(|m0: A0NN, m1: A1NN, m2: E2SS| Holder3260 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3268() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|A1_NN|P2_N nonstrict",
+            &rows3(|m0: A0NN, m1: A1NN, m2: P2N| Holder3268 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3276() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|A1_SS|E2_NN nonstrict",
+            &rows3(|m0: A0NN, m1: A1SS, m2: E2NN| Holder3276 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3284() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|A1_SS|O2_S nonstrict",
+            &rows3(|m0: A0NN, m1: A1SS, m2: Option<OI2S>| Holder3284 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3292() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|E1_NN|A2_SS nonstrict",
+            &rows3(|m0: A0NN, m1: E1NN, m2: A2SS| Holder3292 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3300() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|E1_NN|O2_N nonstrict",
+            &rows3(|m0: A0NN, m1: E1NN, m2: Option<OI2N>| Holder3300 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3308() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|E1_SS|A2_NN nonstrict",
+            &rows3(|m0: A0NN, m1: E1SS, m2: A2NN| Holder3308 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3316() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|E1_SS|FT2_NNN",
+            &rows3(|m0: A0NN, m1: E1SS, m2: FT2NNN| Holder3316 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3324() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|E1_SS|V2_SS",
+            &rows3(|m0: A0NN, m1: E1SS, m2: V2SS| Holder3324 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3332() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|FO1_NN|O2_N",
+            &rows3(|m0: A0NN, m1: FO1NN, m2: Option<OI2N>| Holder3332 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3340() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|FP1_NN|E2_NN",
+            &rows3(|m0: A0NN, m1: FP1NN, m2: E2NN| Holder3340 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3348() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|FP1_NN|P2_S",
+            &rows3(|m0: A0NN, m1: FP1NN, m2: P2S| Holder3348 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3356() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|FT1_NNN|FP2_NN",
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: FP2NN| Holder3356 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3364() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|O1_N|A2_NN nonstrict",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: A2NN| Holder3364 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3372() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|O1_N|FT2_NNN",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: FT2NNN| Holder3372 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3380() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|O1_N|V2_SS",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: V2SS| Holder3380 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Rect", 'R'),
+                ("Dot,None,Wrap", 'R'),
+                ("Dot,Some,Rect", 'R'),
+                ("Dot,Some,Wrap", 'R'),
+                ("Rect,None,Rect", 'R'),
+                ("Rect,None,Wrap", 'R'),
+                ("Rect,Some,Rect", 'R'),
+                ("Rect,Some,Wrap", 'R'),
+                ("Wrap,None,Rect", 'R'),
+                ("Wrap,None,Wrap", 'R'),
+                ("Wrap,Some,Rect", 'R'),
+                ("Wrap,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3388() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|O1_S|FP2_SS",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: FP2SS| Holder3388 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3396() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|O1_S|V2_NN",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: V2NN| Holder3396 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3404() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|P1_N|FP2_NN",
+            &rows3(|m0: A0NN, m1: P1N, m2: FP2NN| Holder3404 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3412() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|P1_N|T2_SS",
+            &rows3(|m0: A0NN, m1: P1N, m2: T2SS| Holder3412 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'R'),
+                ("Dot,-,Rect", 'R'),
+                ("Dot,-,Wrap", 'R'),
+                ("Rect,-,Dot", 'R'),
+                ("Rect,-,Rect", 'R'),
+                ("Rect,-,Wrap", 'R'),
+                ("Wrap,-,Dot", 'R'),
+                ("Wrap,-,Rect", 'R'),
+                ("Wrap,-,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3420() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|P1_S|FO2_SS",
+            &rows3(|m0: A0NN, m1: P1S, m2: FO2SS| Holder3420 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder3428() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|P1_S|T2_NN",
+            &rows3(|m0: A0NN, m1: P1S, m2: T2NN| Holder3428 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3436() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|T1_NN|FO2_NN",
+            &rows3(|m0: A0NN, m1: T1NN, m2: FO2NN| Holder3436 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3444() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|T1_NN|V2_NN",
+            &rows3(|m0: A0NN, m1: T1NN, m2: V2NN| Holder3444 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3452() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_NN|V1_NN|O2_N",
+            &rows3(|m0: A0NN, m1: V1NN, m2: Option<OI2N>| Holder3452 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3460() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|A1_NN|E2_NN nonstrict",
+            &rows3(|m0: A0SS, m1: A1NN, m2: E2NN| Holder3460 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3468() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|A1_NN|O2_S nonstrict",
+            &rows3(|m0: A0SS, m1: A1NN, m2: Option<OI2S>| Holder3468 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3476() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|A1_SS|A2_SS nonstrict",
+            &rows3(|m0: A0SS, m1: A1SS, m2: A2SS| Holder3476 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3484() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|A1_SS|O2_N nonstrict",
+            &rows3(|m0: A0SS, m1: A1SS, m2: Option<OI2N>| Holder3484 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3492() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|E1_NN|A2_NN nonstrict",
+            &rows3(|m0: A0SS, m1: E1NN, m2: A2NN| Holder3492 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3500() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|E1_NN|FT2_NNN",
+            &rows3(|m0: A0SS, m1: E1NN, m2: FT2NNN| Holder3500 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3508() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|E1_NN|V2_SS",
+            &rows3(|m0: A0SS, m1: E1NN, m2: V2SS| Holder3508 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3516() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|E1_SS|FP2_SS",
+            &rows3(|m0: A0SS, m1: E1SS, m2: FP2SS| Holder3516 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3524() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|E1_SS|V2_NN",
+            &rows3(|m0: A0SS, m1: E1SS, m2: V2NN| Holder3524 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3532() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|FO1_NN|FT2_NNN",
+            &rows3(|m0: A0SS, m1: FO1NN, m2: FT2NNN| Holder3532 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3540() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|FP1_NN|A2_SS",
+            &rows3(|m0: A0SS, m1: FP1NN, m2: A2SS| Holder3540 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3548() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|FP1_NN|P2_N",
+            &rows3(|m0: A0SS, m1: FP1NN, m2: P2N| Holder3548 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3556() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|FT1_NNN|FO2_NN",
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: FO2NN| Holder3556 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3564() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|FT1_NNN|V2_NN",
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: V2NN| Holder3564 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3572() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|O1_N|FP2_SS",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: FP2SS| Holder3572 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3580() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|O1_N|V2_NN",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: V2NN| Holder3580 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3588() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|O1_S|FP2_NN",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: FP2NN| Holder3588 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3596() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|O1_S|T2_SS",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: T2SS| Holder3596 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'R'),
+                ("Dot,None,Rect", 'R'),
+                ("Dot,None,Wrap", 'R'),
+                ("Dot,Some,Dot", 'R'),
+                ("Dot,Some,Rect", 'R'),
+                ("Dot,Some,Wrap", 'R'),
+                ("Rect,None,Dot", 'R'),
+                ("Rect,None,Rect", 'R'),
+                ("Rect,None,Wrap", 'R'),
+                ("Rect,Some,Dot", 'R'),
+                ("Rect,Some,Rect", 'R'),
+                ("Rect,Some,Wrap", 'R'),
+                ("Wrap,None,Dot", 'R'),
+                ("Wrap,None,Rect", 'R'),
+                ("Wrap,None,Wrap", 'R'),
+                ("Wrap,Some,Dot", 'R'),
+                ("Wrap,Some,Rect", 'R'),
+                ("Wrap,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3604() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|P1_N|FO2_SS",
+            &rows3(|m0: A0SS, m1: P1N, m2: FO2SS| Holder3604 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder3612() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|P1_N|T2_NN",
+            &rows3(|m0: A0SS, m1: P1N, m2: T2NN| Holder3612 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3620() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|P1_S|FO2_NN",
+            &rows3(|m0: A0SS, m1: P1S, m2: FO2NN| Holder3620 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3628() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|P1_S|P2_S nonstrict",
+            &rows3(|m0: A0SS, m1: P1S, m2: P2S| Holder3628 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3636() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|T1_NN|E2_SS",
+            &rows3(|m0: A0SS, m1: T1NN, m2: E2SS| Holder3636 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3644() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|T1_NN|T2_NN",
+            &rows3(|m0: A0SS, m1: T1NN, m2: T2NN| Holder3644 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3652() -> Vec<String> {
+        check(
+            "main3:H3N1:A0_SS|V1_NN|FT2_NNN",
+            &rows3(|m0: A0SS, m1: V1NN, m2: FT2NNN| Holder3652 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3660() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|A1_NN|A2_SS nonstrict",
+            &rows3(|m0: E0NN, m1: A1NN, m2: A2SS| Holder3660 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3668() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|A1_NN|O2_N nonstrict",
+            &rows3(|m0: E0NN, m1: A1NN, m2: Option<OI2N>| Holder3668 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3676() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|A1_SS|A2_NN nonstrict",
+            &rows3(|m0: E0NN, m1: A1SS, m2: A2NN| Holder3676 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3684() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|A1_SS|FT2_NNN",
+            &rows3(|m0: E0NN, m1: A1SS, m2: FT2NNN| Holder3684 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3692() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|A1_SS|V2_SS",
+            &rows3(|m0: E0NN, m1: A1SS, m2: V2SS| Holder3692 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3700() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|E1_NN|FP2_SS",
+            &rows3(|m0: E0NN, m1: E1NN, m2: FP2SS| Holder3700 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3708() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|E1_NN|V2_NN",
+            &rows3(|m0: E0NN, m1: E1NN, m2: V2NN| Holder3708 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3716() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|E1_SS|FP2_NN",
+            &rows3(|m0: E0NN, m1: E1SS, m2: FP2NN| Holder3716 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3724() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|E1_SS|T2_SS",
+            &rows3(|m0: E0NN, m1: E1SS, m2: T2SS| Holder3724 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'R'),
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Dot", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Dot", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Dot", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Dot", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Dot", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Dot", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Dot", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Dot", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3732() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|FO1_NN|FP2_NN",
+            &rows3(|m0: E0NN, m1: FO1NN, m2: FP2NN| Holder3732 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3740() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|FP1_NN|A2_NN",
+            &rows3(|m0: E0NN, m1: FP1NN, m2: A2NN| Holder3740 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3748() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|FP1_NN|O2_S",
+            &rows3(|m0: E0NN, m1: FP1NN, m2: Option<OI2S>| Holder3748 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3756() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|FT1_NNN|E2_SS",
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: E2SS| Holder3756 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3764() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|FT1_NNN|T2_NN",
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: T2NN| Holder3764 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3772() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|O1_N|FP2_NN",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: FP2NN| Holder3772 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3780() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|O1_N|T2_SS",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: T2SS| Holder3780 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'R'),
+                ("Dot,None,Rect", 'R'),
+                ("Dot,None,Wrap", 'R'),
+                ("Dot,Some,Dot", 'R'),
+                ("Dot,Some,Rect", 'R'),
+                ("Dot,Some,Wrap", 'R'),
+                ("Rect,None,Dot", 'R'),
+                ("Rect,None,Rect", 'R'),
+                ("Rect,None,Wrap", 'R'),
+                ("Rect,Some,Dot", 'R'),
+                ("Rect,Some,Rect", 'R'),
+                ("Rect,Some,Wrap", 'R'),
+                ("Wrap,None,Dot", 'R'),
+                ("Wrap,None,Rect", 'R'),
+                ("Wrap,None,Wrap", 'R'),
+                ("Wrap,Some,Dot", 'R'),
+                ("Wrap,Some,Rect", 'R'),
+                ("Wrap,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3788() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|O1_S|FO2_SS",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: FO2SS| Holder3788 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3796() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|O1_S|T2_NN",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: T2NN| Holder3796 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3804() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|P1_N|FO2_NN",
+            &rows3(|m0: E0NN, m1: P1N, m2: FO2NN| Holder3804 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3812() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|P1_N|P2_S nonstrict",
+            &rows3(|m0: E0NN, m1: P1N, m2: P2S| Holder3812 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3820() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|P1_S|E2_SS nonstrict",
+            &rows3(|m0: E0NN, m1: P1S, m2: E2SS| Holder3820 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3828() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|P1_S|P2_N nonstrict",
+            &rows3(|m0: E0NN, m1: P1S, m2: P2N| Holder3828 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3836() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|T1_NN|E2_NN",
+            &rows3(|m0: E0NN, m1: T1NN, m2: E2NN| Holder3836 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3844() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|T1_NN|P2_S",
+            &rows3(|m0: E0NN, m1: T1NN, m2: P2S| Holder3844 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3852() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_NN|V1_NN|FP2_NN",
+            &rows3(|m0: E0NN, m1: V1NN, m2: FP2NN| Holder3852 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3860() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|A1_NN|A2_NN nonstrict",
+            &rows3(|m0: E0SS, m1: A1NN, m2: A2NN| Holder3860 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3868() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|A1_NN|FT2_NNN",
+            &rows3(|m0: E0SS, m1: A1NN, m2: FT2NNN| Holder3868 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3876() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|A1_NN|V2_SS",
+            &rows3(|m0: E0SS, m1: A1NN, m2: V2SS| Holder3876 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3884() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|A1_SS|FP2_SS",
+            &rows3(|m0: E0SS, m1: A1SS, m2: FP2SS| Holder3884 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3892() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|A1_SS|V2_NN",
+            &rows3(|m0: E0SS, m1: A1SS, m2: V2NN| Holder3892 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3900() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|E1_NN|FP2_NN",
+            &rows3(|m0: E0SS, m1: E1NN, m2: FP2NN| Holder3900 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3908() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|E1_NN|T2_SS",
+            &rows3(|m0: E0SS, m1: E1NN, m2: T2SS| Holder3908 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'R'),
+                ("Dot,Dot,Rect", 'R'),
+                ("Dot,Dot,Wrap", 'R'),
+                ("Dot,Rect,Dot", 'R'),
+                ("Dot,Rect,Rect", 'R'),
+                ("Dot,Rect,Wrap", 'R'),
+                ("Dot,Wrap,Dot", 'R'),
+                ("Dot,Wrap,Rect", 'R'),
+                ("Dot,Wrap,Wrap", 'R'),
+                ("Rect,Dot,Dot", 'R'),
+                ("Rect,Dot,Rect", 'R'),
+                ("Rect,Dot,Wrap", 'R'),
+                ("Rect,Rect,Dot", 'R'),
+                ("Rect,Rect,Rect", 'R'),
+                ("Rect,Rect,Wrap", 'R'),
+                ("Rect,Wrap,Dot", 'R'),
+                ("Rect,Wrap,Rect", 'R'),
+                ("Rect,Wrap,Wrap", 'R'),
+                ("Wrap,Dot,Dot", 'R'),
+                ("Wrap,Dot,Rect", 'R'),
+                ("Wrap,Dot,Wrap", 'R'),
+                ("Wrap,Rect,Dot", 'R'),
+                ("Wrap,Rect,Rect", 'R'),
+                ("Wrap,Rect,Wrap", 'R'),
+                ("Wrap,Wrap,Dot", 'R'),
+                ("Wrap,Wrap,Rect", 'R'),
+                ("Wrap,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder3916() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|E1_SS|FO2_SS",
+            &rows3(|m0: E0SS, m1: E1SS, m2: FO2SS| Holder3916 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3924() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|E1_SS|T2_NN",
+            &rows3(|m0: E0SS, m1: E1SS, m2: T2NN| Holder3924 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3932() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|FO1_NN|FO2_NN",
+            &rows3(|m0: E0SS, m1: FO1NN, m2: FO2NN| Holder3932 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder3940() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|FO1_NN|V2_NN",
+            &rows3(|m0: E0SS, m1: FO1NN, m2: V2NN| Holder3940 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3948() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|FP1_NN|O2_N",
+            &rows3(|m0: E0SS, m1: FP1NN, m2: Option<OI2N>| Holder3948 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder3956() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|FT1_NNN|E2_NN",
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: E2NN| Holder3956 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3964() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|FT1_NNN|P2_S",
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: P2S| Holder3964 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3972() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|O1_N|FO2_SS",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: FO2SS| Holder3972 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder3980() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|O1_N|T2_NN",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: T2NN| Holder3980 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder3988() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|O1_S|FO2_NN",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: FO2NN| Holder3988 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder3996() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|O1_S|P2_S nonstrict",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: P2S| Holder3996 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4004() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|P1_N|E2_SS nonstrict",
+            &rows3(|m0: E0SS, m1: P1N, m2: E2SS| Holder4004 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4012() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|P1_N|P2_N nonstrict",
+            &rows3(|m0: E0SS, m1: P1N, m2: P2N| Holder4012 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder4020() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|P1_S|E2_NN nonstrict",
+            &rows3(|m0: E0SS, m1: P1S, m2: E2NN| Holder4020 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4028() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|P1_S|O2_S nonstrict",
+            &rows3(|m0: E0SS, m1: P1S, m2: Option<OI2S>| Holder4028 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4036() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|T1_NN|A2_SS",
+            &rows3(|m0: E0SS, m1: T1NN, m2: A2SS| Holder4036 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4044() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|T1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: T1NN, m2: P2N| Holder4044 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4052() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|V1_NN|FO2_NN",
+            &rows3(|m0: E0SS, m1: V1NN, m2: FO2NN| Holder4052 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4060() -> Vec<String> {
+        check(
+            "main3:H3N1:E0_SS|V1_NN|V2_NN",
+            &rows3(|m0: E0SS, m1: V1NN, m2: V2NN| Holder4060 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4068() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|A1_NN|O2_N",
+            &rows3(|m0: FO0NN, m1: A1NN, m2: Option<OI2N>| Holder4068 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4076() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|A1_SS|E2_NN",
+            &rows3(|m0: FO0NN, m1: A1SS, m2: E2NN| Holder4076 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4084() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|A1_SS|P2_S",
+            &rows3(|m0: FO0NN, m1: A1SS, m2: P2S| Holder4084 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4092() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|E1_NN|FP2_NN",
+            &rows3(|m0: FO0NN, m1: E1NN, m2: FP2NN| Holder4092 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4100() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|E1_SS|A2_NN",
+            &rows3(|m0: FO0NN, m1: E1SS, m2: A2NN| Holder4100 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4108() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|E1_SS|O2_S",
+            &rows3(|m0: FO0NN, m1: E1SS, m2: Option<OI2S>| Holder4108 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4116() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|FO1_NN|E2_SS",
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: E2SS| Holder4116 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4124() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|FO1_NN|T2_NN",
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: T2NN| Holder4124 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4132() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|FP1_NN|FT2_NNN",
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: FT2NNN| Holder4132 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4140() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|FT1_NNN|A2_SS",
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: A2SS| Holder4140 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4148() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|FT1_NNN|P2_N",
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: P2N| Holder4148 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4156() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|O1_N|FO2_NN",
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: FO2NN| Holder4156 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder4164() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|O1_N|V2_NN",
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: V2NN| Holder4164 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4172() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|O1_S|O2_N",
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: Option<OI2N>| Holder4172 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("-,None,None", 'E'),
+                ("-,None,Some", 'E'),
+                ("-,Some,None", 'E'),
+                ("-,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4180() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|P1_N|E2_NN",
+            &rows3(|m0: FO0NN, m1: P1N, m2: E2NN| Holder4180 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4188() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|P1_N|P2_S",
+            &rows3(|m0: FO0NN, m1: P1N, m2: P2S| Holder4188 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4196() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|P1_S|FP2_NN",
+            &rows3(|m0: FO0NN, m1: P1S, m2: FP2NN| Holder4196 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4204() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|T1_NN|A2_NN",
+            &rows3(|m0: FO0NN, m1: T1NN, m2: A2NN| Holder4204 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4212() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|T1_NN|O2_S",
+            &rows3(|m0: FO0NN, m1: T1NN, m2: Option<OI2S>| Holder4212 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4220() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|V1_NN|E2_SS",
+            &rows3(|m0: FO0NN, m1: V1NN, m2: E2SS| Holder4220 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4228() -> Vec<String> {
+        check(
+            "main3:H3N1:FO0_NN|V1_NN|T2_NN",
+            &rows3(|m0: FO0NN, m1: V1NN, m2: T2NN| Holder4228 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4236() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|A1_NN|FT2_NNN",
+            &rows3(|m0: FP0NN, m1: A1NN, m2: FT2NNN| Holder4236 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4244() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|A1_SS|A2_SS",
+            &rows3(|m0: FP0NN, m1: A1SS, m2: A2SS| Holder4244 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4252() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|A1_SS|P2_N",
+            &rows3(|m0: FP0NN, m1: A1SS, m2: P2N| Holder4252 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4260() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|E1_NN|FO2_NN",
+            &rows3(|m0: FP0NN, m1: E1NN, m2: FO2NN| Holder4260 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4268() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|E1_NN|V2_NN",
+            &rows3(|m0: FP0NN, m1: E1NN, m2: V2NN| Holder4268 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4276() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|E1_SS|O2_N",
+            &rows3(|m0: FP0NN, m1: E1SS, m2: Option<OI2N>| Holder4276 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4284() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|FO1_NN|E2_NN",
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: E2NN| Holder4284 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4292() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|FO1_NN|P2_S",
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: P2S| Holder4292 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4300() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|FP1_NN|FP2_NN",
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: FP2NN| Holder4300 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4308() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|FT1_NNN|A2_NN",
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: A2NN| Holder4308 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4316() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|FT1_NNN|O2_S",
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: Option<OI2S>| Holder4316 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4324() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|O1_N|E2_SS",
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: E2SS| Holder4324 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4332() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|O1_N|T2_NN",
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: T2NN| Holder4332 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4340() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|O1_S|FT2_NNN",
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: FT2NNN| Holder4340 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4348() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|P1_N|A2_SS",
+            &rows3(|m0: FP0NN, m1: P1N, m2: A2SS| Holder4348 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4356() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|P1_N|P2_N",
+            &rows3(|m0: FP0NN, m1: P1N, m2: P2N| Holder4356 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4364() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|P1_S|FO2_NN",
+            &rows3(|m0: FP0NN, m1: P1S, m2: FO2NN| Holder4364 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder4372() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|P1_S|V2_NN",
+            &rows3(|m0: FP0NN, m1: P1S, m2: V2NN| Holder4372 { own: 7, m0, m1, m2 }),
+            &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder4380() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|T1_NN|O2_N",
+            &rows3(|m0: FP0NN, m1: T1NN, m2: Option<OI2N>| Holder4380 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4388() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|V1_NN|E2_NN",
+            &rows3(|m0: FP0NN, m1: V1NN, m2: E2NN| Holder4388 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4396() -> Vec<String> {
+        check(
+            "main3:H3N1:FP0_NN|V1_NN|P2_S",
+            &rows3(|m0: FP0NN, m1: V1NN, m2: P2S| Holder4396 { own: 7, m0, m1, m2 }),
+            &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder4404() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|A1_NN|FP2_NN",
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: FP2NN| Holder4404 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4412() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|A1_SS|A2_NN",
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: A2NN| Holder4412 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4420() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|A1_SS|O2_S",
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: Option<OI2S>| Holder4420 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4428() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|E1_NN|E2_SS",
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: E2SS| Holder4428 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4436() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|E1_NN|T2_NN",
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: T2NN| Holder4436 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4444() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|E1_SS|FT2_NNN",
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: FT2NNN| Holder4444 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4452() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|FO1_NN|A2_SS",
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: A2SS| Holder4452 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4460() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|FO1_NN|P2_N",
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: P2N| Holder4460 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder4468() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|FP1_NN|FO2_NN",
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: FO2NN| Holder4468 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder4476() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|FP1_NN|V2_NN",
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: V2NN| Holder4476 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4484() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|FT1_NNN|O2_N",
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: Option<OI2N>| Holder4484 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4492() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|O1_N|E2_NN",
+            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: E2NN| Holder4492 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4500() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|O1_N|P2_S",
+            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: P2S| Holder4500 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4508() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|O1_S|FP2_NN",
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: FP2NN| Holder4508 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4516() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|P1_N|A2_NN",
+            &rows3(|m0: FT0NNN, m1: P1N, m2: A2NN| Holder4516 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4524() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|P1_N|O2_S",
+            &rows3(|m0: FT0NNN, m1: P1N, m2: Option<OI2S>| Holder4524 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4532() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|P1_S|E2_SS",
+            &rows3(|m0: FT0NNN, m1: P1S, m2: E2SS| Holder4532 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4540() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|P1_S|T2_NN",
+            &rows3(|m0: FT0NNN, m1: P1S, m2: T2NN| Holder4540 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4548() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|T1_NN|FT2_NNN",
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: FT2NNN| Holder4548 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4556() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|V1_NN|A2_SS",
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: A2SS| Holder4556 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4564() -> Vec<String> {
+        check(
+            "main3:H3N1:FT0_NNN|V1_NN|P2_N",
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: P2N| Holder4564 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4572() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|A1_NN|FO2_NN",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: FO2NN| Holder4572 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4580() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|A1_NN|P2_S nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: P2S| Holder4580 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4588() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|A1_SS|E2_SS nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: E2SS| Holder4588 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4596() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|A1_SS|P2_N nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: P2N| Holder4596 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4604() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|E1_NN|E2_NN nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: E2NN| Holder4604 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4612() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|E1_NN|O2_S nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: Option<OI2S>| Holder4612 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Dot,None", 'E'),
+                ("None,Dot,Some", 'E'),
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Dot,None", 'E'),
+                ("Some,Dot,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4620() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|E1_SS|A2_SS nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: A2SS| Holder4620 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4628() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|E1_SS|O2_N nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: Option<OI2N>| Holder4628 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Dot,None", 'E'),
+                ("None,Dot,Some", 'E'),
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Dot,None", 'E'),
+                ("Some,Dot,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4636() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|FO1_NN|A2_NN",
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: A2NN| Holder4636 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4644() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|FO1_NN|O2_S",
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: Option<OI2S>| Holder4644 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,-,None", 'E'),
+                ("None,-,Some", 'E'),
+                ("Some,-,None", 'E'),
+                ("Some,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4652() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|FP1_NN|E2_SS",
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: E2SS| Holder4652 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4660() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|FP1_NN|T2_NN",
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: T2NN| Holder4660 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4668() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|FT1_NNN|FT2_NNN",
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: FT2NNN| Holder4668 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4676() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|O1_N|A2_SS nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: A2SS| Holder4676 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4684() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|O1_N|O2_N nonstrict",
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1N>, m2: Option<OI2N>| Holder4684 {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
+            &[
+                ("None,None,None", 'E'),
+                ("None,None,Some", 'E'),
+                ("None,Some,None", 'E'),
+                ("None,Some,Some", 'E'),
+                ("Some,None,None", 'E'),
+                ("Some,None,Some", 'E'),
+                ("Some,Some,None", 'E'),
+                ("Some,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4692() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|O1_S|A2_NN nonstrict",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: A2NN| Holder4692 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4700() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|O1_S|FT2_NNN",
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1S>, m2: FT2NNN| Holder4700 { own: 7, m0, m1, m2 },
+            ),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4708() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|O1_S|V2_SS",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: V2SS| Holder4708 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Rect", 'R'),
+                ("None,None,Wrap", 'R'),
+                ("None,Some,Rect", 'R'),
+                ("None,Some,Wrap", 'R'),
+                ("Some,None,Rect", 'R'),
+                ("Some,None,Wrap", 'R'),
+                ("Some,Some,Rect", 'R'),
+                ("Some,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder4716() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|P1_N|FP2_SS",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: FP2SS| Holder4716 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder4724() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|P1_N|V2_NN",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: V2NN| Holder4724 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4732() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|P1_S|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: FP2NN| Holder4732 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder4740() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|P1_S|T2_SS",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: T2SS| Holder4740 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'R'),
+                ("None,-,Rect", 'R'),
+                ("None,-,Wrap", 'R'),
+                ("Some,-,Dot", 'R'),
+                ("Some,-,Rect", 'R'),
+                ("Some,-,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder4748() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|T1_NN|FP2_NN",
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: FP2NN| Holder4748 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4756() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|V1_NN|A2_NN",
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: A2NN| Holder4756 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4764() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_N|V1_NN|O2_S",
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: Option<OI2S>| Holder4764 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4772() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|A1_NN|E2_SS nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: E2SS| Holder4772 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4780() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|A1_NN|P2_N nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: P2N| Holder4780 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4788() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|A1_SS|E2_NN nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: E2NN| Holder4788 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4796() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|A1_SS|O2_S nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: Option<OI2S>| Holder4796 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Dot,None", 'E'),
+                ("None,Dot,Some", 'E'),
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Dot,None", 'E'),
+                ("Some,Dot,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4804() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|E1_NN|A2_SS nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: A2SS| Holder4804 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4812() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|E1_NN|O2_N nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: Option<OI2N>| Holder4812 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Dot,None", 'E'),
+                ("None,Dot,Some", 'E'),
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Dot,None", 'E'),
+                ("Some,Dot,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4820() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|E1_SS|A2_NN nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: A2NN| Holder4820 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4828() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|E1_SS|FT2_NNN",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: FT2NNN| Holder4828 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Dot", 'E'),
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Dot", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Dot", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Dot", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Dot", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Dot", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4836() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|E1_SS|V2_SS",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: V2SS| Holder4836 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'R'),
+                ("None,Dot,Wrap", 'R'),
+                ("None,Rect,Rect", 'R'),
+                ("None,Rect,Wrap", 'R'),
+                ("None,Wrap,Rect", 'R'),
+                ("None,Wrap,Wrap", 'R'),
+                ("Some,Dot,Rect", 'R'),
+                ("Some,Dot,Wrap", 'R'),
+                ("Some,Rect,Rect", 'R'),
+                ("Some,Rect,Wrap", 'R'),
+                ("Some,Wrap,Rect", 'R'),
+                ("Some,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder4844() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|FO1_NN|O2_N",
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: Option<OI2N>| Holder4844 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,-,None", 'E'),
+                ("None,-,Some", 'E'),
+                ("Some,-,None", 'E'),
+                ("Some,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4852() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|FP1_NN|E2_NN",
+            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: E2NN| Holder4852 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4860() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|FP1_NN|P2_S",
+            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: P2S| Holder4860 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder4868() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|FT1_NNN|FP2_NN",
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: FP2NN| Holder4868 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4876() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|O1_N|A2_NN nonstrict",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: A2NN| Holder4876 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4884() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|O1_N|FT2_NNN",
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1N>, m2: FT2NNN| Holder4884 { own: 7, m0, m1, m2 },
+            ),
+            &[
+                ("None,None,Dot", 'E'),
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Dot", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Dot", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Dot", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4892() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|O1_N|V2_SS",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: V2SS| Holder4892 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Rect", 'R'),
+                ("None,None,Wrap", 'R'),
+                ("None,Some,Rect", 'R'),
+                ("None,Some,Wrap", 'R'),
+                ("Some,None,Rect", 'R'),
+                ("Some,None,Wrap", 'R'),
+                ("Some,Some,Rect", 'R'),
+                ("Some,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder4900() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|O1_S|FP2_SS",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: FP2SS| Holder4900 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder4908() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|O1_S|V2_NN",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: V2NN| Holder4908 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,None,Rect", 'E'),
+                ("None,None,Wrap", 'E'),
+                ("None,Some,Rect", 'E'),
+                ("None,Some,Wrap", 'E'),
+                ("Some,None,Rect", 'E'),
+                ("Some,None,Wrap", 'E'),
+                ("Some,Some,Rect", 'E'),
+                ("Some,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4916() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|P1_N|FP2_NN",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: FP2NN| Holder4916 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'E'), ("Some,-,-", 'E')],
+        )
+    }
+
+    fn holder4924() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|P1_N|T2_SS",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: T2SS| Holder4924 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'R'),
+                ("None,-,Rect", 'R'),
+                ("None,-,Wrap", 'R'),
+                ("Some,-,Dot", 'R'),
+                ("Some,-,Rect", 'R'),
+                ("Some,-,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder4932() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|P1_S|FO2_SS",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: FO2SS| Holder4932 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder4940() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|P1_S|T2_NN",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: T2NN| Holder4940 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,-,Dot", 'E'),
+                ("None,-,Rect", 'E'),
+                ("None,-,Wrap", 'E'),
+                ("Some,-,Dot", 'E'),
+                ("Some,-,Rect", 'E'),
+                ("Some,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4948() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|T1_NN|FO2_NN",
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: FO2NN| Holder4948 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'E'),
+                ("None,Rect,-", 'E'),
+                ("None,Wrap,-", 'E'),
+                ("Some,Dot,-", 'E'),
+                ("Some,Rect,-", 'E'),
+                ("Some,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder4956() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|T1_NN|V2_NN",
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: V2NN| Holder4956 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,Rect", 'E'),
+                ("None,Dot,Wrap", 'E'),
+                ("None,Rect,Rect", 'E'),
+                ("None,Rect,Wrap", 'E'),
+                ("None,Wrap,Rect", 'E'),
+                ("None,Wrap,Wrap", 'E'),
+                ("Some,Dot,Rect", 'E'),
+                ("Some,Dot,Wrap", 'E'),
+                ("Some,Rect,Rect", 'E'),
+                ("Some,Rect,Wrap", 'E'),
+                ("Some,Wrap,Rect", 'E'),
+                ("Some,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4964() -> Vec<String> {
+        check(
+            "main3:H3N1:O0_S|V1_NN|O2_N",
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: Option<OI2N>| Holder4964 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("None,Rect,None", 'E'),
+                ("None,Rect,Some", 'E'),
+                ("None,Wrap,None", 'E'),
+                ("None,Wrap,Some", 'E'),
+                ("Some,Rect,None", 'E'),
+                ("Some,Rect,Some", 'E'),
+                ("Some,Wrap,None", 'E'),
+                ("Some,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4972() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|A1_NN|E2_NN nonstrict",
+            &rows3(|m0: P0N, m1: A1NN, m2: E2NN| Holder4972 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4980() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|A1_NN|O2_S nonstrict",
+            &rows3(|m0: P0N, m1: A1NN, m2: Option<OI2S>| Holder4980 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder4988() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|A1_SS|A2_SS nonstrict",
+            &rows3(|m0: P0N, m1: A1SS, m2: A2SS| Holder4988 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder4996() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|A1_SS|O2_N nonstrict",
+            &rows3(|m0: P0N, m1: A1SS, m2: Option<OI2N>| Holder4996 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5004() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|E1_NN|A2_NN nonstrict",
+            &rows3(|m0: P0N, m1: E1NN, m2: A2NN| Holder5004 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5012() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|E1_NN|FT2_NNN",
+            &rows3(|m0: P0N, m1: E1NN, m2: FT2NNN| Holder5012 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5020() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|E1_NN|V2_SS",
+            &rows3(|m0: P0N, m1: E1NN, m2: V2SS| Holder5020 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'R'),
+                ("-,Dot,Wrap", 'R'),
+                ("-,Rect,Rect", 'R'),
+                ("-,Rect,Wrap", 'R'),
+                ("-,Wrap,Rect", 'R'),
+                ("-,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder5028() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|E1_SS|FP2_SS",
+            &rows3(|m0: P0N, m1: E1SS, m2: FP2SS| Holder5028 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder5036() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|E1_SS|V2_NN",
+            &rows3(|m0: P0N, m1: E1SS, m2: V2NN| Holder5036 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5044() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|FO1_NN|FT2_NNN",
+            &rows3(|m0: P0N, m1: FO1NN, m2: FT2NNN| Holder5044 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder5052() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|FP1_NN|A2_SS",
+            &rows3(|m0: P0N, m1: FP1NN, m2: A2SS| Holder5052 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder5060() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|FP1_NN|P2_N",
+            &rows3(|m0: P0N, m1: FP1NN, m2: P2N| Holder5060 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5068() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|FT1_NNN|FO2_NN",
+            &rows3(|m0: P0N, m1: FT1NNN, m2: FO2NN| Holder5068 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder5076() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|FT1_NNN|V2_NN",
+            &rows3(|m0: P0N, m1: FT1NNN, m2: V2NN| Holder5076 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5084() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|O1_N|FP2_SS",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: FP2SS| Holder5084 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder5092() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|O1_N|V2_NN",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: V2NN| Holder5092 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5100() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|O1_S|FP2_NN",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: FP2NN| Holder5100 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder5108() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|O1_S|T2_SS",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: T2SS| Holder5108 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'R'),
+                ("-,None,Rect", 'R'),
+                ("-,None,Wrap", 'R'),
+                ("-,Some,Dot", 'R'),
+                ("-,Some,Rect", 'R'),
+                ("-,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder5116() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|P1_N|FO2_SS",
+            &rows3(|m0: P0N, m1: P1N, m2: FO2SS| Holder5116 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder5124() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|P1_N|T2_NN",
+            &rows3(|m0: P0N, m1: P1N, m2: T2NN| Holder5124 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder5132() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|P1_S|FO2_NN",
+            &rows3(|m0: P0N, m1: P1S, m2: FO2NN| Holder5132 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5140() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|P1_S|P2_S nonstrict",
+            &rows3(|m0: P0N, m1: P1S, m2: P2S| Holder5140 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5148() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|T1_NN|E2_SS",
+            &rows3(|m0: P0N, m1: T1NN, m2: E2SS| Holder5148 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5156() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|T1_NN|T2_NN",
+            &rows3(|m0: P0N, m1: T1NN, m2: T2NN| Holder5156 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5164() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_N|V1_NN|FT2_NNN",
+            &rows3(|m0: P0N, m1: V1NN, m2: FT2NNN| Holder5164 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5172() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|A1_NN|A2_SS nonstrict",
+            &rows3(|m0: P0S, m1: A1NN, m2: A2SS| Holder5172 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5180() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|A1_NN|O2_N nonstrict",
+            &rows3(|m0: P0S, m1: A1NN, m2: Option<OI2N>| Holder5180 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,None", 'E'),
+                ("-,Dot,Some", 'E'),
+                ("-,Rect,None", 'E'),
+                ("-,Rect,Some", 'E'),
+                ("-,Wrap,None", 'E'),
+                ("-,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5188() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|A1_SS|A2_NN nonstrict",
+            &rows3(|m0: P0S, m1: A1SS, m2: A2NN| Holder5188 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5196() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|A1_SS|FT2_NNN",
+            &rows3(|m0: P0S, m1: A1SS, m2: FT2NNN| Holder5196 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5204() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|A1_SS|V2_SS",
+            &rows3(|m0: P0S, m1: A1SS, m2: V2SS| Holder5204 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'R'),
+                ("-,Dot,Wrap", 'R'),
+                ("-,Rect,Rect", 'R'),
+                ("-,Rect,Wrap", 'R'),
+                ("-,Wrap,Rect", 'R'),
+                ("-,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder5212() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|E1_NN|FP2_SS",
+            &rows3(|m0: P0S, m1: E1NN, m2: FP2SS| Holder5212 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder5220() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|E1_NN|V2_NN",
+            &rows3(|m0: P0S, m1: E1NN, m2: V2NN| Holder5220 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5228() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|E1_SS|FP2_NN",
+            &rows3(|m0: P0S, m1: E1SS, m2: FP2NN| Holder5228 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder5236() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|E1_SS|T2_SS",
+            &rows3(|m0: P0S, m1: E1SS, m2: T2SS| Holder5236 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'R'),
+                ("-,Dot,Rect", 'R'),
+                ("-,Dot,Wrap", 'R'),
+                ("-,Rect,Dot", 'R'),
+                ("-,Rect,Rect", 'R'),
+                ("-,Rect,Wrap", 'R'),
+                ("-,Wrap,Dot", 'R'),
+                ("-,Wrap,Rect", 'R'),
+                ("-,Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder5244() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|FO1_NN|FP2_NN",
+            &rows3(|m0: P0S, m1: FO1NN, m2: FP2NN| Holder5244 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5252() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|FP1_NN|A2_NN",
+            &rows3(|m0: P0S, m1: FP1NN, m2: A2NN| Holder5252 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder5260() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|FP1_NN|O2_S",
+            &rows3(|m0: P0S, m1: FP1NN, m2: Option<OI2S>| Holder5260 { own: 7, m0, m1, m2 }),
+            &[("-,-,None", 'E'), ("-,-,Some", 'E')],
+        )
+    }
+
+    fn holder5268() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|FT1_NNN|E2_SS",
+            &rows3(|m0: P0S, m1: FT1NNN, m2: E2SS| Holder5268 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5276() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|FT1_NNN|T2_NN",
+            &rows3(|m0: P0S, m1: FT1NNN, m2: T2NN| Holder5276 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5284() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|O1_N|FP2_NN",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: FP2NN| Holder5284 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'E'), ("-,Some,-", 'E')],
+        )
+    }
+
+    fn holder5292() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|O1_N|T2_SS",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: T2SS| Holder5292 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'R'),
+                ("-,None,Rect", 'R'),
+                ("-,None,Wrap", 'R'),
+                ("-,Some,Dot", 'R'),
+                ("-,Some,Rect", 'R'),
+                ("-,Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder5300() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|O1_S|FO2_SS",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: FO2SS| Holder5300 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder5308() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|O1_S|T2_NN",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: T2NN| Holder5308 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,None,Dot", 'E'),
+                ("-,None,Rect", 'E'),
+                ("-,None,Wrap", 'E'),
+                ("-,Some,Dot", 'E'),
+                ("-,Some,Rect", 'E'),
+                ("-,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5316() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|P1_N|FO2_NN",
+            &rows3(|m0: P0S, m1: P1N, m2: FO2NN| Holder5316 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5324() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|P1_N|P2_S nonstrict",
+            &rows3(|m0: P0S, m1: P1N, m2: P2S| Holder5324 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5332() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|P1_S|E2_SS nonstrict",
+            &rows3(|m0: P0S, m1: P1S, m2: E2SS| Holder5332 { own: 7, m0, m1, m2 }),
+            &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
+        )
+    }
+
+    fn holder5340() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|P1_S|P2_N nonstrict",
+            &rows3(|m0: P0S, m1: P1S, m2: P2N| Holder5340 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'E')],
+        )
+    }
+
+    fn holder5348() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|T1_NN|E2_NN",
+            &rows3(|m0: P0S, m1: T1NN, m2: E2NN| Holder5348 { own: 7, m0, m1, m2 }),
+            &[
+                ("-,Dot,Dot", 'E'),
+                ("-,Dot,Rect", 'E'),
+                ("-,Dot,Wrap", 'E'),
+                ("-,Rect,Dot", 'E'),
+                ("-,Rect,Rect", 'E'),
+                ("-,Rect,Wrap", 'E'),
+                ("-,Wrap,Dot", 'E'),
+                ("-,Wrap,Rect", 'E'),
+                ("-,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5356() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|T1_NN|P2_S",
+            &rows3(|m0: P0S, m1: T1NN, m2: P2S| Holder5356 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder5364() -> Vec<String> {
+        check(
+            "main3:H3N1:P0_S|V1_NN|FP2_NN",
+            &rows3(|m0: P0S, m1: V1NN, m2: FP2NN| Holder5364 { own: 7, m0, m1, m2 }),
+            &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
+        )
+    }
+
+    fn holder5372() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|A1_NN|A2_NN",
+            &rows3(|m0: T0NN, m1: A1NN, m2: A2NN| Holder5372 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5380() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|A1_NN|O2_S",
+            &rows3(|m0: T0NN, m1: A1NN, m2: Option<OI2S>| Holder5380 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,None", 'E'),
+                ("Dot,Dot,Some", 'E'),
+                ("Dot,Rect,None", 'E'),
+                ("Dot,Rect,Some", 'E'),
+                ("Dot,Wrap,None", 'E'),
+                ("Dot,Wrap,Some", 'E'),
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5388() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|A1_SS|E2_SS",
+            &rows3(|m0: T0NN, m1: A1SS, m2: E2SS| Holder5388 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5396() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|A1_SS|T2_NN",
+            &rows3(|m0: T0NN, m1: A1SS, m2: T2NN| Holder5396 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5404() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|E1_NN|FT2_NNN",
+            &rows3(|m0: T0NN, m1: E1NN, m2: FT2NNN| Holder5404 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5412() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|E1_SS|A2_SS",
+            &rows3(|m0: T0NN, m1: E1SS, m2: A2SS| Holder5412 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5420() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|E1_SS|P2_N",
+            &rows3(|m0: T0NN, m1: E1SS, m2: P2N| Holder5420 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5428() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|FO1_NN|FO2_NN",
+            &rows3(|m0: T0NN, m1: FO1NN, m2: FO2NN| Holder5428 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder5436() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|FO1_NN|V2_NN",
+            &rows3(|m0: T0NN, m1: FO1NN, m2: V2NN| Holder5436 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5444() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|FP1_NN|O2_N",
+            &rows3(|m0: T0NN, m1: FP1NN, m2: Option<OI2N>| Holder5444 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,None", 'E'),
+                ("Dot,-,Some", 'E'),
+                ("Rect,-,None", 'E'),
+                ("Rect,-,Some", 'E'),
+                ("Wrap,-,None", 'E'),
+                ("Wrap,-,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5452() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|FT1_NNN|E2_NN",
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: E2NN| Holder5452 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5460() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|FT1_NNN|P2_S",
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: P2S| Holder5460 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5468() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|O1_N|FP2_NN",
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: FP2NN| Holder5468 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'E'),
+                ("Dot,Some,-", 'E'),
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5476() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|O1_S|A2_NN",
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: A2NN| Holder5476 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,Dot", 'E'),
+                ("Dot,None,Rect", 'E'),
+                ("Dot,None,Wrap", 'E'),
+                ("Dot,Some,Dot", 'E'),
+                ("Dot,Some,Rect", 'E'),
+                ("Dot,Some,Wrap", 'E'),
+                ("Rect,None,Dot", 'E'),
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Dot", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Dot", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Dot", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5484() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|O1_S|O2_S",
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder5484 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("Dot,None,None", 'E'),
+                ("Dot,None,Some", 'E'),
+                ("Dot,Some,None", 'E'),
+                ("Dot,Some,Some", 'E'),
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5492() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|P1_N|E2_SS",
+            &rows3(|m0: T0NN, m1: P1N, m2: E2SS| Holder5492 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5500() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|P1_N|T2_NN",
+            &rows3(|m0: T0NN, m1: P1N, m2: T2NN| Holder5500 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5508() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|P1_S|FT2_NNN",
+            &rows3(|m0: T0NN, m1: P1S, m2: FT2NNN| Holder5508 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,-,Dot", 'E'),
+                ("Dot,-,Rect", 'E'),
+                ("Dot,-,Wrap", 'E'),
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5516() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|T1_NN|A2_SS",
+            &rows3(|m0: T0NN, m1: T1NN, m2: A2SS| Holder5516 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,Dot", 'E'),
+                ("Dot,Dot,Rect", 'E'),
+                ("Dot,Dot,Wrap", 'E'),
+                ("Dot,Rect,Dot", 'E'),
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Dot", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5524() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|T1_NN|P2_N",
+            &rows3(|m0: T0NN, m1: T1NN, m2: P2N| Holder5524 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'E'),
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5532() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|V1_NN|FO2_NN",
+            &rows3(|m0: T0NN, m1: V1NN, m2: FO2NN| Holder5532 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,-", 'E'),
+                ("Dot,Wrap,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5540() -> Vec<String> {
+        check(
+            "main3:H3N1:T0_NN|V1_NN|V2_NN",
+            &rows3(|m0: T0NN, m1: V1NN, m2: V2NN| Holder5540 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Rect,Rect", 'E'),
+                ("Dot,Rect,Wrap", 'E'),
+                ("Dot,Wrap,Rect", 'E'),
+                ("Dot,Wrap,Wrap", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5548() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|A1_NN|O2_N",
+            &rows3(|m0: V0NN, m1: A1NN, m2: Option<OI2N>| Holder5548 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5556() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|A1_SS|E2_NN",
+            &rows3(|m0: V0NN, m1: A1SS, m2: E2NN| Holder5556 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5564() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|A1_SS|P2_S",
+            &rows3(|m0: V0NN, m1: A1SS, m2: P2S| Holder5564 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5572() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|E1_NN|FP2_NN",
+            &rows3(|m0: V0NN, m1: E1NN, m2: FP2NN| Holder5572 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5580() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|E1_SS|A2_NN",
+            &rows3(|m0: V0NN, m1: E1SS, m2: A2NN| Holder5580 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5588() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|E1_SS|O2_S",
+            &rows3(|m0: V0NN, m1: E1SS, m2: Option<OI2S>| Holder5588 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5596() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|FO1_NN|E2_SS",
+            &rows3(|m0: V0NN, m1: FO1NN, m2: E2SS| Holder5596 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5604() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|FO1_NN|T2_NN",
+            &rows3(|m0: V0NN, m1: FO1NN, m2: T2NN| Holder5604 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5612() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|FP1_NN|FT2_NNN",
+            &rows3(|m0: V0NN, m1: FP1NN, m2: FT2NNN| Holder5612 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5620() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|FT1_NNN|A2_SS",
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: A2SS| Holder5620 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5628() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|FT1_NNN|P2_N",
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: P2N| Holder5628 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,-", 'E'),
+                ("Rect,Rect,-", 'E'),
+                ("Rect,Wrap,-", 'E'),
+                ("Wrap,Dot,-", 'E'),
+                ("Wrap,Rect,-", 'E'),
+                ("Wrap,Wrap,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5636() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|O1_N|FO2_NN",
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: FO2NN| Holder5636 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,None,-", 'E'),
+                ("Rect,Some,-", 'E'),
+                ("Wrap,None,-", 'E'),
+                ("Wrap,Some,-", 'E'),
+            ],
+        )
+    }
+
+    fn holder5644() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|O1_N|V2_NN",
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: V2NN| Holder5644 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,None,Rect", 'E'),
+                ("Rect,None,Wrap", 'E'),
+                ("Rect,Some,Rect", 'E'),
+                ("Rect,Some,Wrap", 'E'),
+                ("Wrap,None,Rect", 'E'),
+                ("Wrap,None,Wrap", 'E'),
+                ("Wrap,Some,Rect", 'E'),
+                ("Wrap,Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5652() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|O1_S|O2_N",
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: Option<OI2N>| Holder5652 {
+                own: 7,
+                m0,
+                m1,
+                m2,
+            }),
+            &[
+                ("Rect,None,None", 'E'),
+                ("Rect,None,Some", 'E'),
+                ("Rect,Some,None", 'E'),
+                ("Rect,Some,Some", 'E'),
+                ("Wrap,None,None", 'E'),
+                ("Wrap,None,Some", 'E'),
+                ("Wrap,Some,None", 'E'),
+                ("Wrap,Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5660() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|P1_N|E2_NN",
+            &rows3(|m0: V0NN, m1: P1N, m2: E2NN| Holder5660 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,-,Dot", 'E'),
+                ("Rect,-,Rect", 'E'),
+                ("Rect,-,Wrap", 'E'),
+                ("Wrap,-,Dot", 'E'),
+                ("Wrap,-,Rect", 'E'),
+                ("Wrap,-,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5668() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|P1_N|P2_S",
+            &rows3(|m0: V0NN, m1: P1N, m2: P2S| Holder5668 { own: 7, m0, m1, m2 }),
+            &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder5676() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|P1_S|FP2_NN",
+            &rows3(|m0: V0NN, m1: P1S, m2: FP2NN| Holder5676 { own: 7, m0, m1, m2 }),
+            &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
+        )
+    }
+
+    fn holder5684() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|T1_NN|A2_NN",
+            &rows3(|m0: V0NN, m1: T1NN, m2: A2NN| Holder5684 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,Dot", 'E'),
+                ("Rect,Dot,Rect", 'E'),
+                ("Rect,Dot,Wrap", 'E'),
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Dot,Dot", 'E'),
+                ("Wrap,Dot,Rect", 'E'),
+                ("Wrap,Dot,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5692() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|T1_NN|O2_S",
+            &rows3(|m0: V0NN, m1: T1NN, m2: Option<OI2S>| Holder5692 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Dot,None", 'E'),
+                ("Rect,Dot,Some", 'E'),
+                ("Rect,Rect,None", 'E'),
+                ("Rect,Rect,Some", 'E'),
+                ("Rect,Wrap,None", 'E'),
+                ("Rect,Wrap,Some", 'E'),
+                ("Wrap,Dot,None", 'E'),
+                ("Wrap,Dot,Some", 'E'),
+                ("Wrap,Rect,None", 'E'),
+                ("Wrap,Rect,Some", 'E'),
+                ("Wrap,Wrap,None", 'E'),
+                ("Wrap,Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder5700() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|V1_NN|E2_SS",
+            &rows3(|m0: V0NN, m1: V1NN, m2: E2SS| Holder5700 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5708() -> Vec<String> {
+        check(
+            "main3:H3N1:V0_NN|V1_NN|T2_NN",
+            &rows3(|m0: V0NN, m1: V1NN, m2: T2NN| Holder5708 { own: 7, m0, m1, m2 }),
+            &[
+                ("Rect,Rect,Dot", 'E'),
+                ("Rect,Rect,Rect", 'E'),
+                ("Rect,Rect,Wrap", 'E'),
+                ("Rect,Wrap,Dot", 'E'),
+                ("Rect,Wrap,Rect", 'E'),
+                ("Rect,Wrap,Wrap", 'E'),
+                ("Wrap,Rect,Dot", 'E'),
+                ("Wrap,Rect,Rect", 'E'),
+                ("Wrap,Rect,Wrap", 'E'),
+                ("Wrap,Wrap,Dot", 'E'),
+                ("Wrap,Wrap,Rect", 'E'),
+                ("Wrap,Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder5716() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|A1_NN|P2_N",
+            &rows3(|m0: A0NN, m1: A1NN, m2: P2N| Holder5716 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5724() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|A1_SS|P2_N",
+            &rows3(|m0: A0NN, m1: A1SS, m2: P2N| Holder5724 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5732() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|E1_NN|P2_N",
+            &rows3(|m0: A0NN, m1: E1NN, m2: P2N| Holder5732 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5740() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|E1_SS|P2_N",
+            &rows3(|m0: A0NN, m1: E1SS, m2: P2N| Holder5740 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5748() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|O1_N|P2_N",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: P2N| Holder5748 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5756() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|O1_S|P2_N",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: P2N| Holder5756 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5764() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|P1_N|P2_N",
+            &rows3(|m0: A0NN, m1: P1N, m2: P2N| Holder5764 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5772() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_NN|P1_S|P2_N",
+            &rows3(|m0: A0NN, m1: P1S, m2: P2N| Holder5772 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5780() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|A1_NN|P2_N",
+            &rows3(|m0: A0SS, m1: A1NN, m2: P2N| Holder5780 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5788() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|A1_SS|P2_N",
+            &rows3(|m0: A0SS, m1: A1SS, m2: P2N| Holder5788 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5796() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|E1_NN|P2_N",
+            &rows3(|m0: A0SS, m1: E1NN, m2: P2N| Holder5796 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5804() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|E1_SS|P2_N",
+            &rows3(|m0: A0SS, m1: E1SS, m2: P2N| Holder5804 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5812() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|O1_N|P2_N",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: P2N| Holder5812 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5820() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|O1_S|P2_N",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: P2N| Holder5820 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5828() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|P1_N|P2_N",
+            &rows3(|m0: A0SS, m1: P1N, m2: P2N| Holder5828 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5836() -> Vec<String> {
+        check(
+            "main3:H3S0:A0_SS|P1_S|P2_N",
+            &rows3(|m0: A0SS, m1: P1S, m2: P2N| Holder5836 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5844() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|A1_NN|P2_N",
+            &rows3(|m0: E0NN, m1: A1NN, m2: P2N| Holder5844 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5852() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|A1_SS|P2_N",
+            &rows3(|m0: E0NN, m1: A1SS, m2: P2N| Holder5852 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5860() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|E1_NN|P2_N",
+            &rows3(|m0: E0NN, m1: E1NN, m2: P2N| Holder5860 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5868() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|E1_SS|P2_N",
+            &rows3(|m0: E0NN, m1: E1SS, m2: P2N| Holder5868 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5876() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|O1_N|P2_N",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: P2N| Holder5876 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5884() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|O1_S|P2_N",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: P2N| Holder5884 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5892() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|P1_N|P2_N",
+            &rows3(|m0: E0NN, m1: P1N, m2: P2N| Holder5892 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5900() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_NN|P1_S|P2_N",
+            &rows3(|m0: E0NN, m1: P1S, m2: P2N| Holder5900 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5908() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|A1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: A1NN, m2: P2N| Holder5908 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5916() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|A1_SS|P2_N",
+            &rows3(|m0: E0SS, m1: A1SS, m2: P2N| Holder5916 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5924() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|E1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: E1NN, m2: P2N| Holder5924 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5932() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|E1_SS|P2_N",
+            &rows3(|m0: E0SS, m1: E1SS, m2: P2N| Holder5932 { m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5940() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|O1_N|P2_N",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: P2N| Holder5940 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5948() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|O1_S|P2_N",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: P2N| Holder5948 { m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5956() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|P1_N|P2_N",
+            &rows3(|m0: E0SS, m1: P1N, m2: P2N| Holder5956 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5964() -> Vec<String> {
+        check(
+            "main3:H3S0:E0_SS|P1_S|P2_N",
+            &rows3(|m0: E0SS, m1: P1S, m2: P2N| Holder5964 { m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder5972() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|A1_NN|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: P2N| Holder5972 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5980() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|A1_SS|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: P2N| Holder5980 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5988() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|E1_NN|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: P2N| Holder5988 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder5996() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|E1_SS|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: P2N| Holder5996 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6004() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|O1_N|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: P2N| Holder6004 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6012() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|O1_S|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: P2N| Holder6012 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6020() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|P1_N|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: P2N| Holder6020 { m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6028() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_N|P1_S|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: P2N| Holder6028 { m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6036() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|A1_NN|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: P2N| Holder6036 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6044() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|A1_SS|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: P2N| Holder6044 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6052() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|E1_NN|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: P2N| Holder6052 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6060() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|E1_SS|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: P2N| Holder6060 { m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6068() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|O1_N|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: P2N| Holder6068 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6076() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|O1_S|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: P2N| Holder6076 { m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6084() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|P1_N|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: P2N| Holder6084 { m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6092() -> Vec<String> {
+        check(
+            "main3:H3S0:O0_S|P1_S|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: P2N| Holder6092 { m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6100() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|A1_NN|P2_N",
+            &rows3(|m0: P0N, m1: A1NN, m2: P2N| Holder6100 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6108() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|A1_SS|P2_N",
+            &rows3(|m0: P0N, m1: A1SS, m2: P2N| Holder6108 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6116() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|E1_NN|P2_N",
+            &rows3(|m0: P0N, m1: E1NN, m2: P2N| Holder6116 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6124() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|E1_SS|P2_N",
+            &rows3(|m0: P0N, m1: E1SS, m2: P2N| Holder6124 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6132() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|O1_N|P2_N",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: P2N| Holder6132 { m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6140() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|O1_S|P2_N",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: P2N| Holder6140 { m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6148() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|P1_N|P2_N",
+            &rows3(|m0: P0N, m1: P1N, m2: P2N| Holder6148 { m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6156() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_N|P1_S|P2_N",
+            &rows3(|m0: P0N, m1: P1S, m2: P2N| Holder6156 { m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6164() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|A1_NN|P2_N",
+            &rows3(|m0: P0S, m1: A1NN, m2: P2N| Holder6164 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6172() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|A1_SS|P2_N",
+            &rows3(|m0: P0S, m1: A1SS, m2: P2N| Holder6172 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6180() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|E1_NN|P2_N",
+            &rows3(|m0: P0S, m1: E1NN, m2: P2N| Holder6180 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6188() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|E1_SS|P2_N",
+            &rows3(|m0: P0S, m1: E1SS, m2: P2N| Holder6188 { m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6196() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|O1_N|P2_N",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: P2N| Holder6196 { m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6204() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|O1_S|P2_N",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: P2N| Holder6204 { m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6212() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|P1_N|P2_N",
+            &rows3(|m0: P0S, m1: P1N, m2: P2N| Holder6212 { m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6220() -> Vec<String> {
+        check(
+            "main3:H3S0:P0_S|P1_S|P2_N",
+            &rows3(|m0: P0S, m1: P1S, m2: P2N| Holder6220 { m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6228() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|A1_NN|P2_N",
+            &rows3(|m0: A0NN, m1: A1NN, m2: P2N| Holder6228 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6236() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|A1_SS|P2_N",
+            &rows3(|m0: A0NN, m1: A1SS, m2: P2N| Holder6236 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6244() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|E1_NN|P2_N",
+            &rows3(|m0: A0NN, m1: E1NN, m2: P2N| Holder6244 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6252() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|E1_SS|P2_N",
+            &rows3(|m0: A0NN, m1: E1SS, m2: P2N| Holder6252 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6260() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|O1_N|P2_N",
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: P2N| Holder6260 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6268() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|O1_S|P2_N",
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: P2N| Holder6268 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6276() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|P1_N|P2_N",
+            &rows3(|m0: A0NN, m1: P1N, m2: P2N| Holder6276 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6284() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_NN|P1_S|P2_N",
+            &rows3(|m0: A0NN, m1: P1S, m2: P2N| Holder6284 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6292() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|A1_NN|P2_N",
+            &rows3(|m0: A0SS, m1: A1NN, m2: P2N| Holder6292 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6300() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|A1_SS|P2_N",
+            &rows3(|m0: A0SS, m1: A1SS, m2: P2N| Holder6300 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6308() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|E1_NN|P2_N",
+            &rows3(|m0: A0SS, m1: E1NN, m2: P2N| Holder6308 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6316() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|E1_SS|P2_N",
+            &rows3(|m0: A0SS, m1: E1SS, m2: P2N| Holder6316 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6324() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|O1_N|P2_N",
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: P2N| Holder6324 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6332() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|O1_S|P2_N",
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: P2N| Holder6332 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6340() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|P1_N|P2_N",
+            &rows3(|m0: A0SS, m1: P1N, m2: P2N| Holder6340 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6348() -> Vec<String> {
+        check(
+            "main3:H3S1:A0_SS|P1_S|P2_N",
+            &rows3(|m0: A0SS, m1: P1S, m2: P2N| Holder6348 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6356() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|A1_NN|P2_N",
+            &rows3(|m0: E0NN, m1: A1NN, m2: P2N| Holder6356 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6364() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|A1_SS|P2_N",
+            &rows3(|m0: E0NN, m1: A1SS, m2: P2N| Holder6364 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6372() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|E1_NN|P2_N",
+            &rows3(|m0: E0NN, m1: E1NN, m2: P2N| Holder6372 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6380() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|E1_SS|P2_N",
+            &rows3(|m0: E0NN, m1: E1SS, m2: P2N| Holder6380 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6388() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|O1_N|P2_N",
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: P2N| Holder6388 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6396() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|O1_S|P2_N",
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: P2N| Holder6396 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6404() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|P1_N|P2_N",
+            &rows3(|m0: E0NN, m1: P1N, m2: P2N| Holder6404 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6412() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_NN|P1_S|P2_N",
+            &rows3(|m0: E0NN, m1: P1S, m2: P2N| Holder6412 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6420() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|A1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: A1NN, m2: P2N| Holder6420 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6428() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|A1_SS|P2_N",
+            &rows3(|m0: E0SS, m1: A1SS, m2: P2N| Holder6428 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6436() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|E1_NN|P2_N",
+            &rows3(|m0: E0SS, m1: E1NN, m2: P2N| Holder6436 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6444() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|E1_SS|P2_N",
+            &rows3(|m0: E0SS, m1: E1SS, m2: P2N| Holder6444 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,Dot,-", 'R'),
+                ("Dot,Rect,-", 'R'),
+                ("Dot,Wrap,-", 'R'),
+                ("Rect,Dot,-", 'R'),
+                ("Rect,Rect,-", 'R'),
+                ("Rect,Wrap,-", 'R'),
+                ("Wrap,Dot,-", 'R'),
+                ("Wrap,Rect,-", 'R'),
+                ("Wrap,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6452() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|O1_N|P2_N",
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: P2N| Holder6452 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6460() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|O1_S|P2_N",
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: P2N| Holder6460 { own: 7, m0, m1, m2 }),
+            &[
+                ("Dot,None,-", 'R'),
+                ("Dot,Some,-", 'R'),
+                ("Rect,None,-", 'R'),
+                ("Rect,Some,-", 'R'),
+                ("Wrap,None,-", 'R'),
+                ("Wrap,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6468() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|P1_N|P2_N",
+            &rows3(|m0: E0SS, m1: P1N, m2: P2N| Holder6468 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6476() -> Vec<String> {
+        check(
+            "main3:H3S1:E0_SS|P1_S|P2_N",
+            &rows3(|m0: E0SS, m1: P1S, m2: P2N| Holder6476 { own: 7, m0, m1, m2 }),
+            &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
+        )
+    }
+
+    fn holder6484() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|A1_NN|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: P2N| Holder6484 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6492() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|A1_SS|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: P2N| Holder6492 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6500() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|E1_NN|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: P2N| Holder6500 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6508() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|E1_SS|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: P2N| Holder6508 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6516() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|O1_N|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: P2N| Holder6516 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6524() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|O1_S|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: P2N| Holder6524 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6532() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|P1_N|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: P2N| Holder6532 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6540() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_N|P1_S|P2_N",
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: P2N| Holder6540 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6548() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|A1_NN|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: P2N| Holder6548 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6556() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|A1_SS|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: P2N| Holder6556 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6564() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|E1_NN|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: P2N| Holder6564 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6572() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|E1_SS|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: P2N| Holder6572 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,Dot,-", 'R'),
+                ("None,Rect,-", 'R'),
+                ("None,Wrap,-", 'R'),
+                ("Some,Dot,-", 'R'),
+                ("Some,Rect,-", 'R'),
+                ("Some,Wrap,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6580() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|O1_N|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: P2N| Holder6580 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6588() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|O1_S|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: P2N| Holder6588 { own: 7, m0, m1, m2 }),
+            &[
+                ("None,None,-", 'R'),
+                ("None,Some,-", 'R'),
+                ("Some,None,-", 'R'),
+                ("Some,Some,-", 'R'),
+            ],
+        )
+    }
+
+    fn holder6596() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|P1_N|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: P2N| Holder6596 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6604() -> Vec<String> {
+        check(
+            "main3:H3S1:O0_S|P1_S|P2_N",
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: P2N| Holder6604 { own: 7, m0, m1, m2 }),
+            &[("None,-,-", 'R'), ("Some,-,-", 'R')],
+        )
+    }
+
+    fn holder6612() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|A1_NN|P2_N",
+            &rows3(|m0: P0N, m1: A1NN, m2: P2N| Holder6612 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6620() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|A1_SS|P2_N",
+            &rows3(|m0: P0N, m1: A1SS, m2: P2N| Holder6620 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6628() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|E1_NN|P2_N",
+            &rows3(|m0: P0N, m1: E1NN, m2: P2N| Holder6628 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6636() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|E1_SS|P2_N",
+            &rows3(|m0: P0N, m1: E1SS, m2: P2N| Holder6636 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6644() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|O1_N|P2_N",
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: P2N| Holder6644 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6652() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|O1_S|P2_N",
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: P2N| Holder6652 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6660() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|P1_N|P2_N",
+            &rows3(|m0: P0N, m1: P1N, m2: P2N| Holder6660 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6668() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_N|P1_S|P2_N",
+            &rows3(|m0: P0N, m1: P1S, m2: P2N| Holder6668 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6676() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|A1_NN|P2_N",
+            &rows3(|m0: P0S, m1: A1NN, m2: P2N| Holder6676 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6684() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|A1_SS|P2_N",
+            &rows3(|m0: P0S, m1: A1SS, m2: P2N| Holder6684 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6692() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|E1_NN|P2_N",
+            &rows3(|m0: P0S, m1: E1NN, m2: P2N| Holder6692 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6700() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|E1_SS|P2_N",
+            &rows3(|m0: P0S, m1: E1SS, m2: P2N| Holder6700 { own: 7, m0, m1, m2 }),
+            &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
+        )
+    }
+
+    fn holder6708() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|O1_N|P2_N",
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: P2N| Holder6708 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6716() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|O1_S|P2_N",
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: P2N| Holder6716 { own: 7, m0, m1, m2 }),
+            &[("-,None,-", 'R'), ("-,Some,-", 'R')],
+        )
+    }
+
+    fn holder6724() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|P1_N|P2_N",
+            &rows3(|m0: P0S, m1: P1N, m2: P2N| Holder6724 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6732() -> Vec<String> {
+        check(
+            "main3:H3S1:P0_S|P1_S|P2_N",
+            &rows3(|m0: P0S, m1: P1S, m2: P2N| Holder6732 { own: 7, m0, m1, m2 }),
+            &[("-,-,-", 'R')],
+        )
+    }
+
+    fn holder6740() -> Vec<String> {
+        check(
+            "mixed1:H1N0:FT0_NSS",
+            &rows1(|m0: FT0NSS| Holder6740 { m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder6748() -> Vec<String> {
+        check(
+            "mixed1:H1N1:FP0_SN",
+            &rows1(|m0: FP0SN| Holder6748 { own: 7, m0 }),
+            &[("-", 'R')],
+        )
+    }
+
+    fn holder6756() -> Vec<String> {
+        check(
+            "mixed2:H2N0:A0_NN|FO1_NS",
+            &rows2(|m0: A0NN, m1: FO1NS| Holder6756 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder6764() -> Vec<String> {
+        check(
+            "mixed2:H2N0:A0_NN|T1_SN",
+            &rows2(|m0: A0NN, m1: T1SN| Holder6764 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6772() -> Vec<String> {
+        check(
+            "mixed2:H2N0:A0_SS|FT1_NSN",
+            &rows2(|m0: A0SS, m1: FT1NSN| Holder6772 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6780() -> Vec<String> {
+        check(
+            "mixed2:H2N0:E0_NN|FP1_NS",
+            &rows2(|m0: E0NN, m1: FP1NS| Holder6780 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder6788() -> Vec<String> {
+        check(
+            "mixed2:H2N0:E0_NN|V1_SN",
+            &rows2(|m0: E0NN, m1: V1SN| Holder6788 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6796() -> Vec<String> {
+        check(
+            "mixed2:H2N0:E0_SS|T1_NS",
+            &rows2(|m0: E0SS, m1: T1NS| Holder6796 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder6804() -> Vec<String> {
+        check(
+            "mixed2:H2N0:FO0_NS|E1_NN",
+            &rows2(|m0: FO0NS, m1: E1NN| Holder6804 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder6812() -> Vec<String> {
+        check(
+            "mixed2:H2N0:FO0_NS|O1_S",
+            &rows2(|m0: FO0NS, m1: Option<OI1S>| Holder6812 { m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder6820() -> Vec<String> {
+        check(
+            "mixed2:H2N0:FP0_NS|A1_SS",
+            &rows2(|m0: FP0NS, m1: A1SS| Holder6820 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder6828() -> Vec<String> {
+        check(
+            "mixed2:H2N0:FP0_NS|O1_N",
+            &rows2(|m0: FP0NS, m1: Option<OI1N>| Holder6828 { m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder6836() -> Vec<String> {
+        check(
+            "mixed2:H2N0:O0_N|FO1_NS",
+            &rows2(|m0: Option<OI0N>, m1: FO1NS| Holder6836 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder6844() -> Vec<String> {
+        check(
+            "mixed2:H2N0:O0_N|T1_SN",
+            &rows2(|m0: Option<OI0N>, m1: T1SN| Holder6844 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6852() -> Vec<String> {
+        check(
+            "mixed2:H2N0:O0_S|FT1_NSN",
+            &rows2(|m0: Option<OI0S>, m1: FT1NSN| Holder6852 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6860() -> Vec<String> {
+        check(
+            "mixed2:H2N0:P0_N|FP1_NS",
+            &rows2(|m0: P0N, m1: FP1NS| Holder6860 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder6868() -> Vec<String> {
+        check(
+            "mixed2:H2N0:P0_N|V1_SN",
+            &rows2(|m0: P0N, m1: V1SN| Holder6868 { m0, m1 }),
+            &[("-,Rect", 'R'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder6876() -> Vec<String> {
+        check(
+            "mixed2:H2N0:P0_S|T1_NS",
+            &rows2(|m0: P0S, m1: T1NS| Holder6876 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder6884() -> Vec<String> {
+        check(
+            "mixed2:H2N1:A0_NN|FO1_NS",
+            &rows2(|m0: A0NN, m1: FO1NS| Holder6884 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder6892() -> Vec<String> {
+        check(
+            "mixed2:H2N1:A0_NN|T1_SN",
+            &rows2(|m0: A0NN, m1: T1SN| Holder6892 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6900() -> Vec<String> {
+        check(
+            "mixed2:H2N1:A0_SS|FT1_NSN",
+            &rows2(|m0: A0SS, m1: FT1NSN| Holder6900 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6908() -> Vec<String> {
+        check(
+            "mixed2:H2N1:E0_NN|FP1_NS",
+            &rows2(|m0: E0NN, m1: FP1NS| Holder6908 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder6916() -> Vec<String> {
+        check(
+            "mixed2:H2N1:E0_NN|V1_SN",
+            &rows2(|m0: E0NN, m1: V1SN| Holder6916 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6924() -> Vec<String> {
+        check(
+            "mixed2:H2N1:E0_SS|T1_NS",
+            &rows2(|m0: E0SS, m1: T1NS| Holder6924 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder6932() -> Vec<String> {
+        check(
+            "mixed2:H2N1:FO0_NS|E1_NN",
+            &rows2(|m0: FO0NS, m1: E1NN| Holder6932 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder6940() -> Vec<String> {
+        check(
+            "mixed2:H2N1:FO0_NS|O1_S",
+            &rows2(|m0: FO0NS, m1: Option<OI1S>| Holder6940 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder6948() -> Vec<String> {
+        check(
+            "mixed2:H2N1:FP0_NS|A1_SS",
+            &rows2(|m0: FP0NS, m1: A1SS| Holder6948 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder6956() -> Vec<String> {
+        check(
+            "mixed2:H2N1:FP0_NS|O1_N",
+            &rows2(|m0: FP0NS, m1: Option<OI1N>| Holder6956 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder6964() -> Vec<String> {
+        check(
+            "mixed2:H2N1:O0_N|FO1_NS",
+            &rows2(|m0: Option<OI0N>, m1: FO1NS| Holder6964 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder6972() -> Vec<String> {
+        check(
+            "mixed2:H2N1:O0_N|T1_SN",
+            &rows2(|m0: Option<OI0N>, m1: T1SN| Holder6972 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6980() -> Vec<String> {
+        check(
+            "mixed2:H2N1:O0_S|FT1_NSN",
+            &rows2(|m0: Option<OI0S>, m1: FT1NSN| Holder6980 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder6988() -> Vec<String> {
+        check(
+            "mixed2:H2N1:P0_N|FP1_NS",
+            &rows2(|m0: P0N, m1: FP1NS| Holder6988 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder6996() -> Vec<String> {
+        check(
+            "mixed2:H2N1:P0_N|V1_SN",
+            &rows2(|m0: P0N, m1: V1SN| Holder6996 { own: 7, m0, m1 }),
+            &[("-,Rect", 'R'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7004() -> Vec<String> {
+        check(
+            "mixed2:H2N1:P0_S|T1_NS",
+            &rows2(|m0: P0S, m1: T1NS| Holder7004 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder7012() -> Vec<String> {
+        check(
+            "nest1:H1N0:IN0(A0_NN)",
+            &rows1(|m0: IN0A0NN| Holder7012 { m0 }),
+            &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
+        )
+    }
+
+    fn holder7020() -> Vec<String> {
+        check(
+            "nest1:H1N0:IN0(FT0_NNN)",
+            &rows1(|m0: IN0FT0NNN| Holder7020 { m0 }),
+            &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
+        )
+    }
+
+    fn holder7028() -> Vec<String> {
+        check(
+            "nest1:H1N0:IN0(V0_NN)",
+            &rows1(|m0: IN0V0NN| Holder7028 { m0 }),
+            &[("Rect", 'E'), ("Wrap", 'E')],
+        )
+    }
+
+    fn holder7036() -> Vec<String> {
+        check(
+            "nest1:H1N0:IN1(FP0_NN)",
+            &rows1(|m0: IN1FP0NN| Holder7036 { m0 }),
+            &[("-", 'E')],
+        )
+    }
+
+    fn holder7044() -> Vec<String> {
+        check(
+            "nest1:H1N0:IN1(T0_SS)",
+            &rows1(|m0: IN1T0SS| Holder7044 { m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder7052() -> Vec<String> {
+        check(
+            "nest1:H1N0:IS0(O0_S)",
+            &rows1(|m0: IS0OptOI0S| Holder7052 { m0 }),
+            &[("None", 'R'), ("Some", 'R')],
+        )
+    }
+
+    fn holder7060() -> Vec<String> {
+        check(
+            "nest1:H1N0:IS1(O0_S)",
+            &rows1(|m0: IS1OptOI0S| Holder7060 { m0 }),
+            &[("None", 'R'), ("Some", 'R')],
+        )
+    }
+
+    fn holder7068() -> Vec<String> {
+        check(
+            "nest1:H1N1:IN0(FO0_SS)",
+            &rows1(|m0: IN0FO0SS| Holder7068 { own: 7, m0 }),
+            &[("-", 'R')],
+        )
+    }
+
+    fn holder7076() -> Vec<String> {
+        check(
+            "nest1:H1N1:IN0(T0_NN)",
+            &rows1(|m0: IN0T0NN| Holder7076 { own: 7, m0 }),
+            &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
+        )
+    }
+
+    fn holder7084() -> Vec<String> {
+        check(
+            "nest1:H1N1:IN1(FO0_NN)",
+            &rows1(|m0: IN1FO0NN| Holder7084 { own: 7, m0 }),
+            &[("-", 'E')],
+        )
+    }
+
+    fn holder7092() -> Vec<String> {
+        check(
+            "nest1:H1N1:IN1(P0_S)",
+            &rows1(|m0: IN1P0S| Holder7092 { own: 7, m0 }),
+            &[("-", 'E')],
+        )
+    }
+
+    fn holder7100() -> Vec<String> {
+        check(
+            "nest1:H1N1:IS0(E0_SS)",
+            &rows1(|m0: IS0E0SS| Holder7100 { own: 7, m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder7108() -> Vec<String> {
+        check(
+            "nest1:H1N1:IS1(E0_SS)",
+            &rows1(|m0: IS1E0SS| Holder7108 { own: 7, m0 }),
+            &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
+        )
+    }
+
+    fn holder7116() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IN0(E1_SS)",
+            &rows2(|m0: A0NN, m1: IN0E1SS| Holder7116 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7124() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IN0(P1_N)",
+            &rows2(|m0: A0NN, m1: IN0P1N| Holder7124 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7132() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IN1(E1_NN)",
+            &rows2(|m0: A0NN, m1: IN1E1NN| Holder7132 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7140() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IN1(O1_S)",
+            &rows2(|m0: A0NN, m1: IN1OptOI1S| Holder7140 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7148() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IS0(A1_SS)",
+            &rows2(|m0: A0NN, m1: IS0A1SS| Holder7148 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7156() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_NN|IS1(A1_SS)",
+            &rows2(|m0: A0NN, m1: IS1A1SS| Holder7156 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7164() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IN0(A1_SS)",
+            &rows2(|m0: A0SS, m1: IN0A1SS| Holder7164 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7172() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IN0(O1_N)",
+            &rows2(|m0: A0SS, m1: IN0OptOI1N| Holder7172 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7180() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IN1(A1_NN)",
+            &rows2(|m0: A0SS, m1: IN1A1NN| Holder7180 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7188() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IN1(FT1_NNN)",
+            &rows2(|m0: A0SS, m1: IN1FT1NNN| Holder7188 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7196() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IN1(V1_SS)",
+            &rows2(|m0: A0SS, m1: IN1V1SS| Holder7196 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7204() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IS0(P1_S)",
+            &rows2(|m0: A0SS, m1: IS0P1S| Holder7204 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder7212() -> Vec<String> {
+        check(
+            "nest2:H2N0:A0_SS|IS1(P1_S)",
+            &rows2(|m0: A0SS, m1: IS1P1S| Holder7212 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder7220() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IN0(FP1_SS)",
+            &rows2(|m0: E0NN, m1: IN0FP1SS| Holder7220 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder7228() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IN0(V1_NN)",
+            &rows2(|m0: E0NN, m1: IN0V1NN| Holder7228 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7236() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IN1(FP1_NN)",
+            &rows2(|m0: E0NN, m1: IN1FP1NN| Holder7236 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7244() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IN1(T1_SS)",
+            &rows2(|m0: E0NN, m1: IN1T1SS| Holder7244 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7252() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IS0(O1_S)",
+            &rows2(|m0: E0NN, m1: IS0OptOI1S| Holder7252 { m0, m1 }),
+            &[
+                ("Dot,None", 'R'),
+                ("Dot,Some", 'R'),
+                ("Rect,None", 'R'),
+                ("Rect,Some", 'R'),
+                ("Wrap,None", 'R'),
+                ("Wrap,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder7260() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_NN|IS1(O1_S)",
+            &rows2(|m0: E0NN, m1: IS1OptOI1S| Holder7260 { m0, m1 }),
+            &[
+                ("Dot,None", 'R'),
+                ("Dot,Some", 'R'),
+                ("Rect,None", 'R'),
+                ("Rect,Some", 'R'),
+                ("Wrap,None", 'R'),
+                ("Wrap,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder7268() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IN0(FO1_SS)",
+            &rows2(|m0: E0SS, m1: IN0FO1SS| Holder7268 { m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder7276() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IN0(T1_NN)",
+            &rows2(|m0: E0SS, m1: IN0T1NN| Holder7276 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7284() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IN1(FO1_NN)",
+            &rows2(|m0: E0SS, m1: IN1FO1NN| Holder7284 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7292() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IN1(P1_S)",
+            &rows2(|m0: E0SS, m1: IN1P1S| Holder7292 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7300() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IS0(E1_SS)",
+            &rows2(|m0: E0SS, m1: IS0E1SS| Holder7300 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7308() -> Vec<String> {
+        check(
+            "nest2:H2N0:E0_SS|IS1(E1_SS)",
+            &rows2(|m0: E0SS, m1: IS1E1SS| Holder7308 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7316() -> Vec<String> {
+        check(
+            "nest2:H2N0:FO0_NN|IN0(E1_SS)",
+            &rows2(|m0: FO0NN, m1: IN0E1SS| Holder7316 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7324() -> Vec<String> {
+        check(
+            "nest2:H2N0:FO0_NN|IN0(T1_NN)",
+            &rows2(|m0: FO0NN, m1: IN0T1NN| Holder7324 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7332() -> Vec<String> {
+        check(
+            "nest2:H2N0:FO0_NN|IN1(FT1_NNN)",
+            &rows2(|m0: FO0NN, m1: IN1FT1NNN| Holder7332 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7340() -> Vec<String> {
+        check(
+            "nest2:H2N0:FP0_NN|IN0(A1_SS)",
+            &rows2(|m0: FP0NN, m1: IN0A1SS| Holder7340 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7348() -> Vec<String> {
+        check(
+            "nest2:H2N0:FP0_NN|IN0(P1_N)",
+            &rows2(|m0: FP0NN, m1: IN0P1N| Holder7348 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7356() -> Vec<String> {
+        check(
+            "nest2:H2N0:FP0_NN|IN1(FO1_NN)",
+            &rows2(|m0: FP0NN, m1: IN1FO1NN| Holder7356 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7364() -> Vec<String> {
+        check(
+            "nest2:H2N0:FP0_NN|IN1(V1_NN)",
+            &rows2(|m0: FP0NN, m1: IN1V1NN| Holder7364 { m0, m1 }),
+            &[("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7372() -> Vec<String> {
+        check(
+            "nest2:H2N0:FT0_NNN|IN0(O1_N)",
+            &rows2(|m0: FT0NNN, m1: IN0OptOI1N| Holder7372 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7380() -> Vec<String> {
+        check(
+            "nest2:H2N0:FT0_NNN|IN1(E1_NN)",
+            &rows2(|m0: FT0NNN, m1: IN1E1NN| Holder7380 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7388() -> Vec<String> {
+        check(
+            "nest2:H2N0:FT0_NNN|IN1(P1_S)",
+            &rows2(|m0: FT0NNN, m1: IN1P1S| Holder7388 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7396() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(A0_NN)|FP1_NN",
+            &rows2(|m0: IN0A0NN, m1: FP1NN| Holder7396 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7404() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(A0_SS)|A1_NN",
+            &rows2(|m0: IN0A0SS, m1: A1NN| Holder7404 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7412() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(A0_SS)|O1_S",
+            &rows2(|m0: IN0A0SS, m1: Option<OI1S>| Holder7412 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7420() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(E0_NN)|E1_SS",
+            &rows2(|m0: IN0E0NN, m1: E1SS| Holder7420 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7428() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(E0_NN)|T1_NN",
+            &rows2(|m0: IN0E0NN, m1: T1NN| Holder7428 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7436() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(E0_SS)|FT1_NNN",
+            &rows2(|m0: IN0E0SS, m1: FT1NNN| Holder7436 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7444() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(FO0_NN)|A1_SS",
+            &rows2(|m0: IN0FO0NN, m1: A1SS| Holder7444 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7452() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(FO0_NN)|P1_N",
+            &rows2(|m0: IN0FO0NN, m1: P1N| Holder7452 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7460() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(FP0_NN)|FO1_NN",
+            &rows2(|m0: IN0FP0NN, m1: FO1NN| Holder7460 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7468() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(FP0_NN)|V1_NN",
+            &rows2(|m0: IN0FP0NN, m1: V1NN| Holder7468 { m0, m1 }),
+            &[("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7476() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(FT0_NNN)|O1_N",
+            &rows2(|m0: IN0FT0NNN, m1: Option<OI1N>| Holder7476 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7484() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(O0_N)|E1_NN",
+            &rows2(|m0: IN0OptOI0N, m1: E1NN| Holder7484 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7492() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(O0_N)|P1_S",
+            &rows2(|m0: IN0OptOI0N, m1: P1S| Holder7492 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder7500() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(O0_S)|FP1_NN",
+            &rows2(|m0: IN0OptOI0S, m1: FP1NN| Holder7500 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder7508() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(P0_N)|A1_NN",
+            &rows2(|m0: IN0P0N, m1: A1NN| Holder7508 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7516() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(P0_N)|O1_S",
+            &rows2(|m0: IN0P0N, m1: Option<OI1S>| Holder7516 { m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder7524() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(P0_S)|E1_SS",
+            &rows2(|m0: IN0P0S, m1: E1SS| Holder7524 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7532() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(P0_S)|T1_NN",
+            &rows2(|m0: IN0P0S, m1: T1NN| Holder7532 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7540() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(T0_NN)|FT1_NNN",
+            &rows2(|m0: IN0T0NN, m1: FT1NNN| Holder7540 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7548() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(V0_NN)|A1_SS",
+            &rows2(|m0: IN0V0NN, m1: A1SS| Holder7548 { m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7556() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN0(V0_NN)|P1_N",
+            &rows2(|m0: IN0V0NN, m1: P1N| Holder7556 { m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7564() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(A0_NN)|FO1_NN",
+            &rows2(|m0: IN1A0NN, m1: FO1NN| Holder7564 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7572() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(A0_NN)|V1_NN",
+            &rows2(|m0: IN1A0NN, m1: V1NN| Holder7572 { m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7580() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(A0_SS)|O1_N",
+            &rows2(|m0: IN1A0SS, m1: Option<OI1N>| Holder7580 { m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7588() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(E0_NN)|E1_NN",
+            &rows2(|m0: IN1E0NN, m1: E1NN| Holder7588 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7596() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(E0_NN)|P1_S",
+            &rows2(|m0: IN1E0NN, m1: P1S| Holder7596 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7604() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(E0_SS)|FP1_NN",
+            &rows2(|m0: IN1E0SS, m1: FP1NN| Holder7604 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7612() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(FO0_NN)|A1_NN",
+            &rows2(|m0: IN1FO0NN, m1: A1NN| Holder7612 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7620() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(FO0_NN)|O1_S",
+            &rows2(|m0: IN1FO0NN, m1: Option<OI1S>| Holder7620 { m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder7628() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(FP0_NN)|E1_SS",
+            &rows2(|m0: IN1FP0NN, m1: E1SS| Holder7628 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7636() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(FP0_NN)|T1_NN",
+            &rows2(|m0: IN1FP0NN, m1: T1NN| Holder7636 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7644() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(FT0_NNN)|FT1_NNN",
+            &rows2(|m0: IN1FT0NNN, m1: FT1NNN| Holder7644 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7652() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(O0_N)|A1_SS",
+            &rows2(|m0: IN1OptOI0N, m1: A1SS| Holder7652 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7660() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(O0_N)|P1_N",
+            &rows2(|m0: IN1OptOI0N, m1: P1N| Holder7660 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder7668() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(O0_S)|FO1_NN",
+            &rows2(|m0: IN1OptOI0S, m1: FO1NN| Holder7668 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder7676() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(O0_S)|V1_NN",
+            &rows2(|m0: IN1OptOI0S, m1: V1NN| Holder7676 { m0, m1 }),
+            &[
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7684() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(P0_N)|O1_N",
+            &rows2(|m0: IN1P0N, m1: Option<OI1N>| Holder7684 { m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder7692() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(P0_S)|E1_NN",
+            &rows2(|m0: IN1P0S, m1: E1NN| Holder7692 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7700() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(P0_S)|P1_S",
+            &rows2(|m0: IN1P0S, m1: P1S| Holder7700 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7708() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(T0_NN)|FP1_NN",
+            &rows2(|m0: IN1T0NN, m1: FP1NN| Holder7708 { m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7716() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(V0_NN)|A1_NN",
+            &rows2(|m0: IN1V0NN, m1: A1NN| Holder7716 { m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7724() -> Vec<String> {
+        check(
+            "nest2:H2N0:IN1(V0_NN)|O1_S",
+            &rows2(|m0: IN1V0NN, m1: Option<OI1S>| Holder7724 { m0, m1 }),
+            &[
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7732() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IN0(E1_SS)",
+            &rows2(|m0: Option<OI0N>, m1: IN0E1SS| Holder7732 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7740() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IN0(P1_N)",
+            &rows2(|m0: Option<OI0N>, m1: IN0P1N| Holder7740 { m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder7748() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IN1(E1_NN)",
+            &rows2(|m0: Option<OI0N>, m1: IN1E1NN| Holder7748 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7756() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IN1(O1_S)",
+            &rows2(|m0: Option<OI0N>, m1: IN1OptOI1S| Holder7756 { m0, m1 }),
+            &[
+                ("None,None", 'E'),
+                ("None,Some", 'E'),
+                ("Some,None", 'E'),
+                ("Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7764() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IS0(A1_SS)",
+            &rows2(|m0: Option<OI0N>, m1: IS0A1SS| Holder7764 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7772() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_N|IS1(A1_SS)",
+            &rows2(|m0: Option<OI0N>, m1: IS1A1SS| Holder7772 { m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7780() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IN0(A1_SS)",
+            &rows2(|m0: Option<OI0S>, m1: IN0A1SS| Holder7780 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7788() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IN0(O1_N)",
+            &rows2(|m0: Option<OI0S>, m1: IN0OptOI1N| Holder7788 { m0, m1 }),
+            &[
+                ("None,None", 'E'),
+                ("None,Some", 'E'),
+                ("Some,None", 'E'),
+                ("Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder7796() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IN1(A1_NN)",
+            &rows2(|m0: Option<OI0S>, m1: IN1A1NN| Holder7796 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7804() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IN1(FT1_NNN)",
+            &rows2(|m0: Option<OI0S>, m1: IN1FT1NNN| Holder7804 { m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7812() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IN1(V1_SS)",
+            &rows2(|m0: Option<OI0S>, m1: IN1V1SS| Holder7812 { m0, m1 }),
+            &[
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder7820() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IS0(P1_S)",
+            &rows2(|m0: Option<OI0S>, m1: IS0P1S| Holder7820 { m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder7828() -> Vec<String> {
+        check(
+            "nest2:H2N0:O0_S|IS1(P1_S)",
+            &rows2(|m0: Option<OI0S>, m1: IS1P1S| Holder7828 { m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder7836() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IN0(FP1_SS)",
+            &rows2(|m0: P0N, m1: IN0FP1SS| Holder7836 { m0, m1 }),
+            &[("-,-", 'R')],
+        )
+    }
+
+    fn holder7844() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IN0(V1_NN)",
+            &rows2(|m0: P0N, m1: IN0V1NN| Holder7844 { m0, m1 }),
+            &[("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7852() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IN1(FP1_NN)",
+            &rows2(|m0: P0N, m1: IN1FP1NN| Holder7852 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7860() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IN1(T1_SS)",
+            &rows2(|m0: P0N, m1: IN1T1SS| Holder7860 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder7868() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IS0(O1_S)",
+            &rows2(|m0: P0N, m1: IS0OptOI1S| Holder7868 { m0, m1 }),
+            &[("-,None", 'R'), ("-,Some", 'R')],
+        )
+    }
+
+    fn holder7876() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_N|IS1(O1_S)",
+            &rows2(|m0: P0N, m1: IS1OptOI1S| Holder7876 { m0, m1 }),
+            &[("-,None", 'R'), ("-,Some", 'R')],
+        )
+    }
+
+    fn holder7884() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IN0(FO1_SS)",
+            &rows2(|m0: P0S, m1: IN0FO1SS| Holder7884 { m0, m1 }),
+            &[("-,-", 'R')],
+        )
+    }
+
+    fn holder7892() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IN0(T1_NN)",
+            &rows2(|m0: P0S, m1: IN0T1NN| Holder7892 { m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder7900() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IN1(FO1_NN)",
+            &rows2(|m0: P0S, m1: IN1FO1NN| Holder7900 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7908() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IN1(P1_S)",
+            &rows2(|m0: P0S, m1: IN1P1S| Holder7908 { m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder7916() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IS0(E1_SS)",
+            &rows2(|m0: P0S, m1: IS0E1SS| Holder7916 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder7924() -> Vec<String> {
+        check(
+            "nest2:H2N0:P0_S|IS1(E1_SS)",
+            &rows2(|m0: P0S, m1: IS1E1SS| Holder7924 { m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder7932() -> Vec<String> {
+        check(
+            "nest2:H2N0:T0_NN|IN0(E1_SS)",
+            &rows2(|m0: T0NN, m1: IN0E1SS| Holder7932 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7940() -> Vec<String> {
+        check(
+            "nest2:H2N0:T0_NN|IN0(T1_NN)",
+            &rows2(|m0: T0NN, m1: IN0T1NN| Holder7940 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7948() -> Vec<String> {
+        check(
+            "nest2:H2N0:T0_NN|IN1(FT1_NNN)",
+            &rows2(|m0: T0NN, m1: IN1FT1NNN| Holder7948 { m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7956() -> Vec<String> {
+        check(
+            "nest2:H2N0:V0_NN|IN0(A1_SS)",
+            &rows2(|m0: V0NN, m1: IN0A1SS| Holder7956 { m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7964() -> Vec<String> {
+        check(
+            "nest2:H2N0:V0_NN|IN0(P1_N)",
+            &rows2(|m0: V0NN, m1: IN0P1N| Holder7964 { m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7972() -> Vec<String> {
+        check(
+            "nest2:H2N0:V0_NN|IN1(FO1_NN)",
+            &rows2(|m0: V0NN, m1: IN1FO1NN| Holder7972 { m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder7980() -> Vec<String> {
+        check(
+            "nest2:H2N0:V0_NN|IN1(V1_NN)",
+            &rows2(|m0: V0NN, m1: IN1V1NN| Holder7980 { m0, m1 }),
+            &[
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder7988() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IN0(FP1_SS)",
+            &rows2(|m0: A0NN, m1: IN0FP1SS| Holder7988 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder7996() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IN0(V1_NN)",
+            &rows2(|m0: A0NN, m1: IN0V1NN| Holder7996 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8004() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IN1(FP1_NN)",
+            &rows2(|m0: A0NN, m1: IN1FP1NN| Holder8004 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8012() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IN1(T1_SS)",
+            &rows2(|m0: A0NN, m1: IN1T1SS| Holder8012 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8020() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IS0(O1_S)",
+            &rows2(|m0: A0NN, m1: IS0OptOI1S| Holder8020 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'R'),
+                ("Dot,Some", 'R'),
+                ("Rect,None", 'R'),
+                ("Rect,Some", 'R'),
+                ("Wrap,None", 'R'),
+                ("Wrap,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder8028() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_NN|IS1(O1_S)",
+            &rows2(|m0: A0NN, m1: IS1OptOI1S| Holder8028 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'R'),
+                ("Dot,Some", 'R'),
+                ("Rect,None", 'R'),
+                ("Rect,Some", 'R'),
+                ("Wrap,None", 'R'),
+                ("Wrap,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder8036() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IN0(FO1_SS)",
+            &rows2(|m0: A0SS, m1: IN0FO1SS| Holder8036 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder8044() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IN0(T1_NN)",
+            &rows2(|m0: A0SS, m1: IN0T1NN| Holder8044 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8052() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IN1(FO1_NN)",
+            &rows2(|m0: A0SS, m1: IN1FO1NN| Holder8052 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8060() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IN1(P1_S)",
+            &rows2(|m0: A0SS, m1: IN1P1S| Holder8060 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8068() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IS0(E1_SS)",
+            &rows2(|m0: A0SS, m1: IS0E1SS| Holder8068 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8076() -> Vec<String> {
+        check(
+            "nest2:H2N1:A0_SS|IS1(E1_SS)",
+            &rows2(|m0: A0SS, m1: IS1E1SS| Holder8076 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8084() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IN0(E1_SS)",
+            &rows2(|m0: E0NN, m1: IN0E1SS| Holder8084 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8092() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IN0(P1_N)",
+            &rows2(|m0: E0NN, m1: IN0P1N| Holder8092 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8100() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IN1(E1_NN)",
+            &rows2(|m0: E0NN, m1: IN1E1NN| Holder8100 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8108() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IN1(O1_S)",
+            &rows2(|m0: E0NN, m1: IN1OptOI1S| Holder8108 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8116() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IS0(A1_SS)",
+            &rows2(|m0: E0NN, m1: IS0A1SS| Holder8116 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8124() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_NN|IS1(A1_SS)",
+            &rows2(|m0: E0NN, m1: IS1A1SS| Holder8124 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'R'),
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Dot", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Dot", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8132() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IN0(A1_SS)",
+            &rows2(|m0: E0SS, m1: IN0A1SS| Holder8132 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8140() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IN0(O1_N)",
+            &rows2(|m0: E0SS, m1: IN0OptOI1N| Holder8140 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8148() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IN1(A1_NN)",
+            &rows2(|m0: E0SS, m1: IN1A1NN| Holder8148 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8156() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IN1(FT1_NNN)",
+            &rows2(|m0: E0SS, m1: IN1FT1NNN| Holder8156 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8164() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IN1(V1_SS)",
+            &rows2(|m0: E0SS, m1: IN1V1SS| Holder8164 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'R'),
+                ("Dot,Wrap", 'R'),
+                ("Rect,Rect", 'R'),
+                ("Rect,Wrap", 'R'),
+                ("Wrap,Rect", 'R'),
+                ("Wrap,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8172() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IS0(P1_S)",
+            &rows2(|m0: E0SS, m1: IS0P1S| Holder8172 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder8180() -> Vec<String> {
+        check(
+            "nest2:H2N1:E0_SS|IS1(P1_S)",
+            &rows2(|m0: E0SS, m1: IS1P1S| Holder8180 { own: 7, m0, m1 }),
+            &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
+        )
+    }
+
+    fn holder8188() -> Vec<String> {
+        check(
+            "nest2:H2N1:FO0_NN|IN0(O1_N)",
+            &rows2(|m0: FO0NN, m1: IN0OptOI1N| Holder8188 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8196() -> Vec<String> {
+        check(
+            "nest2:H2N1:FO0_NN|IN1(E1_NN)",
+            &rows2(|m0: FO0NN, m1: IN1E1NN| Holder8196 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8204() -> Vec<String> {
+        check(
+            "nest2:H2N1:FO0_NN|IN1(P1_S)",
+            &rows2(|m0: FO0NN, m1: IN1P1S| Holder8204 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8212() -> Vec<String> {
+        check(
+            "nest2:H2N1:FP0_NN|IN0(FP1_NN)",
+            &rows2(|m0: FP0NN, m1: IN0FP1NN| Holder8212 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8220() -> Vec<String> {
+        check(
+            "nest2:H2N1:FP0_NN|IN1(A1_NN)",
+            &rows2(|m0: FP0NN, m1: IN1A1NN| Holder8220 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8228() -> Vec<String> {
+        check(
+            "nest2:H2N1:FP0_NN|IN1(O1_S)",
+            &rows2(|m0: FP0NN, m1: IN1OptOI1S| Holder8228 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8236() -> Vec<String> {
+        check(
+            "nest2:H2N1:FT0_NNN|IN0(E1_SS)",
+            &rows2(|m0: FT0NNN, m1: IN0E1SS| Holder8236 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8244() -> Vec<String> {
+        check(
+            "nest2:H2N1:FT0_NNN|IN0(T1_NN)",
+            &rows2(|m0: FT0NNN, m1: IN0T1NN| Holder8244 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8252() -> Vec<String> {
+        check(
+            "nest2:H2N1:FT0_NNN|IN1(FT1_NNN)",
+            &rows2(|m0: FT0NNN, m1: IN1FT1NNN| Holder8252 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8260() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(A0_NN)|A1_SS",
+            &rows2(|m0: IN0A0NN, m1: A1SS| Holder8260 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8268() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(A0_NN)|P1_N",
+            &rows2(|m0: IN0A0NN, m1: P1N| Holder8268 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8276() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(A0_SS)|FO1_NN",
+            &rows2(|m0: IN0A0SS, m1: FO1NN| Holder8276 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8284() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(A0_SS)|V1_NN",
+            &rows2(|m0: IN0A0SS, m1: V1NN| Holder8284 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8292() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(E0_NN)|O1_N",
+            &rows2(|m0: IN0E0NN, m1: Option<OI1N>| Holder8292 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8300() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(E0_SS)|E1_NN",
+            &rows2(|m0: IN0E0SS, m1: E1NN| Holder8300 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8308() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(E0_SS)|P1_S",
+            &rows2(|m0: IN0E0SS, m1: P1S| Holder8308 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8316() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(FO0_NN)|FP1_NN",
+            &rows2(|m0: IN0FO0NN, m1: FP1NN| Holder8316 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8324() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(FP0_NN)|A1_NN",
+            &rows2(|m0: IN0FP0NN, m1: A1NN| Holder8324 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8332() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(FP0_NN)|O1_S",
+            &rows2(|m0: IN0FP0NN, m1: Option<OI1S>| Holder8332 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8340() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(FT0_NNN)|E1_SS",
+            &rows2(|m0: IN0FT0NNN, m1: E1SS| Holder8340 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8348() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(FT0_NNN)|T1_NN",
+            &rows2(|m0: IN0FT0NNN, m1: T1NN| Holder8348 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8356() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(O0_N)|FT1_NNN",
+            &rows2(|m0: IN0OptOI0N, m1: FT1NNN| Holder8356 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8364() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(O0_S)|A1_SS",
+            &rows2(|m0: IN0OptOI0S, m1: A1SS| Holder8364 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8372() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(O0_S)|P1_N",
+            &rows2(|m0: IN0OptOI0S, m1: P1N| Holder8372 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder8380() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(P0_N)|FO1_NN",
+            &rows2(|m0: IN0P0N, m1: FO1NN| Holder8380 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8388() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(P0_N)|V1_NN",
+            &rows2(|m0: IN0P0N, m1: V1NN| Holder8388 { own: 7, m0, m1 }),
+            &[("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8396() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(P0_S)|O1_N",
+            &rows2(|m0: IN0P0S, m1: Option<OI1N>| Holder8396 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8404() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(T0_NN)|E1_NN",
+            &rows2(|m0: IN0T0NN, m1: E1NN| Holder8404 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8412() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(T0_NN)|P1_S",
+            &rows2(|m0: IN0T0NN, m1: P1S| Holder8412 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8420() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN0(V0_NN)|FP1_NN",
+            &rows2(|m0: IN0V0NN, m1: FP1NN| Holder8420 { own: 7, m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8428() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(A0_NN)|A1_NN",
+            &rows2(|m0: IN1A0NN, m1: A1NN| Holder8428 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8436() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(A0_NN)|O1_S",
+            &rows2(|m0: IN1A0NN, m1: Option<OI1S>| Holder8436 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8444() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(A0_SS)|E1_SS",
+            &rows2(|m0: IN1A0SS, m1: E1SS| Holder8444 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8452() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(A0_SS)|T1_NN",
+            &rows2(|m0: IN1A0SS, m1: T1NN| Holder8452 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8460() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(E0_NN)|FT1_NNN",
+            &rows2(|m0: IN1E0NN, m1: FT1NNN| Holder8460 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8468() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(E0_SS)|A1_SS",
+            &rows2(|m0: IN1E0SS, m1: A1SS| Holder8468 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8476() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(E0_SS)|P1_N",
+            &rows2(|m0: IN1E0SS, m1: P1N| Holder8476 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8484() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(FO0_NN)|FO1_NN",
+            &rows2(|m0: IN1FO0NN, m1: FO1NN| Holder8484 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8492() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(FO0_NN)|V1_NN",
+            &rows2(|m0: IN1FO0NN, m1: V1NN| Holder8492 { own: 7, m0, m1 }),
+            &[("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8500() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(FP0_NN)|O1_N",
+            &rows2(|m0: IN1FP0NN, m1: Option<OI1N>| Holder8500 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8508() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(FT0_NNN)|E1_NN",
+            &rows2(|m0: IN1FT0NNN, m1: E1NN| Holder8508 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8516() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(FT0_NNN)|P1_S",
+            &rows2(|m0: IN1FT0NNN, m1: P1S| Holder8516 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8524() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(O0_N)|FP1_NN",
+            &rows2(|m0: IN1OptOI0N, m1: FP1NN| Holder8524 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder8532() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(O0_S)|A1_NN",
+            &rows2(|m0: IN1OptOI0S, m1: A1NN| Holder8532 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8540() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(O0_S)|O1_S",
+            &rows2(|m0: IN1OptOI0S, m1: Option<OI1S>| Holder8540 { own: 7, m0, m1 }),
+            &[
+                ("None,None", 'E'),
+                ("None,Some", 'E'),
+                ("Some,None", 'E'),
+                ("Some,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8548() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(P0_N)|E1_SS",
+            &rows2(|m0: IN1P0N, m1: E1SS| Holder8548 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8556() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(P0_N)|T1_NN",
+            &rows2(|m0: IN1P0N, m1: T1NN| Holder8556 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8564() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(P0_S)|FT1_NNN",
+            &rows2(|m0: IN1P0S, m1: FT1NNN| Holder8564 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8572() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(T0_NN)|A1_SS",
+            &rows2(|m0: IN1T0NN, m1: A1SS| Holder8572 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8580() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(T0_NN)|P1_N",
+            &rows2(|m0: IN1T0NN, m1: P1N| Holder8580 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8588() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(V0_NN)|FO1_NN",
+            &rows2(|m0: IN1V0NN, m1: FO1NN| Holder8588 { own: 7, m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8596() -> Vec<String> {
+        check(
+            "nest2:H2N1:IN1(V0_NN)|V1_NN",
+            &rows2(|m0: IN1V0NN, m1: V1NN| Holder8596 { own: 7, m0, m1 }),
+            &[
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8604() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IN0(FP1_SS)",
+            &rows2(|m0: Option<OI0N>, m1: IN0FP1SS| Holder8604 { own: 7, m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder8612() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IN0(V1_NN)",
+            &rows2(|m0: Option<OI0N>, m1: IN0V1NN| Holder8612 { own: 7, m0, m1 }),
+            &[
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8620() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IN1(FP1_NN)",
+            &rows2(|m0: Option<OI0N>, m1: IN1FP1NN| Holder8620 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder8628() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IN1(T1_SS)",
+            &rows2(|m0: Option<OI0N>, m1: IN1T1SS| Holder8628 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8636() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IS0(O1_S)",
+            &rows2(|m0: Option<OI0N>, m1: IS0OptOI1S| Holder8636 { own: 7, m0, m1 }),
+            &[
+                ("None,None", 'R'),
+                ("None,Some", 'R'),
+                ("Some,None", 'R'),
+                ("Some,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder8644() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_N|IS1(O1_S)",
+            &rows2(|m0: Option<OI0N>, m1: IS1OptOI1S| Holder8644 { own: 7, m0, m1 }),
+            &[
+                ("None,None", 'R'),
+                ("None,Some", 'R'),
+                ("Some,None", 'R'),
+                ("Some,Some", 'R'),
+            ],
+        )
+    }
+
+    fn holder8652() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IN0(FO1_SS)",
+            &rows2(|m0: Option<OI0S>, m1: IN0FO1SS| Holder8652 { own: 7, m0, m1 }),
+            &[("None,-", 'R'), ("Some,-", 'R')],
+        )
+    }
+
+    fn holder8660() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IN0(T1_NN)",
+            &rows2(|m0: Option<OI0S>, m1: IN0T1NN| Holder8660 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'E'),
+                ("None,Rect", 'E'),
+                ("None,Wrap", 'E'),
+                ("Some,Dot", 'E'),
+                ("Some,Rect", 'E'),
+                ("Some,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8668() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IN1(FO1_NN)",
+            &rows2(|m0: Option<OI0S>, m1: IN1FO1NN| Holder8668 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder8676() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IN1(P1_S)",
+            &rows2(|m0: Option<OI0S>, m1: IN1P1S| Holder8676 { own: 7, m0, m1 }),
+            &[("None,-", 'E'), ("Some,-", 'E')],
+        )
+    }
+
+    fn holder8684() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IS0(E1_SS)",
+            &rows2(|m0: Option<OI0S>, m1: IS0E1SS| Holder8684 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8692() -> Vec<String> {
+        check(
+            "nest2:H2N1:O0_S|IS1(E1_SS)",
+            &rows2(|m0: Option<OI0S>, m1: IS1E1SS| Holder8692 { own: 7, m0, m1 }),
+            &[
+                ("None,Dot", 'R'),
+                ("None,Rect", 'R'),
+                ("None,Wrap", 'R'),
+                ("Some,Dot", 'R'),
+                ("Some,Rect", 'R'),
+                ("Some,Wrap", 'R'),
+            ],
+        )
+    }
+
+    fn holder8700() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IN0(E1_SS)",
+            &rows2(|m0: P0N, m1: IN0E1SS| Holder8700 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8708() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IN0(P1_N)",
+            &rows2(|m0: P0N, m1: IN0P1N| Holder8708 { own: 7, m0, m1 }),
+            &[("-,-", 'E')],
+        )
+    }
+
+    fn holder8716() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IN1(E1_NN)",
+            &rows2(|m0: P0N, m1: IN1E1NN| Holder8716 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8724() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IN1(O1_S)",
+            &rows2(|m0: P0N, m1: IN1OptOI1S| Holder8724 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8732() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IS0(A1_SS)",
+            &rows2(|m0: P0N, m1: IS0A1SS| Holder8732 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder8740() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_N|IS1(A1_SS)",
+            &rows2(|m0: P0N, m1: IS1A1SS| Holder8740 { own: 7, m0, m1 }),
+            &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder8748() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IN0(A1_SS)",
+            &rows2(|m0: P0S, m1: IN0A1SS| Holder8748 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8756() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IN0(O1_N)",
+            &rows2(|m0: P0S, m1: IN0OptOI1N| Holder8756 { own: 7, m0, m1 }),
+            &[("-,None", 'E'), ("-,Some", 'E')],
+        )
+    }
+
+    fn holder8764() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IN1(A1_NN)",
+            &rows2(|m0: P0S, m1: IN1A1NN| Holder8764 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8772() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IN1(FT1_NNN)",
+            &rows2(|m0: P0S, m1: IN1FT1NNN| Holder8772 { own: 7, m0, m1 }),
+            &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
+        )
+    }
+
+    fn holder8780() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IN1(V1_SS)",
+            &rows2(|m0: P0S, m1: IN1V1SS| Holder8780 { own: 7, m0, m1 }),
+            &[("-,Rect", 'R'), ("-,Wrap", 'R')],
+        )
+    }
+
+    fn holder8788() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IS0(P1_S)",
+            &rows2(|m0: P0S, m1: IS0P1S| Holder8788 { own: 7, m0, m1 }),
+            &[("-,-", 'R')],
+        )
+    }
+
+    fn holder8796() -> Vec<String> {
+        check(
+            "nest2:H2N1:P0_S|IS1(P1_S)",
+            &rows2(|m0: P0S, m1: IS1P1S| Holder8796 { own: 7, m0, m1 }),
+            &[("-,-", 'R')],
+        )
+    }
+
+    fn holder8804() -> Vec<String> {
+        check(
+            "nest2:H2N1:T0_NN|IN0(O1_N)",
+            &rows2(|m0: T0NN, m1: IN0OptOI1N| Holder8804 { own: 7, m0, m1 }),
+            &[
+                ("Dot,None", 'E'),
+                ("Dot,Some", 'E'),
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+
+    fn holder8812() -> Vec<String> {
+        check(
+            "nest2:H2N1:T0_NN|IN1(E1_NN)",
+            &rows2(|m0: T0NN, m1: IN1E1NN| Holder8812 { own: 7, m0, m1 }),
+            &[
+                ("Dot,Dot", 'E'),
+                ("Dot,Rect", 'E'),
+                ("Dot,Wrap", 'E'),
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8820() -> Vec<String> {
+        check(
+            "nest2:H2N1:T0_NN|IN1(P1_S)",
+            &rows2(|m0: T0NN, m1: IN1P1S| Holder8820 { own: 7, m0, m1 }),
+            &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8828() -> Vec<String> {
+        check(
+            "nest2:H2N1:V0_NN|IN0(FP1_NN)",
+            &rows2(|m0: V0NN, m1: IN0FP1NN| Holder8828 { own: 7, m0, m1 }),
+            &[("Rect,-", 'E'), ("Wrap,-", 'E')],
+        )
+    }
+
+    fn holder8836() -> Vec<String> {
+        check(
+            "nest2:H2N1:V0_NN|IN1(A1_NN)",
+            &rows2(|m0: V0NN, m1: IN1A1NN| Holder8836 { own: 7, m0, m1 }),
+            &[
+                ("Rect,Dot", 'E'),
+                ("Rect,Rect", 'E'),
+                ("Rect,Wrap", 'E'),
+                ("Wrap,Dot", 'E'),
+                ("Wrap,Rect", 'E'),
+                ("Wrap,Wrap", 'E'),
+            ],
+        )
+    }
+
+    fn holder8844() -> Vec<String> {
+        check(
+            "nest2:H2N1:V0_NN|IN1(O1_S)",
+            &rows2(|m0: V0NN, m1: IN1OptOI1S| Holder8844 { own: 7, m0, m1 }),
+            &[
+                ("Rect,None", 'E'),
+                ("Rect,Some", 'E'),
+                ("Wrap,None", 'E'),
+                ("Wrap,Some", 'E'),
+            ],
+        )
+    }
+}

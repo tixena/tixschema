@@ -2,6 +2,7 @@
 //! module: the fault a caller can receive but no implementation can answer with, and the client's
 //! call-error enum.
 
+use super::message_shape::Shape;
 use super::parse::{
     HttpBinding, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, error_declared_type, path_reads_a_named_field, service_declares_a_stream,
@@ -11,7 +12,7 @@ use super::transport::Transport;
 use crate::rename_rule::RenameRule;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
-use syn::Ident;
+use syn::{Ident, Type, parse_quote};
 
 /// The service's own module, holding everything either half of a service reads and nothing that
 /// belongs to one of them.
@@ -131,6 +132,7 @@ pub fn emit(
     asked: &[Transport],
     non_exhaustive: bool,
     openapi: bool,
+    jsonschema: bool,
 ) -> TokenStream {
     let declared = &service.ident;
     let module = module_ident(service);
@@ -139,7 +141,7 @@ pub fn emit(
          Every type here belongs to this service alone: the crate that declares `{declared}` \
          owns them, and nothing is imported from tixschema at runtime."
     );
-    let fault = fault_declaration(declared, non_exhaustive, openapi);
+    let fault = fault_declaration(declared, non_exhaustive, jsonschema);
     let call_error = call_error_declaration(declared, non_exhaustive);
     let accessors = fault_accessors();
     let constructors = fault_constructors();
@@ -163,6 +165,27 @@ pub fn emit(
     } else {
         TokenStream::new()
     };
+    let resource_page = (asked.contains(&Transport::Mcp)
+        && service
+            .operations
+            .iter()
+            .any(|operation| operation.mcp.list_resources))
+    .then(resource_page_types);
+    let prompting = asked.contains(&Transport::Mcp)
+        && service
+            .operations
+            .iter()
+            .any(super::parse::OperationDef::is_mcp_prompt);
+    let content_types = (prompting
+        || (asked.contains(&Transport::Mcp)
+            && service
+                .operations
+                .iter()
+                .any(|operation| operation.mcp.content.is_some())))
+    .then(|| content_types(non_exhaustive));
+    let prompt_types = prompting.then(|| prompt_types(non_exhaustive));
+    let task_types = (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service))
+        .then(|| task_types(non_exhaustive));
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -184,6 +207,358 @@ pub fn emit(
             #http_completeness
             #body_source
             #streamed_answer
+            #resource_page
+            #content_types
+            #prompt_types
+            #task_types
+        }
+    }
+}
+
+/// What an `mcp(content)` operation answers a list of: one block of a tool's `content`.
+fn content_types(non_exhaustive: bool) -> TokenStream {
+    let wire_form = content_wire_form();
+    let sealed = exhaustiveness(non_exhaustive);
+    quote! {
+        /// One block of a tool's `content`.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        #sealed
+        pub enum McpContent {
+            /// Text.
+            Text { text: ::std::string::String },
+            /// An image: its bytes and its content type.
+            Image { data: ::std::vec::Vec<u8>, mime_type: ::std::string::String },
+            /// Audio: its bytes and its content type.
+            Audio { data: ::std::vec::Vec<u8>, mime_type: ::std::string::String },
+            /// A link to a resource the client can read.
+            ResourceLink {
+                uri: ::std::string::String,
+                name: ::std::string::String,
+                title: ::core::option::Option<::std::string::String>,
+                description: ::core::option::Option<::std::string::String>,
+                mime_type: ::core::option::Option<::std::string::String>,
+            },
+            /// A resource carried in the result.
+            Resource {
+                uri: ::std::string::String,
+                mime_type: ::core::option::Option<::std::string::String>,
+                contents: McpResourceContents,
+            },
+        }
+
+        /// What an embedded resource holds.
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        #sealed
+        pub enum McpResourceContents {
+            /// Text.
+            Text(::std::string::String),
+            /// Bytes.
+            Blob(::std::vec::Vec<u8>),
+        }
+
+        #wire_form
+    }
+}
+
+/// The reading and writing of a block in the specification's form, and the serde impls over them.
+fn content_wire_form() -> TokenStream {
+    let reading = content_wire_reading();
+    let encoder = super::transport::mcp::resources::base64_helper();
+    let decoder = super::transport::mcp::resources::base64_decoder();
+    quote! {
+        #encoder
+        #decoder
+
+        impl McpContent {
+            fn mcp_block(&self) -> ::serde_json::Value {
+                let mut written = ::serde_json::Map::new();
+                match self {
+                    Self::Text { text } => {
+                        written.insert("text".to_owned(), ::serde_json::Value::String(text.clone()));
+                        written.insert("type".to_owned(), ::serde_json::Value::String("text".to_owned()));
+                    }
+                    Self::Image { data, mime_type } | Self::Audio { data, mime_type } => {
+                        let kind = if ::core::matches!(self, Self::Image { .. }) { "image" } else { "audio" };
+                        written.insert("data".to_owned(), ::serde_json::Value::String(base64_encoded(data)));
+                        written.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        written.insert("type".to_owned(), ::serde_json::Value::String(kind.to_owned()));
+                    }
+                    Self::ResourceLink { uri, name, title, description, mime_type } => {
+                        if let ::core::option::Option::Some(description) = description {
+                            written.insert("description".to_owned(), ::serde_json::Value::String(description.clone()));
+                        }
+                        if let ::core::option::Option::Some(mime_type) = mime_type {
+                            written.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        }
+                        written.insert("name".to_owned(), ::serde_json::Value::String(name.clone()));
+                        if let ::core::option::Option::Some(title) = title {
+                            written.insert("title".to_owned(), ::serde_json::Value::String(title.clone()));
+                        }
+                        written.insert("type".to_owned(), ::serde_json::Value::String("resource_link".to_owned()));
+                        written.insert("uri".to_owned(), ::serde_json::Value::String(uri.clone()));
+                    }
+                    Self::Resource { uri, mime_type, contents } => {
+                        let mut resource = ::serde_json::Map::new();
+                        if let McpResourceContents::Blob(bytes) = contents {
+                            resource.insert("blob".to_owned(), ::serde_json::Value::String(base64_encoded(bytes)));
+                        }
+                        if let ::core::option::Option::Some(mime_type) = mime_type {
+                            resource.insert("mimeType".to_owned(), ::serde_json::Value::String(mime_type.clone()));
+                        }
+                        if let McpResourceContents::Text(text) = contents {
+                            resource.insert("text".to_owned(), ::serde_json::Value::String(text.clone()));
+                        }
+                        resource.insert("uri".to_owned(), ::serde_json::Value::String(uri.clone()));
+                        written.insert("resource".to_owned(), ::serde_json::Value::Object(resource));
+                        written.insert("type".to_owned(), ::serde_json::Value::String("resource".to_owned()));
+                    }
+                }
+                ::serde_json::Value::Object(written)
+            }
+        }
+
+        #reading
+
+        impl ::serde::Serialize for McpContent {
+            fn serialize<S>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                ::serde::Serialize::serialize(&self.mcp_block(), serializer)
+            }
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for McpContent {
+            fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                let block = <::serde_json::Value as ::serde::Deserialize>::deserialize(deserializer)?;
+                Self::from_mcp_block(&block).map_err(<D::Error as ::serde::de::Error>::custom)
+            }
+        }
+    }
+}
+
+/// The read of a block in the specification's form.
+fn content_wire_reading() -> TokenStream {
+    quote! {
+        impl McpContent {
+            fn from_mcp_block(block: &::serde_json::Value) -> ::core::result::Result<Self, ::std::string::String> {
+                fn optional(source: &::serde_json::Value, key: &str) -> ::core::option::Option<::std::string::String> {
+                    source.get(key).and_then(::serde_json::Value::as_str).map(::std::borrow::ToOwned::to_owned)
+                }
+                fn text(source: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::string::String, ::std::string::String> {
+                    optional(source, key).ok_or_else(|| ::std::format!("a content block holds no `{key}`"))
+                }
+                fn bytes(source: &::serde_json::Value, key: &str) -> ::core::result::Result<::std::vec::Vec<u8>, ::std::string::String> {
+                    base64_decoded(&text(source, key)?).ok_or_else(|| ::std::format!("`{key}` is not base64"))
+                }
+                match optional(block, "type").as_deref() {
+                    ::core::option::Option::Some("text") => ::core::result::Result::Ok(Self::Text { text: text(block, "text")? }),
+                    ::core::option::Option::Some("image") => ::core::result::Result::Ok(Self::Image {
+                        data: bytes(block, "data")?,
+                        mime_type: text(block, "mimeType")?,
+                    }),
+                    ::core::option::Option::Some("audio") => ::core::result::Result::Ok(Self::Audio {
+                        data: bytes(block, "data")?,
+                        mime_type: text(block, "mimeType")?,
+                    }),
+                    ::core::option::Option::Some("resource_link") => ::core::result::Result::Ok(Self::ResourceLink {
+                        uri: text(block, "uri")?,
+                        name: text(block, "name")?,
+                        title: optional(block, "title"),
+                        description: optional(block, "description"),
+                        mime_type: optional(block, "mimeType"),
+                    }),
+                    ::core::option::Option::Some("resource") => {
+                        let resource = block.get("resource").ok_or_else(|| ::std::string::String::from("a resource block holds no `resource`"))?;
+                        let contents = if resource.get("text").is_some() {
+                            McpResourceContents::Text(text(resource, "text")?)
+                        } else {
+                            McpResourceContents::Blob(bytes(resource, "blob")?)
+                        };
+                        ::core::result::Result::Ok(Self::Resource {
+                            uri: text(resource, "uri")?,
+                            mime_type: optional(resource, "mimeType"),
+                            contents,
+                        })
+                    }
+                    ::core::option::Option::Some(other) => ::core::result::Result::Err(::std::format!("`{other}` is no content block")),
+                    ::core::option::Option::None => ::core::result::Result::Err(::std::string::String::from("a content block holds no `type`")),
+                }
+            }
+        }
+    }
+}
+
+/// What an `mcp(prompt)` operation answers a list of: one message of a prompt.
+fn prompt_types(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
+    quote! {
+        /// Who a prompt's message is from.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
+        #sealed
+        pub enum McpRole {
+            /// The user.
+            User,
+            /// The model.
+            Assistant,
+        }
+
+        /// One message of a prompt: who it is from, and the block it holds.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #sealed
+        pub struct McpPromptMessage {
+            /// What the message holds.
+            pub content: McpContent,
+            /// Who the message is from.
+            pub role: McpRole,
+        }
+    }
+}
+
+/// What an `mcp(task(...))` operation answers: the handle of a task, and the state `tasks/get`
+/// reports. The application keeps the task; the times are the application's own text.
+fn task_types(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
+    quote! {
+        /// The handle of a task: the id the application keeps it under, and when it started.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        #sealed
+        pub struct McpTask {
+            /// The id the application keeps the task under; the transport adds the tool's name.
+            pub task_id: ::std::string::String,
+            /// When the task started, as an RFC 3339 timestamp.
+            pub created_at: ::std::string::String,
+            /// When the task last changed, as an RFC 3339 timestamp.
+            pub last_updated_at: ::std::string::String,
+            /// How long, in milliseconds, the application keeps the task; `null` for no limit.
+            #[serde(default)]
+            pub ttl_ms: ::core::option::Option<u64>,
+            /// How often, in milliseconds, a client may ask where the task stands.
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub poll_interval_ms: ::core::option::Option<u64>,
+        }
+
+        /// Why a task failed, as the specification writes an error.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #sealed
+        pub struct McpTaskError {
+            pub code: i64,
+            pub message: ::std::string::String,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub data: ::core::option::Option<::serde_json::Value>,
+        }
+
+        /// Where a task stands, as `tasks/get` and the operation named in `task(get = ...)` answer.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(tag = "status", rename_all = "snake_case")]
+        #sealed
+        pub enum McpTaskState<T> {
+            /// The work goes on.
+            Working {
+                #[serde(flatten)]
+                task: McpTask,
+            },
+            /// The work waits for the user: each request is an `elicitation/create` request under
+            /// the key `task(update = ...)` answers.
+            InputRequired {
+                #[serde(flatten)]
+                task: McpTask,
+                #[serde(rename = "inputRequests")]
+                input_requests: ::std::collections::BTreeMap<::std::string::String, ::serde_json::Value>,
+            },
+            /// The work ended: `result` is what the starting tool would have answered.
+            Completed {
+                #[serde(flatten)]
+                task: McpTask,
+                result: T,
+            },
+            /// The work failed.
+            Failed {
+                #[serde(flatten)]
+                task: McpTask,
+                error: McpTaskError,
+            },
+            /// The work was cancelled.
+            Cancelled {
+                #[serde(flatten)]
+                task: McpTask,
+            },
+        }
+
+        impl McpTask {
+            /// A task started at `created_at` and last changed at `last_updated_at`, kept for
+            /// `ttl_ms` milliseconds and polled every `poll_interval_ms`.
+            pub const fn new(
+                task_id: ::std::string::String,
+                created_at: ::std::string::String,
+                last_updated_at: ::std::string::String,
+                ttl_ms: ::core::option::Option<u64>,
+                poll_interval_ms: ::core::option::Option<u64>,
+            ) -> Self {
+                Self { task_id, created_at, last_updated_at, ttl_ms, poll_interval_ms }
+            }
+        }
+
+        impl McpTaskError {
+            /// An error of `code` saying `message`, with the `data` it carries.
+            pub const fn new(
+                code: i64,
+                message: ::std::string::String,
+                data: ::core::option::Option<::serde_json::Value>,
+            ) -> Self {
+                Self { code, message, data }
+            }
+        }
+
+        impl<T> McpTaskState<T> {
+            /// The task the state is about.
+            pub const fn task(&self) -> &McpTask {
+                match self {
+                    Self::Working { task }
+                    | Self::InputRequired { task, .. }
+                    | Self::Completed { task, .. }
+                    | Self::Failed { task, .. }
+                    | Self::Cancelled { task } => task,
+                }
+            }
+        }
+    }
+}
+
+/// What an `mcp(list_resources)` operation answers: one page of resources.
+fn resource_page_types() -> TokenStream {
+    quote! {
+        /// One resource of a listing, as `resources/list` writes it.
+        #[derive(Clone, Debug, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct McpResource {
+            /// The URI `resources/read` reads it by.
+            pub uri: ::std::string::String,
+            /// The name a host shows.
+            pub name: ::std::string::String,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub title: ::core::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub description: ::core::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub mime_type: ::core::option::Option<::std::string::String>,
+            /// The size in bytes, where it is known.
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub size: ::core::option::Option<u64>,
+        }
+
+        /// One page of `resources/list`, with the cursor of the next where there is one.
+        #[derive(Clone, Debug, Default, Eq, PartialEq, ::serde::Deserialize, ::serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct McpResourcePage {
+            pub resources: ::std::vec::Vec<McpResource>,
+            #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+            pub next_cursor: ::core::option::Option<::std::string::String>,
         }
     }
 }
@@ -199,9 +574,9 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
 }
 
 /// The `model_schema` attribute a generated type carries, listing `"jsonschema"` where the service
-/// asked for `openapi`, whose document reads each generated type's schema.
-pub fn model_schema_attribute(openapi: bool) -> TokenStream {
-    if openapi {
+/// asked for `openapi` or `mcp`, whose documents read each generated type's schema.
+pub fn model_schema_attribute(jsonschema: bool) -> TokenStream {
+    if jsonschema {
         quote! { #[::tixschema::model_schema(enable = ["jsonschema"])] }
     } else {
         quote! { #[::tixschema::model_schema()] }
@@ -774,7 +1149,8 @@ pub fn message_alias_ident(operation: &OperationDef) -> Ident {
 /// One reader per operation: the operation's message read with no judgement of its own, at the
 /// concrete type an inherent `model_schema_read_unjudged` needs to win at. A dispatcher reads a
 /// request through it and then asks the message to validate itself, so a broken bound is the
-/// validator's to report, with its field.
+/// validator's to report, with its field. A list, a map or an optional of a model is read element
+/// by element the same way.
 fn message_readers(service: &ServiceDef) -> TokenStream {
     let declared = service.operations.iter().map(|operation| {
         let named = message_reader_ident(operation);
@@ -783,25 +1159,55 @@ fn message_readers(service: &ServiceDef) -> TokenStream {
             "The message of operation `{}`, read with no judgement of its own.",
             operation.wire_name
         );
+        let fallback = quote! {
+            /// How a message that publishes no `validate()` is read: as serde reads it. An
+            /// inherent function is found ahead of this one, so a message that publishes one
+            /// answers with its own unjudged read.
+            trait ReadUnjudged<'de>: ::serde::Deserialize<'de> {
+                fn model_schema_read_unjudged<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                where
+                    D: ::serde::Deserializer<'de>,
+                {
+                    <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
+                }
+            }
+            impl<'de, T: ::serde::Deserialize<'de>> ReadUnjudged<'de> for T {}
+        };
+        let body = collection_shape(operation).map_or_else(
+            || {
+                quote! {
+                    #fallback
+                    <#message>::model_schema_read_unjudged(deserializer)
+                }
+            },
+            |shape| {
+                let leaf = shape.leaf();
+                let held: Type = parse_quote! { Held };
+                let read_as = shape.held_type(&held);
+                let unwrapped = shape.unwrapped(&quote! { read });
+                quote! {
+                    #fallback
+                    struct Held(#leaf);
+                    impl<'de> ::serde::Deserialize<'de> for Held {
+                        fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                        where
+                            D: ::serde::Deserializer<'de>,
+                        {
+                            <#leaf>::model_schema_read_unjudged(deserializer).map(Held)
+                        }
+                    }
+                    let read: #read_as = <#read_as as ::serde::Deserialize<'de>>::deserialize(deserializer)?;
+                    ::core::result::Result::Ok(#unwrapped)
+                }
+            },
+        );
         quote! {
             #[doc = #doc]
             pub fn #named<'de, D>(deserializer: D) -> ::core::result::Result<#message, D::Error>
             where
                 D: ::serde::Deserializer<'de>,
             {
-                /// How a message that publishes no `validate()` is read: as serde reads it. An
-                /// inherent function is found ahead of this one, so a message that publishes one
-                /// answers with its own unjudged read.
-                trait ReadUnjudged<'de>: ::serde::Deserialize<'de> {
-                    fn model_schema_read_unjudged<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
-                    where
-                        D: ::serde::Deserializer<'de>,
-                    {
-                        <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
-                    }
-                }
-                impl<'de, T: ::serde::Deserialize<'de>> ReadUnjudged<'de> for T {}
-                <#message>::model_schema_read_unjudged(deserializer)
+                #body
             }
         }
     });
@@ -810,8 +1216,17 @@ fn message_readers(service: &ServiceDef) -> TokenStream {
     }
 }
 
-/// One validator per operation: the operation's message asked to validate itself, at the concrete
-/// type an inherent `validate()` needs to win at.
+/// The collections an operation's message is, when it is a list, a map or an optional.
+fn collection_shape(operation: &OperationDef) -> Option<Shape> {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return None;
+    };
+    Shape::of(declared)
+}
+
+/// One validator per operation: the operation's message asked to validate itself, at the
+/// concrete type an inherent `validate()` needs to win at. A list, a map or an optional of a model
+/// asks each element.
 fn message_validators(service: &ServiceDef) -> TokenStream {
     let declared = service.operations.iter().map(|operation| {
         let named = message_validator_ident(operation);
@@ -821,11 +1236,26 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
             operation.wire_name
         );
         let in_scope = message_validation_in_scope();
+        let body = collection_shape(operation).map_or_else(
+            || quote! { received.validate() },
+            |shape| {
+                let walked = shape.validated(&quote! { received });
+                quote! {
+                    let mut violations = ::std::vec::Vec::new();
+                    #walked
+                    if violations.is_empty() {
+                        ::core::result::Result::Ok(())
+                    } else {
+                        ::core::result::Result::Err(violations)
+                    }
+                }
+            },
+        );
         quote! {
             #[doc = #doc]
             pub fn #named(received: &#message) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
                 #in_scope
-                received.validate()
+                #body
             }
         }
     });
@@ -1309,10 +1739,10 @@ fn fault_constructors() -> TokenStream {
 /// `ServiceFault` and the kind it reports. Both derive `Serialize`, which is what the transport
 /// needs to put a fault on the wire, and neither derives `Deserialize`, so a fault never arrives
 /// simply by having been written there.
-fn fault_declaration(declared: &Ident, non_exhaustive: bool, openapi: bool) -> TokenStream {
+fn fault_declaration(declared: &Ident, non_exhaustive: bool, jsonschema: bool) -> TokenStream {
     let fields = fault_fields_ident(declared);
     let sealed = exhaustiveness(non_exhaustive);
-    let model_schema = model_schema_attribute(openapi);
+    let model_schema = model_schema_attribute(jsonschema);
     let kind = format_ident!("{declared}FaultKind", span = declared.span());
     let fault_doc = format!(
         "A failure `{declared}` never declared: a payload that would not deserialize, a message \

@@ -52,11 +52,11 @@ type Pairs<T> = HashMap<String, T>;
 #[model_schema(name = "Properties")]
 pub type PropertiesData = HashMap<String, String>;
 
-/// A map behind a plain alias, flattened: it takes every key nothing else declares.
-#[model_schema(enable = ["decode_with"])]
+/// A map behind a plain alias, flattened alone: it takes every key. `nonstrict`, as tixschema does
+/// not see through a plain alias that the type is a map.
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Block {
-    name: String,
     #[serde(flatten)]
     properties: Properties,
 }
@@ -195,25 +195,18 @@ fn an_alias_tixschema_never_sees_is_read_whole() {
     );
 }
 
-/// Flattened, the map takes every key nothing else declares, so none of them is unknown.
+/// Flattened alone, the map takes every key, so none of them is unknown.
 #[test]
 fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     let mut calls = 0_u32;
-    let stored = json!({ "a": 1_u8, "b": 2_u8, "name": "n" });
+    let stored = json!({ "a": 1_u8, "b": 2_u8 });
     assert_eq!(
         read_counting!(Block, block_schema, stored, calls),
         Ok(Block {
-            name: "n".to_owned(),
             properties: HashMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
         })
     );
     assert_eq!(calls, 0);
-    assert_eq!(
-        listed!(Block, block_schema, json!({ "a": 1_i32, "name": 7_i32 })),
-        [
-            "name: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string"
-        ]
-    );
 }
 
 /// The flag changes nothing a schema surface publishes: the field keeps the alias's name.
@@ -248,7 +241,7 @@ fn a_type_declared_below_is_walked_by_its_own_walker_or_read_whole() {
             "flagged.number: invalid: expected I32, found String(\"n\"): invalid type: string \"n\", expected i32",
             "flagged.extra: unknown: found Bool(true)",
             "pairs: invalid: expected Unknown, found Object {\"b\": String(\"y\")}: invalid type: string \"y\", expected i32",
-            "plain: invalid: expected Unknown, found Object {\"extra\": Bool(true), \"number\": String(\"n\")}: invalid type: string \"n\", expected i32",
+            "plain: invalid: expected Unknown, found Object {\"extra\": Bool(true), \"number\": String(\"n\")}: unknown field `extra`, expected `number`",
         ]
     );
     let mut calls = 0_u32;

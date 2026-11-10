@@ -1,6 +1,8 @@
 //! JSON Schema generation: `json_schema()` and `json_schema_within()` for a type that lists
 //! `enable = ["jsonschema"]`.
 
+use crate::utils::is_nonstrict;
+
 const DEFS_PREFIX: &str = "#/$defs/";
 
 /// The associated const an untagged enum with a member serde writes as `()` publishes on its
@@ -327,11 +329,12 @@ pub fn generate_struct_json_schema_method(
 
 /// The struct's own fields as one closed object.
 fn closed_object_body(json_schema_fields: &[proc_macro2::TokenStream]) -> proc_macro2::TokenStream {
+    let open = is_nonstrict();
     quote::quote! {
         {
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
+            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(#open));
             let mut properties = serde_json::Map::new();
             let mut required = ::std::vec::Vec::new();
 
@@ -353,6 +356,7 @@ fn closed_object_body(json_schema_fields: &[proc_macro2::TokenStream]) -> proc_m
 /// with: how two objects join, whether a schema is a deferred name, what type it commits its value
 /// to, and which branches it offers under which spelling.
 fn merge_readers() -> proc_macro2::TokenStream {
+    let open = is_nonstrict();
     quote::quote! {
         fn merge_object_schemas(
             a: &serde_json::Map<::std::string::String, serde_json::Value>,
@@ -380,7 +384,7 @@ fn merge_readers() -> proc_macro2::TokenStream {
                 }
             }
             out.insert("required".to_string(), serde_json::Value::Array(required));
-            out.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
+            out.insert("additionalProperties".to_string(), serde_json::Value::Bool(#open));
             out
         }
 
@@ -422,7 +426,8 @@ fn map_handing() -> proc_macro2::TokenStream {
     quote::quote! {
         // The maps merged so far, and `members` among them where it is a map or admits keys
         // beyond its own: serde hands such a source every key no member takes. Each is its
-        // values, and the keys it names where it names some.
+        // values, and the keys it names where it names some. A nonstrict struct, which names
+        // members and admits other keys in its own object, is handed none.
         fn handed_beside(
             handed: &[serde_json::Value],
             members: &serde_json::Map<::std::string::String, serde_json::Value>,
@@ -431,7 +436,11 @@ fn map_handing() -> proc_macro2::TokenStream {
             let mut maps = handed.to_vec();
             if let ::core::option::Option::Some(value) = members
                 .get("additionalProperties")
-                .filter(|value| map || value.as_bool() != ::core::option::Option::Some(false))
+                .filter(|value| {
+                    map || (value.as_bool() != ::core::option::Option::Some(false)
+                        && !(value.as_bool() == ::core::option::Option::Some(true)
+                            && members.contains_key("properties")))
+                })
             {
                 let mut held = serde_json::Map::new();
                 held.insert("additionalProperties".to_string(), value.clone());
@@ -956,11 +965,12 @@ fn flattened_object_body(
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
 ) -> proc_macro2::TokenStream {
+    let open = is_nonstrict();
     let base = quote::quote! {
         {
             let mut schema_obj = serde_json::Map::new();
             schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(false));
+            schema_obj.insert("additionalProperties".to_string(), serde_json::Value::Bool(#open));
             let mut properties = serde_json::Map::new();
             let mut required = ::std::vec::Vec::new();
 

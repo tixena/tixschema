@@ -60,16 +60,26 @@ fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text str 
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    concat!(
+        include_str!("../../docs/guide/preprocess-and-check.md"),
+        include_str!("../../docs/guide/upgrading.md"),
+        include_str!("../../docs/guide/checks.md"),
+        include_str!("../../docs/guide/kotlin.md"),
+        include_str!("../../docs/guide/swift.md"),
+        include_str!("../../docs/guide/preprocess.md")
+    )
 }
 
-/// The section, from its heading up to the heading of the section after it.
+/// The section, from its heading to the end of the upgrade notes that follow it.
 fn section() -> &'static str {
-    from_until(
-        readme(),
-        "### Preprocess and check\n",
-        "\n### Checks (`check`)\n",
-    )
+    let chapter = concat!(
+        include_str!("../../docs/guide/preprocess-and-check.md"),
+        include_str!("../../docs/guide/upgrading.md")
+    );
+    chapter
+        .find("### Preprocess and check\n")
+        .and_then(|start| chapter.get(start..))
+        .unwrap()
 }
 
 /// The anchor a heading of the README is linked by.
@@ -381,26 +391,61 @@ fn every_place_that_introduces_a_preprocess_calls_it_a_last_resort() {
             "**The key is a last resort** here as it is in Rust",
         ),
     ] {
-        let rest = from_until(readme(), introduced, "\n### ");
-        let own = rest.get(1..).unwrap().split("\n#### ").next().unwrap();
+        let rest = readme().split_once(introduced).unwrap().1;
+        let own = rest
+            .split("\n### ")
+            .next()
+            .unwrap()
+            .split("\n#### ")
+            .next()
+            .unwrap();
         assert!(own.contains(said), "{introduced}no longer says: {said}");
     }
 }
 
-/// Every section the section points at is a heading of the README.
+/// The guide file a link of the section names, or the section's own files where it names none.
+fn chapter(name: &str) -> Option<&'static str> {
+    match name {
+        "" => Some(readme()),
+        "checks.md" => Some(include_str!("../../docs/guide/checks.md")),
+        "chrono.md" => Some(include_str!("../../docs/guide/chrono.md")),
+        "dart.md" => Some(include_str!("../../docs/guide/dart.md")),
+        "enums.md" => Some(include_str!("../../docs/guide/enums.md")),
+        "flatten.md" => Some(include_str!("../../docs/guide/flatten.md")),
+        "generics-and-brands.md" => Some(include_str!("../../docs/guide/generics-and-brands.md")),
+        "kotlin.md" => Some(include_str!("../../docs/guide/kotlin.md")),
+        "models.md" => Some(include_str!("../../docs/guide/models.md")),
+        "nested-recursive-and-aliased-types.md" => Some(include_str!(
+            "../../docs/guide/nested-recursive-and-aliased-types.md"
+        )),
+        "object-id.md" => Some(include_str!("../../docs/guide/object-id.md")),
+        "preprocess.md" => Some(include_str!("../../docs/guide/preprocess.md")),
+        "swift.md" => Some(include_str!("../../docs/guide/swift.md")),
+        "troubleshooting.md" => Some(include_str!("../../docs/guide/troubleshooting.md")),
+        "untagged-enums.md" => Some(include_str!("../../docs/guide/untagged-enums.md")),
+        "validation.md" => Some(include_str!("../../docs/guide/validation.md")),
+        _ => None,
+    }
+}
+
+/// Every section the section points at is a heading of the file the link names.
 #[test]
-fn every_section_the_section_names_is_a_heading_of_the_readme() {
-    let headings: Vec<String> = readme()
-        .lines()
-        .filter(|line| line.starts_with('#'))
-        .map(anchor)
-        .collect();
+fn every_section_the_section_names_is_a_heading_of_the_guide() {
     let mut named = 0_u32;
-    for link in section().split("](#").skip(1) {
+    for link in section().split("](").skip(1) {
         let target = link.split_once(')').unwrap().0;
+        let Some((file, linked)) = target.split_once('#') else {
+            continue;
+        };
+        let headings: Vec<String> = chapter(file)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| line.starts_with('#'))
+            .map(anchor)
+            .collect();
         assert!(
-            headings.iter().any(|heading| heading == target),
-            "no heading of the README is linked by `#{target}`"
+            headings.iter().any(|heading| heading == linked),
+            "no heading of `{file}` is linked by `#{linked}`"
         );
         named += 1;
     }

@@ -51,7 +51,9 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     do { return try JSONDecoder().decode(type, from: written) } \
+     let reader = JSONDecoder(); \
+     reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] = true; \
+     do { return try reader.decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
      throw DecodingError.typeMismatch(asked, placed(context)) } \
      catch DecodingError.valueNotFound(let asked, let context) { \
@@ -127,6 +129,8 @@ pub(super) enum Plain<'member> {
 pub(super) struct Written<'named> {
     /// What else the type declares that reads a payload: the readers of an untagged enum.
     pub beside: &'named str,
+    /// The keys the type refuses a key beside, where its read refuses one.
+    pub closed: Option<Vec<String>>,
     /// The name the type is declared under.
     pub named: &'named str,
     /// The functions the type names on itself, in the order written.
@@ -160,10 +164,40 @@ thread_local! {
     /// written reads alone, refusing any other beside them.
     static ONLY_KEYS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
+    /// The keys each struct the emitter has written refuses a key beside: the keys of its own
+    /// members and of those it flattens. A struct with no entry refuses no key.
+    static CLOSED: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
     /// The Rust ident and the Swift name of each brand and struct of one slot of those that
     /// declares no parameter, in the order written: what a type parameter filled at one is told by
     /// as it is read.
     static ONLY_NAMED: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Records the keys the struct `rust_ident` refuses a key beside, and forgets them where it
+/// refuses none.
+pub(super) fn note_closed(rust_ident: &str, keys: Option<&[String]>) {
+    CLOSED.with(|recorded| {
+        if let Some(closed) = keys {
+            recorded
+                .borrow_mut()
+                .insert(rust_ident.to_owned(), closed.to_vec());
+        } else {
+            recorded.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// The keys the struct a member `def` describes refuses a key beside, where it was written above
+/// and refuses one.
+pub(super) fn closed_keys_of(def: &FieldDef) -> Option<Vec<String>> {
+    let FieldDefType::SiblingType(name, _) = &def.field_type else {
+        return None;
+    };
+    if def.array_depth > 0 {
+        return None;
+    }
+    CLOSED.with(|recorded| recorded.borrow().get(name).cloned())
 }
 
 /// Records whether the type `rust_ident` names reads the keys the types around it took.

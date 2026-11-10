@@ -59,7 +59,7 @@ fn expanded(source: &str) -> String {
 fn a_build_without_the_serde_feature_refuses_a_service_and_says_what_to_add() {
     let emitted = expanded(MIXED_SERVICE);
     // The README shows this message where it documents the requirement, so the two cannot drift.
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     let said = "service_schema: a service needs tixschema's `serde` feature, and this build does \
                 not have it\n       without it the TypeScript a service publishes names Rust \
                 fields rather than the camelCase\n       and kebab-case keys its own dispatcher \

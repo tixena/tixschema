@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel`, variant `Stamped` has the enum's tag and flattened `stamp` (`Stamp`), which both write the key `kind`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, or write `stamp` under a key of its own.
+  --> tests/flatten_order_refusals/variant_tag_and_member_tag.rs:18:9
+   |
+18 | /         #[serde(flatten)]
+19 | |         stamp: Stamp,
+   | |____________________^

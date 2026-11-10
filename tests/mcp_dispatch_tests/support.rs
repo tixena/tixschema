@@ -1,0 +1,477 @@
+//! The stand-in executor, the messages a client writes, and the check of every message against
+//! the official schema.
+
+use crate::tests::Archive;
+use crate::{
+    BillingServiceSchema, DocumentServiceSchema, approval_mcp, billing_mcp, counsel_mcp,
+    document_mcp, export_mcp, job_mcp,
+};
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
+use alloc::task::Wake;
+use core::future::{Future, poll_fn, ready};
+use core::pin::{Pin, pin};
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{Context, Poll, Waker};
+use serde_json::{Value, json};
+use std::sync::Mutex;
+
+macro_rules! writes_to {
+    ($($module:ident),*) => {$(
+        impl $module::McpEventWriter for Lines {
+            fn write(
+                &self,
+                message: String,
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(self.keep(message).then_some(()).ok_or($module::McpClientGone::new()))
+            }
+        }
+    )*};
+}
+
+macro_rules! streams_to {
+    ($($module:ident),*) => {$(
+        impl $module::McpEventWriter for Recorded {
+            fn write(
+                &self,
+                message: String,
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(
+                    self.record(Seen::Wrote(message))
+                        .then_some(())
+                        .ok_or($module::McpClientGone::new()),
+                )
+            }
+        }
+
+        impl $module::McpHttpStream for Recorded {
+            fn begin(
+                &self,
+                status: u16,
+                headers: &[(String, String)],
+            ) -> impl Future<Output = Result<(), $module::McpClientGone>> {
+                ready(
+                    self.record(Seen::Began(status, headers.to_vec()))
+                        .then_some(())
+                        .ok_or($module::McpClientGone::new()),
+                )
+            }
+        }
+
+        impl From<Streamed> for $module::McpHttpResponse {
+            fn from(streamed: Streamed) -> Self {
+                Self::new(streamed.status, streamed.headers, streamed.body)
+            }
+        }
+    )*};
+}
+
+/// The official schema of the tasks extension.
+const TASKS_SCHEMA: &str =
+    include_str!("../mcp_declaration_tests/mcp-tasks-schema-2026-07-28.json");
+
+/// The official 2026-07-28 schema of the Model Context Protocol.
+const MCP_SCHEMA: &str = include_str!("../mcp_declaration_tests/mcp-schema-2026-07-28.json");
+
+pub const CENTS: i64 = 1250;
+pub const HEADER_MISMATCH: i64 = -32020;
+pub const INTERNAL_ERROR: i64 = -32603;
+pub const INVALID_PARAMS: i64 = -32602;
+pub const INVALID_REQUEST: i64 = -32600;
+pub const LISTED_FOR_MS: u64 = 300_000;
+pub const METHOD_NOT_FOUND: i64 = -32601;
+pub const UNSUPPORTED_VERSION: i64 = -32022;
+pub const VERSION: &str = "2026-07-28";
+pub const VERSION_NUMBER: u32 = 7;
+
+/// Two services behind one endpoint, built in a `const` so a shared name would stop the build.
+pub const WORKSPACE: document_mcp::McpEndpoint = document_mcp::McpEndpoint::new(
+    &[
+        DocumentServiceSchema::MCP_NAMES,
+        BillingServiceSchema::MCP_NAMES,
+    ],
+    &[document_mcp::catalog, billing_mcp::catalog],
+);
+
+/// Where a stdio host writes: every message kept, or every write refused once the client is gone.
+#[derive(Default)]
+pub struct Lines {
+    gone: bool,
+    written: Mutex<Vec<String>>,
+}
+
+impl Lines {
+    pub fn gone() -> Self {
+        Self {
+            gone: true,
+            written: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn keep(&self, message: String) -> bool {
+        if self.gone {
+            return false;
+        }
+        self.written.lock().unwrap().push(message);
+        true
+    }
+
+    pub fn written(&self) -> Vec<String> {
+        self.written.lock().unwrap().clone()
+    }
+}
+
+writes_to!(
+    document_mcp,
+    billing_mcp,
+    export_mcp,
+    approval_mcp,
+    counsel_mcp,
+    job_mcp
+);
+
+/// One call the dispatcher made on an HTTP stream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Seen {
+    Began(u16, Vec<(String, String)>),
+    Wrote(String),
+}
+
+/// What a stream received, put together the way a response carries it.
+pub struct Streamed {
+    pub body: Vec<u8>,
+    pub headers: Vec<(String, String)>,
+    pub status: u16,
+}
+
+/// Where an HTTP host streams to: every call kept in order, and every call refused once the
+/// stream has taken `lasts` of them.
+#[derive(Default)]
+pub struct Recorded {
+    lasts: Option<usize>,
+    log: Mutex<Vec<Seen>>,
+}
+
+impl Recorded {
+    /// The response `answered`, or what the stream was begun with and written where it is `None`.
+    pub fn collect<Response>(&self, answered: Option<Response>) -> Response
+    where
+        Response: From<Streamed>,
+    {
+        answered.unwrap_or_else(|| self.streamed().into())
+    }
+
+    /// A stream whose client goes away after `calls` calls.
+    pub fn gone_after(calls: usize) -> Self {
+        Self {
+            lasts: Some(calls),
+            log: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn record(&self, seen: Seen) -> bool {
+        let mut log = self.log.lock().unwrap();
+        if self.lasts.is_some_and(|lasts| log.len() >= lasts) {
+            return false;
+        }
+        log.push(seen);
+        true
+    }
+
+    /// Every call the stream took, in order.
+    pub fn seen(&self) -> Vec<Seen> {
+        self.log.lock().unwrap().clone()
+    }
+
+    /// What the stream was begun with, and everything written to it.
+    pub fn streamed(&self) -> Streamed {
+        let (status, headers) = self
+            .seen()
+            .into_iter()
+            .find_map(|seen| match seen {
+                Seen::Began(status, headers) => Some((status, headers)),
+                Seen::Wrote(_) => None,
+            })
+            .unwrap();
+        Streamed {
+            body: self.wrote().concat().into_bytes(),
+            headers,
+            status,
+        }
+    }
+
+    /// Every text written, in order.
+    pub fn wrote(&self) -> Vec<String> {
+        self.seen()
+            .into_iter()
+            .filter_map(|seen| match seen {
+                Seen::Wrote(text) => Some(text),
+                Seen::Began(..) => None,
+            })
+            .collect()
+    }
+}
+
+streams_to!(
+    document_mcp,
+    billing_mcp,
+    export_mcp,
+    approval_mcp,
+    counsel_mcp,
+    job_mcp
+);
+
+struct Fed<Change> {
+    closed: bool,
+    pending: VecDeque<Change>,
+    waiting: Option<Waker>,
+}
+
+/// A source of changes the test feeds one at a time: `next` waits for the test, with nothing to
+/// time out.
+pub struct Feed<Change> {
+    held: Arc<Mutex<Fed<Change>>>,
+}
+
+impl<Change> Clone for Feed<Change> {
+    fn clone(&self) -> Self {
+        Self {
+            held: Arc::clone(&self.held),
+        }
+    }
+}
+
+impl<Change> Default for Feed<Change> {
+    fn default() -> Self {
+        Self {
+            held: Arc::new(Mutex::new(Fed {
+                closed: false,
+                pending: VecDeque::new(),
+                waiting: None,
+            })),
+        }
+    }
+}
+
+impl<Change> Feed<Change> {
+    /// Ends the stream the feed is the source of.
+    pub fn close(&self) {
+        let mut fed = self.held.lock().unwrap();
+        fed.closed = true;
+        if let Some(waker) = fed.waiting.take() {
+            waker.wake();
+        }
+    }
+
+    pub async fn next(&self) -> Option<Change> {
+        poll_fn(|cx| {
+            let mut fed = self.held.lock().unwrap();
+            if let Some(change) = fed.pending.pop_front() {
+                return Poll::Ready(Some(change));
+            }
+            if fed.closed {
+                return Poll::Ready(None);
+            }
+            fed.waiting = Some(cx.waker().clone());
+            Poll::Pending
+        })
+        .await
+    }
+
+    /// Hands one change to the stream.
+    pub fn push(&self, change: Change) {
+        let mut fed = self.held.lock().unwrap();
+        fed.pending.push_back(change);
+        if let Some(waker) = fed.waiting.take() {
+            waker.wake();
+        }
+    }
+}
+
+type Task<'task> = Pin<Box<dyn Future<Output = ()> + 'task>>;
+
+/// Tasks polled in turn, each only after something woke it, with no clock anywhere.
+#[derive(Default)]
+pub struct Tasks<'tasks> {
+    running: Vec<(Arc<Woken>, Task<'tasks>)>,
+}
+
+struct Woken(AtomicBool);
+
+impl Wake for Woken {
+    fn wake(self: Arc<Self>) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+impl<'tasks> Tasks<'tasks> {
+    /// Polls every task that was woken until none is, and drops the ones that finished.
+    pub fn run_until_idle(&mut self) {
+        loop {
+            let mut polled = false;
+            self.running.retain_mut(|(woken, task)| {
+                if !woken.0.swap(false, Ordering::SeqCst) {
+                    return true;
+                }
+                polled = true;
+                let waker = Waker::from(Arc::clone(woken));
+                task.as_mut()
+                    .poll(&mut Context::from_waker(&waker))
+                    .is_pending()
+            });
+            if !polled {
+                return;
+            }
+        }
+    }
+
+    pub fn running(&self) -> usize {
+        self.running.len()
+    }
+
+    pub fn spawn(&mut self, task: impl Future<Output = ()> + 'tasks) {
+        self.running
+            .push((Arc::new(Woken(AtomicBool::new(true))), Box::pin(task)));
+    }
+}
+/// The identifier of a request.
+pub fn id(number: u64) -> Value {
+    Value::from(number)
+}
+
+/// What `answering` answers on its first poll: every handler here is ready at once, and a future
+/// that is not has nothing to wake it.
+pub fn block_on<Answering>(answering: Answering) -> Answering::Output
+where
+    Answering: Future,
+{
+    let mut pinned = pin!(answering);
+    let polled = pinned
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()));
+    match polled {
+        Poll::Ready(output) => Some(output),
+        Poll::Pending => None,
+    }
+    .unwrap()
+}
+
+/// Every error the vendored definition `definition` finds in `instance`, each with where it is.
+pub fn schema_errors(definition: &str, instance: &Value) -> Vec<String> {
+    let schema: Value = serde_json::from_str(MCP_SCHEMA).unwrap();
+    let rooted = json!({ "$ref": format!("#/$defs/{definition}"), "$defs": schema["$defs"] });
+    let validator = jsonschema::validator_for(&rooted).unwrap();
+    validator
+        .iter_errors(instance)
+        .map(|error| format!("{error} at {}", error.instance_path()))
+        .collect()
+}
+
+/// Holds `instance` to the definition `definition` of the schema of the tasks extension.
+pub fn assert_task(definition: &str, instance: &Value) {
+    let schema: Value = serde_json::from_str(TASKS_SCHEMA).unwrap();
+    let rooted = json!({ "$ref": format!("#/$defs/{definition}"), "$defs": schema["$defs"] });
+    let validator = jsonschema::validator_for(&rooted).unwrap();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|error| format!("{error} at {}", error.instance_path()))
+        .collect();
+    assert_eq!(errors, Vec::<String>::new(), "{definition}: {instance:#}");
+}
+
+pub fn assert_valid(definition: &str, instance: &Value) {
+    let errors = schema_errors(definition, instance);
+    assert_eq!(errors, Vec::<String>::new(), "{definition}: {instance:#}");
+}
+
+/// An answer that holds a `result` of the definition `result`, and passes as a response.
+pub fn assert_result(result: &str, response: &Value) {
+    assert_valid("JSONRPCResultResponse", response);
+    assert_valid(result, &response["result"]);
+}
+
+/// An answer that holds an `error`, and passes as the response to a request.
+pub fn assert_error(definition: &str, response: &Value) {
+    assert_valid("JSONRPCErrorResponse", response);
+    assert_valid(definition, response);
+}
+
+/// The `_meta` a request of the latest revision carries.
+pub fn meta() -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": VERSION,
+        "io.modelcontextprotocol/clientCapabilities": {},
+    })
+}
+
+/// The `_meta` of a result of the server called `name`.
+pub fn server_info(name: &str) -> Value {
+    json!({
+        "io.modelcontextprotocol/serverInfo": {
+            "name": name,
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+    })
+}
+
+/// A request, with the `_meta` a request carries added to its `params`.
+pub fn request(request_id: &Value, method: &str, params: Value) -> Value {
+    let mut carried = params;
+    carried["_meta"] = meta();
+    json!({ "jsonrpc": "2.0", "id": request_id, "method": method, "params": carried })
+}
+
+pub fn call(request_id: &Value, tool: &str, arguments: &Value) -> Value {
+    let asked = request(
+        request_id,
+        "tools/call",
+        json!({ "name": tool, "arguments": arguments }),
+    );
+    assert_valid("CallToolRequest", &asked);
+    asked
+}
+
+/// The answer of `DocumentService` alone to `asked`.
+pub fn answer(archive: &Archive, asked: &Value) -> Option<Value> {
+    block_on(document_mcp::answer(
+        &asked.to_string(),
+        archive,
+        |_call| (),
+        &Lines::default(),
+        &document_mcp::McpInFlight::default(),
+    ))
+    .map(|text| serde_json::from_str(&text).unwrap())
+}
+
+/// The answer of the endpoint that holds both services to `asked`.
+pub fn answer_workspace(archive: &Archive, asked: &Value) -> Option<Value> {
+    block_on(document_mcp::serve(
+        &asked.to_string(),
+        "Workspace",
+        None,
+        &WORKSPACE,
+        |_call| (),
+        document_mcp::McpHost::new(&document_mcp::McpInFlight::default(), &Lines::default()),
+        &|ctx: &(), part, method: &str, params: &Value| {
+            let held = archive.clone();
+            Box::pin(async move {
+                match part {
+                    0 => document_mcp::route(method, params, &held, ctx).await,
+                    1 => billing_mcp::route(method, params, &held, ctx).await,
+                    _ => None,
+                }
+            })
+        },
+    ))
+    .map(|text| serde_json::from_str(&text).unwrap())
+}
+
+/// The response of a call that is handed a fresh stream, however the call answers.
+pub fn through<Response>(answering: impl FnOnce(&Recorded) -> Option<Response>) -> Response
+where
+    Response: From<Streamed>,
+{
+    let stream = Recorded::default();
+    let answered = answering(&stream);
+    stream.collect(answered)
+}

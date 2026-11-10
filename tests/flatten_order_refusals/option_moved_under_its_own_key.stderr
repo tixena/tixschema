@@ -1,0 +1,13 @@
+error: model_schema: type `Invoice`: field `extra`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `number`, and no TypeScript type describes both. Write the map under a key of its own. Under a key of its own, the `Option` takes `#[serde(default, skip_serializing_if = "Option::is_none")]`.
+  --> tests/flatten_order_refusals/option_moved_under_its_own_key.rs:19:5
+   |
+19 | /     #[serde(flatten)]
+20 | |     pub extra: Option<BTreeMap<String, u32>>,
+   | |____________________________________________^
+
+error: model_schema: type `Shipment` has flattened `origin` (`Address`) and flattened `destination` (`Option<Address>`), which both write the key `city`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, or write `origin` or `destination` under a key of its own. Under a key of its own, an `Option` takes `#[serde(default, skip_serializing_if = "Option::is_none")]`.
+  --> tests/flatten_order_refusals/option_moved_under_its_own_key.rs:28:5
+   |
+28 | /     #[serde(flatten)]
+29 | |     pub destination: Option<Address>,
+   | |____________________________________^

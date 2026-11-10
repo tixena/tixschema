@@ -53,18 +53,18 @@ use crate::utils::{
 
 /// What every refusal of a key serde reads below a flattened member says of serde.
 #[cfg(feature = "serde")]
-const KEYS_BELOW_A_FLATTEN: &str = "serde reads every key below a flattened member as text, and \
+pub(super) const KEYS_BELOW_A_FLATTEN: &str = "serde reads every key below a flattened member as text, and \
      reads no number and no `bool` from text, so no entry of that map reads back.";
 
 /// What every refusal of a key serde reads in an untagged enum says of serde.
 #[cfg(feature = "serde")]
-const KEYS_IN_AN_UNTAGGED_ENUM: &str = "serde reads an untagged enum from a copy of the payload \
+pub(super) const KEYS_IN_AN_UNTAGGED_ENUM: &str = "serde reads an untagged enum from a copy of the payload \
      it buffers, where every key is text, and reads no number and no `bool` from text, so no \
      entry of that map reads back.";
 
 /// What every refusal of a key serde reads in an enum under a tag alone says of serde.
 #[cfg(feature = "serde")]
-const KEYS_IN_A_TAGGED_ENUM: &str = "serde reads an enum under a tag alone from a copy of the \
+pub(super) const KEYS_IN_A_TAGGED_ENUM: &str = "serde reads an enum under a tag alone from a copy of the \
      payload it buffers, where every key is text, and reads no number and no `bool` from text, \
      so no entry of that map reads back.";
 
@@ -489,6 +489,13 @@ pub fn flattened_range_error(
     Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
 
+/// Whether `ty` is written as an `Option`.
+#[cfg(feature = "serde")]
+fn names_an_option(ty: &Type) -> bool {
+    matches!(ty, Type::Path(path) if path.qself.is_none()
+        && path.path.segments.last().is_some_and(|segment| segment.ident == "Option"))
+}
+
 /// Refuses each map under `#[serde(flatten)]` among `fields` beside another member that writes a
 /// key, or beside `tag`, the tag serde writes at the level of `fields`: serde writes the map's
 /// entries at one level with that key, which no TypeScript type describes. `subject` leads each
@@ -516,7 +523,7 @@ pub fn flattened_map_beside_errors(
                 .enumerate()
                 .find(|(other, _)| *other != index)
                 .and_then(|(_, other)| other.ident.as_ref());
-            let message = match (beside, tag) {
+            let said = match (beside, tag) {
                 (Some(member), _) => format!(
                     "{subject}field `{}`: `#[serde(flatten)]` cannot hold a map beside other \
                      members \u{2014} serde writes the map's entries at one level with `{}`, and \
@@ -531,6 +538,19 @@ pub fn flattened_map_beside_errors(
                     ident.unraw()
                 ),
                 (None, None) => return None,
+            };
+            let carries_skip = field.attrs.iter().any(|attr| {
+                quote::ToTokens::to_token_stream(attr)
+                    .to_string()
+                    .contains("skip_serializing_if")
+            });
+            let message = if names_an_option(&field.ty) && !carries_skip {
+                format!(
+                    "{said} Under a key of its own, the `Option` takes \
+                     `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+                )
+            } else {
+                said
             };
             Some(
                 syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error(),
@@ -1541,15 +1561,8 @@ const fn text_key_at(filled: &TextKeyParameter) -> usize {
 }
 
 #[cfg(feature = "serde")]
-#[rustversion::since(1.98)]
 fn parameters_of(item: &Item) -> Vec<String> {
-    item_generics(item).map_or_default(parameter_names)
-}
-
-#[cfg(feature = "serde")]
-#[rustversion::before(1.98)]
-fn parameters_of(item: &Item) -> Vec<String> {
-    item_generics(item).map(parameter_names).unwrap_or_default()
+    item_generics(item).map_or_else(Vec::new, parameter_names)
 }
 
 /// The names of the type parameters `generics` declares.

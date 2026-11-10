@@ -21,6 +21,7 @@ use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, valida
 use crate::features::JSON_NUMBER;
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::utils::crate_tag;
 
 thread_local! {
     /// The type each alias the emitter wrote with no type parameter names, by Rust ident.
@@ -414,7 +415,7 @@ pub fn serializer(form: TextForm) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinText{index}");
+        let named = format!("KotlinText{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(object_declared(form, &named)));
         written.push((form, named.clone()));
         named
@@ -455,7 +456,7 @@ pub fn number_serializer(primitive: Primitive) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinNumber{index}");
+        let named = format!("KotlinNumber{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(number_declared(primitive, &named)));
         written.push((primitive, named.clone()));
         named

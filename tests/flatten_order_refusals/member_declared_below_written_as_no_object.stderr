@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `size` (`Size`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: serde writes `Size` as no object, which it cannot flatten into `Parcel`. Write `size` under a key of its own.
+  --> tests/flatten_order_refusals/member_declared_below_written_as_no_object.rs:11:15
+   |
+11 |     pub size: Size,
+   |               ^^^^ evaluation of `_` failed here

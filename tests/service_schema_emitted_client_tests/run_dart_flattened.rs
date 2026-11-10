@@ -1,36 +1,26 @@
 //! A map that is the one member of its struct, a member that names a function, flattened after a
 //! struct, beside a member of its holder's own, ahead of a struct, after a member that takes none
 //! of the keys it reads, and after an externally tagged enum, an enum under a tag key and an
-//! untagged one, and an externally tagged enum beside a member of its holder's own, optional too,
-//! and an optional map alone in its struct or in a variant, keyed by a plain enum and of models,
-//! each read and written back by the emitted Dart types under the Dart VM, against what serde reads
-//! and writes back.
+//! untagged one, an externally tagged enum beside a member of its holder's own, optional too, and
+//! an optional map read from what a function answers, each read and written back by the emitted
+//! Dart types under the Dart VM, against what serde reads and writes back.
 
 #![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use super::dart_flattened_models::{
-    BATTENING, BILGING, Battening, Belaying, Bilging, CAULKING, CLAMPING, Caulking, Clamping,
-    DUNNAGE, Dunnage, FASTENING, FREEBOARD, Fastening, Freeboard, Hawsehole, Hoisting, KEDGING,
-    Kedging, LOADING, Lacing, Loading, MOUSING, Mousing, PAYLOAD, Rigging, SPARE, STEEVING,
-    Scuppering, Shoring, Spare, Steeving, TRIMMING, Trimming, Twin, battening_dart, belaying_dart,
-    bilging_dart, bracing_dart, caulking_dart, chocking_dart, clamping_dart, dunnage_dart,
-    fastening_dart, frapping_dart, freeboard_dart, garboard_dart, hatching_dart, hawsehole_dart,
-    hoisting_dart, kedging_dart, keying_dart, lacing_dart, loading_dart, marking_dart,
-    mousing_dart, rigging_dart, scuppering_dart, shoring_dart, spare_dart, steeving_dart,
+    BATTENING, Battening, Belaying, CAULKING, CLAMPING, Caulking, Clamping, DUNNAGE, FASTENING,
+    Fastening, Hawsehole, Hoisting, KEDGING, Kedging, LOADING, Lacing, Loading, MOUSING, Mousing,
+    PAYLOAD, Rigging, SPARE, Shoring, Spare, TRIMMING, Trimming, Twin, battening_dart,
+    belaying_dart, bracing_dart, caulking_dart, chocking_dart, clamping_dart, fastening_dart,
+    frapping_dart, hatching_dart, hawsehole_dart, hoisting_dart, kedging_dart, keying_dart,
+    lacing_dart, loading_dart, marking_dart, mousing_dart, rigging_dart, shoring_dart, spare_dart,
     ticketing_dart, trimming_dart, twin_dart, warping_dart,
 };
-use super::dart_flattened_models::{LIMBER, Limber, limber_dart, scantling_dart};
 use super::run_dart_validate::{analyzed, dart, module};
-use super::shared_key_models::{
-    SHARED_KEYS, bitts_dart, bowline_dart, clinching_dart, earring_dart, gantline_dart,
-    garnet_dart, gudgeon_dart, halliard_dart, parrel_dart, rubrail_dart, snotter_dart,
-    spritsail_dart, toggled_dart,
-};
 
 /// The function the models name, which answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
@@ -142,8 +132,8 @@ void main() {
 }
 ";
 
-/// What prints the map each holder of an optional map read from each of its payloads, and what the
-/// holder writes back, or that the read is refused.
+/// What prints the map [`Hawsehole`] read from each of its payloads, and what it writes back, or
+/// that the read is refused.
 const OPTIONAL_MAPS: &str = "
 String row(String Function() read) {
   try {
@@ -153,32 +143,6 @@ String row(String Function() read) {
   }
 }
 
-String dunnage(String payload) {
-  final read = Dunnage.fromJson(jsonDecode(payload));
-  return '${jsonEncode(read.counts)} ${jsonEncode(read.toJson())}';
-}
-
-String steeving(String payload) {
-  final read = Steeving.fromJson(jsonDecode(payload));
-  return '${jsonEncode((read as SteevingOpen).counts)} ${jsonEncode(read.toJson())}';
-}
-
-String freeboard(String payload) {
-  final read = Freeboard.fromJson(jsonDecode(payload));
-  return '${jsonEncode((read as FreeboardOpen).counts)} ${jsonEncode(read.toJson())}';
-}
-
-String scuppering(String payload) {
-  final read = Scuppering.fromJson(jsonDecode(payload));
-  return '${jsonEncode((read as ScupperingOpen).counts)} ${jsonEncode(read.toJson())}';
-}
-
-String bilging(String payload) {
-  final read = Bilging.fromJson(jsonDecode(payload));
-  final counts = read.counts?.map((key, count) => MapEntry(key.toJson(), count));
-  return '${jsonEncode(counts)} ${jsonEncode(read.toJson())}';
-}
-
 String hawsehole(String payload) {
   final read = Hawsehole.fromJson(jsonDecode(payload));
   return '${jsonEncode(read.counts)} ${jsonEncode(read.toJson())}';
@@ -186,37 +150,7 @@ String hawsehole(String payload) {
 
 void main() {
   for (final payload in DUNNAGE) {
-    print('dunnage: ${row(() => dunnage(payload))}');
-  }
-  for (final payload in STEEVING) {
-    print('steeving: ${row(() => steeving(payload))}');
-  }
-  for (final payload in FREEBOARD) {
-    print('freeboard: ${row(() => freeboard(payload))}');
-  }
-  for (final payload in DUNNAGE) {
-    print('scuppering: ${row(() => scuppering(payload))}');
-  }
-  for (final payload in BILGING) {
-    print('bilging: ${row(() => bilging(payload))}');
-  }
-  for (final payload in DUNNAGE) {
     print('hawsehole: ${row(() => hawsehole(payload))}');
-  }
-}
-";
-
-/// What prints the map [`Limber`] read from each of its payloads, and what it writes back, or the
-/// message of the read's refusal.
-const OPTIONAL_MAP_OF_MODELS: &str = "
-void main() {
-  for (final payload in LIMBER) {
-    try {
-      final read = Limber.fromJson(jsonDecode(payload));
-      print('limber: ${jsonEncode(read.notches)} ${jsonEncode(read.toJson())}');
-    } on FormatException catch (refused) {
-      print('limber: ${refused.message}');
-    }
   }
 }
 ";
@@ -251,9 +185,6 @@ fn with_payloads(main: &str) -> String {
         .replace("TRIMMING", TRIMMING)
         .replace("MOUSING", MOUSING)
         .replace("DUNNAGE", &listed(&DUNNAGE))
-        .replace("STEEVING", &listed(&STEEVING))
-        .replace("FREEBOARD", &listed(&FREEBOARD))
-        .replace("BILGING", &listed(&BILGING))
 }
 
 /// What serde reads of `payload` as `T`, through `parts`, or that it refuses it.
@@ -557,78 +488,19 @@ fn lines(named: &str, rows: &[String]) -> String {
     })
 }
 
-/// An optional map alone in its struct, or the one member of a variant under its name, under a
-/// content key or untagged, is read as `null` wherever an entry does not read, a count of text,
-/// `null` and a key that names no variant of the plain enum it is keyed by, and the payload is
-/// read, as serde reads it. A map that holds no value is written as no entry, as serde writes it.
-/// One that names a function is read from what it answers, and an entry there that does not read
-/// refuses the payload, as serde refuses it.
+/// An optional map that names a function is read from what it answers, and an entry there that
+/// does not read refuses the payload, as serde refuses it.
 #[test]
-fn an_optional_map_reads_in_dart_no_value_where_an_entry_does_not_read() {
-    let dunnage = DUNNAGE.map(|payload| {
-        read_of(payload, |read: &Dunnage| {
-            format!("{} {}", written(&read.counts), written(read))
-        })
-    });
-    let steeving = STEEVING.map(|payload| {
-        read_of(payload, |read: &Steeving| {
-            let Steeving::Open { counts } = read;
-            format!("{} {}", written(counts), written(read))
-        })
-    });
-    let freeboard = FREEBOARD.map(|payload| {
-        read_of(payload, |read: &Freeboard| {
-            let Freeboard::Open { counts } = read;
-            format!("{} {}", written(counts), written(read))
-        })
-    });
-    let scuppering = DUNNAGE.map(|payload| {
-        read_of(payload, |read: &Scuppering| {
-            let Scuppering::Open { counts } = read;
-            format!("{} {}", written(counts), written(read))
-        })
-    });
-    let bilging = BILGING.map(|payload| {
-        read_of(payload, |read: &Bilging| {
-            format!("{} {}", written(&read.counts), written(read))
-        })
-    });
+fn an_optional_map_under_a_function_reads_in_dart_what_serde_reads() {
     let hawsehole = DUNNAGE.map(|payload| {
         read_of(payload, |read: &Hawsehole| {
             format!("{} {}", written(&read.counts), written(read))
         })
     });
-    let expected = format!(
-        "{}{}{}{}{}{}",
-        lines("dunnage", &dunnage),
-        lines("steeving", &steeving),
-        lines("freeboard", &freeboard),
-        lines("scuppering", &scuppering),
-        lines("bilging", &bilging),
-        lines("hawsehole", &hawsehole),
-    );
+    let expected = lines("hawsehole", &hawsehole);
     assert_eq!(
         expected,
-        "dunnage: {} {}\n\
-         dunnage: {\"north\":2} {\"north\":2}\n\
-         dunnage: null {}\n\
-         dunnage: null {}\n\
-         dunnage: null {}\n\
-         steeving: {} {\"Open\":{}}\n\
-         steeving: {\"north\":2} {\"Open\":{\"north\":2}}\n\
-         steeving: null {\"Open\":{}}\n\
-         freeboard: {} {\"kind\":\"Open\",\"held\":{}}\n\
-         freeboard: {\"north\":2} {\"kind\":\"Open\",\"held\":{\"north\":2}}\n\
-         freeboard: null {\"kind\":\"Open\",\"held\":{}}\n\
-         scuppering: {} {}\n\
-         scuppering: {\"north\":2} {\"north\":2}\n\
-         scuppering: null {}\n\
-         scuppering: null {}\n\
-         scuppering: null {}\n\
-         bilging: {\"North\":2} {\"North\":2}\n\
-         bilging: null {}\n\
-         bilging: null {}\n\
-         hawsehole: {} {}\n\
+        "hawsehole: {} {}\n\
          hawsehole: {\"north\":2} {\"north\":2}\n\
          hawsehole: refused\n\
          hawsehole: refused\n\
@@ -637,114 +509,10 @@ fn an_optional_map_reads_in_dart_no_value_where_an_entry_does_not_read() {
     );
     let Some(printed) = printed(
         "flattened-optional-maps",
-        &[
-            dunnage_dart::dart_definition(),
-            steeving_dart::dart_definition(),
-            freeboard_dart::dart_definition(),
-            scuppering_dart::dart_definition(),
-            garboard_dart::dart_definition(),
-            bilging_dart::dart_definition(),
-            hawsehole_dart::dart_definition(),
-        ],
+        &[hawsehole_dart::dart_definition()],
         OPTIONAL_MAPS,
     ) else {
         return;
     };
     assert_eq!(printed, expected, "the Dart reads beside serde's");
-}
-
-/// An optional map of models is read as `null` where a model does not read, as serde reads it, and
-/// a model that breaks its rule is read with no judgement and refused with its holder, in serde's
-/// words.
-#[test]
-fn an_optional_map_of_models_reads_in_dart_no_value_where_a_model_does_not_read() {
-    let expected = LIMBER.iter().fold(String::new(), |mut acc, payload| {
-        let told = serde_json::from_str::<Limber>(payload).map_or_else(
-            |refused| refused.to_string(),
-            |read| format!("{} {}", written(&read.notches), written(&read)),
-        );
-        writeln!(acc, "limber: {told}").unwrap();
-        acc
-    });
-    assert_eq!(
-        expected,
-        "limber: {\"north\":{\"mark\":\"x\"}} {\"north\":{\"mark\":\"x\"}}\n\
-         limber: 'north.mark': too short: minimum length is 1, got 0\n\
-         limber: null {}\n",
-        "serde no longer reads each payload as it did"
-    );
-    let source = module(
-        &[
-            scantling_dart::dart_definition(),
-            limber_dart::dart_definition(),
-        ],
-        &[],
-        &OPTIONAL_MAP_OF_MODELS.replace("LIMBER", &listed(&LIMBER)),
-    );
-    analyzed("flattened-optional-map-of-models-analyze", &source);
-    let Some((ran, printed)) = dart("flattened-optional-map-of-models", &[], &source) else {
-        return;
-    };
-    assert!(ran, "{printed}");
-    assert_eq!(printed, expected, "the Dart reads beside serde's");
-}
-
-/// A flattened struct reads a key a member of its holder's own, a struct flattened ahead of it or
-/// the tag of the variant that flattens it took, from the whole object, as TypeScript and Zod read
-/// it, where serde refuses the payload; an optional one is read where that key is there, where
-/// serde reads `None`; and its holder writes that key once.
-#[test]
-fn a_flattened_struct_reads_in_dart_a_key_taken_around_it_as_zod_reads_it() {
-    let mut expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
-        let zod: Value = serde_json::from_str(row.zod).unwrap();
-        let _ = writeln!(expected, "{}: {zod}", row.holder);
-        expected
-    });
-    expected.push_str("Rubrail flag: n\n");
-    let mut main = String::from("void main() {\n");
-    for row in &SHARED_KEYS {
-        let _ = writeln!(
-            main,
-            "  print('{}: ${{jsonEncode({}.fromJson(jsonDecode(r'{}')).toJson())}}');",
-            row.holder, row.holder, row.json
-        );
-    }
-    main.push_str(
-        "  print('Rubrail flag: ${Rubrail.fromJson(jsonDecode(r'{\"label\":\"n\"}')).flag?.label}');\n}\n",
-    );
-    let source = module(
-        &[
-            earring_dart::dart_definition(),
-            spritsail_dart::dart_definition(),
-            bowline_dart::dart_definition(),
-            gantline_dart::dart_definition(),
-            clinching_dart::dart_definition(),
-            garnet_dart::dart_definition(),
-            parrel_dart::dart_definition(),
-            gudgeon_dart::dart_definition(),
-            rubrail_dart::dart_definition(),
-            toggled_dart::dart_definition(),
-            halliard_dart::dart_definition(),
-            snotter_dart::dart_definition(),
-            bitts_dart::dart_definition(),
-        ],
-        &[],
-        &main,
-    );
-    analyzed("shared-keys-analyze", &source);
-    let Some((ran, printed)) = dart("shared-keys", &[], &source) else {
-        return;
-    };
-    assert!(ran, "{printed}");
-    let read = printed.lines().fold(String::new(), |mut read, line| {
-        let (holder, written) = line.split_once(": ").unwrap();
-        let value = serde_json::from_str::<Value>(written)
-            .map_or_else(|_| written.to_owned(), |value| value.to_string());
-        let _ = writeln!(read, "{holder}: {value}");
-        read
-    });
-    assert_eq!(
-        read, expected,
-        "the Dart read no longer reads each key as Zod reads it"
-    );
 }

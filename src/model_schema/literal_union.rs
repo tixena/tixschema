@@ -272,10 +272,15 @@ fn with_absent_key(option: &str, key: &str) -> String {
         "{}: z.undefined().optional()",
         ts_member_key(&ts_member_name(key))
     );
-    option.strip_prefix("z.strictObject({ ").map_or_else(
-        || format!("{option}.safeExtend({{ {absent} }})"),
-        |rest| format!("z.strictObject({{ {absent}, {rest}"),
-    )
+    ["z.strictObject", "z.object"]
+        .into_iter()
+        .find_map(|constructor| {
+            option
+                .strip_prefix(constructor)
+                .and_then(|rest| rest.strip_prefix("({ "))
+                .map(|rest| format!("{constructor}({{ {absent}, {rest}"))
+        })
+        .unwrap_or_else(|| format!("{option}.safeExtend({{ {absent} }})"))
 }
 
 #[cfg(test)]

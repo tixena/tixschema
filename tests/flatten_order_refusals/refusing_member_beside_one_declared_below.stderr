@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `shape` (`Shape`) after `hue` (`Hue`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: the Dart and Swift reads of `Parcel` are written when it expands, before they can see which keys `Hue` takes, and hand `Shape`, which refuses a key it does not declare, the keys of `hue` that serde takes off the object. Declare `Hue` above `Parcel`, or write `hue` under a key of its own.
+  --> tests/flatten_order_refusals/refusing_member_beside_one_declared_below.rs:18:5
+   |
+18 | /     #[serde(flatten)]
+19 | |     pub shape: Shape,
+   | |____________________^

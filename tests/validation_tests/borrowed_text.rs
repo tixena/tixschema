@@ -103,7 +103,7 @@ mod a_bound_on_a_borrowed_str {
             Greeting { name: "al" }.validate().unwrap_err(),
             vec!["'name': too short: minimum length is 3, got 2"]
         );
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let shown = "// Err([\"'name': too short: minimum length is 3, got 2\"])";
         assert!(readme.contains(shown), "the README no longer shows {shown}");
     }

@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `shape` (`Shape`) and `hue` (`Hue`), and each reads every key still left: `Shape` refuses a key it does not declare, so it refuses the keys of `hue` (`Hue`) in every order. Mark `Shape` and `Lid` `#[model_schema(nonstrict)]`.
+  --> tests/flatten_order_refusals/two_members_that_read_every_key.rs:34:5
+   |
+34 | /     #[serde(flatten)]
+35 | |     pub shape: Shape,
+   | |____________________^

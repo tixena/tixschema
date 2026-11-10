@@ -32,7 +32,7 @@ macro_rules! read_counting {
     };
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct I {
     number: i32,
@@ -90,7 +90,7 @@ enum Carried {
     Paired(I, i32),
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Alternate {

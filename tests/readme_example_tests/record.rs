@@ -1,6 +1,5 @@
 //! The README's "A Model Type Declared in Another Module" entry: the module that names the type,
 //! with the import the entry is about.
-
 use crate::version::{Version, version_schema};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -25,7 +24,7 @@ pub struct Record {
 #[test]
 fn a_type_in_another_module_is_described_once_its_schema_module_is_imported() {
     assert!(
-        include_str!("../../README.md").contains(README_DECLARATION),
+        include_str!("../../docs/guide/troubleshooting.md").contains(README_DECLARATION),
         "the README no longer declares this verbatim:\n{README_DECLARATION}"
     );
     assert_eq!(

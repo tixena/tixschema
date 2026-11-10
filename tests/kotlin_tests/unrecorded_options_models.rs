@@ -6,7 +6,8 @@
 //! by their tag and content key, and has no key to look for any other by. serde reads each
 //! wherever its type reads from the object it is handed, and as `None` wherever it does not.
 //! TypeScript and Zod read each holder of [`UNRECORDED`] where serde reads it, and refuse a payload
-//! that holds a key of that type where the type does not read, where serde reads `None`.
+//! that holds a key of that type where the type does not read, where serde reads `None`, but for
+//! [`Fiddling`], `nonstrict`, whose Zod schema strips that key as serde drops it.
 //! [`Grommeting`] holds a struct declared below it that breaks a rule, which serde refuses.
 //! `kotlin_tests/tests.rs` pins the Kotlin text,
 //! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs it against serde, and
@@ -36,13 +37,13 @@ pub const UNRECORDED: [Unrecorded; 14] = [
         holder: "Fiddling",
         json: r#"{"note":"n"}"#,
         read_back: written_back::<Fiddling>,
-        taken_by_zod: false,
+        taken_by_zod: true,
     },
     Unrecorded {
         holder: "Fiddling",
         json: r#"{"label":5,"note":"n"}"#,
         read_back: written_back::<Fiddling>,
-        taken_by_zod: false,
+        taken_by_zod: true,
     },
     Unrecorded {
         holder: "Snagging",
@@ -179,8 +180,9 @@ pub struct Bight {
     pub label: String,
 }
 
-/// [`Crowned`] optional, the one member, declared above it.
-#[model_schema()]
+/// [`Crowned`] optional, the one member, declared above it: `nonstrict`, as [`Crowned`], which
+/// tixschema has not met here, reads every key still left.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fiddling {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -188,7 +190,7 @@ pub struct Fiddling {
 }
 
 /// A struct with a flattened member of its own, declared below its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crowned {
     #[serde(flatten)]
@@ -197,7 +199,7 @@ pub struct Crowned {
 }
 
 /// An enum under a tag alone.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Hitched {
@@ -231,7 +233,7 @@ pub struct Bridling {
 }
 
 /// An untagged enum.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Slipped {
@@ -272,9 +274,9 @@ pub struct Earing {
     pub label: String,
 }
 
-/// [`Gromet`] optional, the one member, declared above it.
+/// [`Gromet`] optional, the one member, declared above it: `nonstrict`, as [`Fiddling`] is.
 #[cfg(feature = "serde")]
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Grommeting {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -283,7 +285,7 @@ pub struct Grommeting {
 
 /// A struct with a rule and a flattened member of its own, declared below its holder.
 #[cfg(feature = "serde")]
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gromet {
     #[serde(flatten)]
@@ -306,7 +308,7 @@ where
 }
 
 /// serde writes each payload back as it was exactly where TypeScript and Zod take it, and drops a
-/// key of the type held from every other.
+/// key of the type held from every other, which the Zod schema of [`Fiddling`] strips and takes.
 #[test]
 fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
     for (row, read_back) in UNRECORDED.iter().zip(READ_BACK) {
@@ -318,7 +320,7 @@ fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
             row.holder
         );
         assert_eq!(
-            read_back == row.json,
+            read_back == row.json || row.holder == "Fiddling",
             row.taken_by_zod,
             "serde and Zod part otherwise on `{}` as {}",
             row.json,

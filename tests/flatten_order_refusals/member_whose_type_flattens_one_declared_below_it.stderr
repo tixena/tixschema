@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `stamp` (`Stamp`) beside other keys, and `Stamp` holds `Ink`, which was declared below `Stamp`, in another crate, or with no `#[model_schema]`: the Dart and Swift reads of `Stamp` were written before they could see which keys `Ink` reads, and hand it the keys beside `stamp` that serde does not. Declare `Ink` above `Stamp`, or write `stamp` under a key of its own.
+  --> tests/flatten_order_refusals/member_whose_type_flattens_one_declared_below_it.rs:19:5
+   |
+19 | /     #[serde(flatten)]
+20 | |     pub stamp: Stamp,
+   | |____________________^

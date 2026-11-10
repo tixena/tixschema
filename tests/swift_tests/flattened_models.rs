@@ -4,22 +4,18 @@
 //! declares no parameter and in one that declares one, of models, of dates and one that names a
 //! function; and a member that names a function, beside a member of its holder's own, ahead of a
 //! struct and after each member that takes none of the keys it reads; and, after a struct, a
-//! struct with a flattened member of its own, a member that names a function, a model with a rule
-//! and a struct that reads the same key; and a struct flattened ahead of every struct, plain and
-//! naming a function, beside a member of its holder's own that reads its key, and in a holder of no
-//! member of its own whose holder reads that key; and a struct whose every member is a flattened
-//! struct. serde reads the members in the order declared: a struct takes the keys it reads, and
+//! struct with a flattened member of its own, a member that names a function and a model with a
+//! rule; and a struct flattened ahead of every struct beside a member of its holder's own, and in
+//! a holder of no member of its own; and a struct whose every member is a flattened struct. serde reads the members in the order declared: a struct takes the keys it reads, and
 //! every flattened member is handed every key neither its holder's own members nor a member ahead
 //! of it took. Every holder of a member that names a function has a member of its own, whose key
 //! no flattened member is handed, but [`Stropping`] and [`Dredging`]. [`Boxing`] and [`Baling`]
 //! each hold a member named after the container their written `encode(to:)` declares, of their own
 //! and flattened.
 //! [`Grafting`] and [`Pointing`] are enums under a tag alone whose variants hold a struct as their
-//! one slot and flatten one beside no member of their own, and in [`Pointing`] beside one: serde
+//! one slot, and in [`Pointing`] flatten one beside no member of their own and beside one: serde
 //! takes the tag off the object first, so a struct that reads a key named as the tag is refused.
-//! [`Trussing`], [`Halyard`], [`Tailing`], [`Slacking`], [`Reeling`] and [`Winching`] each hold an
-//! optional map as the one member of their struct or variant, which serde reads as `None` wherever
-//! an entry does not read. [`Anchoring`], [`Dredging`] and [`Fending`] flatten [`Careen`], an
+//! [`Anchoring`], [`Dredging`] and [`Fending`] flatten [`Careen`], an
 //! externally tagged enum serde reads from the first entry under a variant's name or an alias.
 
 use alloc::collections::BTreeMap;
@@ -30,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
-/// What [`Twinning`] and [`Plying`] are read from.
+/// What [`Twinning`] is read from.
 pub const STOPPING: &str = r#"{"label":"n","north":2,"note":"a"}"#;
 
 /// What [`Stopping`] is read from.
@@ -70,10 +66,6 @@ pub const GRIPPING: &str = r#"{"label":"n","mark":"x","note":"a"}"#;
 /// What [`Hanking`] is read from.
 pub const HANKING: &str = r#"{"label":"n","marker":"m"}"#;
 
-/// What [`Whipping`], [`Marrying`] and [`Ratlining`] are read from: the one key their own member
-/// reads.
-pub const LABEL: &str = r#"{"label":"n"}"#;
-
 /// What [`Seaming`] is read from.
 pub const SEAMING: &str = r#"{"label":"n","mark":"x"}"#;
 
@@ -82,9 +74,6 @@ pub const BOXING: &str = r#"{"container":"c","label":"n"}"#;
 
 /// What [`Baling`] is read from.
 pub const BALING: &str = r#"{"label":"n","note":"a"}"#;
-
-/// What [`Grafting`] is read from under the variant that flattens [`Kinded`].
-pub const GRAFTING_HELD: &str = r#"{"kind":"Held"}"#;
 
 /// What [`Grafting`] is read from under the variant that holds [`Kinded`] as its one slot.
 pub const GRAFTING_SLOT: &str = r#"{"kind":"Slot"}"#;
@@ -104,45 +93,6 @@ pub const POINTING_MARKED: &str = r#"{"kind":"Marked","mark":"x"}"#;
 
 /// What [`Pointing`] is read from under the variant that holds [`Notch`] as its one slot.
 pub const POINTING_NOTCHED: &str = r#"{"kind":"Notched","mark":"x"}"#;
-
-/// What [`Trussing`], [`Slacking`], [`Reeling`] and [`Winching`] are read from with no entry.
-pub const NO_ENTRY: &str = "{}";
-
-/// What [`Trussing`] and [`Slacking`] are read from: one entry.
-pub const TRUSSING: &str = r#"{"north":2}"#;
-
-/// What [`Trussing`] and [`Slacking`] are read from with an entry that is no number.
-pub const TRUSSING_MISTYPED: &str = r#"{"north":"x"}"#;
-
-/// What [`Trussing`] is read from with one entry that reads and one that does not.
-pub const TRUSSING_PARTIAL: &str = r#"{"north":2,"south":"x"}"#;
-
-/// What [`Halyard`] is read from with no entry.
-pub const HALYARD_EMPTY: &str = r#"{"Open":{}}"#;
-
-/// What [`Halyard`] is read from: one entry.
-pub const HALYARD: &str = r#"{"Open":{"north":2}}"#;
-
-/// What [`Halyard`] is read from with an entry that is no number.
-pub const HALYARD_MISTYPED: &str = r#"{"Open":{"north":"x"}}"#;
-
-/// What [`Tailing`] is read from: one entry.
-pub const TAILING: &str = r#"{"kind":"Open","held":{"north":2}}"#;
-
-/// What [`Tailing`] is read from with an entry that is no number.
-pub const TAILING_MISTYPED: &str = r#"{"kind":"Open","held":{"north":"x"}}"#;
-
-/// What [`Reeling`] is read from with a key that is no [`Quarter`].
-pub const REELING_UNKEYED: &str = r#"{"West":2}"#;
-
-/// What [`Reeling`] is read from with an entry that is no number.
-pub const REELING_MISTYPED: &str = r#"{"North":"x"}"#;
-
-/// What [`Winching`] is read from with a model whose rule is broken.
-pub const WINCHING_BROKEN: &str = r#"{"north":{"mark":""}}"#;
-
-/// What [`Winching`] is read from with a model that does not read.
-pub const WINCHING_MISTYPED: &str = r#"{"north":{"mark":5}}"#;
 
 /// What [`Anchoring`] is read from: a variant's entry beside a key no member reads, one whose
 /// model breaks its rule, a unit variant's entry, an entry under an alias, and entries under two
@@ -176,7 +126,7 @@ pub enum Quarter {
 }
 
 /// The member the structs below flatten.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pennant {
     pub label: String,
@@ -191,7 +141,7 @@ pub struct Notch {
 }
 
 /// The keys a function was handed, which the members below that name one read.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Counting {
     pub keys: Vec<String>,
@@ -297,7 +247,7 @@ pub struct Reeving {
 }
 
 /// A struct with a flattened member of its own, which serde reads as a map.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hanking {
     pub marker: String,
@@ -393,39 +343,6 @@ pub struct Gripping {
     pub note: String,
 }
 
-/// A struct flattened after a struct that reads the same key, where serde hands the second the
-/// object without it and refuses the payload.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Plying {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub note: String,
-    #[serde(flatten)]
-    pub twice: Pennant,
-}
-
-/// A struct flattened ahead of a member of its holder's own that reads the struct's key, which
-/// serde hands the struct the object without.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Whipping {
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub label: String,
-}
-
-/// [`Whipping`] with a member that names a function, which serde hands the object without its
-/// holder's own key.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Marrying {
-    #[model_schema_prop(preprocess = ["asGiven"])]
-    #[serde(flatten)]
-    pub flag: Pennant,
-    pub label: String,
-}
-
 /// A struct flattened first in a holder of no member of its own, ahead of a member that names a
 /// function, which takes the keys the types around the holder took.
 #[model_schema()]
@@ -436,16 +353,6 @@ pub struct Stropping {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub tally: Counting,
-}
-
-/// [`Stropping`] flattened beside a member that reads the key of its first struct, which serde
-/// hands that struct the object without.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Ratlining {
-    pub label: String,
-    #[serde(flatten)]
-    pub stropping: Stropping,
 }
 
 /// A struct whose every member is a flattened struct, the second a model with a rule, which serde
@@ -486,16 +393,12 @@ pub struct Kinded {
     pub kind: String,
 }
 
-/// [`Kinded`] flattened into a variant of no member of its own and held as a variant's one slot,
-/// under a tag alone: serde hands neither the tag.
+/// [`Kinded`] held as a variant's one slot under a tag alone: serde hands it the object without
+/// the tag.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Grafting {
-    Held {
-        #[serde(flatten)]
-        flag: Kinded,
-    },
     Slot(Kinded),
 }
 
@@ -521,62 +424,6 @@ pub enum Pointing {
         note: String,
     },
     Slot(Pennant),
-}
-
-/// An optional map, the one member of its struct.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Trussing {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<String, u8>>,
-}
-
-/// An optional map, the one member of a variant written under its name.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Halyard {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map, the one member of a variant under a content key.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", content = "held")]
-pub enum Tailing {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map, the one member of an untagged variant.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum Slacking {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map under a key Swift wraps.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Reeling {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<Quarter, u8>>,
-}
-
-/// An optional map of models with a rule.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Winching {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub notches: Option<BTreeMap<String, Notch>>,
 }
 
 /// An externally tagged enum with a rule, a unit variant and an alias, which serde reads flattened
@@ -725,30 +572,16 @@ fn serde_hands_a_member_flattened_after_a_struct_the_keys_the_struct_did_not_tak
         written(&read::<Gripping>(GRIPPING)),
         r#"{"label":"n","mark":"x","note":"a"}"#
     );
-    let refused = serde_json::from_str::<Plying>(STOPPING).unwrap_err();
-    assert_eq!(
-        refused.to_string(),
-        "missing field `label` at line 1 column 34"
-    );
 }
 
-/// A struct flattened first, plain or naming a function, is handed the object without the keys of
-/// its holder's own members and those the types around its holder took, so one that reads such a
-/// key is refused. One whose keys collide with none is read.
+/// A struct flattened first is handed the object without the keys of its holder's own members,
+/// and one whose keys collide with none is read; in a holder of no member of its own, the member
+/// that names a function after it is handed the keys it did not take.
 #[test]
 fn serde_hands_a_struct_flattened_first_the_keys_its_holder_and_the_types_around_did_not_take() {
-    let refusal = |refused: serde_json::Error| refused.to_string();
     assert_eq!(
-        refusal(serde_json::from_str::<Whipping>(LABEL).unwrap_err()),
-        "missing field `label` at line 1 column 13"
-    );
-    assert_eq!(
-        refusal(serde_json::from_str::<Marrying>(LABEL).unwrap_err()),
-        "missing field `label` at line 1 column 13"
-    );
-    assert_eq!(
-        refusal(serde_json::from_str::<Ratlining>(LABEL).unwrap_err()),
-        "missing field `label` at line 1 column 13"
+        written(&read::<Stropping>(STOPPING)),
+        r#"{"label":"n","keys":["north","note"]}"#
     );
     assert_eq!(
         written(&read::<Hanking>(HANKING)),
@@ -787,7 +620,6 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
             .unwrap_err()
             .to_string()
     };
-    assert_eq!(refusal(GRAFTING_HELD), "missing field `kind`");
     assert_eq!(refusal(GRAFTING_SLOT), "missing field `kind`");
     let label = || Pennant {
         label: "n".to_owned(),
@@ -815,8 +647,9 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
 
 /// A flattened externally tagged enum is read from the first entry under a variant's name or an
 /// alias, its model judged with its holder, and a member flattened after it is handed every entry
-/// but that one. An optional enum reads `None` from a payload with no such entry. Of two entries
-/// serde reads the first, where Swift refuses the payload as TypeScript and Zod do.
+/// but that one. An optional enum reads `None` from a payload with no such entry. A holder whose
+/// members all take their own keys refuses a key none of them reads, a second entry among them,
+/// as Swift, TypeScript and Zod do.
 #[test]
 fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
     let bay = || Careen::Bay {
@@ -826,14 +659,22 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
         label: "s".to_owned(),
     };
     let anchored = |text: &str| serde_json::from_str::<Anchoring>(text).map(|read| read.careen);
-    assert_eq!(anchored(ANCHORING[0]).unwrap(), bay());
+    assert_eq!(
+        anchored(ANCHORING[0]).unwrap_err().to_string(),
+        "unknown field `north` at line 1 column 42"
+    );
     assert_eq!(
         anchored(ANCHORING[1]).unwrap_err().to_string(),
         "'Bay.label': too short: minimum length is 1, got 0"
     );
     assert_eq!(anchored(ANCHORING[2]).unwrap(), Careen::Calm);
     assert_eq!(anchored(ANCHORING[3]).unwrap(), dock());
-    assert_eq!(anchored(ANCHORING[4]).unwrap(), Careen::Calm);
+    assert!(
+        anchored(ANCHORING[4])
+            .unwrap_err()
+            .to_string()
+            .starts_with("unknown field `Dock`")
+    );
     let dredging = read::<Dredging>(DREDGING);
     assert_eq!(dredging.careen, dock());
     assert_eq!(dredging.tally.keys, ["north"]);
@@ -844,56 +685,10 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
         fended(FENDING[2]).unwrap_err().to_string(),
         "'Bay.label': too short: minimum length is 1, got 0"
     );
-    assert_eq!(fended(FENDING[3]).unwrap(), Some(bay()));
-}
-
-/// An optional map alone in its struct or in a variant, under its name, under a content key or
-/// untagged, holds every entry where each reads, and is `None` wherever one does not: a value that
-/// is no number, a key that is no [`Quarter`] and a model that does not read. A model whose rule is
-/// broken is read with no judgement and refused with its holder, under the place serde names.
-/// serde writes nothing for `None`.
-#[test]
-fn serde_reads_an_optional_map_as_none_wherever_an_entry_does_not_read() {
-    let trussed = |read: Trussing| read.counts;
-    assert_eq!(trussed(read(NO_ENTRY)), Some(BTreeMap::new()));
-    assert_eq!(
-        trussed(read(TRUSSING)),
-        Some(BTreeMap::from([("north".to_owned(), 2)]))
-    );
-    for json in [TRUSSING_MISTYPED, TRUSSING_PARTIAL] {
-        assert_eq!(trussed(read(json)), None, "{json}");
-    }
-    assert_eq!(written(&Trussing { counts: None }), NO_ENTRY);
-    let open = |read: Halyard| {
-        let Halyard::Open { counts } = read;
-        counts
-    };
-    assert_eq!(open(read(HALYARD_EMPTY)), Some(BTreeMap::new()));
-    assert_eq!(written(&read::<Halyard>(HALYARD)), HALYARD);
-    assert_eq!(open(read(HALYARD_MISTYPED)), None);
-    assert_eq!(written(&Halyard::Open { counts: None }), HALYARD_EMPTY);
-    assert_eq!(written(&read::<Tailing>(TAILING)), TAILING);
-    assert_eq!(
-        written(&read::<Tailing>(TAILING_MISTYPED)),
-        r#"{"kind":"Open","held":{}}"#
-    );
-    let slack = |read: Slacking| {
-        let Slacking::Open { counts } = read;
-        counts
-    };
-    assert_eq!(slack(read(NO_ENTRY)), Some(BTreeMap::new()));
-    assert_eq!(written(&read::<Slacking>(TRUSSING)), TRUSSING);
-    assert_eq!(slack(read(TRUSSING_MISTYPED)), None);
-    assert_eq!(written(&read::<Reeling>(PARCELING)), PARCELING);
-    for json in [REELING_UNKEYED, REELING_MISTYPED] {
-        assert_eq!(read::<Reeling>(json).counts, None, "{json}");
-    }
-    assert_eq!(written(&read::<Winching>(WORMING)), WORMING);
-    assert_eq!(read::<Winching>(WINCHING_MISTYPED).notches, None);
-    assert_eq!(
-        serde_json::from_str::<Winching>(WINCHING_BROKEN)
+    assert!(
+        fended(FENDING[3])
             .unwrap_err()
-            .to_string(),
-        "'north.mark': too short: minimum length is 1, got 0"
+            .to_string()
+            .starts_with("unknown field `Quay`")
     );
 }

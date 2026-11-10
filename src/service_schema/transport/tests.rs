@@ -74,7 +74,7 @@ fn an_unknown_transport_names_itself_and_what_is_known() {
     assert_eq!(
         refusal(r#"transports = ["grpc"]"#).to_string(),
         "service_schema: `grpc` is not a transport this version knows\n       \
-         known transports: `amqp_rpc`, `http_rest`, `ws_rpc`"
+         known transports: `amqp_rpc`, `http_rest`, `mcp`, `ws_rpc`"
     );
 }
 
@@ -117,8 +117,8 @@ fn an_unknown_argument_names_every_argument() {
         refusal(r#"transport = ["amqp_rpc"]"#).to_string(),
         "service_schema: unknown `service_schema` argument\n       \
          the arguments are `transports`, written `transports = [\"amqp_rpc\"]`,\n       \
-         `non_exhaustive`, written bare, and `openapi`, written bare or \
-         `openapi(title = \"...\", path = \"...\")`"
+         `non_exhaustive`, written bare, `openapi`, written bare or \
+         `openapi(title = \"...\", path = \"...\")`, and `mcp`, written `mcp(skills = \"skills\")`"
     );
 }
 
@@ -130,6 +130,7 @@ fn the_flag_alone_asks_for_no_transport_and_reads_non_exhaustive() {
         ServiceArguments {
             non_exhaustive: true,
             openapi: None,
+            skills: None,
             transports: Vec::new(),
         }
     );
@@ -142,6 +143,7 @@ fn the_flag_composes_with_a_transport_list() {
         ServiceArguments {
             non_exhaustive: true,
             openapi: None,
+            skills: None,
             transports: vec![Transport::AmqpRpc],
         }
     );
@@ -223,6 +225,7 @@ fn bare_openapi_asks_for_the_document_with_neither_key() {
         ServiceArguments {
             non_exhaustive: false,
             openapi: Some(openapi_asked(None, None)),
+            skills: None,
             transports: vec![Transport::HttpRest],
         }
     );

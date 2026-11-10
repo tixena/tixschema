@@ -364,10 +364,6 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
 fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
     for (swift, read) in [
         (
-            baled_swift::swift_definition(),
-            "self.value = try Bale(swiftSchemaUnjudged: decoder) }; ",
-        ),
-        (
             bales_swift::swift_definition(),
             "var listed = try decoder.unkeyedContainer(); var items: [Bale] = []; \
              while !listed.isAtEnd { items.append(try Bale(swiftSchemaUnjudged: listed.superDecoder())) }; \
@@ -394,16 +390,34 @@ fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
             "self.value = try BalePairTuple(swiftSchemaUnjudged: decoder) }; ",
         ),
         (
-            sacked_swift::swift_definition(),
-            "self.value = try Sack<Stowed>(swiftSchemaUnjudged: decoder) }; ",
-        ),
-        (
             stowed_pair_swift::swift_definition(),
             "self.value = try StowedPairTuple<Stowed>(swiftSchemaUnjudged: decoder) }; ",
         ),
     ] {
         holds(&swift, &[&format!("{UNJUDGED}{read}")]);
     }
+    holds(
+        &sacked_swift::swift_definition(),
+        &[
+            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+           throws { self.value = try Sack<Stowed>(swiftSchemaUnjudged: decoder, \
+           swiftSchemaWithout: taken) }; public init(swiftSchemaUnjudged decoder: Decoder) throws \
+           { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
+           \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+           ![\"label\", \"stowed\"].contains(unknown.stringValue)",
+        ],
+    );
+    holds(
+        &baled_swift::swift_definition(),
+        &[
+            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+           throws { self.value = try Bale(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+           taken) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if \
+           !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
+           \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+           ![\"label\"].contains(unknown.stringValue)",
+        ],
+    );
 }
 
 /// A map under a key Swift wraps, which `validate()` walks nothing of, is read and written through

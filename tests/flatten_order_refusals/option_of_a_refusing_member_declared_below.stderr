@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `mark` (`Option<Mark>`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: every member tixschema could see takes its own keys, so it wrote `#[serde(deny_unknown_fields)]` on `Parcel`, and `Option<Mark>` reads every key still left, which `Parcel` then refuses. Mark `Parcel` `#[model_schema(nonstrict)]`.
+  --> tests/flatten_order_refusals/option_of_a_refusing_member_declared_below.rs:11:15
+   |
+11 |     pub mark: Option<Mark>,
+   |               ^^^^^^ evaluation of `_` failed here

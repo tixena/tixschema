@@ -1,0 +1,5 @@
+error: model_schema: type `Coating`: variant `Finished` of the untagged `Coating` never reads back: serde reads the variants in the order declared, and `Painted`, declared before it, reads every value serde writes for `Finished`. `Finished` reads every value of `Painted` as well, so give one of them a member serde requires that the other never writes.
+  --> tests/flatten_order_refusals/untagged_variants_that_read_each_other.rs:18:5
+   |
+18 |     Finished(Finish),
+   |     ^^^^^^^^^^^^^^^^

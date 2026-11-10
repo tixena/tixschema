@@ -352,6 +352,42 @@ pub enum MissingKey {
     Required,
 }
 
+/// The path a type written `a::b::Name` names `Name` under, where `Name`'s schema module sits
+/// beside it: empty for a bare name.
+#[derive(Clone, Debug, Default)]
+pub struct Scope {
+    leading_colon: bool,
+    segments: Vec<String>,
+}
+
+impl Scope {
+    /// The scope of `path`'s last segment.
+    fn of(path: &syn::Path) -> Self {
+        let mut segments: Vec<String> = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        segments.pop();
+        Self {
+            leading_colon: path.leading_colon.is_some(),
+            segments,
+        }
+    }
+
+    /// `item` read through this scope, its segments spelled at `span`.
+    pub fn reaching(&self, item: &Ident, span: Span) -> proc_macro2::TokenStream {
+        let leading = self.leading_colon.then(|| quote::quote! { :: });
+        let segments = self.segments.iter().map(|segment| {
+            segment.strip_prefix("r#").map_or_else(
+                || Ident::new(segment, span),
+                |raw| Ident::new_raw(raw, span),
+            )
+        });
+        quote::quote! { #leading #(#segments ::)* #item }
+    }
+}
+
 /// Struct representing a field's definition for schema generation.
 #[derive(Clone, Debug)]
 pub struct FieldDef {
@@ -360,6 +396,8 @@ pub struct FieldDef {
     pub array_lengths: Vec<(u8, usize)>,
     /// Whether array level 0 is a `Vec<u8>`, which TypeScript and Dart hold as bytes.
     pub bytes: bool,
+    /// The rustdoc as a JSON Schema `description`: no examples, and no name in place of a missing one.
+    pub description: Option<String>,
     pub docs: String,
     pub field_type: FieldDefType,
     /// What serde does with this member's key when the payload leaves it out.
@@ -368,6 +406,8 @@ pub struct FieldDef {
     pub name: String,
     pub nullable_levels: Vec<u8>,
     pub omits_value: bool,
+    /// Where a named type's schema module is reached from.
+    pub scope: Scope,
     /// Where the default serde reads for an absent key sits among its struct's, for a member
     /// whose default is written as JSON.
     pub serde_default: Option<usize>,
@@ -1096,6 +1136,7 @@ impl FieldDef {
         };
         Self {
             docs: self.docs,
+            description: self.description,
             type_span: self.type_span,
             ..held
         }
@@ -1428,6 +1469,7 @@ impl FieldDef {
                         array_depth: 0,
                         array_lengths: Vec::new(),
                         docs: String::new(),
+                        description: None,
                         model_schema_prop_meta: None,
                         nullable_levels: Vec::new(),
                         absent_from_wire: false,
@@ -1436,6 +1478,7 @@ impl FieldDef {
                         serde_default: None,
                         bytes: false,
                         set_levels: Vec::new(),
+                        scope: Scope::default(),
                         type_span: Span::call_site(),
                     }));
                 }
@@ -2985,8 +3028,29 @@ pub fn classify_variant(variant: &Variant) -> VariantKind {
     }
 }
 
-/// Main function to create `FieldDef` from `syn::Type`.
+/// Main function to create `FieldDef` from `syn::Type`. A named type keeps the path it was written
+/// under, which its schema module is reached through.
 fn get_field_def_from_type_path(
+    type_path: &syn::TypePath,
+    field_name: String,
+    field_docs: &str,
+) -> FieldDef {
+    let mut def = unscoped_type_path_def(type_path, field_name, field_docs);
+    if let FieldDefType::SiblingType(name, _) = &def.field_type
+        && type_path.qself.is_none()
+        && type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == name)
+    {
+        def.scope = Scope::of(&type_path.path);
+    }
+    def
+}
+
+/// [`get_field_def_from_type_path`] before the scope is read.
+fn unscoped_type_path_def(
     type_path: &syn::TypePath,
     field_name: String,
     field_docs: &str,
@@ -2998,6 +3062,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3006,6 +3071,7 @@ fn get_field_def_from_type_path(
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             type_span: type_path.span(),
         };
     };
@@ -3017,6 +3083,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3025,6 +3092,7 @@ fn get_field_def_from_type_path(
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
             type_span: segment.ident.span(),
@@ -3043,6 +3111,7 @@ fn get_field_def_from_type_path(
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3051,6 +3120,7 @@ fn get_field_def_from_type_path(
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             type_span: segment.ident.span(),
         },
     }
@@ -3111,6 +3181,7 @@ fn get_field_def_from_generic_type(
                 Box::new(arg_types[1].clone()),
             ),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3119,6 +3190,7 @@ fn get_field_def_from_generic_type(
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             type_span: type_ident.span(),
         }
     } else if arg_types.len() == 1 && is_datetime_generic_type(ident) {
@@ -3154,6 +3226,7 @@ fn written_def(
         array_depth: 0,
         array_lengths: Vec::new(),
         docs: field_docs.to_owned(),
+        description: None,
         model_schema_prop_meta: None,
         nullable_levels: Vec::new(),
         absent_from_wire: false,
@@ -3162,6 +3235,7 @@ fn written_def(
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
+        scope: Scope::default(),
         type_span: type_ident.span(),
     }
 }
@@ -3317,6 +3391,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3325,6 +3400,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             type_span: written.span(),
         }
     } else {
@@ -3334,6 +3410,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             array_depth: 0,
             array_lengths: Vec::new(),
             docs: field_docs.to_owned(),
+            description: None,
             model_schema_prop_meta: None,
             nullable_levels: Vec::new(),
             absent_from_wire: false,
@@ -3342,6 +3419,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             serde_default: None,
             bytes: false,
             set_levels: Vec::new(),
+            scope: Scope::default(),
             type_span: written.span(),
         }
     }

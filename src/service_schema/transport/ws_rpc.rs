@@ -5,7 +5,7 @@ use super::Transport;
 use super::amqp_rpc::{
     Generated, answer_reader, declares_a_reply, declares_header_in, declares_header_out,
     dispatcher_fns, fault_mirror, fault_mirror_readers, header_decoder, incoming_message,
-    incoming_message_accessors, method, placement_doc, reply_trait, transport_trait,
+    incoming_message_accessors, method, placement_doc, refusal_type, reply_trait, transport_trait,
 };
 use crate::service_schema::parse::ServiceDef;
 use crate::service_schema::support::module_ident;
@@ -56,6 +56,11 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let reply_struct_type = frame_reply_type();
     let incoming_type = incoming_message(claims_headers);
     let reply_trait_type = reply_trait(contract, &module, with_send);
+    let refusal_type = if service.operations.is_empty() {
+        TokenStream::new()
+    } else {
+        refusal_type()
+    };
     let frame_impl = frame_codec_impl(Side::Dispatcher);
     let reply_struct_impl = frame_reply_impl();
     let reply_trait_impl = frame_reply_trait_impl(&module, with_send);
@@ -79,6 +84,7 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 #reply_struct_type
                 #incoming_type
                 #reply_trait_type
+                #refusal_type
 
                 #frame_impl
                 #reply_struct_impl

@@ -24,27 +24,17 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::runtime::judged;
-use super::shared_key_models::{
-    SHARED_KEYS, bitts_swift, bowline_swift, clinching_swift, earring_swift, gantline_swift,
-    garnet_swift, gudgeon_swift, halliard_swift, parrel_swift, rubrail_swift, snotter_swift,
-    spritsail_swift, toggled_swift,
-};
 use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
-    Faking, Frapping, GRAFTING_HELD, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HALYARD,
-    HALYARD_EMPTY, HALYARD_MISTYPED, HANKING, Halyard, Hanking, Kedging, LABEL, Marling, Marrying,
-    Mousing, NO_ENTRY, Notch, PARCELING, POINTING_HELD, POINTING_MARKED, POINTING_NOTCHED,
-    POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, Plying, Pointing, REELING_MISTYPED,
-    REELING_UNKEYED, Reeling, SEAMING, SNAKING, STOPPING, Seaming, Slacking, Snaking, Splaying,
-    Stopping, Stropping, TAILING, TAILING_MISTYPED, TEXTS, TRUSSING, TRUSSING_MISTYPED,
-    TRUSSING_PARTIAL, Tailing, Toggling, Trussing, Twinning, WINCHING_BROKEN, WINCHING_MISTYPED,
-    WORMING, Whipping, Winching, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift,
-    counting_swift, faking_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
-    halyard_swift, hanking_swift, kedging_swift, kinded_swift, marling_swift, marrying_swift,
-    mousing_swift, notch_swift, parceling_swift, pennant_swift, plying_swift, pointing_swift,
-    quarter_swift, reeling_swift, reeving_swift, seaming_swift, slacking_swift, snaking_swift,
-    splaying_swift, stopping_swift, stropping_swift, tailing_swift, toggling_swift, trussing_swift,
-    twinning_swift, whipping_swift, winching_swift, worming_swift,
+    Faking, Frapping, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, HANKING, Hanking, Kedging,
+    Marling, Mousing, Notch, PARCELING, POINTING_HELD, POINTING_MARKED, POINTING_NOTCHED,
+    POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, Pointing, SEAMING, SNAKING, STOPPING,
+    Seaming, Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning, WORMING, Worming,
+    baling_swift, bowsing_swift, boxing_swift, clewing_swift, counting_swift, faking_swift,
+    footing_swift, frapping_swift, grafting_swift, gripping_swift, hanking_swift, kedging_swift,
+    kinded_swift, marling_swift, mousing_swift, notch_swift, parceling_swift, pennant_swift,
+    pointing_swift, quarter_swift, reeving_swift, seaming_swift, snaking_swift, splaying_swift,
+    stopping_swift, stropping_swift, toggling_swift, twinning_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -110,10 +100,7 @@ print("twinning: \(written(twinning.tally.keys)) \(written(twinning))")
 let gripping = read(Gripping.self, #"GRIPPING"#)
 print("gripping: \(written(gripping.notch)) \(written(gripping))")
 print("gripping refused: \(refusal(Gripping.self, #"BROKEN_GRIPPING"#))")
-print("plying: \(written(read(Plying.self, #"BALING"#)))")
 print("hanking: \(written(read(Hanking.self, #"HANKING"#)))")
-print("whipping: \(written(read(Whipping.self, #"LABEL"#)))")
-print("marrying refused: \(refusal(Marrying.self, #"LABEL"#))")
 "##;
 
 /// A [`Gripping`] whose model breaks its rule.
@@ -254,8 +241,6 @@ fn with_payloads(main: &str) -> String {
         ("BOWSING", BOWSING),
         ("GRIPPING", GRIPPING),
         ("HANKING", HANKING),
-        ("LABEL", LABEL),
-        ("BALING", BALING),
     ]
     .into_iter()
     .fold(main.to_owned(), |held, (named, payload)| {
@@ -307,9 +292,6 @@ fn printed() -> Option<String> {
         splaying_swift::swift_definition(),
         twinning_swift::swift_definition(),
         gripping_swift::swift_definition(),
-        plying_swift::swift_definition(),
-        whipping_swift::swift_definition(),
-        marrying_swift::swift_definition(),
     ];
     printed_of(&definitions, &with_payloads(MAIN))
 }
@@ -375,9 +357,8 @@ fn handed() -> String {
     )
 }
 
-/// Each member flattened after a struct, read as serde reads it, then written back, what
-/// `validate()` answers of a [`Gripping`] whose model breaks its rule, and what serde says of a
-/// [`Plying`], ahead of the position it says it at.
+/// Each member flattened after a struct, read as serde reads it, then written back, and what
+/// `validate()` answers of a [`Gripping`] whose model breaks its rule.
 fn after_a_struct() -> String {
     let splaying: Splaying = read(BOWSING);
     let twinning: Twinning = read(STOPPING);
@@ -392,13 +373,8 @@ fn after_a_struct() -> String {
         note: "a".to_owned(),
     };
     assert_eq!(written(&broken_gripping), BROKEN_GRIPPING);
-    let plying = serde_json::from_str::<Plying>(BALING)
-        .unwrap_err()
-        .to_string();
-    let (plying_refused, _position) = plying.split_once(" at line").unwrap();
     format!(
-        "splaying: {} {}\ntwinning: {} {}\ngripping: {} {}\ngripping refused: {}\n\
-         plying refused: {plying_refused}\n",
+        "splaying: {} {}\ntwinning: {} {}\ngripping: {} {}\ngripping refused: {}\n",
         keys(&splaying.footing.tally.keys),
         written(&splaying),
         keys(&twinning.tally.keys),
@@ -410,29 +386,15 @@ fn after_a_struct() -> String {
 }
 
 /// A struct flattened first beside a member of its holder's own whose key it does not read, read
-/// and written back, then what serde says of a struct flattened first, plain and naming a
-/// function, beside a member that reads its key, ahead of the position it says it at.
+/// and written back.
 fn first() -> String {
-    let refused = |text: String| {
-        let (refused, _position) = text.split_once(" at line").unwrap();
-        refused.to_owned()
-    };
-    let whipping = serde_json::from_str::<Whipping>(LABEL).unwrap_err();
-    let marrying = serde_json::from_str::<Marrying>(LABEL).unwrap_err();
-    format!(
-        "hanking: {}\nwhipping refused: {}\nmarrying refused: {}\n",
-        written(&read::<Hanking>(HANKING)),
-        refused(whipping.to_string()),
-        refused(marrying.to_string()),
-    )
+    format!("hanking: {}\n", written(&read::<Hanking>(HANKING)))
 }
 
 /// Each member that names a function, each member flattened after a struct and each struct
 /// flattened first is read from the keys serde hands it, and each holder is written back as serde
 /// writes it back. A model a holder holds is judged once, with its holder, under the place serde
-/// names. A struct that reads a key its holder or a struct ahead of it took reads it, as
-/// TypeScript and Zod read it, where serde refuses it, and one that names a function is handed
-/// what serde hands it, and refused as serde refuses it.
+/// names.
 #[test]
 fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
     let serde = format!("{}{}{}", handed(), after_a_struct(), first());
@@ -448,24 +410,12 @@ fn a_flattened_member_reads_in_swift_the_keys_serde_hands_it() {
          twinning: [\"north\"] {\"keys\":[\"north\"],\"label\":\"n\",\"note\":\"a\"}\n\
          gripping: {\"mark\":\"x\"} {\"label\":\"n\",\"mark\":\"x\",\"note\":\"a\"}\n\
          gripping refused: 'mark': too short: minimum length is 1, got 0\n\
-         plying refused: missing field `label`\n\
-         hanking: {\"label\":\"n\",\"marker\":\"m\"}\n\
-         whipping refused: missing field `label`\n\
-         marrying refused: missing field `label`\n"
+         hanking: {\"label\":\"n\",\"marker\":\"m\"}\n"
     );
-    let expected = serde
-        .replace(
-            "plying refused: missing field `label`",
-            "plying: {\"label\":\"n\",\"note\":\"a\"}",
-        )
-        .replace(
-            "whipping refused: missing field `label`",
-            "whipping: {\"label\":\"n\"}",
-        );
     let Some(printed) = printed() else {
         return;
     };
-    assert_eq!(printed, expected);
+    assert_eq!(printed, serde);
 }
 
 /// Each struct and variant whose every member is flattened, a map alone in each shape a map is
@@ -539,7 +489,7 @@ fn a_member_named_after_the_container_reads_and_writes_in_swift_as_serde_does() 
 /// Each variant under a tag alone of [`Grafting`] and [`Pointing`], read from a payload whose
 /// struct reads a key named as the tag, from one whose struct reads another key, and from one
 /// whose model breaks its rule.
-fn tag_alone_rows() -> [Row; 9] {
+fn tag_alone_rows() -> [Row; 8] {
     let read_back = |name, read_as, json, told| Row {
         json,
         name,
@@ -551,14 +501,8 @@ fn tag_alone_rows() -> [Row; 9] {
         refused: true,
         ..read_back(name, read_as, json, told)
     };
-    // serde refuses the first two, and the Swift read writes them back.
+    // serde refuses the first, and the Swift read writes it back.
     [
-        read_back(
-            "grafting held",
-            "Grafting",
-            GRAFTING_HELD,
-            refused::<Grafting>,
-        ),
         read_back(
             "grafting slot",
             "Grafting",
@@ -625,7 +569,7 @@ fn a_variant_under_a_tag_alone_reads_in_swift_the_tag_its_struct_reads() {
     });
     assert_eq!(
         expected,
-        "grafting held: missing field `kind`\n\
+        "\
          grafting slot: missing field `kind`\n\
          pointing held: {\"kind\":\"Held\",\"label\":\"n\"}\n\
          pointing slot: {\"kind\":\"Slot\",\"label\":\"n\"}\n\
@@ -655,214 +599,4 @@ fn a_variant_under_a_tag_alone_reads_in_swift_the_tag_its_struct_reads() {
         return;
     };
     assert_eq!(printed, swift);
-}
-
-/// Each optional map alone in its struct or in a variant, under its name, under a content key or
-/// untagged, under a key Swift wraps and of models, read from a payload with no entry, with
-/// entries that read and with one that does not, and one whose model breaks its rule.
-fn optional_map_rows() -> [Row; 18] {
-    let read_back = |name, read_as, json, told| Row {
-        json,
-        name,
-        read_as,
-        refused: false,
-        told,
-    };
-    [
-        read_back(
-            "trussing empty",
-            "Trussing",
-            NO_ENTRY,
-            written_back::<Trussing>,
-        ),
-        read_back("trussing", "Trussing", TRUSSING, written_back::<Trussing>),
-        read_back(
-            "trussing mistyped",
-            "Trussing",
-            TRUSSING_MISTYPED,
-            written_back::<Trussing>,
-        ),
-        read_back(
-            "trussing partial",
-            "Trussing",
-            TRUSSING_PARTIAL,
-            written_back::<Trussing>,
-        ),
-        read_back(
-            "halyard empty",
-            "Halyard",
-            HALYARD_EMPTY,
-            written_back::<Halyard>,
-        ),
-        read_back("halyard", "Halyard", HALYARD, written_back::<Halyard>),
-        read_back(
-            "halyard mistyped",
-            "Halyard",
-            HALYARD_MISTYPED,
-            written_back::<Halyard>,
-        ),
-        read_back("tailing", "Tailing", TAILING, written_back::<Tailing>),
-        read_back(
-            "tailing mistyped",
-            "Tailing",
-            TAILING_MISTYPED,
-            written_back::<Tailing>,
-        ),
-        read_back(
-            "slacking empty",
-            "Slacking",
-            NO_ENTRY,
-            written_back::<Slacking>,
-        ),
-        read_back("slacking", "Slacking", TRUSSING, written_back::<Slacking>),
-        read_back(
-            "slacking mistyped",
-            "Slacking",
-            TRUSSING_MISTYPED,
-            written_back::<Slacking>,
-        ),
-        read_back("reeling", "Reeling", PARCELING, written_back::<Reeling>),
-        read_back(
-            "reeling unkeyed",
-            "Reeling",
-            REELING_UNKEYED,
-            written_back::<Reeling>,
-        ),
-        read_back(
-            "reeling mistyped",
-            "Reeling",
-            REELING_MISTYPED,
-            written_back::<Reeling>,
-        ),
-        read_back("winching", "Winching", WORMING, written_back::<Winching>),
-        read_back(
-            "winching mistyped",
-            "Winching",
-            WINCHING_MISTYPED,
-            written_back::<Winching>,
-        ),
-        Row {
-            refused: true,
-            ..read_back(
-                "winching refused",
-                "Winching",
-                WINCHING_BROKEN,
-                refused::<Winching>,
-            )
-        },
-    ]
-}
-
-/// An optional map alone in its struct or in a variant, under its name, under a content key or
-/// untagged, under a key Swift wraps too and of models, is read from each payload and written back
-/// as serde writes it back: every entry where each reads, and `nil`, which writes nothing, wherever
-/// one does not. A model whose rule is broken is refused once, with its holder, under the place
-/// serde names.
-#[test]
-fn an_optional_map_reads_and_writes_in_swift_as_serde_does() {
-    let rows = optional_map_rows();
-    let expected = rows.iter().fold(String::new(), |mut expected, row| {
-        let _ = writeln!(expected, "{}: {}", row.name, (row.told)(row.json));
-        expected
-    });
-    assert_eq!(
-        expected,
-        "trussing empty: {}\n\
-         trussing: {\"north\":2}\n\
-         trussing mistyped: {}\n\
-         trussing partial: {}\n\
-         halyard empty: {\"Open\":{}}\n\
-         halyard: {\"Open\":{\"north\":2}}\n\
-         halyard mistyped: {\"Open\":{}}\n\
-         tailing: {\"held\":{\"north\":2},\"kind\":\"Open\"}\n\
-         tailing mistyped: {\"held\":{},\"kind\":\"Open\"}\n\
-         slacking empty: {}\n\
-         slacking: {\"north\":2}\n\
-         slacking mistyped: {}\n\
-         reeling: {\"North\":2}\n\
-         reeling unkeyed: {}\n\
-         reeling mistyped: {}\n\
-         winching: {\"north\":{\"mark\":\"x\"}}\n\
-         winching mistyped: {}\n\
-         winching refused: 'north.mark': too short: minimum length is 1, got 0\n"
-    );
-    let definitions = [
-        quarter_swift::swift_definition(),
-        notch_swift::swift_definition(),
-        trussing_swift::swift_definition(),
-        halyard_swift::swift_definition(),
-        tailing_swift::swift_definition(),
-        slacking_swift::swift_definition(),
-        reeling_swift::swift_definition(),
-        winching_swift::swift_definition(),
-    ];
-    let Some(printed) = printed_of(&definitions, &main_of(&rows)) else {
-        return;
-    };
-    assert_eq!(printed, expected);
-}
-
-/// What prints each holder of [`SHARED_KEYS`] read from its payload and written back, and whether
-/// the optional struct of `Rubrail` was read.
-fn shared_key_main() -> String {
-    let mut main = SHARED_KEYS.iter().fold(String::new(), |mut main, row| {
-        let _ = writeln!(
-            main,
-            "print(\"{}: \\(written(read({}.self, #\"{}\"#)))\")",
-            row.holder, row.holder, row.json
-        );
-        main
-    });
-    let _ = writeln!(
-        main,
-        "print(\"Rubrail flag: \\(read(Rubrail.self, #\"{{\"label\":\"n\"}}\"#).flag?.label ?? \"nil\")\")"
-    );
-    main
-}
-
-/// A flattened struct reads a key a member of its holder's own or a struct flattened ahead of it
-/// took from the whole object, as TypeScript and Zod read it, where serde refuses the payload, an
-/// optional one is read where that key is there, where serde reads `None`, and its holder writes
-/// that key once.
-#[test]
-fn a_flattened_struct_reads_in_swift_a_key_taken_around_it_as_zod_reads_it() {
-    let mut expected = SHARED_KEYS.iter().fold(String::new(), |mut expected, row| {
-        let _ = writeln!(expected, "{}: {}", row.holder, row.zod);
-        expected
-    });
-    expected.push_str("Rubrail flag: n\n");
-    assert_eq!(
-        expected,
-        "Bowline: {\"label\":\"n\",\"tag\":\"t\"}\n\
-         Clinching: {\"label\":\"n\",\"tag\":\"t\"}\n\
-         Parrel: {\"label\":\"n\"}\n\
-         Gudgeon: {\"label\":\"n\",\"note\":\"a\"}\n\
-         Rubrail: {\"label\":\"n\"}\n\
-         Halliard: {\"kind\":\"Held\"}\n\
-         Bitts: {\"label\":\"n\",\"type\":\"Held\"}\n\
-         Rubrail flag: n\n",
-        "the table no longer states what Zod reads"
-    );
-    let definitions = [
-        earring_swift::swift_definition(),
-        spritsail_swift::swift_definition(),
-        bowline_swift::swift_definition(),
-        gantline_swift::swift_definition(),
-        clinching_swift::swift_definition(),
-        garnet_swift::swift_definition(),
-        parrel_swift::swift_definition(),
-        gudgeon_swift::swift_definition(),
-        rubrail_swift::swift_definition(),
-        toggled_swift::swift_definition(),
-        halliard_swift::swift_definition(),
-        snotter_swift::swift_definition(),
-        bitts_swift::swift_definition(),
-    ];
-    let Some(printed) = printed_of(&definitions, &shared_key_main()) else {
-        return;
-    };
-    assert_eq!(
-        printed, expected,
-        "the Swift read no longer reads each key as Zod reads it"
-    );
 }

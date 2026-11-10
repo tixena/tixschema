@@ -1,8 +1,7 @@
 //! Unit tests of what a `preprocess` is refused for, and of the calls written for one.
 
-use proc_macro2::{TokenStream, TokenTree};
-
 use crate::model_schema::exec_model_schema;
+use proc_macro2::{TokenStream, TokenTree};
 
 /// The struct each refusal is raised on, with `prop` written on its one field.
 fn parcel(prop: &str) -> String {
@@ -198,7 +197,7 @@ fn a_preprocess_that_is_no_array_is_refused() {
 /// Each row of the README's table of refusals: what is written, and the words it is refused in.
 #[test]
 fn the_readme_states_each_refusal_in_the_words_it_is_raised_in() {
-    let readme = include_str!("../../../README.md");
+    let readme = include_str!("../../../docs/guide/preprocess.md");
     for (written, located, sentence) in [
         (
             "\"trimmed\"",

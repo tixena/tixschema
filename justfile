@@ -183,6 +183,9 @@ test-emitted cfg="":
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_integer_limits
     @echo "Running the emitted TypeScript REST server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_http_service
+    @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
+    @echo "Running the emitted TypeScript MCP server and client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_node_mcp
     @echo "Running the emitted TypeScript services whose names hold a quote against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_quoted
     @echo "Running the emitted ws_rpc headers against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
@@ -213,7 +216,10 @@ slow_tests := "--config 'build.rustflags=[\"--cfg\", \"slow_tests\"]'"
 
 # Lint, then run, the tests that wait on a real clock: the WebSocket runs of the emitted clients.
 # They run through `test-emitted`, so this refuses to stand down and needs every toolchain it needs.
-test-slow: lint-slow (test-emitted slow_tests)
+test-slow: lint-slow run-slow
+
+# Run the tests that wait on a real clock, with the emitted clients, without linting them.
+run-slow: (test-emitted slow_tests)
 
 # Lint the tests that wait on a real clock, under the cfg that compiles them.
 lint-slow:
@@ -256,9 +262,13 @@ check-mix:
     cargo test --no-default-features --features mongo --test every_build_validation_tests
     cargo test --no-default-features --features mobile,mongo --test every_build_validation_tests
 
-# Check the library on the minimum supported Rust version.
+# Check the library on the floor, `rust-version` in Cargo.toml.
 check-msrv:
-    cargo +1.91 check --all-features
+    cargo +1.91.1 check --all-features
+
+# Run the tests on the floor, as CI does. No lint: lints run on beta alone.
+test-floor:
+    cargo +1.91.1 test --all-features
 
 # Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
 # file is generated afresh and scanned on its own.
