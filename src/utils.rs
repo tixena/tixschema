@@ -796,13 +796,11 @@ thread_local! {
     /// `#[serde(flatten)]`.
     static NON_OBJECT_WIRES: RefCell<HashMap<String, NonObjectWire>> =
         RefCell::new(HashMap::new());
-    /// The names `#[model_schema]` has been written on so far, each with whether serde writes a
-    /// value of it as something other than a JSON object. Kept in every build that reads
-    /// `#[serde(flatten)]`.
+    /// Each name `#[model_schema]` has been written on, with whether serde writes its value as
+    /// something other than a JSON object.
     static NEEDS_WRAPPER: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
-    /// The names `#[model_schema]` has been written on so far, each with whether it is a choice
-    /// among plain names, which a form field may hold. Kept in every build that reads
-    /// `#[serde(flatten)]`.
+    /// Each name `#[model_schema]` has been written on, with whether it is a choice among plain
+    /// names, which a form field may hold.
     static MCP_FORM_VALUES: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// The names `#[model_schema]` has been written on so far whose value serde writes as what
     /// fills their type parameter at the position held. Kept in every build that reads
@@ -971,9 +969,8 @@ pub fn forget_checks() {
 
 #[cfg(feature = "serde")]
 thread_local! {
-    /// The names `#[model_schema]` has been written on so far whose keys serde does not take off the
-    /// object it reads them from when they are flattened, so that a holder which refuses an unknown
-    /// key refuses them too.
+    /// Each name `#[model_schema]` has been written on whose keys serde leaves on the object when it
+    /// is flattened, so that a holder that refuses an unknown key refuses them too.
     static UNCONSUMED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 

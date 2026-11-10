@@ -3520,9 +3520,8 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
         return None;
     }
     if leaves_its_keys(def) {
-        // serde hands such a member every key its holder leaves, and one that refuses a key beside
-        // its own refuses those the holder refuses. The macro's classifier answers its keys, and
-        // an enum's or a struct of one slot's, which the Swift registries do not hold.
+        // serde hands such a member every key its holder leaves. The macro's classifier answers its
+        // keys, which the Swift registries hold for no enum and no struct of one slot.
         return flattened_keys(def);
     }
     preprocess::closed_keys_of(def)

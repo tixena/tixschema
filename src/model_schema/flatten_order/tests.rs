@@ -554,9 +554,7 @@ fn a_variant_of_an_untagged_enum_that_reads_every_object_ahead_of_another_is_ref
     );
 }
 
-/// A member whose keys are those of a type parameter is refused, the parameter written bare, under
-/// an `Option` or a `Box`, in a variant, or through a generic untagged enum that holds it, and a
-/// generic type that holds its parameter under a key is flattened as any struct is.
+/// A member whose keys are a type parameter's is refused, and one holding it under a key is not.
 #[test]
 fn a_member_whose_keys_are_those_of_a_type_parameter_is_refused() {
     let either: syn::Item = syn::parse_str(

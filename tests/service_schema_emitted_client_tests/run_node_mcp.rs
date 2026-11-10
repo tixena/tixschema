@@ -436,9 +436,8 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// The three lines of a stdio host that starts each line's answer without waiting for the one
-/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
-/// the event it waits for.
+/// A stdio host answering each line without waiting for the one before, a write that fails, and
+/// HTTP requests answering an event stream. Each wait ends on the event it waits for.
 const WRITER_DRIVER: &str = r#"
 const input = JSON.parse(INPUT);
 

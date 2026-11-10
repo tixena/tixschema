@@ -315,8 +315,7 @@ fn a_nonstrict_type_reads_past_a_key_no_member_declares() {
     assert_eq!(read::<LenientShape>(r#"{"side":1,"stray":1}"#), Ok(()));
 }
 
-/// A struct declared below the type that flattens it takes its own keys, as its hidden constant
-/// says, so the holder refuses a key neither declares.
+/// A struct declared below its holder takes its own keys, so the holder refuses a stray key.
 #[test]
 fn a_type_that_flattens_a_struct_declared_below_it_refuses_a_key_neither_declares() {
     assert_eq!(read::<Opaque>(r#"{"name":"a","id":"b"}"#), Ok(()));

@@ -486,9 +486,8 @@ thread_local! {
     /// for, read flattened.
     static DART_TAKEN_KEYS: RefCell<HashMap<String, Taken>> = RefCell::new(HashMap::new());
 
-    /// The keys each struct and each enum under a tag alone or none a class has been emitted for
-    /// refuses a key beside: the whole set its read takes off the object it is handed, a flattened
-    /// member's keys among them. A type with no entry refuses no key.
+    /// The keys each struct, and each enum under a tag alone or none, emitted so far refuses a key
+    /// beside: every key its read takes, a flattened member's among them.
     static DART_CLOSED: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
 
     /// How each type a class has been emitted for reads each of its type parameters flattened,
@@ -3860,9 +3859,8 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             // A flattened member is walked whatever it writes.
             let decode = match taken_by(def) {
                 Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    // serde hands a member that leaves its keys in the object every key still
-                    // left, which it refuses or reads past as its own read does, and one that
-                    // takes its keys those keys alone.
+                    // serde hands a member that leaves its keys every key still left, and one that
+                    // takes its own keys those keys alone.
                     let known = closed_record_of(def)
                         .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
                         .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());

@@ -212,9 +212,8 @@ struct Member<'item> {
 /// What a flattened `Option` holds.
 struct Optional {
     empty: Answer,
-    /// The types that make what it holds refuse a key it does not declare, where it also reads
-    /// every key still left: serde then reads the `Option` as `None` beside a key no member
-    /// declares.
+    /// The types that make what it holds refuse an undeclared key while reading every key left, so
+    /// serde reads the `Option` as `None` beside a key no member declares.
     refusing: Option<Vec<Culprit>>,
     written: String,
 }
@@ -3349,9 +3348,8 @@ fn dynamic_checks(level: &Level<'_>, members: &[Member<'_>]) -> Option<TokenStre
     if dynamic.is_empty() && key_checks.is_empty() {
         return None;
     }
-    // A member whose keys nothing can see beside another key is refused first, then one serde
-    // writes as no object, then one whose shape no order reads back, its order and strictness
-    // next: a fix of one leaves the checks after it to say what else the holder needs.
+    // Refused in this order, unseen keys, no object, no order, then order and strictness, so that
+    // a fix of one leaves the checks after it to say what else the holder needs.
     let mut found: Vec<(TokenStream, String)> = dynamic
         .iter()
         .filter_map(|&(at, flags)| unmodelled_check(level, members, at, flags))

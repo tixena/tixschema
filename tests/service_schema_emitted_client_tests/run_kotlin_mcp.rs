@@ -373,9 +373,8 @@ suspend fun authReport(input: JsonObject): JsonObject {
 }
 "#;
 
-/// The three lines of a stdio host that starts each line's answer without waiting for the one
-/// before, a write that fails, and the HTTP requests that answer an event stream. A wait ends on
-/// the event it waits for.
+/// A stdio host answering each line without waiting for the one before, a write that fails, and
+/// HTTP requests answering an event stream. Each wait ends on the event it waits for.
 const WRITER_DRIVER: &str = r#"
 class WriterHandlers(
     private val call: WriterServiceMcpCall,

@@ -515,8 +515,7 @@ impl HttpShape {
 pub struct McpDirective {
     /// `cache_scope = "public" | "private"`: the `cacheScope` a resource read or listing answers.
     pub cache_scope: Option<String>,
-    /// `completes(resource = "<operation>", parameter = "<argument>")` or
-    /// `completes(prompt = "<operation>", parameter = "<argument>")`: the operation suggests
+    /// `completes(resource|prompt = "<operation>", parameter = "<argument>")`: the operation suggests
     /// values for one placeholder of a resource template, or one argument of a prompt.
     pub completes: Option<McpCompletes>,
     /// `content`: the tool answers content blocks, not a structured value. Where it was written.
@@ -554,9 +553,8 @@ pub struct McpDirective {
     pub scopes: Vec<(String, proc_macro2::Span)>,
     /// `skill = "<name>"`: the operation writes the files of one skill at run time.
     pub skill: Option<(String, proc_macro2::Span)>,
-    /// `task(get = "<operation>", cancel = "<operation>", update = "<operation>")`: the tool
-    /// answers a task handle, and the operations named answer `tasks/get`, `tasks/cancel` and
-    /// `tasks/update`.
+    /// `task(get = "<operation>", cancel = "<operation>", update = "<operation>")`: the tool answers
+    /// a task handle, and the operations named answer `tasks/get`, `tasks/cancel` and `tasks/update`.
     pub task: Option<McpTask>,
     /// `title = "..."`: the tool's title, where the method's name in Title Case is not it.
     pub title: Option<String>,
