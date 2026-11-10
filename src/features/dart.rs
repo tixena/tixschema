@@ -14,6 +14,8 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Lit, Varia
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
 use crate::features::JSON_NUMBER;
+#[cfg(feature = "serde")]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::{
     FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
 };
@@ -24,6 +26,7 @@ use crate::features::serde::{
     written_slots,
 };
 use crate::features::text_forms::TextForm;
+use crate::features::unmet_keys_filled;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
@@ -967,7 +970,10 @@ fn dart_module_tokens(
     };
     let module_ident = dart_module_ident(rust_ident, span);
     let holder = defaults.holder();
-    if holder.is_empty() {
+    let written = Ident::new("written", proc_macro2::Span::call_site());
+    let escaped = [('\\', "\\\\"), ('\'', "\\'"), ('$', "\\$")];
+    let (beside, keys) = unmet_keys_filled(&written, &module_ident, quoted, '\'', &escaped);
+    if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn dart_definition() -> ::std::string::String {
@@ -976,12 +982,12 @@ fn dart_module_tokens(
             }
         };
     }
-    let written = Ident::new("written", proc_macro2::Span::call_site());
-    let replaced = substituted(
-        &quote! { SerdeDefaults },
-        &written,
-        &[('\\', "\\\\"), ('\'', "\\'"), ('$', "\\$")],
-    );
+    let mut replaced = if holder.is_empty() {
+        TokenStream::new()
+    } else {
+        substituted(&quote! { SerdeDefaults }, &written, &escaped)
+    };
+    replaced.extend(keys);
     let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
@@ -995,6 +1001,7 @@ fn dart_module_tokens(
         }
 
         #values
+        #beside
     }
 }
 
@@ -1172,6 +1179,10 @@ fn closed_record_of(def: &FieldDef) -> Option<Vec<String>> {
 fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
     if !member_functions(def).is_empty() {
         return None;
+    }
+    #[cfg(feature = "serde")]
+    if let Some(keys) = member_keys::of(def) {
+        return Some(keys);
     }
     let taken = taken_by(def);
     // An externally tagged enum takes one entry under a variant's name, whatever it leaves.

@@ -35,6 +35,12 @@ pub mod text_forms;
 #[cfg(feature = "dart")]
 pub mod dart;
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub mod member_keys;
+
 #[cfg(feature = "swift")]
 pub mod swift;
 
@@ -162,6 +168,40 @@ impl Features {
 
 // Note: Proc-macro crates cannot export macro_rules! macros
 // Instead, we use cfg attributes directly where needed
+
+/// The statements that write into `written` the keys of each member the client text names by a
+/// placeholder, as [`member_keys::filled`] writes them.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub fn unmet_keys_filled(
+    written: &proc_macro2::Ident,
+    module: &proc_macro2::Ident,
+    quoted: fn(&str) -> String,
+    quote: char,
+    escaped: &[(char, &str)],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    member_keys::filled(written, module, quoted, quote, escaped)
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(all(
+    not(feature = "serde"),
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+pub fn unmet_keys_filled(
+    _written: &proc_macro2::Ident,
+    _module: &proc_macro2::Ident,
+    _quoted: fn(&str) -> String,
+    _quote: char,
+    _escaped: &[(char, &str)],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    (
+        proc_macro2::TokenStream::new(),
+        proc_macro2::TokenStream::new(),
+    )
+}
 
 #[cfg(test)]
 mod tests;

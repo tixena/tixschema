@@ -10,31 +10,33 @@ use serde_json::{Map, Value, json};
 
 use super::flattened_stray_models::{
     BillingAddress, BillingContact, BillingCustomer, BoxSize, CheckoutOrder, CheckoutPayment,
-    CourierDelivery, CourierShipment, DoorFinish, GuestCustomer, PackageWeight, PaintedDoor,
-    ShopEvent, SizedCarton, SizedPallet, WeighedPackage, WeighedParcel,
+    CourierDelivery, CourierShipment, DoorFinish, GiftBox, GiftOrder, GiftWrap, GuestCustomer,
+    PackageWeight, PaintedDoor, ShopEvent, SizedCarton, SizedPallet, WeighedPackage, WeighedParcel,
 };
 #[cfg(feature = "dart")]
 use super::flattened_stray_models::{
     billing_address_dart, billing_contact_dart, billing_customer_dart, box_size_dart,
     checkout_order_dart, checkout_payment_dart, courier_delivery_dart, courier_shipment_dart,
-    door_finish_dart, guest_customer_dart, package_weight_dart, painted_door_dart, shop_event_dart,
-    sized_carton_dart, sized_pallet_dart, weighed_package_dart, weighed_parcel_dart,
+    door_finish_dart, gift_box_dart, gift_order_dart, gift_wrap_dart, guest_customer_dart,
+    package_weight_dart, painted_door_dart, shop_event_dart, sized_carton_dart, sized_pallet_dart,
+    weighed_package_dart, weighed_parcel_dart,
 };
 #[cfg(feature = "kotlin")]
 use super::flattened_stray_models::{
     billing_address_kotlin, billing_contact_kotlin, billing_customer_kotlin, box_size_kotlin,
     checkout_order_kotlin, checkout_payment_kotlin, courier_delivery_kotlin,
-    courier_shipment_kotlin, door_finish_kotlin, guest_customer_kotlin, package_weight_kotlin,
-    painted_door_kotlin, shop_event_kotlin, sized_carton_kotlin, sized_pallet_kotlin,
-    weighed_package_kotlin, weighed_parcel_kotlin,
+    courier_shipment_kotlin, door_finish_kotlin, gift_box_kotlin, gift_order_kotlin,
+    gift_wrap_kotlin, guest_customer_kotlin, package_weight_kotlin, painted_door_kotlin,
+    shop_event_kotlin, sized_carton_kotlin, sized_pallet_kotlin, weighed_package_kotlin,
+    weighed_parcel_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::flattened_stray_models::{
     billing_address_swift, billing_contact_swift, billing_customer_swift, box_size_swift,
     checkout_order_swift, checkout_payment_swift, courier_delivery_swift, courier_shipment_swift,
-    door_finish_swift, guest_customer_swift, package_weight_swift, painted_door_swift,
-    shop_event_swift, sized_carton_swift, sized_pallet_swift, weighed_package_swift,
-    weighed_parcel_swift,
+    door_finish_swift, gift_box_swift, gift_order_swift, gift_wrap_swift, guest_customer_swift,
+    package_weight_swift, painted_door_swift, shop_event_swift, sized_carton_swift,
+    sized_pallet_swift, weighed_package_swift, weighed_parcel_swift,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::{dart, module};
@@ -65,6 +67,31 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                     phone: "555".to_owned(),
                     address: address(),
                 },
+            },
+        ),
+        written(
+            "GiftOrder",
+            &GiftOrder {
+                label: "g1".to_owned(),
+                wrap: GiftWrap {
+                    paper: "red".to_owned(),
+                },
+            },
+        ),
+        written(
+            "GiftBox",
+            &GiftBox {
+                label: "g2".to_owned(),
+                wrap: Some(GiftWrap {
+                    paper: "blue".to_owned(),
+                }),
+            },
+        ),
+        written(
+            "GiftBox",
+            &GiftBox {
+                label: "g3".to_owned(),
+                wrap: None,
             },
         ),
         written(
@@ -259,6 +286,8 @@ fn serde_reads_back_each_payload_and_refuses_each_stray_key() {
                 "BillingCustomer" => serde_told::<BillingCustomer>(json),
                 "CheckoutOrder" => serde_told::<CheckoutOrder>(json),
                 "GuestCustomer" => serde_told::<GuestCustomer>(json),
+                "GiftOrder" => serde_told::<GiftOrder>(json),
+                "GiftBox" => serde_told::<GiftBox>(json),
                 "CourierShipment" => serde_told::<CourierShipment>(json),
                 "WeighedParcel" => serde_told::<WeighedParcel>(json),
                 "SizedCarton" => serde_told::<SizedCarton>(json),
@@ -289,6 +318,9 @@ fn the_dart_read_reads_back_each_payload_and_refuses_each_stray_key() {
             billing_contact_dart::dart_definition(),
             billing_customer_dart::dart_definition(),
             guest_customer_dart::dart_definition(),
+            gift_order_dart::dart_definition(),
+            gift_box_dart::dart_definition(),
+            gift_wrap_dart::dart_definition(),
             checkout_payment_dart::dart_definition(),
             checkout_order_dart::dart_definition(),
             courier_delivery_dart::dart_definition(),
@@ -337,6 +369,9 @@ fn the_kotlin_read_reads_back_each_payload_and_refuses_each_stray_key() {
         billing_contact_kotlin::kotlin_definition(),
         billing_customer_kotlin::kotlin_definition(),
         guest_customer_kotlin::kotlin_definition(),
+        gift_order_kotlin::kotlin_definition(),
+        gift_box_kotlin::kotlin_definition(),
+        gift_wrap_kotlin::kotlin_definition(),
         checkout_payment_kotlin::kotlin_definition(),
         checkout_order_kotlin::kotlin_definition(),
         courier_delivery_kotlin::kotlin_definition(),
@@ -376,6 +411,9 @@ fn the_swift_read_reads_back_each_payload_and_refuses_each_stray_key() {
         billing_contact_swift::swift_definition(),
         billing_customer_swift::swift_definition(),
         guest_customer_swift::swift_definition(),
+        gift_order_swift::swift_definition(),
+        gift_box_swift::swift_definition(),
+        gift_wrap_swift::swift_definition(),
         checkout_payment_swift::swift_definition(),
         checkout_order_swift::swift_definition(),
         courier_delivery_swift::swift_definition(),

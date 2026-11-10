@@ -20,6 +20,8 @@ use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::swift_literal_text;
 use crate::features::JSON_NUMBER;
+#[cfg(feature = "serde")]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -29,6 +31,7 @@ use crate::features::serde::{
     written_slots,
 };
 use crate::features::text_forms::TextForm;
+use crate::features::unmet_keys_filled;
 use crate::field_type::{
     FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, Scope, VariantKind, get_field_def,
     is_plain_enum, is_sequence_wrapper,
@@ -765,7 +768,16 @@ fn swift_module_tokens(
     let module_ident = swift_module_ident(rust_ident, span);
     let holder = defaults.holder();
     let full_source = format!("{}{swift_source}", forwarded::take());
-    if holder.is_empty() {
+    let written = Ident::new("written", proc_macro2::Span::call_site());
+    let escaped = [('\\', "\\\\"), ('"', "\\\"")];
+    let (beside, keys) = unmet_keys_filled(
+        &written,
+        &module_ident,
+        |text| format!("\"{}\"", swift_literal_text(text)),
+        '"',
+        &escaped,
+    );
+    if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn swift_definition() -> ::std::string::String {
@@ -774,12 +786,12 @@ fn swift_module_tokens(
             }
         };
     }
-    let written = Ident::new("written", proc_macro2::Span::call_site());
-    let replaced = substituted(
-        &quote! { SerdeDefaults },
-        &written,
-        &[('\\', "\\\\"), ('"', "\\\"")],
-    );
+    let mut replaced = if holder.is_empty() {
+        TokenStream::new()
+    } else {
+        substituted(&quote! { SerdeDefaults }, &written, &escaped)
+    };
+    replaced.extend(keys);
     let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
@@ -793,6 +805,7 @@ fn swift_module_tokens(
         }
 
         #values
+        #beside
     }
 }
 
@@ -3518,6 +3531,20 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
             (!taken.is_empty()).then_some(taken)
         })
         .or_else(|| flattened_keys(def))
+        .or_else(|| unmet_keys(def))
+}
+
+/// The keys of a flattened member whose type is declared below its holder or in another crate, as
+/// the placeholder `swift_definition()` fills.
+#[cfg(feature = "serde")]
+fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
+    member_keys::of(def)
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn unmet_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
 }
 
 /// With no `serde`, nothing is flattened.

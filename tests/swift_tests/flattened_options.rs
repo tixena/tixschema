@@ -141,7 +141,8 @@ fn a_flattened_option_reads_a_walked_model_where_one_of_its_keys_is_there() {
 
 /// A flattened `Option` of a type whose keys are not known is read as `nil` wherever its read
 /// throws: a struct with a flattened member of its own, read from the whole object, and a struct
-/// declared below its holder, read as a model.
+/// declared below its holder, read as a model, whose holder refuses a key beside the keys the
+/// struct publishes.
 #[test]
 fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_throws() {
     assert_written(
@@ -151,13 +152,14 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
     let ratline = ratline_swift::swift_definition();
     assert_written(
         &ratline,
-        "public init(swiftSchemaUnjudged decoder: Decoder) throws { do { self.nippering = try \
-         Nippering(swiftSchemaUnjudged: decoder) } catch { self.nippering = nil } }",
+        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+         throws { do { self.nippering = try Nippering(swiftSchemaUnjudged: decoder) } catch { \
+         self.nippering = nil } }",
     );
-    let read = ratline.split_once("public init(from decoder").unwrap().0;
-    assert!(
-        !read.contains("SwiftSchemaAnyKey"),
-        "a read that tests no key names no key type: {ratline}"
+    assert_written(
+        &ratline,
+        "for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![\"label\"].contains(unknown.stringValue)",
     );
 }
 

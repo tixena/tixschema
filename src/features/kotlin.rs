@@ -36,6 +36,8 @@ use syn::{
 
 use self::preprocess::Plugin;
 use self::validate::{Member, Rules};
+#[cfg(feature = "serde")]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
@@ -44,6 +46,7 @@ use crate::features::serde::{
     written_slots,
 };
 use crate::features::text_forms::TextForm;
+use crate::features::unmet_keys_filled;
 use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
@@ -567,6 +570,22 @@ const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
 #[cfg(not(feature = "serde"))]
 const fn reads_past_the_keys_left(_def: &FieldDef) -> bool {
     false
+}
+
+/// The keys of a flattened member whose type is declared below its holder or in another crate, as
+/// the placeholder `kotlin_definition()` fills.
+#[cfg(feature = "serde")]
+fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
+    recorded_keys(&flatten_base_field(def))
+        .is_none()
+        .then(|| member_keys::of(def))
+        .flatten()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn unmet_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
 }
 
 /// The keys the macro's classifier answers for a flattened member typed `def` the emitter noted
@@ -1801,7 +1820,10 @@ fn kotlin_module_tokens(
         .join(" ");
     let module_ident = kotlin_module_ident(rust_ident, span);
     let holder = defaults.holder();
-    if holder.is_empty() {
+    let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
+    let escaped = [('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")];
+    let (beside, keys) = unmet_keys_filled(&written, &module_ident, kotlin_quoted, '"', &escaped);
+    if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
                 pub fn kotlin_definition() -> ::std::string::String {
@@ -1810,12 +1832,12 @@ fn kotlin_module_tokens(
             }
         };
     }
-    let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
-    let replaced = substituted(
-        &quote! { SerdeDefaults },
-        &written,
-        &[('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")],
-    );
+    let mut replaced = if holder.is_empty() {
+        TokenStream::new()
+    } else {
+        substituted(&quote! { SerdeDefaults }, &written, &escaped)
+    };
+    replaced.extend(keys);
     let values = defaults.values_impl(&module_ident);
     quote! {
         pub mod #module_ident {
@@ -1829,6 +1851,7 @@ fn kotlin_module_tokens(
         }
 
         #values
+        #beside
     }
 }
 
@@ -2487,7 +2510,8 @@ fn flatten_plan(
                     .zip(
                         read_keys(&field.field_def)
                             .or_else(|| taken_tag_keys(&field.field_def))
-                            .or_else(|| unrecorded_keys(&flatten_base_field(&field.field_def))),
+                            .or_else(|| unrecorded_keys(&flatten_base_field(&field.field_def)))
+                            .or_else(|| unmet_keys(&field.field_def)),
                     )
                     .map(|(mut so_far, keys)| {
                         let _ = write!(so_far, " - {}", kotlin_set_of(&keys));

@@ -15,7 +15,10 @@ consumer's view; this is what a change has to keep.
   a variant of and the keys of each member it flattens. A `nonstrict` type, a type that names a
   `preprocess`, which can rewrite the keys it reads, a struct under its own tag, which serde reads
   past a key beside, and a type that flattens a member whose keys are not known, such as a map or
-  a type parameter, refuse nothing. The unit variant of a strict enum under a tag alone refuses
+  a type parameter, refuse nothing. A member whose type is declared below the holder or in another
+  crate is listed by a placeholder (`member_keys::of`), which `dart_definition()` replaces with
+  the keys the type publishes in `__TIXSCHEMA_KEYS` (`member_keys::filled`); the `const` beside a
+  closed holder refuses a type no `#[model_schema]` expanded, so every such type publishes them. The unit variant of a strict enum under a tag alone refuses
   every key but the tag (`unit_beside_the_tag`), as the Rust read the macro writes for it does. The keys a type refuses a
   key beside are recorded per type (`DART_CLOSED`, `record_closed_keys`), for a struct and for an
   enum under a tag alone or untagged, which takes the union of its variants'. A holder hands each

@@ -495,9 +495,8 @@ fn an_object_of_one_key_and_a_tuple_of_its_length_are_read_as_serde_reads_them()
     assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
-/// An enum declared below its holder is read from the object its holder hands it, and is refused
-/// where that object holds a key beside its entry, as serde refuses it: the enum takes its own
-/// entry, so the holder refuses a key neither declares.
+/// An enum declared below its holder is read from the object its holder hands it, and the holder
+/// refuses a key beside its entry, as serde refuses it, naming the keys the enum publishes.
 #[test]
 fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
     assert_eq!(
@@ -510,7 +509,7 @@ fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
     };
     assert!(ran, "{printed}");
     assert_eq!(
-        printed, "0: FormatException: more than one key for Hazing\n",
+        printed, "0: FormatException: Unknown key of a Overcast: north\n",
         "the Dart read no longer refuses the key beside the entry"
     );
 }

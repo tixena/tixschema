@@ -699,8 +699,8 @@ fn the_readme_shows_the_swift_read_of_a_unit_variant_under_a_content_key() {
 
 /// An externally tagged enum declared below the holder that flattens it is read from the object
 /// the holder hands it: as serde reads it where that object holds the enum's entry alone, and
-/// refused where it holds any other key, as serde refuses it: the enum takes its own entry, so the
-/// holder refuses a key neither declares.
+/// refused where it holds any other key, as serde refuses it, by the holder, which names the keys
+/// the enum publishes.
 #[test]
 fn an_enum_declared_below_its_holder_is_refused_in_swift_beside_another_key() {
     let beside = STOWING[2];
@@ -726,7 +726,7 @@ fn an_enum_declared_below_its_holder_is_refused_in_swift_beside_another_key() {
         };
         assert_eq!(
             printed,
-            format!("0: {}\n1: more than one key for Quaying\n", serde_read[0]),
+            format!("0: {}\n1: unknown field `north`\n", serde_read[0]),
             "the {run} run"
         );
     }

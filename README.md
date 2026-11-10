@@ -196,7 +196,7 @@ A struct whose flattened members all take their own keys is closed, with a key o
 
 Where serde would hand a strict member keys it does not own, the build stops and says the fix: declare the member last, mark it `nonstrict`, or change the shape ([Order and strictness of flattened members](#order-and-strictness-of-flattened-members)).
 
-The Dart, Kotlin and Swift reads close what they can name. The Dart read of a struct under its own tag reads past a key no member declares, as serde reads it. The Swift read of an enum under a tag alone, or of an untagged enum, refuses no key when a variant holds a struct declared below the enum. The Dart, Kotlin and Swift reads of a holder of a member declared below it read past a key no member reads, which the Rust read refuses. A Swift read of the payload a holder hands a type (`SwiftSchemaPayload.read`), which a member that names a function is read from, refuses no key at its top level.
+The Dart, Kotlin and Swift reads close what they can name. The Dart read of a struct under its own tag reads past a key no member declares, as serde reads it. A strict holder of a member declared below it or in another crate, an enum's variant among them, refuses a key no member reads in each of them, the member's keys written when the text is built. A Swift read of the payload a holder hands a type (`SwiftSchemaPayload.read`), which a member that names a function is read from, refuses no key at its top level.
 
 Headers and query strings are not read as JSON objects, and this rule does not touch them. The MongoDB reads are unchanged: the recovering decode already refuses a key the type does not declare. Upgrading, a caller that sends a key no member declares is refused after it.
 
@@ -5506,8 +5506,9 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Seventy-four rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Seventy-five rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
+- **The Dart, Kotlin and Swift reads of a strict struct that flattens a member declared below it, or in another crate, refuse a key no member declares**, as serde does, where they read past it.
 - **A `nonstrict` struct that flattens a member that refuses a key no member declares refuses it on every surface**, as serde does, where Zod, the JSON Schema, Kotlin and Swift read past it. See [Unknown Keys](#unknown-keys-strict-reads-and-nonstrict).
 - **A variant of an untagged enum every value of which an earlier variant reads stops the build**, where it built and never read back. See [Untagged Enums](#untagged-enums-serdeuntagged).
 - **A member type written with its path reaches its schema module through that path**: `invoice_lookups::DropOff` reads `invoice_lookups::drop_off_schema`, where the build stopped with `E0433` unless the module was imported. See [A Model Type Declared in Another Module](#a-model-type-declared-in-another-module).

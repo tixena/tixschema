@@ -1,8 +1,8 @@
 //! Holders of a flattened member of each kind serde reads a stray key through: a struct that
 //! flattens one, an enum under a tag alone, an untagged enum, a struct of one slot over a struct,
 //! an externally tagged enum and an `Option` of one, and a variant of an enum under a tag alone
-//! beside one that flattens, and a nonstrict holder of a member that refuses a key. serde refuses a
-//! stray key beside each of them.
+//! beside one that flattens, a nonstrict holder of a member that refuses a key, and a struct and an
+//! `Option` of one declared below their holder. serde refuses a stray key beside each of them.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -158,4 +158,29 @@ pub struct PaintedDoor {
     #[serde(flatten)]
     pub finish: DoorFinish,
     pub label: String,
+}
+
+/// A struct declared below the holder that flattens it: the holder's reads name its keys as the
+/// type publishes them.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GiftOrder {
+    pub label: String,
+    #[serde(flatten)]
+    pub wrap: GiftWrap,
+}
+
+/// An `Option` of a struct declared below the holder that flattens it.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GiftBox {
+    pub label: String,
+    #[serde(flatten)]
+    pub wrap: Option<GiftWrap>,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GiftWrap {
+    pub paper: String,
 }

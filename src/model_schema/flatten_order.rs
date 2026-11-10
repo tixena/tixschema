@@ -37,6 +37,8 @@ use crate::features::serde::{
     parse_serde_key_omission, parse_serde_type_attributes, parse_written_renames, read_hook,
     struct_tag, variant_on_the_wire,
 };
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use crate::field_type::is_sequence_wrapper;
 use crate::field_type::{FieldDef, FieldDefType, get_field_def};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{Declared, declared, written_names};
@@ -732,6 +734,15 @@ pub fn flattened_keys(def: &FieldDef) -> Option<Vec<String>> {
     let class = reads(def, 0).class();
     (matches!(class, Class::Taker | Class::Refusing(_)) && keys_complete(def, 0))
         .then(|| keys(def, 0).read)
+}
+
+/// Whether `def` names, with no type argument, a type the expansion has not met: one declared below
+/// the type being expanded, or in another crate.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn unmet_member(def: &FieldDef) -> bool {
+    matches!(&def.field_type, FieldDefType::SiblingType(name, arguments)
+        if arguments.is_empty() && def.array_depth == 0 && !is_sequence_wrapper(name)
+            && recorded(name).is_none() && declared(name).is_none())
 }
 
 /// The keys a value `def` describes is written and read under, as far as the expansion sees.

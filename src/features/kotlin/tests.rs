@@ -821,8 +821,9 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
 /// A struct the emitter writes the serializer of refuses a key no member reads, under a `Json`
 /// that does not ignore unknown keys: the names of its own members and its own tag, every key a
 /// flattened struct the emitter wrote reads, an alias, a member serde never reads and its tag among
-/// them, and the entry a flattened externally tagged enum took. Beside a flattened map, a struct
-/// with a flattened member of its own, or a type the emitter has not written, no key is refused.
+/// them, the entry a flattened externally tagged enum took, and the keys a type the emitter has
+/// not written publishes, through a placeholder. Beside a flattened map or a struct with a
+/// flattened member of its own, no key is refused.
 #[cfg(feature = "serde")]
 #[test]
 fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
@@ -884,7 +885,21 @@ fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
         )),
         "got: {written_dipped}"
     );
-    let any_key: [ItemStruct; 3] = [
+    let hoisted: ItemStruct = syn::parse_quote! {
+        struct Hoisted {
+            #[serde(flatten)]
+            unseen: Unseen,
+            note: String,
+        }
+    };
+    let written_hoisted = plain(&hoisted);
+    assert!(
+        written_hoisted.contains("Encountered an unknown key")
+            && written_hoisted.contains("tixschema-keys-0"),
+        "a member the emitter has not written is subtracted through the keys its type publishes, \
+         got: {written_hoisted}"
+    );
+    let any_key: [ItemStruct; 2] = [
         syn::parse_quote! {
             struct Counted {
                 #[serde(flatten)]
@@ -895,13 +910,6 @@ fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
             struct Rigged {
                 #[serde(flatten)]
                 dipped: Dipped,
-                note: String,
-            }
-        },
-        syn::parse_quote! {
-            struct Hoisted {
-                #[serde(flatten)]
-                unseen: Unseen,
                 note: String,
             }
         },

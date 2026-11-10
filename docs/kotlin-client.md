@@ -208,8 +208,11 @@ the consumer's view; this is what a change has to keep.
   adds the struct's own tag. `FlattenPlan::read` is `None`, and no key is refused, beside a
   flattened map, a member `preprocess::takes_no_key` answers for and a type `KOTLIN_READ_KEYS`
   does not note: a struct with a flattened member of its own or that names a function on itself,
-  an enum `flattened_variant_names` answers no names for, and a type the emitter has not written.
-  Zod refuses a key none of those reads, and the README states the limit. A payload serde writes
+  an enum `flattened_variant_names` answers no names for, and a generic type the emitter has not
+  written. A type declared below the holder or in another crate is subtracted through a placeholder
+  (`unmet_keys`, `member_keys::of`), which `kotlin_definition()` replaces with the keys the type
+  publishes in `__TIXSCHEMA_KEYS`. Zod refuses a key none of those reads, and the README states the
+  limit. A payload serde writes
   holds no such key. The serializer of an enum under a tag key refuses a key beside its tag and its
   content key, under a tag and a content key, and beside the tag of a unit variant under a tag
   alone (`unit_variant_read`), through `unknown_key_refused`, where Zod's strict object of each arm

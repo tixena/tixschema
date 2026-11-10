@@ -21,6 +21,11 @@ use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+use crate::features::member_keys;
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(any(feature = "dart", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
@@ -1013,9 +1018,15 @@ pub fn is_nonstrict() -> bool {
     NONSTRICT.with(|held| *held.borrow())
 }
 
-/// Records whether the item being expanded is written `nonstrict`.
+/// Records whether the item about to be expanded is written `nonstrict`, and forgets the members
+/// whose keys the item expanded before named by a placeholder.
 pub fn record_nonstrict(nonstrict: bool) {
     NONSTRICT.with(|held| *held.borrow_mut() = nonstrict);
+    #[cfg(all(
+        feature = "serde",
+        any(feature = "dart", feature = "swift", feature = "kotlin")
+    ))]
+    member_keys::reset();
 }
 
 /// The Zod constructor of the object a struct or a struct variant is read as.
