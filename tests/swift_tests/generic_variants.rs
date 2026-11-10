@@ -217,7 +217,7 @@ fn each_tagging_holds_the_struct_of_a_variant_at_the_parameters_it_declares() {
              Sendable { ",
             "case both(UntaggedLadingBothPayload<Stowed, Marked>); \
              case marks(UntaggedLadingMarksPayload<Marked>); ",
-            "if let value = try? (taken.isEmpty ? UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder) : UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)) { self = .both(value); return }; if let value = try? (taken.isEmpty ? UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder) : UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)) { self = .marks(value); return }; ",
+            "if let value = try? (taken.isEmpty ? UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder) : UntaggedLading.swiftSchemaOnly(decoder, [\"marked\", \"stowed\"], taken, UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .both(value); return }; if let value = try? (taken.isEmpty ? UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder) : UntaggedLading.swiftSchemaOnly(decoder, [\"marks\"], taken, UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .marks(value); return }; ",
         ],
     );
 }

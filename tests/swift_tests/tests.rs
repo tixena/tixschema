@@ -332,13 +332,13 @@ fn an_untagged_enum_tries_each_member_in_turn() {
     );
     assert!(swift.contains(
         "if let value = try? (taken.isEmpty ? UntaggedCountPayload(swiftSchemaUnjudged: \
-             decoder) : UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
-             taken))"
+             decoder) : Untagged.swiftSchemaOnly(decoder, [\"count\"], taken, \
+             UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
     ));
     assert!(swift.contains(
         "if let value = try? (taken.isEmpty ? UntaggedTextPayload(swiftSchemaUnjudged: \
-             decoder) : UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
-             taken))"
+             decoder) : Untagged.swiftSchemaOnly(decoder, [\"text\"], taken, \
+             UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
     ));
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
 }

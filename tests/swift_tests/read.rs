@@ -772,7 +772,8 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         ),
         concat!(
             "if let value = try? (taken.isEmpty ? SortedCountedPayload(swiftSchemaUnjudged: decoder) ",
-            ": SortedCountedPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)), ",
+            ": Sorted.swiftSchemaOnly(decoder, [\"sortedCount\"], taken, ",
+            "SortedCountedPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))), ",
             "Sorted.swiftSchemaBoundCounted(value).isEmpty { self = .counted(value); return }; ",
         ),
         concat!(
@@ -781,7 +782,8 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         ),
         concat!(
             "if let value = try? (taken.isEmpty ? Parcel(swiftSchemaUnjudged: decoder) ",
-            ": Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)) ",
+            ": Sorted.swiftSchemaOnly(decoder, [\"fragileItemCodes\", \"itemCodeList\", \"label\"], ",
+            "taken, Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
             "{ self = .whole(value); return }; ",
         ),
         "if let value = try? String(from: decoder) { self = .wordy(value); return }; ",
@@ -826,12 +828,14 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         &[
             concat!(
                 "if let value = try? (taken.isEmpty ? UntaggedCountPayload(swiftSchemaUnjudged: decoder) : ",
-                "UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)) ",
+                "Untagged.swiftSchemaOnly(decoder, [\"count\"], taken, ",
+                "UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
                 "{ self = .count(value); return }; ",
             ),
             concat!(
                 "if let value = try? (taken.isEmpty ? UntaggedTextPayload(swiftSchemaUnjudged: decoder) : ",
-                "UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)) ",
+                "Untagged.swiftSchemaOnly(decoder, [\"text\"], taken, ",
+                "UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
                 "{ self = .text(value); return }; ",
             ),
         ],

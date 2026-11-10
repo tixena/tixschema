@@ -115,6 +115,15 @@ const SWIFT_RESERVED: [&str; 51] = [
 #[cfg(feature = "chrono")]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
+/// The read an untagged enum hands a variant's struct to where the enum is handed keys: it refuses a
+/// key of the object that is neither the struct's nor taken, then reads the struct.
+const ONLY_ITS_KEYS: &str = "private static func swiftSchemaOnly<Read>(_ decoder: Decoder, _ keys: \
+     [String], _ taken: [String], _ read: @autoclosure () throws -> Read) throws -> Read { for \
+     unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+     !keys.contains(unknown.stringValue) && !taken.contains(unknown.stringValue) { throw \
+     DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], \
+     debugDescription: \"unknown field `\\(unknown.stringValue)`\")) }; return try read() }; ";
+
 /// What the own read of a struct is written around: whether the types around it hand it keys it
 /// reads none of, the keys it refuses a key beside, and the functions it names on itself.
 struct OwnRead<'own> {
@@ -3436,18 +3445,30 @@ fn bound_check(
     })
 }
 
-/// The expression an untagged enum tries a variant's struct with, `read`: through the struct's own
-/// read alone, which refuses a key it does not read, where the enum is handed no keys, and
-/// through the read that takes them otherwise.
-fn checked_alone(keys: Option<&Vec<String>>, read: &str) -> String {
-    keys.filter(|_| !is_nonstrict())
-        .and_then(|_| read.strip_suffix(", swiftSchemaWithout: taken)"))
-        .map_or_else(
-            || read.to_owned(),
-            |alone| format!("(taken.isEmpty ? {alone}) : {read})"),
-        )
+/// The expression an untagged enum `owner` tries a variant's struct with, `read`: through the
+/// struct's own read alone, which refuses a key it does not read, where the enum is handed no keys,
+/// and otherwise through the read that takes them, after refusing a key that is neither one of the
+/// struct's `keys` nor one taken, as serde tries a strict variant on the keys its holder leaves.
+fn checked_alone(
+    keys: Option<&Vec<String>>,
+    read: &str,
+    owner: &str,
+    choosers: &mut String,
+) -> String {
+    let Some((own, alone)) = keys
+        .filter(|_| !is_nonstrict())
+        .and_then(|held| Some((held, read.strip_suffix(", swiftSchemaWithout: taken)")?)))
+    else {
+        return read.to_owned();
+    };
+    if !choosers.contains(ONLY_ITS_KEYS) {
+        choosers.push_str(ONLY_ITS_KEYS);
+    }
+    format!(
+        "(taken.isEmpty ? {alone}) : {owner}.swiftSchemaOnly(decoder, {}, taken, {read}))",
+        preprocess::listed(own)
+    )
 }
-
 /// The keys a struct over `fields` refuses a key beside: those of its own members and of those it
 /// flattens. `None` where it refuses none: a `nonstrict` type, a type that names a function, one
 /// under a tag of its own and a type that flattens a member whose keys are not known.
@@ -4801,10 +4822,8 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             };
             let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
             let reader = format!("swiftSchemaRead{named}");
-            let tried = checked_alone(
-                payload.keys.as_ref(),
-                &tried_read(&returned, export_name, &reader, ty, &mut choosers),
-            );
+            let read = tried_read(&returned, export_name, &reader, ty, &mut choosers);
+            let tried = checked_alone(payload.keys.as_ref(), &read, export_name, &mut choosers);
             let check = bound_check(
                 &payload.bound,
                 (export_name, &named.to_string(), ty),

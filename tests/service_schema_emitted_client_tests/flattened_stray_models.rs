@@ -8,31 +8,31 @@ use tixschema::model_schema;
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Address {
+pub struct BillingAddress {
     pub city: String,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Contact {
+pub struct BillingContact {
     #[serde(flatten)]
-    pub address: Address,
+    pub address: BillingAddress,
     pub phone: String,
 }
 
 /// A struct that flattens one, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Customer {
+pub struct BillingCustomer {
     #[serde(flatten)]
-    pub contact: Contact,
+    pub contact: BillingContact,
     pub name: String,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
-pub enum Payment {
+pub enum CheckoutPayment {
     Card { last4: String },
     Cash,
 }
@@ -40,16 +40,16 @@ pub enum Payment {
 /// An enum under a tag alone, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Order {
+pub struct CheckoutOrder {
     pub label: String,
     #[serde(flatten)]
-    pub payment: Payment,
+    pub payment: CheckoutPayment,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
-pub enum Delivery {
+pub enum CourierDelivery {
     Courier { courier: String },
     Pickup { store: String },
 }
@@ -57,71 +57,94 @@ pub enum Delivery {
 /// An untagged enum, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Shipment {
+pub struct CourierShipment {
     #[serde(flatten)]
-    pub delivery: Delivery,
+    pub delivery: CourierDelivery,
     pub label: String,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Weight {
+pub struct PackageWeight {
     pub grams: u32,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Measured(pub Weight);
+pub struct WeighedPackage(pub PackageWeight);
 
 /// A struct of one slot over a struct, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Parcel {
+pub struct WeighedParcel {
     pub label: String,
     #[serde(flatten)]
-    pub weight: Measured,
+    pub weight: WeighedPackage,
 }
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Size {
-    Large(Weight),
+pub enum BoxSize {
+    Large(PackageWeight),
     Small { width: u32 },
 }
 
 /// An externally tagged enum, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Carton {
+pub struct SizedCarton {
     pub label: String,
     #[serde(flatten)]
-    pub size: Size,
+    pub size: BoxSize,
 }
 
 /// An `Option` of an externally tagged enum, flattened.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Pallet {
+pub struct SizedPallet {
     pub label: String,
     #[serde(
         flatten,
         default,
         skip_serializing_if = "::core::option::Option::is_none"
     )]
-    pub size: Option<Size>,
+    pub size: Option<BoxSize>,
 }
 
 /// An enum under a tag alone whose one variant flattens a struct beside others that do not.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type")]
-pub enum Event {
+pub enum ShopEvent {
     Counted {
         count: u32,
     },
     Moved {
         #[serde(flatten)]
-        address: Address,
+        address: BillingAddress,
         label: String,
     },
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum DoorFinish {
+    Bare {
+        #[serde(default, skip_serializing_if = "::core::option::Option::is_none")]
+        gloss: Option<u32>,
+    },
+    Painted {
+        colour: String,
+    },
+}
+
+/// A strict untagged enum whose first variant reads from an object of none of its keys, flattened:
+/// serde reads `Painted` where `Bare` refuses its key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PaintedDoor {
+    #[serde(flatten)]
+    pub finish: DoorFinish,
+    pub label: String,
 }
