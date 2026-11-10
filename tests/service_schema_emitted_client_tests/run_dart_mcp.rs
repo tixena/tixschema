@@ -68,6 +68,7 @@ void main() async {
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       tags.add(known_tag);
       return (McpVersionResponse(version: 7), '"v7"');
@@ -221,6 +222,7 @@ void main() async {
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
     getVersion: (ctx, req) async => McpVersionResponse(version: 7),
     lookup: (ctx, req) async => McpVersionResponse(version: 7),
@@ -296,6 +298,7 @@ void main() async {
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async {
       reached += 1;
       return (McpVersionResponse(version: 7), '"v7"');
@@ -752,6 +755,7 @@ void main() async {
     checkMany: (ctx, req) async => McpVersionResponse(version: 7),
     checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
     checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
+    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
     getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
     getVersion: (ctx, req) async => throw 'the handler came apart',
     lookup: (ctx, req) async => McpVersionResponse(version: 7),
@@ -1537,7 +1541,7 @@ fn a_const_endpoint_whose_services_share_a_name_does_not_compile() {
         return;
     };
     assert!(distinct, "{said}");
-    assert_eq!(said.trim(), "10");
+    assert_eq!(said.trim(), "11");
     let (shared, refused) = dart("endpoint-shared", &[], &endpoint("audit")).unwrap();
     assert!(!shared, "{refused}");
     assert!(

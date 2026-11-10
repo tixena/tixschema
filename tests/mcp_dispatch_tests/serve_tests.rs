@@ -15,6 +15,13 @@ use alloc::sync::Arc;
 use core::future::Future;
 use serde_json::{Value, json};
 
+/// The output of every tool that answers a version.
+fn version_output() -> Value {
+    json!({ "additionalProperties": false,
+            "properties": { "version": { "type": "integer" } },
+            "required": ["version"], "type": "object" })
+}
+
 /// The tools of `DocumentService`, as the document writes them.
 fn expected_tools() -> Value {
     json!([
@@ -31,9 +38,7 @@ fn expected_tools() -> Value {
                                                        "required": ["references", "title"], "type": "object" },
                                                      "type": "array" } },
                            "required": ["drafts"], "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
         { "name": "check-many",
           "title": "Versions Of Many",
           "description": "Answers the versions of several documents, one request for each.",
@@ -42,9 +47,7 @@ fn expected_tools() -> Value {
                                                       "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
                                                       "required": ["document_id"], "type": "object" }, "type": "array" } },
                            "required": ["value"], "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
         { "name": "check-maybe",
           "title": "Version Of Maybe One",
           "description": "Answers the version of a document, if one is asked for.",
@@ -53,18 +56,25 @@ fn expected_tools() -> Value {
                                                       "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
                                                       "required": ["document_id"], "type": "object" }, { "type": "null" }] } },
                            "required": ["value"], "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
         { "name": "check-named",
           "title": "Versions By Name",
           "description": "Answers the versions of documents asked for by name.",
           "inputSchema": { "additionalProperties": { "additionalProperties": false,
                                                       "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
                                                       "required": ["document_id"], "type": "object" }, "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
+        { "name": "check-pair",
+          "title": "Versions Of A Pair",
+          "description": "Answers the version of the second of two documents.",
+          "inputSchema": { "$defs": { "GetVersionRequest": { "additionalProperties": false,
+                                                             "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
+                                                             "required": ["document_id"], "type": "object" } },
+                           "additionalProperties": false,
+                           "properties": { "first": { "$ref": "#/$defs/GetVersionRequest" },
+                                           "second": { "$ref": "#/$defs/GetVersionRequest" } },
+                           "required": ["first", "second"], "type": "object" },
+          "outputSchema": version_output() },
         { "name": "get-tagged",
           "title": "Get Tagged",
           "description": "Answers the current version of one document, unless it still carries the tag the caller knows.",
@@ -84,18 +94,14 @@ fn expected_tools() -> Value {
           "inputSchema": { "additionalProperties": false,
                            "properties": { "document_id": { "minLength": 1_u8, "type": "string" } },
                            "required": ["document_id"], "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
         { "name": "lookup-document",
           "title": "Lookup",
           "description": "Answers the current version of the document the identifier names.",
           "inputSchema": { "additionalProperties": false,
                            "properties": { "value": { "type": "string" } },
                            "required": ["value"], "type": "object" },
-          "outputSchema": { "additionalProperties": false,
-                            "properties": { "version": { "type": "integer" } },
-                            "required": ["version"], "type": "object" } },
+          "outputSchema": version_output() },
         { "name": "rename-document",
           "title": "Rename Document",
           "description": "Renames one document.",
@@ -611,6 +617,7 @@ fn an_endpoint_of_two_services_lists_their_tools_one_after_the_other() {
             "check-many",
             "check-maybe",
             "check-named",
+            "check-pair",
             "get-tagged",
             "get-version",
             "lookup-document",
@@ -817,8 +824,8 @@ fn a_second_service_answers_alone_over_stdio_and_over_http() {
     assert_eq!(served, response);
     assert_eq!(
         DocumentServiceSchema::MCP_NAMES.len(),
-        11,
-        "nine tools, one resource and one template"
+        12,
+        "ten tools, one resource and one template"
     );
 }
 

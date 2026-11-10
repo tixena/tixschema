@@ -810,14 +810,20 @@ private fun <T> @P@McpReceive(
   }
 }
 
-private fun @P@McpMismatch(schema: JsonElement?, value: JsonElement?): List<String>? {
+private fun @P@McpMismatch(
+  schema: JsonElement?,
+  value: JsonElement?,
+  defs: JsonObject? = (schema as? JsonObject)?.get("\$defs") as? JsonObject,
+): List<String>? {
   if (schema !is JsonObject) return null
+  val reference = (schema["\$ref"] as? JsonPrimitive)?.content
+  if (reference != null) return @P@McpMismatch(defs?.get(reference.substringAfterLast('/')), value, defs)
   val alternatives = schema["anyOf"] as? JsonArray
   if (alternatives != null) {
     if (value == null || value is JsonNull) return null
     for (alternative in alternatives) {
       if (((alternative as? JsonObject)?.get("type") as? JsonPrimitive)?.content == "null") continue
-      return @P@McpMismatch(alternative, value)
+      return @P@McpMismatch(alternative, value, defs)
     }
     return null
   }
@@ -831,7 +837,7 @@ private fun @P@McpMismatch(schema: JsonElement?, value: JsonElement?): List<Stri
       for ((key, held) in value) {
         val declared = properties?.get(key)
         if (declared == null && (others as? JsonPrimitive)?.content == "false") return listOf(key)
-        val found = @P@McpMismatch(declared ?: others, held)
+        val found = @P@McpMismatch(declared ?: others, held, defs)
         if (found != null) return listOf(key) + found
       }
       for (key in schema["required"] as? JsonArray ?: JsonArray(emptyList())) {
@@ -843,7 +849,7 @@ private fun @P@McpMismatch(schema: JsonElement?, value: JsonElement?): List<Stri
     "array" -> {
       if (value !is JsonArray) return emptyList()
       for ((at, element) in value.withIndex()) {
-        val found = @P@McpMismatch(schema["items"], element)
+        val found = @P@McpMismatch(schema["items"], element, defs)
         if (found != null) return listOf(at.toString()) + found
       }
       null
@@ -860,8 +866,11 @@ private fun @P@McpToolSchema(tool: String, wrapped: Boolean): JsonElement? {
   for (text in @P@McpCatalog["tools"].orEmpty()) {
     val parsed = Json.parseToJsonElement(text) as? JsonObject ?: continue
     if ((parsed["name"] as? JsonPrimitive)?.content == tool) {
-      val schema = parsed["inputSchema"]
-      return if (wrapped) ((schema as? JsonObject)?.get("properties") as? JsonObject)?.get("value") else schema
+      val schema = parsed["inputSchema"] as? JsonObject
+      if (!wrapped) return schema
+      val held = ((schema?.get("properties") as? JsonObject)?.get("value") as? JsonObject) ?: return null
+      val defs = schema["\$defs"] ?: return held
+      return JsonObject(held + ("\$defs" to defs))
     }
   }
   return null

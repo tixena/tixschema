@@ -93,8 +93,11 @@ mod measured_through_the_inner_brand {
     #[test]
     fn the_json_schema_narrows_the_text_at_the_field() {
         let schema = CordHolder::json_schema();
-        let narrowed =
-            |by: serde_json::Value| serde_json::json!({ "allOf": [{ "type": "string" }, by] });
+        let narrowed = |by: serde_json::Value| serde_json::json!({ "allOf": [{ "$ref": "#/$defs/Braid" }, by] });
+        assert_eq!(
+            schema["$defs"],
+            serde_json::json!({ "Braid": { "type": "string" } })
+        );
         assert_eq!(
             schema["properties"]["badge"],
             narrowed(serde_json::json!({ "minLength": 3_u32, "minItems": 3_u32 }))

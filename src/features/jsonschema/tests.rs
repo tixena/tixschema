@@ -327,8 +327,9 @@ fn a_document_holds_the_examples_keyword_only_where_examples_are_given() {
     let with = json_schema_methods("Node", &body, &[], Some(&values)).to_string();
     let without = json_schema_methods("Node", &body, &[], None).to_string();
 
-    assert!(with.contains("\"examples\""), "{with}");
-    assert!(!without.contains("examples"), "{without}");
+    let keyword = "\"examples\" . to_string ()";
+    assert!(with.contains(keyword), "{with}");
+    assert!(!without.contains(keyword), "{without}");
 }
 
 #[test]
@@ -341,5 +342,9 @@ fn a_generic_types_documents_hold_the_examples_keyword_at_its_arguments_too() {
     let methods = json_schema_methods("Node", &quote::quote! { body }, &parameters, Some(&values))
         .to_string();
 
-    assert_eq!(methods.matches("\"examples\"").count(), 2, "{methods}");
+    assert_eq!(
+        methods.matches("\"examples\" . to_string ()").count(),
+        2,
+        "{methods}"
+    );
 }

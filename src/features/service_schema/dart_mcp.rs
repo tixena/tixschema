@@ -1906,14 +1906,19 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          final path = found.join('.');\n  \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, \"'$path': $detail\", field: path);\n\
          }}\n\n\
-         List<String>? _{prefix}McpMismatch(Object? schema, Object? value) {{\n  \
+         List<String>? _{prefix}McpMismatch(Object? schema, Object? value, [Object? defs]) {{\n  \
          if (schema is! Map) return null;\n  \
+         defs ??= schema['\\$defs'];\n  \
+         final reference = schema['\\$ref'];\n  \
+         if (reference is String) {{\n    \
+         return _{prefix}McpMismatch(defs is Map ? defs[reference.substring(reference.lastIndexOf('/') + 1)] : null, value, defs);\n  \
+         }}\n  \
          final alternatives = schema['anyOf'];\n  \
          if (alternatives is List) {{\n    \
          if (value == null) return null;\n    \
          for (final alternative in alternatives) {{\n      \
          if (alternative is Map && alternative['type'] == 'null') continue;\n      \
-         return _{prefix}McpMismatch(alternative, value);\n    \
+         return _{prefix}McpMismatch(alternative, value, defs);\n    \
          }}\n    \
          return null;\n  \
          }}\n  \
@@ -1928,7 +1933,7 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          final declared = properties is Map && properties.containsKey(entry.key);\n        \
          if (!declared && others == false) return <String>['${{entry.key}}'];\n        \
          final held = declared ? properties[entry.key] : others;\n        \
-         final found = _{prefix}McpMismatch(held, entry.value);\n        \
+         final found = _{prefix}McpMismatch(held, entry.value, defs);\n        \
          if (found != null) return <String>['${{entry.key}}', ...found];\n      \
          }}\n      \
          final required = schema['required'];\n      \
@@ -1941,7 +1946,7 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          case 'array':\n      \
          if (value is! List) return <String>[];\n      \
          for (var at = 0; at < value.length; at += 1) {{\n        \
-         final found = _{prefix}McpMismatch(schema['items'], value[at]);\n        \
+         final found = _{prefix}McpMismatch(schema['items'], value[at], defs);\n        \
          if (found != null) return <String>['$at', ...found];\n      \
          }}\n      \
          return null;\n    \
@@ -1972,7 +1977,8 @@ fn schema_lookups(prefix: &str, tools: bool, service: &ServiceDef) -> String {
              if (parsed is Map && parsed['name'] == tool) {{\n      \
              final schema = parsed['inputSchema'];\n      \
              if (wrapped && schema is Map && schema['properties'] is Map) {{\n        \
-             return (schema['properties'] as Map)['value'];\n      \
+             final held = (schema['properties'] as Map)['value'];\n        \
+             return held is Map ? <Object?, Object?>{{...held, '\\$defs': schema['\\$defs']}} : held;\n      \
              }}\n      \
              return schema;\n    \
              }}\n  \

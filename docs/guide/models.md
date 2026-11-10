@@ -52,7 +52,7 @@ pub struct CommentArgs {
 
 A type publishes under the Rust ident it is declared with, spelled exactly as written. Nothing is read off that spelling -- no suffix is taken off it and no part of it is rewritten -- so `UserData` publishes as `UserData` on all three surfaces.
 
-`#[model_schema(name = "...")]` is the one way to publish under something else. It moves the name everywhere at once: the `export type` line, the Zod consts, the `$defs` key a self-referential document hoists under, and every reference another type writes.
+`#[model_schema(name = "...")]` is the one way to publish under something else. It moves the name everywhere at once: the `export type` line, the Zod consts, the `$defs` key a document hoists it under, and every reference another type writes.
 
 ```rust
 #[model_schema(name = "ContextValue")]

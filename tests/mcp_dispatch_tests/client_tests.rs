@@ -191,6 +191,28 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
 }
 
 #[test]
+fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
+    let archive = Archive::default();
+    let client = DocumentServiceClient::new(Dispatching::over(&archive));
+    let whole = || GetVersionRequest {
+        document_id: "doc-1".to_owned(),
+    };
+    let fault = fault_of(block_on(client.check_pair(
+        whole(),
+        GetVersionRequest {
+            document_id: String::new(),
+        },
+    )));
+    assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
+    assert_eq!(fault.field(), Some("second.document_id"));
+    assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
+    assert_eq!(
+        block_on(client.check_pair(whole(), whole())),
+        Ok(VersionResponse { version: 7 })
+    );
+}
+
+#[test]
 fn a_list_of_drafts_is_read_by_the_server_and_counted() {
     let archive = Archive::default();
     let client = DocumentServiceClient::new(Dispatching::over(&archive));

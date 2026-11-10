@@ -1130,13 +1130,14 @@ mod jsonschema {
     #[cfg(feature = "serde")]
     #[test]
     fn a_forwarded_parameter_carries_the_filling_it_was_handed() {
-        let properties = super::FolderTree::<String>::json_schema()["properties"].clone();
+        let schema = super::FolderTree::<String>::json_schema();
+        let properties = schema["properties"].clone();
+        let key = "EcmDocument.string_number-278c5445dbaf37a1";
+        let filled = serde_json::json!({ "$ref": format!("#/$defs/{key}") });
+        assert_eq!(properties["root"], filled);
+        assert_eq!(properties["many"]["items"], filled);
         assert_eq!(
-            properties["root"]["properties"]["document_id"],
-            serde_json::json!({ "type": "string" })
-        );
-        assert_eq!(
-            properties["many"]["items"]["properties"]["document_id"],
+            schema["$defs"][key]["properties"]["document_id"],
             serde_json::json!({ "type": "string" })
         );
         assert_eq!(
@@ -1177,18 +1178,17 @@ mod jsonschema {
     #[test]
     fn a_cycle_closing_through_a_declared_filling_defers_the_same_way() {
         let schema = Roost::<Perch>::json_schema();
+        let key = "Roost.Perch-6760d7429bdac4cf";
+        let pointer = format!("#/$defs/{key}");
+        assert_eq!(schema["$ref"], serde_json::json!(pointer));
+        let defs = schema["$defs"].as_object().unwrap();
+        assert_eq!(defs.len(), 1, "{schema}");
+        let host = &defs[key]["properties"]["host"]["properties"];
         assert_eq!(
-            schema["properties"]["host"],
-            serde_json::json!({ "$ref": "#/$defs/Perch" })
+            host["roosts"]["items"],
+            serde_json::json!({ "$ref": pointer })
         );
-        assert_eq!(
-            schema["$defs"]["Perch"]["properties"]["roosts"]["items"]["properties"]["host"],
-            serde_json::json!({ "$ref": "#/$defs/Perch" })
-        );
-        assert_eq!(
-            schema["$defs"]["Perch"]["properties"]["tag"],
-            serde_json::json!({ "type": "string" })
-        );
+        assert_eq!(host["tag"], serde_json::json!({ "type": "string" }));
     }
 
     #[cfg(feature = "serde")]

@@ -373,6 +373,44 @@ pub trait FolderService<Ctx> {
     async fn get_folder(&self, ctx: &Ctx, name: String) -> Result<Folder, FolderError>;
 }
 
+/// Where a shelf stands: held by the body of both operations of `ShelvingService`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ShelfLocation {
+    pub aisle: u32,
+    pub bay: u32,
+}
+
+/// Held by the body of one operation only.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ShelfNote {
+    pub text: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ShelfMove {
+    pub destination: ShelfLocation,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ShelfPlacement {
+    pub location: ShelfLocation,
+    pub note: ShelfNote,
+}
+
+/// Two bodies that hold one type, and a type only one of them holds.
+#[service_schema(transports = ["http_rest"], openapi)]
+pub trait ShelvingService<Ctx> {
+    #[service_schema_op(http(method = "PUT", path = "/shelves/moves"))]
+    async fn move_shelf(&self, ctx: &Ctx, req: ShelfMove) -> Result<SweepReport, SweepError>;
+
+    #[service_schema_op(http(method = "POST", path = "/shelves"))]
+    async fn place_shelf(&self, ctx: &Ctx, req: ShelfPlacement) -> Result<SweepReport, SweepError>;
+}
+
 /// A service that does not ask for `openapi`.
 #[service_schema(transports = ["http_rest"])]
 pub trait PlainService<Ctx> {
@@ -552,6 +590,25 @@ impl RenamedMemberService<()> for Archive {
             return Err(SweepError::Busy);
         }
         Ok(SweepReport { swept: 1 })
+    }
+}
+
+impl ShelvingService<()> for Archive {
+    async fn move_shelf(&self, _ctx: &(), req: ShelfMove) -> Result<SweepReport, SweepError> {
+        ready(()).await;
+        Ok(SweepReport {
+            swept: req.destination.aisle,
+        })
+    }
+
+    async fn place_shelf(&self, _ctx: &(), req: ShelfPlacement) -> Result<SweepReport, SweepError> {
+        ready(()).await;
+        if req.note.text.is_empty() {
+            return Err(SweepError::Busy);
+        }
+        Ok(SweepReport {
+            swept: req.location.bay,
+        })
     }
 }
 
@@ -961,6 +1018,66 @@ fn an_error_header_out_is_a_header_of_the_error_response() {
         json!({ "content-range": { "required": true, "schema": { "type": "string" } } })
     );
     assert!(get["responses"]["200"].get("headers").is_none(), "{get:#}");
+}
+
+/// A type the bodies of two operations hold is one component, and a type one body holds is written
+/// in place.
+#[test]
+fn a_type_two_operations_bodies_hold_is_one_component() {
+    let document = ShelvingServiceSchema::openapi();
+    assert_valid(&document);
+    assert_components(
+        &document,
+        &[
+            "ShelfLocation",
+            "ShelfMove",
+            "ShelfPlacement",
+            "ShelvingServiceFaultFields",
+            "SweepError",
+            "SweepReport",
+        ],
+    );
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(
+        schemas["ShelfMove"]["properties"]["destination"],
+        reference("ShelfLocation")
+    );
+    assert_eq!(
+        schemas["ShelfPlacement"]["properties"]["location"],
+        reference("ShelfLocation")
+    );
+    assert_eq!(
+        schemas["ShelfPlacement"]["properties"]["note"],
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "text": { "type": "string" } },
+            "required": ["text"],
+        })
+    );
+    let placed = ShelfPlacement {
+        location: ShelfLocation { aisle: 4, bay: 2 },
+        note: ShelfNote {
+            text: "fragile".to_owned(),
+        },
+    };
+    assert_described(&document, &reference("ShelfPlacement"), &placed);
+    assert_eq!(
+        answered(Archive.place_shelf(&(), placed))
+            .ok()
+            .map(|report| report.swept),
+        Some(2)
+    );
+    let moved = ShelfMove {
+        destination: ShelfLocation { aisle: 7, bay: 1 },
+    };
+    assert_described(&document, &reference("ShelfMove"), &moved);
+    assert_eq!(
+        answered(Archive.move_shelf(&(), moved))
+            .ok()
+            .map(|report| report.swept),
+        Some(7)
+    );
 }
 
 #[test]

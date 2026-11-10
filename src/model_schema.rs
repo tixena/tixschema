@@ -21631,7 +21631,8 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
 
 /// `described`, the description of a type a map is keyed by, as the text serde writes the key as:
 /// a number's and a `bool`'s by the pattern of that text, any other as it stands. Read where the
-/// description is built, which states what a brand, an alias or a type filled at its arguments is.
+/// description is built, which states what a brand, an alias or a type filled at its arguments is,
+/// through each definition its `$ref` leads to.
 fn named_key_text(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let text =
         |pattern: &str| quote! { serde_json::json!({ "type": "string", "pattern": #pattern }) };
@@ -21643,7 +21644,19 @@ fn named_key_text(described: &proc_macro2::TokenStream) -> proc_macro2::TokenStr
     quote! {
         ({
             let named_key: serde_json::Value = #described;
-            let named_key_type = named_key.get("type").and_then(serde_json::Value::as_str);
+            let mut named_key_body = &named_key;
+            for _ in 0..hoisted_defs.len() {
+                let ::core::option::Option::Some(defined) = named_key_body
+                    .get("$ref")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|pointer| pointer.strip_prefix(pointer_prefix))
+                    .and_then(|key| hoisted_defs.get(key))
+                else {
+                    break;
+                };
+                named_key_body = defined;
+            }
+            let named_key_type = named_key_body.get("type").and_then(serde_json::Value::as_str);
             if named_key_type == ::core::option::Option::Some("integer") {
                 #integer
             } else if named_key_type == ::core::option::Option::Some("number") {

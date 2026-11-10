@@ -149,6 +149,15 @@ pub trait DocumentService<Ctx> {
         req: HashMap<String, GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError>;
 
+    /// Answers the version of the second of two documents.
+    #[service_schema_op(mcp(title = "Versions Of A Pair"))]
+    async fn check_pair(
+        &self,
+        ctx: &Ctx,
+        first: GetVersionRequest,
+        second: GetVersionRequest,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// The guide to the configuration of a workspace.
     #[service_schema_op(mcp(
         resource = "guide://configure-workspace",
@@ -407,6 +416,15 @@ impl<Ctx> DocumentService<Ctx> for Archive {
                     Self::version_of(&found.document_id)
                 }),
         )
+    }
+
+    fn check_pair(
+        &self,
+        _ctx: &Ctx,
+        _first: GetVersionRequest,
+        second: GetVersionRequest,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(Self::version_of(&second.document_id))
     }
 
     fn configuration_guide(

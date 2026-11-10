@@ -925,12 +925,14 @@ fn test_tuple_with_custom_type() {
 
 #[test]
 fn test_tuple_variant_sibling_element_carries_the_sibling_schema() {
-    let variant = external_member(&Outer::json_schema(), "Paired");
+    let schema = Outer::json_schema();
+    let variant = external_member(&schema, "Paired");
 
     assert_eq!(
         variant["properties"]["Paired"]["prefixItems"][0],
-        Inner::json_schema()
+        serde_json::json!({ "$ref": "#/$defs/Inner" })
     );
+    assert_eq!(schema["$defs"]["Inner"], Inner::json_schema());
 }
 
 /// Serde serialization compatibility.

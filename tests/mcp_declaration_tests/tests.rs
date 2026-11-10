@@ -124,6 +124,51 @@ pub trait AnnotatedService<Ctx> {
     ) -> Result<(), VersionError>;
 }
 
+/// A point a route passes: held twice by the message of `plan_route`, and once by its answer.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Waypoint {
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RoutePlan {
+    pub distance: u32,
+    pub midpoint: Waypoint,
+}
+
+/// Plans routes between two points.
+#[service_schema(transports = ["mcp"])]
+pub trait RouteService<Ctx> {
+    /// Plans the route from one point to another.
+    async fn plan_route(
+        &self,
+        ctx: &Ctx,
+        start: Waypoint,
+        finish: Waypoint,
+    ) -> Result<RoutePlan, VersionError>;
+}
+
+impl RouteService<()> for Archive {
+    async fn plan_route(
+        &self,
+        _ctx: &(),
+        start: Waypoint,
+        finish: Waypoint,
+    ) -> Result<RoutePlan, VersionError> {
+        ready(()).await;
+        Ok(RoutePlan {
+            distance: 12,
+            midpoint: Waypoint {
+                latitude: f64::midpoint(start.latitude, finish.latitude),
+                longitude: f64::midpoint(start.longitude, finish.longitude),
+            },
+        })
+    }
+}
+
 impl DocumentService<()> for Archive {
     async fn get_tagged(
         &self,
@@ -477,6 +522,73 @@ fn a_tool_without_a_flag_lists_no_annotations() {
         assert!(tool.get("annotations").is_none(), "{tool:#}");
         assert!(tool.get("icons").is_none(), "{tool:#}");
     }
+}
+
+/// A struct the message holds twice is written once under the input's own `$defs`; the output,
+/// which holds it once, writes it in place and holds no `$defs`.
+#[test]
+fn a_struct_an_input_repeats_is_defined_once_under_the_input_s_own_defs() {
+    let tools = RouteServiceSchema::mcp_tools();
+    let tool = tool_named(&tools, "plan-route");
+    assert_tool(tool);
+    let waypoint = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+        },
+        "required": ["latitude", "longitude"],
+    });
+    let reference = json!({ "$ref": "#/$defs/Waypoint" });
+    assert_eq!(
+        tool["inputSchema"],
+        json!({
+            "$defs": { "Waypoint": waypoint },
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "finish": reference, "start": reference },
+            "required": ["start", "finish"],
+        })
+    );
+    assert_eq!(
+        tool["outputSchema"],
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "distance": { "type": "integer" }, "midpoint": waypoint },
+            "required": ["distance", "midpoint"],
+        })
+    );
+    let input = &tool["inputSchema"];
+    let validator = jsonschema::validator_for(input).unwrap();
+    let arguments = json!({
+        "start": { "latitude": 38.7_f64, "longitude": -9.1_f64 },
+        "finish": { "latitude": 41.1_f64, "longitude": -8.6_f64 },
+    });
+    assert!(validator.is_valid(&arguments), "{input:#}");
+    assert!(!validator.is_valid(&json!({
+        "start": { "latitude": 38.7_f64 },
+        "finish": { "latitude": 41.1_f64, "longitude": -8.6_f64 },
+    })));
+    let planned = answered(Archive.plan_route(
+        &(),
+        Waypoint {
+            latitude: 38.0,
+            longitude: -9.0,
+        },
+        Waypoint {
+            latitude: 40.0,
+            longitude: -8.0,
+        },
+    ));
+    let written = serde_json::to_value(planned.ok().unwrap()).unwrap();
+    assert!(
+        jsonschema::validator_for(&tool["outputSchema"])
+            .unwrap()
+            .is_valid(&written),
+        "{written}"
+    );
 }
 
 #[test]

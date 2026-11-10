@@ -6,7 +6,7 @@ How each Rust type, serde attribute and published name is written on every surfa
 
 A type publishes under the Rust ident it is declared with, spelled exactly as written. Nothing is read off that spelling — no suffix is taken off it and no part of it is rewritten.
 
-`#[model_schema(name = "...")]` is the only publishing override, and it moves the name on every surface at once: the `export type` line, the Zod consts, the `$defs` key a self-referential document hoists under, and every reference another type writes.
+`#[model_schema(name = "...")]` is the only publishing override, and it moves the name on every surface at once: the `export type` line, the Zod consts, the `$defs` key a document hoists it under, and every reference another type writes.
 
 ```rust
 #[model_schema()]
@@ -603,7 +603,10 @@ change has to keep.
 
 On a service that asks for `mcp`, a tool's `inputSchema` and `outputSchema` are the JSON Schema of
 the message and the success, built by `type_json_schema_value` under the pointer prefix
-`#/$defs/`, so a type is written there as `json_schema()` writes it, without its `examples`.
+`#/$defs/`, so a type is written there as `json_schema()` writes it, without its `examples`. Each
+schema settles its own `$defs` as `json_schema()` does: a definition referenced once is written
+back in place, and one referenced two or more times stays, as the definition a cycle is entered at
+always is.
 
 - **The arguments are always an object.** A message serde writes as a JSON object is the arguments
   object itself. One serde writes as anything else (a branded newtype over a `String`, a plain enum,

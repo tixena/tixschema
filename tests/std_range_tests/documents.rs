@@ -1,6 +1,7 @@
 //! What a JSON Schema document admits, for the keywords the documents of the ranges write, the
-//! keys a map names (`propertyNames`), a `pattern`, the `date`, `date-time` and `time` formats and
-//! the names a plain enum lists (`enum`).
+//! keys a map names (`propertyNames`), a `pattern`, the `date`, `date-time` and `time` formats, the
+//! names a plain enum lists (`enum`) and a `$ref` into the document's own `$defs`; a `$ref` that
+//! names none of them refuses every value.
 
 use serde_json::Value;
 
@@ -21,8 +22,25 @@ pub fn admits(document: &Value, value: &Value) -> bool {
 /// Why `document` refuses `value`, and `None` where it admits it. A key no member declares is
 /// told apart where it is the only thing refused.
 pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
+    refusal_within(document, value, document.get("$defs"))
+}
+
+/// [`refusal`] of a schema of the document whose `$defs` are `defs`.
+fn refusal_within(document: &Value, value: &Value, defs: Option<&Value>) -> Option<Refusal> {
     if let Value::Bool(admitted) = *document {
         return (!admitted).then_some(Refusal::Written);
+    }
+    if let Some(pointer) = document.get("$ref").and_then(Value::as_str) {
+        let Some(defined) = defs
+            .zip(pointer.strip_prefix("#/$defs/"))
+            .and_then(|(held, key)| held.get(key))
+        else {
+            return Some(Refusal::Written);
+        };
+        let refused = refusal_within(defined, value, defs);
+        if refused.is_some() {
+            return refused;
+        }
     }
     let admitting = |keyword: &str| {
         document
@@ -31,7 +49,7 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
             .map(|branches| {
                 branches
                     .iter()
-                    .filter(|branch| admits(branch, value))
+                    .filter(|branch| refusal_within(branch, value, defs).is_none())
                     .count()
             })
     };
@@ -84,14 +102,18 @@ pub fn refusal(document: &Value, value: &Value) -> Option<Refusal> {
         }
     }
     match value {
-        Value::Object(object) => object_refusal(document, object),
-        Value::Array(items) => (!admits_items(document, items)).then_some(Refusal::Written),
+        Value::Object(object) => object_refusal(document, object, defs),
+        Value::Array(items) => (!admits_items(document, items, defs)).then_some(Refusal::Written),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
     }
 }
 
 /// Why `document` refuses the members of `object`, and `None` where it admits them.
-fn object_refusal(document: &Value, object: &serde_json::Map<String, Value>) -> Option<Refusal> {
+fn object_refusal(
+    document: &Value,
+    object: &serde_json::Map<String, Value>,
+    defs: Option<&Value>,
+) -> Option<Refusal> {
     let properties = document.get("properties").and_then(Value::as_object);
     let required = document
         .get("required")
@@ -107,7 +129,7 @@ fn object_refusal(document: &Value, object: &serde_json::Map<String, Value>) -> 
     if let Some(names) = document.get("propertyNames")
         && !object
             .keys()
-            .all(|key| admits(names, &Value::String(key.clone())))
+            .all(|key| refusal_within(names, &Value::String(key.clone()), defs).is_none())
     {
         return Some(Refusal::Written);
     }
@@ -117,9 +139,9 @@ fn object_refusal(document: &Value, object: &serde_json::Map<String, Value>) -> 
             || match document.get("additionalProperties") {
                 Some(Value::Bool(false)) => Some(Refusal::UndeclaredKey),
                 Some(Value::Bool(true)) | None => None,
-                Some(rest) => refusal(rest, held),
+                Some(rest) => refusal_within(rest, held, defs),
             },
-            |described| refusal(described, held),
+            |described| refusal_within(described, held, defs),
         );
         match refused {
             Some(Refusal::Written) => return refused,
@@ -131,7 +153,7 @@ fn object_refusal(document: &Value, object: &serde_json::Map<String, Value>) -> 
 }
 
 /// Whether `document` admits the items of `items`.
-fn admits_items(document: &Value, items: &[Value]) -> bool {
+fn admits_items(document: &Value, items: &[Value], defs: Option<&Value>) -> bool {
     let count = items.len() as u64;
     let least = document.get("minItems").and_then(Value::as_u64);
     let most = document.get("maxItems").and_then(Value::as_u64);
@@ -144,11 +166,11 @@ fn admits_items(document: &Value, items: &[Value]) -> bool {
         .map_or(&[][..], Vec::as_slice);
     items.iter().enumerate().all(|(at, item)| {
         if let Some(described) = prefix.get(at) {
-            return admits(described, item);
+            return refusal_within(described, item, defs).is_none();
         }
         match document.get("items") {
             Some(Value::Bool(open)) => *open,
-            Some(each) => admits(each, item),
+            Some(each) => refusal_within(each, item, defs).is_none(),
             None => true,
         }
     })

@@ -150,10 +150,10 @@ fn bound_filling(parameters: &[SchemaParameter]) -> proc_macro2::TokenStream {
 }
 
 /// The description guarded against re-entering a name still being written, as the tokens the
-/// `within` form's body is. `filling` is the documents this frame's parameters were filled with,
-/// which the guard compares against and the hoisted key is built from. `discriminate_by_filling` is
-/// fixed by the caller at expansion time, so a parameterless name's generated source stays
-/// byte-identical.
+/// `within` form's body is. Every name is hoisted and answered as a `$ref`: under its key, or, where
+/// another body already holds that key, under the key and a fingerprint of its own body. `filling`
+/// is the documents this frame's parameters were filled with, which the guard compares against and
+/// the hoisted key is built from.
 fn guarded_description(
     def_name: &str,
     body: &proc_macro2::TokenStream,
@@ -164,16 +164,6 @@ fn guarded_description(
     let key_binding = if discriminate_by_filling {
         quote::quote! {
             let key = {
-                // The FNV-1a offset basis and prime, spelled out: the internals of
-                // `std::hash::Hasher` may change between compilers.
-                fn digest(bytes: &[u8]) -> u64 {
-                    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-                    for byte in bytes {
-                        hash ^= u64::from(*byte);
-                        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-                    }
-                    hash
-                }
                 // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
                 // primitive's `"type"` keyword.
                 fn argument_label(argument: &serde_json::Value) -> ::core::option::Option<::std::string::String> {
@@ -203,26 +193,247 @@ fn guarded_description(
         }
     };
     quote::quote! {
+        // The FNV-1a offset basis and prime, spelled out: the internals of
+        // `std::hash::Hasher` may change between compilers.
+        fn digest(bytes: &[u8]) -> u64 {
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in bytes {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            hash
+        }
+        fn repointed(schema: &mut serde_json::Value, from: &str, to: &str) {
+            match schema {
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        repointed(item, from, to);
+                    }
+                }
+                serde_json::Value::Object(members) => {
+                    for (keyword, held) in members.iter_mut() {
+                        if keyword == "$ref" && held.as_str() == ::core::option::Option::Some(from) {
+                            *held = serde_json::Value::String(to.to_string());
+                        } else {
+                            repointed(held, from, to);
+                        }
+                    }
+                }
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => {}
+            }
+        }
         let filling: ::std::vec::Vec<serde_json::Value> = #filling;
         #key_binding
-        let pointer = format!("{}{key}", pointer_prefix);
         if let ::core::option::Option::Some((_, in_flight_filling)) =
             in_flight.iter().find(|(named, _)| *named == #def_name)
         {
             #refusal
+            let pointer = format!("{}{key}", pointer_prefix);
             // Reserved rather than written: the frame that put this name in flight is still
             // writing the body, and fills the entry in once it has one.
             hoisted_defs.entry(key).or_insert(serde_json::Value::Null);
             return serde_json::json!({ "$ref": pointer });
         }
+        // Another type published under this name may hold the key; which one is known only once
+        // this body is written, and the definitions written meanwhile are the ones that point at
+        // this frame through it.
+        let earlier: ::core::option::Option<::std::vec::Vec<::std::string::String>> = hoisted_defs
+            .get(&key)
+            .is_some_and(|stored| !stored.is_null())
+            .then(|| hoisted_defs.keys().cloned().collect());
         in_flight.push((#def_name, filling));
-        let described = #body;
+        let mut described = #body;
         in_flight.pop();
-        if hoisted_defs.contains_key(&key) {
-            hoisted_defs.insert(key, described);
-            return serde_json::json!({ "$ref": pointer });
+        let key = match earlier {
+            ::core::option::Option::Some(earlier)
+                if hoisted_defs.get(&key).is_some_and(|stored| *stored != described) =>
+            {
+                let canonical = serde_json::to_string(&described).unwrap_or_default();
+                let distinct = format!("{key}.{:016x}", digest(canonical.as_bytes()));
+                let from = format!("{pointer_prefix}{key}");
+                let to = format!("{pointer_prefix}{distinct}");
+                repointed(&mut described, &from, &to);
+                for (held, written) in hoisted_defs.iter_mut() {
+                    if !earlier.contains(held) {
+                        repointed(written, &from, &to);
+                    }
+                }
+                distinct
+            }
+            _ => key,
+        };
+        let pointer = format!("{}{key}", pointer_prefix);
+        hoisted_defs.insert(key, described);
+        serde_json::json!({ "$ref": pointer })
+    }
+}
+
+/// The function a finished document's definitions are settled by, as the tokens that declare it.
+/// `defs_settled(roots, defs, prefix, kept)` drops each definition nothing reaches from `roots` or
+/// from `kept`, and writes back in place, beside whatever keywords its reference carried, each one
+/// referenced once that `kept` does not name. A cycle keeps the definition it is entered at, which
+/// is referenced from outside the cycle and from inside it.
+pub fn settled_definitions() -> proc_macro2::TokenStream {
+    let walkers = reference_walkers();
+    quote::quote! {
+        fn defs_settled(
+            roots: &mut [&mut serde_json::Value],
+            defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+            kept: &[&str],
+        ) {
+            #walkers
+            let mut outside: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+            for root in roots.iter() {
+                let mut found = ::std::vec::Vec::new();
+                pointed(root, prefix, &mut found);
+                outside.extend(found.into_iter().map(str::to_string));
+            }
+            defs.retain(|_, body| !body.is_null());
+            let mut reached: ::std::collections::BTreeSet<::std::string::String> =
+                ::std::collections::BTreeSet::new();
+            let mut pending: ::std::vec::Vec<::std::string::String> = kept
+                .iter()
+                .map(|key| (*key).to_string())
+                .chain(outside.iter().cloned())
+                .collect();
+            while let ::core::option::Option::Some(key) = pending.pop() {
+                let ::core::option::Option::Some(body) =
+                    defs.get(&key).filter(|_| !reached.contains(&key))
+                else {
+                    continue;
+                };
+                let mut found = ::std::vec::Vec::new();
+                pointed(body, prefix, &mut found);
+                pending.extend(found.into_iter().map(str::to_string));
+                reached.insert(key);
+            }
+            defs.retain(|key, _| reached.contains(key));
+
+            let mut counts: ::std::collections::BTreeMap<::std::string::String, usize> =
+                ::std::collections::BTreeMap::new();
+            for key in outside {
+                *counts.entry(key).or_insert(0) += 1;
+            }
+            for body in defs.values() {
+                let mut found = ::std::vec::Vec::new();
+                pointed(body, prefix, &mut found);
+                for key in found {
+                    *counts.entry(key.to_string()).or_insert(0) += 1;
+                }
+            }
+            let mut bodies = serde_json::Map::new();
+            for (key, body) in ::core::mem::take(defs) {
+                if counts.get(&key) == ::core::option::Option::Some(&1) && !kept.contains(&key.as_str()) {
+                    bodies.insert(key, body);
+                } else {
+                    defs.insert(key, body);
+                }
+            }
+            for root in roots.iter_mut() {
+                placed(root, &mut bodies, prefix);
+            }
+            for body in defs.values_mut() {
+                placed(body, &mut bodies, prefix);
+            }
         }
-        described
+    }
+}
+
+/// The two walks `defs_settled` makes, as the tokens that declare them: `pointed` finds the keys
+/// a schema points at, and `placed` writes a definition in place of its one reference.
+fn reference_walkers() -> proc_macro2::TokenStream {
+    quote::quote! {
+        // The keys `schema` points at, one per reference; the keywords that hold values
+        // rather than schemas are not read.
+        fn pointed<'schema>(
+            schema: &'schema serde_json::Value,
+            prefix: &str,
+            found: &mut ::std::vec::Vec<&'schema str>,
+        ) {
+            match schema {
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        pointed(item, prefix, found);
+                    }
+                }
+                serde_json::Value::Object(members) => {
+                    for (keyword, held) in members {
+                        match keyword.as_str() {
+                            "$ref" => found.extend(
+                                held.as_str().and_then(|pointer| pointer.strip_prefix(prefix)),
+                            ),
+                            "const" | "default" | "enum" | "examples" => {}
+                            "properties" | "patternProperties" | "dependentSchemas" => {
+                                for named in held.as_object().into_iter().flat_map(serde_json::Map::values) {
+                                    pointed(named, prefix, found);
+                                }
+                            }
+                            _ => pointed(held, prefix, found),
+                        }
+                    }
+                }
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => {}
+            }
+        }
+
+        fn placed(
+            schema: &mut serde_json::Value,
+            bodies: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+        ) {
+            let body = schema
+                .get("$ref")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|pointer| pointer.strip_prefix(prefix))
+                .and_then(|key| bodies.remove(key));
+            if let ::core::option::Option::Some(mut body) = body {
+                placed(&mut body, bodies, prefix);
+                if let (serde_json::Value::Object(written), serde_json::Value::Object(beside)) =
+                    (&mut body, &mut *schema)
+                {
+                    for (keyword, held) in ::core::mem::take(beside) {
+                        if keyword != "$ref" {
+                            written.insert(keyword, held);
+                        }
+                    }
+                }
+                *schema = body;
+                return;
+            }
+            match schema {
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        placed(item, bodies, prefix);
+                    }
+                }
+                serde_json::Value::Object(members) => {
+                    for (keyword, held) in members.iter_mut() {
+                        match keyword.as_str() {
+                            "const" | "default" | "enum" | "examples" => {}
+                            "properties" | "patternProperties" | "dependentSchemas" => {
+                                if let ::core::option::Option::Some(named) = held.as_object_mut() {
+                                    for member in named.values_mut() {
+                                        placed(member, bodies, prefix);
+                                    }
+                                }
+                            }
+                            _ => placed(held, bodies, prefix),
+                        }
+                    }
+                }
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => {}
+            }
+        }
     }
 }
 
@@ -247,14 +458,15 @@ fn refilled_cycle_refusal(def_name: &str) -> proc_macro2::TokenStream {
     }
 }
 
-/// A document standing on its own: `within` run against a fresh document, with whatever it hoisted
-/// joined to the root, and the `examples` keyword where the type has any.
+/// A document standing on its own: `within` run against a fresh document, its definitions settled
+/// and whatever stays joined to the root, and the `examples` keyword where the type has any.
 fn rooted_document(
     described: &proc_macro2::TokenStream,
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let in_flight_type = in_flight_type();
-    let mutability = examples.map(|_| quote::quote! { mut });
+    let settled = settled_definitions();
+    let defs_prefix = DEFS_PREFIX;
     let example_keyword = examples.map(|values| {
         quote::quote! {
             if let (
@@ -267,9 +479,11 @@ fn rooted_document(
         }
     });
     quote::quote! {
+        #settled
         let mut in_flight: #in_flight_type = ::std::vec::Vec::new();
         let mut hoisted_defs = serde_json::Map::new();
-        let #mutability described = #described;
+        let mut described = #described;
+        defs_settled(&mut [&mut described], &mut hoisted_defs, #defs_prefix, &[]);
         #example_keyword
         if hoisted_defs.is_empty() {
             return described;
@@ -804,6 +1018,7 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
             }
         }
     });
+    let resolution = named_body_resolution();
     quote::quote! {
         fn expanded_branches<'defs>(
             schema: &'defs serde_json::Value,
@@ -813,23 +1028,7 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
             label: &str
             #unit_member
         ) -> ::core::option::Option<Branches<'defs>> {
-            let mut resolved = ::core::option::Option::None;
-            let body = match deferred_name(schema) {
-                ::core::option::Option::None => schema,
-                ::core::option::Option::Some(name) => {
-                    let ::core::option::Option::Some(named_body) = hoisted_defs.get(name).filter(|body| body.is_object())
-                    else {
-                        refuse_missing_body(label, position, name);
-                    };
-                    // The path holds only names already descended through, so the first frame never
-                    // finds itself on it and this refusal always has a branch to name.
-                    if expanding.contains(&name) {
-                        refuse_repeated_name(label, position, name, expanding);
-                    }
-                    resolved = ::core::option::Option::Some(name);
-                    named_body
-                }
-            };
+            #resolution
 
             if let ::core::option::Option::Some(named) = described_type(body) {
                 // A `null` among the choices the flatten edge itself offers is the absence, not a
@@ -881,6 +1080,33 @@ fn branch_expansion(beside_tag: bool) -> proc_macro2::TokenStream {
                 expanding.pop();
             }
             (!expanded.is_empty()).then_some(Branches::Union(spelling, expanded))
+        }
+    }
+}
+
+/// The statements that bind `body`, what the schema a merge is handed stands for, and `resolved`,
+/// the last name it was reached through: a definition may be a reference itself, as a brand or an
+/// alias of a named type is, and a chain longer than the definitions are many closes on itself.
+fn named_body_resolution() -> proc_macro2::TokenStream {
+    quote::quote! {
+        let mut resolved = ::core::option::Option::None;
+        let mut body = schema;
+        let mut steps = 0;
+        while let ::core::option::Option::Some(name) = deferred_name(body) {
+            let ::core::option::Option::Some(named_body) = hoisted_defs
+                .get(name)
+                .filter(|body| body.is_object() && steps < hoisted_defs.len())
+            else {
+                refuse_missing_body(label, position, name);
+            };
+            // The path holds only names already descended through, so the first frame never
+            // finds itself on it and this refusal always has a branch to name.
+            if expanding.contains(&name) {
+                refuse_repeated_name(label, position, name, expanding);
+            }
+            resolved = ::core::option::Option::Some(name);
+            body = named_body;
+            steps += 1;
         }
     }
 }

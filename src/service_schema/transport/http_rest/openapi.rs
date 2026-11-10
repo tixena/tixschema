@@ -2,7 +2,7 @@
 //! `<Service>Schema::openapi()`: each operation's `HttpShape` read into paths, parameters, bodies,
 //! statuses and headers, and every type they name described once under `components.schemas`.
 
-use crate::features::jsonschema::in_flight_type;
+use crate::features::jsonschema::{in_flight_type, settled_definitions};
 use crate::model_schema::{named_json_schema_modules, type_json_schema_value};
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
@@ -81,7 +81,8 @@ impl Named {
 
 /// `<Service>Schema::openapi()`. Every model type an operation names is reserved under its name
 /// in `components.schemas` before any is described, so each is written once and every reference
-/// to it is a `$ref`; a reservation no definition filled is dropped.
+/// to it is a `$ref`; a reservation no definition filled is dropped. Any other type is a component
+/// where the document references it two or more times, and written in place where once.
 pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenStream {
     let title = asked
         .title
@@ -112,18 +113,21 @@ pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenSt
         .collect();
     let member_schema = named.reads_a_member.then(member_schema_fn);
     let in_flight_type = in_flight_type();
+    let settled = settled_definitions();
     quote! {
         #[doc = " The service's OpenAPI 3.1 document: every `http_rest` operation, parameter, body,"]
         #[doc = " status and header it declares, and the schema of every type they name."]
         pub fn openapi() -> serde_json::Value {
             #member_schema
+            #settled
+            let reserved = [#(#reservations),*];
             let mut in_flight: #in_flight_type = ::std::vec::Vec::new();
             let mut components = serde_json::Map::new();
             let paths = {
                 let in_flight = &mut in_flight;
                 let hoisted_defs = &mut components;
                 let pointer_prefix: &str = #COMPONENTS_PREFIX;
-                for named in [#(#reservations),*] {
+                for named in reserved {
                     hoisted_defs.entry(named).or_insert(serde_json::Value::Null);
                 }
                 let fault = #fault::Schema::json_schema_within(in_flight, hoisted_defs, pointer_prefix);
@@ -131,7 +135,8 @@ pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenSt
                 #(#statements)*
                 paths
             };
-            components.retain(|_, described| !described.is_null());
+            let mut paths = serde_json::Value::Object(paths);
+            defs_settled(&mut [&mut paths], &mut components, #COMPONENTS_PREFIX, &reserved);
             serde_json::json!({
                 "openapi": "3.1.0",
                 "info": { "title": #title, "version": ::core::env!("CARGO_PKG_VERSION") },
@@ -142,8 +147,9 @@ pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenSt
     }
 }
 
-/// The schema a named message's own member is described by, read off the message's definition
-/// where the message is a `$ref`, and a string where the definition names no such member.
+/// The schema a named message's own member is described by, read off the definition the message's
+/// `$ref` leads to, through each definition that is a `$ref` itself, and a string where the
+/// definition names no such member.
 fn member_schema_fn() -> TokenStream {
     quote! {
         fn member_schema(
@@ -151,12 +157,18 @@ fn member_schema_fn() -> TokenStream {
             components: &serde_json::Map<::std::string::String, serde_json::Value>,
             member: &str,
         ) -> serde_json::Value {
-            let definition = message
-                .get("$ref")
-                .and_then(serde_json::Value::as_str)
-                .and_then(|pointer| pointer.rsplit_once('/'))
-                .and_then(|(_, name)| components.get(name))
-                .unwrap_or(message);
+            let mut definition = message;
+            for _ in 0..components.len() {
+                let ::core::option::Option::Some(defined) = definition
+                    .get("$ref")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|pointer| pointer.rsplit_once('/'))
+                    .and_then(|(_, name)| components.get(name))
+                else {
+                    break;
+                };
+                definition = defined;
+            }
             definition
                 .get("properties")
                 .and_then(|members| members.get(member))

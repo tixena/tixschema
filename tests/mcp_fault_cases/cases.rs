@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-pub const FAULT_CASES: [FaultCase; 14] = [
+pub const FAULT_CASES: [FaultCase; 15] = [
     FaultCase {
         arguments: r#"{"document_id":5}"#,
         field: Some("document_id"),
@@ -102,6 +102,15 @@ pub const FAULT_CASES: [FaultCase; 14] = [
         kind: "failed-validation",
         operation: "check-maybe",
         tool: "check-maybe",
+    },
+    // The message holds its request type twice, so the tool's input defines it once under
+    // `$defs` and the path is named through a `$ref`.
+    FaultCase {
+        arguments: r#"{"first":{"document_id":"doc-1"},"second":{"document_id":7}}"#,
+        field: Some("second.document_id"),
+        kind: "failed-validation",
+        operation: "check-pair",
+        tool: "check-pair",
     },
 ];
 
