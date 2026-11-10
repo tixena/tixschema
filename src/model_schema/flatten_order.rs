@@ -13,6 +13,8 @@
 //! publishes, in a `const` the compiler evaluates. A member whose keys are those of a type
 //! parameter is refused: what fills the parameter is written where no expansion reads it.
 
+mod overlap;
+
 use core::cell::RefCell;
 #[cfg(any(feature = "dart", feature = "swift"))]
 use core::fmt::Write as _;
@@ -1466,6 +1468,7 @@ fn writes_no_object(def: &FieldDef, depth: usize) -> bool {
 
 /// Records what `item` reads, flattened, for the holders expanded after it.
 pub(super) fn record(item: &Item, args: &ModelSchemaArgs) {
+    overlap::record(item, args);
     let (name, held) = if let Item::Struct(item_struct) = item {
         (
             item_struct.ident.to_string(),
@@ -3420,7 +3423,11 @@ pub(super) fn errors(item: &Item, args: &ModelSchemaArgs) -> Vec<TokenStream> {
         })
         .collect();
     if let Item::Enum(item_enum) = item {
-        refused.extend(untagged_shadow_errors(item_enum, args));
+        let shadowed = untagged_shadow_errors(item_enum, args);
+        if shadowed.is_empty() {
+            refused.extend(overlap::errors(item_enum, args));
+        }
+        refused.extend(shadowed);
         refused.extend(held_open_errors(item_enum, args));
     }
     refused.extend(filling_errors(item, args));

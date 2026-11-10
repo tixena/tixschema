@@ -682,7 +682,7 @@ struct FlatOverSelfUntagged {
 /// An untagged enum whose members overlap: one member's key set is a subset of the other's, and
 /// the difference is a key that member omits when it is absent. serde writes the first member that
 /// matches, so the payload it writes for the narrower member is one the wider member admits too.
-#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OverlapNarrow {
     a: String,
@@ -722,11 +722,35 @@ enum MixedTagged {
     Right { right: bool },
 }
 
+/// The members of [`MixedEither`], each reading past a key it does not declare.
+#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct MixedFull {
+    a: String,
+    b: String,
+}
+
+#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct MixedPartial {
+    a: String,
+}
+
+/// An untagged enum whose members overlap, neither reading every value of the other: `Full`
+/// requires a key `Partial` never writes.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+enum MixedEither {
+    Full(MixedFull),
+    Partial(MixedPartial),
+}
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMixed {
     #[serde(flatten)]
-    either: OverlapEither,
+    either: MixedEither,
     own: String,
     #[serde(flatten)]
     tagged: MixedTagged,
@@ -1867,7 +1891,7 @@ fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
         tagged: MixedTagged::Left {
             left: "l".to_owned(),
         },
-        either: OverlapEither::Narrow(OverlapNarrow { a: "x".to_owned() }),
+        either: MixedEither::Partial(MixedPartial { a: "x".to_owned() }),
     };
     let written = serde_json::to_value(&mixed).unwrap();
     assert_eq!(

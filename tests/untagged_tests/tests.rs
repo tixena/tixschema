@@ -520,6 +520,21 @@ pub enum UntaggedUnitWire {
     Lone,
 }
 
+/// A nonstrict untagged enum whose variant that requires a key is declared ahead of the one that
+/// reads every object: serde reads each variant back.
+#[model_schema(nonstrict)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum Allowance {
+    Fixed {
+        percent: u32,
+    },
+    Open {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+}
+
 // A list an untagged member holds, under a bound that counts it: a newtype variant's slot, a named
 // member under an `Option`, and the list read with no bound, which takes what the others refuse.
 // The variants are tried in this order.
@@ -2464,5 +2479,22 @@ fn test_an_untagged_list_member_writes_its_count_in_zod() {
         ),
     ] {
         assert!(zod.contains(&member), "{member} is not in:\n{zod}");
+    }
+}
+
+#[test]
+fn a_variant_that_requires_a_key_declared_ahead_of_one_that_reads_every_object_reads_back() {
+    for allowance in [
+        Allowance::Fixed { percent: 5 },
+        Allowance::Open { note: None },
+        Allowance::Open {
+            note: Some("staff".to_owned()),
+        },
+    ] {
+        let written = serde_json::to_string(&allowance).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Allowance>(&written).unwrap(),
+            allowance
+        );
     }
 }

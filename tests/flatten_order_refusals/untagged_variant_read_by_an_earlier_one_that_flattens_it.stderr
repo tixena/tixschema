@@ -1,0 +1,5 @@
+error: model_schema: type `Panel`: variant `Bare` of the untagged `Panel` never reads back: serde reads the variants in the order declared, and `Painted`, declared before it, reads every value serde writes for `Bare`. Declare `Bare` before `Painted`.
+  --> tests/flatten_order_refusals/untagged_variant_read_by_an_earlier_one_that_flattens_it.rs:29:5
+   |
+29 |     Bare(Dimensions),
+   |     ^^^^^^^^^^^^^^^^

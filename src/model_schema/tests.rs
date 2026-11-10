@@ -3181,7 +3181,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeEither { \
          Fields(ProbeFields), Text(String) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum ProbeObjects { \
-         Fields(ProbeFields), Body(ProbeBody) }",
+         Body(ProbeBody), Counted { count: u32 } }",
     ] {
         let expanded = expansion_over(declared);
         assert_eq!(compile_error_count(&expanded), 0, "got: {expanded}");
@@ -5025,11 +5025,11 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nullable { Obj(Plain), \
          Maybe(Option<Plain>) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Named { Obj(Plain), \
-         Slug(Slug), Hue(Hue), Bare(Bare), Bag(Bag), Maybe(MaybePlain) }",
+         Slug(Slug), Bare(Bare), Bag(Bag), Maybe(MaybePlain) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Nested { Inner(Scalar), \
-         Obj(Plain) }",
+         Tagged(Tagged) }",
         "#[derive(Serialize, Deserialize)] #[serde(untagged)] pub enum Objects { First(Plain), \
-         Second(Plain) }",
+         Second(Tagged) }",
         "pub type SlugAlias = Slug;",
         "pub type ScalarAlias = Scalar;",
         "pub type Ids = Vec<String>;",

@@ -1,0 +1,7 @@
+error: model_schema: type `Discount`: variant `Percent` of the untagged `Discount` never reads back: serde reads the variants in the order declared, and `Open`, declared before it, reads every value serde writes for `Percent`. Declare `Percent` before `Open`.
+  --> tests/flatten_order_refusals/untagged_variant_read_as_an_earlier_one.rs:15:5
+   |
+15 | /     Percent {
+16 | |         percent: u32,
+17 | |     },
+   | |_____^

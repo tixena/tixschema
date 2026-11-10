@@ -120,14 +120,20 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
             )),
             "got: {kotlin}"
         );
+        // The untagged enum declares its plain variant first, which serde tries first.
+        let plain = if name == "Ratcheting" {
+            "Bare"
+        } else {
+            "Struck"
+        };
         assert!(
             kotlin.contains(&format!(
-                "@Serializable data class {name}Struck(val label: String) : {name} "
+                "@Serializable data class {name}{plain}(val label: String) : {name} "
             )),
             "got: {kotlin}"
         );
         assert!(
-            !kotlin.contains(&format!("{name}StruckUnjudged")),
+            !kotlin.contains(&format!("{name}{plain}Unjudged")),
             "got: {kotlin}"
         );
     }

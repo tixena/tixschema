@@ -299,13 +299,13 @@ struct Marked {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 enum Trace {
-    Blank {
-        #[serde(skip)]
-        cached: u8,
-    },
     Made {
         #[serde(flatten)]
         audit: Audit,
+    },
+    Pending {
+        #[serde(skip)]
+        cached: u8,
     },
 }
 
@@ -1108,7 +1108,7 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
         serde_json::from_value::<Traced>(stored.clone()).unwrap(),
         Traced {
             title: "t".to_owned(),
-            trace: Trace::Blank { cached: 0 },
+            trace: Trace::Pending { cached: 0 },
         }
     );
     assert_eq!(

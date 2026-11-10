@@ -82,7 +82,7 @@ pub type Load = Vec<Item>;
 pub enum Shelfmark {
     Coded(Slip),
     Listed(Vec<Slip>),
-    Titled(String),
+    Shelved(bool),
 }
 
 /// A plain enum one member of which is named after the unjudged read.
@@ -140,7 +140,7 @@ fn every_declared_type_is_constructible() {
     let shelfmarks = [
         Shelfmark::Coded(Slip("AB".to_owned())),
         Shelfmark::Listed(vec![Slip("AB".to_owned())]),
-        Shelfmark::Titled("t".to_owned()),
+        Shelfmark::Shelved(true),
     ];
     assert_eq!(shelfmarks.len(), 3);
     assert_eq!(
@@ -427,7 +427,7 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
          (read._bounds().isEmpty) return read; } catch (_) {} try { final read = \
          ShelfmarkListed((json as List<dynamic>).map((e) => \
          Slip.fromJsonUnjudged(e)).toList()); if (read._bounds().isEmpty) return read; } catch \
-         (_) {} try { return ShelfmarkTitled(json as String); } catch (_) {} throw",
+         (_) {} try { return ShelfmarkShelved(json as bool); } catch (_) {} throw",
     );
     assert_written(
         &shelfmark,
