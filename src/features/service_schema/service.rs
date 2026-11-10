@@ -2,6 +2,7 @@
 //! outcomes its operations answer with, and the factory that turns an implementation into a
 //! dispatcher.
 
+use super::client::issues_fault_fn;
 use super::fault;
 use super::message;
 use super::result::{result_arm, result_name, stream_success_ts_type, writes_an_inexact_key};
@@ -413,40 +414,18 @@ fn request_header_fn(named: &str, prefix: &str) -> String {
 fn inbound_fault(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    vec![format!(
-        "/**\n \
-         * The fault a payload produces when it will not become the operation's message.\n \
+    vec![issues_fault_fn(
+        &named,
+        &format!("{prefix}InboundFault"),
+        " * The fault a payload produces when it will not become the operation's message.\n \
          *\n \
-         * The payload reaching here was already read out of the bytes, so what is wrong with it \
-         is\n \
-         * what it *said* — the same thing the Rust dispatcher answers `failed-validation` for. \
-         Bytes\n \
+         * The payload reaching here was already read out of the bytes, so what is wrong with it is\n \
+         * what it *said* \u{2014} the same thing the Rust dispatcher answers `failed-validation` for. Bytes\n \
          * that are no document at all never reach this, and are the other kind.\n \
          *\n \
-         * The fault names the key the failure was at. A failure at no key names none: a value \
-         that\n \
-         * is not an object is not this message, and there is no key to send a caller to.\n \
-         */\n\
-         function {prefix}InboundFault(\n  \
-         operation: string,\n  \
-         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
-         ): {named}Fault {{\n  \
-         const [first] = issues;\n  \
-         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
-         {minted}\n\
-         }}",
-        minted = fault::minted(
-            &named,
-            "    detail: issues\n      \
-             .map((issue) =>\n        \
-             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n      \
-             )\n      \
-             .join(\"; \"),\n    \
-             field: failedAt === \"\" ? undefined : failedAt,\n    \
-             kind: \"failed-validation\",\n    \
-             operation,"
-        )
+         * The fault names the key the failure was at, and a key no member declares by its own name,\n \
+         * as the Rust dispatcher names it. A failure at no key names none: a value that is not an\n \
+         * object is not this message, and there is no key to send a caller to.",
     )]
 }
 
@@ -624,8 +603,7 @@ fn payload_check(service: &ServiceDef, operation: &OperationDef) -> String {
         "received.error.issues".to_owned()
     } else {
         format!(
-            "received.error.issues.map((issue) => ({{ message: issue.message, path: \
-             issue.path.slice({wrapping}) }}))"
+            "received.error.issues.map((issue) => ({{ ...issue, path: issue.path.slice({wrapping}) }}))"
         )
     };
     format!(

@@ -587,8 +587,7 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
     assert_eq!(held_under, "customerId");
 
     assert!(
-        constructor
-            .contains("const failedAt = first === undefined ? \"\" : first.path.join(\".\");"),
+        constructor.contains(": first.path;") && constructor.contains("steps.join(\".\");"),
         "the field is the path of the first issue. Got: {constructor}"
     );
     assert!(

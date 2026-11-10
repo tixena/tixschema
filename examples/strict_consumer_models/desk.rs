@@ -40,6 +40,15 @@ pub struct SearchReport {
     pub matches: u32,
 }
 
+/// How many tickets the desk holds.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct TicketCount {
+    /// The number of tickets.
+    pub tickets: u32,
+}
+
 /// Looks tickets up at a desk.
 #[service_schema(non_exhaustive, transports = ["mcp"])]
 pub trait DeskService<Ctx> {
@@ -57,6 +66,9 @@ pub trait DeskService<Ctx> {
     /// Asks one search to stop.
     #[service_schema_op(mcp(scopes = ["desk:stop"]))]
     async fn cancel_search(&self, ctx: &Ctx, task_id: String) -> Result<(), TicketError>;
+
+    /// Counts the tickets the desk holds, taking no argument.
+    async fn count_tickets(&self, ctx: &Ctx) -> Result<TicketCount, TicketError>;
 
     /// Answers the ticket a number names.
     async fn find_ticket(&self, ctx: &Ctx, req: TicketLookup) -> Result<Ticket, TicketError>;

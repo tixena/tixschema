@@ -1,6 +1,7 @@
 //! The TypeScript `ws_rpc` transport: a socket seam a platform `WebSocket` satisfies as it is, a
 //! heartbeat, and a check of every reply against the operation's own declared schemas.
 
+use super::client;
 use super::fault;
 use super::message;
 use crate::field_type::get_field_def;
@@ -162,37 +163,16 @@ fn fault_fn(service: &ServiceDef) -> String {
 }
 
 /// Folds a failed Zod parse into one `failed-validation` fault naming the first failing key — the
-/// same folding the generated client and dispatcher already do for a message that failed outbound
-/// or inbound validation.
+/// same folding the generated client and dispatcher do for a message that failed outbound or
+/// inbound validation.
 fn issues_fault_fn(service: &ServiceDef) -> String {
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
-    format!(
-        "/**\n \
-         * The fault a reply produces when it will not become the operation's own declared success \
-         or\n \
-         * error: a server that answered the wrong shape. Names the first failing key.\n \
-         */\n\
-         function {prefix}IssuesFault(\n  \
-         operation: string,\n  \
-         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
-         ): {named}Fault {{\n  \
-         const [first] = issues;\n  \
-         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
-         {minted}\n\
-         }}",
-        minted = fault::minted(
-            &named,
-            "    detail: issues\n      \
-             .map((issue) =>\n        \
-             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n      \
-             )\n      \
-             .join(\"; \"),\n    \
-             field: failedAt === \"\" ? undefined : failedAt,\n    \
-             kind: \"failed-validation\",\n    \
-             operation,"
-        )
+    client::issues_fault_fn(
+        &named,
+        &format!("{prefix}IssuesFault"),
+        " * The fault a reply produces when it will not become the operation's own declared success or\n \
+         * error: a server that answered the wrong shape. Names the first failing key.",
     )
 }
 
