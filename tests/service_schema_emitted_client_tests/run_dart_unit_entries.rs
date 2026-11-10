@@ -247,7 +247,7 @@ fn a_unit_variant_under_a_content_key_is_read_in_dart_where_the_object_holds_no_
 #[test]
 fn the_readme_shows_the_read_of_a_unit_variant_under_a_content_key() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

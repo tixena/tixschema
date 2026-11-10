@@ -23,8 +23,25 @@ mod tests {
     }
 
     /// Each relative link of `text`, read from `dir`, that names no file or directory.
+    /// `text` without its code: fenced blocks, and every span between backticks.
+    fn prose(text: &str) -> String {
+        let mut fenced = false;
+        text.lines()
+            .filter(|line| {
+                if line.trim_start().starts_with("```") {
+                    fenced = !fenced;
+                    return false;
+                }
+                !fenced
+            })
+            .map(|line| line.split('`').step_by(2).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn broken_links(dir: &Path, text: &str) -> Vec<String> {
-        text.split("](")
+        prose(text)
+            .split("](")
             .skip(1)
             .filter_map(|rest| rest.split_once(')').map(|(target, _)| target))
             .filter(|target| {
@@ -64,14 +81,19 @@ mod tests {
             .map(|path| format!("CLAUDE.md: {path}"))
             .collect();
         let docs = root.join("docs");
-        for entry in fs::read_dir(&docs).unwrap() {
-            let file = entry.unwrap().path();
-            let text = fs::read_to_string(&file).unwrap();
-            broken.extend(
-                broken_links(&docs, &text)
-                    .into_iter()
-                    .map(|path| format!("{}: {path}", file.display())),
-            );
+        for folder in [docs.clone(), docs.join("guide")] {
+            for entry in fs::read_dir(&folder).unwrap() {
+                let file = entry.unwrap().path();
+                if file.is_dir() {
+                    continue;
+                }
+                let text = fs::read_to_string(&file).unwrap();
+                broken.extend(
+                    broken_links(&folder, &text)
+                        .into_iter()
+                        .map(|path| format!("{}: {path}", file.display())),
+                );
+            }
         }
         assert!(broken.is_empty(), "links to no file: {broken:#?}");
     }

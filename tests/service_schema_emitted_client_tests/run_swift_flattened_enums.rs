@@ -680,10 +680,9 @@ fn a_unit_variant_under_a_content_key_is_read_in_swift_where_the_object_holds_no
 /// payloads and the refusal the run above measures.
 #[test]
 fn the_readme_shows_the_swift_read_of_a_unit_variant_under_a_content_key() {
-    let section = include_str!("../../README.md")
+    let section = include_str!("../../docs/guide/swift.md")
         .split_once("#### A Swift read refuses what `validate()` refuses")
-        .and_then(|(_, rest)| rest.split_once("### Literal Values"))
-        .map(|(section, _)| section)
+        .map(|(_, rest)| rest)
         .unwrap();
     for (payload, _, swift) in &UNDER_A_CONTENT_KEY[..3] {
         assert!(

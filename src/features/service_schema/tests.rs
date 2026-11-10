@@ -1520,7 +1520,7 @@ fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_
     );
     // The README states both halves where it documents the fault — what the seal stops, and the
     // assertion it does not — so the two cannot drift.
-    let readme = include_str!("../../../README.md");
+    let readme = include_str!("../../../docs/guide/services.md");
     assert!(
         readme.contains("**And the fault type itself refuses to be written.**")
             && readme.contains("declare const billingServiceFaultSeal: unique symbol;")
@@ -1750,7 +1750,7 @@ fn a_build_that_publishes_no_schema_publishes_no_client_and_no_dispatcher() {
     );
     // The README states the consequence where it documents the requirement, so the two cannot
     // drift. Newlines collapse to spaces first: the sentence may wrap anywhere in the source.
-    let readme = include_str!("../../../README.md").replace('\n', " ");
+    let readme = include_str!("../../../docs/guide/services.md").replace('\n', " ");
     assert!(
         readme.contains("**A service that publishes TypeScript needs the `zod` feature too.**")
             && readme.contains(

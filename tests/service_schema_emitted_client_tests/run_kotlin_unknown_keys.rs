@@ -718,7 +718,7 @@ fn zod_refuses_a_key_no_member_reads() {
 /// row the run above measures.
 #[test]
 fn the_readme_shows_the_refusal_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     let thrown = ROWS[0].kotlin.strip_prefix("refused: ").unwrap();
     let shown = format!(
         "`{}` is refused with `SerializationException: {thrown}`",
@@ -741,7 +741,7 @@ fn the_readme_shows_the_refusal_the_run_measures() {
 /// show payloads the run measures, refused under the default `Json`.
 #[test]
 fn the_readme_shows_the_nested_and_tagged_refusals_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     for (at, json) in [
         (21, ROWS[21].json),
         (31, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),

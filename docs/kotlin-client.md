@@ -7,7 +7,7 @@
 Every Kotlin type `src/features/kotlin.rs` writes carries `fun validate(): List<String>`, written
 by `src/features/kotlin/validate.rs`: a data class, a unit struct's `object`, a brand's value
 class, a tuple struct, a sealed interface with each variant, and a plain enum. It answers what
-Rust's `validate()` answers for the same value. `README.md`'s "`validate()` in the Kotlin client"
+Rust's `validate()` answers for the same value. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
 section is the consumer's view; this is what a change has to keep.
 
 - **The emitter reads what the web surfaces read.** `kotlin_schema_dispatch` takes `KotlinArgs`,
@@ -110,12 +110,12 @@ section is the consumer's view; this is what a change has to keep.
   `tests/service_schema_emitted_client_tests/run_kotlin_validate.rs` compiles the emitted types
   with `-Werror`, runs them, and holds each row to what Rust's `validate()` answers, or, for a
   slot and a variant's member, to the name written in the row. `src/features/kotlin/tests.rs`
-  holds the README's block to what the emitter writes for the documents' parcel.
+  holds the guide's block to what the emitter writes for the documents' parcel.
 
 #### The Kotlin client's read
 
 The serializer of a Kotlin type throws for a payload whose value breaks a bound or a check.
-`src/features/kotlin/read.rs` writes it. `README.md`'s "The read in the Kotlin client" section is
+`src/features/kotlin/read.rs` writes it. `docs/guide/kotlin.md`'s "The read in the Kotlin client" section is
 the consumer's view; this is what a change has to keep.
 
 - **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
@@ -196,7 +196,7 @@ the consumer's view; this is what a change has to keep.
   object without the holder's own keys and those taken ahead of it, as serde hands it, and read
   under the caller's `Json`, so it refuses a key no member reads. Every other flattened member is
   read with `lenient`, which `FlattenedMember::lenient` declares only where one is, and every
-  model below it reads past such a key: the README states the limit. A `nonstrict` type refuses nothing: the class the plugin
+  model below it reads past such a key: the guide states the limit. A `nonstrict` type refuses nothing: the class the plugin
   reads is annotated `@JsonIgnoreUnknownKeys` (`read::ignoring_unknown_keys`, and
   `opted_in_ignoring_unknown_keys` for a variant's class) and `unknown_key_refused` writes a no-op
   for it, as it is read by `is_nonstrict`. `flatten_plan`
@@ -211,7 +211,7 @@ the consumer's view; this is what a change has to keep.
   an enum `flattened_variant_names` answers no names for, and a generic type the emitter has not
   written. A type declared below the holder or in another crate is subtracted through a placeholder
   (`unmet_keys`, `member_keys::of`), which `kotlin_definition()` replaces with the keys the type
-  publishes in `__TIXSCHEMA_KEYS`. Zod refuses a key none of those reads, and the README states the
+  publishes in `__TIXSCHEMA_KEYS`. Zod refuses a key none of those reads, and the guide states the
   limit. A payload serde writes
   holds no such key. The serializer of an enum under a tag key refuses a key beside its tag and its
   content key, under a tag and a content key, and beside the tag of a unit variant under a tag
@@ -249,7 +249,7 @@ the consumer's view; this is what a change has to keep.
     (`flatten_plan`). An alias written above with no type parameter is read as the type it names
     (`texts::note_alias`, `texts::named_by`). A type argument is handed to the serializer of a
     model the emitter wrote above (`validate::reads_unjudged`); an alias with type parameters and
-    a type declared below keep `serializer<T>()`, which reads any text, and the README states the
+    a type declared below keep `serializer<T>()`, which reads any text, and the guide states the
     limit.
   - The service clients and the WebSocket dispatcher read a message, a reply and a header the same
     way: `kotlin_read_serializer` composes its serializer, `read_serializer` in
@@ -310,7 +310,7 @@ the consumer's view; this is what a change has to keep.
   leaves out on no flattened one, which has no key: one that is no `Option` is read as any
   flattened member is, as serde reads it whatever its `default` says. A member under
   `skip_serializing_if` is written wherever it holds a value: no client calls the Rust function,
-  and the README states the limit.
+  and the guide states the limit.
   `tests/service_schema_emitted_client_tests/unwritten_models.rs` holds the models, a struct, a
   flattened struct and a flattened map, and an enum under each tagging that writes a variant's
   named members, and serde's writes, and `run_kotlin_unwritten.rs`, `run_dart_unwritten.rs` and
@@ -443,7 +443,7 @@ the consumer's view; this is what a change has to keep.
   variant. `enum_kotlin_tokens` records the names in `KOTLIN_VARIANT_NAMES`, and
   `flattened_variant_names` reads them: an enum under a tag key, an untagged one, one that names a
   function on itself or on its member, and one the emitter has not written are read as a struct is,
-  and take no key, a limit the README states for one the emitter has not written. The names hold
+  and take no key, a limit the guide states for one the emitter has not written. The names hold
   each `alias`, and the enum's own read takes a variant under each of them, so an entry under one is
   taken and read as that variant (`UNDER_AN_ALIAS`).
 - **A flattened enum's unit variant is written as its name over `null`** (`flattened_merge`), as
@@ -452,7 +452,7 @@ the consumer's view; this is what a change has to keep.
   names, and `writes_a_bare_name` reads it: the holder merges what such an enum writes through
   `when (val written = ...)`, a `JsonPrimitive` as `put(written.content, JsonNull)` and an object
   entry by entry, optional and under a function too. Every other flattened member merges its
-  object as it did, so an enum the emitter has not written throws on a unit variant: the README
+  object as it did, so an enum the emitter has not written throws on a unit variant: the guide
   states the limit. `alias_kotlin_tokens` records an alias of such an enum as well, and
   `value_class_tokens` and `tuple_struct_kotlin_tokens` a brand and a struct of one slot over one
   (`note_bare_named`), so each is written the same way, flattened and beside a tag.
@@ -554,7 +554,7 @@ the consumer's view; this is what a change has to keep.
   own. `tests/kotlin_tests/read.rs` pins what the macro's own path writes, in every build with
   `kotlin`. `run_kotlin_validate.rs` reads each row with `{Type}Unjudged` and, in a run of its
   own, with the type's serializer, held to what `validate()` answered.
-  `run_kotlin_read.rs` holds the README's rows to what the Rust read answers of the same payload,
+  `run_kotlin_read.rs` holds the guide's rows to what the Rust read answers of the same payload,
   and both clients to their fault. `tests/kotlin_tests/flattened_models.rs` holds the models of a
   member flattened after a struct and beside a member of its holder's own, a struct under its own
   tag and one with a member serde never reads among them, and of an externally tagged enum
@@ -577,7 +577,7 @@ the consumer's view; this is what a change has to keep.
 The Kotlin read calls each function a `preprocess` names, under the name the attribute writes:
 `fun trimmed(payload: JsonElement): JsonElement`, on a field and on a type alike.
 `src/features/kotlin/preprocess.rs` writes each call, inside the unjudged read, so both
-serializers of a type make it. `README.md`'s "`preprocess` in the Kotlin client" section is the
+serializers of a type make it. `docs/guide/kotlin.md`'s "`preprocess` in the Kotlin client" section is the
 consumer's view; this is what a change has to keep. The key is a last resort, and the documents
 say so.
 
@@ -641,11 +641,11 @@ say so.
   object where a text or a number is read is a `SerializationException` that names the member.
   `run_kotlin_preprocess.rs` pins both, and that each client answers its fault for the second.
 - **The tests.** `src/features/kotlin/tests/preprocess.rs` pins the text of each shape, and the
-  README's block to what the emitter writes for the documents' parcel.
+  guide's block to what the emitter writes for the documents' parcel.
   `tests/kotlin_tests/preprocess.rs` pins what the macro's own path writes, in every build with
   `kotlin`. `tests/service_schema_emitted_client_tests/run_kotlin_preprocess.rs` compiles the
   emitted types with `-Werror`, runs them, and holds each row to what the Rust read prints of
-  the same payload: the README's sample, every position a type is held in, every shape, and
+  the same payload: the guide's sample, every position a type is held in, every shape, and
   every place a member is read. Rows whose words are Kotlin's own are pinned beside them.
 
 #### The `mcp` server and client

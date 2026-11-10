@@ -1507,7 +1507,7 @@ fn an_optional_type_declared_below_that_breaks_a_rule_is_refused_in_kotlin_as_se
 /// and shows payloads and the message the run measures.
 #[test]
 fn the_readme_shows_the_broken_rule_held_below_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     for shown in [
         "`struct Gromet { #[serde(flatten)] earing: Earing, #[model_schema_prop(minLength = 2)] \
          note: String }`"

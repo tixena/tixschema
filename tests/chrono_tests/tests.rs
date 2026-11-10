@@ -1261,7 +1261,7 @@ fn serde_refuses_a_date_in_milliseconds_beside_a_tag_and_flattened_as_an_integer
         stamp: DateTime<Utc>,
     }
     let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/chrono.md");
     for (refused, said) in [
         (
             serde_json::to_string(&Stamping::Stamp(at)),

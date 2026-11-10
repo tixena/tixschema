@@ -6342,7 +6342,7 @@ fn snake_form_writes_the_words_of_a_tag_key_and_of_a_value_in_lower_case() {
         "`@type` is `type`",
     ] {
         assert!(
-            include_str!("../../../README.md").contains(shown),
+            include_str!("../../../docs/guide/mongodb-operations.md").contains(shown),
             "the README no longer says: {shown}"
         );
     }

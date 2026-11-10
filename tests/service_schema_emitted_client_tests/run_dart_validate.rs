@@ -1609,6 +1609,13 @@ fn a_field_named_validate_builds_and_keeps_its_key() {
     );
 }
 
+/// What `text` holds from `opens` to its end.
+pub fn from_heading<'text>(text: &'text str, opens: &str) -> &'text str {
+    text.find(opens)
+        .and_then(|start| text.get(start..))
+        .unwrap()
+}
+
 /// What `text` holds from `opens` up to `closes`.
 pub fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text str {
     let rest = text
@@ -1632,10 +1639,9 @@ fn validate_of(definition: &str) -> &str {
 /// it: the two are compared with each run of spaces and line breaks read as one space.
 #[test]
 fn the_readme_shows_what_is_declared_emitted_and_printed() {
-    let section = from_until(
-        include_str!("../../README.md"),
+    let section = from_heading(
+        include_str!("../../docs/guide/dart.md"),
         "### `validate()` in Dart",
-        "### Literal Values",
     );
     let declared = from_until(section, "```rust\n", "\n```")
         .strip_prefix("```rust\n")

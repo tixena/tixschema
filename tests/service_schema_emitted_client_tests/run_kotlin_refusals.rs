@@ -699,7 +699,7 @@ fn a_fixed_array_is_read_from_an_array_of_its_length_alone_at_each_level() {
 /// above measure.
 #[test]
 fn the_readme_shows_refusals_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     for shown in [
         "``missing field `held` ``",
         "`expected an object, found [1]`",
@@ -730,7 +730,7 @@ fn the_readme_shows_refusals_the_run_measures() {
 #[cfg(feature = "dart")]
 #[test]
 fn the_readme_shows_the_fixed_array_refusals_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     assert!(
         readme
             .contains("with `struct Clenching { pair: [u8; 2] }`, `{\"pair\":[1,2,3]}` is refused"),

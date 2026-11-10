@@ -64,13 +64,12 @@ use super::{
     VariantKind, check_variant_slot_wire_is_readable, parse_serde_key_omission, variant_wire_kind,
 };
 
-#[cfg(feature = "zod")]
-use core::slice::from_ref;
-use syn::spanned::Spanned as _;
-
 #[cfg(feature = "serde")]
 use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
+#[cfg(feature = "zod")]
+use core::slice::from_ref;
+use syn::spanned::Spanned as _;
 
 /// The slot `$slot` of `Lettered::Held` under a tag alone, the refusals the expansion raises for
 /// it, and what serde answers for a write of `$value` through the same declaration.
@@ -555,7 +554,7 @@ fn as_number_is_refused_on_a_date_the_millisecond_hook_reads_no_value_of() {
     }
     let answered = format!("error: {}", as_number_hook_refusal("Vec<DateTime<Utc>>"));
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/chrono.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for field in [
@@ -604,7 +603,7 @@ fn a_bound_on_a_date_under_as_number_is_refused_as_the_milliseconds_it_is_writte
     );
     let answered = format!("error: {}", refused[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/chrono.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
 }
@@ -733,7 +732,7 @@ fn a_field_of_an_alias_of_an_option_declared_above_is_held_to_the_key_guards_as_
     let message = guard_result(&bare).unwrap_err().to_string();
     assert!(message.contains("T | undefined"), "got: {message}");
     assert!(
-        include_str!("../../README.md").contains(&format!("error: {message}")),
+        include_str!("../../docs/guide/upgrading.md").contains(&format!("error: {message}")),
         "the README no longer quotes: {message}"
     );
     let nullable: syn::ItemStruct = syn::parse_quote! {
@@ -2139,7 +2138,7 @@ fn internally_tagged_empty_tuple_variant_is_refused_in_serdes_words() {
         );
     }
     assert!(
-        include_str!("../../README.md").contains(refusal),
+        include_str!("../../docs/guide/enums.md").contains(refusal),
         "the README no longer quotes this refusal:\n{refusal}"
     );
 }
@@ -2447,7 +2446,7 @@ fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
             errors[0]
         );
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/troubleshooting.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -2641,7 +2640,7 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
     );
     let answered = format!("error: {}", logged[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/upgrading.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (source, refusal) in [
@@ -2776,7 +2775,7 @@ fn a_flattened_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_i
     for refused in [&slot, &filled] {
         let answered = format!("error: {}", refused[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            include_str!("../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -2868,7 +2867,7 @@ fn a_tagged_newtype_variant_over_a_value_serde_writes_as_a_plain_enum_is_refused
     for refused in [&slot, &filled] {
         let answered = format!("error: {}", refused[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            include_str!("../../docs/guide/enums.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -2996,7 +2995,7 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
     );
     let answered = format!("error: {}", carded[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/flatten.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3016,7 +3015,7 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
     );
     let answered_felt = format!("error: {}", felt[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered_felt),
+        include_str!("../../docs/guide/upgrading.md").contains(&answered_felt),
         "the README no longer quotes: {answered_felt}"
     );
     assert_eq!(
@@ -3201,7 +3200,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
     );
     let answered = format!("error: {}", reading[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3397,7 +3396,7 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
     );
     let answered = format!("error: {}", optional[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, inner) in [
@@ -3539,7 +3538,7 @@ fn a_unit_beside_a_tag_or_flattened_is_refused_in_the_words_of_what_serde_writes
     );
     let answered = format!("error: {}", in_place[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for inner in ["ProbeUnitHeld", "ProbeWrap<()>"] {
@@ -3709,7 +3708,7 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_i
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     assert_eq!(
@@ -3764,7 +3763,7 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused
     );
     let answered = format!("error: {}", optional[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, slot) in [
@@ -3932,7 +3931,7 @@ fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/enums.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, slot, inner, named) in [
@@ -4048,7 +4047,7 @@ fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build_with_s
     );
     let answered = format!("error: {}", text[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/flatten.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
     for (holder, flattened, inner, named) in [
@@ -4306,7 +4305,11 @@ fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_ever
     ] {
         let answered = format!("error: {quoted}");
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4571,7 +4574,11 @@ fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every
     for quoted in branch_refusals("OwnMember", "ProbeOwnMember<String>", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4767,7 +4774,11 @@ fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_ev
     for quoted in branch_refusals("SlotText", "ProbeSlotText", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -4920,7 +4931,11 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refu
     for quoted in branch_refusals("OwnAliasOf", "ProbeOwnAliasOf<String>", "2", "string") {
         let answered = format!("error: {}", quoted[0]);
         assert!(
-            include_str!("../../README.md").contains(&answered),
+            concat!(
+                include_str!("../../docs/guide/enums.md"),
+                include_str!("../../docs/guide/flatten.md")
+            )
+            .contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -6093,7 +6108,12 @@ fn the_readme_states_the_refusal_of_a_json_value_as_the_build_answers_it() {
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0].0);
     assert_eq!(
-        include_str!("../../README.md").matches(&answered).count(),
+        concat!(
+            include_str!("../../docs/guide/models.md"),
+            include_str!("../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -6246,7 +6266,7 @@ fn the_readme_states_the_refusal_of_an_undescribable_primitive_as_the_build_answ
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0]);
     assert!(
-        include_str!("../../README.md").contains(&answered),
+        include_str!("../../docs/guide/models.md").contains(&answered),
         "the README no longer quotes: {answered}"
     );
 }
@@ -8528,7 +8548,7 @@ fn a_range_on_a_bool_or_a_char_field_is_refused() {
 /// The README prints each refusal, held here to what the guard says.
 #[test]
 fn the_readme_shows_the_refusal_of_a_bound_of_the_wrong_kind() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/validation.md");
     let on_a_list: syn::ItemStruct = syn::parse_quote! {
         struct Article {
             #[model_schema_prop(minLength = 1, pattern = "^[a-z]+$")]
@@ -9151,7 +9171,8 @@ fn a_literal_beside_a_rule_is_refused() {
     });
     assert_eq!(shown.len(), 1, "got: {shown:?}");
     assert!(
-        include_str!("../../README.md").contains(&format!("error: {}\n", shown[0])),
+        include_str!("../../docs/guide/literals-and-type-names.md")
+            .contains(&format!("error: {}\n", shown[0])),
         "the README no longer shows the refusal: {}",
         shown[0]
     );
@@ -12189,7 +12210,7 @@ fn an_enum_with_no_string_check_is_not_refused() {
 
 #[test]
 fn a_unit_variants_name_that_breaks_the_enums_check_is_a_build_error() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/enums.md");
     let sized = expansion_under(
         "minLength = 2, maxLength = 3",
         "pub enum Size { S, Xl, Xxxxl }",
@@ -12376,7 +12397,11 @@ fn an_enums_string_check_that_reaches_nothing_is_refused() {
         }
     }
     assert!(
-        include_str!("../../README.md").contains(
+        concat!(
+            include_str!("../../docs/guide/enums.md"),
+            include_str!("../../docs/guide/flatten.md")
+        )
+        .contains(
             "error: model_schema: type `Shape`: `minLength` reaches nothing here: an enum's check \
              holds each variant written with no data and each field written as a string or a \
              path that carries no `literal`, and `Shape` has neither\n"
@@ -13281,7 +13306,7 @@ fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_n
             "for {source}, got: {expanded}"
         );
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/mongodb-operations.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -16045,7 +16070,7 @@ fn the_readme_shows_the_refusal_of_an_index_map_written_with_the_feature_off() {
         super::gated_name_message("IndexMap", "indexmap", "a map")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -16185,7 +16210,7 @@ fn the_readme_shows_the_refusal_of_a_chrono_type_written_with_the_feature_off() 
         super::gated_name_message("NaiveDate", "chrono", "a date or a time")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -16198,7 +16223,7 @@ fn the_readme_shows_the_refusal_of_an_object_id_written_with_the_feature_off() {
         super::gated_name_message("ObjectId", "mongodb", "a MongoDB ObjectId")
     );
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
         "the README no longer shows: {shown}"
     );
 }
@@ -20472,7 +20497,7 @@ fn a_direct_flatten_of_a_value_written_in_place_is_refused_by_its_own_keyword() 
         if spelled == "(String, u32)" {
             let answered = format!("error: {refused}");
             assert!(
-                include_str!("../../README.md").contains(&answered),
+                include_str!("../../docs/guide/flatten.md").contains(&answered),
                 "the README no longer quotes: {answered}"
             );
         }
@@ -21923,7 +21948,7 @@ fn the_readme_shows_the_transparent_direction_refusal() {
         "error: model_schema: type `Split`: {}",
         transparent_direction_refusal("field `count`", "field `text`")
     );
-    assert!(include_str!("../../README.md").contains(&shown));
+    assert!(include_str!("../../docs/guide/generics-and-brands.md").contains(&shown));
 }
 
 #[cfg(feature = "serde")]
@@ -22919,7 +22944,7 @@ fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
         );
         assert_refused_without_member_keys("", source, &refusal);
         assert!(
-            name != "Becalm" || include_str!("../../README.md").contains(&refusal),
+            name != "Becalm" || include_str!("../../docs/guide/enums.md").contains(&refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -22985,7 +23010,7 @@ fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
         let refusal = untagged_variant_refusal(enum_name, "Loose");
         assert_refused_without_member_keys("", source, &refusal);
         assert!(
-            enum_name != "Mixed" || include_str!("../../README.md").contains(&refusal),
+            enum_name != "Mixed" || include_str!("../../docs/guide/enums.md").contains(&refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }
@@ -23028,7 +23053,7 @@ fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
                        whole enum.";
         assert_refused_without_member_keys("", source, refusal);
         assert!(
-            include_str!("../../README.md").contains(refusal),
+            include_str!("../../docs/guide/enums.md").contains(refusal),
             "the README no longer quotes this refusal:\n{refusal}"
         );
     }

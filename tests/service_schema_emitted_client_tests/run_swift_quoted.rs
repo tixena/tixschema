@@ -18,7 +18,7 @@ use super::quoted_models::{
     mulcted_swift, serde_written, tariffed_swift, tithed_swift, tolled_swift,
 };
 use super::run_dart_quoted::TARIFFED;
-use super::run_dart_validate::from_until;
+use super::run_dart_validate::from_heading;
 use super::runtime::judged;
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -141,10 +141,9 @@ fn a_name_that_holds_a_quote_is_read_and_written_back_as_serde_writes_it() {
 /// the key it declares and the payload it reads.
 #[test]
 fn the_readme_shows_the_payload_the_run_reads() {
-    let section = from_until(
-        include_str!("../../README.md"),
+    let section = from_heading(
+        include_str!("../../docs/guide/swift.md"),
         "#### A Swift read refuses what `validate()` refuses",
-        "### Literal Values",
     );
     let declared = r#"case quoted = "say \"hi\"""#;
     assert!(

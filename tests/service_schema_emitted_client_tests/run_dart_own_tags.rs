@@ -242,7 +242,7 @@ fn a_struct_under_its_own_tag_refuses_in_dart_every_tag_zod_refuses() {
 #[test]
 fn the_readme_shows_the_dart_read_of_a_struct_under_its_own_tag() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

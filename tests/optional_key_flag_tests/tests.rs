@@ -79,7 +79,7 @@ mod without_the_serde_feature {
     /// The README documents the flag against this build, and shows the split above.
     #[test]
     fn the_readme_declares_the_shape_the_flag_decides_and_shows_what_it_emits() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/optional-and-nullable-keys.md");
 
         assert!(
             readme.contains(

@@ -5,9 +5,6 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use tixschema::model_schema;
-
 use crate::tests::{
     FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
     by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
@@ -20,6 +17,8 @@ use crate::validate::{
     reading_swift, sealed_swift,
 };
 use crate::validate::{Slug, marker_swift, routing_swift, sealed_slug_swift, slug_swift};
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
 /// What opens the read of a type alone.
 const UNJUDGED: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws";
@@ -246,7 +245,10 @@ fn a_struct_reads_its_members_then_judges_the_value_it_read() {
 #[test]
 fn a_holder_reads_each_model_it_names_unjudged() {
     let swift = manifest_swift::swift_definition();
-    let readme = include_str!("../../README.md");
+    let readme = concat!(
+        include_str!("../../docs/guide/swift.md"),
+        include_str!("../../docs/guide/object-id.md")
+    );
     for statements in [
         vec![
             "_ = try container.decodeNil(forKey: .firstParcel)",

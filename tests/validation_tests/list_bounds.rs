@@ -415,7 +415,7 @@ mod a_key_on_a_list {
     /// The README prints these two reports beside the declaration they come from.
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_list() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let empty = Document {
             name_config: parts(0),
         };

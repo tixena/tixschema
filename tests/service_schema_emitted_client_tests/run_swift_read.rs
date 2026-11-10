@@ -1170,7 +1170,7 @@ fn the_ws_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
 /// The README shows the read these runs make, what it prints and what a client answers.
 #[test]
 fn the_readme_shows_what_these_runs_read() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/swift.md");
     for shown in [
         "try JSONDecoder().decode(Manifest.self, from: payload)",
         "'firstParcel.label': too short: minimum length is 1, got 0",

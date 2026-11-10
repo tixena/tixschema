@@ -195,7 +195,7 @@ mod a_bound_the_fields_own_type_declares {
 
         // The README prints this report beside the declaration it comes from, so it is held to a
         // run of the generator rather than to memory.
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let shown = "// Err([\"'slug': too short: minimum length is 3, got 1\"])";
         assert!(readme.contains(shown), "the README no longer shows {shown}");
     }
@@ -262,7 +262,7 @@ mod a_bound_the_fields_own_type_declares {
         let good: Holder = serde_json::from_str(r#"{"holds":{"name":"abc"}}"#).unwrap();
         good.validate().unwrap();
 
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         assert!(
             readme.contains("`'holds.name': too short: ...`"),
             "the README no longer shows what a nested report reads as"
@@ -1258,7 +1258,7 @@ mod a_check_the_enum_declares {
             },
         }
 
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/enums.md");
         for reported in [
             Tag::Plain {
                 word: "abcdef".to_owned(),
@@ -3636,7 +3636,7 @@ fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
         ),
     }
 
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/validation.md");
     for reported in [
         Entry::Code("abc".to_owned()).validate(),
         Entry::Pair("a".to_owned(), 0).validate(),
@@ -3700,7 +3700,7 @@ fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
         ]
     );
 
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/validation.md");
     for error in &errors {
         assert!(
             readme.contains(error.as_str()),
@@ -3726,7 +3726,7 @@ fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
         vec!["too short: minimum length is 3, got 2".to_owned()]
     );
 
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/enums.md");
     for error in &errors {
         assert!(
             readme.contains(error.as_str()),

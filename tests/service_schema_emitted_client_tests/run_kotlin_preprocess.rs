@@ -1497,7 +1497,7 @@ fn a_variant_under_a_tag_alone_reads_what_it_holds_through_its_functions() {
 /// compiles and to the rows its runs answer.
 #[test]
 fn the_readme_shows_the_functions_and_the_rows_that_run() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     assert!(
         readme.contains(&format!("```kotlin{SAMPLE_FUNCTIONS}```")),
         "the README no longer shows the functions the run compiles"

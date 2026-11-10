@@ -243,7 +243,7 @@ fn serde_reads_as_none_an_optional_flattened_struct_the_json_schema_refuses() {
     let example = "reads `{\"label\":\"a\"}` with `burgee: Some(Burgee { label: \"a\" })`, and \
                    `{\"label\":3}` with `burgee: None`, which it writes back as `{}`";
     assert!(
-        include_str!("../../README.md").contains(example),
+        include_str!("../../docs/guide/flatten.md").contains(example),
         "the README no longer states: {example}"
     );
 }

@@ -457,7 +457,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             ""
         );
         assert!(
-            include_str!("../../README.md")
+            include_str!("../../docs/guide/validation.md")
                 .contains("`2026-10-13T04:17:00`, where the type prints `2026-10-13 04:17:00`"),
             "the README no longer shows the key of a date and time"
         );
@@ -705,7 +705,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     /// of a struct, is what serde writes and what a run answers.
     #[test]
     fn the_readme_shows_the_steps_serde_writes_for_a_variant_and_for_the_one_slot() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let freight = Freight::Loose {
             freight_label: String::new(),
         };
@@ -779,7 +779,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     /// Each message the README shows for a map, for a slot and for a tuple is one a run answers.
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_map_a_slot_and_a_tuple() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let terminal = Terminal {
             first_parcel: sound(),
             parcels_by_dock: at_north(),

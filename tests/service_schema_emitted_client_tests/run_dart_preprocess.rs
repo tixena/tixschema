@@ -25,7 +25,7 @@ use super::preprocess_models::{
     routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart, tagged_dart,
     transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys, wrapped_dart,
 };
-use super::run_dart_validate::{dart, from_until, module};
+use super::run_dart_validate::{dart, from_heading, from_until, module};
 use super::runtime::ran;
 use super::tests::{ShelfError, shelf_error_dart};
 
@@ -1467,12 +1467,8 @@ fn the_ws_client_reads_a_reply_through_its_functions() {
 /// that is emitted, with the white space taken out of both.
 #[test]
 fn the_readme_shows_the_read_that_is_emitted_and_what_it_answers() {
-    let readme = include_str!("../../README.md");
-    let section = from_until(
-        readme,
-        "#### A `preprocess` in the Dart client",
-        "### Optional TypeScript Keys",
-    );
+    let readme = include_str!("../../docs/guide/preprocess.md");
+    let section = from_heading(readme, "#### A `preprocess` in the Dart client");
     let packed = |text: &str| text.split_whitespace().collect::<String>();
     let parcel_class = parcel_dart::dart_definition();
     let emitted = packed(from_until(

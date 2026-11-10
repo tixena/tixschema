@@ -5,7 +5,7 @@
 #### `validate()` on the Dart types
 
 Every type `src/features/dart.rs` writes has `List<String> validate()`, which runs what the Rust
-`validate()` of the type runs, in its order. `README.md`'s "`validate()` in Dart" section is the
+`validate()` of the type runs, in its order. `docs/guide/dart.md`'s "`validate()` in Dart" section is the
 consumer's view; this is what a change has to keep.
 
 - **A class refuses a key no member reads**, as TypeScript, Zod and serde refuse it
@@ -79,14 +79,14 @@ consumer's view; this is what a change has to keep.
   `tests/service_schema_emitted_client_tests/run_dart_validate.rs` runs the emitted source under
   the Dart SDK: a value under a named field, in a list, in a map and in an optional is compared
   with what Rust's `validate()` answers of it, a slot and a variant's member are written out, and
-  the README's section is held to the text. `dart analyze` passes every shape whose codec it
+  the guide's section is held to the text. `dart analyze` passes every shape whose codec it
   passed before. Each value is read with `fromJsonUnjudged`: `fromJson` refuses a broken one.
 
 #### The Dart read refuses what `validate()` refuses
 
 `fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
 `validate()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
-read joins it. `README.md`'s "The Dart read refuses what `validate()` refuses" section is the
+read joins it. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
 consumer's view; this is what a change has to keep.
 
 - **One writer of the pair.** `read_pair` writes `fromJson` over `fromJsonUnjudged` for a class, a
@@ -172,7 +172,7 @@ consumer's view; this is what a change has to keep.
   named members sharing it. `collect_dart_fields` pushes no nullable level on a flattened one,
   which has no key to leave out, so one that is no `Option` is read as any flattened member is
   and its constructor parameter is `required`. A member under `skip_serializing_if` is written
-  wherever it holds a value: no client calls the Rust function, and the README states the limit.
+  wherever it holds a value: no client calls the Rust function, and the guide states the limit.
 - **Every flattened member is read at its place, in the order declared**, as serde reads it
   (`constructor_arguments`): from the object without the tag, the keys the holder's own members
   take and the entries each member flattened ahead of it took. That is what a function a member
@@ -228,7 +228,7 @@ consumer's view; this is what a change has to keep.
     that does not read, as TypeScript and Zod refuse it, where serde reads `None`. Its variable,
     `entry`, calls no function either.
   - `Taken::Only` of an `ObjectId` (`object_id_keys`), and of a brand or an alias over one that
-    `value_wrapper_tokens` records, `$oid`: the README's `ObjectId` refuses
+    `value_wrapper_tokens` records, `$oid`: the guide's `ObjectId` refuses
     any other key, where serde reads past one flattened, so `only` hands it an object of that key
     alone, and `without` removes it from what the members after it are handed. An optional one
     is looked for by the key, as a struct is. A holder hands such a value the same way through
@@ -273,7 +273,7 @@ consumer's view; this is what a change has to keep.
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
   flattened member of its own as a map: each records none. A type the emitter has not written
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
-  and an optional one is read in the closure, and the README states both. `toJson` writes each
+  and an optional one is read in the closure, and the guide states both. `toJson` writes each
   flattened member at its place; a key two of them hold is refused at expansion
   (`model_schema/flatten_order.rs`), so no holder the emitter writes holds one. `run_dart_flattened_options.rs` pins the read of a flattened
   `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
@@ -284,7 +284,7 @@ consumer's view; this is what a change has to keep.
 - **No cast is written of a value Dart types `Map<String, dynamic>` already**, a cast `dart
   analyze` reports as unnecessary. `joined_entries` spreads what a flattened member, and the lone
   slot of a variant under a tag alone, writes as it is where `writes_an_object` answers: a map, the
-  README's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
+  guide's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
   `Map<String, dynamic>`. An optional one is cast to the map it holds. A brand, an alias, a tuple struct and an enum answer `dynamic` from
   `toJson` and are spread through `as Map<String, dynamic>`, and so is a type the emitter has not
   written: a struct declared below its holder keeps the cast, which the analyzer reports. A
@@ -355,7 +355,7 @@ consumer's view; this is what a change has to keep.
   `tests/service_schema_emitted_client_tests/run_dart_read.rs` runs the reads under the Dart
   SDK: the sample beside what the Rust read answers, every case of `run_dart_validate.rs` read
   with `fromJson` and held to what its `validate()` answers, an untagged enum beside the variant
-  serde takes, a reply that breaks a rule through both clients, and the README's section.
+  serde takes, a reply that breaks a rule through both clients, and the guide's section.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
   `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A map of
@@ -376,7 +376,7 @@ consumer's view; this is what a change has to keep.
 its members name, under the names the attribute writes, each a function of the consumer's own:
 `dynamic trimmed(dynamic payload)`. `fromJson` calls that read, so both correct the payload, and
 `validate()` judges what the functions answered. The order of one read is Rust's: the type's
-functions, each member's as it is read, the value, then `validate()`. `README.md`'s "A
+functions, each member's as it is read, the value, then `validate()`. `docs/guide/preprocess.md`'s "A
 `preprocess` in the Dart client" section is the consumer's view, which calls the key a last
 resort; this is what a change has to keep.
 
@@ -439,7 +439,7 @@ resort; this is what a change has to keep.
   `tests/pattern_preprocess_tests/models.rs` and runs them under the Dart SDK: the sample and the
   shared table of positions print what the Rust read prints, two rows apart (`NOT_READ`), with
   the keys a flattened type is handed, the calls of one read counted, a function named after a
-  name of the read, a reply through both clients, and the README's section. Its module is
+  name of the read, a reply through both clients, and the guide's section. Its module is
   declared last in the binary: its models take names the modules above it declare, and an
   expansion reads a type by its name.
 

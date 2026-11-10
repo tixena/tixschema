@@ -438,7 +438,7 @@ fn the_readme_shows_what_the_parcel_of_the_documents_emits() {
         definition(struct_kotlin_tokens(&parcel, &checked)),
         plain(&manifest),
     ];
-    let readme = include_str!("../../../README.md");
+    let readme = include_str!("../../../docs/guide/kotlin.md");
     let opens = "```kotlin\n@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
                  ParcelSerializer::class)";
     let block = readme

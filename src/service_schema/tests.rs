@@ -622,7 +622,7 @@ fn the_generated_module_reaches_the_author_s_declarations_through_super() {
          Got: {emitted}"
     );
     // The README states the requirement where it documents the construct, so the two cannot drift.
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     assert!(
         readme.contains("**A service is declared at module scope, never inside a function body.**")
             && readme
@@ -1321,7 +1321,9 @@ fn the_readme_states_the_refusal_of_a_json_value_in_an_operation_as_the_build_an
     assert_eq!(refusals.len(), 1, "got: {refusals:?}");
     let answered = format!("error: {}", refusals[0].0);
     assert_eq!(
-        include_str!("../../README.md").matches(&answered).count(),
+        include_str!("../../docs/guide/models.md")
+            .matches(&answered)
+            .count(),
         1,
         "the README no longer quotes: {answered}"
     );
@@ -2731,7 +2733,7 @@ fn the_emitted_trait_names_the_operation_a_missing_implementation_is_refused_for
 
 #[test]
 fn the_readme_shows_both_one_way_refusals_the_way_the_macro_writes_them() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/services.md");
     for (source, shown) in [
         (
             "pub trait CustomerService<Ctx> {

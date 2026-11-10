@@ -69,7 +69,7 @@ fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text str 
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    include_str!("../../docs/guide/checks.md")
 }
 
 /// The example the rustdoc runs, as a reader sees it: without the lines rustdoc hides.

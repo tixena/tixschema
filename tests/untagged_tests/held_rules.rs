@@ -94,7 +94,7 @@ fn the_json_schema_admits_by_a_later_branch_what_serde_refuses() {
 
 #[test]
 fn the_readme_states_the_answers_of_a_held_models_rule() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/validation.md");
     for shown in [
         "`{\"label\":\"\"}` read as `Picker` is `Picker::A`, the first variant whose shape reads \
          it, and serde refuses it with `'label': too short: minimum length is 1, got 0`.",

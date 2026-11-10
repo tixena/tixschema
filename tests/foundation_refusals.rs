@@ -149,7 +149,12 @@ mod tests {
             );
         }
         assert!(
-            include_str!("../README.md").contains(&format!("error[E0080]: {}", expected[0])),
+            concat!(
+                include_str!("../docs/guide/http-rest.md"),
+                include_str!("../docs/guide/recovering-decode.md"),
+                include_str!("../docs/guide/mongodb-operations.md")
+            )
+            .contains(&format!("error[E0080]: {}", expected[0])),
             "the README no longer quotes: {}",
             expected[0]
         );

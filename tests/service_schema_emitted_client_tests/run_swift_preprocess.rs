@@ -1183,7 +1183,7 @@ fn the_one_slot_of_a_struct_calls_its_function_on_the_structs_own_payload() {
 /// The README shows the functions these runs compile, the read they make and what it answers.
 #[test]
 fn the_readme_shows_what_these_runs_compile_and_read() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/preprocess.md");
     for shown in [
         SHOWN_FUNCTIONS,
         "func trimmed(_ payload: Any) -> Any",

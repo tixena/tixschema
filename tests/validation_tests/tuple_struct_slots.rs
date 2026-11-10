@@ -161,7 +161,7 @@ mod a_check_on_a_slot {
             held.validate().unwrap_err(),
             vec!["'code': too short: minimum length is 1, got 0".to_owned()]
         );
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         for shown in [
             r#"`{"code":""}`"#,
             "`'code': too short: minimum length is 1, got 0`",
@@ -230,7 +230,7 @@ mod a_check_on_a_slot {
 
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_slot() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let reported = Pair(String::new(), 0).validate();
         reported.as_ref().unwrap_err();
         let shown = format!("// {reported:?}");

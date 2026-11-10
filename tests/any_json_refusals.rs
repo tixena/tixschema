@@ -63,7 +63,7 @@ mod tests {
             "the check is spanned on the field's type"
         );
         assert!(
-            include_str!("../README.md").contains(&format!("error[E0080]: {refusal}")),
+            include_str!("../docs/guide/models.md").contains(&format!("error[E0080]: {refusal}")),
             "the README no longer quotes: {refusal}"
         );
     }

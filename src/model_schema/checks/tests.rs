@@ -177,7 +177,7 @@ fn a_name_written_twice_is_refused() {
 /// Each row of the README's table of refusals: what is written, and the words it is refused in.
 #[test]
 fn the_readme_states_each_refusal_in_the_words_it_is_raised_in() {
-    let readme = include_str!("../../../README.md");
+    let readme = include_str!("../../../docs/guide/checks.md");
     for (written, sentence) in [
         (
             "\"withinParcel\"",

@@ -6,7 +6,7 @@ use super::object_id_models::{Told, serde_told};
 
 /// The fenced block of `language` in the section, as the README writes it.
 pub fn readme_object_id(language: &str) -> String {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/object-id.md");
     let section = &readme[readme.find("## MongoDB ObjectId Support").unwrap()..];
     let fence = format!("```{language}\n");
     let start = section.find(&fence).unwrap() + fence.len();

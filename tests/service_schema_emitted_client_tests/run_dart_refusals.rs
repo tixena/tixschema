@@ -519,7 +519,7 @@ fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
 #[test]
 fn the_readme_shows_refusals_the_run_measures() {
     let section = from_until(
-        include_str!("../../README.md"),
+        include_str!("../../docs/guide/dart.md"),
         "#### The Dart read refuses what `validate()` refuses",
         "#### What stays yours",
     );

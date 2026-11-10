@@ -22,7 +22,7 @@ use super::run_dart_refusals::{
     Clasping, Clenching, Fogging, Frosting, Grasping, Thawing, clasping_swift, clenching_swift,
     fogging_swift, frosting_swift, grasping_swift, thawing_swift,
 };
-use super::run_dart_validate::from_until;
+use super::run_dart_validate::from_heading;
 use super::runtime::judged;
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -737,10 +737,9 @@ fn an_untagged_enum_takes_the_fixed_array_for_an_array_of_its_length_alone() {
 /// above measures.
 #[test]
 fn the_readme_shows_the_refusals_the_run_measures() {
-    let section = from_until(
-        include_str!("../../README.md"),
+    let section = from_heading(
+        include_str!("../../docs/guide/swift.md"),
         "#### A Swift read refuses what `validate()` refuses",
-        "### Literal Values",
     );
     for declared in [
         "`struct Clenching { pair: [u8; 2] }`",

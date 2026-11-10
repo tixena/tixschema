@@ -85,7 +85,7 @@ fn each_text_of_one_form_reads_in_kotlin_where_the_table_states() {
 /// above measures.
 #[test]
 fn the_readme_shows_texts_the_run_measures() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     for (shown, read_as, kotlin) in [
         ("\"ab\"", "LetterLog", "expected a character, found \"ab\""),
         ("\"\"", "LetterLog", "expected a character, found \"\""),

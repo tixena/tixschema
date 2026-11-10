@@ -11,8 +11,9 @@ subagents those sessions launch, so every character here is paid on every reques
 commands, the gate and the rules for writing code here, and nothing else.
 
 - A feature's behaviour, what a surface generates, and how a part of the implementation works go
-  in `README.md` (what a user of the crate sees) or in the `docs/` file listed under "Related
-  Documentation" (how the implementation does it). Never here.
+  in the guide, one file per topic under `docs/guide/` (what a user of the crate sees), or in the
+  `docs/` file listed under "Related Documentation" (how the implementation does it). Never here.
+  `README.md` holds the installation, the quick start and the guide's index.
 - A task or a brief that says to update `CLAUDE.md` where a behaviour it states changes means the
   `docs/` file that holds that behaviour. Change this file only when a command, the gate or a rule
   below changes.
@@ -175,7 +176,8 @@ written `Vec` in any later expansion would be read as that type.
 
 ## Related Documentation
 
-- [README.md](README.md) - User guide, examples, troubleshooting
+- [README.md](README.md) - Installation, the quick start, and the index of the guide's files.
+- [docs/guide/](docs/guide/) - The user guide, one file per topic, in the order `README.md` lists them. A test that holds a passage to what it states reads the file the passage is in.
 - [justfile](justfile) - All available commands with descriptions
 - [docs/architecture.md](docs/architecture.md) - How the macros turn a declaration into each surface, the data structures they share, the feature flags, and where each part of the source lives.
 - [docs/type-mappings.md](docs/type-mappings.md) - How each Rust type, serde attribute and published name is written on every surface, and the form each client sends.

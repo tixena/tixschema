@@ -1,6 +1,5 @@
 //! Tests of collections: `Vec`, the sequence wrappers, and maps under every key type serde
 //! stringifies.
-
 use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 #[cfg(feature = "chrono")]
 use chrono::NaiveDate;
@@ -4228,7 +4227,7 @@ fn serde_reads_no_number_key_in_an_enum_it_buffers() {
     ] {
         let stated = format!("{written} (`{refused}`)");
         assert!(
-            include_str!("../../README.md").contains(&stated),
+            include_str!("../../docs/guide/flatten.md").contains(&stated),
             "the README no longer states: {stated}"
         );
     }

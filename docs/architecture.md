@@ -279,8 +279,8 @@ tixschema/
 │   │   ├── message_shape.rs      # The layers of a Vec, HashMap or Option message, read element by element
 │   │   └── skills.rs             # The skills folder, read at expansion
 │   ├── features/service_schema/  # The clients and servers of each language; for mcp: mcp_ts_service.rs, mcp_ts_client.rs, dart_mcp.rs, kotlin_mcp_service.rs, kotlin_mcp_client.rs, swift_mcp_client.rs, mcp_scopes.rs
-│   ├── check_example.md          # The check example the rustdoc runs and the README shows
-│   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the README shows
+│   ├── check_example.md          # The check example the rustdoc runs and the guide shows
+│   ├── preprocess_example.md     # The preprocess example the rustdoc runs and the guide shows
 │   ├── field_type.rs             # Type system (FieldDef, FieldDefType)
 │   ├── utils.rs                  # Helpers (naming, docs, serde parsing)
 │   ├── features/
@@ -312,10 +312,10 @@ tixschema/
 ├── tests/
 │   ├── basic_tests.rs
 │   ├── pattern_preprocess_tests.rs       # pattern and preprocess: the Zod text, and every read of a preprocess
-│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the README; the Dart run compiles the models
+│   ├── pattern_preprocess_tests/         # The models, the reads, the chained hooks, the Zod text, the guide; the Dart run compiles the models
 │   ├── check_tests.rs                    # check, as validate() runs it
-│   ├── check_tests/                      # The models, the shared table, the members, the README
-│   ├── preprocess_and_check_tests.rs     # The README's section that states the two keys for the five languages
+│   ├── check_tests/                      # The models, the shared table, the members, the guide
+│   ├── preprocess_and_check_tests.rs     # The guide's section that states the two keys for the five languages
 │   ├── preprocess_and_check_tests/       # The parcel the section declares, and the section held to the test of each language
 │   ├── serde_default_tests.rs            # A key under #[serde(default)]: the serde read, the text of every surface
 │   ├── serde_default_tests/              # The models and the table every surface is held to
@@ -327,12 +327,12 @@ tixschema/
 │   ├── wide_integer_tests/               # The models
 │   ├── service_wide_integer_tests.rs     # A bare u64 and i64 through the Rust dispatchers and clients, as JSON numbers
 │   ├── service_wide_integer_tests/       # The service, its transports and its clients
-│   ├── std_range_tests.rs                # The four std ranges: every surface, validate(), the read, the decode, the README
+│   ├── std_range_tests.rs                # The four std ranges: every surface, validate(), the read, the decode, the guide
 │   ├── std_range_tests/                  # The models and payloads every surface and client is held to
 │   ├── declared_range_tests.rs           # A type of the crate's own named Range keeps its name
 │   ├── std_range_refusals.rs             # A range named after another type fails at its identity check, E0308
 │   ├── any_json_refusals.rs              # A bare Value that is serde_json's fails at its check, E0080; the crate's own Value builds
-│   ├── std_result_tests.rs               # The std Result: every surface, validate(), the read, the decode, MongoDB, the README
+│   ├── std_result_tests.rs               # The std Result: every surface, validate(), the read, the decode, MongoDB, the guide
 │   ├── std_result_tests/                 # The models and payloads every surface and client is held to, and the reproduction
 │   ├── declared_result_tests.rs          # A type of the crate's own named Result keeps its name
 │   ├── std_result_refusals.rs            # A Result named after another type fails at its identity check, E0308
@@ -381,7 +381,8 @@ tixschema/
 │   └── strict_consumer_app.rs    # A binary: models of its own, both initializers
 ├── justfile                      # Task runner (commands)
 ├── Cargo.toml                    # Dependencies, features
-└── README.md                     # User documentation
+├── docs/guide/                   # The user guide, one file per topic
+└── README.md                     # Installation, the quick start, the guide's index
 ```
 
 ## Debugging Tips

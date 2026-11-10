@@ -5,7 +5,7 @@ use super::models::Reply;
 use super::validate::MISSIVE_REPORTS;
 
 /// The README, as this test reads it.
-const README: &str = include_str!("../../README.md");
+const README: &str = include_str!("../../docs/guide/models.md");
 
 /// The declaration the README shows, which `models.rs` compiles.
 const DECLARED: &str = "#[model_schema(enable = [\"jsonschema\"])]
@@ -32,8 +32,6 @@ fn the_readme_declares_the_model_this_binary_compiles() {
     let section = README
         .split_once("### Results")
         .and_then(|(ranges, rest)| ranges.contains("### Ranges").then_some(rest))
-        .and_then(|rest| rest.split_once("### Enums"))
-        .map(|(section, _)| section)
         .unwrap();
     assert!(
         section.contains(DECLARED),

@@ -11,7 +11,6 @@ use std::hash::RandomState;
 
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
-
 use tixschema::model_schema;
 
 const DOCUMENT: &str = r#"{"data":{"zeta":"1","alpha":"2"},"labels":["b","a"]}"#;
@@ -113,7 +112,7 @@ fn a_document_is_written_back_in_the_order_it_was_read() {
 /// declaration the compiler reads.
 #[test]
 fn the_readme_declares_the_document_and_the_text_it_reads_and_writes_back() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/models.md");
     assert_eq!(
         include_str!("tests.rs").matches(README_DECLARATION).count(),
         2,
@@ -164,7 +163,7 @@ fn typescript_writes_each_as_its_std_twin() {
     ] {
         assert!(document.contains(line), "missing `{line}` in: {document}");
         assert!(
-            include_str!("../../README.md")
+            include_str!("../../docs/guide/models.md")
                 .lines()
                 .any(|shown| shown == line),
             "the README no longer shows this member verbatim: {line}"

@@ -1122,7 +1122,7 @@ fn each_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
 /// constructor the emitter writes for the holder.
 #[test]
 fn the_readme_shows_what_the_runs_answer() {
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/kotlin.md");
     let four: Vec<&str> = JUDGED
         .lines()
         .skip_while(|line| *line != "Manifest, four broken parcels: refused")

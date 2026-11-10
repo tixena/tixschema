@@ -483,9 +483,12 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_member_as_the_build_answers_i
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -746,7 +749,7 @@ fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answ
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert_eq!(
-            include_str!("../../../README.md")
+            include_str!("../../../docs/guide/flatten.md")
                 .matches(&answered)
                 .count(),
             quoted,
@@ -840,9 +843,12 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_tag_as_the_build_answers_it()
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1330,9 +1336,12 @@ fn the_readme_states_the_refusal_of_a_filling_written_as_no_object_as_the_build_
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1361,9 +1370,12 @@ fn the_readme_states_the_refusal_of_a_filling_written_as_an_entry_as_the_build_a
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/flatten.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1449,9 +1461,12 @@ fn the_readme_states_the_refusal_of_a_slot_that_writes_a_map_beside_a_tag_as_the
     assert_eq!(messages.len(), 1, "{messages:?}");
     let answered = format!("error: {}", messages[0]);
     assert_eq!(
-        include_str!("../../../README.md")
-            .matches(&answered)
-            .count(),
+        concat!(
+            include_str!("../../../docs/guide/enums.md"),
+            include_str!("../../../docs/guide/upgrading.md")
+        )
+        .matches(&answered)
+        .count(),
         2,
         "the README no longer quotes: {answered}"
     );
@@ -1782,7 +1797,7 @@ fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_as_the_build_answers
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert!(
-            include_str!("../../../README.md").contains(&answered),
+            include_str!("../../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }
@@ -2115,7 +2130,7 @@ fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_in_a_buffered_enum()
         assert_eq!(messages.len(), 1, "{source}: {messages:?}");
         let answered = format!("error: {}", messages[0]);
         assert!(
-            include_str!("../../../README.md").contains(&answered),
+            include_str!("../../../docs/guide/flatten.md").contains(&answered),
             "the README no longer quotes: {answered}"
         );
     }

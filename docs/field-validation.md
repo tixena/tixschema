@@ -26,7 +26,7 @@ A function a `preprocess` names is called by the read alone of each language, ah
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number().int())` | `{"type": "integer"}` | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, the number serde writes | a `Long` |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr | `T?`, the one spelling of an `Option` | the key always encoded, `nil` included | no `= null` default on the property |
 
-`README.md`'s "Preprocess and check" section is the one place that states `preprocess` and `check`
+`docs/guide/preprocess-and-check.md`'s "Preprocess and check" section is the one place that states `preprocess` and `check`
 for the five languages side by side. It names the section of each language for the detail and
 repeats none of it. What a change has to keep:
 
@@ -66,7 +66,7 @@ with `run_{node,dart,swift,kotlin}_integer_limits.rs` runs each.
 **A key written on a field measures the field's own value.** `Option` and the transparent wrappers
 (`Box`, `Rc`, `Arc`, `Cow`, and every reference) hold one value and are read through;
 a list is a value of its own and is not. So on a list `minLength` and `maxLength` count its items,
-whatever they are, and `pattern`, `minimum` and `maximum` are refused. `README.md`'s "List Length"
+whatever they are, and `pattern`, `minimum` and `maximum` are refused. `docs/guide/validation.md`'s "List Length"
 section is the consumer's view; this is what a change has to keep.
 
 - `constrained_shape` ends on `ConstraintLeaf::List` at an array, a slice or a std sequence
@@ -228,7 +228,7 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
   data is not measured.
 
 A `check = ["name", ...]` names functions of the consumer's own, on a field and, in
-`#[model_schema(...)]`, on a type. `README.md`'s "Checks" section is the consumer's view; this is
+`#[model_schema(...)]`, on a type. `docs/guide/checks.md`'s "Checks" section is the consumer's view; this is
 what a change has to keep.
 
 - **One reader.** `function_names` in `src/features/model_schema_prop.rs` reads the key for both
@@ -289,7 +289,7 @@ what a change has to keep.
   expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
   `model_schema_prop`'s rustdoc under `serde`, and
-  `tests/check_tests/readme.rs` holds the README to it. `tests/check_tests/models.rs` is compiled
+  `tests/check_tests/readme.rs` holds the guide to it. `tests/check_tests/models.rs` is compiled
   by `tests/check_tests.rs` and by `tests/generic_types_tests/declarations.rs`, which parses each
   case under node and compares the two sides as one text. This crate's lints order a struct's
   members by name, so the compiled `Parcel` declares `label` last and reports it after
@@ -312,12 +312,12 @@ met. `check_literal_alone`, called from `model_schema_prop_guard_errors` right a
 `minimum`, `maximum` or `check`, in every build, naming the field, the literal and each rule
 (`written_constraint_keys`, read before a list's lengths move into `min_items`/`max_items`, then
 `check`). `as`, `preprocess`, `ts_optional` and `nullable` hold the value to no rule and stay
-allowed beside it. `README.md`'s "Literal Values" section shows the refusal, and
-`a_literal_beside_a_rule_is_refused` holds the README to it.
+allowed beside it. `docs/guide/literals-and-type-names.md`'s "Literal Values" section shows the refusal, and
+`a_literal_beside_a_rule_is_refused` holds the guide to it.
 
 A `literal` is a rule, held where every bound is held: by `validate()`, by the read that runs it,
 by the hook of an untagged member, by the recovering decode and by each client's `validate()` and
-read. `README.md`'s "Literal Values" section is the consumer's view; this is what a change has to
+read. `docs/guide/literals-and-type-names.md`'s "Literal Values" section is the consumer's view; this is what a change has to
 keep.
 
 - **One sentence.** `Bound::Literal` in `src/bound_message.rs` states `not the literal {written}`,
@@ -435,8 +435,7 @@ match result {
 A message names a value by its path in the payload, in single quotes: every step serde writes on
 the way to it, joined by dots (`'parcelList.0.itemLabel': too short: minimum length is 1, got 0`).
 A step is a key, a position in an array, or nothing where serde writes the value itself. It is
-the path an issue of the Zod schema holds, and the one the recovering decode lists. `README.md`'s
-"The path a message names" section is the consumer's view; this is what a change has to keep.
+the path an issue of the Zod schema holds, and the one the recovering decode lists. `docs/guide/validation.md`'s "The path a message names" section is the consumer's view; this is what a change has to keep.
 
 A refusal of serde's own carries the same path. Each Rust reader of a message runs the read through
 `read_tracked` (`serde_path_to_error` around the deserializer), which rewrites the path into the
@@ -501,7 +500,7 @@ reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JS
   hook answer with, so the hook names the same key.
 
 `validate()` runs the `validate()` of every value of a declared type a member holds, and
-`README.md`'s "A model held in a map, in a slot or in a tuple" section is the consumer's view:
+`docs/guide/validation.md`'s "A model held in a map, in a slot or in a tuple" section is the consumer's view:
 
 - `held_shape` reads the member's type against its def: through `Option`, the transparent
   wrappers, every reference (`ConstraintWrap::Borrowed`) and each level of a list, as
@@ -550,8 +549,7 @@ The macro also generates into the type's schema module:
 #### A read refuses what `validate()` refuses
 
 A type's read is its own unjudged read, followed by its `validate()`. A holder reads the models it
-holds unjudged, so the whole value is judged once, by the type the caller asked for. `README.md`'s
-"A read refuses what `validate()` refuses" section is the consumer's view; this is what a change
+holds unjudged, so the whole value is judged once, by the type the caller asked for. `docs/guide/validation.md`'s "A read refuses what `validate()` refuses" section is the consumer's view; this is what a change
 has to keep.
 
 - `src/model_schema/judged_read.rs` is the seam. `of_struct` and `of_enum` are handed the item and
@@ -647,8 +645,8 @@ has to keep.
   bound on the slot of a struct of one slot, choose no variant, in serde's read and in the Dart,
   Swift and Kotlin reads, by the owner's decision: the first variant whose shape reads is taken,
   and the read then refuses the value. Zod's `z.union` and the JSON Schema's `anyOf` try the
-  next variant there, and the README states the limit with its `Picker`.
-  `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the README.
+  next variant there, and the guide states the limit with its `Picker`.
+  `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the guide.
 - `named_read_hook` stays for a named field `reachable_nested_shape` walks and `walked_read` does
   not. A model or a brand filling a type parameter judges itself as it is read, and ends the
   read at the first one that breaks a rule.
@@ -665,7 +663,7 @@ has to keep.
   `message_readers` in `src/service_schema/support.rs` writes into the service module, and calls
   the validator next. The AMQP and WebSocket arm hands it a `serde_json::Deserializer` over the
   payload and ends it, as `from_slice` does, and the HTTP dispatcher the value it carried.
-- `tests/validation_tests/refusing_read.rs` holds each shape, the bounds and the README's
+- `tests/validation_tests/refusing_read.rs` holds each shape, the bounds and the guide's
   sample; `tests/branded_newtype_tests/read.rs` a brand under each inner, held in each place and
   in an untagged enum; `tests/check_tests/read.rs` the read of a type that names a check, in
   every build; `tests/recovering_decode_bson_tests/refused_read.rs` a BSON value under each
@@ -682,7 +680,7 @@ unknown`, and each client's read the name as written: `dynamic trimmed(dynamic p
 ("A `preprocess` in the Dart read", below), `func trimmed(_ payload: Any) -> Any` in Swift ("The
 Swift `preprocess`") and `fun trimmed(payload: JsonElement): JsonElement` in Kotlin ("The Kotlin
 client's `preprocess`"). The documents call the key a last resort, and a change
-keeps them saying so: a function runs on every read, on a payload no schema describes. `README.md`'s "Preprocessing" section is
+keeps them saying so: a function runs on every read, on a payload no schema describes. `docs/guide/preprocess.md`'s "Preprocessing" section is
 the consumer's view; this is what a change has to keep.
 
 - **One reader, the one of `check`.** `function_names` reads the key for both attributes, in
@@ -755,7 +753,7 @@ the consumer's view; this is what a change has to keep.
   object is handed on as it is, and a type that names no function is joined as before.
 - **The tests.** `src/model_schema/preprocess/tests.rs` holds the refusals and the emitted read;
   `tests/pattern_preprocess_tests/` the models, the reads of every shape (`read.rs`), the chained
-  hooks (`chained.rs`), the Zod text (`zod.rs`) and the README (`readme.rs`);
+  hooks (`chained.rs`), the Zod text (`zod.rs`) and the guide (`readme.rs`);
   `tests/recovering_decode_tests/preprocessed.rs` and
   `tests/recovering_decode_bson_tests/preprocessed.rs` the recovering decode, the second under
   each `bson` major; `tests/service_schema_dispatch_tests/corrected_request_service.rs` a
@@ -765,7 +763,7 @@ the consumer's view; this is what a change has to keep.
 
 `validate()` is written in the type's own `impl`, beside the schema delegates
 (`assemble_schema_output`, `assemble_branded_output`), so a type that declares a parameter has it
-at every filling. `README.md`'s "A type that declares a parameter" section is the consumer's view;
+at every filling. `docs/guide/validation.md`'s "A type that declares a parameter" section is the consumer's view;
 this is what a change has to keep.
 
 - A holder's `value.validate()` finds the method whatever fills the type it holds. The block-local

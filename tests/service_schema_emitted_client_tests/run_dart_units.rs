@@ -8,7 +8,7 @@
 
 use core::fmt::Write as _;
 
-use super::run_dart_validate::{dart, from_until, module};
+use super::run_dart_validate::{dart, from_heading, from_until, module};
 use super::unit_models::{
     REFUSED, WRITTEN, probe_maybe_unit_dart, probe_nothing_dart, probe_slotless_dart,
     probe_unit_adjacent_dart, probe_unit_choice_dart, probe_unit_either_dart,
@@ -123,27 +123,36 @@ fn the_emitted_types_have_no_issue() {
 /// read.
 #[test]
 fn each_clients_section_shows_the_payload_the_runs_read() {
-    let readme = include_str!("../../README.md");
     let (read_as, json) = WRITTEN[0];
     assert_eq!(
         read_as, "ProbeUnits",
         "the first row no longer reads the struct"
     );
-    for (opens, closes) in [
+    for (opens, section) in [
         (
             "#### The Dart read refuses what `validate()` refuses",
-            "#### What stays yours",
+            from_until(
+                include_str!("../../docs/guide/dart.md"),
+                "#### The Dart read refuses what `validate()` refuses",
+                "#### What stays yours",
+            ),
         ),
         (
             "#### A Swift read refuses what `validate()` refuses",
-            "### Literal Values",
+            from_heading(
+                include_str!("../../docs/guide/swift.md"),
+                "#### A Swift read refuses what `validate()` refuses",
+            ),
         ),
         (
             "#### The read in the Kotlin client",
-            "#### `preprocess` in the Kotlin client",
+            from_until(
+                include_str!("../../docs/guide/kotlin.md"),
+                "#### The read in the Kotlin client",
+                "#### `preprocess` in the Kotlin client",
+            ),
         ),
     ] {
-        let section = from_until(readme, opens, closes);
         for shown in [DECLARED, json] {
             assert!(
                 section.contains(&format!("`{shown}`")),

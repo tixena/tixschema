@@ -738,7 +738,7 @@ mod a_read_refuses_what_validate_refuses {
 
     #[test]
     fn the_readme_shows_what_a_read_answers() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let mut changed = sound();
         changed.fragile_item_codes.push("y".to_owned());
         for shown in [

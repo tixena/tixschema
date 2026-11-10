@@ -314,10 +314,9 @@ fn a_struct_under_its_own_tag_refuses_in_swift_every_tag_zod_refuses() {
 /// the refusals the run above measures.
 #[test]
 fn the_readme_shows_the_swift_read_of_a_struct_under_its_own_tag() {
-    let section = include_str!("../../README.md")
+    let section = include_str!("../../docs/guide/swift.md")
         .split_once("#### A Swift read refuses what `validate()` refuses")
-        .and_then(|(_, rest)| rest.split_once("### Literal Values"))
-        .map(|(section, _)| section)
+        .map(|(_, rest)| rest)
         .unwrap();
     for shown in FLAG_TAGS
         .iter()

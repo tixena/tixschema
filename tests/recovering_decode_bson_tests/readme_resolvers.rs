@@ -240,7 +240,7 @@ fn told(row: Document) -> String {
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    include_str!("../../docs/guide/recovering-decode.md")
 }
 
 /// This file, read back so a pinned declaration can be held against the one that compiles.

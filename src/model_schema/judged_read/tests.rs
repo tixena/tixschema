@@ -47,7 +47,7 @@ fn a_conversion_of_the_authors_own_is_refused_on_a_type_that_publishes_validate(
             "for {key}: {expanded}"
         );
         if key == "try_from" {
-            let readme = include_str!("../../../README.md");
+            let readme = include_str!("../../../docs/guide/validation.md");
             assert!(
                 readme.contains(&format!("error: {refusal}\n")),
                 "the README no longer shows the refusal"

@@ -509,7 +509,7 @@ mod a_brand_is_read_as_a_model_is {
 
     #[test]
     fn the_readme_shows_what_the_read_of_a_brand_answers() {
-        let readme = include_str!("../../README.md");
+        let readme = include_str!("../../docs/guide/validation.md");
         let listing = r#"{"listed":["/a","/etc","/b"]}"#;
         for shown in [
             format!(

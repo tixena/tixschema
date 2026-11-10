@@ -3,13 +3,12 @@
 use alloc::collections::{BTreeSet, VecDeque};
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "mongodb")]
+use mongodb::bson::oid::ObjectId;
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tixschema::model_schema;
-
-#[cfg(feature = "mongodb")]
-use mongodb::bson::oid::ObjectId;
 
 /// The members of `StringArrayUnion`, in the order the union declares them.
 const STRING_ARRAY_MEMBERS: [&str; 3] = ["rows", "slugs", "tags"];
@@ -1883,7 +1882,7 @@ fn test_untagged_slot_constraint_is_reported_under_no_name() {
 
     let shown = format!("// {:?}", MimeType::Other(String::new()).validate());
     assert!(
-        include_str!("../../README.md").contains(&shown),
+        include_str!("../../docs/guide/validation.md").contains(&shown),
         "the README no longer shows {shown}"
     );
 }
@@ -2196,7 +2195,7 @@ fn test_an_untagged_enums_own_check_is_reported_under_no_name() {
         vec!["too short: minimum length is 1, got 0"]
     );
 
-    let readme = include_str!("../../README.md");
+    let readme = include_str!("../../docs/guide/enums.md");
     for reported in [
         ContentKind::Other(String::new()).validate(),
         ContentKind::Other("a".repeat(21)).validate(),

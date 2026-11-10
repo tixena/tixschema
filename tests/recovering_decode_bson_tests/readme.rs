@@ -214,7 +214,7 @@ fn repair_record(row: &mut Document, issues: &[Issue<Bson>]) -> Verdict {
 }
 
 fn readme() -> &'static str {
-    include_str!("../../README.md")
+    include_str!("../../docs/guide/recovering-decode.md")
 }
 
 /// This file, read back so a pinned declaration can be held against the one that compiles.

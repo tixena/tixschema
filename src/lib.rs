@@ -206,8 +206,8 @@ fn main() {
 //! - The functions a `check` or a `preprocess` names: Zod calls each by its name, so the bundle
 //!   declares or imports it.
 //!
-//! The README's
-//! [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/README.md#generating-typescript-files)
+//! The guide's
+//! [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#generating-typescript-files)
 //! shows other ways to run the generation.
 //!
 //! # Use cases
@@ -267,10 +267,10 @@ assert_eq!(document["oneOf"][0]["properties"]["type"]["const"], "orderPlaced");
 //!
 //! `parse` throws a `ZodError` for a payload the schema refuses. `rename_all` on an enum renames
 //! its variants and `rename_all_fields` the fields inside them, as serde does.
-//! `OrderEvent$Variant(value)` answers the Rust variant a value carries. The README's
-//! [Enums](https://github.com/tixena/tixschema/blob/master/README.md#enums) covers every tagging,
-//! and [Type Parameters](https://github.com/tixena/tixschema/blob/master/README.md#type-parameters)
-//! and [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/README.md#branded-newtypes)
+//! `OrderEvent$Variant(value)` answers the Rust variant a value carries. The guide's
+//! [Enums](https://github.com/tixena/tixschema/blob/master/docs/guide/enums.md#enums) covers every tagging,
+//! and [Type Parameters](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#type-parameters)
+//! and [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#branded-newtypes)
 //! cover generic envelopes such as `Page<T>` and ids that cannot be swapped.
 //!
 //! ## Rules checked at the boundary
@@ -316,8 +316,8 @@ assert_eq!(Signup::json_schema()["properties"]["userName"]["minLength"], 3);
 //! serde read refuses a value that breaks a rule, with every message joined by `; `. `validate()`
 //! stays for a value built in code. `#[model_schema(check = ["withinBudget"])]` names a function
 //! of yours for a rule across fields: Rust calls `within_budget`, and Zod, Dart, Swift and Kotlin
-//! call `withinBudget`. See [`model_schema_prop`](attr.model_schema_prop.html) and the README's
-//! [Field Validation](https://github.com/tixena/tixschema/blob/master/README.md#field-validation-model_schema_prop).
+//! call `withinBudget`. See [`model_schema_prop`](attr.model_schema_prop.html) and the guide's
+//! [Field Validation](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#field-validation-model_schema_prop).
 //!
 //! ## Configuration files checked by JSON Schema
 //!
@@ -477,10 +477,10 @@ fn main() {
 //! ```
 //!
 //! The iOS app reads it with `try JSONDecoder().decode(Invoice.self, from: data)`, and the Android
-//! app with `Json.decodeFromString<Invoice>(body)`. See the README's
-//! [`validate()` in Dart](https://github.com/tixena/tixschema/blob/master/README.md#validate-in-dart),
-//! [in the Swift client](https://github.com/tixena/tixschema/blob/master/README.md#validate-in-the-swift-client)
-//! and [in the Kotlin client](https://github.com/tixena/tixschema/blob/master/README.md#validate-in-the-kotlin-client).
+//! app with `Json.decodeFromString<Invoice>(body)`. See the guide's
+//! [`validate()` in Dart](https://github.com/tixena/tixschema/blob/master/docs/guide/dart.md#validate-in-dart),
+//! [in the Swift client](https://github.com/tixena/tixschema/blob/master/docs/guide/swift.md#validate-in-the-swift-client)
+//! and [in the Kotlin client](https://github.com/tixena/tixschema/blob/master/docs/guide/kotlin.md#validate-in-the-kotlin-client).
 //!
 //! ## A service with typed clients
 //!
@@ -591,16 +591,16 @@ fn main() {
 //! The dispatcher reads each message and checks it before it calls the implementation, and a
 //! defect no operation declared reaches the caller as a fault, kept apart from the operation's own
 //! errors. Over a real socket, the read loop calls `orders_ws::answer` for each text frame and
-//! writes back the text it returns; a `None` writes nothing. The README's
-//! [The `ws_rpc` Transport](https://github.com/tixena/tixschema/blob/master/README.md#the-ws_rpc-transport)
+//! writes back the text it returns; a `None` writes nothing. The guide's
+//! [The `ws_rpc` Transport](https://github.com/tixena/tixschema/blob/master/docs/guide/ws-rpc.md#the-ws_rpc-transport)
 //! holds such a loop over axum.
 //!
 //! The same trait publishes the TypeScript, Dart, Swift and Kotlin clients through
 //! `OrdersSchema`, and `http_rest` and `amqp_rpc` are the other transports. The
 //! [`service_schema`](attr.service_schema.html#examples) examples call this service through a Rust
 //! client, and the [`service_schema_op`](attr.service_schema_op.html#example) example serves
-//! `http_rest` from an HTTP handler. See also the README's
-//! [Services](https://github.com/tixena/tixschema/blob/master/README.md#services).
+//! `http_rest` from an HTTP handler. See also the guide's
+//! [Services](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#services).
 //!
 //! ## Typed `MongoDB` filters and operations
 //!
@@ -681,8 +681,8 @@ fn main() -> Result<(), WriteError> {
 //! read as the type fails with `OperationError::Unreadable`, naming its `_id` and each issue. A
 //! crate with such types writes `tixschema::decode_with_foundation!();` and
 //! `tixschema::mongodb_foundation!();` once, at its root. See
-//! [`mongodb_foundation`](macro.mongodb_foundation.html) and the README's
-//! [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/README.md#mongodb-operations-and-typed-filters).
+//! [`mongodb_foundation`](macro.mongodb_foundation.html) and the guide's
+//! [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#mongodb-operations-and-typed-filters).
 //!
 //! ## Reading records an older writer stored
 //!
@@ -739,8 +739,8 @@ fn main() {
 //! `from_value_piped` takes small resolver functions in place of one callback, and under the `bson`
 //! feature `from_bson_with` and `from_bson_piped` read a BSON document. The four are methods of
 //! the crate's `DecodeWith` trait, which a caller imports from any flagged type's module. See
-//! [`decode_with_foundation`](macro.decode_with_foundation.html) and the README's
-//! [Recovering Decode](https://github.com/tixena/tixschema/blob/master/README.md#recovering-decode-decode_with).
+//! [`decode_with_foundation`](macro.decode_with_foundation.html) and the guide's
+//! [Recovering Decode](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#recovering-decode-decode_with).
 //!
 //! # Features
 //!
@@ -797,8 +797,8 @@ fn main() {
 //!   `use serde_json::Value;`, it is refused by a check the macro writes beside the item and the
 //!   compiler evaluates, as error `E0080`. That check names `::serde_json`, so a crate that writes
 //!   a bare `Value` or `Map` in a member lists `serde_json`. A member serde neither writes nor
-//!   reads is not refused for the JSON value it holds. See the README's
-//!   [A JSON value is no member](https://github.com/tixena/tixschema/blob/master/README.md#a-json-value-is-no-member).
+//!   reads is not refused for the JSON value it holds. See the guide's
+//!   [A JSON value is no member](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#a-json-value-is-no-member).
 //! - **A named `Option<T>` field needs a key-dropping serde attribute** under `serde`:
 //!   `skip_serializing_if`, `skip_serializing` or `skip`, or else `#[model_schema_prop(nullable)]`.
 //!   `ts_optional` alone does not satisfy the rule. A field under `#[serde(flatten)]` is not held
@@ -842,36 +842,37 @@ fn main() {
 //! - [`mongodb_foundation`](macro.mongodb_foundation.html): the support library of the `MongoDB`
 //!   operations.
 //!
-//! The [README](https://github.com/tixena/tixschema/blob/master/README.md) is the full guide:
+//! The [guide](https://github.com/tixena/tixschema/tree/master/docs/guide), one file per topic, is
+//! the full documentation:
 //!
-//! - Models: [Optional Fields](https://github.com/tixena/tixschema/blob/master/README.md#optional-fields),
-//!   [Collections and Maps](https://github.com/tixena/tixschema/blob/master/README.md#collections-and-maps),
-//!   [Enums](https://github.com/tixena/tixschema/blob/master/README.md#enums),
-//!   [Flatten](https://github.com/tixena/tixschema/blob/master/README.md#intersection-types-serdeflatten),
-//!   [Untagged Enums](https://github.com/tixena/tixschema/blob/master/README.md#untagged-enums-serdeuntagged),
-//!   [Type Parameters](https://github.com/tixena/tixschema/blob/master/README.md#type-parameters),
-//!   [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/README.md#branded-newtypes)
-//!   and [Serde Attribute Support](https://github.com/tixena/tixschema/blob/master/README.md#serde-attribute-support).
-//! - Rules: [Field Validation](https://github.com/tixena/tixschema/blob/master/README.md#field-validation-model_schema_prop),
-//!   [The `validate()` Method](https://github.com/tixena/tixschema/blob/master/README.md#the-validate-method),
-//!   [Checks](https://github.com/tixena/tixschema/blob/master/README.md#checks-check),
-//!   [Preprocessing](https://github.com/tixena/tixschema/blob/master/README.md#preprocessing-preprocess),
-//!   [What a `pattern` May Contain](https://github.com/tixena/tixschema/blob/master/README.md#what-a-pattern-may-contain)
-//!   and [Compiler-Validated Examples](https://github.com/tixena/tixschema/blob/master/README.md#compiler-validated-examples).
-//! - Services: [Services](https://github.com/tixena/tixschema/blob/master/README.md#services),
-//!   [What a Service Generates](https://github.com/tixena/tixschema/blob/master/README.md#what-a-service-generates),
-//!   [Service Faults](https://github.com/tixena/tixschema/blob/master/README.md#service-faults),
-//!   [Transports](https://github.com/tixena/tixschema/blob/master/README.md#transports)
-//!   and [The Form Each Client Sends](https://github.com/tixena/tixschema/blob/master/README.md#the-form-each-client-sends).
-//! - Storage: [Recovering Decode](https://github.com/tixena/tixschema/blob/master/README.md#recovering-decode-decode_with),
-//!   [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/README.md#mongodb-operations-and-typed-filters),
-//!   [`MongoDB` `ObjectId` Support](https://github.com/tixena/tixschema/blob/master/README.md#mongodb-objectid-support),
-//!   [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/README.md#chrono-datetime-types)
-//!   and [arky Frontmatter Conversions](https://github.com/tixena/tixschema/blob/master/README.md#arky-frontmatter-conversions-arky).
-//! - Setup: [Feature Flags](https://github.com/tixena/tixschema/blob/master/README.md#feature-flags),
-//!   [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/README.md#generating-typescript-files),
-//!   [`u64` or `usize` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/README.md#u64-or-usize-under-swift-or-kotlin)
-//!   and [Error Handling and Troubleshooting](https://github.com/tixena/tixschema/blob/master/README.md#error-handling--troubleshooting).
+//! - Models: [Optional Fields](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#optional-fields),
+//!   [Collections and Maps](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#collections-and-maps),
+//!   [Enums](https://github.com/tixena/tixschema/blob/master/docs/guide/enums.md#enums),
+//!   [Flatten](https://github.com/tixena/tixschema/blob/master/docs/guide/flatten.md#intersection-types-serdeflatten),
+//!   [Untagged Enums](https://github.com/tixena/tixschema/blob/master/docs/guide/untagged-enums.md#untagged-enums-serdeuntagged),
+//!   [Type Parameters](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#type-parameters),
+//!   [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#branded-newtypes)
+//!   and [Serde Attribute Support](https://github.com/tixena/tixschema/blob/master/docs/guide/serde-attributes.md#serde-attribute-support).
+//! - Rules: [Field Validation](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#field-validation-model_schema_prop),
+//!   [The `validate()` Method](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#the-validate-method),
+//!   [Checks](https://github.com/tixena/tixschema/blob/master/docs/guide/checks.md#checks-check),
+//!   [Preprocessing](https://github.com/tixena/tixschema/blob/master/docs/guide/preprocess.md#preprocessing-preprocess),
+//!   [What a `pattern` May Contain](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#what-a-pattern-may-contain)
+//!   and [Compiler-Validated Examples](https://github.com/tixena/tixschema/blob/master/docs/guide/examples.md#compiler-validated-examples).
+//! - Services: [Services](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#services),
+//!   [What a Service Generates](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#what-a-service-generates),
+//!   [Service Faults](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#service-faults),
+//!   [Transports](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#transports)
+//!   and [The Form Each Client Sends](https://github.com/tixena/tixschema/blob/master/docs/guide/client-forms.md#the-form-each-client-sends).
+//! - Storage: [Recovering Decode](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#recovering-decode-decode_with),
+//!   [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#mongodb-operations-and-typed-filters),
+//!   [`MongoDB` `ObjectId` Support](https://github.com/tixena/tixschema/blob/master/docs/guide/object-id.md#mongodb-objectid-support),
+//!   [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/chrono.md#chrono-datetime-types)
+//!   and [arky Frontmatter Conversions](https://github.com/tixena/tixschema/blob/master/docs/guide/arky.md#arky-frontmatter-conversions-arky).
+//! - Setup: [Feature Flags](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#feature-flags),
+//!   [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#generating-typescript-files),
+//!   [`u64` or `usize` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-or-usize-under-swift-or-kotlin)
+//!   and [Error Handling and Troubleshooting](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#error-handling--troubleshooting).
 
 mod bound_message;
 #[cfg(test)]
@@ -1342,8 +1343,8 @@ fn main() -> Result<(), serde_json::Error> {
 /// `{ "$oid": "<24 hexadecimal digits>" }`, in lower case and closed to any other key. TypeScript,
 /// Dart, Swift and Kotlin write a bare `ObjectId` reference, and your project declares that type
 /// in each of those languages, such as `type ObjectId = { $oid: string };` in the TypeScript
-/// bundle, as the README's
-/// [`MongoDB` `ObjectId` Support](https://github.com/tixena/tixschema/blob/master/README.md#mongodb-objectid-support)
+/// bundle, as the guide's
+/// [`MongoDB` `ObjectId` Support](https://github.com/tixena/tixschema/blob/master/docs/guide/object-id.md#mongodb-objectid-support)
 /// shows.
 ///
 #[cfg_attr(
@@ -1453,19 +1454,19 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 ///   the field with `#[model_schema_prop(...)]`. Without the `serde` feature a
 ///   `#[serde(transparent)]` struct is no brand, and the refusal names the feature.
 ///
-/// The README holds the full rules:
-/// [Published Names](https://github.com/tixena/tixschema/blob/master/README.md#published-names-name),
-/// [Optional Fields](https://github.com/tixena/tixschema/blob/master/README.md#optional-fields),
-/// [Collections and Maps](https://github.com/tixena/tixschema/blob/master/README.md#collections-and-maps),
-/// [Enums](https://github.com/tixena/tixschema/blob/master/README.md#enums),
-/// [Flatten](https://github.com/tixena/tixschema/blob/master/README.md#intersection-types-serdeflatten),
-/// [Untagged Enums](https://github.com/tixena/tixschema/blob/master/README.md#untagged-enums-serdeuntagged),
-/// [Type Aliases](https://github.com/tixena/tixschema/blob/master/README.md#type-aliases),
-/// [Type Parameters](https://github.com/tixena/tixschema/blob/master/README.md#type-parameters),
-/// [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/README.md#branded-newtypes),
-/// [Compiler-Validated Examples](https://github.com/tixena/tixschema/blob/master/README.md#compiler-validated-examples),
-/// [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/README.md#chrono-datetime-types)
-/// and [Serde Attribute Support](https://github.com/tixena/tixschema/blob/master/README.md#serde-attribute-support).
+/// The guide holds the full rules:
+/// [Published Names](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#published-names-name),
+/// [Optional Fields](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#optional-fields),
+/// [Collections and Maps](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#collections-and-maps),
+/// [Enums](https://github.com/tixena/tixschema/blob/master/docs/guide/enums.md#enums),
+/// [Flatten](https://github.com/tixena/tixschema/blob/master/docs/guide/flatten.md#intersection-types-serdeflatten),
+/// [Untagged Enums](https://github.com/tixena/tixschema/blob/master/docs/guide/untagged-enums.md#untagged-enums-serdeuntagged),
+/// [Type Aliases](https://github.com/tixena/tixschema/blob/master/docs/guide/nested-recursive-and-aliased-types.md#type-aliases),
+/// [Type Parameters](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#type-parameters),
+/// [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#branded-newtypes),
+/// [Compiler-Validated Examples](https://github.com/tixena/tixschema/blob/master/docs/guide/examples.md#compiler-validated-examples),
+/// [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/chrono.md#chrono-datetime-types)
+/// and [Serde Attribute Support](https://github.com/tixena/tixschema/blob/master/docs/guide/serde-attributes.md#serde-attribute-support).
 #[proc_macro_attribute]
 pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     exec_model_schema(args.into(), input.into()).into()
@@ -1557,11 +1558,11 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - **A resolver that counts in a `Cell` or a `RefCell`**: `E0277`, since a resolver is `Sync`.
 ///   Count in an atomic or a `Mutex`.
 ///
-/// The README holds the full rules:
-/// [Recovering Decode](https://github.com/tixena/tixschema/blob/master/README.md#recovering-decode-decode_with),
-/// [The support libraries](https://github.com/tixena/tixschema/blob/master/README.md#the-support-libraries),
-/// [The issues](https://github.com/tixena/tixschema/blob/master/README.md#the-issues)
-/// and [Resolvers](https://github.com/tixena/tixschema/blob/master/README.md#resolvers).
+/// The guide holds the full rules:
+/// [Recovering Decode](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#recovering-decode-decode_with),
+/// [The support libraries](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#the-support-libraries),
+/// [The issues](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#the-issues)
+/// and [Resolvers](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#resolvers).
 #[proc_macro]
 pub fn decode_with_foundation(input: TokenStream) -> TokenStream {
     exec_decode_with_foundation(&input.into()).into()
@@ -1618,8 +1619,8 @@ pub fn decode_with_foundation(input: TokenStream) -> TokenStream {
 /// # What your crate lists
 ///
 /// The `mongodb` driver and `bson` at the major version that driver is built for, such as
-/// `mongodb = "3.9"` with `bson = "2.15"`, beside `serde` and `serde_json`. The README's
-/// [The driver your crate lists](https://github.com/tixena/tixschema/blob/master/README.md#the-driver-your-crate-lists)
+/// `mongodb = "3.9"` with `bson = "2.15"`, beside `serde` and `serde_json`. The guide's
+/// [The driver your crate lists](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#the-driver-your-crate-lists)
 /// has the lines for `bson` 3.
 ///
 /// # Example
@@ -1692,12 +1693,12 @@ fn main() -> Result<(), WriteError> {
 /// - **No `mongodb_foundation!();` at the crate root**: an `E0277` at each such type whose note
 ///   gives the line to add.
 ///
-/// The README holds the full rules:
-/// [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/README.md#mongodb-operations-and-typed-filters),
-/// [The paths of a type](https://github.com/tixena/tixschema/blob/master/README.md#the-paths-of-a-type),
-/// [Operators](https://github.com/tixena/tixschema/blob/master/README.md#operators),
-/// [The operations](https://github.com/tixena/tixschema/blob/master/README.md#the-operations)
-/// and [`OperationError`](https://github.com/tixena/tixschema/blob/master/README.md#operationerror).
+/// The guide holds the full rules:
+/// [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#mongodb-operations-and-typed-filters),
+/// [The paths of a type](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#the-paths-of-a-type),
+/// [Operators](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#operators),
+/// [The operations](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#the-operations)
+/// and [`OperationError`](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#operationerror).
 #[proc_macro]
 pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
     exec_mongodb_foundation(&input.into()).into()
@@ -1968,16 +1969,16 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// - **A `pattern` that is more than a fixed text, in a crate that does not list `regex`**: the
 ///   generated check names `regex::Regex`, which does not resolve.
 ///
-/// The README holds the full rules:
-/// [Field Validation](https://github.com/tixena/tixschema/blob/master/README.md#field-validation-model_schema_prop),
-/// [The `validate()` Method](https://github.com/tixena/tixschema/blob/master/README.md#the-validate-method),
-/// [What a `pattern` may contain](https://github.com/tixena/tixschema/blob/master/README.md#what-a-pattern-may-contain),
-/// [Literal Values](https://github.com/tixena/tixschema/blob/master/README.md#literal-values),
-/// [Checks](https://github.com/tixena/tixschema/blob/master/README.md#checks-check),
-/// [Preprocessing](https://github.com/tixena/tixschema/blob/master/README.md#preprocessing-preprocess),
-/// [What each language calls](https://github.com/tixena/tixschema/blob/master/README.md#what-each-language-calls),
-/// [Optional TypeScript Keys](https://github.com/tixena/tixschema/blob/master/README.md#optional-typescript-keys-ts_optional)
-/// and [Nullable Object Keys](https://github.com/tixena/tixschema/blob/master/README.md#nullable-object-keys-nullable).
+/// The guide holds the full rules:
+/// [Field Validation](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#field-validation-model_schema_prop),
+/// [The `validate()` Method](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#the-validate-method),
+/// [What a `pattern` may contain](https://github.com/tixena/tixschema/blob/master/docs/guide/validation.md#what-a-pattern-may-contain),
+/// [Literal Values](https://github.com/tixena/tixschema/blob/master/docs/guide/literals-and-type-names.md#literal-values),
+/// [Checks](https://github.com/tixena/tixschema/blob/master/docs/guide/checks.md#checks-check),
+/// [Preprocessing](https://github.com/tixena/tixschema/blob/master/docs/guide/preprocess.md#preprocessing-preprocess),
+/// [What each language calls](https://github.com/tixena/tixschema/blob/master/docs/guide/preprocess-and-check.md#what-each-language-calls),
+/// [Optional TypeScript Keys](https://github.com/tixena/tixschema/blob/master/docs/guide/optional-and-nullable-keys.md#optional-typescript-keys-ts_optional)
+/// and [Nullable Object Keys](https://github.com/tixena/tixschema/blob/master/docs/guide/optional-and-nullable-keys.md#nullable-object-keys-nullable).
 #[proc_macro_attribute]
 pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream {
     input
@@ -2500,16 +2501,16 @@ fn main() {
 /// - **Two services in one module whose generated messages share a name**: duplicate definitions.
 ///   Rename an operation, or have it take a message you declared.
 ///
-/// The README holds the full rules:
-/// [Services](https://github.com/tixena/tixschema/blob/master/README.md#services),
-/// [The Shape of a Service](https://github.com/tixena/tixschema/blob/master/README.md#the-shape-of-a-service),
-/// [Service Messages](https://github.com/tixena/tixschema/blob/master/README.md#service-messages),
-/// [Service Faults](https://github.com/tixena/tixschema/blob/master/README.md#service-faults),
-/// [What a Service Generates](https://github.com/tixena/tixschema/blob/master/README.md#what-a-service-generates),
-/// [Transports](https://github.com/tixena/tixschema/blob/master/README.md#transports),
-/// [The `amqp_rpc` walkthrough](https://github.com/tixena/tixschema/blob/master/README.md#the-amqp_rpc-walkthrough),
-/// [The `ws_rpc` Transport](https://github.com/tixena/tixschema/blob/master/README.md#the-ws_rpc-transport)
-/// and [The Form Each Client Sends](https://github.com/tixena/tixschema/blob/master/README.md#the-form-each-client-sends).
+/// The guide holds the full rules:
+/// [Services](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#services),
+/// [The Shape of a Service](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#the-shape-of-a-service),
+/// [Service Messages](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#service-messages),
+/// [Service Faults](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#service-faults),
+/// [What a Service Generates](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#what-a-service-generates),
+/// [Transports](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#transports),
+/// [The `amqp_rpc` walkthrough](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#the-amqp_rpc-walkthrough),
+/// [The `ws_rpc` Transport](https://github.com/tixena/tixschema/blob/master/docs/guide/ws-rpc.md#the-ws_rpc-transport)
+/// and [The Form Each Client Sends](https://github.com/tixena/tixschema/blob/master/docs/guide/client-forms.md#the-form-each-client-sends).
 #[proc_macro_attribute]
 pub fn service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     exec_service_schema(args.into(), input.into()).into()
@@ -2572,10 +2573,10 @@ pub fn service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     doc = include_str!("service_schema_op_example.md")
 )]
 ///
-/// The README holds the full rules:
-/// [Operation Names](https://github.com/tixena/tixschema/blob/master/README.md#operation-names),
-/// [One-Way Operations](https://github.com/tixena/tixschema/blob/master/README.md#one-way-operations)
-/// and [The `http_rest` Transport](https://github.com/tixena/tixschema/blob/master/README.md#the-http_rest-transport).
+/// The guide holds the full rules:
+/// [Operation Names](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#operation-names),
+/// [One-Way Operations](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#one-way-operations)
+/// and [The `http_rest` Transport](https://github.com/tixena/tixschema/blob/master/docs/guide/http-rest.md#the-http_rest-transport).
 #[proc_macro_attribute]
 pub fn service_schema_op(_args: TokenStream, input: TokenStream) -> TokenStream {
     input
