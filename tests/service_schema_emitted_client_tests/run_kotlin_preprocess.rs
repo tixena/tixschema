@@ -289,7 +289,7 @@ pub struct Locker {
 }
 
 /// A packet flattened into the object of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Encased {
     pub dock: String,
@@ -306,7 +306,7 @@ pub struct Itemized {
 }
 
 /// The type above flattened into its holder: `keys` is what its function was handed.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Fastened {
     pub dock: String,
@@ -324,7 +324,7 @@ pub struct Glimpsed {
 
 /// Two types flattened into their holder: each one's function is handed the keys the holder's own
 /// members do not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Coupled {
     pub dock: String,
@@ -353,7 +353,7 @@ pub enum Hauler {
 }
 
 /// The choice above flattened into the object of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Directed {
     pub dock: String,
@@ -547,7 +547,7 @@ pub struct Housed {
 }
 
 /// Two members with a function of their own beside a flattened packet.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Bonded {
     #[model_schema_prop(preprocess = ["trimmed"])]
@@ -593,7 +593,7 @@ pub struct Belted {
 }
 
 /// A type that names a function, flattened after one that takes its own key as it is read.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Lashed {
     pub dock: String,

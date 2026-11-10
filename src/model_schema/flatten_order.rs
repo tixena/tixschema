@@ -182,6 +182,7 @@ struct Level<'item> {
     leftover: Option<String>,
     /// The holder's name, for the fix a refusal says.
     named: String,
+    of_a_variant: bool,
     /// Each key the level declares itself, beside what declares it, as a refusal names it.
     own_keys: Vec<(String, KeySet)>,
     subject: String,
@@ -1769,6 +1770,7 @@ fn struct_level<'item>(
         leftover,
         subject: format!("type `{named}`"),
         named,
+        of_a_variant: false,
         own_keys: own,
     })
 }
@@ -1800,6 +1802,7 @@ fn variant_levels<'item>(item_enum: &'item ItemEnum, args: &ModelSchemaArgs) -> 
                     .then(|| "a member serde writes and never reads".to_owned()),
                 subject: format!("type `{named}`, variant `{}`", variant.ident.unraw()),
                 named: named.clone(),
+                of_a_variant: true,
                 own_keys: own,
             }
         })
@@ -2102,12 +2105,23 @@ fn closed_refusal(
             ),
         };
     }
+    let more =
+        verdict_of_open(level, classes).and_then(|held| refusal_of(level, members, classes, held));
+    let refuses_none = !classes
+        .iter()
+        .any(|class| matches!(class, Class::Refusing(_)));
+    if !level.of_a_variant && refuses_none && classes[at] == Class::Open {
+        let mut refusal = reads_past_refusal(&level.named, &member.name);
+        if let Some(held) = more {
+            refusal.fix.push_str(", and ");
+            refusal.fix.push_str(&held.fix);
+        }
+        return refusal;
+    }
     let mut fix = format!("mark `{}` `#[model_schema(nonstrict)]`", level.named);
-    if let Some(more) =
-        verdict_of_open(level, classes).and_then(|held| refusal_of(level, members, classes, held))
-    {
+    if let Some(held) = more {
         fix.push_str(", and ");
-        fix.push_str(&more.fix);
+        fix.push_str(&held.fix);
     }
     Refusal {
         fix,
@@ -2122,6 +2136,39 @@ fn closed_refusal(
             level.named
         ),
     }
+}
+
+/// The refusal of a strict struct `holder` that flattens `member`, which reads every key still left
+/// and refuses none: serde cannot refuse a key no member declares beside it.
+fn reads_past_refusal(holder: &str, member: &str) -> Refusal {
+    Refusal {
+        fix: format!(
+            "mark `{holder}` `#[model_schema(nonstrict)]`, so every surface reads past such a key \
+             as serde does"
+        ),
+        reason: format!(
+            "type `{holder}` flattens `{member}`, which reads past a key no member declares, so \
+             serde cannot refuse such a key beside it"
+        ),
+    }
+}
+
+/// The first member of `item_struct` it flattens that reads every key still left and refuses none,
+/// with the refusal [`reads_past_refusal`] writes of the struct. A member read through a function
+/// of its author's is passed over: what the function answers may refuse such a key.
+pub fn open_member_refusal(item_struct: &ItemStruct) -> Option<(&Field, String)> {
+    let parameters = parameter_names(&item_struct.generics);
+    let field = item_struct
+        .fields
+        .iter()
+        .filter(|field| flattened(field) && !read_by_a_function(field))
+        .find(|field| member_reads(field, &parameters).class() == Class::Open)?;
+    let member = field
+        .ident
+        .as_ref()
+        .map_or_else(String::new, |ident| ident.unraw().to_string());
+    let holder = item_struct.ident.unraw().to_string();
+    Some((field, reads_past_refusal(&holder, &member).message()))
 }
 
 /// The refusal of the member at `at` of `level`, which `verdict` says reads every key still left

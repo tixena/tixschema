@@ -33,7 +33,7 @@ pub struct Marked {
 
 /// Two types flattened into their holder: each one's function is handed the keys the holder's own
 /// members do not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Twinned {
     pub dock: String,

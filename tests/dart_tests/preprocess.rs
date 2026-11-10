@@ -165,7 +165,7 @@ pub enum Reference {
 }
 
 /// A type flattened beside a member of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Pinned {
     pub dock: String,
@@ -185,7 +185,7 @@ pub struct Sorted {
 }
 
 /// A type flattened into a holder with no member of its own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Account {
     #[serde(flatten)]

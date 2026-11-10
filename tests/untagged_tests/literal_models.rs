@@ -154,7 +154,7 @@ pub struct Header {
     pub label: String,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Element {
     #[serde(flatten)]
@@ -335,7 +335,7 @@ pub struct Row {
 pub type CalculationAlias = Calculation;
 
 /// The enum flattened through an alias of it.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AliasedPanel {
     #[serde(flatten)]

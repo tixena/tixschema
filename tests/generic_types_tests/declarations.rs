@@ -5797,7 +5797,7 @@ fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
 /// `tsc --strict`, and by its JSON Schema, wherever serde refuses it: under a key, in a list, as a
 /// map's value, as a type argument, under a brand and beside a tag. Flattened, it is joined as a
 /// flattened struct is, so the holder's own keys and those of a struct flattened beside it read,
-/// and a key none of them reads is refused, where serde reads past it.
+/// and a key none of them reads is read past in a `nonstrict` holder, as serde reads past it.
 #[cfg(feature = "mongodb")]
 #[test]
 fn type_check_an_object_id_with_a_key_beside_its_oid_is_refused_where_serde_refuses_it() {

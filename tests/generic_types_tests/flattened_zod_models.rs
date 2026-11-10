@@ -381,7 +381,7 @@ pub struct Checked {
     pub schema: &'static str,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Deck {
     #[serde(flatten)]
@@ -399,7 +399,7 @@ pub struct Mole {
 }
 
 /// A struct that flattens [`Cargo`] filled with text.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Hold {
     #[serde(flatten)]
@@ -408,7 +408,7 @@ pub struct Hold {
 }
 
 /// A struct that flattens [`Cargo`] filled with a number.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Tally {
     #[serde(flatten)]

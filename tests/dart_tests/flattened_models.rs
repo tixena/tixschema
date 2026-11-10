@@ -161,7 +161,7 @@ pub struct Bracing {
 
 /// A member that names a function flattened after a struct that names one on itself, where serde
 /// hands the function every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lacing {
     #[serde(flatten)]
@@ -186,7 +186,7 @@ pub struct Rigging {
 
 /// A member that names a function flattened after a struct with a flattened member of its own,
 /// where serde hands the function every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Belaying {
     #[serde(flatten)]
@@ -305,7 +305,7 @@ pub enum Frapping {
 
 /// A member that names a function flattened after [`Frapping`], where serde hands the function
 /// every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mousing {
     #[serde(flatten)]
@@ -325,7 +325,7 @@ pub enum Chocking {
 
 /// A member that names a function flattened after [`Chocking`], where serde hands the function
 /// every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Shoring {
     #[serde(flatten)]

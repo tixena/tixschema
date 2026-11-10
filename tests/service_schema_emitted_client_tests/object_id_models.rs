@@ -183,7 +183,7 @@ const ROWS: [Row; 32] = [
         json: r#"{"id":1,"$oid":"507f1f77bcf86cd799439011","extra":1}"#,
         kotlin: Told::Serde,
         read_as: "Embossed",
-        schema: false,
+        schema: true,
         serde: true,
         swift: Told::Serde,
     },
@@ -210,7 +210,7 @@ const ROWS: [Row; 32] = [
         json: r#"{"$oid":"507f1f77bcf86cd799439011","note":"n","extra":1}"#,
         kotlin: Told::Serde,
         read_as: "Docketing",
-        schema: false,
+        schema: true,
         serde: true,
         swift: Told::Serde,
     },
@@ -237,7 +237,7 @@ const ROWS: [Row; 32] = [
         json: r#"{"id":1,"$oid":"507f1f77bcf86cd79943901z"}"#,
         kotlin: Told::Refused,
         read_as: "Stampage",
-        schema: false,
+        schema: true,
         serde: true,
         swift: Told::Refused,
     },
@@ -255,7 +255,7 @@ const ROWS: [Row; 32] = [
         json: r#"{"$oid":"507f1f77bcf86cd799439011","note":"n","extra":1}"#,
         kotlin: Told::Serde,
         read_as: "Sigiled",
-        schema: false,
+        schema: true,
         serde: true,
         swift: Told::Serde,
     },
@@ -427,7 +427,7 @@ pub enum Cachet {
 }
 
 /// An `ObjectId` flattened beside a member of its holder's own.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Embossed {
     pub id: u32,
@@ -436,7 +436,7 @@ pub struct Embossed {
 }
 
 /// An `ObjectId` flattened ahead of a flattened struct.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Docketing {
     #[serde(flatten)]
@@ -446,7 +446,7 @@ pub struct Docketing {
 }
 
 /// An optional `ObjectId` flattened beside a member of its holder's own.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stampage {
     pub id: u32,
@@ -455,7 +455,7 @@ pub struct Stampage {
 }
 
 /// A brand over an `ObjectId` flattened ahead of a flattened struct.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sigiled {
     #[serde(flatten)]
@@ -465,7 +465,7 @@ pub struct Sigiled {
 }
 
 /// An alias of an `ObjectId` flattened ahead of a flattened struct.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sigillary {
     #[serde(flatten)]
@@ -487,7 +487,7 @@ pub struct Wafered {
 }
 
 /// [`Wafer`] flattened ahead of a flattened struct.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wafering {
     #[serde(flatten)]

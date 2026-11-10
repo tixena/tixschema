@@ -70,7 +70,7 @@ error[E0425]: cannot find type `BalanceError` in this scope
 One consequence is worth knowing before it costs anyone an afternoon: rustdoc wraps a doctest with
 no explicit `fn main` in one, so a doctest that declares a service writes `fn main() {}` of its own.
 
-**`#[service_schema(non_exhaustive)]` marks every type the service generates `#[non_exhaustive]`:** the fault kind, `CallError`, the messages the macro writes, the `{Service}Schema` struct, and with `mcp` the `McpTask`, `McpTaskState`, `McpContent`, `McpResourceContents`, `McpRole` and `McpPromptMessage` types. A type you declare yourself keeps your own attributes. Another crate that matches on one of them needs a wildcard arm. The flag is bare: `non_exhaustive = true` is refused.
+**`#[service_schema(non_exhaustive)]` marks every type the service generates `#[non_exhaustive]`:** the fault kind, `CallError`, the messages the macro writes, the `{Service}Schema` struct, with `mcp` the `McpTask`, `McpTaskState`, `McpContent`, `McpResourceContents`, `McpRole` and `McpPromptMessage` types, with `amqp_rpc` the server's `Context` and `Stopped`, with `ws_rpc` the `Frame` of each macro, and with `http_rest` the dispatcher's `DefaultFaultHandler`. A type you declare yourself keeps your own attributes. Another crate that matches on one of them needs a wildcard arm. The crate that placed the macro still writes `DefaultFaultHandler` and `Context { logger }` itself; another crate builds them with `DefaultFaultHandler::new()` or `DefaultFaultHandler::default()`, and with `Context::new(logger)`. The flag is bare: `non_exhaustive = true` is refused.
 
 #### The Shape of a Service
 

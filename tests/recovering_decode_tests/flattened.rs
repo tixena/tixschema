@@ -127,7 +127,7 @@ struct Framed {
 }
 
 /// A struct, an optional struct and a tagged enum, each flattened beside a key of the type's own.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Sheet {
     #[serde(flatten)]
@@ -140,7 +140,7 @@ struct Sheet {
 }
 
 /// A type that flattens one that flattens others.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Binder {
     #[serde(flatten)]
@@ -209,7 +209,7 @@ enum Channel {
     Phone(ByPhone),
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Notice {
     #[serde(flatten)]
@@ -309,7 +309,7 @@ enum Trace {
     },
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Traced {
     title: String,
@@ -347,7 +347,7 @@ struct Scoreboard {
 }
 
 /// An optional flattened enum, internally tagged.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Painted {
     own: String,
@@ -356,7 +356,7 @@ struct Painted {
 }
 
 /// An optional flattened enum, untagged.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Reached {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -365,7 +365,7 @@ struct Reached {
 }
 
 /// An optional flattened enum, internally tagged, beside a flattened struct.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Layered {
     #[serde(flatten)]
@@ -384,7 +384,7 @@ enum Finish {
     Coated { version: Version },
 }
 
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Finished {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
