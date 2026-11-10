@@ -1492,6 +1492,16 @@ pub(super) fn record(item: &Item, args: &ModelSchemaArgs) {
     RECORDS.with(|records| records.borrow_mut().insert(name, held));
 }
 
+/// Whether a member `fields` flattens reads every key its holder leaves and refuses one it does not
+/// declare, so that serde refuses a key no member declares whatever the holder's own strictness.
+pub fn refused_by_a_member(fields: &Fields, generics: &Generics) -> bool {
+    let parameters = parameter_names(generics);
+    fields
+        .iter()
+        .filter(|field| flattened(field))
+        .any(|field| matches!(member_reads(field, &parameters).class(), Class::Refusing(_)))
+}
+
 /// Whether every member `fields` flattens takes its own keys, so a holder of them may refuse a key
 /// none declares. A member of a type the expansion did not see is held to take them, and the
 /// `const` its holder earns refuses the build where its hidden constant says it does not.

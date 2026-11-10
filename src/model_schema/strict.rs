@@ -5,7 +5,7 @@
 //! off one that flattens a member serde leaves the keys of in the object it reads them from:
 //! serde would refuse the very keys such a member is declared to hold.
 
-use super::flatten_order::{Culprit, takes_only};
+use super::flatten_order::{Culprit, refused_by_a_member, takes_only};
 use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::{
     Tagging, derived_serde_attributes, has_serde_transparent, parse_serde_field_attributes,
@@ -310,6 +310,16 @@ pub(super) fn unit_reads(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             deserializer.deserialize_any(UnitVisitor)
         }
     }
+}
+
+/// Whether every surface describes `item`'s own object as reading past a key no member declares:
+/// where it is `nonstrict`, but for a struct a member of which it flattens refuses the key, as
+/// serde refuses it there.
+pub(super) fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
+    let Item::Struct(item_struct) = item else {
+        return args.nonstrict;
+    };
+    args.nonstrict && !refused_by_a_member(&item_struct.fields, &item_struct.generics)
 }
 
 /// Whether the author wrote `#[serde(deny_unknown_fields)]` among `attrs`.

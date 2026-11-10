@@ -1,7 +1,8 @@
 //! Holders of a flattened member of each kind serde reads a stray key through: a struct that
 //! flattens one, an enum under a tag alone, an untagged enum, a struct of one slot over a struct,
 //! an externally tagged enum and an `Option` of one, and a variant of an enum under a tag alone
-//! beside one that flattens. serde refuses a stray key beside each of them.
+//! beside one that flattens, and a nonstrict holder of a member that refuses a key. serde refuses a
+//! stray key beside each of them.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -24,6 +25,16 @@ pub struct BillingContact {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BillingCustomer {
+    #[serde(flatten)]
+    pub contact: BillingContact,
+    pub name: String,
+}
+
+/// A nonstrict holder of a struct that flattens one: the member refuses the key the holder reads
+/// past.
+#[model_schema(nonstrict)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GuestCustomer {
     #[serde(flatten)]
     pub contact: BillingContact,
     pub name: String,

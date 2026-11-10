@@ -756,6 +756,31 @@ struct FlatOverMixed {
     tagged: MixedTagged,
 }
 
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct StampDepth {
+    depth: u32,
+}
+
+/// A struct that flattens a member, read from every key its holder leaves, which refuses a key it
+/// does not declare.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct StrictStamp {
+    #[serde(flatten)]
+    depth: StampDepth,
+    ink: String,
+}
+
+/// A nonstrict holder whose strict member refuses a stray key.
+#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct GuestLetter {
+    #[serde(flatten)]
+    stamp: StrictStamp,
+    title: String,
+}
+
 /// A union one member of which is itself a union, and the struct that flattens the outer one. serde
 /// writes whichever leaf member matched into the object the struct is writing, so the nesting
 /// contributes no key of its own and what the struct writes is one key set per leaf.
@@ -4471,4 +4496,15 @@ fn test_a_variant_flattening_nothing_is_byte_identical() {
             && closes_on(plain, "\"Plain\": z.object({\n  y: z.string(),\n}),\n})])"),
         "Got: {plain}"
     );
+}
+
+#[test]
+fn the_schema_of_a_nonstrict_holder_refuses_a_stray_key_its_strict_member_refuses() {
+    let stray = r#"{"depth":2,"ink":"red","stray":1,"title":"t"}"#;
+    serde_json::from_str::<GuestLetter>(stray).unwrap_err();
+    assert_eq!(
+        GuestLetter::json_schema()["additionalProperties"],
+        serde_json::json!(false)
+    );
+    assert!(GuestLetter::zod_schema().contains("z.strictObject({\n  title: z.string(),"));
 }

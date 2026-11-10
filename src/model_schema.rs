@@ -2389,7 +2389,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
-    record_nonstrict(parsed_args.nonstrict);
+    record_nonstrict(reads_past_a_stray(&item, &parsed_args));
     #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
@@ -6228,6 +6228,18 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
         return None;
     }
     type_path.path.get_ident().cloned()
+}
+
+/// Whether serde reads past a key no member of `item` declares.
+#[cfg(feature = "serde")]
+fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
+    strict::reads_past_a_stray(item, args)
+}
+
+/// Without serde nothing flattens, and `nonstrict` alone says it.
+#[cfg(not(feature = "serde"))]
+const fn reads_past_a_stray(_item: &Item, args: &ModelSchemaArgs) -> bool {
+    args.nonstrict
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
