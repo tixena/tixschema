@@ -5506,8 +5506,9 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Seventy rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Seventy-one rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
+- **A struct under a tag of its own that is not `nonstrict` stops the build**, where serde read past a key no member declares and Zod, the JSON Schema and the Kotlin read refused it: serde cannot refuse one beside the tag, as `#[serde(deny_unknown_fields)]` there refuses the tag itself. Mark the struct `#[model_schema(nonstrict)]`, and every surface reads past such a key; a holder that flattens it reads past one too, in Kotlin as in serde.
 - **The Swift read of a flattened strict untagged enum takes the variant serde takes**, where it took an earlier variant that read from an object of none of its keys and dropped the keys of the right one: with `#[serde(untagged)] pub enum Finish { Bare { #[serde(default, skip_serializing_if = "::core::option::Option::is_none")] gloss: Option<u32> }, Painted { colour: String } }` flattened in `pub struct Door { #[serde(flatten)] pub finish: Finish, pub label: String }`, `{"colour":"red","label":"f2"}` reads as `Painted`, where Swift read it as `Bare` and wrote it back without `colour`. The Kotlin read takes it since the release that hands such a member the keys its holder leaves.
 - **The Swift read refuses a key no member declares beside a flattened enum, a flattened struct of one slot, and a flattened member that reads every key left and refuses one**, as serde refuses it, where it read past it; the Kotlin read refuses it beside a flattened struct of one slot as well. With `pub struct Carton { pub label: String, #[serde(flatten)] pub size: Size }` and `pub enum Size { Large(Weight), Small { width: u32 } }`, `{"label":"c1","Small":{"width":3},"stray":1}` is refused.
 - **The Kotlin read refuses a key no member declares beside a flattened member that reads every key left and refuses one**, as serde refuses it, where it read past it: with `pub struct Customer { pub name: String, #[serde(flatten)] pub contact: Contact }` and `pub struct Contact { pub phone: String, #[serde(flatten)] pub address: Address }`, `{"name":"Ana","phone":"555","city":"Lima","stray":1}` is refused (`Encountered an unknown key 'stray'`). The same holds for a strict enum under a tag alone and a strict untagged enum, flattened.
@@ -9651,10 +9652,10 @@ If the `serde` feature is disabled but serde attributes are present, you will se
 
 ### A Struct's Own Tag
 
-`#[serde(tag = "...")]` on a struct makes serde write the struct's name under that key, ahead of its fields. Every surface describes the key as a required member whose only value is that name -- the struct's ident, or its `#[serde(rename = "...")]`:
+`#[serde(tag = "...")]` on a struct makes serde write the struct's name under that key, ahead of its fields. Every surface describes the key as a required member whose only value is that name -- the struct's ident, or its `#[serde(rename = "...")]`. serde cannot refuse a key no member declares beside the tag (`#[serde(deny_unknown_fields)]` there refuses the tag itself), so such a struct is `nonstrict`, and every surface reads past such a key:
 
 ```rust
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub struct Tagged {
@@ -9668,13 +9669,19 @@ export type Tagged = {
   name: string;
 };
 
-const Tagged$RawSchema = z.strictObject({
+const Tagged$RawSchema = z.object({
   kind: z.literal("Tagged"),
   name: z.string(),
 });
 ```
 
-The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagged"}`. The Dart, Swift and Kotlin types write the key. They read a payload whose key holds `"Tagged"`, and refuse one without the key or with another value under it, as TypeScript and Zod refuse it: see [The Dart read refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), [A Swift read refuses what `validate()` refuses](#a-swift-read-refuses-what-validate-refuses) and [The read in the Kotlin client](#the-read-in-the-kotlin-client). serde reads the struct either way, whatever value the key holds, so the schemas describe what the struct writes. A struct that flattens a tagged one is written with the key in its own object, which is what its intersection describes. A field of the struct that writes the same key is refused, since serde would write the key twice.
+The JSON Schema lists `kind` in `required` as `{"type": "string", "const": "Tagged"}`. The Dart, Swift and Kotlin types write the key. They read a payload whose key holds `"Tagged"`, and refuse one without the key or with another value under it, as TypeScript and Zod refuse it: see [The Dart read refuses what `validate()` refuses](#the-dart-read-refuses-what-validate-refuses), [A Swift read refuses what `validate()` refuses](#a-swift-read-refuses-what-validate-refuses) and [The read in the Kotlin client](#the-read-in-the-kotlin-client). serde reads the struct either way, whatever value the key holds, so the schemas describe what the struct writes. Without `nonstrict` the struct stops the build:
+
+```text
+error: model_schema: type `Tagged` is under a tag of its own, `kind`, and serde cannot refuse a key no member declares beside it: `#[serde(deny_unknown_fields)]` there refuses the tag itself. Mark `Tagged` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does
+```
+
+A struct that flattens a tagged one is written with the key in its own object, which is what its intersection describes. A field of the struct that writes the same key is refused, since serde would write the key twice.
 
 ## Important Notes
 

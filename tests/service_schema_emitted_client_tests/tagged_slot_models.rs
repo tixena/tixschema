@@ -119,7 +119,7 @@ pub struct Tonnage {
 }
 
 /// A struct under its own tag.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "sort")]
 pub struct Ballast {

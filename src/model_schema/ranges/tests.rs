@@ -913,12 +913,23 @@ fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
         "#[serde(untagged)] pub enum Bilge { Open { #[serde(flatten)] \
          counts: BTreeMap<String, u8> } }",
         "pub struct Thwart { #[serde(flatten)] pub counts: BTreeMap<String, u8> }",
-        "#[serde(tag = \"kind\")] pub struct Marked { #[serde(flatten)] pub marking: ShelfMark }",
         "#[serde(tag = \"kind\")] pub enum Marking { Open { #[serde(flatten)] \
          marking: ShelfMark } }",
     ] {
         assert_eq!(refused(source), NONE, "{source}");
     }
+    // A struct under a tag of its own says `nonstrict`, as serde cannot refuse a key beside it.
+    assert_eq!(
+        refusals(super::super::exec_model_schema(
+            syn::parse_str("nonstrict").unwrap(),
+            syn::parse_str(
+                "#[derive(Serialize, Deserialize)] #[serde(tag = \"kind\")] pub struct Marked { \
+                 #[serde(flatten)] pub marking: ShelfMark }"
+            )
+            .unwrap(),
+        )),
+        NONE
+    );
 }
 
 /// The refusal of the lone slot of the variant `Counted` of `holder`, written `slot`, under the tag

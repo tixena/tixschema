@@ -6,7 +6,7 @@ mod on_a_schema_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema(enable = ["jsonschema"])]
+    #[model_schema(nonstrict, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub struct Tagged {
@@ -23,7 +23,7 @@ mod on_a_schema_surface {
     }
 
     /// The container's rename moves the tag's value; its `rename_all` reaches the fields alone.
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind", rename = "tagged-one", rename_all = "camelCase")]
     pub struct TaggedRenamed {
@@ -108,9 +108,7 @@ mod on_a_schema_surface {
     fn the_zod_schema_holds_the_tag_as_a_literal() {
         let zod = Tagged::zod_schema();
         assert!(
-            zod.contains(
-                "z.strictObject({\n  kind: z.literal(\"Tagged\"),\n  name: z.string(),\n})"
-            ),
+            zod.contains("z.object({\n  kind: z.literal(\"Tagged\"),\n  name: z.string(),\n})"),
             "got: {zod}"
         );
     }
@@ -121,7 +119,7 @@ mod on_a_schema_surface {
             Tagged::json_schema(),
             serde_json::json!({
                 "type": "object",
-                "additionalProperties": false,
+                "additionalProperties": true,
                 "properties": {
                     "kind": { "type": "string", "const": "Tagged" },
                     "name": { "type": "string" },
@@ -142,7 +140,7 @@ mod on_a_mobile_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(tag = "kind")]
     pub struct TaggedMobile {
@@ -217,7 +215,7 @@ mod on_a_mobile_surface {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             TaggedMobileSerializer::class) @KeepGeneratedSerializer data class \
+             TaggedMobileSerializer::class) @KeepGeneratedSerializer @JsonIgnoreUnknownKeys data class \
              TaggedMobile(val name: String) { @SerialName(\"kind\") @EncodeDefault val \
              kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
              emptyList() } @OptIn(ExperimentalSerializationApi::class) object \

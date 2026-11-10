@@ -506,7 +506,7 @@ pub enum Quay {
 }
 
 /// A struct that writes a tag of its own, and flattens a type.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub struct Moored {

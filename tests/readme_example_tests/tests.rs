@@ -85,15 +85,15 @@ fn assert_readme_declares_and_shows(declaration: &str, emission: &str, members: 
 /// The "A Struct's Own Tag" example: the key serde writes the struct's name under is a member.
 #[test]
 fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Serialize, Deserialize)]
     #[serde(tag = "kind")]
     pub struct Tagged {
         pub name: String,
     }
 
-    let declaration = "#[model_schema()]\n#[derive(Serialize, Deserialize)]\n#[serde(tag = \
-                       \"kind\")]\npub struct Tagged {\n    pub name: String,\n}";
+    let declaration = "#[model_schema(nonstrict)]\n#[derive(Serialize, Deserialize)]\n#[serde(tag \
+                       = \"kind\")]\npub struct Tagged {\n    pub name: String,\n}";
     assert_readme_declares_and_shows(
         declaration,
         &Tagged::ts_definition(),
@@ -108,7 +108,7 @@ fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
         declaration,
         &Tagged::zod_schema(),
         &[
-            "const Tagged$RawSchema = z.strictObject({",
+            "const Tagged$RawSchema = z.object({",
             "  kind: z.literal(\"Tagged\"),",
             "  name: z.string(),",
             "});",

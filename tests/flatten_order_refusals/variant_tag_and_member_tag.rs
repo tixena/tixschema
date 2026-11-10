@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub struct Stamp {

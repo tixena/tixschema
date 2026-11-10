@@ -49,7 +49,9 @@ use crate::field_type::{
     is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
-use crate::model_schema::flatten_order::{flattened_keys, refuses_the_keys_left};
+use crate::model_schema::flatten_order::{
+    flattened_keys, reads_past_the_keys_left, refuses_the_keys_left,
+};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -559,6 +561,12 @@ const fn refuses_the_keys_left(_def: &FieldDef) -> bool {
 #[cfg(not(feature = "serde"))]
 const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
     None
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn reads_past_the_keys_left(_def: &FieldDef) -> bool {
+    false
 }
 
 /// The keys the macro's classifier answers for a flattened member typed `def` the emitter noted
@@ -2471,6 +2479,10 @@ fn flatten_plan(
                     let _ = write!(taken, " - {}", member.taken);
                 }
                 plan.push(member);
+                // A member that reads every key left and refuses none leaves its holder refusing none.
+                if reads_past_the_keys_left(&base) {
+                    members_read = None;
+                }
                 members_read = members_read
                     .zip(
                         read_keys(&field.field_def)

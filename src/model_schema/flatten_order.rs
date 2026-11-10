@@ -714,6 +714,13 @@ pub fn refuses_the_keys_left(def: &FieldDef) -> bool {
     matches!(reads(def, 0).class(), Class::Refusing(_))
 }
 
+/// Whether a member typed `def`, flattened, reads every key its holder leaves and refuses none, so
+/// that its holder refuses no key either.
+#[cfg(feature = "kotlin")]
+pub fn reads_past_the_keys_left(def: &FieldDef) -> bool {
+    matches!(reads(def, 0).class(), Class::Open)
+}
+
 /// Every key a member typed `def`, flattened, reads at its holder's level, where the expansion sees
 /// them all and the member reads no other: one that takes its own keys, or reads every key left
 /// and refuses one beside its own. `None` for a member that reads past a key, or one declared

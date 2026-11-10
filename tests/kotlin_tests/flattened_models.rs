@@ -461,7 +461,7 @@ pub struct Rousing {
 }
 
 /// A struct under its own tag, which serde writes, and reads past without taking its key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Ensign {
@@ -490,7 +490,7 @@ pub struct Striking {
 }
 
 /// A struct under its own tag, which serde writes ahead of the struct's members.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Flag {
@@ -498,7 +498,7 @@ pub struct Flag {
 }
 
 /// [`Flag`] with a type parameter, its tag written ahead of its members at every filling.
-#[model_schema(default_types(Held = String))]
+#[model_schema(nonstrict, default_types(Held = String))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Gonfalon<Held> {
@@ -506,7 +506,7 @@ pub struct Gonfalon<Held> {
 }
 
 /// [`Flag`] with a member read under its alias as well.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Semaphore {
@@ -515,7 +515,7 @@ pub struct Semaphore {
 }
 
 /// [`Flag`] with a flattened member, whose serializer tixschema writes.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Pennant {

@@ -51,7 +51,7 @@ pub const UNDER_AN_ALIAS: [(&str, &str, &str); 4] = [
 
 /// A struct under its own tag, its tag key and its name, and the names of its members, one of them
 /// read under an alias too, holding a `$`, a quote, a double quote and a backslash.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "ki$nd", rename = "Price's$Tag\\")]
 pub struct Tariffed {

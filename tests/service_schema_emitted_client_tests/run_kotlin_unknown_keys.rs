@@ -130,10 +130,10 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
         json: r#"{"kind":"Garnetting","label":"north","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
         named: "Garnetting",
         serde: written_back::<Garnetting>,
-        zod: "refused",
+        zod: "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
     },
     Row {
         ignoring: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
@@ -146,10 +146,10 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
         json: r#"{"north":2,"label":"n","kind":"Ensign","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
         named: "Dressing",
         serde: written_back::<Dressing>,
-        zod: "refused",
+        zod: "read {\"north\":2,\"kind\":\"Ensign\",\"label\":\"n\"}",
     },
     Row {
         ignoring: "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
@@ -356,7 +356,7 @@ const UNKNOWN_AT: &str = "refused: Encountered an unknown key 'other' at path: $
 
 /// [`Furling`] under its own tag: a struct the Kotlin emitter writes the serializer of, whose tag
 /// is a key it reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub struct Garnetting {

@@ -372,6 +372,38 @@ pub(super) fn close_enum(item_enum: &mut ItemEnum, args: &ModelSchemaArgs) {
     }
 }
 
+/// The refusal of a strict struct under a tag of its own: serde cannot refuse a key beside the tag,
+/// as `deny_unknown_fields` there refuses the tag itself, so the struct says `nonstrict` and every
+/// surface reads past such a key as serde does.
+fn own_tag_error(
+    item_struct: &ItemStruct,
+    args: &ModelSchemaArgs,
+) -> Option<proc_macro2::TokenStream> {
+    let (key, _named) = struct_tag(item_struct)?;
+    if args.nonstrict || !args.preprocess.is_empty() || !derives_serde(&item_struct.attrs) {
+        return None;
+    }
+    let written = item_struct.attrs.iter().find(|attr| {
+        attr.path().is_ident("serde")
+            && quote::ToTokens::to_token_stream(attr)
+                .to_string()
+                .contains("tag")
+    })?;
+    let name = item_struct.ident.unraw();
+    Some(
+        syn::Error::new_spanned(
+            written,
+            prefixed_guard_message(&format!(
+                "type `{name}` is under a tag of its own, `{key}`, and serde cannot refuse a key \
+                 no member declares beside it: `#[serde(deny_unknown_fields)]` there refuses the \
+                 tag itself. Mark `{name}` `#[model_schema(nonstrict)]`, so every surface reads \
+                 past such a key as serde does"
+            )),
+        )
+        .to_compile_error(),
+    )
+}
+
 /// The refusal of a `nonstrict` type whose author also wrote `deny_unknown_fields`, which asks
 /// for the opposite.
 pub(super) fn conflict_errors(
@@ -385,6 +417,11 @@ pub(super) fn conflict_errors(
     } else {
         return Vec::new();
     };
+    if let Item::Struct(item_struct) = item
+        && let Some(refused) = own_tag_error(item_struct, args)
+    {
+        return vec![refused];
+    }
     let Some(written) = written_deny(attrs).filter(|_| args.nonstrict) else {
         return Vec::new();
     };

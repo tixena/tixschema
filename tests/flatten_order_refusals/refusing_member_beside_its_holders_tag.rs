@@ -12,7 +12,7 @@ pub enum Shape {
     Square { side: u32 },
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "parcel")]
 pub struct Parcel {
