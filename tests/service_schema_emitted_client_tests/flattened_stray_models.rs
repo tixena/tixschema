@@ -1,8 +1,9 @@
 //! Holders of a flattened member of each kind serde reads a stray key through: a struct that
 //! flattens one, an enum under a tag alone, an untagged enum, a struct of one slot over a struct,
 //! an externally tagged enum and an `Option` of one, and a variant of an enum under a tag alone
-//! beside one that flattens, a nonstrict holder of a member that refuses a key, and a struct and an
-//! `Option` of one declared below their holder. serde refuses a stray key beside each of them.
+//! beside one that flattens, a nonstrict holder of a member that refuses a key, a struct and an
+//! `Option` of one declared below their holder, and a nonstrict enum under a tag alone over a strict
+//! struct. serde refuses a stray key beside each of them.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -183,4 +184,20 @@ pub struct GiftBox {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct GiftWrap {
     pub paper: String,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ConsignmentLabel {
+    pub code: String,
+}
+
+/// A nonstrict enum under a tag alone whose newtype variant holds a strict struct, which refuses a
+/// key serde hands it beside the tag.
+#[model_schema(nonstrict)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind")]
+pub enum Consignment {
+    Labelled(ConsignmentLabel),
+    Loose { note: String },
 }

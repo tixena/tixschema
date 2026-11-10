@@ -1505,6 +1505,46 @@ pub fn refused_by_a_member(fields: &Fields, generics: &Generics) -> bool {
         .any(|field| matches!(member_reads(field, &parameters).class(), Class::Refusing(_)))
 }
 
+/// Whether a variant of `item_enum` refuses a key no member declares whatever the enum's own
+/// strictness: one that flattens a member that refuses it, and, under a tag alone or untagged, a
+/// newtype variant over a type that refuses a key it does not declare, which serde hands the keys.
+pub fn a_variant_refuses_a_stray(item_enum: &ItemEnum) -> bool {
+    let parameters = parameter_names(&item_enum.generics);
+    let whole = reads_every_key(item_enum);
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_on_the_wire(variant))
+        .any(|variant| {
+            refused_by_a_member(&variant.fields, &item_enum.generics)
+                || (whole
+                    && newtype_slot(variant).is_some_and(|slot| {
+                        !read_by_a_function(slot)
+                            && refuses_read_whole(&def_of(&slot.ty, &parameters), 0)
+                    }))
+        })
+}
+
+/// Whether a value `def` describes, read from every key of an object, refuses one it does not
+/// declare: a type the expansion recorded as refusing one, or what such an alias, brand or struct of
+/// one slot is written as.
+fn refuses_read_whole(def: &FieldDef, depth: usize) -> bool {
+    let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
+        return false;
+    };
+    if depth > DEPTH || def.is_optional() || def.array_depth != 0 {
+        return false;
+    }
+    match recorded(name) {
+        Some(Record::Shape(shape)) => shape.closed.is_some(),
+        Some(Record::Through { parameters, slot }) => refuses_read_whole(
+            &filled(&slot, &parameters, arguments),
+            depth.saturating_add(1),
+        ),
+        None => false,
+    }
+}
+
 /// Whether every member `fields` flattens takes its own keys, so a holder of them may refuse a key
 /// none declares. A member of a type the expansion did not see is held to take them, and the
 /// `const` its holder earns refuses the build where its hidden constant says it does not.

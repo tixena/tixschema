@@ -781,6 +781,16 @@ struct GuestLetter {
     title: String,
 }
 
+/// A nonstrict enum under a tag alone whose newtype variant holds a strict struct, which refuses a
+/// stray key serde hands it beside the tag.
+#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "kind")]
+enum Docket {
+    Noted { note: String },
+    Stamped(StrictStamp),
+}
+
 /// A union one member of which is itself a union, and the struct that flattens the outer one. serde
 /// writes whichever leaf member matched into the object the struct is writing, so the nesting
 /// contributes no key of its own and what the struct writes is one key set per leaf.
@@ -4507,4 +4517,19 @@ fn the_schema_of_a_nonstrict_holder_refuses_a_stray_key_its_strict_member_refuse
         serde_json::json!(false)
     );
     assert!(GuestLetter::zod_schema().contains("z.strictObject({\n  title: z.string(),"));
+}
+
+#[test]
+fn the_schema_of_a_nonstrict_enum_refuses_a_stray_key_a_variant_refuses() {
+    let stray = r#"{"depth":2,"ink":"red","kind":"Stamped","stray":1}"#;
+    serde_json::from_str::<Docket>(stray).unwrap_err();
+    let zod = Docket::zod_schema();
+    assert!(!zod.contains("z.object("), "{zod}");
+    assert!(
+        !serde_json::to_string(&Docket::json_schema())
+            .unwrap()
+            .contains(r#""additionalProperties":true"#),
+        "{}",
+        Docket::json_schema()
+    );
 }
