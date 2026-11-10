@@ -1613,7 +1613,7 @@ impl Calls {
                     if is_unit_type(success) {
                         calls.empty = true;
                     } else {
-                        calls.ok = true;
+                        calls.ok |= !is_content_list(operation);
                     }
                 }
             }

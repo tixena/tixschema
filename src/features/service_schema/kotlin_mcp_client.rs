@@ -32,11 +32,12 @@ interface @N@McpTransport {
 
 const REFUSAL: &str = "class @N@McpRefusal(val fault: @F@) : Exception(fault.detail)";
 
-const SUPPORT: &str = r#"private val @P@McpCallWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
+const CALL_WRAPPED: &str =
+    "private val @P@McpCallWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
   @WRAPPED_MAP@
-)
+)";
 
-private sealed interface @P@McpCalled {
+const SUPPORT: &str = r#"private sealed interface @P@McpCalled {
   class Succeeded(val structured: JsonElement?, val content: JsonElement?) : @P@McpCalled
   class Declared(val error: JsonElement) : @P@McpCalled
   class Faulted(val fault: @F@) : @P@McpCalled
@@ -169,9 +170,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     {
         published.push(fill(REFUSAL, &prefix, &named, &fields));
     }
-    published.push(
-        fill(SUPPORT, &prefix, &named, &fields).replace("@WRAPPED_MAP@", &tool_entries(service)),
-    );
+    if service.operations.iter().any(OperationDef::is_mcp_tool) {
+        published.push(
+            fill(CALL_WRAPPED, &prefix, &named, &fields)
+                .replace("@WRAPPED_MAP@", &tool_entries(service)),
+        );
+    }
+    published.push(fill(SUPPORT, &prefix, &named, &fields));
     if service.operations.iter().any(is_content_pair) {
         published.push(fill(PAIR, &prefix, &named, &fields));
     }

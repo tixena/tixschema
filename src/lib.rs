@@ -2011,7 +2011,10 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///   client the macro writes, as macros you invoke. `transports = []`, `#[service_schema()]` and
 ///   `#[service_schema]` ask for none.
 /// - `non_exhaustive`: a bare flag that puts `#[non_exhaustive]` on the messages the macro
-///   declares, on the fault kind, on `CallError` and on `{Service}Schema`.
+///   declares, on the fault kind, on `CallError`, on `{Service}Schema`, on the `amqp_rpc` server's
+///   `Context` and `Stopped`, on each `ws_rpc` `Frame` and on the `http_rest` `DefaultFaultHandler`.
+///   Another crate builds the last with `DefaultFaultHandler::new()` and the server's `Context`
+///   with `Context::new(logger)`.
 ///
 /// The two may come in either order. Any other argument, and a transport name not in the list, is
 /// refused. Per-operation directives go in

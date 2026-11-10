@@ -17,8 +17,8 @@ use crate::service_schema::parse::{
     service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
-    message_alias_ident, message_reader_ident, message_validator_ident, message_wire_key_ident,
-    module_ident,
+    exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
+    message_wire_key_ident, module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -38,8 +38,9 @@ pub fn emit(
     service: &ServiceDef,
     transport: Transport,
     openapi: Option<&OpenApiArguments>,
+    non_exhaustive: bool,
 ) -> TokenStream {
-    let dispatcher = dispatcher_macro(service, transport, openapi);
+    let dispatcher = dispatcher_macro(service, transport, openapi, non_exhaustive);
     let client = client_macro(service, transport);
     quote! {
         #dispatcher
@@ -194,6 +195,7 @@ fn dispatcher_macro(
     service: &ServiceDef,
     transport: Transport,
     openapi: Option<&OpenApiArguments>,
+    non_exhaustive: bool,
 ) -> TokenStream {
     let contract = &service.ident;
     let macro_name = super::dispatcher_macro_ident(service, transport);
@@ -218,7 +220,7 @@ fn dispatcher_macro(
          {placement}",
         transport.name()
     );
-    let items = dispatcher_items(service, openapi);
+    let items = dispatcher_items(service, openapi, non_exhaustive);
     quote! {
         #[doc = #macro_doc]
         #[macro_export]
@@ -230,7 +232,11 @@ fn dispatcher_macro(
     }
 }
 
-fn dispatcher_items(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream {
+fn dispatcher_items(
+    service: &ServiceDef,
+    openapi: Option<&OpenApiArguments>,
+    non_exhaustive: bool,
+) -> TokenStream {
     let module = module_ident(service);
     // Whether `OutgoingResponse` carries a plain `Vec<u8>` body or the `OutgoingBody` enum a
     // streamed body needs: `dispatch` has one return type, so the choice is the whole service's.
@@ -247,7 +253,7 @@ fn dispatcher_items(service: &ServiceDef, openapi: Option<&OpenApiArguments>) ->
     let outgoing = outgoing_response_items(has_stream, &module);
     let route = route_type();
     let routes = route_table(service);
-    let fault_handler = fault_handler_trait(&module);
+    let fault_handler = fault_handler_trait(&module, non_exhaustive);
     // `match_path` is an arm's, and a service declaring no operation has no arm to call it from.
     let path_token = if service.operations.is_empty() {
         TokenStream::new()
@@ -679,7 +685,9 @@ fn response_builders(has_stream: bool, writes_response_header: bool) -> TokenStr
 /// seam existed - 400 for a payload that failed to decode or to `validate()`, 404 for a request no
 /// route answers to, 500 for a handler that panicked - each as the fault itself under
 /// `json_response`.
-fn fault_handler_trait(module: &Ident) -> TokenStream {
+fn fault_handler_trait(module: &Ident, non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
+    let (derived_default, constructor) = default_fault_handler_constructors(non_exhaustive);
     quote! {
         /// Decides what one fault answers with, for a `dispatch` it was installed on.
         pub trait FaultHandler {
@@ -695,10 +703,34 @@ fn fault_handler_trait(module: &Ident) -> TokenStream {
         }
 
         /// A `FaultHandler` that overrides nothing: every fault answers the fixed default.
+        #derived_default
+        #sealed
         pub struct DefaultFaultHandler;
+
+        #constructor
 
         impl FaultHandler for DefaultFaultHandler {}
     }
+}
+
+/// `Default` and `new()` on `DefaultFaultHandler`, under `non_exhaustive` alone: a sealed unit
+/// struct is written bare only in the crate that placed the dispatcher, and every other crate
+/// builds it through these.
+fn default_fault_handler_constructors(non_exhaustive: bool) -> (TokenStream, TokenStream) {
+    if !non_exhaustive {
+        return (TokenStream::new(), TokenStream::new());
+    }
+    let derived_default = quote! { #[derive(Default)] };
+    let constructor = quote! {
+        impl DefaultFaultHandler {
+            /// The handler, for a crate other than the one that placed the dispatcher.
+            #[must_use = "a handler decides nothing until it is handed to `dispatch`"]
+            pub const fn new() -> Self {
+                Self
+            }
+        }
+    };
+    (derived_default, constructor)
 }
 
 fn dispatch_fn(
