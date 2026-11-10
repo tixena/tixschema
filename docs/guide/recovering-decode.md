@@ -244,7 +244,7 @@ The callback's types and the resolvers' are named through the flagged type's own
 | `NoVariant { path, found, variants }` | An untagged enum none of whose variants reads the value. `variants` holds each variant's own list of issues, in the order declared | `{ "country": "one", "digits": "555" }` read as an untagged enum of `Email`, `Phone` and `Versioned`: one `NoVariant`, holding a list for each of the three |
 | `Undescribed { reason }` | serde refuses the value and the walk found nothing that says why. `reason` is serde's own message | `{ "Circle": 5 }` read as an enum whose `Circle` variant holds named fields |
 
-`Undescribed` is added when everything the walk listed is an `Unknown` or a `Mistyped`, or it listed nothing, and serde still refuses the value. A type whose `Deserialize` is written by hand earns it, and so does an undeclared key under `#[serde(deny_unknown_fields)]`, listed beside its `Unknown`.
+`Undescribed` is added when everything the walk listed is an `Unknown` or a `Mistyped`, or it listed nothing, and serde still refuses the value. A type whose `Deserialize` is written by hand earns it. An undeclared key serde refuses under `#[serde(deny_unknown_fields)]` is listed once, as its `Unknown`, from JSON and from BSON alike, and a callback that removes it and answers `Fixed` reads the record.
 
 `Expected` describes a field's type as tixschema classifies it:
 

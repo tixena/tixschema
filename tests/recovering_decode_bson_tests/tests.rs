@@ -323,6 +323,36 @@ struct Shelved {
     local: u8,
 }
 
+/// A strict type: serde refuses a key it does not declare.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Applicant {
+    national_id: String,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Office {
+    code: String,
+}
+
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Franking {
+    office: Office,
+}
+
+/// Flattens the strict `Franking` through an `Option`, which serde reads as `None` where it refuses
+/// `Franking`.
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Parcel {
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    franking: Option<Franking>,
+    label: String,
+}
+
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Envelope {
@@ -1192,6 +1222,58 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
             unknown("cached", Bson::Int32(1_i32)),
             unknown("local", Bson::Int32(9_i32))
         ]
+    );
+}
+
+#[test]
+fn an_undeclared_key_of_a_strict_type_is_one_unknown_issue_from_bson() {
+    let stored_row = doc! { "nationalId": "1", "legacy": true };
+    assert!(!serde_reads::<Applicant>(&stored_row));
+    let read =
+        Applicant::from_bson_with(stored_row, |_raw, _found| applicant_schema::Verdict::Reject);
+    assert_eq!(
+        told!(applicant_schema, read.unwrap_err().issues),
+        [unknown("legacy", Bson::Boolean(true))]
+    );
+}
+
+#[test]
+fn a_decider_that_drops_an_undeclared_key_of_a_strict_type_reads_the_row() {
+    use applicant_schema::{Issue, Stored as _, Verdict};
+
+    let mut calls = 0_u32;
+    let read =
+        Applicant::from_bson_with(doc! { "nationalId": "1", "legacy": true }, |raw, found| {
+            calls += 1;
+            for issue in found {
+                let Issue::Unknown {
+                    path,
+                    found: _found,
+                } = issue
+                else {
+                    return Verdict::Reject;
+                };
+                raw.remove_at(path);
+            }
+            Verdict::Fixed
+        });
+    assert_eq!(
+        read,
+        Ok(Applicant {
+            national_id: "1".to_owned(),
+        })
+    );
+    assert_eq!(calls, 1);
+}
+
+#[test]
+fn an_undeclared_key_inside_a_flattened_strict_type_is_one_unknown_issue_from_bson() {
+    let stored_row = doc! { "office": { "code": "SJ", "legacy": true }, "label": "l" };
+    assert!(serde_reads::<Parcel>(&stored_row));
+    let read = Parcel::from_bson_with(stored_row, |_raw, _found| parcel_schema::Verdict::Reject);
+    assert_eq!(
+        told!(parcel_schema, read.unwrap_err().issues),
+        [unknown("office.legacy", Bson::Boolean(true))]
     );
 }
 

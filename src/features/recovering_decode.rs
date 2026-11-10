@@ -1453,7 +1453,7 @@ impl Walker<'_> {
                 match <#model as serde::Deserialize>::deserialize(#reader) {
                     ::core::result::Result::Ok(_) => out.append(&mut nested),
                     ::core::result::Result::Err(refusal) => {
-                        if refusal.to_string().starts_with("unknown field ") && !nested.is_empty() {
+                        if refusal.to_string().contains("unknown field ") && !nested.is_empty() {
                             out.append(&mut nested);
                         } else {
                             out.push(issue("Mistyped", #here, #expected, ::core::option::Option::Some(#whole), ::core::option::Option::None, ::std::vec::Vec::new()));
@@ -3230,16 +3230,17 @@ fn bson_entry_methods(
     Entry { helpers, reads }
 }
 
-/// Whether `reason`, serde's refusal, is of a key that an `Unknown` among `out` lists.
+/// Whether `reason`, serde's refusal, is of a key that an `Unknown` among `out` lists. Version 3 of
+/// the `bson` library writes the refusal inside a text of its own.
 fn refused_key_listed(module: &Ident) -> TokenStream {
     quote! {
         reason
-            .strip_prefix("unknown field `")
-            .and_then(|rest| rest.split_once('`'))
+            .split_once("unknown field `")
+            .and_then(|(_, rest)| rest.split_once('`'))
             .or_else(|| {
                 reason
-                    .strip_prefix("invalid value: string \"")
-                    .and_then(|rest| rest.split_once("\", expected "))
+                    .split_once("invalid value: string \"")
+                    .and_then(|(_, rest)| rest.split_once("\", expected "))
             })
             .is_some_and(|(key, _)| {
                 out.iter().any(|found| match found {
