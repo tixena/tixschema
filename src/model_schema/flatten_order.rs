@@ -707,6 +707,13 @@ fn named_reads(def: &FieldDef, name: &str, arguments: &[FieldDef], depth: usize)
     read
 }
 
+/// Whether a member typed `def`, flattened, reads every key its holder leaves and refuses one it
+/// does not declare, so that a client reads it from those keys under the caller's strictness.
+#[cfg(feature = "kotlin")]
+pub fn refuses_the_keys_left(def: &FieldDef) -> bool {
+    matches!(reads(def, 0).class(), Class::Refusing(_))
+}
+
 /// The keys a value `def` describes is written and read under, as far as the expansion sees.
 fn keys(def: &FieldDef, depth: usize) -> KeySet {
     #[cfg(feature = "mongodb")]

@@ -190,9 +190,13 @@ the consumer's view; this is what a change has to keep.
   `read_keys` knows is read under the caller's `Json`, from the object kept to those keys
   (`flatten_struct_field_plan`), and a flattened externally tagged enum from its one entry
   (`flatten_enum_field_plan`), so a model either holds, at any depth, refuses a key no member of it
-  reads, as it does held under a key. Every other flattened member is read with `lenient`, which
-  `FlattenedMember::lenient` declares only where one is, and every model below it reads past such
-  a key: the README states the limit. A `nonstrict` type refuses nothing: the class the plugin
+  reads, as it does held under a key. A flattened member that reads every key its holder leaves
+  and refuses one it does not declare (`refuses_the_keys_left`, the macro's classifier: a strict
+  struct that flattens one, a strict enum under a tag alone, a strict untagged enum) is handed the
+  object without the holder's own keys and those taken ahead of it, as serde hands it, and read
+  under the caller's `Json`, so it refuses a key no member reads. Every other flattened member is
+  read with `lenient`, which `FlattenedMember::lenient` declares only where one is, and every
+  model below it reads past such a key: the README states the limit. A `nonstrict` type refuses nothing: the class the plugin
   reads is annotated `@JsonIgnoreUnknownKeys` (`read::ignoring_unknown_keys`, and
   `opted_in_ignoring_unknown_keys` for a variant's class) and `unknown_key_refused` writes a no-op
   for it, as it is read by `is_nonstrict`. `flatten_plan`

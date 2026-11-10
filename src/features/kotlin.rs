@@ -48,6 +48,8 @@ use crate::field_type::{
     FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
+#[cfg(feature = "serde")]
+use crate::model_schema::flatten_order::refuses_the_keys_left;
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -545,6 +547,12 @@ fn taken_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
         return None;
     }
     KOTLIN_TAKEN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn refuses_the_keys_left(_def: &FieldDef) -> bool {
+    false
 }
 
 /// Whether a flattened member typed `def` is read from the whole object its holder reads, as
@@ -2068,6 +2076,7 @@ fn flatten_struct_field_plan(
     prop: &str,
     type_parameters: &[String],
     rest: &str,
+    refusing: bool,
 ) -> FlattenedMember {
     let base = flatten_base_field(&field.field_def);
     let inner_serializer = read::member_serializer(&base, type_parameters);
@@ -2085,8 +2094,11 @@ fn flatten_struct_field_plan(
         handed
     };
     let known = read_keys(&base);
+    // A member that reads every key left and refuses one it does not declare is handed those keys,
+    // as serde hands them, and read under the caller's `Json`, so it refuses a key no member reads.
+    let reader = if refusing { "input.json" } else { "lenient" };
     let decoded = known.as_ref().map_or_else(
-        || format!("lenient.decodeFromJsonElement({inner_serializer}, {corrected})"),
+        || format!("{reader}.decodeFromJsonElement({inner_serializer}, {corrected})"),
         |keys| {
             format!(
                 "input.json.decodeFromJsonElement({inner_serializer}, \
@@ -2429,12 +2441,15 @@ fn flatten_plan(
                 }
                 plan.push(member);
             } else {
-                let handed = if reads_the_whole(&flatten_base_field(&field.field_def)) {
+                let base = flatten_base_field(&field.field_def);
+                let refusing = !field.field_def.is_optional() && refuses_the_keys_left(&base);
+                let handed = if reads_the_whole(&base) && !refusing {
                     "obj"
                 } else {
                     &rest
                 };
-                let member = flatten_struct_field_plan(field, &prop, type_parameters, handed);
+                let member =
+                    flatten_struct_field_plan(field, &prop, type_parameters, handed, refusing);
                 if !preprocess::takes_no_key(&field.field_def) {
                     let _ = write!(taken, " - {}", member.taken);
                 }

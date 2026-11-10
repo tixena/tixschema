@@ -2,8 +2,8 @@
 //! `-Werror`, under the default `Json` and under `Json { ignoreUnknownKeys = true }`, beside what
 //! serde reads and what the generated Zod schema answers of the same payload. The default `Json`
 //! refuses the key, as Zod and the plugin's own serializer refuse it, and the other reads past it,
-//! as the plugin's reads past it. A flattened map, and a flattened type whose keys are not known,
-//! take every key they are handed.
+//! as the plugin's reads past it. A flattened map takes every key it is handed, and a flattened
+//! struct that flattens a member of its own refuses one it does not declare, as serde reads it.
 
 #![cfg(all(feature = "kotlin", feature = "serde"))]
 
@@ -66,7 +66,7 @@ const TWO_VARIANTS: &str =
 /// in a struct, in a variant under each tagging and beside a flattened struct, where the struct
 /// and the struct it flattens are under their own tag, and beside a flattened enum; the payloads
 /// serde writes of those, which hold none; a key a flattened map reads, and one handed to a
-/// flattened type whose keys are not known; a key no member reads in a model held one and two
+/// flattened struct that flattens a member of its own; a key no member reads in a model held one and two
 /// levels inside a flattened struct, in the variant of a flattened enum and as a flattened map's
 /// value; and a key beside the tag of an enum under a tag alone, of each shape of variant, and
 /// beside the tag and the content of one under a tag and a content key.
@@ -210,7 +210,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\",\"note\":\"a\"}",
         json: r#"{"label":"north","note":"a","other":1}"#,
-        kotlin: "read {\"label\":\"north\",\"note\":\"a\"}",
+        kotlin: "refused: Encountered an unknown key 'other'",
         named: "Parcelling",
         serde: written_back::<Parcelling>,
         zod: "refused",
@@ -381,7 +381,8 @@ pub struct Trucking {
     pub note: String,
 }
 
-/// [`Trucking`] flattened: the Kotlin emitter knows no key it reads, so its holder takes every key.
+/// [`Trucking`] flattened: it reads every key its holder leaves and refuses one it does not declare,
+/// as serde reads it.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parcelling {
