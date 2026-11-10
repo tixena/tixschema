@@ -414,27 +414,11 @@ fn a_flattened_enum_reads_in_swift_the_one_entry_under_a_variants_name() {
          30: more than one variant of enum Careen found in flattened data: Bay, Dock\n\
          path: Index 1\n"
     );
-    // The Swift read of a holder of an externally tagged enum reads past a key no member reads,
-    // where serde refuses it.
-    let read_past = [
-        (STOWING[2], "{\"Bay\":{\"label\":\"n\"}} a"),
-        (BELTING[1], "null a"),
-        (ANCHORING[0], "{\"Bay\":{\"label\":\"n\"}} a"),
-    ];
-    let mut swift = String::new();
-    for (at, row) in rows.iter().enumerate() {
-        let told = read_past
-            .iter()
-            .find(|&&(json, _)| json == row.json)
-            .map_or(row.told.as_str(), |&(_, read)| read);
-        let _ = writeln!(swift, "{at}: {told}");
-    }
-    swift.push_str("path: Index 1\n");
     for run in ["first", "second", "third"] {
         let Some(printed) = printed(&main) else {
             return;
         };
-        assert_eq!(printed, swift, "the {run} run");
+        assert_eq!(printed, expected, "the {run} run");
     }
 }
 

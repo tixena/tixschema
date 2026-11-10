@@ -714,6 +714,17 @@ pub fn refuses_the_keys_left(def: &FieldDef) -> bool {
     matches!(reads(def, 0).class(), Class::Refusing(_))
 }
 
+/// Every key a member typed `def`, flattened, reads at its holder's level, where the expansion sees
+/// them all and the member reads no other: one that takes its own keys, or reads every key left
+/// and refuses one beside its own. `None` for a member that reads past a key, or one declared
+/// below or in another crate.
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+pub fn flattened_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let class = reads(def, 0).class();
+    (matches!(class, Class::Taker | Class::Refusing(_)) && keys_complete(def, 0))
+        .then(|| keys(def, 0).read)
+}
+
 /// The keys a value `def` describes is written and read under, as far as the expansion sees.
 fn keys(def: &FieldDef, depth: usize) -> KeySet {
     #[cfg(feature = "mongodb")]

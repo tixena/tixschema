@@ -1242,6 +1242,16 @@ mod flatten_order_models;
 #[path = "service_schema_emitted_client_tests/run_flatten_order.rs"]
 mod run_flatten_order;
 
+/// Holders of a flattened member of each kind serde reads a stray key through.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/flattened_stray_models.rs"]
+mod flattened_stray_models;
+
+/// Those holders read by serde, Dart, Kotlin and Swift, with and without a stray key.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_flattened_strays.rs"]
+mod run_flattened_strays;
+
 /// A key no member reads, refused by the emitted Kotlin types under the default `Json` as Zod
 /// refuses it. Declared after the modules that declare the members its models flatten.
 #[cfg(test)]

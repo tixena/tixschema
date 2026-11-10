@@ -33,6 +33,8 @@ use crate::field_type::{
     FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
     is_plain_enum, is_sequence_wrapper,
 };
+#[cfg(feature = "serde")]
+use crate::model_schema::flatten_order::flattened_keys;
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
@@ -3477,18 +3479,30 @@ fn closed_keys(
 }
 
 /// Every key a holder takes of the flattened member typed `def`, where they are all known: the keys
-/// its type refuses a key beside, else those it takes.
+/// its type refuses a key beside, else those it takes. A member serde hands every key left counts
+/// only where it refuses a key beside its own.
 fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
-    if !preprocess::functions(def).is_empty()
-        || !preprocess::only_keys(def).is_empty()
-        || leaves_its_keys(def)
-    {
+    if !preprocess::functions(def).is_empty() || !preprocess::only_keys(def).is_empty() {
         return None;
     }
-    preprocess::closed_keys_of(def).or_else(|| {
-        let taken = preprocess::keys_taken_by(def);
-        (!taken.is_empty()).then_some(taken)
-    })
+    if leaves_its_keys(def) {
+        // serde hands such a member every key its holder leaves, and one that refuses a key beside
+        // its own refuses those the holder refuses. The macro's classifier answers its keys, and
+        // an enum's or a struct of one slot's, which the Swift registries do not hold.
+        return flattened_keys(def);
+    }
+    preprocess::closed_keys_of(def)
+        .or_else(|| {
+            let taken = preprocess::keys_taken_by(def);
+            (!taken.is_empty()).then_some(taken)
+        })
+        .or_else(|| flattened_keys(def))
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
 }
 
 /// Whether serde leaves the keys of the type `def` holds in the object it reads them from, which

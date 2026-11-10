@@ -49,7 +49,7 @@ use crate::field_type::{
     is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
-use crate::model_schema::flatten_order::refuses_the_keys_left;
+use crate::model_schema::flatten_order::{flattened_keys, refuses_the_keys_left};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -553,6 +553,23 @@ fn taken_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
 #[cfg(not(feature = "serde"))]
 const fn refuses_the_keys_left(_def: &FieldDef) -> bool {
     false
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
+    None
+}
+
+/// The keys the macro's classifier answers for a flattened member typed `def` the emitter noted
+/// nothing of, a struct of one slot over a struct among them, where it names no function.
+fn unrecorded_keys(def: &FieldDef) -> Option<Vec<String>> {
+    let noted =
+        recorded_keys(def).is_some_and(|keys| !keys.is_empty()) || recorded_tag_keys(def).is_some();
+    if noted || !preprocess::of(def).is_empty() {
+        return None;
+    }
+    flattened_keys(def)
 }
 
 /// Whether a flattened member typed `def` is read from the whole object its holder reads, as
@@ -2093,7 +2110,7 @@ fn flatten_struct_field_plan(
     } else {
         handed
     };
-    let known = read_keys(&base);
+    let known = read_keys(&base).or_else(|| unrecorded_keys(&base));
     // A member that reads every key left and refuses one it does not declare is handed those keys,
     // as serde hands them, and read under the caller's `Json`, so it refuses a key no member reads.
     let reader = if refusing { "input.json" } else { "lenient" };
@@ -2455,7 +2472,11 @@ fn flatten_plan(
                 }
                 plan.push(member);
                 members_read = members_read
-                    .zip(read_keys(&field.field_def).or_else(|| taken_tag_keys(&field.field_def)))
+                    .zip(
+                        read_keys(&field.field_def)
+                            .or_else(|| taken_tag_keys(&field.field_def))
+                            .or_else(|| unrecorded_keys(&flatten_base_field(&field.field_def))),
+                    )
                     .map(|(mut so_far, keys)| {
                         let _ = write!(so_far, " - {}", kotlin_set_of(&keys));
                         so_far
