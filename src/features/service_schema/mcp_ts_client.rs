@@ -160,7 +160,7 @@ function __p__ReplyHeader<Parsed>(
   };
 }";
 
-const BLOCKS: &str = r#"/** `text` decoded from base64 as the array of its bytes, `undefined` where it is none. */
+const UNBASE64: &str = r#"/** `text` decoded from base64 as the array of its bytes, `undefined` where it is none. */
 function __p__Unbase64(text: unknown): Array<number> | undefined {
   if (typeof text !== "string") return undefined;
   try {
@@ -168,9 +168,9 @@ function __p__Unbase64(text: unknown): Array<number> | undefined {
   } catch {
     return undefined;
   }
-}
+}"#;
 
-/** The structured pair of an answer: its own, or its one image or audio block written as one. */
+const PAIR_SOURCE: &str = r#"/** The structured pair of an answer: its own, or its one image or audio block written as one. */
 function __p__PairSource(structured: unknown, blocks: unknown): unknown {
   if (structured !== undefined) return structured;
   const block = Array.isArray(blocks) ? __p__Object(blocks[0]) : undefined;
@@ -411,7 +411,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         .any(|operation| operation.mcp.content.is_some())
         || messages
     {
-        published.push(fill(BLOCKS));
+        published.push(fill(UNBASE64));
+    }
+    if service.operations.iter().any(is_content_pair) {
+        published.push(fill(PAIR_SOURCE));
     }
     if service.operations.iter().any(is_content_list) || messages {
         published.push(fill(LIST));

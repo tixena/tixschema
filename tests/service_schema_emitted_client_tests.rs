@@ -2150,3 +2150,29 @@ mod empty_struct_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_empty_structs.rs"]
 mod run_empty_structs;
+
+/// Five MCP services of one operation each, whose emitted servers and clients write each helper
+/// only where something calls it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_note_services.rs"]
+mod mcp_note_services;
+
+#[cfg(test)]
+use mcp_note_services::{
+    NoteBlocksService, NoteCountService, NoteGreetingService, NotePreviewService,
+    NoteReviewService, note_blocks_service_schema, note_count_service_schema,
+    note_greeting_service_schema, note_preview_service_schema, note_review_service_schema,
+};
+
+/// `dart analyze` over the Dart server and client of each of those services.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_notes.rs"]
+mod run_dart_mcp_notes;
+
+/// The Kotlin server and client and the Swift client of each of those services, read for a
+/// declaration nothing calls.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_note_declarations.rs"]
+mod mcp_note_declarations;
