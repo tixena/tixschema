@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `stamp` (`Stamp`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`, which refuses a key it does not declare, beside `shape`: the Dart and Swift reads of `Parcel` are written when it expands, before they can see which keys `Stamp` takes, and hand it keys of the members beside it that serde does not. Declare `Stamp` above `Parcel`, mark it `#[model_schema(nonstrict)]`, or write `stamp` under a key of its own.
+  --> tests/flatten_order_refusals/strict_members_declared_below_side_by_side.rs:11:16
+   |
+11 |     pub stamp: Stamp,
+   |                ^^^^^ evaluation of `_` failed here

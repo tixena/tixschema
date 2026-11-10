@@ -80,11 +80,11 @@ mod by_the_derive {
         })
     }
 
-    /// `text` with the digits of the names the Kotlin number serializers are declared under taken
-    /// off: a counter that runs across the items of a crate numbers them.
+    /// `text` with the digits and the crate's name taken off the names the Kotlin number
+    /// serializers are declared under: a counter that runs across the items of a crate numbers them.
     #[cfg(feature = "kotlin")]
     fn unnumbered(text: &str) -> String {
-        regex::Regex::new(r"KotlinNumber\d+").map_or_else(
+        regex::Regex::new(r"KotlinNumber\d+\w*").map_or_else(
             |_| text.to_owned(),
             |pattern| pattern.replace_all(text, "KotlinNumber").into_owned(),
         )

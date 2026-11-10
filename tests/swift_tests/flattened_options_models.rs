@@ -1,9 +1,9 @@
 //! The models of the flattened `Option` members `swift_tests/flattened_options.rs` pins and
 //! `service_schema_emitted_client_tests/run_swift_flattened_options.rs` runs: a struct beside a
 //! member of its holder's own, alone in its holder and in a variant under a tag key, a struct of
-//! two keys, a struct declared below its holder, a map of dates alone in its holder, a struct
-//! flattened bare beside a member of its holder's own, a model `validate()` walks alone and beside
-//! a member of its holder's own, a struct that reads the keys no member around it took, a struct
+//! two keys, a struct declared below its holder, a struct flattened bare beside a member of its
+//! holder's own, a model `validate()` walks alone and beside a member of its holder's own, a
+//! struct that reads the keys no member around it took, a struct
 //! read from what a function answers, and an enum of each tagging, and one declared below its
 //! holder, beside a member of its holder's own. serde writes the keys of a flattened member that
 //! holds a value beside its holder's own, and nothing for one that holds none, and reads one that
@@ -11,11 +11,6 @@
 //! handed. `run_kotlin_flattened.rs` reads [`Crowning`], [`Fidding`], [`Lowering`], [`Squaring`],
 //! [`Heeling`], [`Pitching`], [`Thimble`] and [`Easing`] as well.
 
-#[cfg(feature = "chrono")]
-use alloc::collections::BTreeMap;
-
-#[cfg(feature = "chrono")]
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
@@ -106,14 +101,6 @@ pub const PITCHING: [&str; 3] = [
     r#"{"Round":{"turns":"x"},"note":"n"}"#,
 ];
 
-/// What [`Swaging`] is read from: a date under a key of the flattened map.
-#[cfg(feature = "chrono")]
-pub const SWAGING: &str = r#"{"north":"2024-01-02T03:04:05.678Z"}"#;
-
-/// What [`Swaging`] is read from with an entry that is no date.
-#[cfg(feature = "chrono")]
-pub const SWAGING_MISTYPED: &str = r#"{"north":"x"}"#;
-
 /// The member the structs below flatten.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -181,18 +168,8 @@ pub struct Nippering {
     pub label: String,
 }
 
-/// A flattened `Option` of a map of dates, the one member of its holder, which Swift writes as
-/// the text serde writes.
-#[cfg(feature = "chrono")]
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Swaging {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    pub stamps: Option<BTreeMap<String, DateTime<Utc>>>,
-}
-
 /// A struct flattened bare beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crowning {
     pub note: String,
@@ -253,7 +230,7 @@ pub enum Thimble {
 }
 
 /// An enum under a tag key alone, which [`Lowering`] flattens.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Grommet {
@@ -271,7 +248,7 @@ pub enum Becket {
 }
 
 /// An untagged enum, which [`Heeling`] flattens.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Toggle {
@@ -327,11 +304,13 @@ pub struct Pitching {
     pub shackle: Option<Shackle>,
 }
 
-/// The externally tagged enum [`Pitching`] flattens, declared below it.
+/// The externally tagged enum [`Pitching`] flattens, declared below it, with no unit variant: one
+/// the Zod, Dart and Swift reads of [`Pitching`] would read as an entry over `null` only for an
+/// enum declared above it.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Shackle {
-    Calm,
+    Calm(u32),
     Round { turns: u32 },
 }
 
@@ -519,19 +498,4 @@ fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_
     assert_eq!(heeling, [None, Some(Toggle::Round { turns: 2 }), None]);
     let pitching = PITCHING.map(|json| serde_json::from_str::<Pitching>(json).unwrap().shackle);
     assert_eq!(pitching, [None, Some(Shackle::Round { turns: 2 }), None]);
-}
-
-/// serde reads the flattened map of dates from every key, writes each date back as the text it
-/// read, reads it as `None` where an entry is no date, and writes nothing for a map it does not
-/// hold.
-#[cfg(feature = "chrono")]
-#[test]
-fn serde_writes_a_flattened_option_of_dates_as_the_text_it_read() {
-    let swaging: Swaging = serde_json::from_str(SWAGING).unwrap();
-    assert_eq!(swaging.stamps.as_ref().map(BTreeMap::len), Some(1));
-    assert_eq!(serde_json::to_string(&swaging).unwrap(), SWAGING);
-    let mistyped: Swaging = serde_json::from_str(SWAGING_MISTYPED).unwrap();
-    assert_eq!(mistyped, Swaging { stamps: None });
-    let none = Swaging { stamps: None };
-    assert_eq!(serde_json::to_string(&none).unwrap(), "{}");
 }

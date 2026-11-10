@@ -2337,25 +2337,31 @@ fn present_statement(
         return corrected_field(field, &[], walked, &kept, None, twins);
     }
     let beside = field.flatten && preprocess::beside(&field.field_def);
-    let read =
-        if field.flatten && withheld && !beside && !preprocess::reads_the_whole(&field.field_def) {
-            // A type that reads its holder's decoder sees every key, so it is read from the payload
-            // without the keys taken.
-            corrected_field(field, &[], walked, source, None, twins)
-        } else if walked || beside {
-            read::unjudged(&field.field_def, &field.hint, source, &member, locals)
-        } else if field.flatten {
-            format!(
-                "self.{swift} = try {real_type}(from: decoder)",
-                swift = field.swift_name,
-                real_type = field.real_type,
-            )
-        } else if read::holds_a_length(&field.field_def) {
-            let stem = swift_bare(&field.swift_name);
-            read::counted(&field.shaped(), stem, source, &member, locals)
-        } else {
-            keyed_read(field, container, absent_is_nil)
-        };
+    // What fills a type parameter may refuse a key beside its own, which serde reads past here.
+    let parameter = matches!(field.field_def.field_type, FieldDefType::TypeParam(_))
+        && field.field_def.array_depth == 0;
+    let read = if field.flatten
+        && (withheld || parameter)
+        && !beside
+        && !preprocess::reads_the_whole(&field.field_def)
+    {
+        // A type that reads its holder's decoder sees every key, so it is read from the payload
+        // without the keys taken.
+        corrected_field(field, &[], walked, source, None, twins)
+    } else if walked || beside {
+        read::unjudged(&field.field_def, &field.hint, source, &member, locals)
+    } else if field.flatten {
+        format!(
+            "self.{swift} = try {real_type}(from: decoder)",
+            swift = field.swift_name,
+            real_type = field.real_type,
+        )
+    } else if read::holds_a_length(&field.field_def) {
+        let stem = swift_bare(&field.swift_name);
+        read::counted(&field.shaped(), stem, source, &member, locals)
+    } else {
+        keyed_read(field, container, absent_is_nil)
+    };
     if field.flatten
         && let Some((filled, keys)) = preprocess::filled_alone(&field.field_def, &field.real_type)
     {
@@ -4500,6 +4506,25 @@ fn tagged_encode_arm(case_name: &str, wire_tag: &str, then: Option<&str>) -> Str
 /// The Swift tokens the internally tagged shape earns (`tag = "..."`, no `content`): the tag
 /// merges into the same object a `Named` payload's own fields sit in, so a variant's own payload
 /// struct decodes/encodes through the *same* `decoder`/`encoder` the enum's own tag read from.
+/// The statement that refuses a key beside the tag `tag_key` of a unit variant that the members
+/// flattened ahead of the enum did not take, as the Rust read of a strict enum does: none for a
+/// `nonstrict` enum and one that names a function on itself.
+fn unit_beside_the_tag(tag_key: &str, corrects: &[FunctionName]) -> String {
+    if is_nonstrict() || !corrects.is_empty() {
+        return String::new();
+    }
+    format!(
+        "if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ \
+         for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys \
+         where unknown.stringValue != {} && !taken.contains(unknown.stringValue) {{ \
+         throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+         decoder.codingPath + [unknown], debugDescription: \"unknown field \
+         `\\(unknown.stringValue)`\")) }} }}; ",
+        swift_quoted(tag_key)
+    )
+}
+
 fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
@@ -4558,9 +4583,10 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             let then = format!("{}; ", payload.written_beside("payload"));
             encode_arms.push_str(&tagged_encode_arm(&case_name, &wire_tag, Some(&then)));
         } else {
+            let beside = unit_beside_the_tag(tag_key, args.preprocess);
             write!(
                 decode_arms,
-                "case {}: self = .{case_name}; ",
+                "case {}: {beside}self = .{case_name}; ",
                 aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
             )
             .unwrap();

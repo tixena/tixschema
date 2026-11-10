@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `loose` (`Loose`) and `hue` (`Hue`), and each reads every key still left: tixschema cannot see which keys `Loose` reads, as it is declared below the type that flattens it, in another crate, or with no `#[model_schema]`, and it refuses the keys of `hue` (`Hue`) wherever it refuses a key it does not declare. Write `loose` under a key of its own, or flatten beside it only members serde takes their own keys of: a struct with no `#[serde(flatten)]` member and no tag of its own, or an enum under no tag or under a tag and a content key.
+  --> tests/flatten_order_refusals/unmodelled_member_beside_another.rs:25:16
+   |
+25 |     pub loose: Loose,
+   |                ^^^^^ evaluation of `_` failed here

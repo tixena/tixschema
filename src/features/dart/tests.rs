@@ -40,8 +40,8 @@ fn plain_args() -> DartTypeArgs<'static> {
 }
 
 /// A flattened `Option` of an enum under a tag key whose class was emitted above is looked for by
-/// its tag, then its content key, in the whole object its holder reads, as TypeScript and Zod read
-/// it. One under a tag alone takes no key off the object the members after it are handed, and one
+/// its tag, then its content key, in the object its holder reads less the holder's own keys, as
+/// serde reads it. One under a tag alone takes no key off the object the members after it are handed, and one
 /// under a tag and a content key takes both, as serde reads it. One that names a function on itself
 /// has no key to be looked for by, and is `null` wherever its read throws.
 #[cfg(feature = "serde")]
@@ -90,8 +90,8 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     let handed = "({...json}..remove('note')..remove('kind')..remove('body'))";
     let only = |keys: &str| {
         format!(
-            "(switch (json) {{ final whole => {{ for (final key in const [{keys}]) if \
-             (whole.containsKey(key)) key: whole[key] }} }})"
+            "(switch (({{...json}}..remove('note'))) {{ final whole => {{ for (final key in \
+             const [{keys}]) if (whole.containsKey(key)) key: whole[key] }} }})"
         )
     };
     let (cleat_from, bollard_from) = (only("'kind', 'turns'"), only("'kind', 'body'"));

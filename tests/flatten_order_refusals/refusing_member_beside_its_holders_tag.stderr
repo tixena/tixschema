@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `shape` (`Shape`), which reads every key still left, and has its own tag `parcel`, which serde leaves for it to read: `Shape` refuses a key it does not declare, so it refuses its own tag `parcel`. Mark `Shape` `#[model_schema(nonstrict)]`.
+  --> tests/flatten_order_refusals/refusing_member_beside_its_holders_tag.rs:20:5
+   |
+20 | /     #[serde(flatten)]
+21 | |     pub shape: Shape,
+   | |____________________^

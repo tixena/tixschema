@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `counts` (`Counts`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: `Counts` holds a map keyed by a number or a `bool`: serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write `counts` under a key of its own.
+  --> tests/flatten_order_refusals/map_keyed_by_a_number_declared_below.rs:12:17
+   |
+12 |     pub counts: Counts,
+   |                 ^^^^^^ evaluation of `_` failed here

@@ -34,8 +34,8 @@ use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
 use crate::utils::is_unconsumed;
 use crate::utils::{
-    MapKeyWire, compute_alias_export_name, compute_item_export_name, is_nonstrict, to_snake_case,
-    type_parameters_in_scope,
+    MapKeyWire, compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict,
+    to_snake_case, type_parameters_in_scope,
 };
 
 #[cfg(feature = "serde")]
@@ -1170,10 +1170,18 @@ fn closed_record_of(def: &FieldDef) -> Option<Vec<String>> {
 
 /// Every key a holder takes of the flattened member typed `def`, where they are all known.
 fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
-    if !member_functions(def).is_empty() || leaves_its_keys(def) {
+    if !member_functions(def).is_empty() {
         return None;
     }
-    match taken_by(def) {
+    let taken = taken_by(def);
+    // An externally tagged enum takes one entry under a variant's name, whatever it leaves.
+    if let Taken::FirstOf(names) = &taken {
+        return Some(names.concat());
+    }
+    if leaves_its_keys(def) {
+        return None;
+    }
+    match taken {
         Taken::Only(_) | Taken::FirstOf(_) => None,
         Taken::Keys(keys) => closed_keys_of(def, &keys),
         Taken::Tagged(_) => closed_record_of(def),
@@ -1218,6 +1226,20 @@ fn closed_keys(
     let mut seen = HashSet::new();
     keys.retain(|key| seen.insert(key.clone()));
     Some(keys)
+}
+
+/// The keys a struct over `fields` refuses a key beside, as [`closed_keys`] answers them, and none
+/// for one under a tag of its own `own_tag`, past whose unknown keys serde reads.
+fn struct_closed_keys(
+    fields: &[DartField],
+    own_tag: Option<&(String, String)>,
+    beside: &[&str],
+    corrects: &Corrects<'_>,
+) -> Option<Vec<String>> {
+    own_tag
+        .is_none()
+        .then(|| closed_keys(fields, beside, corrects))
+        .flatten()
 }
 
 /// The keys a variant holding `payload` refuses a key beside, where they are all known.
@@ -1464,20 +1486,6 @@ fn hands_to_none(def: &FieldDef) -> bool {
     } else {
         matches!(def.field_type, FieldDefType::Map(..))
     }
-}
-
-/// Whether a member typed `def`, flattened into its holder, is read from the whole object the
-/// holder reads, as TypeScript and Zod read it: a struct, and an enum under a tag key, whose class
-/// was emitted above and that hands that object to no function. One that hands it to a function
-/// is handed what serde hands it.
-fn reads_the_whole(def: &FieldDef) -> bool {
-    let FieldDefType::SiblingType(name, _) = &def.field_type else {
-        return false;
-    };
-    hands_to_none(def)
-        && (DART_TAKEN_KEYS
-            .with(|recorded| matches!(recorded.borrow().get(name), Some(Taken::Keys(_))))
-            || DART_TAG_KEYS.with(|recorded| recorded.borrow().contains_key(name)))
 }
 
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
@@ -2328,7 +2336,7 @@ fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
             counter.set(next);
             next
         });
-        let named = format!("DartResult{index}");
+        let named = format!("DartResult{index}{}", crate_tag());
         let held: Vec<&str> = RESULT_ARMS
             .into_iter()
             .zip(shape)
@@ -3841,11 +3849,16 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             // A flattened member is walked whatever it writes.
             let decode = match taken_by(def) {
                 Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    let whole = if reads_the_whole(def) { json } else { &handed };
-                    // A type that refuses a key it does not read is handed the keys it reads.
-                    let kept = closed_record_of(def)
-                        .filter(|_| member_functions(def).is_empty())
-                        .map_or_else(|| whole.to_owned(), |known| only(whole, &known));
+                    // serde hands a member that leaves its keys in the object every key still
+                    // left, which it refuses or reads past as its own read does, and one that
+                    // takes its keys those keys alone.
+                    let known = closed_record_of(def)
+                        .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
+                        .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
+                    let kept = match known {
+                        Some(read) => only(&handed, &read),
+                        None => handed,
+                    };
                     let decode = flattened_decode(def, &kept, &taken);
                     for key in taken {
                         if !taken_ahead.contains(&key) {
@@ -4002,7 +4015,7 @@ fn tag_checked_reads(
         .into_iter()
         .chain(own_tag.map(|(key, _)| key.as_str()))
         .collect();
-    let closed = closed_keys(fields, &beside, corrects);
+    let closed = struct_closed_keys(fields, own_tag, &beside, corrects);
     let refused = closed.as_deref().map_or_else(String::new, |keys| {
         unknown_keys_refused(class_name, read_from, keys)
     });
@@ -4184,7 +4197,10 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
     rules.extend(own_check_elements(args.check));
     let corrects = Corrects::of(args.preprocess);
     let own_tag_key: Vec<&str> = own_tag.iter().map(|(key, _)| key.as_str()).collect();
-    record_closed_keys(&rust_ident, closed_keys(&fields, &own_tag_key, &corrects));
+    record_closed_keys(
+        &rust_ident,
+        struct_closed_keys(&fields, own_tag.as_ref(), &own_tag_key, &corrects),
+    );
     let body = class_body(
         &export_name,
         &generic_params,
@@ -4543,23 +4559,22 @@ fn tagged_variant_steps(wire_tag: &str, shape: &TagShape<'_>) -> Vec<Step> {
     )
 }
 
-/// The read of a unit variant under a tag alone: `built`, refused where the object holds a key
-/// beside the tag. Under any other tagging, and in a `nonstrict` type, `built` alone.
+/// The read of the unit variant `built`: under a tag alone, a strict enum refuses a key beside the
+/// tag, as its Rust read does.
 fn unit_beside_the_tag(
-    built: &str,
-    subclass_name: &str,
+    export_name: &str,
     shape: &TagShape<'_>,
     corrects: &Corrects<'_>,
+    built: &str,
 ) -> String {
-    if !shape.merge_tag_into_object || !corrects.own.is_empty() || is_nonstrict() {
-        return built.to_owned();
+    if shape.merge_tag_into_object && corrects.own.is_empty() && !is_nonstrict() {
+        format!(
+            "(() {{ {}return {built}; }})()",
+            unknown_keys_refused(export_name, &corrects.json, &[shape.tag_key.to_owned()])
+        )
+    } else {
+        built.to_owned()
     }
-    format!(
-        "{json}.keys.every((key) => key == {tag}) ? {built} : throw FormatException('Unknown key \
-         of a {subclass_name}: ' + {json}.keys.firstWhere((key) => key != {tag}))",
-        json = corrects.json,
-        tag = quoted(shape.tag_key),
-    )
 }
 
 /// The Dart tokens for one tagged-union variant: the subclass definition, and the arm of the
@@ -4604,7 +4619,7 @@ fn tagged_variant_tokens(
             // Under a content key Zod reads the variant as a strict object of the tag alone, so a
             // content is refused, `null` among it, which serde reads.
             let read = held.map_or_else(
-                || unit_beside_the_tag(&built, subclass_name, shape, corrects),
+                || unit_beside_the_tag(export_name, shape, corrects, &built),
                 |holds_content| {
                     format!(
                         "{holds_content} ? throw FormatException('{export_name}: ' + {} + ' takes \

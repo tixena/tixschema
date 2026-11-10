@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Shipment` has field `grams` and flattened `weight` (`invoice_lookups::ParcelWeight`), one of them declared below the type that flattens it, in another crate, or with no `#[model_schema]`, which both declare the key `grams`: serde writes it for each of them into one object, which holds a key once, so one of the two does not read back. Rename the key in one of them, or write `weight` under a key of its own.
+  --> tests/flatten_order_refusals/member_in_another_crate_of_a_key_beside_it.rs:11:17
+   |
+11 |     pub weight: invoice_lookups::ParcelWeight,
+   |                 ^^^^^^^^^^^^^^^ evaluation of `_` failed here

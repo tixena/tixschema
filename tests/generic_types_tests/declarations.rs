@@ -52,11 +52,6 @@ mod unrecorded;
 #[path = "../kotlin_tests/corrected_options_models.rs"]
 mod corrected_options;
 
-/// The holders of a flattened struct that reads a key taken around it, what serde says of each
-/// payload, and what Zod reads of it.
-#[path = "../swift_tests/shared_key_models.rs"]
-mod shared_keys;
-
 /// A `char` and a chrono date, time and date and time held in each place, and what serde, Zod and
 /// the Kotlin read answer of each payload.
 #[cfg(feature = "chrono")]
@@ -3238,46 +3233,8 @@ fn flattened_maps() -> String {
         flattened_maps::Transom::zod_schema(),
         flattened_maps::Bilge::ts_definition(),
         flattened_maps::Bilge::zod_schema(),
-        flattened_maps::Locker::ts_definition(),
-        flattened_maps::Locker::zod_schema(),
-        flattened_maps::Scupper::ts_definition(),
-        flattened_maps::Scupper::zod_schema(),
-        flattened_maps::Hawse::ts_definition(),
-        flattened_maps::Hawse::zod_schema(),
-        flattened_maps::Windlass::ts_definition(),
-        flattened_maps::Windlass::zod_schema(),
         flattened_maps::Ratlines::ts_definition(),
         flattened_maps::Ratlines::zod_schema(),
-        flattened_maps::Deadeye::ts_definition(),
-        flattened_maps::Deadeye::zod_schema(),
-        flattened_maps::sheave_tallies_schema::Schema::ts_definition(),
-        flattened_maps::sheave_tallies_schema::Schema::zod_schema(),
-        flattened_maps::Sheave::ts_definition(),
-        flattened_maps::Sheave::zod_schema(),
-        flattened_maps::spare_tallies_schema::Schema::ts_definition(),
-        flattened_maps::spare_tallies_schema::Schema::zod_schema(),
-        flattened_maps::Lazarette::ts_definition(),
-        flattened_maps::Lazarette::zod_schema(),
-        flattened_maps::PintleCounts::ts_definition(),
-        flattened_maps::PintleCounts::zod_schema(),
-        flattened_maps::Pintle::ts_definition(),
-        flattened_maps::Pintle::zod_schema(),
-        flattened_maps::Oarlock::<String>::ts_definition(),
-        flattened_maps::Oarlock::<String>::zod_schema(),
-        flattened_maps::Thole::ts_definition(),
-        flattened_maps::Thole::zod_schema(),
-        flattened_maps::Kedge::ts_definition(),
-        flattened_maps::Kedge::zod_schema(),
-        flattened_maps::Fender::ts_definition(),
-        flattened_maps::Fender::zod_schema(),
-        flattened_maps::Stanchion::ts_definition(),
-        flattened_maps::Stanchion::zod_schema(),
-        flattened_maps::Fairlead::ts_definition(),
-        flattened_maps::Fairlead::zod_schema(),
-        flattened_maps::Davit::ts_definition(),
-        flattened_maps::Davit::zod_schema(),
-        flattened_maps::Capstan::ts_definition(),
-        flattened_maps::Capstan::zod_schema(),
         flattened_maps::Burgee::ts_definition(),
         flattened_maps::Burgee::zod_schema(),
         flattened_maps::Hawser::ts_definition(),
@@ -3351,41 +3308,6 @@ fn corrected_options_bundle() -> String {
         corrected_options::Frapped::zod_schema(),
         corrected_options::Moused::ts_definition(),
         corrected_options::Moused::zod_schema(),
-    ]
-    .join("\n\n")
-}
-
-/// The holders of a flattened struct that reads a key taken around it: a bundle of their own,
-/// compiled with `tsc --strict` before it is loaded.
-fn shared_keys_bundle() -> String {
-    [
-        PREAMBLE.to_owned(),
-        shared_keys::Earring::ts_definition(),
-        shared_keys::Earring::zod_schema(),
-        shared_keys::Spritsail::ts_definition(),
-        shared_keys::Spritsail::zod_schema(),
-        shared_keys::Bowline::ts_definition(),
-        shared_keys::Bowline::zod_schema(),
-        shared_keys::Gantline::ts_definition(),
-        shared_keys::Gantline::zod_schema(),
-        shared_keys::Clinching::ts_definition(),
-        shared_keys::Clinching::zod_schema(),
-        shared_keys::Garnet::ts_definition(),
-        shared_keys::Garnet::zod_schema(),
-        shared_keys::Parrel::ts_definition(),
-        shared_keys::Parrel::zod_schema(),
-        shared_keys::Gudgeon::ts_definition(),
-        shared_keys::Gudgeon::zod_schema(),
-        shared_keys::Rubrail::ts_definition(),
-        shared_keys::Rubrail::zod_schema(),
-        shared_keys::Toggled::ts_definition(),
-        shared_keys::Toggled::zod_schema(),
-        shared_keys::Halliard::ts_definition(),
-        shared_keys::Halliard::zod_schema(),
-        shared_keys::Snotter::ts_definition(),
-        shared_keys::Snotter::zod_schema(),
-        shared_keys::Bitts::ts_definition(),
-        shared_keys::Bitts::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -5151,9 +5073,9 @@ fn type_check_a_flattened_or_tagged_shape_is_read_under_zod_as_serde_reads_it() 
         .collect();
     assert_eq!(
         divergent,
-        ["block: the tag of another variant"],
-        "serde refuses a key no member reads, as Zod does; the unit variant of an enum under a tag \
-         alone reads past the key of another variant"
+        Vec::<&str>::new(),
+        "serde refuses a key no member reads, as Zod does, beside the unit variant of an enum under \
+         a tag alone among them"
     );
     let rows: Vec<(&str, &str, &str)> = flattened_zod::ROWS
         .iter()
@@ -5603,7 +5525,7 @@ fn type_check_an_optional_flattened_struct_refuses_under_zod_a_key_serde_drops()
 /// An optional flattened member whose type the Kotlin emitter recorded no struct's keys for is
 /// taken by TypeScript and by the Zod schema of its holder under `node` where it is absent and
 /// where its type reads, and refused where a key of its type does not read, a payload serde reads
-/// as `None`, dropping the key.
+/// as `None`, dropping the key, but by the Zod schema of a `nonstrict` holder, which strips it.
 #[test]
 fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_read() {
     let taken: Vec<bool> = unrecorded::UNRECORDED
@@ -5644,8 +5566,14 @@ fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_r
     let typed: Vec<bool> = (0..taken.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
+    // TypeScript's type is the one `nonstrict` leaves, so it takes what serde writes back alone.
+    let written_back: Vec<bool> = unrecorded::UNRECORDED
+        .iter()
+        .zip(unrecorded::READ_BACK)
+        .map(|(row, read_back)| read_back == row.json)
+        .collect();
     assert_eq!(
-        typed, taken,
+        typed, written_back,
         "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
     );
 }
@@ -5702,49 +5630,6 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     assert_eq!(
         typed, stated,
         "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"
-    );
-}
-
-/// A flattened struct is read by the Zod schema of its holder under `node` with a key a member of
-/// its holder's own, or a struct flattened ahead of it, reads too, an optional one where that key
-/// is there, and TypeScript takes the payload, where serde refuses it or reads `None`.
-#[test]
-fn type_check_a_key_read_by_a_struct_and_the_type_around_it_is_read_under_zod() {
-    let listed: Vec<(String, &str)> = shared_keys::SHARED_KEYS
-        .iter()
-        .map(|row| (format!("{}$Schema", row.holder), row.json))
-        .collect();
-    let driver = READ_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
-    let Some((printed, failed)) = loaded_from("shared-keys", &shared_keys_bundle(), &driver) else {
-        return;
-    };
-    let zod: Vec<&str> = shared_keys::SHARED_KEYS.iter().map(|row| row.zod).collect();
-    assert_eq!(
-        printed,
-        zod.join("\n"),
-        "the schemas do not read what they are stated to read:\n{failed}"
-    );
-    let Some(at) = built_from("shared-keys-payloads", &shared_keys_bundle()) else {
-        return;
-    };
-    let mut payloads = String::from(
-        "import type { Bitts, Bowline, Clinching, Gudgeon, Halliard, Parrel, Rubrail } from \
-         \"./lib/index.js\";\n",
-    );
-    for (position, row) in shared_keys::SHARED_KEYS.iter().enumerate() {
-        let _ = writeln!(
-            payloads,
-            "export const row{position}: {} = {};",
-            row.holder, row.json
-        );
-    }
-    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
-    fs::write(at.join("consumer.ts"), &payloads).unwrap();
-    let (passed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
-    fs::remove_dir_all(&at).unwrap();
-    assert!(
-        passed,
-        "TypeScript does not take each payload:\n{said}\n{payloads}"
     );
 }
 

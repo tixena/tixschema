@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` has flattened `ink` (`Ink`) and flattened `stamp` (`Stamp`), one of them declared below the type that flattens it, in another crate, or with no `#[model_schema]`, which both declare the key `hue`: serde writes it for each of them into one object, which holds a key once, so one of the two does not read back. Rename the key in one of them, or write `ink` or `stamp` under a key of its own.
+  --> tests/flatten_order_refusals/two_members_declared_below_of_one_key.rs:11:14
+   |
+11 |     pub ink: Ink,
+   |              ^^^ evaluation of `_` failed here

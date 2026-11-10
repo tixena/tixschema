@@ -289,12 +289,27 @@ fn texts(tokens: TokenStream) -> Vec<String> {
         .collect()
 }
 
-/// The diagnostics this crate writes into `tokens`.
+/// The message of every `compile_error!` this crate writes into `tokens`: an assertion the
+/// compiler evaluates against a type the expansion did not see refuses nothing by itself.
 fn refusals(tokens: TokenStream) -> Vec<String> {
-    texts(tokens)
-        .into_iter()
-        .filter(|text| text.starts_with("model_schema: "))
-        .collect()
+    let mut found = Vec::new();
+    let (mut named, mut invoked) = (false, false);
+    for tree in tokens {
+        if let TokenTree::Group(group) = &tree {
+            if invoked {
+                found.extend(
+                    texts(group.stream())
+                        .into_iter()
+                        .filter(|text| text.starts_with("model_schema: ")),
+                );
+            } else {
+                found.extend(refusals(group.stream()));
+            }
+        }
+        invoked = named && matches!(&tree, TokenTree::Punct(punct) if punct.as_char() == '!');
+        named = matches!(&tree, TokenTree::Ident(ident) if ident == "compile_error");
+    }
+    found
 }
 
 #[test]
@@ -597,17 +612,30 @@ fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member(
     }
 }
 
+/// A type declared below its holder is refused by no expansion, and read, at the holder, through
+/// the hidden constant of what it reads flattened, in checks the compiler evaluates.
 #[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_below_its_holder_is_not_looked_into() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
-    assert_eq!(
-        refused(
-            "pub struct Unseen { #[serde(flatten)] pub marking: ShelfMark, \
-             #[serde(flatten)] pub spare: SpareBelow }"
-        ),
-        NONE
-    );
+    let source = "#[derive(Serialize, Deserialize)] pub struct Unseen { #[serde(flatten)] pub \
+                  marking: ShelfMark, #[serde(flatten)] pub spare: SpareBelow }";
+    assert_eq!(refusals(expanded(source)), NONE);
+    let checked: Vec<String> = texts(expanded(source))
+        .into_iter()
+        .filter(|text| text.starts_with("model_schema: "))
+        .collect();
+    assert_ne!(checked, NONE);
+    for check in &checked {
+        assert!(
+            check.starts_with("model_schema: type `Unseen` flattens `spare` (`SpareBelow`)")
+                || check.starts_with(
+                    "model_schema: type `Unseen` has flattened `marking` (`ShelfMark`) and \
+                     flattened `spare` (`SpareBelow`)"
+                ),
+            "{check}"
+        );
+    }
     assert_eq!(
         refused("pub struct SpareBelow { #[serde(flatten)] pub rest: BTreeMap<String, u8> }"),
         NONE
@@ -1135,9 +1163,22 @@ fn a_map_flattened_alone_beside_a_tag_is_refused_whatever_it_holds() {
 #[test]
 fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
-    for source in [
+    // Strict, the enum would refuse a key beside its tag and its content key, which serde reads
+    // for every variant at once, and so for the map.
+    let transom = refused(
         "#[serde(tag = \"kind\", content = \"held\")] pub enum Transom { Open { \
          #[serde(flatten)] counts: BTreeMap<String, u8> } }",
+    );
+    assert_eq!(transom.len(), 1, "{transom:?}");
+    assert!(
+        transom[0].starts_with(
+            "model_schema: type `Transom`: variant `Open` flattens `counts` (`BTreeMap<String, \
+             u8>`), which reads every key still left"
+        ),
+        "{}",
+        transom[0]
+    );
+    for source in [
         "pub enum Coaming { Open { #[serde(flatten)] counts: BTreeMap<String, u8> } }",
         "#[serde(untagged)] pub enum Bilge { Open { #[serde(flatten)] \
          counts: BTreeMap<String, u8> } }",

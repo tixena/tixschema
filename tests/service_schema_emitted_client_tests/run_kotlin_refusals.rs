@@ -368,8 +368,8 @@ fn a_serializer_tixschema_writes_refuses_with_a_serialization_exception() {
             "missing field `held` at line 1 column 18",
             "invalid type: null, expected struct variant Bowlining::Counted at line 1 column 29",
             "missing field `kind` at line 1 column 11",
-            "unknown variant `Gale`, expected one of `Counted`, `Labelled`, `Spare`, `Tallied` at \
-             line 1 column 14",
+            "unknown variant `Gale`, expected one of `Counted`, `Labelled`, `Tallied` at line 1 \
+             column 14",
             "expected value at line 1 column 9",
             "expected value at line 1 column 2",
             "expected value at line 1 column 20",

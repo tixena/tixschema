@@ -217,7 +217,7 @@ the consumer's view; this is what a change has to keep.
 - **A `char` and a chrono date, time and date and time are read in their one form, and written
   in the form serde writes**, by `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`,
   and `TextForm` (`src/features/text_forms.rs`, section 14) names its form. `texts::serializer`
-  declares, once per item and form, `object KotlinText{N} : KSerializer<String>` into the queue
+  declares, once per item and form, `object KotlinText{N}{Crate} : KSerializer<String>` into the queue
   the tuple wrappers are written from (`KOTLIN_TEXTS`, cleared with them), which throws
   `SerializationException` for any other text: `expected a character, found "ab"` for a text of
   other than one code point, as serde refuses it, and `expected a date, found "x"` for a text
@@ -231,7 +231,7 @@ the consumer's view; this is what a change has to keep.
   written held to RFC 3339 with its zone, its seconds written, `expected a date and time with its
   zone, found "x"` for any other.
   - Where the plugin reads, the declaration names the serializer. `read::plugin_read` writes
-    `@Serializable(with = KotlinText{N}::class)` at each place `texts::declared` finds a form, the
+    `@Serializable(with = KotlinText{N}{Crate}::class)` at each place `texts::declared` finds a form, the
     value itself, inside a list, a nullable, a map's key and value, a type argument, a range's
     bound and a `Result`'s arm, through the `Annotated` of `annotated_base`, and
     `read::with_text_forms` writes it on a brand's value and on the type an alias names. The
@@ -260,9 +260,12 @@ the consumer's view; this is what a change has to keep.
   clients read them: `kotlinx.serialization` 1.11.0 reads `"7"` for a `Long`, `Int`, `Short`,
   `Byte`, `Double`, `Float`, `UByte`, `UShort` and `UInt`, and `"true"` for a `Boolean`.
   `texts::Primitive` names each (`Primitive::of`, with `Millis` for a `DateTime<Tz>` under
-  `as_number`), and `texts::number_serializer` declares `object KotlinNumber{N} :
+  `as_number`), and `texts::number_serializer` declares `object KotlinNumber{N}{Crate} :
   KSerializer<T>` once per item and primitive into the queue the tuple wrappers are written from
   (`KOTLIN_NUMBERS`, cleared with it; the counter is not, so two types of one file share no name).
+  `{Crate}` is the compiled crate's name in `PascalCase` (`utils::crate_tag`, read from
+  `CARGO_CRATE_NAME`), which every numbered helper of the Kotlin and Dart emitters carries after
+  its number, so the definitions of two crates compile in one package.
   It reads the element through `decodeJsonElement()` and throws `SerializationException("invalid
   type: string \"7\", expected i64")` for a string primitive, in the words serde uses with the
   Rust type of the member (`a boolean` for a `bool`, `a unix timestamp in milliseconds` under

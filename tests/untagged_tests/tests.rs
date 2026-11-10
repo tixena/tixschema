@@ -23,16 +23,6 @@ const WRAPPED_MEMBERS: [&str; 3] = ["ids", "ordered", "queued"];
 #[serde(transparent)]
 pub struct DateString(pub String);
 
-// The migration target: an entry whose flattened variant carries `Vec<DateValue>`.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DataElementSampleValueEntry {
-    data_element_id: String,
-    #[serde(flatten)]
-    variant: DataElementSampleValueVariant,
-}
-
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "dataType")]
@@ -41,6 +31,16 @@ enum DataElementSampleValueVariant {
         #[serde(rename = "sampleValues")]
         sample_values: Vec<DateValue>,
     },
+}
+
+// The migration target: an entry whose flattened variant carries `Vec<DateValue>`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DataElementSampleValueEntry {
+    data_element_id: String,
+    #[serde(flatten)]
+    variant: DataElementSampleValueVariant,
 }
 
 // A date sample value: an ISO date string OR an epoch number (TupleSingle members).

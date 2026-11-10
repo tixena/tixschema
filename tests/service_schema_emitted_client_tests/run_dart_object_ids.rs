@@ -216,13 +216,15 @@ fn the_dart_text_hands_an_object_id_a_type_parameter_flattens_its_key_alone() {
         ),
         (
             crossed_dart::dart_definition(),
-            "factory Crossed.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) heldFromJson, {Held Function(dynamic)? heldFromFlattenedJson}) => Crossed(held: (heldFromFlattenedJson ?? heldFromJson)(({...json}..remove('spare'))),remark: Notation.fromJsonUnjudged((switch (json) { final whole => { for (final key in const ['note']) if (whole.containsKey(key)) key: whole[key] } })),spare: heldFromJson(json['spare']),);"
+            "factory Crossed.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) heldFromJson, {Held Function(dynamic)? heldFromFlattenedJson}) => Crossed(annotation: Notation.fromJsonUnjudged((switch (({...json}..remove('spare'))) { final whole => { for (final key in const ['note']) if (whole.containsKey(key)) key: whole[key] } })),held: (heldFromFlattenedJson ?? heldFromJson)(({...json}..remove('spare')..remove('note'))),spare: heldFromJson(json['spare']),);"
                 .to_owned(),
         ),
         (
             enveloping_dart::dart_definition(),
             "factory Enveloping.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-             heldFromJson) => Enveloping(held: heldFromJson(json),"
+             heldFromJson) => Enveloping(annotation: Notation.fromJsonUnjudged((switch (json) { final \
+             whole => { for (final key in const ['note']) if (whole.containsKey(key)) key: \
+             whole[key] } })),held: heldFromJson(({...json}..remove('note'))),"
                 .to_owned(),
         ),
     ] {
@@ -241,9 +243,12 @@ fn the_dart_text_looks_a_flattened_option_of_a_type_parameter_up_by_the_keys_of_
         (
             waxing_dart::dart_definition(),
             "factory Waxing.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-             heldFromJson, {List<String>? heldKeys}) => Waxing(held: (heldKeys == null ? (() { \
-             try { return heldFromJson(json); } catch (_) { return null; } })() : \
-             (json.keys.any(heldKeys.contains) ? heldFromJson(json) : null)),"
+             heldFromJson, {List<String>? heldKeys}) => Waxing(annotation: \
+             Notation.fromJsonUnjudged((switch (json) { final whole => { for (final key in const \
+             ['note']) if (whole.containsKey(key)) key: whole[key] } })),held: (heldKeys == null ? \
+             (() { try { return heldFromJson(({...json}..remove('note'))); } catch (_) { return \
+             null; } })() : (({...json}..remove('note')).keys.any(heldKeys.contains) ? \
+             heldFromJson(({...json}..remove('note'))) : null)),)"
                 .to_owned(),
         ),
         (

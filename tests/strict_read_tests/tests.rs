@@ -175,6 +175,51 @@ pub enum Shape {
     Square { side: u32 },
 }
 
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum Tide {
+    Ebbing { height: u32 },
+    Slack,
+}
+
+#[model_schema(nonstrict)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum LenientTide {
+    Ebbing { height: u32 },
+    Slack,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct Mooring {
+    pub berth: String,
+    #[serde(flatten)]
+    pub tide: Tide,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "kind")]
+pub enum Gauge {
+    Sounded { depth: u32 },
+}
+
+/// A variant that flattens a member reading every key keeps the whole enum open: `nonstrict`, as
+/// the build asks, it reads past a key beside its tag and content key on every level.
+#[model_schema(nonstrict)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "form", content = "body")]
+pub enum Reading {
+    Gauged {
+        station: String,
+        #[serde(flatten)]
+        gauge: Gauge,
+    },
+    Missing,
+}
+
 fn read<T>(json: &str) -> Result<(), String>
 where
     T: DeserializeOwned,
@@ -278,9 +323,17 @@ fn a_nonstrict_type_reads_past_a_key_no_member_declares() {
     assert_eq!(read::<LenientShape>(r#"{"side":1,"stray":1}"#), Ok(()));
 }
 
+/// A struct declared below the type that flattens it takes its own keys, as its hidden constant
+/// says, so the holder refuses a key neither declares.
 #[test]
-fn a_type_that_flattens_what_the_expansion_cannot_see_reads_every_key() {
-    assert_eq!(read::<Opaque>(r#"{"name":"a","id":"b","stray":1}"#), Ok(()));
+fn a_type_that_flattens_a_struct_declared_below_it_refuses_a_key_neither_declares() {
+    assert_eq!(read::<Opaque>(r#"{"name":"a","id":"b"}"#), Ok(()));
+    let refused = read::<Opaque>(r#"{"name":"a","id":"b","stray":1}"#).unwrap_err();
+    assert!(refused.contains("unknown field `stray`"), "{refused}");
+}
+
+#[test]
+fn a_type_that_flattens_its_type_parameter_reads_every_key() {
     assert_eq!(
         read::<Generic<BTreeMap<String, u32>>>(r#"{"name":"a","north":1}"#),
         Ok(())
@@ -322,4 +375,56 @@ fn a_member_serde_writes_and_never_reads_keeps_its_own_writes_readable() {
 fn a_struct_with_no_member_serde_reads_under_a_key_of_its_own_is_not_closed() {
     let read = serde_json::from_str::<Nothing>(r#"{"a":1}"#).unwrap();
     assert_eq!(read.held, 0);
+}
+
+#[test]
+fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_tag() {
+    assert_eq!(
+        serde_json::from_str::<Tide>(r#"{"kind":"Slack"}"#).unwrap(),
+        Tide::Slack
+    );
+    let refused = serde_json::from_str::<Tide>(r#"{"kind":"Slack","stray":1}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.starts_with("unknown field `stray`, there are no fields"),
+        "{refused}"
+    );
+    assert_eq!(
+        serde_json::from_str::<LenientTide>(r#"{"kind":"Slack","stray":1}"#).unwrap(),
+        LenientTide::Slack
+    );
+}
+
+#[test]
+fn the_unit_variant_flattened_last_refuses_a_key_its_holder_leaves_and_reads_its_own_back() {
+    let moored = Mooring {
+        berth: "north".to_owned(),
+        tide: Tide::Slack,
+    };
+    let written = serde_json::to_string(&moored).unwrap();
+    assert_eq!(written, r#"{"berth":"north","kind":"Slack"}"#);
+    assert_eq!(serde_json::from_str::<Mooring>(&written).unwrap(), moored);
+    let refused = serde_json::from_str::<Mooring>(r#"{"berth":"north","kind":"Slack","stray":1}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("unknown field `stray`"), "{refused}");
+}
+
+#[test]
+fn a_nonstrict_enum_whose_variant_flattens_a_tagged_enum_reads_back_and_past_a_key() {
+    for reading in [
+        Reading::Gauged {
+            station: "pier".to_owned(),
+            gauge: Gauge::Sounded { depth: 4 },
+        },
+        Reading::Missing,
+    ] {
+        let written = serde_json::to_string(&reading).unwrap();
+        assert_eq!(serde_json::from_str::<Reading>(&written).unwrap(), reading);
+    }
+    assert_eq!(
+        serde_json::from_str::<Reading>(r#"{"form":"Missing","stray":1}"#).unwrap(),
+        Reading::Missing
+    );
 }

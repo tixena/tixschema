@@ -688,7 +688,7 @@ fn a_tagged_enum_is_an_object_whose_other_keys_are_the_variants() {
         ]
     );
     let internal = json!({ "extra": 1_i32, "kind": "Clear" });
-    assert!(serde_reads::<Fill>(&internal));
+    assert!(!serde_reads::<Fill>(&internal));
     assert_eq!(
         listed!(Fill, fill_schema, internal),
         ["extra: unknown: found Number(1)"]

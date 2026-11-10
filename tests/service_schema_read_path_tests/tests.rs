@@ -167,6 +167,9 @@ pub trait DocumentService<Ctx> {
     /// Reads an externally tagged enum.
     async fn read_variants(&self, ctx: &Ctx, req: Variants) -> Result<Tally, TallyError>;
 
+    /// Stamps the drafts, taking no argument.
+    async fn stamp_drafts(&self, ctx: &Ctx) -> Result<Tally, TallyError>;
+
     /// Tags a draft, taking its arguments one by one.
     async fn tag_draft(&self, ctx: &Ctx, title: String, count: u32) -> Result<Tally, TallyError>;
 }
@@ -198,6 +201,11 @@ impl DocumentService<()> for Back {
         read_untagged: Untagged,
         read_variants: Variants,
     );
+
+    fn stamp_drafts(&self, _ctx: &()) -> impl Future<Output = Result<Tally, TallyError>> {
+        self.reached.lock().unwrap().push("stamp_drafts".to_owned());
+        ready(Ok(Tally { drafts: 0 }))
+    }
 
     fn tag_draft(
         &self,
@@ -410,6 +418,85 @@ fn an_unknown_key_in_a_generated_message_is_refused_and_the_handler_is_not_calle
     });
     assert_eq!(captured.0.lock().unwrap().take().unwrap(), expected);
     assert_eq!(faults_everywhere("tag-draft", &payload), expected);
+}
+
+#[test]
+fn an_unknown_key_in_the_message_of_an_operation_of_no_argument_is_refused_on_every_transport() {
+    let payload = json!({ "stray": 1_u8 });
+    let back = Back::default();
+    let captured = Captured(Mutex::new(None));
+    poll_once(amqp_transport::dispatch(
+        &back,
+        &(),
+        &amqp_transport::IncomingMessage::new(
+            "stamp-drafts".to_owned(),
+            serde_json::to_vec(&payload).unwrap(),
+            Vec::new(),
+        ),
+        &captured,
+    ))
+    .unwrap();
+    assert!(back.reached.lock().unwrap().is_empty());
+    let expected = json!({
+        "detail": "'stray': unknown field `stray`, there are no fields",
+        "field": "stray",
+        "kind": "failed-validation",
+        "operation": "stamp-drafts",
+    });
+    assert_eq!(captured.0.lock().unwrap().take().unwrap(), expected);
+    assert_eq!(faults_everywhere("stamp-drafts", &payload), expected);
+}
+
+#[test]
+fn the_message_of_an_operation_of_no_argument_reads_an_empty_object_on_every_transport() {
+    let back = Back::default();
+    let captured = Captured(Mutex::new(None));
+    poll_once(amqp_transport::dispatch(
+        &back,
+        &(),
+        &amqp_transport::IncomingMessage::new(
+            "stamp-drafts".to_owned(),
+            b"{}".to_vec(),
+            Vec::new(),
+        ),
+        &captured,
+    ))
+    .unwrap();
+    assert_eq!(*back.reached.lock().unwrap(), ["stamp_drafts"]);
+    assert_eq!(
+        captured.0.lock().unwrap().take().unwrap(),
+        json!({ "answered": { "ok": true, "value": { "drafts": 0_u8 } } })
+    );
+    let frame = json!({
+        "kind": "request",
+        "id": "1",
+        "service": "DocumentService",
+        "operation": "stamp-drafts",
+        "payload": {},
+    });
+    let over_ws = Back::default();
+    let reply = poll_once(ws_transport::answer(&frame.to_string(), &over_ws, &()))
+        .flatten()
+        .unwrap();
+    let parsed: Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(parsed["error"], Value::Null, "{parsed}");
+    assert_eq!(*over_ws.reached.lock().unwrap(), ["stamp_drafts"]);
+    let over_http = Back::default();
+    let answered = poll_once(http_rest_transport::dispatch(
+        &over_http,
+        &(),
+        &http_rest_transport::IncomingRequest::new(
+            "POST".to_owned(),
+            "/stamp-drafts".to_owned(),
+            String::new(),
+            Vec::new(),
+            b"{}".to_vec(),
+        ),
+        &FaultAsJson,
+    ))
+    .unwrap();
+    assert_eq!(answered.status(), 200);
+    assert_eq!(*over_http.reached.lock().unwrap(), ["stamp_drafts"]);
 }
 
 #[test]

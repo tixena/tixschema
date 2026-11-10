@@ -51,8 +51,8 @@ use crate::field_type::{
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
-    compute_alias_export_name, compute_item_export_name, is_nonstrict, option_alias, to_snake_case,
-    type_parameters_in_scope,
+    compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict, option_alias,
+    to_snake_case, type_parameters_in_scope,
 };
 
 #[cfg(feature = "serde")]
@@ -1389,7 +1389,7 @@ fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
             counter.set(next);
             next
         });
-        format!("KotlinTuple{index}")
+        format!("KotlinTuple{index}{}", crate_tag())
     } else {
         format!("KotlinTupleOf{}", shape_name(&shape))
     };
@@ -1484,7 +1484,7 @@ fn unit_typename() -> String {
             counter.set(next);
             next
         });
-        format!("KotlinUnit{index}")
+        format!("KotlinUnit{index}{}", crate_tag())
     } else {
         "KotlinUnitOf".to_owned()
     };
@@ -1527,7 +1527,7 @@ fn range_class(kind: RangeKind) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinRange{index}");
+        let named = format!("KotlinRange{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| {
             aux.borrow_mut().push(format!(
                 "@Serializable data class {named}<Bound>({members})"
@@ -1566,7 +1566,7 @@ fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
             counter.set(next);
             next
         });
-        let named = format!("KotlinResult{index}");
+        let named = format!("KotlinResult{index}{}", crate_tag());
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(result_declarations(&named, shape)));
         written.push((shape, named.clone()));
         named

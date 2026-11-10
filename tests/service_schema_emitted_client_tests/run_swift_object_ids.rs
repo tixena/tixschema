@@ -187,9 +187,10 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
             enveloping_swift::swift_definition(),
             filled(
                 above,
-                "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.held = \
-                 try SwiftSchemaPayload.read(Held.self, from: SwiftSchemaPayload.flat(Held.self, \
-                 heldPayload, at: decoder.codingPath), at: decoder.codingPath)",
+                "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+                 [\"note\"]).value; self.held = try SwiftSchemaPayload.read(Held.self, from: \
+                 SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
+                 decoder.codingPath)",
             ),
         ),
         (
@@ -198,9 +199,10 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
                 "do {{ {} }} catch {{ self.held = nil }}",
                 filled(
                     above,
-                    "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.held = \
-                 try SwiftSchemaPayload.read(Held.self, from: SwiftSchemaPayload.flat(Held.self, \
-                 heldPayload, at: decoder.codingPath), at: decoder.codingPath)"
+                    "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+                     [\"note\"]).value; self.held = try SwiftSchemaPayload.read(Held.self, from: \
+                     SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
+                     decoder.codingPath)"
                 )
             ),
         ),
@@ -209,8 +211,8 @@ fn the_swift_text_reads_a_flattened_type_parameter_filled_at_an_object_id_from_i
             filled(
                 r#""ObjectId", "Sigil", "Wafer""#,
                 "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
-                 [\"spare\"]).value; self.held = try SwiftSchemaPayload.read(Held.self, from: \
-                 SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
+                 [\"spare\", \"note\"]).value; self.held = try SwiftSchemaPayload.read(Held.self, \
+                 from: SwiftSchemaPayload.flat(Held.self, heldPayload, at: decoder.codingPath), at: \
                  decoder.codingPath)",
             ),
         ),
@@ -242,7 +244,7 @@ fn the_swift_text_looks_a_flattened_option_of_a_type_parameter_up_by_the_keys_of
         r#""Sigil": ["$oid"]"#,
         r#""Waxwork": ["kind"]"#,
         r#"] as [String: [String]])[String(String(describing: Held.self).prefix { $0 != "<" })]; "#,
-        "if let heldStanding { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { heldStanding.contains($0.stringValue) && !taken.contains($0.stringValue) }) { if [",
+        "if let heldStanding { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { heldStanding.contains($0.stringValue) && !(taken + [\"note\"]).contains($0.stringValue) }) { if [",
         "} else { self.held = nil } } else { do { if [",
     ] {
         assert!(written.contains(held), "no `{held}` in: {written}");

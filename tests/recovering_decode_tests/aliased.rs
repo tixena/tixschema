@@ -52,8 +52,9 @@ type Pairs<T> = HashMap<String, T>;
 #[model_schema(name = "Properties")]
 pub type PropertiesData = HashMap<String, String>;
 
-/// A map behind a plain alias, flattened: it takes every key nothing else declares.
-#[model_schema(enable = ["decode_with"])]
+/// A map behind a plain alias, flattened: it takes every key nothing else declares. `nonstrict`, as
+/// tixschema does not see through a plain alias that the type is a map.
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Block {
     name: String,

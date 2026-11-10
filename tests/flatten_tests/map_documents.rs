@@ -1,7 +1,6 @@
 //! The JSON Schema of a struct a map is flattened into as the only member of its object: the map's
 //! values describe every key the object holds, and a key read from its text, a `char` or a date,
-//! names the keys by its own description. An optional map's absence admits every key, with any
-//! value.
+//! names the keys by its own description.
 
 use alloc::collections::BTreeMap;
 
@@ -12,9 +11,7 @@ use tixschema::model_schema;
 
 use super::documents::admits;
 use super::maps::{
-    Bilge, Capstan, Coaming, Davit, Deadeye, Fairlead, Gunwale, Hawser, Lazarette, Locker,
-    PAYLOADS, Pintle, Ratlines, Scupper, Sheave, Stanchion, Strake, Thole, Thwart, Transom,
-    Windlass, serde_reads,
+    Bilge, Coaming, Gunwale, Hawser, PAYLOADS, Ratlines, Strake, Thwart, Transom, serde_reads,
 };
 
 /// Payloads of the models declared here, each with whether serde reads it.
@@ -45,26 +42,14 @@ const DATED: [(&str, Written, ReadAs); 2] = [
 ];
 
 /// Each model a payload is read as, beside its JSON Schema.
-const DOCUMENTS: [(&str, Written); 21] = [
+const DOCUMENTS: [(&str, Written); 9] = [
     ("Thwart", Thwart::json_schema),
     ("Gunwale", Gunwale::json_schema),
     ("Strake", Strake::json_schema),
     ("Coaming", Coaming::json_schema),
     ("Transom", Transom::json_schema),
     ("Bilge", Bilge::json_schema),
-    ("Locker", Locker::json_schema),
-    ("Scupper", Scupper::json_schema),
-    ("Windlass", Windlass::json_schema),
     ("Ratlines", Ratlines::json_schema),
-    ("Deadeye", Deadeye::json_schema),
-    ("Sheave", Sheave::json_schema),
-    ("Lazarette", Lazarette::json_schema),
-    ("Pintle", Pintle::json_schema),
-    ("Thole", Thole::json_schema),
-    ("Stanchion", Stanchion::json_schema),
-    ("Fairlead", Fairlead::json_schema),
-    ("Davit", Davit::json_schema),
-    ("Capstan", Capstan::json_schema),
     ("Bitt", Bitt::json_schema),
     ("Ballasted", Ballasted::json_schema),
 ];
@@ -227,31 +212,6 @@ fn a_map_alone_describes_every_key() {
             "properties": {},
             "required": [],
             "additionalProperties": { "type": "integer" },
-        })
-    );
-}
-
-/// An optional map is the map, or, where serde reads it as `None`, every key with any value.
-#[test]
-fn an_optional_map_is_the_map_or_every_key() {
-    assert_eq!(
-        Locker::json_schema(),
-        json!({
-            "type": "object",
-            "anyOf": [
-                {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": { "type": "integer" },
-                },
-                {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": true,
-                },
-            ],
         })
     );
 }

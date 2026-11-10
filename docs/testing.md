@@ -100,6 +100,21 @@ fn test_my_feature() {
 }
 ```
 
+### Flattened Members
+
+`src/model_schema/flatten_order/tests.rs` holds the decision table of flattened members to every
+sequence of member classes, and each member kind to its class. `tests/flatten_matrix_part*_tests.rs`
+hold every shape of flattened members a plain-serde measure found reading back that
+`#[model_schema]` declares, eight binaries so cargo builds them side by side, over the helpers of
+`tests/flatten_matrix/harness.rs`: each row is written, read back equal, and read with a stray key
+first as the measure states, but for the unit variant of a strict enum under a tag alone, which
+the macro reads refusing the stray key serde's own derive read past. They were generated once from
+that measure and are edited as any other test. `tests/flatten_order_refusals/` holds what rustc
+prints for each refusal, a member declared below its holder or in another crate among them, whose
+refusal the `const` beside the holder prints, and
+`service_schema_emitted_client_tests/run_flatten_order.rs` reads one holder of each accepted class
+on every client.
+
 ### Validation in Every Build
 
 [tests/every_build_validation_tests.rs](../tests/every_build_validation_tests.rs) holds every build

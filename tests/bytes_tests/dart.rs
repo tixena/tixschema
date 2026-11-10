@@ -28,7 +28,7 @@ fn a_vec_of_u8_is_a_uint8list_in_every_place_a_member_holds_one() {
         "final Uint8List data;",
         "final BytesBox<Uint8List> filled;",
         "final Map<String, Uint8List> keyed;",
-        "final DartResult1<Uint8List, String> outcome;",
+        "final DartResult1BytesTests<Uint8List, String> outcome;",
         "final (Uint8List, String) paired;",
         "final List<Uint8List> rows;",
     ] {

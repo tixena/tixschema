@@ -258,6 +258,7 @@ tixschema/
 │   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
 │   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
 │   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused, and one keyed by a number below a flattened member or in an enum serde buffers; serde_json's Value and Map refused by their full path and checked by their bare name
+│   ├── model_schema/flatten_order.rs # which flattened members read back, the refusals that name the fix, __TIXSCHEMA_FLATTENED and __TIXSCHEMA_KEYS
 │   ├── model_schema/mcp_form.rs  # mcp_form_value() and mcp_form_flat(): whether a form is flat
 │   ├── model_schema/needs_wrapper.rs # needs_wrapper(): whether a message sits under `value` in a tool's arguments
 │   ├── service_schema/

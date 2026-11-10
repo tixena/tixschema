@@ -36,7 +36,7 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         assert!(surging.contains(held), "no `{held}` in: {surging}");
     }
     let careening = careening_swift::swift_definition();
-    let arms = "switch tag { case \"Berth\", \"Pier\": self = .berth(try CareeningBerthPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); case \"Calm\", \"Still\": self = .calm;  default:";
+    let arms = "switch tag { case \"Berth\", \"Pier\": self = .berth(try CareeningBerthPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); case \"Calm\", \"Still\": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"kind\" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self = .calm;  default:";
     assert!(careening.contains(arms), "no `{arms}` in: {careening}");
     let scending = scending_swift::swift_definition();
     for held in [

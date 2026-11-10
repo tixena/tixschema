@@ -129,8 +129,9 @@ pub struct Aliased {
     pub dock: String,
 }
 
-/// A holder declared above the type it flattens, which names a function.
-#[model_schema()]
+/// A holder declared above the type it flattens, which names a function: `nonstrict`, as that type
+/// is handed every key still left.
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ahead {
     #[serde(flatten)]

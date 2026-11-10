@@ -1,0 +1,6 @@
+error: model_schema: type `Locker` flattens `counts` (`Option<BTreeMap<String, u8>>`): serde writes `None` as no key, and reads an object that holds no entry of `BTreeMap<String, u8>` as `Some` of a map of no entry. Flatten the map without the `Option`, which serde reads as a map of no entry where none is, or write `counts` under a key of its own.
+  --> tests/flatten_order_refusals/option_of_a_map.rs:10:5
+   |
+10 | /     #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+11 | |     pub counts: Option<BTreeMap<String, u8>>,
+   | |____________________________________________^

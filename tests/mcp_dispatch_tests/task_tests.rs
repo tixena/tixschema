@@ -665,3 +665,24 @@ fn each_tool_of_a_task_service_passes_the_tool_definition_and_the_names_hold_the
         ]
     );
 }
+
+#[test]
+fn a_key_the_message_of_a_tool_of_no_argument_does_not_declare_is_refused_before_its_handler() {
+    let jobs = Jobs::default();
+    let answered = answer_with(
+        &jobs,
+        &call(&id(9), "count-exports", &json!({ "stray": 1_u8 })),
+    );
+    assert_result("CallToolResult", &answered);
+    assert_eq!(answered["result"]["isError"], true);
+    assert_eq!(
+        answered["result"]["content"][0]["text"],
+        "{\"fault\":{\"detail\":\"'stray': unknown field `stray`, there are no \
+         fields\",\"field\":\"stray\",\"kind\":\"failed-validation\",\"operation\":\"count-exports\"},\
+         \"isServiceFault\":true}"
+    );
+    assert!(jobs.reached.lock().unwrap().is_empty());
+    let counted = answer_with(&jobs, &call(&id(10), "count-exports", &json!({})));
+    assert_eq!(counted["result"]["isError"], false, "{counted}");
+    assert_eq!(*jobs.reached.lock().unwrap(), ["count-exports"]);
+}

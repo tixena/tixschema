@@ -5,6 +5,8 @@
 extern crate alloc;
 
 pub mod checks;
+#[cfg(feature = "serde")]
+pub mod flatten_order;
 pub mod judged_read;
 #[cfg(all(feature = "serde", feature = "zod"))]
 pub mod literal_union;
@@ -347,9 +349,10 @@ const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
 /// one declaration named there knows what was and was not checked around it.
 #[cfg(feature = "serde")]
 const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with serde, and only a \
-     plain enum declared above reaches it: one declared below, or in another crate, is not \
-     refused here, and where a schema surface is on it keeps its TypeScript and Zod \
-     intersection, and is refused by the JSON surface when the merge runs.";
+     plain enum declared above reaches it: one declared below, or in another crate, is refused by \
+     the `const` beside the type that holds it, and one no `#[model_schema]` expanded is not \
+     refused, and where a schema surface is on it keeps its TypeScript and Zod intersection, and \
+     is refused by the JSON surface when the merge runs.";
 
 /// What the refusal of a flattened value written in place, which no name stands for, says about
 /// its own reach.
@@ -370,8 +373,9 @@ const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build wit
 /// What the refusal of a flattened type serde writes as no object says about its own reach.
 #[cfg(feature = "serde")]
 const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with serde, and only a \
-     type declared above reaches it: one declared below, or in another crate, is not refused \
-     here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
+     type declared above reaches it: one declared below, or in another crate, is refused by the \
+     `const` beside the type that holds it, and one no `#[model_schema]` expanded is not refused, \
+     and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
      refused by the JSON surface when the merge runs.";
 
 /// What a refusal of a newtype variant under a tag alone over a value serde writes as `()` says
@@ -384,7 +388,10 @@ const TAGGED_UNIT_WRITTEN: &str = "beside the tag serde writes the variant as th
 /// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
 /// about its own reach, which is the reach of the refusal of a value written as no object.
 #[cfg(feature = "serde")]
-const TAGGED_OPTIONAL_SCOPE: &str = FLATTENED_NON_OBJECT_SCOPE;
+const TAGGED_OPTIONAL_SCOPE: &str = "This refusal holds in every build with serde, and only a type \
+     declared above reaches it: one declared below, or in another crate, is not refused here, and \
+     where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by \
+     the JSON surface when the merge runs.";
 
 /// The list `validate()` collects each message in.
 const VALIDATE_SINK: &str = "errors";
@@ -2359,6 +2366,12 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = refused(&strict::conflict_errors(&item, &parsed_args)) {
         return output;
     }
+    // A flattened member serde would not read back where it is declared, or as strict as it is, is
+    // refused with the fix: the order, the strictness or the shape.
+    #[cfg(feature = "serde")]
+    if let Some(output) = refused(&flatten_order::errors(&item, &parsed_args)) {
+        return output;
+    }
     // `decode_with` generates methods on the type it is written on, and `"arky"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
     if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
@@ -2380,6 +2393,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
+    flatten_order::record(&item, &parsed_args);
+    #[cfg(feature = "serde")]
     needs_wrapper::record(&item);
     #[cfg(feature = "serde")]
     mcp_form::record(&item);
@@ -2398,7 +2413,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
-    let wrapper_tokens = needs_wrapper_tokens(&item);
+    let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
@@ -2406,16 +2421,20 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     quote! { #width_checked #wrapper_tokens #dart_tokens #swift_tokens #kotlin_tokens }
 }
 
-/// The `needs_wrapper()` items `item` earns, which every build with serde writes.
+/// The items `item` earns that holders and services read, which every build with serde writes:
+/// `needs_wrapper()`, `mcp_form_value()`, and the hidden constant of what a holder reads of it
+/// flattened, with the checks of its own flattened members that constant answers for.
 #[cfg(feature = "serde")]
-fn needs_wrapper_tokens(item: &Item) -> TokenStream {
+fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let wrapper = needs_wrapper::items(item);
     let form = mcp_form::items(item);
-    quote! { #wrapper #form }
+    let flattened = flatten_order::tokens(item, args);
+    let units = strict::unit_reads(item, args);
+    quote! { #wrapper #form #flattened #units }
 }
 
 #[cfg(not(feature = "serde"))]
-fn needs_wrapper_tokens(_item: &Item) -> TokenStream {
+fn needs_wrapper_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 
@@ -8847,7 +8866,55 @@ fn unit_struct_impls_for(
         record_unit_struct(&item_struct.ident.to_string());
         return unit_struct_serde_impls(item_struct, read);
     }
+    if read.strict
+        && matches!(&item_struct.fields, syn::Fields::Named(named) if named.named.is_empty())
+    {
+        return empty_struct_read(item_struct, read);
+    }
     quote! {}
+}
+
+/// Takes `Deserialize` off the derive of a braced struct of no member and answers with a read that
+/// refuses every key: serde's derive would declare an enum of no variant for the keys, which
+/// `clippy::empty_enums` refuses in the consumer's crate.
+#[cfg(feature = "serde")]
+fn empty_struct_read(
+    item_struct: &mut syn::ItemStruct,
+    read: UnitRead,
+) -> proc_macro2::TokenStream {
+    if !derives_deserialize(&item_struct.attrs) {
+        return quote! {};
+    }
+    let mut kept_attrs = Vec::with_capacity(item_struct.attrs.len());
+    for attr in item_struct.attrs.drain(..) {
+        let listed = attr
+            .path()
+            .is_ident("derive")
+            .then(|| attr.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated));
+        let Some(Ok(paths)) = listed else {
+            kept_attrs.push(attr);
+            continue;
+        };
+        let kept_paths: Vec<syn::Path> = paths
+            .into_iter()
+            .filter(|path| {
+                path.segments
+                    .last()
+                    .is_none_or(|segment| segment.ident != "Deserialize")
+            })
+            .collect();
+        if !kept_paths.is_empty() {
+            kept_attrs.push(syn::parse_quote! { #[derive(#(#kept_paths),*)] });
+        }
+    }
+    item_struct.attrs = kept_attrs;
+    if !derives_serialize(&item_struct.attrs) {
+        item_struct
+            .attrs
+            .retain(|attr| !attr.path().is_ident("serde"));
+    }
+    let name = &item_struct.ident;
+    unit_struct_read(name, read, &quote! { #name {} })
 }
 
 /// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
@@ -8914,7 +8981,7 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| unit_struct_read(name, read));
+    let deserialize_impl = reads.then(|| unit_struct_read(name, read, &quote! { #name }));
 
     quote! {
         #serialize_impl
@@ -8922,10 +8989,15 @@ fn unit_struct_serde_impls(
     }
 }
 
-/// The `Deserialize` of the unit struct `name`, which reads `{}`: alone, or after
-/// `model_schema_read_unjudged` where the struct publishes `validate()` or names a `preprocess`.
+/// The `Deserialize` of the struct `name` of no member, which reads `{}` as `built`: alone, or
+/// after `model_schema_read_unjudged` where the struct publishes `validate()` or names a
+/// `preprocess`.
 #[cfg(feature = "serde")]
-fn unit_struct_read(name: &syn::Ident, how: UnitRead) -> proc_macro2::TokenStream {
+fn unit_struct_read(
+    name: &syn::Ident,
+    how: UnitRead,
+    built: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let UnitRead {
         publishes_validate,
         strict,
@@ -8952,13 +9024,13 @@ fn unit_struct_read(name: &syn::Ident, how: UnitRead) -> proc_macro2::TokenStrea
             }
             match map.next_key::<UnknownKey>()? {
                 ::core::option::Option::Some(unknown) => match unknown.0 {},
-                ::core::option::Option::None => ::core::result::Result::Ok(#name),
+                ::core::option::Option::None => ::core::result::Result::Ok(#built),
             }
         }
     } else {
         quote! {
             while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-            ::core::result::Result::Ok(#name)
+            ::core::result::Result::Ok(#built)
         }
     };
     let read = quote! {
@@ -17105,6 +17177,7 @@ fn description_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 
 /// `value`, a member's schema, with the member's rustdoc as its `description`; `value` alone where
 /// there is none, or where the schema is not an object.
+#[cfg(feature = "serde")]
 fn described_json_schema_value(
     fld: &FieldDef,
     value: proc_macro2::TokenStream,

@@ -63,10 +63,10 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &careening_dart::dart_definition(),
         &[
             "final tag = json['kind'] as String; switch (tag) { case 'Berth' || 'Pier': return \
-             CareeningBerth.fromJsonUnjudged(json); case 'Calm' || 'Still': return \
-             json.keys.every((key) => key == 'kind') ? CareeningCalm() : throw \
-             FormatException('Unknown key of a CareeningCalm: ' + json.keys.firstWhere((key) => \
-             key != 'kind')); default:"
+             CareeningBerth.fromJsonUnjudged(json); case 'Calm' || 'Still': return (() { for \
+             (final key in json.keys) { if (!const <String>{'kind'}.contains(key)) throw \
+             FormatException('Unknown key of a Careening: $key'); } return CareeningCalm(); })(); \
+             default:"
                 .to_owned(),
             format!(
                 "factory CareeningBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \

@@ -137,8 +137,9 @@ pub mod a_message_annotated_with_a_constraint {
     /// A union whose first member's own bound is what takes it out of the running: the read tries
     /// `Attributed`, the bound refuses the value, and the payload is `Unattributed` instead. That
     /// check stays on the read, and moving it would change which variant a payload *is* rather than
-    /// how a violation is worded.
-    #[model_schema()]
+    /// how a violation is worded. Nonstrict, so that `Unattributed` reads past the `name` the
+    /// first member was refused for.
+    #[model_schema(nonstrict)]
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum Caller {
@@ -1813,17 +1814,23 @@ fn an_operation_name_nothing_answers_to_becomes_a_fault_through_the_same_handle(
 #[test]
 fn the_operation_is_read_from_the_name_it_was_given_and_never_out_of_the_payload() {
     // The payload says one thing and the transport says another; the transport wins, because the
-    // operation travels beside the payload rather than inside it.
+    // operation travels beside the payload rather than inside it. `sweep` takes no argument, so
+    // its message refuses the keys and names `sweep`, not the operation the payload names.
     let (reached, settled) = dispatched(
         "sweep",
         r#"{"operation":"get-balance","type":"get-balance"}"#,
     );
-    assert_eq!(
-        reached,
-        vec!["sweep".to_owned()],
-        "a key inside the payload is the message's own business and routes nothing"
-    );
+    assert!(reached.is_empty(), "got: {reached:?}");
     assert_eq!(settled.len(), 1, "got: {settled:?}");
+    let reported = only_fault(&settled).unwrap();
+    assert_eq!(
+        reported.kind(),
+        probe_service_schema::ServiceFaultKind::FailedValidation
+    );
+    assert_eq!(reported.operation(), "sweep");
+    assert_eq!(reported.field(), Some("operation"));
+    let (swept, _) = dispatched("sweep", "{}");
+    assert_eq!(swept, vec!["sweep".to_owned()]);
 }
 
 #[test]

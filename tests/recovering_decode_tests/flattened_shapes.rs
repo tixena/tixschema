@@ -218,35 +218,6 @@ struct Outer {
     id: String,
 }
 
-/// A flattened plain enum declared below: one declared above is refused in every build with
-/// serde.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Moody {
-    name: String,
-    #[serde(flatten)]
-    temper: Temper,
-}
-
-/// Internally tagged, with a variant that holds a plain enum declared below: one declared above
-/// is refused in every build with serde.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-enum Slot {
-    Empty,
-    Held(Temper),
-}
-
-/// A plain enum declared below the types that hold it, so no expansion of theirs sees it:
-/// flattened, serde writes the variant's name as a key holding `null`.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-enum Temper {
-    Calm,
-    Tense,
-}
-
 /// A single-slot struct over an `Option` of a struct whose key holds text.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -283,26 +254,6 @@ struct Scored {
     tallied: Tallied,
 }
 
-/// A flattened untagged enum declared below, with a variant that holds a plain enum: one declared
-/// above is refused in every build with serde.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Felt {
-    #[serde(flatten)]
-    feeling: Feeling,
-    id: String,
-}
-
-/// Untagged, with a variant that holds a plain enum, declared below the type that flattens it, so
-/// no expansion of that type sees it.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(untagged)]
-enum Feeling {
-    Mood(Mood),
-    Named { name: String },
-}
-
 /// Externally tagged, with a variant that holds a type that takes every key it is handed.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -320,14 +271,6 @@ enum Crated {
     Empty,
 }
 
-/// A flattened `Option` of a type that takes every key it is handed.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Optioned {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    counts: Option<Counts>,
-}
-
 /// Two flattened structs, neither of which takes every key.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -337,18 +280,6 @@ struct Signed {
     id: String,
     #[serde(flatten)]
     version: Version,
-}
-
-/// A single-slot struct over an `Option` of a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeExtras(Option<HashMap<String, i32>>);
-
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Pouch {
-    #[serde(flatten)]
-    extras: MaybeExtras,
 }
 
 /// A flattened generic brand filled with a map.
@@ -440,14 +371,6 @@ struct Unpicked {
     id: String,
 }
 
-/// A flattened `Option` of a map.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct MaybeCounted {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    entries: Option<HashMap<String, i32>>,
-}
-
 /// A single-slot struct over an `Option` of an `Option` of a struct, the inner one in a `Box`,
 /// which serde reads through.
 #[model_schema(enable = ["decode_with"])]
@@ -524,8 +447,6 @@ flagged! {
     Scored => scored_schema,
     Boxed => boxed_schema,
     Crated => crated_schema,
-    Optioned => optioned_schema,
-    Pouch => pouch_schema,
     Basket => basket_schema,
     Posted => posted_schema,
     Slate => slate_schema,
@@ -540,8 +461,6 @@ flagged! {
     Pocket => pocket_schema,
     ThroughHook => through_hook_schema,
     MapThroughHook => map_through_hook_schema,
-    MaybeCounted => maybe_counted_schema,
-    Felt => felt_schema,
 }
 
 /// A read hook that reads what the type's own reader reads, from whatever it is handed.
@@ -837,30 +756,6 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
 }
 
 #[test]
-fn a_flattened_plain_enum_claims_the_key_naming_its_variant() {
-    let mut calls = 0_u32;
-    let moody = Moody {
-        name: "a".to_owned(),
-        temper: Temper::Calm,
-    };
-    let moody_written = serde_json::to_value(&moody).unwrap();
-    assert_eq!(moody_written, json!({ "Calm": null, "name": "a" }));
-    assert_eq!(
-        read_counting!(Moody, moody_schema, moody_written, calls),
-        Ok(moody)
-    );
-
-    let slot = Slot::Held(Temper::Calm);
-    let slot_written = serde_json::to_value(&slot).unwrap();
-    assert_eq!(slot_written, json!({ "Calm": null, "kind": "Held" }));
-    assert_eq!(
-        read_counting!(Slot, slot_schema, slot_written, calls),
-        Ok(slot)
-    );
-    assert_eq!(calls, 0);
-}
-
-#[test]
 fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     let held = json!({ "a": 1_i32 });
     assert!(agrees::<CountsRef>(&held));
@@ -871,20 +766,6 @@ fn every_place_a_type_is_handed_an_object_hands_it_what_serde_hands_it() {
     ));
     assert!(agrees::<Ledgered>(&held));
     assert!(agrees::<Scored>(&held));
-
-    assert!(agrees::<Optioned>(&held));
-    assert!(agrees::<Optioned>(&json!({})));
-}
-
-#[test]
-fn a_flattened_untagged_variant_over_a_plain_enum_claims_the_key_naming_its_variant() {
-    let felt = Felt {
-        feeling: Feeling::Mood(Mood::Calm),
-        id: "i".to_owned(),
-    };
-    let written = serde_json::to_value(&felt).unwrap();
-    assert_eq!(written, json!({ "Calm": null, "id": "i" }));
-    assert!(agrees::<Felt>(&written));
 }
 
 #[test]
@@ -940,25 +821,12 @@ fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_v
 }
 
 #[test]
-fn a_flattened_plain_enum_lists_what_an_externally_tagged_enum_lists_for_a_unit_variant() {
-    let not_null = json!({ "Calm": 5_i32, "name": "a" });
-    let refusal = Moody::deserialize(&not_null).unwrap_err().to_string();
-    assert_eq!(
-        listed!(Moody, moody_schema, not_null),
-        [format!("undescribed: {refusal}")]
-    );
-    let no_variant = json!({ "name": "a" });
-    assert!(!serde_reads::<Moody>(&no_variant));
-    assert_eq!(
-        listed!(Moody, moody_schema, no_variant),
-        ["the value itself: missing: expected Variants([\"Calm\", \"Tense\"])"]
-    );
-}
-
-#[test]
 fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
     let stored = json!({ "id": "i", "legacy": true, "number": 3_i32, "revision": "r" });
-    assert!(serde_reads::<Signed>(&stored));
+    assert!(
+        !serde_reads::<Signed>(&stored),
+        "both structs take their keys, so serde refuses it"
+    );
     assert_eq!(
         listed!(Signed, signed_schema, stored),
         ["legacy: unknown: found Bool(true)"]
@@ -966,10 +834,8 @@ fn a_key_no_flattened_struct_declares_is_unknown_once_beside_two_of_them() {
 }
 
 #[test]
-fn a_flattened_single_slot_struct_over_an_optional_map_claims_what_serde_reads() {
+fn a_flattened_generic_brand_over_a_map_claims_what_serde_reads() {
     let counted = json!({ "a": 1_i32 });
-    assert!(agrees::<Pouch>(&counted));
-    assert!(agrees::<Pouch>(&json!({})));
     assert!(agrees::<Basket>(&counted));
     assert!(agrees::<Deeper>(&json!({ "name": "n", "number": 3_i32 })));
     assert!(agrees::<Deeper>(&json!({ "name": "n" })));
@@ -1075,8 +941,6 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_object
 #[test]
 fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     assert!(agrees::<Counts>(&json!({ "a": 1_i32 })));
-    assert!(agrees::<MaybeCounted>(&json!({ "a": 1_i32 })));
-    assert!(agrees::<MaybeCounted>(&json!({})));
     assert!(agrees::<Signed>(
         &json!({ "id": "i", "number": 3_i32, "revision": "r" })
     ));

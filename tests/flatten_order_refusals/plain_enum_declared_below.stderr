@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `colour` (`Colour`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: serde writes `Colour` as a plain enum's variant name, which it writes flattened as a key over `null` that no other surface reads as `Colour`. Write `colour` under a key of its own.
+  --> tests/flatten_order_refusals/plain_enum_declared_below.rs:11:17
+   |
+11 |     pub colour: Colour,
+   |                 ^^^^^^ evaluation of `_` failed here

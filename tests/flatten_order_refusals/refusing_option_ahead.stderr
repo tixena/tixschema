@@ -1,0 +1,13 @@
+error: model_schema: type `Parcel` flattens `seal` (`Option<Seal>`): `Seal` reads every key still left and refuses one it does not declare, and serde reads a flattened `Option` as `None` wherever what it holds refuses the object it is handed, so a key no member declares turns the value into `None` rather than being refused. Mark `Seal` `#[model_schema(nonstrict)]`, flatten `Seal` without the `Option`, or write `seal` under a key of its own.
+  --> tests/flatten_order_refusals/refusing_option_ahead.rs:29:5
+   |
+29 | /     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+30 | |     pub seal: Option<Seal>,
+   | |__________________________^
+
+error: model_schema: type `Parcel` flattens `seal` (`Option<Seal>`) ahead of `stamp` and `ink`: `Option<Seal>` reads every key still left and refuses one it does not declare, so serde refuses the keys of `stamp` and `ink` that it wrote itself. Declare `seal` after every other flattened member.
+  --> tests/flatten_order_refusals/refusing_option_ahead.rs:29:5
+   |
+29 | /     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+30 | |     pub seal: Option<Seal>,
+   | |__________________________^

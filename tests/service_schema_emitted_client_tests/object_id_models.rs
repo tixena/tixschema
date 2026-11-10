@@ -335,7 +335,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Cartouching",
@@ -362,7 +362,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"rewaxed":{"waxing":{"note":"n","wax":"red"}}}"#,
         kotlin: Told::Serde,
         read_as: "Rewaxed",
@@ -389,7 +389,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"waxed":{"held":"h","note":"n"}}"#,
         kotlin: Told::Serde,
         read_as: "Countersealing",
@@ -416,7 +416,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"waxed":{"kind":"Plain","note":"n"}}"#,
         kotlin: Told::Serde,
         read_as: "Waxworking",
@@ -434,7 +434,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Refused,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Impressing",
@@ -452,7 +452,7 @@ const ROWS: [Row; 58] = [
         swift: Told::Refused,
     },
     Row {
-        dart: Told::Dropped,
+        dart: Told::Serde,
         json: r#"{"waxed":{"note":"n","wax":"red"}}"#,
         kotlin: Told::Serde,
         read_as: "Latewaxed",
@@ -527,7 +527,7 @@ const ROWS: [Row; 58] = [
         read_as: "Enwafered",
         schema: true,
         serde: true,
-        swift: Told::Refused,
+        swift: Told::Serde,
     },
     Row {
         dart: Told::Serde,
@@ -613,9 +613,6 @@ pub struct Row {
 /// What a client's read answers of a payload.
 #[derive(Clone, Copy)]
 pub enum Told {
-    /// What a Dart class a holder fills a flattened `Option` of a type parameter with reads: the
-    /// holder without the filling, which refuses the keys of the members beside it.
-    Dropped,
     /// A refusal.
     Refused,
     /// The value serde reads, written back as serde writes it.
@@ -746,25 +743,25 @@ pub struct Sigillary {
     pub remark: Notation,
 }
 
-/// A struct that flattens its type parameter ahead of a flattened struct.
+/// A struct that flattens its type parameter after a flattened struct.
 #[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Enveloping<Held> {
     #[serde(flatten)]
-    pub held: Held,
+    pub annotation: Notation,
     #[serde(flatten)]
-    pub remark: Notation,
+    pub held: Held,
 }
 
-/// A struct that flattens an `Option` of its type parameter ahead of a flattened struct, under no
+/// A struct that flattens an `Option` of its type parameter after a flattened struct, under no
 /// attribute that drops a key: serde writes nothing for its `None`.
 #[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Waxing<Held> {
     #[serde(flatten)]
-    pub held: Option<Held>,
+    pub annotation: Notation,
     #[serde(flatten)]
-    pub remark: Notation,
+    pub held: Option<Held>,
 }
 
 /// A struct that hands its type parameter on to [`Waxing`].
@@ -850,15 +847,15 @@ pub struct Relayed {
     pub relay: Relaying<ObjectId>,
 }
 
-/// A struct that flattens its type parameter ahead of a flattened struct, and reads it under a key
-/// as well.
+/// A struct that flattens its type parameter after a flattened struct, and reads it under a key as
+/// well.
 #[model_schema(default_types(Held = Sigil), enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Crossed<Held> {
     #[serde(flatten)]
-    pub held: Held,
+    pub annotation: Notation,
     #[serde(flatten)]
-    pub remark: Notation,
+    pub held: Held,
     pub spare: Held,
 }
 
@@ -917,8 +914,9 @@ pub enum Impressed {
     Pressed(Wafer),
 }
 
-/// A brand over an `ObjectId` declared below it, flattened ahead of a flattened struct.
-#[model_schema(enable = ["jsonschema"])]
+/// A brand over an `ObjectId` declared below it, flattened ahead of a flattened struct: `nonstrict`,
+/// as serde reads an `ObjectId` from every key still left.
+#[model_schema(nonstrict, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Belated {
     #[serde(flatten)]

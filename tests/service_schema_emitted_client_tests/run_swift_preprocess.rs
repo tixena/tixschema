@@ -26,14 +26,13 @@ use super::swift_preprocess_models::{
     Ahead, Barged, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Duplexed, Ferried, Hull,
     Loaded, Lodged, Lone, Loosed, Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted,
     ShippingBackEnd, ShippingClientService as _, ShippingClientServiceSchema, ShippingError,
-    Shouldered, Spared, Stamped, Sticker, Stowed, Strapped, Tallied, Twice, ahead_swift,
-    banded_swift, barged_swift, behind_swift, binned_swift, boxed_swift, branch_swift,
-    choice_swift, chosen_swift, dated_swift, docked_swift, duplexed_swift, ferried_swift,
-    hull_swift, listing_swift, loaded_swift, lodged_swift, lone_swift, loosed_swift, marked_swift,
-    moved_swift, paired_swift, quayside_swift, sampled_swift, sealing_swift, shifted_swift,
-    shipping_error_swift, shouldered_swift, sided_swift, spared_swift, spotted_swift,
-    stamped_swift, sticker_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift,
-    twice_swift,
+    Shouldered, Spared, Stamped, Sticker, Stowed, Strapped, Tallied, ahead_swift, banded_swift,
+    barged_swift, behind_swift, binned_swift, boxed_swift, branch_swift, choice_swift,
+    chosen_swift, dated_swift, docked_swift, duplexed_swift, ferried_swift, hull_swift,
+    listing_swift, loaded_swift, lodged_swift, lone_swift, loosed_swift, marked_swift, moved_swift,
+    paired_swift, quayside_swift, sampled_swift, sealing_swift, shifted_swift,
+    shipping_error_swift, shouldered_swift, spared_swift, spotted_swift, stamped_swift,
+    sticker_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_preprocess_models::{Timed, timed_swift};
@@ -271,7 +270,6 @@ for (name, body) in replies {
 const KEYS_DRIVER: &str = r##"
 attempt("a flattened type", Pinned.self, #"{"dock":"north","tag":"t"}"#) { "\($0.tagged.keys)" }
 attempt("a flattened type in a flattened holder", Quayside.self, #"{"berth":"b","dock":"north","tag":"t"}"#) { "\($0.pinned.tagged.keys)" }
-attempt("two flattened types", Twice.self, #"{"dock":"north","side":"s","tag":"t"}"#) { "\($0.first.keys) \($0.second.keys)" }
 attempt("two flattened types with functions of their own", Duplexed.self, #"{"dock":"north","mark":"m","tag":"t"}"#) { "\($0.spotted.seen) \($0.tagged.keys)" }
 attempt("a flattened member's own function", Docked.self, #"{"dock":"north","tag":"t"}"#) { "\($0.listing.keys)" }
 attempt("a variant under a tag", Stowed.self, #"{"kind":"Held","tag":"t"}"#) {
@@ -356,8 +354,6 @@ fn definitions() -> Vec<String> {
         marked_swift::swift_definition(),
         stowed_swift::swift_definition(),
         quayside_swift::swift_definition(),
-        sided_swift::swift_definition(),
-        twice_swift::swift_definition(),
         spotted_swift::swift_definition(),
         duplexed_swift::swift_definition(),
         boxed_swift::swift_definition(),
@@ -650,11 +646,6 @@ fn rust_keys_report() -> String {
             r#"{"berth":"b","dock":"north","tag":"t"}"#,
             &|held| listed(&held.pinned.tagged.keys),
         ),
-        rust_keys::<Twice>(
-            "two flattened types",
-            r#"{"dock":"north","side":"s","tag":"t"}"#,
-            &|held| format!("{} {}", listed(&held.first.keys), listed(&held.second.keys)),
-        ),
         rust_keys::<Duplexed>(
             "two flattened types with functions of their own",
             r#"{"dock":"north","mark":"m","tag":"t"}"#,
@@ -725,7 +716,6 @@ fn a_function_is_handed_the_keys_no_type_around_its_own_took() {
         "\
 a flattened type: [\"tag\"]
 a flattened type in a flattened holder: [\"tag\"]
-two flattened types: [\"side\", \"tag\"] [\"side\", \"tag\"]
 two flattened types with functions of their own: [\"mark\", \"tag\"] [\"mark\", \"tag\"]
 a flattened member's own function: [\"tag\"]
 a variant under a tag: [\"tag\"]

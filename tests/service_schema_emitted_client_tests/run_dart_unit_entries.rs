@@ -282,9 +282,9 @@ fn the_emitted_holders_of_a_flattened_unit_variant_have_no_issue() {
 }
 
 /// A flattened externally tagged enum with entries under two of its names is refused, as
-/// TypeScript and Zod refuse it, where serde reads the first, under two variants' names in each
-/// order and under a variant's name beside its alias, naming each variant once, in the order the
-/// enum declares them. One entry, a unit variant's over `null`, an entry under an alias and no
+/// TypeScript, Zod and serde refuse it, under two variants' names in each order and under a
+/// variant's name beside its alias, naming each variant once, in the order the enum declares
+/// them. One entry, a unit variant's over `null`, an entry under an alias and no
 /// entry are read and refused as serde reads and refuses them.
 #[test]
 fn a_flattened_enum_with_entries_under_two_names_is_refused_in_dart() {
@@ -299,8 +299,8 @@ fn a_flattened_enum_with_entries_under_two_names_is_refused_in_dart() {
         .zip([refused("Bay, Dock"), refused("Bay, Dock"), refused("Dock")])
         .map(|(&json, told)| {
             assert!(
-                serde_json::from_str::<Stowing>(json).is_ok(),
-                "serde reads the first entry of {json}"
+                serde_json::from_str::<Stowing>(json).is_err(),
+                "serde reads an entry of {json}"
             );
             (json, told)
         })

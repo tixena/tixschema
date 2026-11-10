@@ -15,10 +15,9 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::flattened_models::{
-    BELTING, Belting, DRESSING, Dressing, GAFFING, Gaffing, Netting, PAYLOAD, STOWING, SWAYING,
-    Slinging, Stowing, Swaying, WHELPING, Whelping, belting_kotlin, dressing_kotlin, ensign_kotlin,
-    gaffing_kotlin, netting_kotlin, slinging_kotlin, stowing_kotlin, swaying_kotlin,
-    tacking_kotlin, whelping_kotlin,
+    BELTING, Belting, DRESSING, Dressing, GAFFING, Gaffing, Netting, STOWING, SWAYING, Stowing,
+    Swaying, WHELPING, Whelping, belting_kotlin, dressing_kotlin, ensign_kotlin, gaffing_kotlin,
+    netting_kotlin, stowing_kotlin, swaying_kotlin, tacking_kotlin, whelping_kotlin,
 };
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::flattened_models::{Ensign, Tacking};
@@ -71,7 +70,7 @@ const TWO_VARIANTS: &str =
 /// levels inside a flattened struct, in the variant of a flattened enum and as a flattened map's
 /// value; and a key beside the tag of an enum under a tag alone, of each shape of variant, and
 /// beside the tag and the content of one under a tag and a content key.
-const ROWS: [Row; 34] = [
+const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","other":1}"#,
@@ -177,20 +176,12 @@ const ROWS: [Row; 34] = [
         zod: "refused",
     },
     Row {
-        ignoring: "read {\"label\":\"n\"}",
-        json: PAYLOAD,
-        kotlin: "refused: Encountered an unknown key 'north'",
-        named: "Slinging",
-        serde: written_back::<Slinging>,
-        zod: "refused",
-    },
-    Row {
         ignoring: "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
-        json: GAFFING[7],
-        kotlin: "refused: Encountered an unknown key 'north'",
+        json: GAFFING[4],
+        kotlin: "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
         named: "Gaffing",
         serde: written_back::<Gaffing>,
-        zod: "refused",
+        zod: "read {\"Labelled\":{\"note\":\"a\",\"label\":\"n\"}}",
     },
     Row {
         ignoring: "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
@@ -203,10 +194,10 @@ const ROWS: [Row; 34] = [
     Row {
         ignoring: "read {\"label\":\"n\",\"note\":\"a\"}",
         json: SWAYING[5],
-        kotlin: "read {}",
+        kotlin: "read {\"label\":\"n\",\"note\":\"a\"}",
         named: "Swaying",
         serde: written_back::<Swaying>,
-        zod: "read {}",
+        zod: "read {\"note\":\"a\",\"label\":\"n\"}",
     },
     Row {
         ignoring: "read {\"other\":1}",
@@ -525,12 +516,11 @@ fn serde_reads_past_a_key_no_member_reads() {
             "read {\"kind\":\"Garnetting\",\"label\":\"north\"}",
             "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
             "read {\"kind\":\"Ensign\",\"label\":\"n\",\"north\":2}",
-            "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
-            "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
-            "read {\"note\":\"a\"}",
-            "read {\"label\":\"n\"}",
+            "refused",
+            "refused",
+            "refused",
             "read {\"Labelled\":{\"label\":\"n\",\"note\":\"a\"}}",
-            "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
+            "refused",
             "read {\"label\":\"n\",\"note\":\"a\"}",
             "read {\"other\":1}",
             "refused",
@@ -541,7 +531,7 @@ fn serde_reads_past_a_key_no_member_reads() {
             BITTERED,
             "refused",
             "refused",
-            "read {\"kind\":\"Lull\"}",
+            "refused",
             "refused",
             "refused",
             "refused",
@@ -588,7 +578,6 @@ fn a_key_no_member_reads_is_refused_in_kotlin_under_the_default_json() {
         gaffing_kotlin::kotlin_definition(),
         swaying_kotlin::kotlin_definition(),
         whelping_kotlin::kotlin_definition(),
-        slinging_kotlin::kotlin_definition(),
         tacking_kotlin::kotlin_definition(),
         stowing_kotlin::kotlin_definition(),
         belting_kotlin::kotlin_definition(),
@@ -647,8 +636,6 @@ fn zod_module() -> String {
         Swaying::zod_schema(),
         Whelping::ts_definition(),
         Whelping::zod_schema(),
-        Slinging::ts_definition(),
-        Slinging::zod_schema(),
         Tacking::ts_definition(),
         Tacking::zod_schema(),
         Stowing::ts_definition(),
@@ -755,10 +742,10 @@ fn the_readme_shows_the_refusal_the_run_measures() {
 fn the_readme_shows_the_nested_and_tagged_refusals_the_run_measures() {
     let readme = include_str!("../../README.md");
     for (at, json) in [
-        (22, ROWS[22].json),
-        (32, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),
-        (31, r#"{"kind":"Lull","other":1}"#),
-        (26, r#"{"kind":"Lull","other":1}"#),
+        (21, ROWS[21].json),
+        (31, r#"{"kind":"Gust","load":{"speed":1},"other":1}"#),
+        (30, r#"{"kind":"Lull","other":1}"#),
+        (25, r#"{"kind":"Lull","other":1}"#),
     ] {
         assert!(
             ROWS[at].json == json && ROWS[at].kotlin.starts_with("refused"),

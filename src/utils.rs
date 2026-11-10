@@ -15,11 +15,15 @@ use regex_syntax::ast::{
 use regex_syntax::hir;
 use std::collections::HashMap;
 use std::collections::HashSet;
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+use std::env;
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
 use crate::features::model_schema_prop::FunctionName;
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+use crate::rename_rule::RenameRule;
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use syn::ItemEnum;
@@ -975,7 +979,7 @@ thread_local! {
 
 /// Whether serde leaves the keys of `rust_ident` in the object it reads a holder from when the type is
 /// flattened, where `#[model_schema]` has been written on it above.
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
 pub fn is_unconsumed(rust_ident: &str) -> bool {
     UNCONSUMED.with(|names| names.borrow().contains(rust_ident))
 }
@@ -990,6 +994,17 @@ pub fn record_unconsumed(rust_ident: &str, unconsumed: bool) {
             names.borrow_mut().remove(rust_ident);
         }
     });
+}
+
+/// The crate being compiled, in `PascalCase`, which each helper an emitter numbers carries after
+/// its number: two crates' outputs written into one package then declare no name twice. Empty
+/// where no crate is being compiled.
+#[cfg(any(feature = "dart", feature = "kotlin"))]
+pub fn crate_tag() -> String {
+    env::var("CARGO_CRATE_NAME").map_or_else(
+        |_| String::new(),
+        |name| RenameRule::PascalCase.apply_to_field(&name),
+    )
 }
 
 /// Whether the item being expanded is written `nonstrict`: every surface leaves its own object

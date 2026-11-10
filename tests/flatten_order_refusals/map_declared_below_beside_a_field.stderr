@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` flattens `tally` (`Tally`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: `Tally` reads every key it is handed as an entry of its map, and serde writes the map's entries at one level with field `label`, so an entry under one of their keys is written twice and their keys are read as entries. Write `tally` under a key of its own.
+  --> tests/flatten_order_refusals/map_declared_below_beside_a_field.rs:13:16
+   |
+13 |     pub tally: Tally,
+   |                ^^^^^ evaluation of `_` failed here

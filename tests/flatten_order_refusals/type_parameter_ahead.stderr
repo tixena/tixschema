@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `held` (`Held`) ahead of `stamp`: tixschema cannot see which keys `Held` reads, as it is the type parameter `Held`, and one that reads every key still left and refuses one it does not declare refuses the keys of `stamp`. Declare `held` after every other flattened member.
+  --> tests/flatten_order_refusals/type_parameter_ahead.rs:15:5
+   |
+15 | /     #[serde(flatten)]
+16 | |     pub held: Held,
+   | |__________________^

@@ -13,14 +13,16 @@ consumer's view; this is what a change has to keep.
   and of a variant's class with a loop that throws `Unknown key of a {Class}: {key}` for a key of
   the object that is none of its members' names and aliases, its own tag, the tag of the enum it is
   a variant of and the keys of each member it flattens. A `nonstrict` type, a type that names a
-  `preprocess`, which can rewrite the keys it reads, and a type that flattens a member whose keys
-  are not known, such as a map or a type parameter, refuse nothing. The keys a type refuses a key
-  beside are recorded per type (`DART_CLOSED`, `record_closed_keys`), for a struct and for an enum
-  under a tag alone or untagged, which takes the union of its variants', so that a holder hands a
-  flattened member the entries of those keys alone (`only`, in `constructor_arguments`) and counts
-  them among its own. An enum under a tag and a content key refuses a key beside the two
-  (`beside_the_content`), and a unit variant under a tag alone one beside the tag
-  (`unit_beside_the_tag`).
+  `preprocess`, which can rewrite the keys it reads, a struct under its own tag, which serde reads
+  past a key beside, and a type that flattens a member whose keys are not known, such as a map or
+  a type parameter, refuse nothing. The unit variant of a strict enum under a tag alone refuses
+  every key but the tag (`unit_beside_the_tag`), as the Rust read the macro writes for it does. The keys a type refuses a
+  key beside are recorded per type (`DART_CLOSED`, `record_closed_keys`), for a struct and for an
+  enum under a tag alone or untagged, which takes the union of its variants'. A holder hands each
+  flattened member `handed`, the object without its own keys and those the members ahead of it
+  took, as serde hands it, and a member that takes its own keys the entries of those keys alone
+  of it (`only`, in `constructor_arguments`). An enum under a tag and a content key refuses a key
+  beside the two (`beside_the_content`).
 - **The dispatch is handed what it reads of the attribute.** `dart_suffix_tokens` builds a
   `DartTypeArgs`: the name, the type's `check`, a brand's or an enum's `minLength`, `maxLength` and
   `pattern`, `default_types`, and `member_meta`, which is `member_prop_meta` with the enum's
@@ -269,8 +271,8 @@ consumer's view; this is what a change has to keep.
   flattened member of its own as a map: each records none. A type the emitter has not written
   takes none, so a member after a struct declared below its holder is handed the struct's keys,
   and an optional one is read in the closure, and the README states both. `toJson` writes each
-  flattened member at its place: a key two of them hold is written once, with the last value,
-  where serde writes it twice. `run_dart_flattened_options.rs` pins the read of a flattened
+  flattened member at its place; a key two of them hold is refused at expansion
+  (`model_schema/flatten_order.rs`), so no holder the emitter writes holds one. `run_dart_flattened_options.rs` pins the read of a flattened
   `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
   models of `tests/swift_tests/flattened_options_models.rs`, which the `dart_tests` binary cannot
   declare beside the `Veering` of `kotlin_tests/aliased_models.rs`, and of `Cringle`, an enum

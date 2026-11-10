@@ -140,25 +140,6 @@ pub struct Quayside {
     pub pinned: Pinned,
 }
 
-/// A second type whose function lists its keys.
-#[model_schema(preprocess = ["withItsKeys"])]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Sided {
-    pub keys: Vec<String>,
-    pub side: String,
-}
-
-/// Two flattened types, each of which names a function.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Twice {
-    pub dock: String,
-    #[serde(flatten)]
-    pub first: Tagged,
-    #[serde(flatten)]
-    pub second: Sided,
-}
-
 /// A type whose function writes, under `seen`, the keys of the object it was handed.
 #[model_schema(preprocess = ["withItsSeen"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -179,7 +160,7 @@ pub struct Duplexed {
 }
 
 /// An internally tagged enum whose variant flattens the type whose function lists its keys.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub enum Boxed {
@@ -233,8 +214,9 @@ pub struct Strapped {
     pub dock: String,
 }
 
-/// A holder declared above the type it flattens, whose function lists its keys.
-#[model_schema()]
+/// A holder declared above the type it flattens, whose function lists its keys: `nonstrict`, as
+/// that type is handed every key still left.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Ahead {
     #[serde(flatten)]

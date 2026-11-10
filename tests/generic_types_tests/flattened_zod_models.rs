@@ -327,7 +327,7 @@ pub enum Span {
 }
 
 /// A variant of another enum that flattens the checked choice.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Tenancy {
@@ -349,7 +349,7 @@ pub enum Tethered {
 }
 
 /// A variant of another enum that flattens the untagged enum read as defaults.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum Wharfage {

@@ -67,7 +67,7 @@ fn the_readme_reports_what_validate_reports() {
 #[cfg(feature = "dart")]
 #[test]
 fn the_readme_names_the_dart_class() {
-    assert!(README.contains("`DartResult{N}`"));
+    assert!(README.contains("`DartResult{N}{Crate}`"));
     let dart = super::models::reply_dart::dart_definition();
     assert!(dart.contains("sealed class DartResult"), "{dart}");
     assert!(dart.contains("<int, String> outcome;"), "{dart}");

@@ -1,0 +1,5 @@
+error: model_schema: type `Parcel`: field `held`: `Wrap<Numbered>` fills `Wrap`, which then has field `id` and flattened `inner`, which both write the key `id`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, fill it with a type that writes no key another of its members declares, or write `inner` under a key of its own.
+  --> tests/flatten_order_refusals/filling_writes_a_key_beside_it.rs:24:15
+   |
+24 |     pub held: Wrap<Numbered>,
+   |               ^^^^^^^^^^^^^^

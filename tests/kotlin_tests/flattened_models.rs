@@ -99,7 +99,7 @@ pub const CLEATING: [&str; 3] = [
     r#"{"OpenBay":{"label":"n"},"north":2}"#,
 ];
 
-/// What [`Rousing`] and [`Gasketing`] are read from: the key of the member [`Unwritten`] reads and
+/// What [`Rousing`] is read from: the key of the member [`Unwritten`] reads and
 /// never writes among them.
 pub const UNWRITTEN: &str = r#"{"label":"n","hidden":1,"north":2}"#;
 
@@ -160,8 +160,8 @@ pub const UNDER_AN_ALIAS: [&str; 2] = [
     r#"{"Quay":{"label":"s"},"north":2}"#,
 ];
 
-/// What [`ProbeLocker`] and its twins are read from: no entry, an entry that reads as a count, an
-/// entry that does not, the two side by side, and `null`, which a count does not read.
+/// What the optional maps under a function are read from: no entry, an entry that reads as a
+/// count, an entry that does not, the two side by side, and `null`, which a count does not read.
 pub const LOCKER: [&str; 5] = [
     "{}",
     r#"{"north":2}"#,
@@ -170,7 +170,7 @@ pub const LOCKER: [&str; 5] = [
     r#"{"north":null}"#,
 ];
 
-/// What [`Cathead`] and [`Hawsepipe`] are read from: no entry, a key a variant of [`Chock`] is
+/// What [`Cathead`] is read from: no entry, a key a variant of [`Chock`] is
 /// written under, both, a key none is written under, and a count of text.
 pub const CHOCKED: [&str; 5] = [
     "{}",
@@ -189,16 +189,13 @@ pub const SNUBBED: [&str; 3] = [r#"{"bow":2}"#, r#"{"open_water":2}"#, r#"{"Open
 pub const SCARFING: [&str; 3] = [r#"{"label":"n","north":2}"#, "{}", r#"{"label":5}"#];
 
 /// What [`Gaffing`] is read from: a map with no entry, an entry that reads as a count and one that
-/// does not, an optional map with each, a struct beside a member of the variant's own, in the
+/// does not, a struct beside a member of the variant's own, in the
 /// order serde writes them and in another, the member under its alias and under both of its
 /// names, and the struct's key absent.
-pub const GAFFING: [&str; 11] = [
+pub const GAFFING: [&str; 8] = [
     r#"{"Counted":{}}"#,
     r#"{"Counted":{"north":2}}"#,
     r#"{"Counted":{"north":"x"}}"#,
-    r#"{"Spare":{}}"#,
-    r#"{"Spare":{"north":2}}"#,
-    r#"{"Spare":{"north":"x"}}"#,
     r#"{"Labelled":{"label":"n","note":"a"}}"#,
     r#"{"Labelled":{"note":"a","label":"n","north":2}}"#,
     r#"{"Labelled":{"label":"n","remark":"a"}}"#,
@@ -208,12 +205,10 @@ pub const GAFFING: [&str; 11] = [
 
 /// What [`Bowlining`] is read from: [`GAFFING`]'s variants under a tag and a content key, and a
 /// member that names a function flattened after a struct.
-pub const BOWLINING: [&str; 9] = [
+pub const BOWLINING: [&str; 7] = [
     r#"{"kind":"Counted","held":{}}"#,
     r#"{"kind":"Counted","held":{"north":2}}"#,
     r#"{"kind":"Counted","held":{"north":"x"}}"#,
-    r#"{"kind":"Spare","held":{"north":2}}"#,
-    r#"{"kind":"Spare","held":{"north":"x"}}"#,
     r#"{"kind":"Labelled","held":{"note":"a","label":"n"}}"#,
     r#"{"kind":"Labelled","held":{"note":"a"}}"#,
     r#"{"held":{"label":"n","north":2},"kind":"Tallied"}"#,
@@ -258,16 +253,8 @@ pub struct Netting {
     pub rest: HashMap<String, u8>,
 }
 
-/// An optional map, the one member: serde reads it as `None` wherever an entry it is handed does
-/// not read as a count, and writes `None` as no entry.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ProbeLocker {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<String, u8>>,
-}
-
-/// [`ProbeLocker`] under a function that answers the payload as it was handed: serde reads the
+/// An optional map, the one member, under a function that answers the payload as it was handed:
+/// serde reads the
 /// map from what it answers, and refuses an entry that does not read as a count.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -277,7 +264,8 @@ pub struct CorrectedLocker {
     pub counts: Option<BTreeMap<String, u8>>,
 }
 
-/// [`ProbeLocker`] under a function that answers `null`, which serde reads as `None`.
+/// An optional map, the one member, under a function that answers `null`, which serde reads as
+/// `None`.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EmptiedLocker {
@@ -301,14 +289,6 @@ pub enum Chock {
 pub struct Cathead {
     #[serde(flatten)]
     pub lines: BTreeMap<Chock, u8>,
-}
-
-/// [`Cathead`]'s map optional: serde reads it as `None` where a key names no variant of [`Chock`].
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Hawsepipe {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub lines: Option<BTreeMap<Chock, u8>>,
 }
 
 /// The keys of [`Snubbing`]'s map, written under the enum's `rename_all` and under a `rename` of
@@ -430,7 +410,8 @@ pub struct Lanyarding {
 }
 
 /// A struct with a flattened member of its own, which serde reads as a map and so takes no key.
-#[model_schema()]
+/// Nonstrict, as it is flattened beside a member that reads every key.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Sheeting {
     #[serde(flatten)]
@@ -477,17 +458,6 @@ pub struct Rousing {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
     #[serde(flatten)]
     pub tally: Bunting,
-}
-
-/// A struct flattened after [`Unwritten`] that reads a key it took: serde hands the second the
-/// object without it and refuses the payload.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Gasketing {
-    #[serde(flatten)]
-    pub hauled: Unwritten,
-    #[serde(flatten)]
-    pub labelling: Labelling,
 }
 
 /// A struct under its own tag, which serde writes, and reads past without taking its key.
@@ -592,38 +562,6 @@ pub struct Stropping {
     pub labelling: Labelling,
     #[serde(flatten)]
     pub noting: Noting,
-}
-
-/// A struct flattened after a struct that reads the same key: serde hands the second the object
-/// without it and refuses the payload.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Stoppering {
-    #[serde(flatten)]
-    pub labelling: Labelling,
-    #[serde(flatten)]
-    pub twice: Labelling,
-}
-
-/// A struct flattened beside a member of its holder's own that reads the same key: serde hands the
-/// struct the object without it and refuses the payload.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Nipping {
-    pub label: String,
-    #[serde(flatten)]
-    pub labelling: Labelling,
-}
-
-/// An optional struct flattened after a struct that reads the same key: serde hands the second
-/// the object without it and reads no value.
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Slinging {
-    #[serde(flatten)]
-    pub labelling: Labelling,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub spare: Option<Labelling>,
 }
 
 /// An externally tagged enum, which serde reads from the first entry under a variant's name or an
@@ -774,10 +712,10 @@ pub enum Quaying {
     Bay { label: String },
 }
 
-/// A map flattened alone in a variant written under its name, an optional one, and a struct
-/// flattened beside a member of the variant's own, read under an alias too: serde reads and
-/// writes each at the variant's own level.
-#[model_schema()]
+/// A map flattened alone in a variant written under its name, and a struct flattened beside a
+/// member of the variant's own, read under an alias too: serde reads and writes each at the
+/// variant's own level.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Gaffing {
     Counted {
@@ -790,15 +728,11 @@ pub enum Gaffing {
         #[serde(alias = "remark")]
         note: String,
     },
-    Spare {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
 }
 
 /// [`Gaffing`] under a tag and a content key, with a variant whose member that names a function
 /// is flattened after a struct: serde hands the function the keys the struct did not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
 pub enum Bowlining {
@@ -811,10 +745,6 @@ pub enum Bowlining {
         labelling: Labelling,
         note: String,
     },
-    Spare {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
     Tallied {
         #[serde(flatten)]
         labelling: Labelling,
@@ -825,7 +755,7 @@ pub enum Bowlining {
 }
 
 /// [`Gaffing`]'s variants untagged, the struct first: serde takes the first variant that reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Swaying {
@@ -837,10 +767,6 @@ pub enum Swaying {
     Counted {
         #[serde(flatten)]
         counts: BTreeMap<String, u8>,
-    },
-    Spare {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
     },
 }
 

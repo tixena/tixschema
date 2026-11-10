@@ -2,23 +2,23 @@
 //! Rust read of a value refuses a key no member declares, as every other surface does.
 //!
 //! The attribute stays off a type that is `nonstrict`, off one the author already wrote it on, and
-//! off one that flattens a member whose keys the expansion cannot see: serde would refuse the very
-//! keys such a member is declared to hold.
+//! off one that flattens a member serde leaves the keys of in the object it reads them from:
+//! serde would refuse the very keys such a member is declared to hold.
 
-use super::{FieldDef, FieldDefType, ModelSchemaArgs, get_field_def, prefixed_guard_message};
+use super::flatten_order::{Culprit, takes_only};
+use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::{
-    derived_serde_attributes, has_serde_transparent, parse_serde_field_attributes,
-    parse_serde_field_hooks, parse_serde_key_omission, parse_serde_type_attributes, struct_tag,
+    Tagging, derived_serde_attributes, has_serde_transparent, parse_serde_field_attributes,
+    parse_serde_key_omission, parse_serde_type_attributes, read_hook, struct_tag,
+    variant_on_the_wire,
 };
-use crate::utils::{
-    Declared, declared, flattened_parameters, is_open_map, is_unconsumed, record_unconsumed,
-};
+use crate::utils::{record_unconsumed, to_snake_case};
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::token::Paren;
-use syn::{Attribute, Field, Fields, Item, ItemEnum, ItemStruct, Token};
-
-/// How many aliases deep a flattened member is followed before its keys are called unseen.
-const ALIAS_DEPTH: usize = 8;
+use syn::{Attribute, Fields, Item, ItemEnum, ItemStruct, Token};
 
 /// The path of the `deny_unknown_fields` serde reads on a container, where its author wrote it.
 fn written_deny(attrs: &[Attribute]) -> Option<syn::Path> {
@@ -101,32 +101,6 @@ fn writes_an_unread_key(fields: &Fields) -> bool {
     fields.iter().any(|field| written_not_read(&field.attrs))
 }
 
-/// Whether the keys `def` writes, flattened, are all known to the expansion.
-fn keys_known(def: &FieldDef, depth: usize) -> bool {
-    if def.array_depth != 0 {
-        return false;
-    }
-    let FieldDefType::SiblingType(name, arguments) = &def.field_type else {
-        return false;
-    };
-    match declared(name) {
-        Some(Declared::Model(_)) => {
-            !is_open_map(name)
-                && !is_unconsumed(name)
-                && flattened_parameters(name).iter().all(|parameter| {
-                    arguments
-                        .get(parameter.at)
-                        .is_some_and(|filling| keys_known(filling, depth))
-                })
-        }
-        Some(Declared::Alias(target)) if depth < ALIAS_DEPTH => {
-            syn::parse_str::<syn::Type>(&target)
-                .is_ok_and(|ty| keys_known(&get_field_def(name, &ty, ""), depth.saturating_add(1)))
-        }
-        Some(Declared::Alias(_) | Declared::OneValue(_)) | None => false,
-    }
-}
-
 /// Whether serde leaves the keys of a flattened `fields` in the object it reads them from.
 fn flattens_something(fields: &Fields) -> bool {
     fields
@@ -170,60 +144,13 @@ pub(super) fn record(item: &Item, args: &ModelSchemaArgs) {
     }
 }
 
-/// Whether a function reads `field`: one serde calls or one the type names with `model_schema_prop`.
-fn read_by_a_function(field: &Field) -> bool {
-    let hooks = parse_serde_field_hooks(&field.attrs);
-    hooks.with.is_some()
-        || hooks.deserialize_with.is_some()
-        || field
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("model_schema_prop"))
-}
-
-/// Whether serde reads a member of `fields` under a key of its own. Without one, its derive would
-/// declare an enum of no variant for the keys, which `clippy::empty_enums` refuses in the
-/// consumer's crate.
-fn reads_a_key(fields: &Fields) -> bool {
-    fields.iter().any(|field| {
-        !parse_serde_field_attributes(&field.attrs).flatten
-            && !parse_serde_key_omission(&field.attrs).skips_deserializing
-    })
-}
-
-/// Whether `ty` names one of the type parameters `generics` declares, anywhere in it.
-fn names_a_parameter(ty: &syn::Type, generics: &syn::Generics) -> bool {
-    let parameters: Vec<String> = generics
-        .type_params()
-        .map(|parameter| parameter.ident.to_string())
-        .collect();
-    let mut pending: Vec<proc_macro2::TokenStream> = vec![quote::ToTokens::to_token_stream(ty)];
-    while let Some(tokens) = pending.pop() {
-        for token in tokens {
-            match token {
-                proc_macro2::TokenTree::Ident(ident) => {
-                    if parameters.contains(&ident.to_string()) {
-                        return true;
-                    }
-                }
-                proc_macro2::TokenTree::Group(group) => pending.push(group.stream()),
-                proc_macro2::TokenTree::Punct(_) | proc_macro2::TokenTree::Literal(_) => {}
-            }
-        }
-    }
-    false
-}
-
-/// Whether every member `fields` flattens holds keys the expansion can see.
-fn flattened_keys_known(fields: &Fields, generics: &syn::Generics) -> bool {
+/// Whether serde reads a member of `fields`, under a key of its own or flattened. Without one, its
+/// derive would declare an enum of no variant for the keys, which `clippy::empty_enums` refuses in
+/// the consumer's crate.
+fn reads_a_member(fields: &Fields) -> bool {
     fields
         .iter()
-        .filter(|field| parse_serde_field_attributes(&field.attrs).flatten)
-        .all(|field| {
-            !read_by_a_function(field)
-                && !names_a_parameter(&field.ty, generics)
-                && keys_known(&get_field_def("flattened", &field.ty, ""), 0)
-        })
+        .any(|field| !parse_serde_key_omission(&field.attrs).skips_deserializing)
 }
 
 /// Whether the macro writes the attribute on a container that carries `attrs`.
@@ -235,33 +162,210 @@ fn writes_deny(attrs: &[Attribute], args: &ModelSchemaArgs) -> bool {
         && !has_serde_transparent(attrs)
 }
 
-/// Writes `#[serde(deny_unknown_fields)]` on `item_struct` where it is a struct of named members
-/// the macro closes.
-pub(super) fn close_struct(item_struct: &mut ItemStruct, args: &ModelSchemaArgs) {
-    if matches!(item_struct.fields, Fields::Named(_))
-        && reads_a_key(&item_struct.fields)
+/// Whether the macro writes `#[serde(deny_unknown_fields)]` on `item_struct`: a struct of named
+/// members, one of which serde reads, whose flattened members all take their own keys.
+pub(super) fn closes_struct(item_struct: &ItemStruct, args: &ModelSchemaArgs) -> bool {
+    matches!(item_struct.fields, Fields::Named(_))
+        && reads_a_member(&item_struct.fields)
         && !writes_an_unread_key(&item_struct.fields)
         && struct_tag(item_struct).is_none()
         && writes_deny(&item_struct.attrs, args)
-        && flattened_keys_known(&item_struct.fields, &item_struct.generics)
-    {
+        && takes_only(&item_struct.fields, &item_struct.generics)
+}
+
+/// Whether the macro writes `#[serde(deny_unknown_fields)]` on `item_enum`.
+pub(super) fn closes_enum(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool {
+    closable_but_for_flattening(item_enum, args)
+        && item_enum
+            .variants
+            .iter()
+            .all(|variant| takes_only(&variant.fields, &item_enum.generics))
+}
+
+/// Whether the macro would write `#[serde(deny_unknown_fields)]` on `item_enum` but for a member
+/// a variant flattens that reads every key still left.
+pub(super) fn closable_but_for_flattening(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool {
+    !item_enum.variants.is_empty()
+        && writes_deny(&item_enum.attrs, args)
+        && item_enum.variants.iter().all(|variant| {
+            !written_not_read(&variant.attrs)
+                && !writes_an_unread_key(&variant.fields)
+                && (!matches!(variant.fields, Fields::Named(_)) || reads_a_member(&variant.fields))
+        })
+}
+
+/// The unit variants of `item_enum` the macro reads through [`unit_read_name`], so that they refuse
+/// a key beside the enum's tag: those serde reads of an enum under a tag alone the macro or its
+/// author closes, that name no read and are not the `#[serde(other)]` variant.
+fn refusing_units<'item>(
+    item_enum: &'item ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Vec<&'item syn::Variant> {
+    let closed =
+        closes_enum(item_enum, args) || (closed_by_hand(&item_enum.attrs) && !args.nonstrict);
+    if !matches!(Tagging::of(item_enum), Tagging::Internal { tag: _tag }) || !closed {
+        return Vec::new();
+    }
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| {
+            matches!(variant.fields, Fields::Unit)
+                && variant_on_the_wire(variant)
+                && !parse_serde_key_omission(&variant.attrs).skips_deserializing
+                && read_hook(&variant.attrs).is_none()
+                && !names_other(&variant.attrs)
+        })
+        .collect()
+}
+
+/// Whether `attrs` mark a variant `#[serde(other)]`.
+fn names_other(attrs: &[Attribute]) -> bool {
+    let mut other = false;
+    for attr in derived_serde_attributes(attrs) {
+        attr.parse_nested_meta(|nested| {
+            other |= nested.path.is_ident("other");
+            if nested.input.peek(Token![=]) {
+                nested.value()?.parse::<syn::Expr>()?;
+            } else if nested.input.peek(Paren) {
+                nested.input.parse::<proc_macro2::Group>()?;
+            } else {
+                // A bare key: nothing to step over.
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde variant attribute: {e}");
+        });
+    }
+    other
+}
+
+/// The name of the read the macro hangs on each unit variant of `item_enum` it closes under a tag
+/// alone: serde reads such a variant past every key beside the tag.
+fn unit_read_name(item_enum: &ItemEnum) -> String {
+    format!(
+        "model_schema_{}_unit_refuses_a_key",
+        to_snake_case(&item_enum.ident.unraw().to_string())
+    )
+}
+
+/// Whether the macro reads the unit variants of `item_enum` refusing a key beside its tag.
+pub(super) fn refuses_beside_a_unit(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool {
+    !refusing_units(item_enum, args).is_empty()
+}
+
+/// The read [`refusing_units`] hang on the unit variants of `item`, where it has one: it reads
+/// `{}` and the unit a format writes, and refuses the first key it is handed.
+pub(super) fn unit_reads(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let Item::Enum(item_enum) = item else {
+        return TokenStream::new();
+    };
+    if refusing_units(item_enum, args).is_empty() {
+        return TokenStream::new();
+    }
+    let name = proc_macro2::Ident::new(&unit_read_name(item_enum), proc_macro2::Span::call_site());
+    let doc = format!(
+        " The read of a unit variant of `{}`, which refuses a key beside the tag.",
+        item_enum.ident.unraw()
+    );
+    quote! {
+        #[doc = #doc]
+        fn #name<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<(), D::Error> {
+            struct UnknownKey(::core::convert::Infallible);
+            impl<'de> ::serde::Deserialize<'de> for UnknownKey {
+                fn deserialize<K: ::serde::Deserializer<'de>>(keys: K) -> ::core::result::Result<Self, K::Error> {
+                    struct KeyVisitor;
+                    impl<'de> ::serde::de::Visitor<'de> for KeyVisitor {
+                        type Value = UnknownKey;
+                        fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                            formatter.write_str("no key")
+                        }
+                        fn visit_str<E: ::serde::de::Error>(self, key: &str) -> ::core::result::Result<Self::Value, E> {
+                            ::core::result::Result::Err(E::unknown_field(key, &[]))
+                        }
+                    }
+                    keys.deserialize_identifier(KeyVisitor)
+                }
+            }
+            struct UnitVisitor;
+            impl<'de> ::serde::de::Visitor<'de> for UnitVisitor {
+                type Value = ();
+                fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    formatter.write_str("no key beside the tag")
+                }
+                fn visit_unit<E: ::serde::de::Error>(self) -> ::core::result::Result<Self::Value, E> {
+                    ::core::result::Result::Ok(())
+                }
+                fn visit_map<A: ::serde::de::MapAccess<'de>>(
+                    self,
+                    mut map: A,
+                ) -> ::core::result::Result<Self::Value, A::Error> {
+                    match map.next_key::<UnknownKey>()? {
+                        ::core::option::Option::Some(unknown) => match unknown.0 {},
+                        ::core::option::Option::None => ::core::result::Result::Ok(()),
+                    }
+                }
+            }
+            deserializer.deserialize_any(UnitVisitor)
+        }
+    }
+}
+
+/// Whether the author wrote `#[serde(deny_unknown_fields)]` among `attrs`.
+pub(super) fn closed_by_hand(attrs: &[Attribute]) -> bool {
+    written_deny(attrs).is_some()
+}
+
+/// The struct as a type that refuses a key it does not declare, where it refuses one: closed by
+/// its author or by the macro, or a struct of no member whose read the macro writes.
+pub(super) fn struct_culprit(item_struct: &ItemStruct, args: &ModelSchemaArgs) -> Option<Culprit> {
+    let by_hand = closed_by_hand(&item_struct.attrs);
+    let read_written = item_struct.fields.is_empty() && !args.nonstrict;
+    (by_hand || read_written || closes_struct(item_struct, args)).then(|| Culprit {
+        by_hand,
+        holds_more: false,
+        name: item_struct.ident.to_string(),
+    })
+}
+
+/// The enum as a type that refuses a key it does not declare, where it refuses one.
+pub(super) fn enum_culprit(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Option<Culprit> {
+    let by_hand = closed_by_hand(&item_enum.attrs);
+    (by_hand || closes_enum(item_enum, args)).then(|| Culprit {
+        by_hand,
+        holds_more: false,
+        name: item_enum.ident.to_string(),
+    })
+}
+
+/// Writes `#[serde(deny_unknown_fields)]` on `item_struct` where the macro closes it.
+pub(super) fn close_struct(item_struct: &mut ItemStruct, args: &ModelSchemaArgs) {
+    if closes_struct(item_struct, args) {
         item_struct
             .attrs
             .push(syn::parse_quote! { #[serde(deny_unknown_fields)] });
     }
 }
 
-/// Writes `#[serde(deny_unknown_fields)]` on `item_enum` where the macro closes it.
+/// Writes `#[serde(deny_unknown_fields)]` on `item_enum` where the macro closes it, and hangs the
+/// read of [`unit_reads`] on each of its unit variants [`refusing_units`] names.
 pub(super) fn close_enum(item_enum: &mut ItemEnum, args: &ModelSchemaArgs) {
-    if !item_enum.variants.is_empty()
-        && writes_deny(&item_enum.attrs, args)
-        && item_enum.variants.iter().all(|variant| {
-            !written_not_read(&variant.attrs)
-                && !writes_an_unread_key(&variant.fields)
-                && flattened_keys_known(&variant.fields, &item_enum.generics)
-                && (!matches!(variant.fields, Fields::Named(_)) || reads_a_key(&variant.fields))
-        })
-    {
+    let units: Vec<String> = refusing_units(item_enum, args)
+        .iter()
+        .map(|variant| variant.ident.to_string())
+        .collect();
+    if !units.is_empty() {
+        let read = syn::LitStr::new(&unit_read_name(item_enum), proc_macro2::Span::call_site());
+        for variant in &mut item_enum.variants {
+            if units.contains(&variant.ident.to_string()) {
+                variant
+                    .attrs
+                    .push(syn::parse_quote! { #[serde(deserialize_with = #read)] });
+            }
+        }
+    }
+    if closes_enum(item_enum, args) {
         item_enum
             .attrs
             .push(syn::parse_quote! { #[serde(deny_unknown_fields)] });

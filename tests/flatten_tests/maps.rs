@@ -1,8 +1,7 @@
 //! The models a map is flattened into as the only member of its object, and the payloads serde
 //! reads and refuses for them. A map flattened beside another member or beside a tag stops the
-//! build, so a map is handed every key of its object. An optional map is read as `None` wherever
-//! an entry it is handed does not read, and leaves the entry in the object. An optional struct is
-//! read as `None` wherever its keys do not read, a payload Zod refuses.
+//! build, so a map is handed every key of its object. An `Option` of a map flattened stops the
+//! build as well: serde would read back as `Some` of a map of no entry the `None` it wrote.
 
 use alloc::collections::BTreeMap;
 
@@ -11,9 +10,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// Every payload, one that serde reads and one with a count of the wrong type for each place a
-/// map is flattened. An optional map is read as `None` wherever an entry does not read, so serde
-/// reads every object its holder reads.
-pub const PAYLOADS: [Payload; 57] = [
+/// map is flattened.
+pub const PAYLOADS: [Payload; 15] = [
     Payload {
         json: r#"{"north":2}"#,
         name: "alone",
@@ -75,66 +73,6 @@ pub const PAYLOADS: [Payload; 57] = [
         read_as: "Bilge",
     },
     Payload {
-        json: "{}",
-        name: "optional, no entry",
-        read_as: "Locker",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional, a count",
-        read_as: "Locker",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "optional, a count of text",
-        read_as: "Locker",
-    },
-    Payload {
-        json: r#"{"north":2,"south":"x"}"#,
-        name: "optional, a count and a count of text",
-        read_as: "Locker",
-    },
-    Payload {
-        json: "[]",
-        name: "optional, a list",
-        read_as: "Locker",
-    },
-    Payload {
-        json: "{}",
-        name: "optional with no default, no entry",
-        read_as: "Scupper",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional with no default, a count",
-        read_as: "Scupper",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "optional with no default, a count of text",
-        read_as: "Scupper",
-    },
-    Payload {
-        json: "{}",
-        name: "optional and keyed by an enum, no entry",
-        read_as: "Windlass",
-    },
-    Payload {
-        json: r#"{"Port":2}"#,
-        name: "optional and keyed by an enum, a count",
-        read_as: "Windlass",
-    },
-    Payload {
-        json: r#"{"Port":"x"}"#,
-        name: "optional and keyed by an enum, a count of text",
-        read_as: "Windlass",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional and keyed by an enum, a key it does not name",
-        read_as: "Windlass",
-    },
-    Payload {
         json: r#"{"n":2}"#,
         name: "keyed by a char",
         read_as: "Ratlines",
@@ -149,179 +87,17 @@ pub const PAYLOADS: [Payload; 57] = [
         name: "keyed by a char, a count of text",
         read_as: "Ratlines",
     },
-    Payload {
-        json: "{}",
-        name: "optional and keyed by a char, no entry",
-        read_as: "Deadeye",
-    },
-    Payload {
-        json: r#"{"n":2}"#,
-        name: "optional and keyed by a char, a count",
-        read_as: "Deadeye",
-    },
-    Payload {
-        json: r#"{"nn":2}"#,
-        name: "optional and keyed by a char, a key of two chars",
-        read_as: "Deadeye",
-    },
-    Payload {
-        json: "{}",
-        name: "optional through an alias, no entry",
-        read_as: "Sheave",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional through an alias, a count",
-        read_as: "Sheave",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "optional through an alias, a count of text",
-        read_as: "Sheave",
-    },
-    Payload {
-        json: "{}",
-        name: "made optional by its alias, no entry",
-        read_as: "Lazarette",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "made optional by its alias, a count",
-        read_as: "Lazarette",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "made optional by its alias, a count of text",
-        read_as: "Lazarette",
-    },
-    Payload {
-        json: "{}",
-        name: "an optional brand, no entry",
-        read_as: "Pintle",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "an optional brand, a count",
-        read_as: "Pintle",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "an optional brand, a count of text",
-        read_as: "Pintle",
-    },
-    Payload {
-        json: "{}",
-        name: "an optional generic brand, no entry",
-        read_as: "Thole",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "an optional generic brand, a count",
-        read_as: "Thole",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "an optional generic brand, a count of text",
-        read_as: "Thole",
-    },
-    Payload {
-        json: "{}",
-        name: "an optional untagged enum, no entry",
-        read_as: "Stanchion",
-    },
-    Payload {
-        json: r#"{"total":2}"#,
-        name: "an optional untagged enum, its struct",
-        read_as: "Stanchion",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "an optional untagged enum, a count",
-        read_as: "Stanchion",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "an optional untagged enum, a count of text",
-        read_as: "Stanchion",
-    },
-    Payload {
-        json: r#"{"Open":{}}"#,
-        name: "optional in a variant, no entry",
-        read_as: "Fairlead",
-    },
-    Payload {
-        json: r#"{"Open":{"north":2}}"#,
-        name: "optional in a variant, a count",
-        read_as: "Fairlead",
-    },
-    Payload {
-        json: r#"{"Open":{"north":"x"}}"#,
-        name: "optional in a variant, a count of text",
-        read_as: "Fairlead",
-    },
-    Payload {
-        json: r#"{"kind":"Open","held":{}}"#,
-        name: "optional in a variant under a content key, no entry",
-        read_as: "Davit",
-    },
-    Payload {
-        json: r#"{"kind":"Open","held":{"north":2}}"#,
-        name: "optional in a variant under a content key, a count",
-        read_as: "Davit",
-    },
-    Payload {
-        json: r#"{"kind":"Open","held":{"north":"x"}}"#,
-        name: "optional in a variant under a content key, a count of text",
-        read_as: "Davit",
-    },
-    Payload {
-        json: r#"{"kind":"Open"}"#,
-        name: "optional in a variant under a content key, no content",
-        read_as: "Davit",
-    },
-    Payload {
-        json: "{}",
-        name: "optional in an untagged variant, no entry",
-        read_as: "Capstan",
-    },
-    Payload {
-        json: r#"{"north":2}"#,
-        name: "optional in an untagged variant, a count",
-        read_as: "Capstan",
-    },
-    Payload {
-        json: r#"{"north":"x"}"#,
-        name: "optional in an untagged variant, a count of text",
-        read_as: "Capstan",
-    },
-    Payload {
-        json: "3",
-        name: "optional in an untagged variant, a number",
-        read_as: "Capstan",
-    },
 ];
 
 /// Each model a payload is read as, beside serde's read of a payload as it.
-const READS: [(&str, ReadAs); 19] = [
+const READS: [(&str, ReadAs); 7] = [
     ("Thwart", reads::<Thwart>),
     ("Gunwale", reads::<Gunwale>),
     ("Strake", reads::<Strake>),
     ("Coaming", reads::<Coaming>),
     ("Transom", reads::<Transom>),
     ("Bilge", reads::<Bilge>),
-    ("Locker", reads::<Locker>),
-    ("Scupper", reads::<Scupper>),
-    ("Windlass", reads::<Windlass>),
     ("Ratlines", reads::<Ratlines>),
-    ("Deadeye", reads::<Deadeye>),
-    ("Sheave", reads::<Sheave>),
-    ("Lazarette", reads::<Lazarette>),
-    ("Pintle", reads::<Pintle>),
-    ("Thole", reads::<Thole>),
-    ("Stanchion", reads::<Stanchion>),
-    ("Fairlead", reads::<Fairlead>),
-    ("Davit", reads::<Davit>),
-    ("Capstan", reads::<Capstan>),
 ];
 
 /// What Zod prints for [`PAYLOADS`]: a payload read, or refused with each issue under its place.
@@ -344,56 +120,11 @@ in a variant under a content key, a count of text: refused
 in an untagged variant: read
 in an untagged variant, a count of text: refused
     'north': Invalid input: expected number, received string
-optional, no entry: read
-optional, a count: read
-optional, a count of text: read
-optional, a count and a count of text: read
-optional, a list: refused
-    Invalid input
-optional with no default, no entry: read
-optional with no default, a count: read
-optional with no default, a count of text: read
-optional and keyed by an enum, no entry: read
-optional and keyed by an enum, a count: read
-optional and keyed by an enum, a count of text: read
-optional and keyed by an enum, a key it does not name: read
 keyed by a char: read
 keyed by a char, a key of two chars: refused
     Unrecognized key: \"nn\"
 keyed by a char, a count of text: refused
     'n': Invalid input: expected number, received string
-optional and keyed by a char, no entry: read
-optional and keyed by a char, a count: read
-optional and keyed by a char, a key of two chars: read
-optional through an alias, no entry: read
-optional through an alias, a count: read
-optional through an alias, a count of text: read
-made optional by its alias, no entry: read
-made optional by its alias, a count: read
-made optional by its alias, a count of text: read
-an optional brand, no entry: read
-an optional brand, a count: read
-an optional brand, a count of text: read
-an optional generic brand, no entry: read
-an optional generic brand, a count: read
-an optional generic brand, a count of text: read
-an optional untagged enum, no entry: read
-an optional untagged enum, its struct: read
-an optional untagged enum, a count: read
-an optional untagged enum, a count of text: read
-optional in a variant, no entry: read
-optional in a variant, a count: read
-optional in a variant, a count of text: read
-optional in a variant under a content key, no entry: read
-optional in a variant under a content key, a count: read
-optional in a variant under a content key, a count of text: read
-optional in a variant under a content key, no content: refused
-    'held': Invalid input
-optional in an untagged variant, no entry: read
-optional in an untagged variant, a count: read
-optional in an untagged variant, a count of text: read
-optional in an untagged variant, a number: refused
-    Invalid input
 ";
 
 /// Each payload of [`Hawser`]: its name, the JSON, and what serde reads of it. serde reads every
@@ -467,7 +198,7 @@ pub enum Coaming {
 }
 
 /// A map in a variant under a tag and a content key.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "held")]
 pub enum Transom {
@@ -488,162 +219,12 @@ pub enum Bilge {
     },
 }
 
-/// An optional map alone in its object. serde reads every object as it: the map where each entry
-/// reads as a count, and `None` where one does not.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Locker {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<String, u8>>,
-}
-
-/// The same map with no `default`, which serde reads as it reads [`Locker`].
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Scupper {
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<BTreeMap<String, u8>>,
-}
-
-/// An optional map keyed by a plain enum: a key no member of the enum names reads the map as
-/// `None` as well.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Windlass {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub lines: Option<BTreeMap<Hawse, u8>>,
-}
-
-/// The keys of [`Windlass`]'s map.
-#[model_schema()]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum Hawse {
-    Port,
-    Starboard,
-}
-
 /// A map keyed by a `char`, which serde reads from the text of each key.
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Ratlines {
     #[serde(flatten)]
     pub turns: BTreeMap<char, u8>,
-}
-
-/// [`Ratlines`]'s map optional: serde reads it as `None` where a key is no `char`.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Deadeye {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub turns: Option<BTreeMap<char, u8>>,
-}
-
-/// A map under a name of its own.
-#[model_schema(enable = ["jsonschema"])]
-pub type SheaveTallies = BTreeMap<String, u8>;
-
-/// An optional map named through an alias.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Sheave {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<SheaveTallies>,
-}
-
-/// An optional map under a name of its own.
-#[model_schema(enable = ["jsonschema"])]
-pub type SpareTallies = Option<BTreeMap<String, u8>>;
-
-/// A map made optional by the alias it is named through.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Lazarette {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: SpareTallies,
-}
-
-/// A brand over a map.
-#[model_schema(no_display, enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct PintleCounts(pub BTreeMap<String, u8>);
-
-/// An optional brand over a map.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Pintle {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<PintleCounts>,
-}
-
-/// A brand over its type parameter.
-#[model_schema(no_display, default_types(T = BTreeMap<String, u8>), enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct Oarlock<T>(pub T);
-
-/// An optional brand over its type parameter, filled at a map.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Thole {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub counts: Option<Oarlock<BTreeMap<String, u8>>>,
-}
-
-/// One way the untagged enum below is written.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Kedge {
-    pub total: u8,
-}
-
-/// An untagged enum with a map among its variants.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum Fender {
-    Anchored(Kedge),
-    Counted(BTreeMap<String, u8>),
-}
-
-/// An optional untagged enum with a map among its variants.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Stanchion {
-    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-    pub lines: Option<Fender>,
-}
-
-/// An optional map in a variant written under its name.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Fairlead {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map in a variant under a tag and a content key.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", content = "held")]
-pub enum Davit {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
-}
-
-/// An optional map in an untagged variant.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum Capstan {
-    Open {
-        #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
-        counts: Option<BTreeMap<String, u8>>,
-    },
 }
 
 /// The struct the README flattens through an `Option`.

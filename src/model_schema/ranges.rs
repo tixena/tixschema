@@ -53,18 +53,18 @@ use crate::utils::{
 
 /// What every refusal of a key serde reads below a flattened member says of serde.
 #[cfg(feature = "serde")]
-const KEYS_BELOW_A_FLATTEN: &str = "serde reads every key below a flattened member as text, and \
+pub(super) const KEYS_BELOW_A_FLATTEN: &str = "serde reads every key below a flattened member as text, and \
      reads no number and no `bool` from text, so no entry of that map reads back.";
 
 /// What every refusal of a key serde reads in an untagged enum says of serde.
 #[cfg(feature = "serde")]
-const KEYS_IN_AN_UNTAGGED_ENUM: &str = "serde reads an untagged enum from a copy of the payload \
+pub(super) const KEYS_IN_AN_UNTAGGED_ENUM: &str = "serde reads an untagged enum from a copy of the payload \
      it buffers, where every key is text, and reads no number and no `bool` from text, so no \
      entry of that map reads back.";
 
 /// What every refusal of a key serde reads in an enum under a tag alone says of serde.
 #[cfg(feature = "serde")]
-const KEYS_IN_A_TAGGED_ENUM: &str = "serde reads an enum under a tag alone from a copy of the \
+pub(super) const KEYS_IN_A_TAGGED_ENUM: &str = "serde reads an enum under a tag alone from a copy of the \
      payload it buffers, where every key is text, and reads no number and no `bool` from text, \
      so no entry of that map reads back.";
 

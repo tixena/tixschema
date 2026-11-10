@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Shipment` flattens `mark` (`invoice_lookups::ParcelMark`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: every member tixschema could see takes its own keys, so it wrote `#[serde(deny_unknown_fields)]` on `Shipment`, and `invoice_lookups::ParcelMark` reads every key still left, which `Shipment` then refuses. Mark `Shipment` `#[model_schema(nonstrict)]`, and declare `mark` after every other flattened member.
+  --> tests/flatten_order_refusals/member_in_another_crate_ahead.rs:11:15
+   |
+11 |     pub mark: invoice_lookups::ParcelMark,
+   |               ^^^^^^^^^^^^^^^ evaluation of `_` failed here

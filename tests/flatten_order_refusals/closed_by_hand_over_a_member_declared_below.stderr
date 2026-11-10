@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` is written `#[serde(deny_unknown_fields)]` and flattens `hue` (`Hue`), whose keys serde leaves in the object it reads it from, so the type refuses them even with no other member beside it. Take `#[serde(deny_unknown_fields)]` off `Parcel`: tixschema leaves it off a type that flattens such a member.
+  --> tests/flatten_order_refusals/closed_by_hand_over_a_member_declared_below.rs:12:14
+   |
+12 |     pub hue: Hue,
+   |              ^^^ evaluation of `_` failed here

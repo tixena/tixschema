@@ -179,19 +179,6 @@ pub enum InternalOverEnum {
     EnumInner(InternalHue),
 }
 
-/// A bare tag over a newtype over a `String` declared below it, which the enum's expansion does not
-/// see: the declaration compiles and the divergence is left for the merge to catch.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum InternalOverBrand {
-    Branded(InternalSlug),
-}
-
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct InternalSlug(pub String);
-
 /// An untagged enum every member of which serde writes as an object, wrapped by a bare tag. The
 /// content joins the tag the same way a `#[serde(flatten)]` base does, so what lands beside the tag
 /// is the members of whichever union member matched.
@@ -257,23 +244,6 @@ pub enum InternalOverCarried {
     Held(InternalCarried<u32>),
 }
 
-/// The same wrapping over a union declared below it with one member serde writes as a string. Only
-/// the JSON-schema merge reads the pair, so both fixtures are declared where they are read.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum InternalOverScalarUntagged {
-    Wrapped(InternalScalarEither),
-}
-
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum InternalScalarEither {
-    Obj(InternalFirst),
-    Text(String),
-}
-
 /// A bare tag over a struct of one slot over an `Option`, declared below it, which the enum's
 /// expansion does not see: serde refuses every write of the variant, and the merge refuses the
 /// declaration. A struct flattening the same type merges its `None` as no key.
@@ -295,35 +265,6 @@ pub struct FlatOverLaterMaybe {
 #[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InternalLaterMaybe(Option<InternalFirst>);
-
-/// A bare tag over a struct of one slot over `()`, and over an untagged enum with a member over
-/// `()`, each declared below it: serde writes the tag alone for both, and reads it back for the
-/// first alone.
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum InternalOverLaterNothing {
-    Held(InternalLaterNothing),
-}
-
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum InternalOverLaterUnitMember {
-    Member(InternalLaterUnitEither),
-}
-
-#[model_schema(no_display, enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct InternalLaterNothing(());
-
-#[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum InternalLaterUnitEither {
-    Nothing(()),
-    Obj(InternalFirst),
-}
 
 /// A recursive enum with no tagging attributes: what sits under a key is the enum itself. Only the
 /// Zod surface spells the deferral, so the fixture is declared where it is read.
@@ -1915,7 +1856,6 @@ fn test_bare_tag_zod_intersects_the_inner_schema() {
 fn test_a_newtype_variants_content_is_never_read_while_the_const_initializes() {
     for (zod, inner) in [
         (Internal::zod_schema(), "TagPayload"),
-        (InternalOverBrand::zod_schema(), "InternalSlug"),
         (InternalOverUntagged::zod_schema(), "InternalEither"),
     ] {
         assert!(
@@ -2208,31 +2148,11 @@ fn test_bare_tag_over_a_plain_enum_writes_a_key_the_tag_does_not_name() {
     );
 }
 
-#[test]
-fn test_bare_tag_over_a_string_newtype_is_unserializable() {
-    let refusal = serde_json::to_value(InternalOverBrand::Branded(InternalSlug("s".to_owned())))
-        .unwrap_err()
-        .to_string();
-    assert!(
-        refusal.contains("cannot serialize tagged newtype variant"),
-        "Got: {refusal}"
-    );
-    assert!(refusal.contains("containing a string"), "Got: {refusal}");
-}
-
-#[test]
-#[should_panic(
-    expected = "`InternalOverBrand`: the content of variant `Branded`, `InternalSlug` is not written as an object"
-)]
-fn test_bare_tag_over_a_string_newtype_is_refused_by_the_merge() {
-    assert!(InternalOverBrand::json_schema().is_object());
-}
-
 /// The remedy the refusal names is one the author can act on.
 #[test]
 #[should_panic(expected = "name a `content` key so the content gets an object of its own")]
 fn test_the_merge_refusal_names_the_remedy() {
-    assert!(InternalOverBrand::json_schema().is_object());
+    assert!(InternalOverLaterMaybe::json_schema().is_object());
 }
 
 #[test]
@@ -2287,14 +2207,6 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
         ],
         "Got: {schema}"
     );
-}
-
-#[test]
-#[should_panic(
-    expected = "`InternalOverScalarUntagged`: the content of variant `Wrapped`, `InternalScalarEither` writes a union member that is not an object — its branch 2 describes a `string`"
-)]
-fn test_a_string_member_of_a_tagged_untagged_enum_is_refused_by_the_merge() {
-    assert!(InternalOverScalarUntagged::json_schema().is_object());
 }
 
 #[test]
@@ -2357,50 +2269,6 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
             ]
         })
     );
-}
-
-#[test]
-fn test_bare_tag_over_a_later_unit_writes_the_tag_alone() {
-    let held = InternalOverLaterNothing::Held(InternalLaterNothing(()));
-    assert_eq!(
-        serde_json::to_value(&held).unwrap(),
-        serde_json::json!({ "type": "Held" })
-    );
-    assert_eq!(
-        serde_json::from_value::<InternalOverLaterNothing>(serde_json::json!({ "type": "Held" }))
-            .unwrap(),
-        held
-    );
-    assert_eq!(
-        serde_json::to_value(InternalOverLaterUnitMember::Member(
-            InternalLaterUnitEither::Nothing(())
-        ))
-        .unwrap(),
-        serde_json::json!({ "type": "Member" })
-    );
-    assert!(
-        serde_json::from_value::<InternalOverLaterUnitMember>(
-            serde_json::json!({ "type": "Member" })
-        )
-        .is_err(),
-        "serde does not read the tag alone back as the untagged enum's unit member"
-    );
-}
-
-#[test]
-#[should_panic(
-    expected = "`InternalOverLaterUnitMember`: the content of variant `Member`, `InternalLaterUnitEither` writes a union member as `null` — its branch 1 describes a `null`, which cannot sit beside the tag: where that `null` is an optional's, serde refuses every write of it at run time — `cannot serialize tagged newtype variant InternalOverLaterUnitMember::Member containing an optional` — and where it is `()`'s, serde writes the tag alone, which it does not read back as a union member"
-)]
-fn test_bare_tag_over_a_later_unit_member_is_refused_by_the_merge() {
-    assert!(InternalOverLaterUnitMember::json_schema().is_object());
-}
-
-#[test]
-#[should_panic(
-    expected = "`InternalOverLaterNothing`: the content of variant `Held`, `InternalLaterNothing` is written as `()` — its schema describes a `null`: beside the tag serde writes the variant as the tag alone, and reads it back, while the TypeScript type and the Zod schema of the variant intersect the tag's object with `null`, which admits no value; name a `content` key so the content gets an object of its own"
-)]
-fn test_bare_tag_over_a_later_unit_is_refused_by_the_merge() {
-    assert!(InternalOverLaterNothing::json_schema().is_object());
 }
 
 #[test]

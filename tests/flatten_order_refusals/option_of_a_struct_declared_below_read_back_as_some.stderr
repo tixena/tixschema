@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Stamp` flattens `ink` (`Option<Ink>`), declared below the type that flattens it, in another crate, or with no `#[model_schema]`: `Ink` reads from an object that holds none of its keys, or tixschema cannot see that it does not, so serde writes `None` as no key and reads it back as `Some`. Give `Ink` a member serde requires, flatten `Ink` without the `Option`, or write `ink` under a key of its own.
+  --> tests/flatten_order_refusals/option_of_a_struct_declared_below_read_back_as_some.rs:11:14
+   |
+11 |     pub ink: Option<Ink>,
+   |              ^^^^^^ evaluation of `_` failed here

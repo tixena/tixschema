@@ -90,7 +90,7 @@ struct Note {
 }
 
 /// Internally tagged: `{"kind": "Solid", "color": "red"}`.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Paint {
@@ -302,14 +302,6 @@ enum Seen {
     },
 }
 
-/// An optional flattened map, which no walk reaches.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Spare {
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    rest: Option<HashMap<String, i32>>,
-}
-
 /// A flattened map read by a hook named like what the walk of a flattened type keeps its keys as.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -370,22 +362,6 @@ struct Scoreboard {
     scores: Scores,
 }
 
-/// Declares a key the type that flattens it declares too.
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Part {
-    #[serde(default)]
-    title: i32,
-}
-
-#[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Whole {
-    #[serde(flatten)]
-    part: Part,
-    title: String,
-}
-
 /// An optional flattened enum, internally tagged.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -404,21 +380,19 @@ struct Reached {
     own: String,
 }
 
-/// Two optional flattened enums, internally tagged and untagged, beside a flattened struct.
+/// An optional flattened enum, internally tagged, beside a flattened struct.
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Layered {
     #[serde(flatten)]
     audit: Audit,
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
-    channel: Option<Channel>,
-    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
     paint: Option<Paint>,
     title: String,
 }
 
 /// Internally tagged, with a variant that holds a model type under a key.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(enable = ["decode_with"], nonstrict)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 enum Finish {
@@ -1161,17 +1135,6 @@ fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own
 }
 
 #[test]
-fn an_optional_flattened_map_is_walked_by_nothing_and_takes_every_key() {
-    let mut calls = 0_u32;
-    let stored = json!({ "a": "x" });
-    assert_eq!(
-        read_counting!(Spare, spare_schema, stored, calls),
-        Ok(Spare { rest: None })
-    );
-    assert_eq!(calls, 0);
-}
-
-#[test]
 fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function() {
     let mut calls = 0_u32;
     let stored = json!({ "x": 1_i32 });
@@ -1222,42 +1185,6 @@ fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
         Ok(scoreboard)
     );
     assert_eq!(calls, 0);
-}
-
-#[test]
-fn a_key_the_outer_type_and_a_flattened_type_both_declare_is_the_outer_types_alone() {
-    let stored = json!({ "title": "t" });
-    assert_eq!(
-        serde_json::from_value::<Whole>(stored.clone()).unwrap(),
-        Whole {
-            part: Part { title: 0_i32 },
-            title: "t".to_owned(),
-        }
-    );
-    let mut calls = 0_u32;
-    assert_eq!(
-        read_counting!(Whole, whole_schema, stored, calls),
-        Ok(Whole {
-            part: Part { title: 0_i32 },
-            title: "t".to_owned(),
-        })
-    );
-    assert_eq!(calls, 0);
-
-    let numbered = json!({ "title": 5_i32 });
-    assert!(!serde_reads::<Whole>(&numbered));
-    assert_eq!(
-        listed!(Whole, whole_schema, numbered),
-        [
-            "title: invalid: expected String, found Number(5): invalid type: integer `5`, expected a string"
-        ]
-    );
-    let undeclared = json!({ "legacy": true, "title": "t" });
-    assert!(!serde_reads::<Whole>(&undeclared));
-    assert_eq!(
-        listed!(Whole, whole_schema, undeclared),
-        ["legacy: unknown: found Bool(true)"]
-    );
 }
 
 #[test]
@@ -1324,7 +1251,6 @@ fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue()
             created_by: "ada".to_owned(),
             revision: 1_i32,
         },
-        channel: None,
         paint: None,
         title: "t".to_owned(),
     };
@@ -1479,7 +1405,7 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     );
     assert_eq!(calls, 0);
     let undeclared = json!({ "legacy": true, "own": "x" });
-    assert!(serde_reads::<Edged>(&undeclared));
+    assert!(!serde_reads::<Edged>(&undeclared));
     assert_eq!(
         listed!(Edged, edged_schema, undeclared),
         ["legacy: unknown: found Bool(true)"]

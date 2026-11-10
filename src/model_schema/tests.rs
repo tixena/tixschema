@@ -4391,24 +4391,41 @@ fn an_untagged_member_over_a_generic_type_filled_through_a_chain_or_at_an_option
 }
 
 /// The untagged members left alone: one over a generic type filled at a struct, and one over a
-/// generic type declared below, flattened and held under a tag alone.
+/// generic type declared below, flattened and held under a tag alone. The Swift read of the one
+/// declared below hands it every key beside it, so a build with Swift refuses it flattened beside a
+/// key.
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_is_accepted() {
     declare_filled_members();
     for held in ["ProbeFieldsMember", "ProbeLaterMember"] {
-        for accepted in [
-            format!(
-                "pub struct ProbeFlat{held} {{ pub id: String, #[serde(flatten)] pub m: {held} }}"
-            ),
-            format!("#[serde(tag = \"kind\")] pub enum ProbeHeld{held} {{ Held({held}) }}"),
-        ] {
-            let expanded = serialized_under("", &accepted);
+        let tagged =
+            format!("#[serde(tag = \"kind\")] pub enum ProbeHeld{held} {{ Held({held}) }}");
+        let expanded = serialized_under("", &tagged);
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for {tagged}, got: {expanded}"
+        );
+        let flattened = format!(
+            "pub struct ProbeFlat{held} {{ pub id: String, #[serde(flatten)] pub m: {held} }}"
+        );
+        let refused = refusal_texts(&serialized_under("", &flattened));
+        if cfg!(feature = "swift") && held == "ProbeLaterMember" {
             assert_eq!(
-                compile_error_count(&expanded),
-                0,
-                "for {accepted}, got: {expanded}"
+                refused,
+                [format!(
+                    "model_schema: type `ProbeFlat{held}` flattens `m` (`{held}`) beside other \
+                     keys, and `{held}` holds `ProbeWrapUnseen`, which was declared below \
+                     `{held}`, in another crate, or with no `#[model_schema]`: the Swift read of \
+                     `{held}` was written before it could see which keys `ProbeWrapUnseen` \
+                     reads, and hands it the keys beside `m` that serde does not. Declare \
+                     `ProbeWrapUnseen` above `{held}`, or write `m` under a key of its own."
+                )],
+                "for {flattened}"
             );
+        } else {
+            assert_eq!(refused, Vec::<String>::new(), "for {flattened}");
         }
     }
 }
@@ -21550,14 +21567,29 @@ fn compile_error_count(tokens: &proc_macro2::TokenStream) -> usize {
     count
 }
 
-/// The diagnostics `tokens` carries, told from the attribute values and refusal stubs that are
-/// string literals too by the prefix every diagnostic this crate writes opens with.
+/// The message of every `compile_error!` `tokens` carries: an assertion the compiler evaluates
+/// against a type the expansion did not see refuses nothing by itself.
 #[cfg(feature = "serde")]
 fn refusal_texts(tokens: &proc_macro2::TokenStream) -> Vec<String> {
-    literal_texts(tokens)
-        .into_iter()
-        .filter(|text| text.starts_with("model_schema: "))
-        .collect()
+    let mut texts = Vec::new();
+    let (mut named, mut invoked) = (false, false);
+    for tree in tokens.clone() {
+        if let proc_macro2::TokenTree::Group(group) = &tree {
+            if invoked {
+                texts.extend(
+                    literal_texts(&group.stream())
+                        .into_iter()
+                        .filter(|text| text.starts_with("model_schema: ")),
+                );
+            } else {
+                texts.extend(refusal_texts(&group.stream()));
+            }
+        }
+        invoked = named
+            && matches!(&tree, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '!');
+        named = matches!(&tree, proc_macro2::TokenTree::Ident(ident) if ident == "compile_error");
+    }
+    texts
 }
 
 /// The all-unit enum of the untagged case, written under `attributes`.

@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `shape` (`Shape`) ahead of `stamp`: `Shape` reads every key still left and refuses one it does not declare, so serde refuses the keys of `stamp` that it wrote itself. Declare `shape` after every other flattened member.
+  --> tests/flatten_order_refusals/refusing_member_ahead.rs:24:5
+   |
+24 | /     #[serde(flatten)]
+25 | |     pub shape: Shape,
+   | |____________________^

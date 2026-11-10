@@ -1,0 +1,35 @@
+error: model_schema: type `Bundle`: field `coded`: `Labelled<Coded>` fills `Labelled`, which then has field `code` and flattened `inner`, which both write the key `code`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, fill it with a type that writes no key another of its members declares, or write `inner` under a key of its own.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:40:16
+   |
+40 |     pub coded: Labelled<Coded>,
+   |                ^^^^^^^^^^^^^^^
+
+error: model_schema: type `Bundle`: field `padded`: `Labelled<Option<Pad>>` fills `Labelled`, which then flattens `inner` as an `Option` of a type that reads from an object that holds none of its keys, so serde writes `None` as no key and reads it back as `Some`. Fill it with a type serde requires a member of.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:41:17
+   |
+41 |     pub padded: Labelled<Option<Pad>>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Crate`: field `numbered`: `Labelled` flattens its type parameter `T` beside `code`, and `BTreeMap<u32, u32>` fills it with a map — serde writes the map's entries at one level with `code`, and no TypeScript type describes both. Write the map under a key of its own.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:47:28
+   |
+47 |     pub numbered: Labelled<BTreeMap<u32, u32>>,
+   |                            ^^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Crate`: field `maybe_counted`: `Labelled` flattens its type parameter `T` beside `code`, and `Option<BTreeMap<String, u32>>` fills it with a map — serde writes the map's entries at one level with `code`, and no TypeScript type describes both. Write the map under a key of its own.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:48:33
+   |
+48 |     pub maybe_counted: Labelled<Option<BTreeMap<String, u32>>>,
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Crate`: field `counted`: `Labelled` flattens its type parameter `T` beside `code`, and `BTreeMap<String, u32>` fills it with a map — serde writes the map's entries at one level with `code`, and no TypeScript type describes both. Write the map under a key of its own.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:49:27
+   |
+49 |     pub counted: Labelled<BTreeMap<String, u32>>,
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+
+error: model_schema: type `Crate`: field `numbered`: `Labelled` reads its type parameter `T` below `#[serde(flatten)]`, and `BTreeMap<u32, u32>` fills it with a map keyed by `u32` — serde reads every key below a flattened member as text, and reads no number and no `bool` from text, so no entry of that map reads back. Key the map by a `String`, or write the member under a key of its own.
+  --> tests/flatten_order_refusals/fillings_that_do_not_read_back.rs:47:28
+   |
+47 |     pub numbered: Labelled<BTreeMap<u32, u32>>,
+   |                            ^^^^^^^^^^^^^^^^^^

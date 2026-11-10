@@ -26,3 +26,26 @@ pub struct InvoiceLookup {
     /// The parcels the invoice ships.
     pub parcels: Vec<Parcel>,
 }
+
+/// The mark stamped on a parcel, under a tag alone: flattened, serde reads it from every key left,
+/// so a holder in another crate reads what it is from its hidden constant.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "mark")]
+pub enum ParcelMark {
+    /// A stamp, under the ink it was stamped in.
+    Stamped {
+        /// The ink.
+        ink: String,
+    },
+    /// No mark.
+    Plain,
+}
+
+/// What a parcel weighs: its number is read in Kotlin through a helper this crate numbers.
+#[model_schema()]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ParcelWeight {
+    /// The weight in grams.
+    pub grams: u32,
+}

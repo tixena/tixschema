@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` flattens `postmark` (`Postmark`) and `hue` (`Hue`), and each reads every key still left: `Postmark` refuses a key it does not declare, so it refuses the keys of `hue` (`Hue`) in every order. Take `#[serde(deny_unknown_fields)]` off `Postmark`.
+  --> tests/flatten_order_refusals/denied_by_hand_beside_another.rs:35:5
+   |
+35 | /     #[serde(flatten)]
+36 | |     pub postmark: Postmark,
+   | |__________________________^

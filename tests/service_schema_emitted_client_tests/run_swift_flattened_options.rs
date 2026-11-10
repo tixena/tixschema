@@ -39,8 +39,6 @@ use super::swift_flattened_options_models::{
     pitching_swift, plaiting_swift, ratline_swift, sennit_swift, shackle_swift, squaring_swift,
     tabling_swift, tarring_swift, thimble_swift, toggle_swift, veering_swift,
 };
-#[cfg(feature = "chrono")]
-use super::swift_flattened_options_models::{SWAGING, SWAGING_MISTYPED, Swaging, swaging_swift};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -100,20 +98,6 @@ struct Row {
 }
 
 impl Row {
-    /// The holder `value`, built in Swift by `swift`.
-    #[cfg(feature = "chrono")]
-    fn built<T>(name: &'static str, swift: &str, value: &T) -> Self
-    where
-        T: Serialize,
-    {
-        Self {
-            decided: None,
-            name,
-            serde: written(value),
-            swift: format!("written({swift})"),
-        }
-    }
-
     /// The holder read as `T`, named `read_as` in Swift, from `json`, which serde reads and the
     /// Swift read refuses with `refused`.
     fn decided<T>(name: &'static str, read_as: &str, json: &str, refused: &'static str) -> Self
@@ -290,16 +274,6 @@ fn rows() -> Vec<Row> {
         Row::read_by_zod::<Veering>("veering absent", "Veering", LAPPING_ABSENT, LAPPING_ABSENT),
     ];
     rows.extend(enum_rows());
-    #[cfg(feature = "chrono")]
-    rows.extend([
-        Row::read::<Swaging>("swaging", "Swaging", SWAGING),
-        Row::read::<Swaging>("swaging mistyped", "Swaging", SWAGING_MISTYPED),
-        Row::built(
-            "swaging absent",
-            "Swaging(stamps: nil)",
-            &Swaging { stamps: None },
-        ),
-    ]);
     rows
 }
 
@@ -331,8 +305,6 @@ fn printed(rows: &[Row]) -> Option<String> {
         heeling_swift::swift_definition(),
         pitching_swift::swift_definition(),
         shackle_swift::swift_definition(),
-        #[cfg(feature = "chrono")]
-        swaging_swift::swift_definition(),
     ];
     let main = rows.iter().fold(String::new(), |mut main, row| {
         let _ = writeln!(main, "print(\"{}: \\({})\")", row.name, row.swift);
@@ -434,13 +406,7 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          pitching absent: {\"note\":\"n\"}\n\
          pitching: {\"Round\":{\"turns\":2},\"note\":\"n\"}\n\
          pitching mistyped: {\"note\":\"n\"}\n";
-    #[cfg(feature = "chrono")]
-    let dates = "swaging: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n\
-         swaging mistyped: {}\n\
-         swaging absent: {}\n";
-    #[cfg(not(feature = "chrono"))]
-    let dates = "";
-    assert_eq!(told(&|row| row.serde.clone()), format!("{shared}{dates}"));
+    assert_eq!(told(&|row| row.serde.clone()), shared);
     let Some(printed) = printed(&rows) else {
         return;
     };

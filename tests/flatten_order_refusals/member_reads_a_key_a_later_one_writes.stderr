@@ -1,0 +1,6 @@
+error: model_schema: type `Stamp` has flattened `ink` (`Ink`) and flattened `date` (`Dated`): flattened `ink` (`Ink`) reads the key `at`, which flattened `date` (`Dated`) writes, and serde hands it to flattened `ink` (`Ink`), so flattened `date` (`Dated`) reads back without it. Declare `ink` after every member that writes `at`, or rename the key in one of them.
+  --> tests/flatten_order_refusals/member_reads_a_key_a_later_one_writes.rs:24:5
+   |
+24 | /     #[serde(flatten)]
+25 | |     pub date: Dated,
+   | |___________________^

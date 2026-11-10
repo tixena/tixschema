@@ -404,23 +404,6 @@ struct Referenced {
     status: StatusRef,
 }
 
-/// A flattened brand over text declared below, which serde refuses to flatten at every read: one
-/// declared above is refused in every build with serde.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-struct Carded {
-    #[serde(flatten)]
-    id: CardCode,
-    name: String,
-}
-
-/// A brand over text declared below the type that flattens it, so no expansion of that type sees
-/// it.
-#[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-#[serde(transparent)]
-struct CardCode(String);
-
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -2234,17 +2217,6 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
 }
 
 #[test]
-fn a_struct_flattening_a_type_serde_cannot_flatten_lists_nothing_for_it_beside_serdes_refusal() {
-    let stored_row = doc! { "name": "n" };
-    assert!(!serde_reads::<Carded>(&stored_row));
-    let read = Carded::from_bson_with(stored_row, |_raw, _found| carded_schema::Verdict::Reject);
-    assert_eq!(
-        told!(carded_schema, read.unwrap_err().issues),
-        [undescribed()]
-    );
-}
-
-#[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
     let assigned = Assigned {
         current: Current {
@@ -3037,7 +3009,7 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
 #[test]
 fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
     let internal = doc! { "extra": 1_i32, "kind": "Clear" };
-    assert!(serde_reads::<Fill>(&internal));
+    assert!(!serde_reads::<Fill>(&internal));
     let read = Fill::from_bson_with(internal, |_raw, _found| fill_schema::Verdict::Reject);
     assert_eq!(
         told!(fill_schema, read.unwrap_err().issues),

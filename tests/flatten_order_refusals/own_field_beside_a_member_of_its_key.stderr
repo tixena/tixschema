@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel` has field `label` and flattened `tag` (`Tag`), which both write the key `label`: serde writes it twice in one object, and a JSON object holds each key once, so every reader of the object keeps one of the two values. Rename the key in one of them, or write `tag` under a key of its own.
+  --> tests/flatten_order_refusals/own_field_beside_a_member_of_its_key.rs:16:5
+   |
+16 | /     #[serde(flatten)]
+17 | |     pub tag: Tag,
+   | |________________^

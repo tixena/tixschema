@@ -172,6 +172,11 @@ mod swift_read_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin.rs"]
 mod run_kotlin;
 
+/// The Kotlin of this crate and of a crate apart, compiled into one package.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_crates_apart.rs"]
+mod run_kotlin_crates_apart;
+
 #[cfg(test)]
 #[cfg(slow_tests)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_ws_headers.rs"]
@@ -613,9 +618,9 @@ mod flattened_zod_rows {
             .collect();
         assert_eq!(
             divergent,
-            ["block: the tag of another variant"],
-            "serde refuses a key no member reads, as Zod does; the unit variant of an enum under \
-             a tag alone reads past the key of another variant"
+            Vec::<&str>::new(),
+            "serde refuses a key no member reads, as Zod does, beside the unit variant of an enum \
+             under a tag alone among them"
         );
     }
 
@@ -952,8 +957,8 @@ mod aliased_models;
 #[path = "service_schema_emitted_client_tests/run_kotlin_aliased.rs"]
 mod run_kotlin_aliased;
 
-/// A map that is the one member of its object, optional too, and a member that names a function
-/// flattened at each place a member can be handed fewer keys than its object holds.
+/// A map that is the one member of its object, and a member that names a function flattened at
+/// each place a member can be handed fewer keys than its object holds.
 #[cfg(test)]
 #[cfg(feature = "dart")]
 #[path = "dart_tests/flattened_models.rs"]
@@ -1143,13 +1148,6 @@ mod run_swift_own_tags;
 #[path = "swift_tests/flattened_models.rs"]
 mod swift_flattened_models;
 
-/// A flattened struct that reads a key a member of its holder's own, a struct flattened ahead of
-/// it or the tag of the variant that flattens it took, read by the Dart, Kotlin and Swift runs.
-#[cfg(test)]
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
-#[path = "swift_tests/shared_key_models.rs"]
-mod shared_key_models;
-
 /// Those members, and the structs with a flattened member of their own that read a key taken
 /// around them, read and written back by the emitted Swift types.
 #[cfg(test)]
@@ -1233,6 +1231,16 @@ mod run_swift_skipped_variants;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_skipped_variants.rs"]
 mod run_kotlin_skipped_variants;
+
+/// One holder of each class of flattened members the macro accepts.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/flatten_order_models.rs"]
+mod flatten_order_models;
+
+/// Those holders written by serde and read back by JSON Schema, Zod, Dart, Kotlin and Swift.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_flatten_order.rs"]
+mod run_flatten_order;
 
 /// A key no member reads, refused by the emitted Kotlin types under the default `Json` as Zod
 /// refuses it. Declared after the modules that declare the members its models flatten.
@@ -1568,27 +1576,6 @@ mod run_swift_all_flattened;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_all_flattened.rs"]
 mod run_kotlin_all_flattened;
-
-/// A plain enum flattened into a holder declared above it.
-#[cfg(test)]
-#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-#[path = "service_schema_emitted_client_tests/plain_enum_below_models.rs"]
-mod plain_enum_below_models;
-
-/// That enum, under the Dart analyzer.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_dart_plain_enum_below.rs"]
-mod run_dart_plain_enum_below;
-
-/// Those models, read and written back by the emitted Swift types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_swift_plain_enum_below.rs"]
-mod run_swift_plain_enum_below;
-
-/// Those models, read and written back by the emitted Kotlin types.
-#[cfg(test)]
-#[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_below.rs"]
-mod run_kotlin_plain_enum_below;
 
 #[cfg(test)]
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]

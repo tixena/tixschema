@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Parcel` has field `kind` and flattened `mark` (`Mark`), one of them declared below the type that flattens it, in another crate, or with no `#[model_schema]`, which both declare the key `kind`: serde writes it for each of them into one object, which holds a key once, so one of the two does not read back. Rename the key in one of them, or write `mark` under a key of its own.
+  --> tests/flatten_order_refusals/own_field_of_the_tag_of_a_member_declared_below.rs:11:15
+   |
+11 |     pub mark: Mark,
+   |               ^^^^ evaluation of `_` failed here

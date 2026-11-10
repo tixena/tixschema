@@ -10,8 +10,6 @@
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
 use super::corrected_options_models::{moused_swift, reeved_swift, wormed_swift};
-#[cfg(feature = "chrono")]
-use super::flattened_options_models::swaging_swift;
 use super::flattened_options_models::{
     crowning_swift, easing_swift, fidding_swift, flaking_swift, heeling_swift, kinking_swift,
     lapping_swift, lowering_swift, painter_swift, pitching_swift, ratline_swift, sennit_swift,
@@ -45,20 +43,13 @@ fn a_flattened_option_writes_the_value_it_holds_beside_its_holders_own_members()
 }
 
 /// A flattened `Option` alone in its holder opens the holder's object, which it may write nothing
-/// into, and a map of dates is written as the text serde writes.
+/// into.
 #[test]
 fn a_flattened_option_alone_opens_its_holders_object() {
     assert_written(
         &flaking_swift::swift_definition(),
         "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
          CodingKeys.self); if let held = self.tabling { try held.encode(to: encoder) } }",
-    );
-    #[cfg(feature = "chrono")]
-    assert_written(
-        &swaging_swift::swift_definition(),
-        "public func encode(to encoder: Encoder) throws { _ = encoder.container(keyedBy: \
-         CodingKeys.self); if let held = self.stamps { try held.mapValues { \
-         Self.swiftSchemaFormatIso8601Date($0) }.encode(to: encoder) } }",
     );
 }
 
@@ -195,9 +186,12 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
              container.decode(String.self, forKey: .note) }}"
         )
     };
+    // A `nonstrict` enum takes no key the types around it took, and is read through its own read.
     assert_written(
         &lowering_swift::swift_definition(),
-        &tested("\"kind\"", "grommet", "Grommet"),
+        "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
+         [\"kind\"].contains($0.stringValue) }) { self.grommet = try Grommet(from: decoder) } else \
+         { self.grommet = nil }; self.note = try container.decode(String.self, forKey: .note) }",
     );
     assert_written(
         &squaring_swift::swift_definition(),
@@ -205,7 +199,7 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     );
     assert_written(
         &heeling_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); do { self.toggle = try Toggle(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) } catch { self.toggle = nil } }",
+        "self.note = try container.decode(String.self, forKey: .note); do { let togglePayload = try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.toggle = try SwiftSchemaPayload.read(Toggle.self, from: togglePayload, at: decoder.codingPath) } catch { self.toggle = nil } }",
     );
     assert_written(
         &pitching_swift::swift_definition(),
@@ -263,6 +257,6 @@ fn a_flattened_option_that_names_a_function_reads_what_it_answers_as_zod_does() 
 fn a_struct_flattened_bare_reads_the_whole_object() {
     assert_written(
         &crowning_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); self.tabling = try Tabling(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"note\", \"label\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: .note); try self.tabling.encode(to: encoder) };",
+        "self.note = try container.decode(String.self, forKey: .note); self.tabling = try Tabling(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: .note); try self.tabling.encode(to: encoder) };",
     );
 }

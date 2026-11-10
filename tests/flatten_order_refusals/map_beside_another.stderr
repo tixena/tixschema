@@ -1,0 +1,6 @@
+error: model_schema: type `Parcel`: field `counts`: `#[serde(flatten)]` cannot hold a map beside other members — serde writes the map's entries at one level with `hue`, and no TypeScript type describes both. Write the map under a key of its own.
+  --> tests/flatten_order_refusals/map_beside_another.rs:21:5
+   |
+21 | /     #[serde(flatten)]
+22 | |     pub counts: BTreeMap<String, u32>,
+   | |_____________________________________^
