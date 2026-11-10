@@ -163,8 +163,11 @@ there by its `$defs` name before any test compares its bytes.
   share, a form that is not flat or not a model type, and a type that does not list `jsonschema`.
 - `tests/mcp_skills/` and `tests/mcp_skills_refused/`: the skills folders a service reads, and the
   folders it refuses.
-- `examples/strict_consumer_models/desk*.rs`: a module that exports the dispatcher and the client,
-  linted by the package's own clippy table.
+- `examples/strict_consumer_models/desk*.rs`: a module for each transport's dispatcher and client,
+  and for the `amqp_rpc` server, each exported, linted by the package's own clippy table.
+- `tests/crates_apart/sealed_parcel_desk/` and `tests/sealed_parcel_desk_tests.rs`: a crate that
+  places the transports of a `non_exhaustive` service, and the test binary that builds what they
+  seal from another crate. The root's `serde` feature turns the crate's `service` feature on.
 
 ### Running Single Tests During Development
 

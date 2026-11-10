@@ -161,15 +161,16 @@ pub fn emit(
     service: &ServiceDef,
     asked: &[Transport],
     openapi: Option<&OpenApiArguments>,
+    non_exhaustive: bool,
 ) -> TokenStream {
     Transport::KNOWN
         .iter()
         .filter(|known| asked.contains(known))
         .map(|known| match *known {
-            Transport::AmqpRpc => amqp_rpc::emit(service, *known),
-            Transport::HttpRest => http_rest::emit(service, *known, openapi),
+            Transport::AmqpRpc => amqp_rpc::emit(service, *known, non_exhaustive),
+            Transport::HttpRest => http_rest::emit(service, *known, openapi, non_exhaustive),
             Transport::Mcp => mcp::emit(service, *known),
-            Transport::WsRpc => ws_rpc::emit(service, *known),
+            Transport::WsRpc => ws_rpc::emit(service, *known, non_exhaustive),
         })
         .collect()
 }

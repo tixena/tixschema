@@ -75,6 +75,9 @@ jsonschema = { version = "=0.47.0", default-features = false }
 # `mongodb`.
 stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
+# A crate apart that places the transports of a `non_exhaustive` service, so a test binary builds
+# what they seal from another crate. The `serde` feature below turns its `service` on.
+sealed_parcel_desk = { path = "tests/crates_apart/sealed_parcel_desk" }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
 arky = "0.2"
@@ -111,7 +114,9 @@ mobile = ["serde", "dart", "swift", "kotlin"]
 mongo = ["mongodb", "chrono", "indexmap", "arky"]
 
 # Core features
-serde = [] # Serde integration for attribute parsing and field renaming
+# Serde integration for attribute parsing and field renaming. The dev-dependency's feature it turns
+# on is stripped from the published manifest.
+serde = ["sealed_parcel_desk/service"]
 zod = [] # Zod schema generation alongside TypeScript types
 mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
 bson = ["serde"] # BSON support: from_bson_with on types that opt in

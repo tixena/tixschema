@@ -225,7 +225,8 @@ use crate::service_schema::parse::{
     argument_local, is_unit_type, option_inner, tuple_elements,
 };
 use crate::service_schema::support::{
-    message_alias_ident, message_reader_ident, message_validator_ident, module_ident,
+    exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
+    module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -252,10 +253,10 @@ impl Generated {
     }
 }
 
-pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
+pub fn emit(service: &ServiceDef, transport: Transport, non_exhaustive: bool) -> TokenStream {
     let dispatcher = dispatcher_macro(service, transport);
     let client = client_macro(service, transport);
-    let server = server_macro(service, transport);
+    let server = server_macro(service, transport, non_exhaustive);
     quote! {
         #dispatcher
         #client
@@ -732,10 +733,12 @@ fn consumer_loop_consts() -> TokenStream {
 }
 
 /// `Stopped`, the one type [`consumer_loop`]'s `serve_until` answers with.
-fn consumer_loop_type() -> TokenStream {
+fn consumer_loop_type(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
     quote! {
         /// Why [`serve_until`] returned.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #sealed
         pub enum Stopped {
             /// `shutdown` completed: the consumer was cancelled, no delivery was started after
             /// it, and every delivery already started was dispatched and acknowledged first.
@@ -2395,9 +2398,11 @@ pub(super) fn reply_trait(contract: &Ident, module: &Ident, with_send: bool) -> 
 }
 
 /// What the service is handed beside every message the consumer loop reads.
-fn server_context() -> TokenStream {
+fn server_context(non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
     quote! {
         /// What the service is handed beside every message.
+        #sealed
         pub struct Context {
             /// The span every log line of the operation lands in.
             pub logger: ::tracing::Span,
@@ -2405,10 +2410,28 @@ fn server_context() -> TokenStream {
     }
 }
 
+/// `Context::new`, under `non_exhaustive` alone: the one way another crate builds a sealed
+/// `Context`, as a call to `dispatch` made outside the consumer loop does.
+fn server_context_impl(non_exhaustive: bool) -> TokenStream {
+    if !non_exhaustive {
+        return TokenStream::new();
+    }
+    quote! {
+        impl Context {
+            /// The context of a call made outside the consumer loop, its log lines landing in
+            /// `logger`.
+            #[must_use = "a context is read only by the call it is handed to"]
+            pub const fn new(logger: ::tracing::Span) -> Self {
+                Self { logger }
+            }
+        }
+    }
+}
+
 /// The server half: everything the dispatcher emits, plus the wire framing, the reply handle, the
 /// context and the consumer loop that turn a real `lapin::Channel` delivery into a call on an
 /// implementation.
-fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
+fn server_macro(service: &ServiceDef, transport: Transport, non_exhaustive: bool) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
     let macro_name = super::server_macro_ident(service, transport);
@@ -2444,10 +2467,11 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     // `dispatcher_items` calls too, interleaved here with the server's own.
     let framing_consts = wire_framing_consts();
     let loop_consts = consumer_loop_consts();
-    let context = server_context();
+    let context = server_context(non_exhaustive);
     let dispatch_types = dispatcher_types(service);
     let reply_type = reply_handle_type();
-    let loop_type = consumer_loop_type();
+    let loop_type = consumer_loop_type(non_exhaustive);
+    let context_impl = server_context_impl(non_exhaustive);
     let dispatch_impls = dispatcher_impls(service);
     let reply_impls = reply_handle_impls(&module);
     let dispatch_fns = dispatcher_fns(service);
@@ -2468,6 +2492,7 @@ fn server_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
                 #reply_type
                 #loop_type
 
+                #context_impl
                 #dispatch_impls
                 #reply_impls
 
