@@ -10,7 +10,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tixschema = "0.3"
+tixschema = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 ```
 
