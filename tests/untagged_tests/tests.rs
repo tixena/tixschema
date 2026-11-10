@@ -3,6 +3,7 @@
 use alloc::collections::{BTreeSet, VecDeque};
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 use chrono::{DateTime, Utc};
+use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tixschema::model_schema;
@@ -533,6 +534,64 @@ enum Allowance {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
     },
+}
+
+// Read by a hand-written `Deserialize` that tries the whole number first, so serde's variant order
+// never applies: `Exact` reads back after `Approximate`.
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+enum Measurement {
+    Approximate(f64),
+    Exact(i64),
+}
+
+impl<'de> Deserialize<'de> for Measurement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        value
+            .as_i64()
+            .map(Self::Exact)
+            .or_else(|| value.as_f64().map(Self::Approximate))
+            .ok_or_else(|| D::Error::custom("a measurement is a number"))
+    }
+}
+
+// Read by a hand-written `Deserialize` that looks for `limit` first: `Bounded` reads back after
+// `Any`, which reads every object.
+#[model_schema(nonstrict)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+enum Quota {
+    Any {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+    Bounded {
+        limit: u32,
+    },
+}
+
+impl<'de> Deserialize<'de> for Quota {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(found) = value.get("limit").and_then(serde_json::Value::as_u64) {
+            return u32::try_from(found)
+                .map(|limit| Self::Bounded { limit })
+                .map_err(D::Error::custom);
+        }
+        let note = value
+            .get("note")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        Ok(Self::Any { note })
+    }
 }
 
 // A list an untagged member holds, under a bound that counts it: a newtype variant's slot, a named
@@ -2479,6 +2538,21 @@ fn test_an_untagged_list_member_writes_its_count_in_zod() {
         ),
     ] {
         assert!(zod.contains(&member), "{member} is not in:\n{zod}");
+    }
+}
+
+#[test]
+fn an_untagged_enum_a_hand_written_deserialize_reads_keeps_the_order_it_declares() {
+    for measurement in [Measurement::Approximate(2.5), Measurement::Exact(4)] {
+        let written = serde_json::to_string(&measurement).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Measurement>(&written).unwrap(),
+            measurement
+        );
+    }
+    for quota in [Quota::Any { note: None }, Quota::Bounded { limit: 3 }] {
+        let written = serde_json::to_string(&quota).unwrap();
+        assert_eq!(serde_json::from_str::<Quota>(&written).unwrap(), quota);
     }
 }
 

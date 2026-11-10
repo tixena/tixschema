@@ -1621,7 +1621,7 @@ A member whose type is declared below its holder, or in another crate, is read t
 
 An enum marked `#[serde(untagged)]` serializes as just its content, with no discriminator field. It generates a TypeScript union (`A | B`), a Zod `z.union([...])`, and a JSON Schema `anyOf`. Newtype (`S(T)`) and named-struct (`{ a: A }`) variants are supported.
 
-serde tries the variants in order, so a variant every value of which an earlier one reads never reads back, and stops the build: `#[model_schema(nonstrict)] #[serde(untagged)] pub enum Discount { Open { #[serde(default, skip_serializing_if = "Option::is_none")] note: Option<String> }, Percent { percent: u32 } }` answers ``Declare `Percent` before `Open`.`` A variant that reads only some of them, as one a bound or a pattern narrows does, builds.
+serde tries the variants in order, so a variant every value of which an earlier one reads never reads back, and stops the build where serde's derive reads it: `#[model_schema(nonstrict)] #[serde(untagged)] pub enum Discount { Open { #[serde(default, skip_serializing_if = "Option::is_none")] note: Option<String> }, Percent { percent: u32 } }` answers ``Declare `Percent` before `Open`.`` A variant that reads only some of them, as one a bound or a pattern narrows does, builds.
 
 ```rust
 /// ISO-8601 date string; branded newtype carrying the regex pattern.

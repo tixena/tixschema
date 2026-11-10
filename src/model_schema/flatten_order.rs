@@ -33,9 +33,9 @@ use super::{
 };
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use crate::features::serde::{
-    Tagging, derive_reads_a_default, parse_read_renames, parse_serde_field_attributes,
-    parse_serde_key_omission, parse_serde_type_attributes, parse_written_renames, read_hook,
-    struct_tag, variant_on_the_wire,
+    Tagging, derive_reads_a_default, derives_deserialize, parse_read_renames,
+    parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes,
+    parse_written_renames, read_hook, struct_tag, variant_on_the_wire,
 };
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::field_type::is_sequence_wrapper;
@@ -2714,9 +2714,11 @@ fn level_refusals(level: &Level<'_>, members: &[Member<'_>]) -> Vec<(usize, Stri
 
 /// The refusal of a variant of the untagged `item_enum` that reads every object serde writes for a
 /// variant declared after it: the variant reads from an object that holds none of its keys, and
-/// refuses no key it does not declare.
+/// refuses no key it does not declare. Only serde's derived read tries the variants in order.
 fn untagged_shadow_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenStream> {
-    if !matches!(Tagging::of(item_enum), Tagging::Untagged) {
+    if !matches!(Tagging::of(item_enum), Tagging::Untagged)
+        || !derives_deserialize(&item_enum.attrs)
+    {
         return Vec::new();
     }
     let parameters = parameter_names(&item_enum.generics);

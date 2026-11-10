@@ -23,8 +23,9 @@ use crate::features::model_schema_prop::{
     LiteralValue, ModelSchemaPropMeta, parse_model_schema_prop_attributes,
 };
 use crate::features::serde::{
-    Tagging, derive_reads_a_default, parse_read_renames, parse_serde_field_attributes,
-    parse_serde_key_omission, parse_written_renames, struct_tag, variant_on_the_wire,
+    Tagging, derive_reads_a_default, derives_deserialize, parse_read_renames,
+    parse_serde_field_attributes, parse_serde_key_omission, parse_written_renames, struct_tag,
+    variant_on_the_wire,
 };
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 use crate::rename_rule::resolve_rename_rule;
@@ -553,9 +554,12 @@ pub(super) fn record(item: &Item, args: &ModelSchemaArgs) {
 }
 
 /// The refusal of each variant of the untagged `item_enum` every value of which a variant declared
-/// before it reads.
+/// before it reads, where serde's derived read tries them in that order.
 pub(super) fn errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenStream> {
-    if !matches!(Tagging::of(item_enum), Tagging::Untagged) || !args.preprocess.is_empty() {
+    if !matches!(Tagging::of(item_enum), Tagging::Untagged)
+        || !args.preprocess.is_empty()
+        || !derives_deserialize(&item_enum.attrs)
+    {
         return Vec::new();
     }
     let wires = variant_wires(item_enum, args);
