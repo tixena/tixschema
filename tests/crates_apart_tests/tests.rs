@@ -263,14 +263,16 @@ fn a_type_of_another_crate_named_by_its_path_is_described_through_its_crates_sch
         "required": ["depot"],
         "type": "object",
     });
+    let reference = json!({ "$ref": "#/$defs/DropOff" });
     assert_eq!(
         Delivery::json_schema(),
         json!({
+            "$defs": { "DropOff": drop_off },
             "additionalProperties": false,
             "properties": {
-                "first": drop_off,
-                "last": { "anyOf": [drop_off, { "type": "null" }] },
-                "stops": { "items": drop_off, "type": "array" },
+                "first": reference,
+                "last": { "anyOf": [reference, { "type": "null" }] },
+                "stops": { "items": reference, "type": "array" },
             },
             "required": ["first", "last", "stops"],
             "type": "object",

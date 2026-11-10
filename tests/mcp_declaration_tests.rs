@@ -18,7 +18,7 @@ mod mcp_form;
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
 #[cfg(all(test, feature = "serde"))]
 use tests::{
-    AnnotatedService, AnnotatedServiceSchema, DocumentService, DocumentServiceSchema,
+    AnnotatedService, AnnotatedServiceSchema, DocumentService, DocumentServiceSchema, RouteService,
     TwoTransportService, TwoTransportServiceSchema, annotated_service_schema,
-    document_service_schema, two_transport_service_schema,
+    document_service_schema, route_service_schema, two_transport_service_schema,
 };

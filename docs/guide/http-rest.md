@@ -388,7 +388,7 @@ pub trait DocumentService<Ctx> {
 }
 ```
 
-`DocumentServiceSchema::openapi()` answers the document as a `serde_json::Value`, built at run time in the crate that declares the service. It holds every operation's path and method; its path, query and header parameters; its request body; and each status it answers at, with the body and the headers of each: the success at `ok_status`, `206` beside it for a `body = "stream"` operation, each declared error's status, and the `400`, `404` and `500` faults. Every type the operations name is written once under `components.schemas` and referenced as `#/components/schemas/<Name>`, under the name it is published under. `info.version` is the declaring crate's version. An excerpt of the document above:
+`DocumentServiceSchema::openapi()` answers the document as a `serde_json::Value`, built at run time in the crate that declares the service. It holds every operation's path and method; its path, query and header parameters; its request body; and each status it answers at, with the body and the headers of each: the success at `ok_status`, `206` beside it for a `body = "stream"` operation, each declared error's status, and the `400`, `404` and `500` faults. Every type the operations name is written once under `components.schemas` and referenced as `#/components/schemas/<Name>`, under the name it is published under. A type one of those holds is a component where the document references it two or more times, and is written in place where once, as [Nested Types](nested-recursive-and-aliased-types.md#nested-types) says of `$defs`. `info.version` is the declaring crate's version. An excerpt of the document above:
 
 ```json
 {

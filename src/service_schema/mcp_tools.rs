@@ -9,7 +9,7 @@ use super::parse::{
 use super::transport::http_rest::openapi::message_type;
 use super::transport::mcp::prompts::prompt_entries;
 use super::transport::mcp::resource_entries;
-use crate::features::jsonschema::in_flight_type;
+use crate::features::jsonschema::{in_flight_type, settled_definitions};
 use crate::model_schema::needs_wrapper;
 use crate::model_schema::type_json_schema_value;
 use proc_macro2::TokenStream;
@@ -692,6 +692,8 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         operation.mcp_tool_name()
     );
     let run = run();
+    let settled = settled_definitions();
+    let in_place = form_in_place();
     let schema = described(&operation.ident.to_string(), form);
     Some(quote! {
         #[doc = #doc]
@@ -703,8 +705,12 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
 
         #[doc = #schema_doc]
         pub fn #schema_name() -> ::serde_json::Value {
+            #settled
+            #in_place
             #run
-            let schema = #schema;
+            let mut schema = #schema;
+            in_place(&mut schema, &hoisted_defs, pointer_prefix, &mut ::std::vec::Vec::new());
+            defs_settled(&mut [&mut schema], &mut hoisted_defs, pointer_prefix, &[]);
             let mut root = match schema {
                 ::serde_json::Value::Object(members) => members,
                 other => {
@@ -729,7 +735,6 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
                     }
                 }
             }
-            hoisted_defs.retain(|_, described| !described.is_null());
             if !hoisted_defs.is_empty() {
                 root.insert("$defs".to_owned(), ::serde_json::Value::Object(hoisted_defs));
             }
@@ -743,6 +748,60 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
                 .map_err(|rejected| rejected.to_string())
         }
     })
+}
+
+/// The function an interview's form is written by, as the tokens that declare it: an elicitation
+/// form holds a primitive under each property, which no `$ref` is, so `in_place` writes each
+/// definition at every use, and leaves a reference to one reached again inside itself.
+fn form_in_place() -> TokenStream {
+    quote! {
+        fn in_place(
+            schema: &mut ::serde_json::Value,
+            defs: &::serde_json::Map<::std::string::String, ::serde_json::Value>,
+            prefix: &str,
+            placing: &mut ::std::vec::Vec<::std::string::String>,
+        ) {
+            let key = schema
+                .get("$ref")
+                .and_then(::serde_json::Value::as_str)
+                .and_then(|pointer| pointer.strip_prefix(prefix))
+                .filter(|key| defs.contains_key(*key) && !placing.iter().any(|held| held == key))
+                .map(str::to_owned);
+            if let ::core::option::Option::Some(key) = key {
+                let mut body = defs[&key].clone();
+                placing.push(key);
+                in_place(&mut body, defs, prefix, placing);
+                placing.pop();
+                if let (::serde_json::Value::Object(written), ::serde_json::Value::Object(beside)) =
+                    (&mut body, &mut *schema)
+                {
+                    for (keyword, held) in ::core::mem::take(beside) {
+                        if keyword != "$ref" {
+                            written.insert(keyword, held);
+                        }
+                    }
+                }
+                *schema = body;
+                return;
+            }
+            match schema {
+                ::serde_json::Value::Object(members) => {
+                    for held in members.values_mut() {
+                        in_place(held, defs, prefix, placing);
+                    }
+                }
+                ::serde_json::Value::Array(items) => {
+                    for item in items {
+                        in_place(item, defs, prefix, placing);
+                    }
+                }
+                ::serde_json::Value::Null
+                | ::serde_json::Value::Bool(_)
+                | ::serde_json::Value::Number(_)
+                | ::serde_json::Value::String(_) => {}
+            }
+        }
+    }
 }
 
 fn tools_method(service: &ServiceDef) -> TokenStream {
@@ -969,7 +1028,10 @@ fn output_schema(operation: &OperationDef) -> Option<TokenStream> {
 /// the arguments object of an input, and the object of an output.
 fn helpers() -> TokenStream {
     let objects = object_helpers();
+    let settled = settled_definitions();
     quote! {
+        #settled
+
         type Members = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
         type Headers = ::std::vec::Vec<(&'static str, ::serde_json::Value, bool)>;
 
@@ -986,6 +1048,15 @@ fn helpers() -> TokenStream {
                     members
                 }
             }
+        }
+
+        // The message, or the success, written in place where its definition is referenced
+        // nowhere else, so that the object it is read as holds its members.
+        fn parts_settled(body: &mut ::serde_json::Value, headers: &mut Headers, defs: &mut Members) {
+            let mut roots: ::std::vec::Vec<&mut ::serde_json::Value> = ::core::iter::once(body)
+                .chain(headers.iter_mut().map(|(_, schema, _)| schema))
+                .collect();
+            defs_settled(&mut roots, defs, #DEFS_PREFIX, &[]);
         }
 
         fn beside_value(message: ::serde_json::Value, headers: Headers) -> Members {
@@ -1013,13 +1084,14 @@ fn helpers() -> TokenStream {
 fn object_helpers() -> TokenStream {
     quote! {
         fn arguments_object(
-            message: ::serde_json::Value,
+            mut message: ::serde_json::Value,
             wrapped: bool,
-            headers: Headers,
+            mut headers: Headers,
             marks: &[(&str, &str)],
             hidden: &[&str],
-            defs: Members,
+            mut defs: Members,
         ) -> ::serde_json::Value {
+            parts_settled(&mut message, &mut headers, &mut defs);
             let mut root = if wrapped {
                 beside_value(message, headers)
             } else {
@@ -1070,10 +1142,11 @@ fn object_helpers() -> TokenStream {
         }
 
         fn output_object(
-            success: ::serde_json::Value,
-            headers: Headers,
-            defs: Members,
+            mut success: ::serde_json::Value,
+            mut headers: Headers,
+            mut defs: Members,
         ) -> ::serde_json::Value {
+            parts_settled(&mut success, &mut headers, &mut defs);
             let root = if headers.is_empty() {
                 members_of(success)
             } else {
@@ -1084,12 +1157,14 @@ fn object_helpers() -> TokenStream {
             defs_joined(root, defs)
         }
 
-        fn defs_joined(mut root: Members, mut defs: Members) -> ::serde_json::Value {
-            defs.retain(|_, described| !described.is_null());
-            if !defs.is_empty() {
+        // Settled again: a property left out of the input may have held a reference.
+        fn defs_joined(root: Members, mut defs: Members) -> ::serde_json::Value {
+            let mut document = ::serde_json::Value::Object(root);
+            defs_settled(&mut [&mut document], &mut defs, #DEFS_PREFIX, &[]);
+            if let (false, ::serde_json::Value::Object(root)) = (defs.is_empty(), &mut document) {
                 root.insert("$defs".to_owned(), ::serde_json::Value::Object(defs));
             }
-            ::serde_json::Value::Object(root)
+            document
         }
     }
 }

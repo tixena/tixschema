@@ -144,13 +144,20 @@ mod bounded_at_the_field {
         let schema = BoundHolder::json_schema();
         let narrowed =
             |by: serde_json::Value| serde_json::json!({ "allOf": [{ "type": "string" }, by] });
+        let above = serde_json::json!({ "$ref": "#/$defs/BoundAbove" });
+        assert_eq!(
+            schema["$defs"],
+            serde_json::json!({ "BoundAbove": { "type": "string" } })
+        );
         assert_eq!(
             schema["properties"],
             serde_json::json!({
-                "bare": narrowed(serde_json::json!({ "minLength": 2_u32, "minItems": 2_u32 })),
+                "bare": {
+                    "allOf": [above, { "minLength": 2_u32, "minItems": 2_u32 }],
+                },
                 "dir": narrowed(serde_json::json!({ "minLength": 2_u32, "minItems": 2_u32 })),
-                "free": { "type": "string" },
-                "many": { "type": "array", "items": { "type": "string" }, "maxItems": 3_u32 },
+                "free": above,
+                "many": { "type": "array", "items": above, "maxItems": 3_u32 },
                 "maybe": {
                     "anyOf": [
                         narrowed(serde_json::json!({

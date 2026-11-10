@@ -151,6 +151,17 @@ fn alias_module_backs_the_reference_emitted_by_the_referencing_struct() {
     );
 }
 
+/// The reference each use of the alias makes, the alias being used once per slot.
+#[cfg(feature = "serde")]
+fn alias_reference() -> serde_json::Value {
+    serde_json::json!({
+        "$ref": format!(
+            "#/$defs/{}",
+            referenced_document_id_schema::Schema::JSON_SCHEMA_NAME
+        )
+    })
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn alias_module_backs_the_map_value_reference() {
@@ -160,10 +171,15 @@ fn alias_module_backs_the_map_value_reference() {
     for slot in DocumentSlot::enum_members() {
         assert_eq!(
             by_slot.get("properties").unwrap().get(&slot).unwrap(),
-            &alias_schema,
+            &alias_reference(),
             "slot {slot} in: {by_slot}"
         );
     }
+    assert_eq!(
+        schema["$defs"][referenced_document_id_schema::Schema::JSON_SCHEMA_NAME],
+        alias_schema,
+        "{schema}"
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -175,7 +191,11 @@ fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
     for field in ["by_slot", "by_chained_slot"] {
         let keyed = properties.get(field).unwrap().get("properties").unwrap();
         for slot in DocumentSlot::enum_members() {
-            assert_eq!(keyed.get(&slot).unwrap(), &alias_schema, "{field}: {keyed}");
+            assert_eq!(
+                keyed.get(&slot).unwrap(),
+                &alias_reference(),
+                "{field}: {keyed}"
+            );
         }
         assert_eq!(
             keyed.as_object().unwrap().len(),
@@ -183,6 +203,11 @@ fn alias_keyed_map_enumerates_the_members_of_the_aliased_enum() {
             "{field}: {keyed}"
         );
     }
+    assert_eq!(
+        schema["$defs"][referenced_document_id_schema::Schema::JSON_SCHEMA_NAME],
+        alias_schema,
+        "{schema}"
+    );
 }
 
 #[test]
@@ -232,8 +257,17 @@ fn an_aliased_map_publishes_the_object_its_key_and_value_describe() {
     let by_slot = document_ids_by_slot_schema::Schema::json_schema();
     let properties = by_slot.get("properties").unwrap();
     for slot in DocumentSlot::enum_members() {
-        assert_eq!(properties.get(&slot).unwrap(), &member, "in: {by_slot}");
+        assert_eq!(
+            properties.get(&slot).unwrap(),
+            &alias_reference(),
+            "in: {by_slot}"
+        );
     }
+    assert_eq!(
+        by_slot["$defs"][referenced_document_id_schema::Schema::JSON_SCHEMA_NAME],
+        member,
+        "in: {by_slot}"
+    );
     assert_eq!(
         properties.as_object().unwrap().len(),
         DocumentSlot::enum_members().len(),

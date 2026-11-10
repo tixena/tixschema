@@ -55,6 +55,9 @@ const impl = {
   async checkNamed(ctx, req) {
     return { ok: true, value: { version: 7 } };
   },
+  async checkPair(ctx, req) {
+    return { ok: true, value: { version: 7 } };
+  },
   async getTagged(ctx, id, knownTag) {
     if (knownTag === "\"v7\"") return { ok: false, error: { errorCode: "not-found" } };
     return { ok: true, value: [{ version: 7 }, "\"v7\""] };
@@ -361,7 +364,7 @@ export const route = createDocumentServiceMcpRoute(impl);
 export const serve = documentServiceMcpServe;
 export const serveHttp = documentServiceMcpServeHttp;
 export const operations = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
-export const names: readonly ["tool:check-drafts", "tool:check-many", "tool:check-maybe", "tool:check-named", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
+export const names: readonly ["tool:check-drafts", "tool:check-many", "tool:check-maybe", "tool:check-named", "tool:check-pair", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
 
 export async function usage() {
   const client = createDocumentServiceMcpClient(transport);
@@ -700,6 +703,15 @@ pub trait DocumentService<Ctx> {
         req: BTreeMap<String, GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError>;
 
+    /// Answers the version of the second of two documents.
+    #[service_schema_op(mcp(title = "Versions Of A Pair"))]
+    async fn check_pair(
+        &self,
+        ctx: &Ctx,
+        first: GetVersionRequest,
+        second: GetVersionRequest,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// Answers the current version of one document, unless it still carries the tag the caller
     /// knows.
     #[service_schema_op(http(
@@ -800,6 +812,16 @@ impl DocumentService<()> for Stand {
         &self,
         _ctx: &(),
         _req: BTreeMap<String, GetVersionRequest>,
+    ) -> Result<VersionResponse, VersionError> {
+        ready(()).await;
+        Ok(VersionResponse { version: 7 })
+    }
+
+    async fn check_pair(
+        &self,
+        _ctx: &(),
+        _first: GetVersionRequest,
+        _second: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
         Ok(VersionResponse { version: 7 })

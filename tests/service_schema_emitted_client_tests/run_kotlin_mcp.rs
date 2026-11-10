@@ -80,6 +80,12 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
             else -> MobileDocumentServiceCheckNamedResult.Declared(VersionErrorNotFound)
         }
 
+    override suspend fun checkPair(req: CheckPairRequest): MobileDocumentServiceCheckPairResult =
+        when (val answered = checked(req.second.documentId)) {
+            is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckPairResult.Ok(answered.value)
+            else -> MobileDocumentServiceCheckPairResult.Declared(VersionErrorNotFound)
+        }
+
     override suspend fun getTagged(req: String, knownTag: String?): MobileDocumentServiceGetTaggedResult {
         val found = versionOf(req)
         return if (found != null) {
@@ -703,6 +709,7 @@ fn definitions() -> Vec<String> {
         draft_batch_kotlin::kotlin_definition(),
         balance_response_kotlin::kotlin_definition(),
         balance_error_kotlin::kotlin_definition(),
+        super::mcp_mobile_service::check_pair_request_kotlin::kotlin_definition(),
         super::mcp_mobile_service::rename_document_request_kotlin::kotlin_definition(),
         super::mcp_mobile_service::touch_document_request_kotlin::kotlin_definition(),
         super::mcp_mobile_service::archive_document_request_kotlin::kotlin_definition(),

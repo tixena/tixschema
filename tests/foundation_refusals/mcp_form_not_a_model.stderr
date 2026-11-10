@@ -17,11 +17,7 @@ error[E0433]: cannot find module or crate `shipping_form_schema` in this scope
 27 |         shipping: Option<ShippingForm>,
    |                          ^^^^^^^^^^^^ use of unresolved module or unlinked crate `shipping_form_schema`
    |
-help: there is a crate or module with a similar name
-   |
-27 -         shipping: Option<ShippingForm>,
-27 +         shipping: Option<shipping_service_schema>,
-   |
+   = help: if you wanted to use a crate named `shipping_form_schema`, use `cargo add shipping_form_schema` to add it to your `Cargo.toml`
 help: consider importing one of these structs
    |
  4 + use crate::ship_document_request_schema::Schema;

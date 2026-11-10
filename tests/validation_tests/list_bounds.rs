@@ -647,10 +647,12 @@ mod a_key_on_a_list {
                 "minItems": 1_u32
             })
         );
+        let tagged = Tagged::json_schema();
         assert_eq!(
-            Tagged::json_schema()["properties"]["counted"],
-            json!({ "type": "array", "items": Tag::json_schema(), "maxItems": 2_u32 })
+            tagged["properties"]["counted"],
+            json!({ "type": "array", "items": { "$ref": "#/$defs/Tag" }, "maxItems": 2_u32 })
         );
+        assert_eq!(tagged["$defs"]["Tag"], Tag::json_schema());
     }
 
     #[cfg(feature = "typescript")]

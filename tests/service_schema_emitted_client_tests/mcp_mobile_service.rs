@@ -149,6 +149,15 @@ pub trait MobileDocumentService<Ctx> {
         req: HashMap<String, GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError>;
 
+    /// Answers the version of the second of two documents.
+    #[service_schema_op(mcp(title = "Versions Of A Pair"))]
+    async fn check_pair(
+        &self,
+        ctx: &Ctx,
+        first: GetVersionRequest,
+        second: GetVersionRequest,
+    ) -> Result<VersionResponse, VersionError>;
+
     /// Answers the current version of one document, unless it still carries the tag the caller knows.
     #[service_schema_op(http(
         method = "POST",
@@ -311,6 +320,15 @@ impl MobileDocumentService<()> for Archive {
                     Self::version_of(&first.document_id)
                 }),
         )
+    }
+
+    fn check_pair(
+        &self,
+        _ctx: &(),
+        _first: GetVersionRequest,
+        second: GetVersionRequest,
+    ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
+        ready(Self::version_of(&second.document_id))
     }
 
     fn get_tagged(

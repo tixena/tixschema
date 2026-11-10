@@ -312,18 +312,20 @@ fn a_bound_renders_as_its_type_renders_anywhere_else() {
         assert!(zod.contains(member), "{member} in: {zod}");
     }
     let document = Signposted::json_schema();
-    for (field, bound) in [
-        ("marks", Milestone::json_schema()),
-        ("span", Waymark::json_schema()),
+    for (field, name, bound) in [
+        ("marks", "Milestone", Milestone::json_schema()),
+        ("span", "Waymark", Waymark::json_schema()),
     ] {
+        let reference = serde_json::json!({ "$ref": format!("#/$defs/{name}") });
         assert_eq!(
-            document["properties"][field]["properties"]["start"], bound,
+            document["properties"][field]["properties"]["start"], reference,
             "{field}"
         );
         assert_eq!(
-            document["properties"][field]["properties"]["end"], bound,
+            document["properties"][field]["properties"]["end"], reference,
             "{field}"
         );
+        assert_eq!(document["$defs"][name], bound, "{field}");
     }
     let frontier = Frontier::ts_definition();
     for member in ["from: { start: Waymark };", "to: { end: Waymark };"] {

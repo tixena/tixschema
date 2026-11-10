@@ -1048,6 +1048,33 @@ fn assert_hashmap_array_type(
     );
 }
 
+/// `document` with each `$ref` into its `$defs` replaced by the definition it points at, and no
+/// `$defs`: what a document that holds no recursive type describes, with every type in place.
+#[cfg(feature = "serde")]
+fn written_in_place(document: &Value) -> Value {
+    fn placed(schema: &Value, defs: &Value) -> Value {
+        match schema {
+            Value::Object(members) => {
+                if let Some(pointer) = members.get("$ref").and_then(Value::as_str) {
+                    return placed(&defs[pointer.strip_prefix("#/$defs/").unwrap()], defs);
+                }
+                Value::Object(
+                    members
+                        .iter()
+                        .filter(|(keyword, _)| *keyword != "$defs")
+                        .map(|(keyword, held)| (keyword.clone(), placed(held, defs)))
+                        .collect(),
+                )
+            }
+            Value::Array(items) => {
+                Value::Array(items.iter().map(|item| placed(item, defs)).collect())
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => schema.clone(),
+        }
+    }
+    placed(document, document.get("$defs").unwrap_or(&Value::Null))
+}
+
 /// The JSON Schema `type` a value carries on the wire, so an emitted schema can be held against
 /// what serde actually produces for it.
 #[cfg(feature = "serde")]
@@ -1367,7 +1394,7 @@ fn test_enum_keyed_sibling_value_maps_constructible() {
 #[test]
 fn test_enum_keyed_sibling_value_maps_json_schema() {
     let sample_schema = MetricSample::json_schema();
-    let schema = EnumKeyedSiblingValueMaps::json_schema();
+    let schema = written_in_place(&EnumKeyedSiblingValueMaps::json_schema());
     let properties = schema["properties"].as_object().unwrap();
 
     assert_enum_keyed_map_value(properties, "sample_value", &sample_schema);
@@ -1389,8 +1416,8 @@ fn test_enum_keyed_sibling_array_member_matches_the_serialized_form() {
         sample_value: HashMap::new(),
     };
     let payload = serde_json::to_value(&maps).unwrap();
-    let member = &EnumKeyedSiblingValueMaps::json_schema()["properties"]["sample_array"]["properties"]
-        ["Daily"];
+    let member = &written_in_place(&EnumKeyedSiblingValueMaps::json_schema())["properties"]["sample_array"]
+        ["properties"]["Daily"];
 
     assert_eq!(
         member["type"],
@@ -1454,7 +1481,7 @@ fn test_nested_map_values_constructible_on_both_key_paths() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_enum_keyed_nested_map_values_json_schema() {
-    let schema = EnumKeyedNestedMapValues::json_schema();
+    let schema = written_in_place(&EnumKeyedNestedMapValues::json_schema());
     let properties = schema["properties"].as_object().unwrap();
 
     assert_enum_keyed_map_value(
@@ -1497,8 +1524,8 @@ fn test_enum_keyed_nested_map_values_json_schema() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_enum_keyed_nested_map_values_match_their_string_keyed_members() {
-    let string_keyed = StringKeyedNestedMapValues::json_schema();
-    let enum_keyed = EnumKeyedNestedMapValues::json_schema();
+    let string_keyed = written_in_place(&StringKeyedNestedMapValues::json_schema());
+    let enum_keyed = written_in_place(&EnumKeyedNestedMapValues::json_schema());
     let properties = enum_keyed["properties"].as_object().unwrap();
 
     for field_name in ["counts", "labels", "rows", "samples"] {
@@ -1725,7 +1752,7 @@ fn test_string_keyed_sibling_value_maps_constructible() {
 #[test]
 fn test_string_keyed_sibling_value_maps_json_schema() {
     let sample_schema = MetricSample::json_schema();
-    let schema = StringKeyedSiblingValueMaps::json_schema();
+    let schema = written_in_place(&StringKeyedSiblingValueMaps::json_schema());
     let properties = schema["properties"].as_object().unwrap();
 
     for (field_name, expected) in [
@@ -1757,7 +1784,7 @@ fn test_string_keyed_sibling_members_match_the_serialized_form() {
         sample_value: HashMap::from([("s".to_owned(), sample)]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
-    let schema = StringKeyedSiblingValueMaps::json_schema();
+    let schema = written_in_place(&StringKeyedSiblingValueMaps::json_schema());
 
     let arrayed = &schema["properties"]["sample_array"]["additionalProperties"];
     assert_eq!(
@@ -2122,11 +2149,11 @@ fn counts_under(names: &Value) -> Value {
 #[test]
 fn test_scalar_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     assert_eq!(
-        ScalarBrandKeyedMaps::json_schema()["properties"],
-        ScalarKeyedBrandTwin::json_schema()["properties"]
+        written_in_place(&ScalarBrandKeyedMaps::json_schema())["properties"],
+        written_in_place(&ScalarKeyedBrandTwin::json_schema())["properties"]
     );
     assert_eq!(
-        ScalarBrandKeyedMaps::json_schema()["properties"]["by_tick"],
+        written_in_place(&ScalarBrandKeyedMaps::json_schema())["properties"]["by_tick"],
         counts_under(&integer_keys())
     );
 }
@@ -2324,11 +2351,11 @@ fn test_scalar_alias_keyed_maps_constructible() {
 #[test]
 fn test_scalar_alias_keyed_maps_describe_as_their_bare_target_twin() {
     assert_eq!(
-        ScalarAliasKeyedMaps::json_schema()["properties"],
-        ScalarKeyedAliasTwin::json_schema()["properties"]
+        written_in_place(&ScalarAliasKeyedMaps::json_schema())["properties"],
+        written_in_place(&ScalarKeyedAliasTwin::json_schema())["properties"]
     );
     assert_eq!(
-        ScalarAliasKeyedMaps::json_schema()["properties"]["by_tick"],
+        written_in_place(&ScalarAliasKeyedMaps::json_schema())["properties"]["by_tick"],
         counts_under(&integer_keys())
     );
 }
@@ -2932,7 +2959,7 @@ fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
 #[test]
 #[cfg(all(feature = "serde", feature = "chrono"))]
 fn test_date_time_keyed_maps_describe_their_values_under_their_text() {
-    let schema = DateTimeKeyedMaps::json_schema();
+    let schema = written_in_place(&DateTimeKeyedMaps::json_schema());
     let names = serde_json::json!({ "type": "string", "format": "date-time" });
     let counts = counts_under(&names);
     for field_name in [
@@ -3083,7 +3110,7 @@ fn test_string_keyed_alias_value_maps_constructible() {
 #[test]
 fn test_string_keyed_alias_value_maps_resolve_the_registered_module() {
     let alias_schema = metric_sample_ref_schema::Schema::json_schema();
-    let schema = StringKeyedAliasValueMaps::json_schema();
+    let schema = written_in_place(&StringKeyedAliasValueMaps::json_schema());
     let properties = schema["properties"].as_object().unwrap();
 
     assert_eq!(
@@ -3413,7 +3440,7 @@ fn test_set_element_json_schema() {
         small_ids: HashSet::from([7_u32]),
     };
     let payload = serde_json::to_value(&sets).unwrap();
-    let schema = SetElementFields::json_schema();
+    let schema = written_in_place(&SetElementFields::json_schema());
     let properties = schema["properties"].as_object().unwrap();
 
     for (numeric, item) in [
@@ -3796,7 +3823,7 @@ fn test_set_slots_describe_as_arrays_of_their_element() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_sibling_tuple_slot_describes_as_the_sibling_it_holds() {
-    let properties = SiblingSlotValues::json_schema()["properties"].clone();
+    let properties = written_in_place(&SiblingSlotValues::json_schema())["properties"].clone();
     assert_eq!(
         properties["bare"]["prefixItems"][1],
         MetricTag::json_schema()
@@ -3810,7 +3837,7 @@ fn test_a_sibling_tuple_slot_describes_as_the_sibling_it_holds() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_wrapped_sibling_tuple_slot_describes_as_the_array_of_that_sibling() {
-    let properties = SiblingSlotValues::json_schema()["properties"].clone();
+    let properties = written_in_place(&SiblingSlotValues::json_schema())["properties"].clone();
     let tag_array = serde_json::json!({ "type": "array", "items": MetricTag::json_schema() });
     assert_eq!(properties["vecced"]["prefixItems"][1], tag_array);
     assert_eq!(
@@ -3943,7 +3970,7 @@ fn test_a_nested_sequence_writes_an_array_of_arrays() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_nested_sequences_describe_at_the_depth_they_are_written() {
-    let properties = NestedSequenceFields::json_schema()["properties"].clone();
+    let properties = written_in_place(&NestedSequenceFields::json_schema())["properties"].clone();
     let integer_rows = serde_json::json!({
         "type": "array",
         "items": { "type": "array", "items": { "type": "integer" } }

@@ -977,7 +977,9 @@ use service_schema::exec_service_schema;
 ///   `T$Schema`.
 /// - `T::json_schema() -> serde_json::Value` (`enable = ["jsonschema"]`): one self-contained
 ///   document, whose objects are closed with `"additionalProperties": false` and list in
-///   `required` the keys serde always writes. A generic type's document is built at its
+///   `required` the keys serde always writes. A named type the document holds two or more times is
+///   defined once under `$defs` and referenced with `$ref`, and one it holds once is written in
+///   place; a recursive type is always a definition. A generic type's document is built at its
 ///   `default_types`, and `{type}_schema::Schema::json_schema_with(&[...])` builds it at other
 ///   fillings, one document per type parameter in declaration order.
 /// - `T::validate(&self) -> Result<(), Vec<String>>`, where a field or the type carries a rule, or

@@ -111,6 +111,15 @@ pub trait DartDocumentService<Ctx> {
         req: BTreeMap<String, McpVersionRequest>,
     ) -> Result<McpVersionResponse, McpVersionError>;
 
+    /// Answers the version of the second of two documents.
+    #[service_schema_op(mcp(title = "Versions Of A Pair"))]
+    async fn check_pair(
+        &self,
+        ctx: &Ctx,
+        first: McpVersionRequest,
+        second: McpVersionRequest,
+    ) -> Result<McpVersionResponse, McpVersionError>;
+
     /// Answers the current version of one document, unless it still carries the tag the caller
     /// knows.
     #[service_schema_op(http(
@@ -237,6 +246,16 @@ impl DartDocumentService<()> for Archive {
         &self,
         _ctx: &(),
         _req: BTreeMap<String, McpVersionRequest>,
+    ) -> Result<McpVersionResponse, McpVersionError> {
+        ready(()).await;
+        Err(McpVersionError::NotFound)
+    }
+
+    async fn check_pair(
+        &self,
+        _ctx: &(),
+        _first: McpVersionRequest,
+        _second: McpVersionRequest,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
         Err(McpVersionError::NotFound)
