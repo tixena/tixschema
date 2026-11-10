@@ -53,9 +53,11 @@ pub struct SchemaParameter {
 
 /// The JSON-schema methods a schema module publishes, whose standalone documents also hold the
 /// `examples` keyword, `examples` being the expression that answers its values as an
-/// `Option<serde_json::Value>`, `None` leaving the keyword out.
+/// `Option<serde_json::Value>`, `None` leaving the keyword out. `rust_ident` is the declared
+/// type's own name, which with the module it is declared in tells it apart from every other type.
 pub fn json_schema_methods(
     def_name: &str,
+    rust_ident: &str,
     body: &proc_macro2::TokenStream,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
@@ -65,6 +67,7 @@ pub fn json_schema_methods(
     if parameters.is_empty() {
         let described = guarded_description(
             def_name,
+            rust_ident,
             body,
             &quote::quote! { ::std::vec::Vec::new() },
             false,
@@ -89,7 +92,8 @@ pub fn json_schema_methods(
             }
         };
     }
-    let described = guarded_description(def_name, body, &bound_filling(parameters), true);
+    let described =
+        guarded_description(def_name, rust_ident, body, &bound_filling(parameters), true);
     let rooted = rooted_document(
         &quote::quote! { Self::json_schema_within(&mut in_flight, &mut hoisted_defs, #defs_prefix) },
         examples,
@@ -149,20 +153,74 @@ fn bound_filling(parameters: &[SchemaParameter]) -> proc_macro2::TokenStream {
     quote::quote! { vec![#(#bound.clone()),*] }
 }
 
-/// The description guarded against re-entering a name still being written, as the tokens the
-/// `within` form's body is. Every name is hoisted and answered as a `$ref`: under its key, or, where
-/// another body already holds that key, under the key and a fingerprint of its own body. `filling`
-/// is the documents this frame's parameters were filled with, which the guard compares against and
-/// the hoisted key is built from.
+/// The description guarded against re-entering a type still being written, as the tokens the
+/// `within` form's body is. A type is in flight under its declaration's path, so two types of one
+/// published name are told apart, and its references to itself point at a provisional key until its
+/// body settles the key: its own, or, where another body holds that key once this one is written,
+/// the key and a fingerprint of its own body. `filling` is the documents this frame's parameters
+/// were filled with, which the guard compares against and the hoisted key is built from.
 fn guarded_description(
     def_name: &str,
+    rust_ident: &str,
     body: &proc_macro2::TokenStream,
     filling: &proc_macro2::TokenStream,
     discriminate_by_filling: bool,
 ) -> proc_macro2::TokenStream {
     let refusal = refilled_cycle_refusal(def_name);
-    let key_binding = if discriminate_by_filling {
+    let key_binding = hoisted_key(def_name, discriminate_by_filling);
+    let helpers = frame_helpers();
+    quote::quote! {
+        const IDENTITY: &str = ::core::concat!(::core::module_path!(), "::", #rust_ident);
+        #helpers
+        let filling: ::std::vec::Vec<serde_json::Value> = #filling;
+        #key_binding
+        let provisional = format!("{key}~{IDENTITY}");
+        if let ::core::option::Option::Some((_, in_flight_filling)) =
+            in_flight.iter().find(|(named, _)| *named == IDENTITY)
+        {
+            #refusal
+            // Reserved rather than written: the frame that put this type in flight is still
+            // writing the body, and settles the key once it has one.
+            hoisted_defs.entry(key).or_insert(serde_json::Value::Null);
+            hoisted_defs.entry(provisional.clone()).or_insert(serde_json::Value::Null);
+            return serde_json::json!({ "$ref": format!("{pointer_prefix}{provisional}") });
+        }
+        in_flight.push((IDENTITY, filling));
+        let mut described = #body;
+        in_flight.pop();
+        // Checked as the key stands now: another type of this name written during this frame
+        // keeps the key, and this body takes the fingerprint.
+        let taken = hoisted_defs.get(&key).is_some_and(|stored| {
+            !stored.is_null() && *stored != described && keyed(stored) != keyed(&described)
+        });
+        let key = if taken {
+            let canonical = serde_json::to_string(&keyed(&described)).unwrap_or_default();
+            format!("{key}.{:016x}", digest(canonical.as_bytes()))
+        } else {
+            key
+        };
+        if hoisted_defs.contains_key(&provisional) {
+            hoisted_defs.retain(|held, _| *held != provisional);
+            let from = format!("{pointer_prefix}{provisional}");
+            let to = format!("{pointer_prefix}{key}");
+            repointed(&mut described, &from, &to);
+            for written in hoisted_defs.values_mut() {
+                repointed(written, &from, &to);
+            }
+        }
+        let pointer = format!("{}{key}", pointer_prefix);
+        hoisted_defs.insert(key, described);
+        serde_json::json!({ "$ref": pointer })
+    }
+}
+
+/// The statements that bind `key`, what this frame's definition is hoisted under before its body
+/// is known: the published name, and for a generic type the labels and a fingerprint of its
+/// filling, read with each provisional pointer at its key.
+fn hoisted_key(def_name: &str, discriminate_by_filling: bool) -> proc_macro2::TokenStream {
+    if discriminate_by_filling {
         quote::quote! {
+            let filling: ::std::vec::Vec<serde_json::Value> = filling.iter().map(keyed).collect();
             let key = {
                 // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
                 // primitive's `"type"` keyword.
@@ -191,7 +249,11 @@ fn guarded_description(
         quote::quote! {
             let key = #def_name.to_string();
         }
-    };
+    }
+}
+
+/// The functions a frame reads its references through, as the tokens that declare them.
+fn frame_helpers() -> proc_macro2::TokenStream {
     quote::quote! {
         // The FNV-1a offset basis and prime, spelled out: the internals of
         // `std::hash::Hasher` may change between compilers.
@@ -225,49 +287,35 @@ fn guarded_description(
                 | serde_json::Value::String(_) => {}
             }
         }
-        let filling: ::std::vec::Vec<serde_json::Value> = #filling;
-        #key_binding
-        if let ::core::option::Option::Some((_, in_flight_filling)) =
-            in_flight.iter().find(|(named, _)| *named == #def_name)
-        {
-            #refusal
-            let pointer = format!("{}{key}", pointer_prefix);
-            // Reserved rather than written: the frame that put this name in flight is still
-            // writing the body, and fills the entry in once it has one.
-            hoisted_defs.entry(key).or_insert(serde_json::Value::Null);
-            return serde_json::json!({ "$ref": pointer });
-        }
-        // Another type published under this name may hold the key; which one is known only once
-        // this body is written, and the definitions written meanwhile are the ones that point at
-        // this frame through it.
-        let earlier: ::core::option::Option<::std::vec::Vec<::std::string::String>> = hoisted_defs
-            .get(&key)
-            .is_some_and(|stored| !stored.is_null())
-            .then(|| hoisted_defs.keys().cloned().collect());
-        in_flight.push((#def_name, filling));
-        let mut described = #body;
-        in_flight.pop();
-        let key = match earlier {
-            ::core::option::Option::Some(earlier)
-                if hoisted_defs.get(&key).is_some_and(|stored| *stored != described) =>
-            {
-                let canonical = serde_json::to_string(&described).unwrap_or_default();
-                let distinct = format!("{key}.{:016x}", digest(canonical.as_bytes()));
-                let from = format!("{pointer_prefix}{key}");
-                let to = format!("{pointer_prefix}{distinct}");
-                repointed(&mut described, &from, &to);
-                for (held, written) in hoisted_defs.iter_mut() {
-                    if !earlier.contains(held) {
-                        repointed(written, &from, &to);
-                    }
+        // A reference to a type still in flight points at `<key>~<identity>` until that frame
+        // settles its key; bodies are compared and fingerprinted with each such pointer at `<key>`.
+        fn keyed(schema: &serde_json::Value) -> serde_json::Value {
+            match schema {
+                serde_json::Value::Array(items) => {
+                    serde_json::Value::Array(items.iter().map(keyed).collect())
                 }
-                distinct
+                serde_json::Value::Object(members) => serde_json::Value::Object(
+                    members
+                        .iter()
+                        .map(|(keyword, held)| {
+                            let held = held
+                                .as_str()
+                                .filter(|_| keyword == "$ref")
+                                .and_then(|pointer| pointer.split_once('~'))
+                                .map_or_else(
+                                    || keyed(held),
+                                    |(pointer, _)| serde_json::Value::String(pointer.to_string()),
+                                );
+                            (keyword.clone(), held)
+                        })
+                        .collect(),
+                ),
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => schema.clone(),
             }
-            _ => key,
-        };
-        let pointer = format!("{}{key}", pointer_prefix);
-        hoisted_defs.insert(key, described);
-        serde_json::json!({ "$ref": pointer })
+        }
     }
 }
 
@@ -530,6 +578,7 @@ pub fn generate_struct_json_schema_method(
     json_schema_fields: &[proc_macro2::TokenStream],
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -538,7 +587,7 @@ pub fn generate_struct_json_schema_method(
     } else {
         flattened_object_body(json_schema_fields, flatten_json_schemas, def_name)
     };
-    json_schema_methods(def_name, &body, parameters, examples)
+    json_schema_methods(def_name, rust_ident, &body, parameters, examples)
 }
 
 /// The struct's own fields as one closed object.
@@ -899,8 +948,10 @@ fn expansion_refusals(diagnostic: &MergeDiagnostic<'_>) -> proc_macro2::TokenStr
         }
 
         // An entry still only reserved is this merge coming back around to a name whose body is
-        // still being written: there is nothing to merge.
+        // still being written: there is nothing to merge. That frame's references to itself point
+        // at `<key>~<identity>`, and the message names the key.
         fn refuse_missing_body(label: &str, position: &[usize], name: &str) -> ! {
+            let name = name.split_once('~').map_or(name, |(key, _)| key);
             if position.is_empty() {
                 panic!(
                     "`{}`: {} `{}` closes a flatten cycle — the flattened body does not exist to merge, and no finite value inhabits the type; {}",
@@ -1224,6 +1275,7 @@ fn flattened_object_body(
 pub fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -1238,7 +1290,7 @@ pub fn generate_plain_enum_json_schema_method(
             serde_json::Value::Object(schema_obj)
         }
     };
-    json_schema_methods(def_name, &body, parameters, examples)
+    json_schema_methods(def_name, rust_ident, &body, parameters, examples)
 }
 
 #[cfg(test)]
