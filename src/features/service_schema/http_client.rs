@@ -2,6 +2,7 @@
 //! operation that builds a plain-terms request from the operation's own message and decodes the
 //! answer by status.
 
+use super::client::issues_fault_fn;
 use super::fault;
 use super::message;
 use super::result::result_name;
@@ -1117,34 +1118,16 @@ fn legal_header_value_fn(prefix: &str) -> String {
 }
 
 fn outbound_fault_fn(named: &str, prefix: &str) -> String {
-    format!(
-        "/**\n \
-         * The fault a `{named}` HTTP client answers with when the message it was about to send \
-         failed\n \
-         * its own schema. The operation never ran, so this is not one of the errors it declared, \
-         and\n \
-         * the transport was never reached.\n \
-         */\n\
-         function {prefix}HttpOutboundFault(\n  \
-         operation: string,\n  \
-         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
-         ): {named}Fault {{\n  \
-         const [first] = issues;\n  \
-         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
-         {minted}\n\
-         }}",
-        minted = fault::minted(
-            named,
-            "    detail: issues\n      \
-             .map((issue) =>\n        \
-             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n      \
-             )\n      \
-             .join(\"; \"),\n    \
-             field: failedAt === \"\" ? undefined : failedAt,\n    \
-             kind: \"failed-validation\",\n    \
-             operation,"
-        )
+    issues_fault_fn(
+        named,
+        &format!("{prefix}HttpOutboundFault"),
+        &format!(
+            " * The fault a `{named}` HTTP client answers with when the message it was about to send \
+             failed\n \
+             * its own schema. The operation never ran, so this is not one of the errors it declared, \
+             and\n \
+             * the transport was never reached."
+        ),
     )
 }
 

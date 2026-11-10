@@ -52,9 +52,12 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.extend(fault_helpers(
         &named,
         &fn_prefix,
-        declares_any_header(service),
+        declares_any_header(service) || takes_no_argument(service),
         !service.operations.is_empty(),
     ));
+    if takes_no_argument(service) {
+        published.push(stray_key_fn(&fn_prefix));
+    }
     published
 }
 
@@ -77,6 +80,25 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// Whether an operation takes no argument after the context, whose message's refusal of a key the
+/// attachment names as the fault's field.
+fn takes_no_argument(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| matches!(operation.inputs, OperationInputs::Empty))
+}
+
+/// The function that answers the first key of a payload, which the message of an operation of no
+/// argument refuses: the field its fault names, as the Rust dispatcher names it.
+fn stray_key_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// The first key of `payload`, which the message of an operation of no argument refuses.\n\
+         String? _{fn_prefix}WsStrayKey(Object? payload) =>\n    \
+         payload is Map && payload.isNotEmpty ? '${{payload.keys.first}}' : null;"
+    )
 }
 
 /// [`declares_header_in`]'s own widening to `header_out`/`error_header_out`, for gating the fault
@@ -914,6 +936,11 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let received = message_decode(operation, "frame['payload']");
+    let stray = if matches!(operation.inputs, OperationInputs::Empty) {
+        format!(", field: _{fn_prefix}WsStrayKey(frame['payload'])")
+    } else {
+        String::new()
+    };
     let mut arm = format!(
         "      case {wire}:\n        \
          {{\n          \
@@ -921,7 +948,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          try {{\n            \
          decoded = {received};\n          \
          }} catch (rejected) {{\n            \
-         final fault = _{fn_prefix}WsFailedValidation({wire}, '$rejected');\n            \
+         final fault = _{fn_prefix}WsFailedValidation({wire}, '$rejected'{stray});\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(
@@ -1073,7 +1100,7 @@ fn reply_dispatch_arm(
 
 /// The faults the client and the attachment build. Of a service `ws_rpc` carries no operation of,
 /// the attachment answers every frame as an unknown operation, and nothing builds the others.
-fn fault_helpers(named: &str, fn_prefix: &str, headered: bool, answers: bool) -> Vec<String> {
+fn fault_helpers(named: &str, fn_prefix: &str, names_a_field: bool, answers: bool) -> Vec<String> {
     let unknown_operation = fault_helper(
         named,
         fn_prefix,
@@ -1102,7 +1129,7 @@ fn fault_helpers(named: &str, fn_prefix: &str, headered: bool, answers: bool) ->
                  carry a call: the frame never went out, or the reply never came back."
             ),
         ),
-        if headered {
+        if names_a_field {
             failed_validation_fault_helper(named, fn_prefix)
         } else {
             fault_helper(
@@ -1139,8 +1166,9 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// [`fault_helper`]'s own twin, emitted only where the service declares a header: `field` names a
-/// failed header element's own decode, `null` everywhere else.
+/// [`fault_helper`]'s own twin, emitted only where the service declares a header or an operation of
+/// no argument: `field` names a failed header element's own decode, or the key the message of an
+/// operation of no argument refuses, `null` everywhere else.
 fn failed_validation_fault_helper(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(

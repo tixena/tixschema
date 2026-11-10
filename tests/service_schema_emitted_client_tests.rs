@@ -2117,3 +2117,36 @@ mod published {
 mod published_mobile {
     built_and_read_back!(mcp_mobile_billing, mcp_mobile_document);
 }
+
+/// `BelfryService`, one operation of which takes no argument, and what its Rust dispatchers answer
+/// to each message and to a key beside it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/belfry_service.rs"]
+mod belfry_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/belfry_ws_rpc_transport.rs"]
+mod belfry_ws_rpc_transport;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/belfry_http_rest_transport.rs"]
+mod belfry_http_rest_transport;
+
+#[cfg(test)]
+use belfry_service::{BelfryService, BelfryServiceSchema, belfry_service_schema};
+
+/// The emitted TypeScript, Dart and Kotlin dispatchers of `BelfryService`, measured against them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_belfry.rs"]
+mod run_belfry;
+
+/// Structs that hold no key on the wire, strict and `nonstrict`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/empty_struct_models.rs"]
+mod empty_struct_models;
+
+/// Those structs read by Zod, Dart, Kotlin and Swift beside serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_empty_structs.rs"]
+mod run_empty_structs;

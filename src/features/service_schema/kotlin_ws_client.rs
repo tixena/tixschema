@@ -37,7 +37,8 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_header_in = declares_header_in(service);
-    let needs_field = has_header_in || declares_header_out_or_error(service);
+    let needs_field =
+        has_header_in || declares_header_out_or_error(service) || takes_no_argument(service);
     let mut published = vec![
         socket_interface(&named),
         options_class(&named),
@@ -91,8 +92,18 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
 }
 
-/// Whether any operation declares `header_out` or `error_header_out` — the other half of what
-/// earns the failed-validation helper its `field` parameter.
+/// Whether an operation takes no argument after the context, whose message's refusal of a key the
+/// attachment names as the fault's field — another part of what earns the failed-validation helper
+/// its `field` parameter.
+fn takes_no_argument(service: &ServiceDef) -> bool {
+    service
+        .operations
+        .iter()
+        .any(|operation| matches!(operation.inputs, OperationInputs::Empty))
+}
+
+/// Whether any operation declares `header_out` or `error_header_out` — another part of what earns
+/// the failed-validation helper its `field` parameter.
 fn declares_header_out_or_error(service: &ServiceDef) -> bool {
     service.operations.iter().any(|operation| {
         let shape = HttpShape::of(operation);
@@ -1016,12 +1027,17 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let shape = HttpShape::of(operation);
     let decode_fault = fault_reply_stmt(named, "fault");
     let (header_reads, header_idents) = header_in_read_stmt(named, fn_prefix, wire, &shape);
+    let stray = if matches!(operation.inputs, OperationInputs::Empty) {
+        ", field = (payload as? JsonObject)?.keys?.firstOrNull()"
+    } else {
+        ""
+    };
     let mut arm = format!(
         "    {wire} -> {{\n      \
          val decoded = try {{\n        \
          Json.decodeFromJsonElement({read_by}, payload ?: JsonNull)\n      \
          }} catch (rejected: Throwable) {{\n        \
-         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString())\n        \
+         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(){stray})\n        \
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
@@ -1142,8 +1158,8 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// `field` names the header a header-shaped failure is about, and is only worth declaring where
-/// a header read or write uses it.
+/// `field` names the header a header-shaped failure is about, or the key the message of an
+/// operation of no argument refuses, and is only worth declaring where one of those uses it.
 fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> String {
     let fields = fault_fields_typescript_name(named);
     let doc = format!(

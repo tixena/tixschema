@@ -139,6 +139,9 @@ fn message(declared: &GeneratedMessage, non_exhaustive: bool, jsonschema: bool) 
     let named = &declared.ident;
     let sealed = exhaustiveness(non_exhaustive);
     let model_schema = model_schema_attribute(jsonschema);
+    // A message of no member is closed by the read `#[model_schema]` writes for a struct of no
+    // member: serde's derive under `deny_unknown_fields` declares an enum of no variant there,
+    // which `clippy::empty_enums` refuses in the consumer's crate.
     let closed = (!declared.fields.is_empty()).then(|| quote! { #[serde(deny_unknown_fields)] });
     let members = declared.fields.iter().map(|(field, carried)| {
         if is_option_type(carried) {

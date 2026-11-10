@@ -283,7 +283,9 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
 }
 
 /// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
-/// failing key. `doc` is the body of its `JSDoc`.
+/// failing key, and a key no member declares by the path of the object that holds it and the key,
+/// as the Rust dispatcher names it. `doc` is the body of its `JSDoc`. Every TypeScript client and
+/// dispatcher folds a failed parse through it.
 pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
     format!(
         "/**\n\
@@ -291,10 +293,21 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          */\n\
          function {function}(\n  \
          operation: string,\n  \
-         issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>,\n\
+         issues: ReadonlyArray<{{\n    \
+         code?: string;\n    \
+         keys?: ReadonlyArray<string>;\n    \
+         path: ReadonlyArray<PropertyKey>;\n    \
+         message: string;\n  \
+         }}>,\n\
          ): {named}Fault {{\n  \
          const [first] = issues;\n  \
-         const failedAt = first === undefined ? \"\" : first.path.join(\".\");\n\
+         const steps =\n    \
+         first === undefined\n      \
+         ? []\n      \
+         : first.code === \"unrecognized_keys\" && first.keys !== undefined\n        \
+         ? [...first.path, ...first.keys.slice(0, 1)]\n        \
+         : first.path;\n  \
+         const failedAt = steps.join(\".\");\n\
          {minted}\n\
          }}",
         minted = fault::minted(
