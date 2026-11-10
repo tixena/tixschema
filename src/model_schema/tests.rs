@@ -37,7 +37,7 @@ use super::{
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
-use crate::field_type::{MissingKey, is_set_wrapper};
+use crate::field_type::{MissingKey, Scope, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
@@ -17846,6 +17846,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
+        scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
     }
 }

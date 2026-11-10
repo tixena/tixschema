@@ -63,11 +63,13 @@ impl Named {
     /// `ty`'s schema as an expression of the run, with each model type it names kept for
     /// `components.schemas`.
     fn described(&mut self, subject: &str, ty: &Type) -> TokenStream {
-        self.names
-            .extend(named_json_schema_modules(ty).into_iter().map(|module| {
-                let span = module.span();
-                quote_spanned! {span=> #module::Schema::JSON_SCHEMA_NAME }
-            }));
+        self.names.extend(
+            named_json_schema_modules(ty)
+                .into_iter()
+                .map(|(module, span)| {
+                    quote_spanned! {span=> #module::Schema::JSON_SCHEMA_NAME }
+                }),
+        );
         type_json_schema_value(subject, ty)
     }
 

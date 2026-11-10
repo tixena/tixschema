@@ -131,8 +131,17 @@ pub struct FieldDef {
     pub nullable_levels: Vec<u8>,        // Which array levels were written as Option
     pub array_lengths: Vec<(u8, usize)>, // Length of each level written as [T; N]
     pub model_schema_prop_meta: ...,     // Field-level overrides
+    pub scope: Scope,                    // The path a SiblingType was written under
 }
 ```
+
+`scope` holds the segments ahead of a named type's own, `invoice_lookups` for
+`invoice_lookups::DropOff`, and whether the path starts with `::`. Every reference to the type's
+schema module goes through it (`sibling_schema_module`, `Scope::reaching`): the JSON Schema of a
+member, a flattened member's merge, an MCP tool's `needs_wrapper()` and the OpenAPI
+`components.schemas`, so a type of another module or crate written with its path needs no import
+of its module. It holds plain text, not tokens: a `FieldDef` is kept in registries across
+expansions, where a token handed out by an earlier one is no longer valid.
 
 Levels count from the innermost value outward, so `Vec<Option<T>>` records level 0 — a `null`
 among the array's items, rendered `Array<T | null>` — while `Option<Vec<T>>` records level 1, a

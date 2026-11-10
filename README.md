@@ -2315,8 +2315,6 @@ The remedy is either of two:
 - **Annotate the inner.** Put `#[model_schema()]` on `Foreign`, and both spellings resolve — the brand describing as whatever `Foreign` describes as.
 - **Brand the wire form instead.** Where the inner is a foreign scalar this crate cannot annotate -- `uuid::Uuid`, `rust_decimal::Decimal` -- brand the type it is written as: `pub struct Wrapped(pub String)`, with `pattern` on the brand where the format is worth pinning.
 
-A type this crate describes must be one it can read. The alternative -- letting a name it cannot resolve fall back to `{"type": "string"}` -- describes a struct as a string whenever the inner turns out to be one, which is the failure the brand's schema path exists to rule out.
-
 #### The `Display` Requirement and `no_display`
 
 Every branded newtype gets a `Display` impl that delegates to its inner value, so **the inner type must implement `Display`**. An inner type that does not is reported at the inner field, naming the trait:
@@ -5506,8 +5504,9 @@ Rust, Dart, Swift and Kotlin print them from the `validate()` of each value, and
 
 #### What an upgrade asks of your crate
 
-Seventy-one rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Seventy-two rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
+- **A member type written with its path reaches its schema module through that path**: `invoice_lookups::DropOff` reads `invoice_lookups::drop_off_schema`, where the build stopped with `E0433` unless the module was imported. See [A Model Type Declared in Another Module](#a-model-type-declared-in-another-module).
 - **A struct under a tag of its own that is not `nonstrict` stops the build**, where serde read past a key no member declares and Zod, the JSON Schema and the Kotlin read refused it: serde cannot refuse one beside the tag, as `#[serde(deny_unknown_fields)]` there refuses the tag itself. Mark the struct `#[model_schema(nonstrict)]`, and every surface reads past such a key; a holder that flattens it reads past one too, in Kotlin as in serde.
 - **The Swift read of a flattened strict untagged enum takes the variant serde takes**, where it took an earlier variant that read from an object of none of its keys and dropped the keys of the right one: with `#[serde(untagged)] pub enum Finish { Bare { #[serde(default, skip_serializing_if = "::core::option::Option::is_none")] gloss: Option<u32> }, Painted { colour: String } }` flattened in `pub struct Door { #[serde(flatten)] pub finish: Finish, pub label: String }`, `{"colour":"red","label":"f2"}` reads as `Painted`, where Swift read it as `Bare` and wrote it back without `colour`. The Kotlin read takes it since the release that hands such a member the keys its holder leaves.
 - **The Swift read refuses a key no member declares beside a flattened enum, a flattened struct of one slot, and a flattened member that reads every key left and refuses one**, as serde refuses it, where it read past it; the Kotlin read refuses it beside a flattened struct of one slot as well. With `pub struct Carton { pub label: String, #[serde(flatten)] pub size: Size }` and `pub enum Size { Large(Weight), Small { width: u32 } }`, `{"label":"c1","Small":{"width":3},"stray":1}` is refused.
@@ -9996,7 +9995,7 @@ pub struct MyType {
 
 **Error:** `cannot find module or crate <type>_schema in this scope` (`E0433`), reported at the field's type.
 
-On a type that lists `enable = ["jsonschema"]`, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module by its bare name, so the module has to be in scope where the referencing type is declared. Import it beside the type:
+On a type that lists `enable = ["jsonschema"]`, a field naming a `#[model_schema]` type reaches that type's generated `{type}_schema` module through the path it is written with: `crate::version::Version` needs no import. A bare name reaches the module by its bare name, so import it beside the type:
 
 ```rust
 pub mod version {
@@ -10018,7 +10017,7 @@ pub mod record {
 }
 ```
 
-rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it.
+rustc's help line suggests `cargo add version_schema`; there is no such crate. The module is generated next to `Version`, in the module that declares it, so a path through a re-export reaches no module.
 
 The import is the JSON Schema's alone. The typed MongoDB paths name no other type's module, so a type that lists `"mongodb"` and not `"jsonschema"`, and holds a model declared in another module, builds with the model imported by itself, whatever the schema surfaces (`typescript`, `zod`) are.
 

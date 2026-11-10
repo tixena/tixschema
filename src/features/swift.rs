@@ -30,7 +30,7 @@ use crate::features::serde::{
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
-    FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
+    FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, Scope, VariantKind, get_field_def,
     is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
@@ -4009,6 +4009,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         serde_default: None,
         bytes: false,
         set_levels: Vec::new(),
+        scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
     };
     value_wrapper_tokens(

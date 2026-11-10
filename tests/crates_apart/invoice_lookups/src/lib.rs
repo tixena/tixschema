@@ -49,3 +49,12 @@ pub struct ParcelWeight {
     /// The weight in grams.
     pub grams: u32,
 }
+
+/// Where a parcel is left, described in JSON Schema as well: a holder in another crate names it by
+/// its path.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DropOff {
+    /// The depot the parcel is left at.
+    pub depot: String,
+}

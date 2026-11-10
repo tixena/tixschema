@@ -54,7 +54,7 @@ use crate::field_type::{RESULT_ARMS, RangeKind};
 use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
     field_type::{
-        BoundKind, FieldDef, FieldDefType, MissingKey, VariantKind, classify_variant,
+        BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
         format_number_literal, get_field_def, held_literal, is_plain_enum,
     },
     utils::{get_field_docs, get_variant_docs, rustdoc_description, strip_examples_from_docs},
@@ -3010,8 +3010,9 @@ fn json_schema_examples(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenSt
 
 /// The `examples` keyword an item that republishes the sibling binding `name` shows: the member
 /// the sibling's own document holds, where it holds one.
-fn sibling_json_schema_examples(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+fn sibling_json_schema_examples(name: &str, written: &FieldDef) -> proc_macro2::TokenStream {
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     quote_spanned! {span=>
         #module_ident::Schema::json_schema().get("examples").cloned()
     }
@@ -3032,7 +3033,7 @@ fn republished_json_examples(field: &FieldDef) -> Option<proc_macro2::TokenStrea
     let FieldDefType::SiblingType(name, _) = &field.field_type else {
         return None;
     };
-    shows_sibling_examples(field).then(|| sibling_json_schema_examples(name, field.type_span))
+    shows_sibling_examples(field).then(|| sibling_json_schema_examples(name, field))
 }
 
 /// [`republished_json_examples`] for the slot of a tuple struct, which serde writes as the slot's
@@ -14311,10 +14312,9 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
             let literal = bigint_literal_const(fld);
             quote! { serde_json::json!({ "type": "integer", "const": #literal }) }
         }
-        FieldDefType::SiblingType(name, arguments) => named_field_json_schema_value(
-            fld,
-            &sibling_json_schema_value(name, arguments, fld.type_span),
-        ),
+        FieldDefType::SiblingType(name, arguments) => {
+            named_field_json_schema_value(fld, &sibling_json_schema_value(name, arguments, fld))
+        }
         FieldDefType::String => string_field_json_schema_value(fld),
         FieldDefType::Char => {
             quote! { serde_json::json!({ "type": "string", "minLength": 1, "maxLength": 1 }) }
@@ -15814,6 +15814,15 @@ fn sibling_schema_module_ident(name: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(module_name.as_str(), span)
 }
 
+/// The schema module of the type `name`, reached through the path `scope` it was written under.
+pub fn sibling_schema_module(
+    name: &str,
+    scope: &Scope,
+    span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    scope.reaching(&sibling_schema_module_ident(name, span), span)
+}
+
 /// `described`, a named type's own schema, narrowed from inside an `allOf` by the length and
 /// pattern bounds written on the field holding it, or `described` alone where none was written.
 fn named_field_json_schema_value(
@@ -15850,9 +15859,10 @@ fn named_field_json_schema_value(
 fn sibling_json_schema_value(
     name: &str,
     arguments: &[FieldDef],
-    span: proc_macro2::Span,
+    written: &FieldDef,
 ) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     // Named where the run declares them, not on the field's type: a type handed into a
     // `macro_rules!` body carries its call site's hygiene, under which no binding is found.
     let run = quote! { in_flight, hoisted_defs, pointer_prefix };
@@ -15895,12 +15905,17 @@ pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::Tok
 /// an `Option`, a list or a reference, and each type handed to a generic type, a tuple, a map, a
 /// range or a `Result`.
 #[cfg(feature = "serde")]
-pub fn named_json_schema_modules(ty: &syn::Type) -> Vec<Ident> {
-    fn collect(fld: &FieldDef, found: &mut Vec<Ident>) {
+pub fn named_json_schema_modules(
+    ty: &syn::Type,
+) -> Vec<(proc_macro2::TokenStream, proc_macro2::Span)> {
+    fn collect(fld: &FieldDef, found: &mut Vec<(proc_macro2::TokenStream, proc_macro2::Span)>) {
         match &fld.field_type {
             FieldDefType::SiblingType(name, arguments) => {
                 if arguments.is_empty() {
-                    found.push(sibling_schema_module_ident(name, fld.type_span));
+                    found.push((
+                        sibling_schema_module(name, &fld.scope, fld.type_span),
+                        fld.type_span,
+                    ));
                 }
                 for argument in arguments {
                     collect(argument, found);
@@ -16057,7 +16072,7 @@ fn bounded_slot_item(value: &FieldDef) -> Option<proc_macro2::TokenStream> {
     let meta = value.model_schema_prop_meta.as_ref()?;
     let measured = meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some();
     if let FieldDefType::SiblingType(name, arguments) = &value.field_type {
-        let described = sibling_json_schema_value(name, arguments, value.type_span);
+        let described = sibling_json_schema_value(name, arguments, value);
         return measured.then(|| named_field_json_schema_value(value, &described));
     }
     if matches!(value.field_type, FieldDefType::String) {
@@ -16563,7 +16578,7 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
             MapMemberItem::Value(sibling_json_schema_value(
                 value_type_name,
                 value_args,
-                value.type_span,
+                value,
             ))
         }
         // The one `$oid` object every position spells, which a member carries as written.
@@ -16943,7 +16958,7 @@ fn build_sibling_type_field_schema(
     generate_type_schema(
         fld,
         field_name_str,
-        &named_field_json_schema_value(fld, &sibling_json_schema_value(name, lst, fld.type_span)),
+        &named_field_json_schema_value(fld, &sibling_json_schema_value(name, lst, fld)),
     )
 }
 
@@ -21422,8 +21437,8 @@ fn flatten_merged_source(fld: &FieldDef) -> MergedSource {
             label: name.clone(),
             map: false,
             optional: fld.is_optional(),
-            unit_member: unit_member_record(name, fld.type_span),
-            value: sibling_json_schema_value(name, arguments, fld.type_span),
+            unit_member: unit_member_record(name, fld),
+            value: sibling_json_schema_value(name, arguments, fld),
         };
     }
     // A map joins as its own description, as it is described under a key; a key no surface
@@ -21470,8 +21485,9 @@ const fn flattened_object_id(_fld: &FieldDef) -> Option<proc_macro2::TokenStream
 /// Whether the type `name` stands for publishes the record of an untagged enum with a member
 /// serde writes as `()`, read where the merge runs: a type without it answers through the
 /// block-local trait, an inherent const being found ahead of a trait's.
-fn unit_member_record(name: &str, span: proc_macro2::Span) -> proc_macro2::TokenStream {
-    let module_ident = sibling_schema_module_ident(name, span);
+fn unit_member_record(name: &str, written: &FieldDef) -> proc_macro2::TokenStream {
+    let span = written.type_span;
+    let module_ident = sibling_schema_module(name, &written.scope, span);
     let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
     let recorded = quote_spanned! {span=> #module_ident::Schema::#record };
     quote! {
@@ -21535,7 +21551,7 @@ fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
         && !def.is_optional()
         && !is_sequence_wrapper(name)
     {
-        let forwarded = unit_member_record(name, def.type_span);
+        let forwarded = unit_member_record(name, &def);
         return quote! { pub const #record: bool = #forwarded; };
     }
     proc_macro2::TokenStream::new()
@@ -21570,9 +21586,7 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         }
         FieldDefType::SiblingType(name, arguments) => {
             return Some(named_key_text(&sibling_json_schema_value(
-                name,
-                arguments,
-                key.type_span,
+                name, arguments, key,
             )));
         }
         FieldDefType::Boolean => BOOLEAN_KEY_PATTERN,

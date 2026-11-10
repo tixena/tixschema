@@ -6,8 +6,9 @@
 //! type parameter.
 
 use super::{
-    FieldDef, FieldDefType, Item, Tagging, VariantKind, get_field_def, sibling_schema_module_ident,
-    type_parameters_in_scope, variant_on_the_wire, variant_wire_kind, written_as_its_slot,
+    FieldDef, FieldDefType, Item, Scope, Tagging, VariantKind, get_field_def,
+    sibling_schema_module, sibling_schema_module_ident, type_parameters_in_scope,
+    variant_on_the_wire, variant_wire_kind, written_as_its_slot,
 };
 use crate::utils::{record_needs_wrapper, recorded_needs_wrapper};
 use proc_macro2::TokenStream;
@@ -20,6 +21,7 @@ enum Shape {
     Model {
         arguments: bool,
         name: String,
+        scope: Scope,
         span: proc_macro2::Span,
     },
     /// The answer is known from the type alone.
@@ -103,14 +105,16 @@ pub fn of_type(ty: &Type) -> TokenStream {
         Shape::Model {
             arguments: false,
             name,
+            scope,
             span,
         } => {
-            let module = sibling_schema_module_ident(&name, span);
+            let module = sibling_schema_module(&name, &scope, span);
             quote! { #module::Schema::needs_wrapper() }
         }
         Shape::Model {
             arguments: true,
             name: _name,
+            scope: _scope,
             span: _span,
         } => {
             let named = peeled(ty);
@@ -183,6 +187,7 @@ fn of_slot(ty: &Type, parameters: &[String]) -> bool {
         Shape::Model {
             arguments: _arguments,
             name,
+            scope: _scope,
             span: _span,
         } => recorded_needs_wrapper(&name).unwrap_or(true),
     }
@@ -205,6 +210,7 @@ fn shape_of_field(def: &FieldDef) -> Shape {
         FieldDefType::SiblingType(name, arguments) => Shape::Model {
             arguments: !arguments.is_empty(),
             name: name.clone(),
+            scope: def.scope.clone(),
             span: def.type_span,
         },
         FieldDefType::Boolean

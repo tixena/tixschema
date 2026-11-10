@@ -36,6 +36,25 @@ pub struct LookupLog {
     pub number: String,
 }
 
+/// A delivery of this crate, naming a type of another by its path.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Delivery {
+    pub first: invoice_lookups::DropOff,
+    #[model_schema_prop(nullable)]
+    pub last: Option<::invoice_lookups::DropOff>,
+    pub stops: Vec<invoice_lookups::DropOff>,
+}
+
+/// A courier of this crate, flattening a type of another named by its path.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Courier {
+    #[serde(flatten)]
+    pub drop_off: invoice_lookups::DropOff,
+    pub name: String,
+}
+
 /// Each issue among `handed` that is `Invalid`, as its path, its expected type and the value it
 /// holds, every other one as its `Debug` text.
 fn listed<V>(
@@ -219,4 +238,45 @@ fn an_issue_inside_a_type_of_a_crate_that_names_no_bson_is_reported_at_its_full_
     );
     assert_eq!(paths, ["parcels[0].label"]);
     assert_eq!(read.map_err(|refused| refused.issues.len()), Err(1));
+}
+
+#[test]
+fn a_type_of_another_crate_named_by_its_path_is_described_through_its_crates_schema_module() {
+    let drop_off = json!({
+        "additionalProperties": false,
+        "properties": {
+            "depot": { "description": "The depot the parcel is left at.", "type": "string" },
+        },
+        "required": ["depot"],
+        "type": "object",
+    });
+    assert_eq!(
+        Delivery::json_schema(),
+        json!({
+            "additionalProperties": false,
+            "properties": {
+                "first": drop_off,
+                "last": { "anyOf": [drop_off, { "type": "null" }] },
+                "stops": { "items": drop_off, "type": "array" },
+            },
+            "required": ["first", "last", "stops"],
+            "type": "object",
+        })
+    );
+}
+
+#[test]
+fn a_type_of_another_crate_named_by_its_path_is_flattened_through_its_crates_schema_module() {
+    assert_eq!(
+        Courier::json_schema(),
+        json!({
+            "additionalProperties": false,
+            "properties": {
+                "depot": { "description": "The depot the parcel is left at.", "type": "string" },
+                "name": { "type": "string" },
+            },
+            "required": ["name", "depot"],
+            "type": "object",
+        })
+    );
 }
