@@ -3442,7 +3442,7 @@ mod holders {
         pub m1: Option<COI11N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder21 {
         #[serde(flatten)]
@@ -3451,7 +3451,7 @@ mod holders {
         pub m1: CFO11NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder29 {
         #[serde(flatten)]
@@ -3469,7 +3469,7 @@ mod holders {
         pub m1: CA11SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder45 {
         #[serde(flatten)]
@@ -3478,7 +3478,7 @@ mod holders {
         pub m1: CA11NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder53 {
         #[serde(flatten)]
@@ -3487,7 +3487,7 @@ mod holders {
         pub m1: Option<COI11N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder61 {
         #[serde(flatten)]
@@ -3514,7 +3514,7 @@ mod holders {
         pub m1: CT11SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder85 {
         #[serde(flatten)]
@@ -3523,7 +3523,7 @@ mod holders {
         pub m1: CP11S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder93 {
         #[serde(flatten)]
@@ -3534,7 +3534,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder101 {
         #[serde(flatten)]
@@ -3556,7 +3556,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder117 {
         #[serde(flatten)]
@@ -3567,7 +3567,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder125 {
         #[serde(flatten)]
@@ -3578,7 +3578,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder133 {
         #[serde(flatten)]
@@ -3589,7 +3589,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder141 {
         #[serde(flatten)]
@@ -3600,7 +3600,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder149 {
         #[serde(flatten)]
@@ -3622,7 +3622,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder165 {
         #[serde(flatten)]
@@ -3633,7 +3633,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder173 {
         #[serde(flatten)]
@@ -3704,21 +3704,21 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder229 {
         #[serde(flatten)]
         pub m0: FP0NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder237 {
         #[serde(flatten)]
         pub m0: T0NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder245 {
         #[serde(flatten)]
@@ -3815,7 +3815,7 @@ mod holders {
         pub m1: A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder333 {
         #[serde(flatten)]
@@ -3833,7 +3833,7 @@ mod holders {
         pub m1: V1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder349 {
         #[serde(flatten)]
@@ -3842,7 +3842,7 @@ mod holders {
         pub m1: Option<OI1N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder357 {
         #[serde(flatten)]
@@ -3851,7 +3851,7 @@ mod holders {
         pub m1: E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder365 {
         #[serde(flatten)]
@@ -3860,7 +3860,7 @@ mod holders {
         pub m1: P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder373 {
         #[serde(flatten)]
@@ -3878,7 +3878,7 @@ mod holders {
         pub m1: A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder389 {
         #[serde(flatten)]
@@ -3905,7 +3905,7 @@ mod holders {
         pub m1: FP1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder413 {
         #[serde(flatten)]
@@ -3914,7 +3914,7 @@ mod holders {
         pub m1: V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder421 {
         #[serde(flatten)]
@@ -3941,7 +3941,7 @@ mod holders {
         pub m1: FO1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder445 {
         #[serde(flatten)]
@@ -3950,7 +3950,7 @@ mod holders {
         pub m1: T1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder453 {
         #[serde(flatten)]
@@ -3959,7 +3959,7 @@ mod holders {
         pub m1: FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder461 {
         #[serde(flatten)]
@@ -3968,7 +3968,7 @@ mod holders {
         pub m1: V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder469 {
         #[serde(flatten)]
@@ -4032,7 +4032,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder517 {
         #[serde(flatten)]
@@ -4065,7 +4065,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder541 {
         #[serde(flatten)]
@@ -4076,7 +4076,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder549 {
         #[serde(flatten)]
@@ -4087,7 +4087,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder557 {
         #[serde(flatten)]
@@ -4098,7 +4098,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder565 {
         #[serde(flatten)]
@@ -4109,7 +4109,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder573 {
         #[serde(flatten)]
@@ -4120,7 +4120,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder581 {
         #[serde(flatten)]
@@ -4142,7 +4142,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder597 {
         #[serde(flatten)]
@@ -4153,7 +4153,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder605 {
         #[serde(flatten)]
@@ -4186,7 +4186,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder629 {
         #[serde(flatten)]
@@ -4197,7 +4197,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder637 {
         #[serde(flatten)]
@@ -4219,7 +4219,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder653 {
         #[serde(flatten)]
@@ -4230,7 +4230,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder661 {
         #[serde(flatten)]
@@ -4241,7 +4241,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder669 {
         #[serde(flatten)]
@@ -4445,7 +4445,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder829 {
         #[serde(flatten)]
@@ -4478,7 +4478,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder853 {
         #[serde(flatten)]
@@ -4489,7 +4489,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder861 {
         #[serde(flatten)]
@@ -4511,7 +4511,7 @@ mod holders {
         pub m2: T2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder877 {
         #[serde(flatten)]
@@ -4522,7 +4522,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder885 {
         #[serde(flatten)]
@@ -4533,7 +4533,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder893 {
         #[serde(flatten)]
@@ -4544,7 +4544,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder901 {
         #[serde(flatten)]
@@ -4555,7 +4555,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder909 {
         #[serde(flatten)]
@@ -4566,7 +4566,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder917 {
         #[serde(flatten)]
@@ -4599,7 +4599,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder941 {
         #[serde(flatten)]
@@ -4610,7 +4610,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder949 {
         #[serde(flatten)]
@@ -4654,7 +4654,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder981 {
         #[serde(flatten)]
@@ -4665,7 +4665,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder989 {
         #[serde(flatten)]
@@ -4676,7 +4676,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder997 {
         #[serde(flatten)]
@@ -4698,7 +4698,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1013 {
         #[serde(flatten)]
@@ -4731,7 +4731,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1037 {
         #[serde(flatten)]
@@ -4742,7 +4742,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1045 {
         #[serde(flatten)]
@@ -4775,7 +4775,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1069 {
         #[serde(flatten)]
@@ -4786,7 +4786,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1077 {
         #[serde(flatten)]
@@ -4797,7 +4797,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1085 {
         #[serde(flatten)]
@@ -4808,7 +4808,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1093 {
         #[serde(flatten)]
@@ -4819,7 +4819,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1101 {
         #[serde(flatten)]
@@ -4830,7 +4830,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1109 {
         #[serde(flatten)]
@@ -4852,7 +4852,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1125 {
         #[serde(flatten)]
@@ -4863,7 +4863,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1133 {
         #[serde(flatten)]
@@ -4929,7 +4929,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1181 {
         #[serde(flatten)]
@@ -4940,7 +4940,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1189 {
         #[serde(flatten)]
@@ -4951,7 +4951,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1197 {
         #[serde(flatten)]
@@ -4962,7 +4962,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1205 {
         #[serde(flatten)]
@@ -4984,7 +4984,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1221 {
         #[serde(flatten)]
@@ -4995,7 +4995,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1229 {
         #[serde(flatten)]
@@ -5028,7 +5028,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1253 {
         #[serde(flatten)]
@@ -5039,7 +5039,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1261 {
         #[serde(flatten)]
@@ -5061,7 +5061,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1277 {
         #[serde(flatten)]
@@ -5072,7 +5072,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1285 {
         #[serde(flatten)]
@@ -5083,7 +5083,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1293 {
         #[serde(flatten)]
@@ -5094,7 +5094,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1301 {
         #[serde(flatten)]
@@ -5105,7 +5105,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1309 {
         #[serde(flatten)]
@@ -5116,7 +5116,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1317 {
         #[serde(flatten)]
@@ -5204,7 +5204,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1381 {
         #[serde(flatten)]
@@ -5215,7 +5215,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1389 {
         #[serde(flatten)]
@@ -5226,7 +5226,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1397 {
         #[serde(flatten)]
@@ -5237,7 +5237,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1405 {
         #[serde(flatten)]
@@ -5248,7 +5248,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1413 {
         #[serde(flatten)]
@@ -5281,7 +5281,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1437 {
         #[serde(flatten)]
@@ -5292,7 +5292,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1445 {
         #[serde(flatten)]
@@ -5336,7 +5336,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1477 {
         #[serde(flatten)]
@@ -5347,7 +5347,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1485 {
         #[serde(flatten)]
@@ -5358,7 +5358,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1493 {
         #[serde(flatten)]
@@ -5369,7 +5369,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1501 {
         #[serde(flatten)]
@@ -5380,7 +5380,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1509 {
         #[serde(flatten)]
@@ -5468,7 +5468,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1573 {
         #[serde(flatten)]
@@ -5490,7 +5490,7 @@ mod holders {
         pub m2: V2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1589 {
         #[serde(flatten)]
@@ -5501,7 +5501,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1597 {
         #[serde(flatten)]
@@ -5512,7 +5512,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1605 {
         #[serde(flatten)]
@@ -5523,7 +5523,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1613 {
         #[serde(flatten)]
@@ -5534,7 +5534,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1621 {
         #[serde(flatten)]
@@ -5545,7 +5545,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1629 {
         #[serde(flatten)]
@@ -5556,7 +5556,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1637 {
         #[serde(flatten)]
@@ -5567,7 +5567,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1645 {
         #[serde(flatten)]
@@ -5578,7 +5578,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1653 {
         #[serde(flatten)]
@@ -5589,7 +5589,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1661 {
         #[serde(flatten)]
@@ -5600,7 +5600,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1669 {
         #[serde(flatten)]
@@ -5611,7 +5611,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1677 {
         #[serde(flatten)]
@@ -5622,7 +5622,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1685 {
         #[serde(flatten)]
@@ -5633,7 +5633,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1693 {
         #[serde(flatten)]
@@ -5644,7 +5644,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1701 {
         #[serde(flatten)]
@@ -5655,7 +5655,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1709 {
         #[serde(flatten)]
@@ -5666,7 +5666,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1717 {
         #[serde(flatten)]
@@ -5677,7 +5677,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1725 {
         #[serde(flatten)]
@@ -5688,7 +5688,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1733 {
         #[serde(flatten)]
@@ -5699,7 +5699,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1741 {
         #[serde(flatten)]
@@ -5710,7 +5710,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1749 {
         #[serde(flatten)]
@@ -5721,7 +5721,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1757 {
         #[serde(flatten)]
@@ -5732,7 +5732,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1765 {
         #[serde(flatten)]
@@ -5743,7 +5743,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1773 {
         #[serde(flatten)]
@@ -5754,7 +5754,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1781 {
         #[serde(flatten)]
@@ -5765,7 +5765,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1789 {
         #[serde(flatten)]
@@ -5776,7 +5776,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1797 {
         #[serde(flatten)]
@@ -5787,7 +5787,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1805 {
         #[serde(flatten)]
@@ -5798,7 +5798,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1813 {
         #[serde(flatten)]
@@ -5809,7 +5809,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1821 {
         #[serde(flatten)]
@@ -5820,7 +5820,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1829 {
         #[serde(flatten)]
@@ -5831,7 +5831,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1837 {
         #[serde(flatten)]
@@ -5842,7 +5842,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1845 {
         #[serde(flatten)]
@@ -5853,7 +5853,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1853 {
         #[serde(flatten)]
@@ -5864,7 +5864,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1861 {
         #[serde(flatten)]
@@ -5875,7 +5875,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1869 {
         #[serde(flatten)]
@@ -5886,7 +5886,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1877 {
         #[serde(flatten)]
@@ -5897,7 +5897,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1885 {
         #[serde(flatten)]
@@ -5908,7 +5908,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1893 {
         #[serde(flatten)]
@@ -5919,7 +5919,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1901 {
         #[serde(flatten)]
@@ -5930,7 +5930,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1909 {
         #[serde(flatten)]
@@ -5941,7 +5941,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1917 {
         #[serde(flatten)]
@@ -5952,7 +5952,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1925 {
         #[serde(flatten)]
@@ -5963,7 +5963,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1933 {
         #[serde(flatten)]
@@ -5974,7 +5974,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1941 {
         #[serde(flatten)]
@@ -5985,7 +5985,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1949 {
         #[serde(flatten)]
@@ -5996,7 +5996,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1957 {
         #[serde(flatten)]
@@ -6007,7 +6007,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1965 {
         #[serde(flatten)]
@@ -6018,7 +6018,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1973 {
         #[serde(flatten)]
@@ -6029,7 +6029,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1981 {
         #[serde(flatten)]
@@ -6040,7 +6040,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1989 {
         #[serde(flatten)]
@@ -6051,7 +6051,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder1997 {
         #[serde(flatten)]
@@ -6062,7 +6062,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2005 {
         #[serde(flatten)]
@@ -6073,7 +6073,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2013 {
         #[serde(flatten)]
@@ -6084,7 +6084,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2021 {
         #[serde(flatten)]
@@ -6095,7 +6095,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2029 {
         #[serde(flatten)]
@@ -6106,7 +6106,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2037 {
         #[serde(flatten)]
@@ -6117,7 +6117,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2045 {
         #[serde(flatten)]
@@ -6128,7 +6128,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2053 {
         #[serde(flatten)]
@@ -6139,7 +6139,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2061 {
         #[serde(flatten)]
@@ -6150,7 +6150,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2069 {
         #[serde(flatten)]
@@ -6161,7 +6161,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2077 {
         #[serde(flatten)]
@@ -6172,7 +6172,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2085 {
         #[serde(flatten)]
@@ -6183,7 +6183,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2093 {
         #[serde(flatten)]
@@ -6194,7 +6194,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2101 {
         #[serde(flatten)]
@@ -6205,7 +6205,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2109 {
         #[serde(flatten)]
@@ -6271,7 +6271,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2157 {
         #[serde(flatten)]
@@ -6304,7 +6304,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2181 {
         #[serde(flatten)]
@@ -6315,7 +6315,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2189 {
         #[serde(flatten)]
@@ -6326,7 +6326,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2197 {
         #[serde(flatten)]
@@ -6337,7 +6337,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2205 {
         #[serde(flatten)]
@@ -6348,7 +6348,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2213 {
         #[serde(flatten)]
@@ -6359,7 +6359,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2221 {
         #[serde(flatten)]
@@ -6381,7 +6381,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2237 {
         #[serde(flatten)]
@@ -6392,7 +6392,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2245 {
         #[serde(flatten)]
@@ -6425,7 +6425,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2269 {
         #[serde(flatten)]
@@ -6436,7 +6436,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2277 {
         #[serde(flatten)]
@@ -6458,7 +6458,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2293 {
         #[serde(flatten)]
@@ -6469,7 +6469,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2301 {
         #[serde(flatten)]
@@ -6480,7 +6480,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2309 {
         #[serde(flatten)]
@@ -6524,7 +6524,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2341 {
         #[serde(flatten)]
@@ -6557,7 +6557,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2365 {
         #[serde(flatten)]
@@ -6568,7 +6568,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2373 {
         #[serde(flatten)]
@@ -6590,7 +6590,7 @@ mod holders {
         pub m2: T2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2389 {
         #[serde(flatten)]
@@ -6601,7 +6601,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2397 {
         #[serde(flatten)]
@@ -6612,7 +6612,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2405 {
         #[serde(flatten)]
@@ -6623,7 +6623,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2413 {
         #[serde(flatten)]
@@ -6634,7 +6634,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2421 {
         #[serde(flatten)]
@@ -6645,7 +6645,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2429 {
         #[serde(flatten)]
@@ -6678,7 +6678,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2453 {
         #[serde(flatten)]
@@ -6689,7 +6689,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2461 {
         #[serde(flatten)]
@@ -6733,7 +6733,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2493 {
         #[serde(flatten)]
@@ -6744,7 +6744,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2501 {
         #[serde(flatten)]
@@ -6755,7 +6755,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2509 {
         #[serde(flatten)]
@@ -6777,7 +6777,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2525 {
         #[serde(flatten)]
@@ -6810,7 +6810,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2549 {
         #[serde(flatten)]
@@ -6821,7 +6821,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2557 {
         #[serde(flatten)]
@@ -6854,7 +6854,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2581 {
         #[serde(flatten)]
@@ -6865,7 +6865,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2589 {
         #[serde(flatten)]
@@ -6876,7 +6876,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2597 {
         #[serde(flatten)]
@@ -6887,7 +6887,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2605 {
         #[serde(flatten)]
@@ -6898,7 +6898,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2613 {
         #[serde(flatten)]
@@ -6909,7 +6909,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2621 {
         #[serde(flatten)]
@@ -6931,7 +6931,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2637 {
         #[serde(flatten)]
@@ -6942,7 +6942,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2645 {
         #[serde(flatten)]
@@ -7008,7 +7008,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2693 {
         #[serde(flatten)]
@@ -7019,7 +7019,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2701 {
         #[serde(flatten)]
@@ -7030,7 +7030,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2709 {
         #[serde(flatten)]
@@ -7041,7 +7041,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2717 {
         #[serde(flatten)]
@@ -7063,7 +7063,7 @@ mod holders {
         pub m2: FP2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2733 {
         #[serde(flatten)]
@@ -7074,7 +7074,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2741 {
         #[serde(flatten)]
@@ -7107,7 +7107,7 @@ mod holders {
         pub m2: FO2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2765 {
         #[serde(flatten)]
@@ -7118,7 +7118,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2773 {
         #[serde(flatten)]
@@ -7140,7 +7140,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2789 {
         #[serde(flatten)]
@@ -7151,7 +7151,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2797 {
         #[serde(flatten)]
@@ -7162,7 +7162,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2805 {
         #[serde(flatten)]
@@ -7173,7 +7173,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2813 {
         #[serde(flatten)]
@@ -7184,7 +7184,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2821 {
         #[serde(flatten)]
@@ -7195,7 +7195,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2829 {
         #[serde(flatten)]
@@ -7283,7 +7283,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2893 {
         #[serde(flatten)]
@@ -7294,7 +7294,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2901 {
         #[serde(flatten)]
@@ -7305,7 +7305,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2909 {
         #[serde(flatten)]
@@ -7316,7 +7316,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2917 {
         #[serde(flatten)]
@@ -7327,7 +7327,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2925 {
         #[serde(flatten)]
@@ -7338,7 +7338,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2933 {
         #[serde(flatten)]
@@ -7349,7 +7349,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2941 {
         #[serde(flatten)]
@@ -7360,7 +7360,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2949 {
         #[serde(flatten)]
@@ -7371,7 +7371,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2957 {
         #[serde(flatten)]
@@ -7382,7 +7382,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2965 {
         #[serde(flatten)]
@@ -7393,7 +7393,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2973 {
         #[serde(flatten)]
@@ -7404,7 +7404,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2981 {
         #[serde(flatten)]
@@ -7415,7 +7415,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2989 {
         #[serde(flatten)]
@@ -7426,7 +7426,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder2997 {
         #[serde(flatten)]
@@ -7437,7 +7437,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3005 {
         #[serde(flatten)]
@@ -7448,7 +7448,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3013 {
         #[serde(flatten)]
@@ -7459,7 +7459,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3021 {
         #[serde(flatten)]
@@ -7470,7 +7470,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3029 {
         #[serde(flatten)]
@@ -7481,7 +7481,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3037 {
         #[serde(flatten)]
@@ -7492,7 +7492,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3045 {
         #[serde(flatten)]
@@ -7503,7 +7503,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3053 {
         #[serde(flatten)]
@@ -7514,7 +7514,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3061 {
         #[serde(flatten)]
@@ -7525,7 +7525,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3069 {
         #[serde(flatten)]
@@ -7536,7 +7536,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3077 {
         #[serde(flatten)]
@@ -7547,7 +7547,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3085 {
         #[serde(flatten)]
@@ -7558,7 +7558,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3093 {
         #[serde(flatten)]
@@ -7569,7 +7569,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3101 {
         #[serde(flatten)]
@@ -7580,7 +7580,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3109 {
         #[serde(flatten)]
@@ -7591,7 +7591,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3117 {
         #[serde(flatten)]
@@ -7602,7 +7602,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3125 {
         #[serde(flatten)]
@@ -7613,7 +7613,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3133 {
         #[serde(flatten)]
@@ -7624,7 +7624,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3141 {
         #[serde(flatten)]
@@ -7635,7 +7635,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3149 {
         #[serde(flatten)]
@@ -7646,7 +7646,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3157 {
         #[serde(flatten)]
@@ -7657,7 +7657,7 @@ mod holders {
         pub m2: FO2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3165 {
         #[serde(flatten)]
@@ -7668,7 +7668,7 @@ mod holders {
         pub m2: V2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3173 {
         #[serde(flatten)]
@@ -7679,7 +7679,7 @@ mod holders {
         pub m2: Option<OI2N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3181 {
         #[serde(flatten)]
@@ -7690,7 +7690,7 @@ mod holders {
         pub m2: E2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3189 {
         #[serde(flatten)]
@@ -7701,7 +7701,7 @@ mod holders {
         pub m2: P2S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3197 {
         #[serde(flatten)]
@@ -7712,7 +7712,7 @@ mod holders {
         pub m2: FP2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3205 {
         #[serde(flatten)]
@@ -7723,7 +7723,7 @@ mod holders {
         pub m2: A2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3213 {
         #[serde(flatten)]
@@ -7734,7 +7734,7 @@ mod holders {
         pub m2: Option<OI2S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3221 {
         #[serde(flatten)]
@@ -7745,7 +7745,7 @@ mod holders {
         pub m2: E2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3229 {
         #[serde(flatten)]
@@ -7756,7 +7756,7 @@ mod holders {
         pub m2: T2NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3237 {
         #[serde(flatten)]
@@ -7767,7 +7767,7 @@ mod holders {
         pub m2: FT2NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3245 {
         #[serde(flatten)]
@@ -7778,7 +7778,7 @@ mod holders {
         pub m2: A2SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3253 {
         #[serde(flatten)]
@@ -7789,7 +7789,7 @@ mod holders {
         pub m2: P2N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3261 {
         #[serde(flatten)]
@@ -7893,7 +7893,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3325 {
         #[serde(flatten)]
@@ -7906,7 +7906,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3333 {
         #[serde(flatten)]
@@ -7919,7 +7919,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3341 {
         #[serde(flatten)]
@@ -7932,7 +7932,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3349 {
         #[serde(flatten)]
@@ -7945,7 +7945,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3357 {
         #[serde(flatten)]
@@ -7997,7 +7997,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3389 {
         #[serde(flatten)]
@@ -8036,7 +8036,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3413 {
         #[serde(flatten)]
@@ -8049,7 +8049,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3421 {
         #[serde(flatten)]
@@ -8075,7 +8075,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3437 {
         #[serde(flatten)]
@@ -8088,7 +8088,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3445 {
         #[serde(flatten)]
@@ -8101,7 +8101,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3453 {
         #[serde(flatten)]
@@ -8205,7 +8205,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3517 {
         #[serde(flatten)]
@@ -8231,7 +8231,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3533 {
         #[serde(flatten)]
@@ -8244,7 +8244,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3541 {
         #[serde(flatten)]
@@ -8257,7 +8257,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3549 {
         #[serde(flatten)]
@@ -8270,7 +8270,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3557 {
         #[serde(flatten)]
@@ -8296,7 +8296,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3573 {
         #[serde(flatten)]
@@ -8335,7 +8335,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3597 {
         #[serde(flatten)]
@@ -8348,7 +8348,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3605 {
         #[serde(flatten)]
@@ -8387,7 +8387,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3629 {
         #[serde(flatten)]
@@ -8400,7 +8400,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3637 {
         #[serde(flatten)]
@@ -8413,7 +8413,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3645 {
         #[serde(flatten)]
@@ -8426,7 +8426,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3653 {
         #[serde(flatten)]
@@ -8504,7 +8504,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3701 {
         #[serde(flatten)]
@@ -8543,7 +8543,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3725 {
         #[serde(flatten)]
@@ -8556,7 +8556,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3733 {
         #[serde(flatten)]
@@ -8569,7 +8569,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3741 {
         #[serde(flatten)]
@@ -8582,7 +8582,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3749 {
         #[serde(flatten)]
@@ -8595,7 +8595,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3757 {
         #[serde(flatten)]
@@ -8608,7 +8608,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3765 {
         #[serde(flatten)]
@@ -8634,7 +8634,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3781 {
         #[serde(flatten)]
@@ -8647,7 +8647,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3789 {
         #[serde(flatten)]
@@ -8686,7 +8686,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3813 {
         #[serde(flatten)]
@@ -8699,7 +8699,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3821 {
         #[serde(flatten)]
@@ -8725,7 +8725,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3837 {
         #[serde(flatten)]
@@ -8738,7 +8738,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3845 {
         #[serde(flatten)]
@@ -8751,7 +8751,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3853 {
         #[serde(flatten)]
@@ -8803,7 +8803,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3885 {
         #[serde(flatten)]
@@ -8842,7 +8842,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3909 {
         #[serde(flatten)]
@@ -8855,7 +8855,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3917 {
         #[serde(flatten)]
@@ -8881,7 +8881,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3933 {
         #[serde(flatten)]
@@ -8894,7 +8894,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3941 {
         #[serde(flatten)]
@@ -8907,7 +8907,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3949 {
         #[serde(flatten)]
@@ -8920,7 +8920,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3957 {
         #[serde(flatten)]
@@ -8933,7 +8933,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3965 {
         #[serde(flatten)]
@@ -8946,7 +8946,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3973 {
         #[serde(flatten)]
@@ -8985,7 +8985,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder3997 {
         #[serde(flatten)]
@@ -8998,7 +8998,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4005 {
         #[serde(flatten)]
@@ -9050,7 +9050,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4037 {
         #[serde(flatten)]
@@ -9063,7 +9063,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4045 {
         #[serde(flatten)]
@@ -9076,7 +9076,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4053 {
         #[serde(flatten)]
@@ -9089,7 +9089,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4061 {
         #[serde(flatten)]
@@ -9102,7 +9102,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4069 {
         #[serde(flatten)]
@@ -9115,7 +9115,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4077 {
         #[serde(flatten)]
@@ -9128,7 +9128,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4085 {
         #[serde(flatten)]
@@ -9141,7 +9141,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4093 {
         #[serde(flatten)]
@@ -9154,7 +9154,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4101 {
         #[serde(flatten)]
@@ -9167,7 +9167,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4109 {
         #[serde(flatten)]
@@ -9180,7 +9180,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4117 {
         #[serde(flatten)]
@@ -9193,7 +9193,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4125 {
         #[serde(flatten)]
@@ -9206,7 +9206,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4133 {
         #[serde(flatten)]
@@ -9219,7 +9219,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4141 {
         #[serde(flatten)]
@@ -9232,7 +9232,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4149 {
         #[serde(flatten)]
@@ -9245,7 +9245,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4157 {
         #[serde(flatten)]
@@ -9258,7 +9258,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4165 {
         #[serde(flatten)]
@@ -9271,7 +9271,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4173 {
         #[serde(flatten)]
@@ -9284,7 +9284,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4181 {
         #[serde(flatten)]
@@ -9297,7 +9297,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4189 {
         #[serde(flatten)]
@@ -9310,7 +9310,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4197 {
         #[serde(flatten)]
@@ -9323,7 +9323,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4205 {
         #[serde(flatten)]
@@ -9336,7 +9336,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4213 {
         #[serde(flatten)]
@@ -9349,7 +9349,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4221 {
         #[serde(flatten)]
@@ -9362,7 +9362,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4229 {
         #[serde(flatten)]
@@ -9375,7 +9375,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4237 {
         #[serde(flatten)]
@@ -9388,7 +9388,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4245 {
         #[serde(flatten)]
@@ -9401,7 +9401,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4253 {
         #[serde(flatten)]
@@ -9414,7 +9414,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4261 {
         #[serde(flatten)]
@@ -9427,7 +9427,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4269 {
         #[serde(flatten)]
@@ -9440,7 +9440,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4277 {
         #[serde(flatten)]
@@ -9453,7 +9453,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4285 {
         #[serde(flatten)]
@@ -9466,7 +9466,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4293 {
         #[serde(flatten)]
@@ -9479,7 +9479,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4301 {
         #[serde(flatten)]
@@ -9492,7 +9492,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4309 {
         #[serde(flatten)]
@@ -9505,7 +9505,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4317 {
         #[serde(flatten)]
@@ -9518,7 +9518,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4325 {
         #[serde(flatten)]
@@ -9531,7 +9531,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4333 {
         #[serde(flatten)]
@@ -9544,7 +9544,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4341 {
         #[serde(flatten)]
@@ -9557,7 +9557,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4349 {
         #[serde(flatten)]
@@ -9570,7 +9570,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4357 {
         #[serde(flatten)]
@@ -9583,7 +9583,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4365 {
         #[serde(flatten)]
@@ -9596,7 +9596,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4373 {
         #[serde(flatten)]
@@ -9609,7 +9609,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4381 {
         #[serde(flatten)]
@@ -9622,7 +9622,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4389 {
         #[serde(flatten)]
@@ -9635,7 +9635,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4397 {
         #[serde(flatten)]
@@ -9648,7 +9648,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4405 {
         #[serde(flatten)]
@@ -9661,7 +9661,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4413 {
         #[serde(flatten)]
@@ -9674,7 +9674,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4421 {
         #[serde(flatten)]
@@ -9687,7 +9687,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4429 {
         #[serde(flatten)]
@@ -9700,7 +9700,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4437 {
         #[serde(flatten)]
@@ -9713,7 +9713,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4445 {
         #[serde(flatten)]
@@ -9726,7 +9726,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4453 {
         #[serde(flatten)]
@@ -9739,7 +9739,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4461 {
         #[serde(flatten)]
@@ -9752,7 +9752,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4469 {
         #[serde(flatten)]
@@ -9765,7 +9765,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4477 {
         #[serde(flatten)]
@@ -9778,7 +9778,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4485 {
         #[serde(flatten)]
@@ -9791,7 +9791,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4493 {
         #[serde(flatten)]
@@ -9804,7 +9804,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4501 {
         #[serde(flatten)]
@@ -9817,7 +9817,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4509 {
         #[serde(flatten)]
@@ -9830,7 +9830,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4517 {
         #[serde(flatten)]
@@ -9843,7 +9843,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4525 {
         #[serde(flatten)]
@@ -9856,7 +9856,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4533 {
         #[serde(flatten)]
@@ -9869,7 +9869,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4541 {
         #[serde(flatten)]
@@ -9882,7 +9882,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4549 {
         #[serde(flatten)]
@@ -9895,7 +9895,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4557 {
         #[serde(flatten)]
@@ -9908,7 +9908,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4565 {
         #[serde(flatten)]
@@ -9934,7 +9934,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4581 {
         #[serde(flatten)]
@@ -9947,7 +9947,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4589 {
         #[serde(flatten)]
@@ -10025,7 +10025,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4637 {
         #[serde(flatten)]
@@ -10038,7 +10038,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4645 {
         #[serde(flatten)]
@@ -10051,7 +10051,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4653 {
         #[serde(flatten)]
@@ -10064,7 +10064,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4661 {
         #[serde(flatten)]
@@ -10077,7 +10077,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4669 {
         #[serde(flatten)]
@@ -10155,7 +10155,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4717 {
         #[serde(flatten)]
@@ -10194,7 +10194,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4741 {
         #[serde(flatten)]
@@ -10207,7 +10207,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4749 {
         #[serde(flatten)]
@@ -10220,7 +10220,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4757 {
         #[serde(flatten)]
@@ -10233,7 +10233,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4765 {
         #[serde(flatten)]
@@ -10246,7 +10246,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4773 {
         #[serde(flatten)]
@@ -10350,7 +10350,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4837 {
         #[serde(flatten)]
@@ -10363,7 +10363,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4845 {
         #[serde(flatten)]
@@ -10376,7 +10376,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4853 {
         #[serde(flatten)]
@@ -10389,7 +10389,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4861 {
         #[serde(flatten)]
@@ -10402,7 +10402,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4869 {
         #[serde(flatten)]
@@ -10454,7 +10454,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4901 {
         #[serde(flatten)]
@@ -10493,7 +10493,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4925 {
         #[serde(flatten)]
@@ -10506,7 +10506,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4933 {
         #[serde(flatten)]
@@ -10532,7 +10532,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4949 {
         #[serde(flatten)]
@@ -10545,7 +10545,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4957 {
         #[serde(flatten)]
@@ -10558,7 +10558,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder4965 {
         #[serde(flatten)]
@@ -10662,7 +10662,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5029 {
         #[serde(flatten)]
@@ -10688,7 +10688,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5045 {
         #[serde(flatten)]
@@ -10701,7 +10701,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5053 {
         #[serde(flatten)]
@@ -10714,7 +10714,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5061 {
         #[serde(flatten)]
@@ -10727,7 +10727,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5069 {
         #[serde(flatten)]
@@ -10753,7 +10753,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5085 {
         #[serde(flatten)]
@@ -10792,7 +10792,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5109 {
         #[serde(flatten)]
@@ -10805,7 +10805,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5117 {
         #[serde(flatten)]
@@ -10844,7 +10844,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5141 {
         #[serde(flatten)]
@@ -10857,7 +10857,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5149 {
         #[serde(flatten)]
@@ -10870,7 +10870,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5157 {
         #[serde(flatten)]
@@ -10883,7 +10883,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5165 {
         #[serde(flatten)]
@@ -10961,7 +10961,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5213 {
         #[serde(flatten)]
@@ -11000,7 +11000,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5237 {
         #[serde(flatten)]
@@ -11013,7 +11013,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5245 {
         #[serde(flatten)]
@@ -11026,7 +11026,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5253 {
         #[serde(flatten)]
@@ -11039,7 +11039,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5261 {
         #[serde(flatten)]
@@ -11052,7 +11052,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5269 {
         #[serde(flatten)]
@@ -11065,7 +11065,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5277 {
         #[serde(flatten)]
@@ -11091,7 +11091,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5293 {
         #[serde(flatten)]
@@ -11104,7 +11104,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5301 {
         #[serde(flatten)]
@@ -11143,7 +11143,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5325 {
         #[serde(flatten)]
@@ -11156,7 +11156,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5333 {
         #[serde(flatten)]
@@ -11182,7 +11182,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5349 {
         #[serde(flatten)]
@@ -11195,7 +11195,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5357 {
         #[serde(flatten)]
@@ -11208,7 +11208,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5365 {
         #[serde(flatten)]
@@ -11221,7 +11221,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5373 {
         #[serde(flatten)]
@@ -11234,7 +11234,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5381 {
         #[serde(flatten)]
@@ -11247,7 +11247,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5389 {
         #[serde(flatten)]
@@ -11260,7 +11260,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5397 {
         #[serde(flatten)]
@@ -11273,7 +11273,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5405 {
         #[serde(flatten)]
@@ -11286,7 +11286,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5413 {
         #[serde(flatten)]
@@ -11299,7 +11299,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5421 {
         #[serde(flatten)]
@@ -11312,7 +11312,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5429 {
         #[serde(flatten)]
@@ -11325,7 +11325,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5437 {
         #[serde(flatten)]
@@ -11338,7 +11338,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5445 {
         #[serde(flatten)]
@@ -11351,7 +11351,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5453 {
         #[serde(flatten)]
@@ -11364,7 +11364,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5461 {
         #[serde(flatten)]
@@ -11377,7 +11377,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5469 {
         #[serde(flatten)]
@@ -11390,7 +11390,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5477 {
         #[serde(flatten)]
@@ -11403,7 +11403,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5485 {
         #[serde(flatten)]
@@ -11416,7 +11416,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5493 {
         #[serde(flatten)]
@@ -11429,7 +11429,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5501 {
         #[serde(flatten)]
@@ -11442,7 +11442,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5509 {
         #[serde(flatten)]
@@ -11455,7 +11455,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5517 {
         #[serde(flatten)]
@@ -11468,7 +11468,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5525 {
         #[serde(flatten)]
@@ -11481,7 +11481,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5533 {
         #[serde(flatten)]
@@ -11494,7 +11494,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5541 {
         #[serde(flatten)]
@@ -11507,7 +11507,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5549 {
         #[serde(flatten)]
@@ -11520,7 +11520,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5557 {
         #[serde(flatten)]
@@ -11533,7 +11533,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5565 {
         #[serde(flatten)]
@@ -11546,7 +11546,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5573 {
         #[serde(flatten)]
@@ -11559,7 +11559,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5581 {
         #[serde(flatten)]
@@ -11572,7 +11572,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5589 {
         #[serde(flatten)]
@@ -11585,7 +11585,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5597 {
         #[serde(flatten)]
@@ -11598,7 +11598,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5605 {
         #[serde(flatten)]
@@ -11611,7 +11611,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5613 {
         #[serde(flatten)]
@@ -11624,7 +11624,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5621 {
         #[serde(flatten)]
@@ -11637,7 +11637,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5629 {
         #[serde(flatten)]
@@ -11650,7 +11650,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5637 {
         #[serde(flatten)]
@@ -11663,7 +11663,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5645 {
         #[serde(flatten)]
@@ -11676,7 +11676,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5653 {
         #[serde(flatten)]
@@ -11689,7 +11689,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5661 {
         #[serde(flatten)]
@@ -11702,7 +11702,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5669 {
         #[serde(flatten)]
@@ -11715,7 +11715,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5677 {
         #[serde(flatten)]
@@ -11728,7 +11728,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5685 {
         #[serde(flatten)]
@@ -11741,7 +11741,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5693 {
         #[serde(flatten)]
@@ -11754,7 +11754,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5701 {
         #[serde(flatten)]
@@ -11767,7 +11767,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder5709 {
         #[serde(flatten)]
@@ -13368,7 +13368,7 @@ mod holders {
         pub m1: FP1SN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6789 {
         #[serde(flatten)]
@@ -13386,7 +13386,7 @@ mod holders {
         pub m1: T1SN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6805 {
         #[serde(flatten)]
@@ -13395,7 +13395,7 @@ mod holders {
         pub m1: E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6813 {
         #[serde(flatten)]
@@ -13404,7 +13404,7 @@ mod holders {
         pub m1: P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6821 {
         #[serde(flatten)]
@@ -13413,7 +13413,7 @@ mod holders {
         pub m1: E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6829 {
         #[serde(flatten)]
@@ -13458,7 +13458,7 @@ mod holders {
         pub m1: FP1SN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6869 {
         #[serde(flatten)]
@@ -13520,7 +13520,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6917 {
         #[serde(flatten)]
@@ -13542,7 +13542,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6933 {
         #[serde(flatten)]
@@ -13553,7 +13553,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6941 {
         #[serde(flatten)]
@@ -13564,7 +13564,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6949 {
         #[serde(flatten)]
@@ -13575,7 +13575,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6957 {
         #[serde(flatten)]
@@ -13630,7 +13630,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder6997 {
         #[serde(flatten)]
@@ -13652,7 +13652,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7013 {
         #[serde(flatten)]
@@ -13680,7 +13680,7 @@ mod holders {
         pub m0: IN1FP0SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7045 {
         #[serde(flatten)]
@@ -13701,7 +13701,7 @@ mod holders {
         pub m0: IS1P0N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7069 {
         #[serde(flatten)]
@@ -13728,7 +13728,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7093 {
         #[serde(flatten)]
@@ -13755,7 +13755,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7117 {
         #[serde(flatten)]
@@ -13764,7 +13764,7 @@ mod holders {
         pub m1: IN0FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7125 {
         #[serde(flatten)]
@@ -13773,7 +13773,7 @@ mod holders {
         pub m1: IN0P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7133 {
         #[serde(flatten)]
@@ -13782,7 +13782,7 @@ mod holders {
         pub m1: IN1E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7141 {
         #[serde(flatten)]
@@ -13809,7 +13809,7 @@ mod holders {
         pub m1: IS1E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7165 {
         #[serde(flatten)]
@@ -13818,7 +13818,7 @@ mod holders {
         pub m1: IN0E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7173 {
         #[serde(flatten)]
@@ -13827,7 +13827,7 @@ mod holders {
         pub m1: IN0OptOI1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7181 {
         #[serde(flatten)]
@@ -13836,7 +13836,7 @@ mod holders {
         pub m1: IN1A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7189 {
         #[serde(flatten)]
@@ -13863,7 +13863,7 @@ mod holders {
         pub m1: IS1A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7213 {
         #[serde(flatten)]
@@ -13872,7 +13872,7 @@ mod holders {
         pub m1: IN0A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7221 {
         #[serde(flatten)]
@@ -13899,7 +13899,7 @@ mod holders {
         pub m1: IN1FP1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7245 {
         #[serde(flatten)]
@@ -13926,7 +13926,7 @@ mod holders {
         pub m1: IS1P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7269 {
         #[serde(flatten)]
@@ -13953,7 +13953,7 @@ mod holders {
         pub m1: IN1FO1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7293 {
         #[serde(flatten)]
@@ -13980,7 +13980,7 @@ mod holders {
         pub m1: IS1OptOI1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7317 {
         #[serde(flatten)]
@@ -13989,7 +13989,7 @@ mod holders {
         pub m1: IN0FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7325 {
         #[serde(flatten)]
@@ -13998,7 +13998,7 @@ mod holders {
         pub m1: IN0V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7333 {
         #[serde(flatten)]
@@ -14007,7 +14007,7 @@ mod holders {
         pub m1: IN1OptOI1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7341 {
         #[serde(flatten)]
@@ -14016,7 +14016,7 @@ mod holders {
         pub m1: IN0E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7349 {
         #[serde(flatten)]
@@ -14025,7 +14025,7 @@ mod holders {
         pub m1: IN0P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7357 {
         #[serde(flatten)]
@@ -14034,7 +14034,7 @@ mod holders {
         pub m1: IN1FP1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7365 {
         #[serde(flatten)]
@@ -14043,7 +14043,7 @@ mod holders {
         pub m1: IN0A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7373 {
         #[serde(flatten)]
@@ -14052,7 +14052,7 @@ mod holders {
         pub m1: IN0OptOI1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7381 {
         #[serde(flatten)]
@@ -14061,7 +14061,7 @@ mod holders {
         pub m1: IN1E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7389 {
         #[serde(flatten)]
@@ -14070,7 +14070,7 @@ mod holders {
         pub m1: IN1T1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7397 {
         #[serde(flatten)]
@@ -14079,7 +14079,7 @@ mod holders {
         pub m1: FT1NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7405 {
         #[serde(flatten)]
@@ -14088,7 +14088,7 @@ mod holders {
         pub m1: A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7413 {
         #[serde(flatten)]
@@ -14097,7 +14097,7 @@ mod holders {
         pub m1: P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7421 {
         #[serde(flatten)]
@@ -14106,7 +14106,7 @@ mod holders {
         pub m1: FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7429 {
         #[serde(flatten)]
@@ -14115,7 +14115,7 @@ mod holders {
         pub m1: V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7437 {
         #[serde(flatten)]
@@ -14124,7 +14124,7 @@ mod holders {
         pub m1: Option<OI1N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7445 {
         #[serde(flatten)]
@@ -14133,7 +14133,7 @@ mod holders {
         pub m1: E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7453 {
         #[serde(flatten)]
@@ -14142,7 +14142,7 @@ mod holders {
         pub m1: P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7461 {
         #[serde(flatten)]
@@ -14151,7 +14151,7 @@ mod holders {
         pub m1: FP1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7469 {
         #[serde(flatten)]
@@ -14160,7 +14160,7 @@ mod holders {
         pub m1: A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7477 {
         #[serde(flatten)]
@@ -14169,7 +14169,7 @@ mod holders {
         pub m1: Option<OI1S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7485 {
         #[serde(flatten)]
@@ -14178,7 +14178,7 @@ mod holders {
         pub m1: E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7493 {
         #[serde(flatten)]
@@ -14187,7 +14187,7 @@ mod holders {
         pub m1: T1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7501 {
         #[serde(flatten)]
@@ -14196,7 +14196,7 @@ mod holders {
         pub m1: FT1NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7509 {
         #[serde(flatten)]
@@ -14205,7 +14205,7 @@ mod holders {
         pub m1: A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7517 {
         #[serde(flatten)]
@@ -14214,7 +14214,7 @@ mod holders {
         pub m1: P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7525 {
         #[serde(flatten)]
@@ -14223,7 +14223,7 @@ mod holders {
         pub m1: FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7533 {
         #[serde(flatten)]
@@ -14232,7 +14232,7 @@ mod holders {
         pub m1: V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7541 {
         #[serde(flatten)]
@@ -14241,7 +14241,7 @@ mod holders {
         pub m1: Option<OI1N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7549 {
         #[serde(flatten)]
@@ -14250,7 +14250,7 @@ mod holders {
         pub m1: E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7557 {
         #[serde(flatten)]
@@ -14259,7 +14259,7 @@ mod holders {
         pub m1: P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7565 {
         #[serde(flatten)]
@@ -14268,7 +14268,7 @@ mod holders {
         pub m1: FP1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7573 {
         #[serde(flatten)]
@@ -14277,7 +14277,7 @@ mod holders {
         pub m1: A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7581 {
         #[serde(flatten)]
@@ -14286,7 +14286,7 @@ mod holders {
         pub m1: Option<OI1S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7589 {
         #[serde(flatten)]
@@ -14295,7 +14295,7 @@ mod holders {
         pub m1: E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7597 {
         #[serde(flatten)]
@@ -14304,7 +14304,7 @@ mod holders {
         pub m1: T1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7605 {
         #[serde(flatten)]
@@ -14313,7 +14313,7 @@ mod holders {
         pub m1: FT1NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7613 {
         #[serde(flatten)]
@@ -14322,7 +14322,7 @@ mod holders {
         pub m1: A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7621 {
         #[serde(flatten)]
@@ -14331,7 +14331,7 @@ mod holders {
         pub m1: P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7629 {
         #[serde(flatten)]
@@ -14340,7 +14340,7 @@ mod holders {
         pub m1: FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7637 {
         #[serde(flatten)]
@@ -14349,7 +14349,7 @@ mod holders {
         pub m1: V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7645 {
         #[serde(flatten)]
@@ -14358,7 +14358,7 @@ mod holders {
         pub m1: Option<OI1N>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7653 {
         #[serde(flatten)]
@@ -14367,7 +14367,7 @@ mod holders {
         pub m1: E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7661 {
         #[serde(flatten)]
@@ -14376,7 +14376,7 @@ mod holders {
         pub m1: P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7669 {
         #[serde(flatten)]
@@ -14385,7 +14385,7 @@ mod holders {
         pub m1: FP1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7677 {
         #[serde(flatten)]
@@ -14394,7 +14394,7 @@ mod holders {
         pub m1: A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7685 {
         #[serde(flatten)]
@@ -14403,7 +14403,7 @@ mod holders {
         pub m1: Option<OI1S>,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7693 {
         #[serde(flatten)]
@@ -14412,7 +14412,7 @@ mod holders {
         pub m1: E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7701 {
         #[serde(flatten)]
@@ -14421,7 +14421,7 @@ mod holders {
         pub m1: T1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7709 {
         #[serde(flatten)]
@@ -14430,7 +14430,7 @@ mod holders {
         pub m1: FT1NNN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7717 {
         #[serde(flatten)]
@@ -14439,7 +14439,7 @@ mod holders {
         pub m1: A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7725 {
         #[serde(flatten)]
@@ -14448,7 +14448,7 @@ mod holders {
         pub m1: P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7733 {
         #[serde(flatten)]
@@ -14457,7 +14457,7 @@ mod holders {
         pub m1: IN0FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7741 {
         #[serde(flatten)]
@@ -14466,7 +14466,7 @@ mod holders {
         pub m1: IN0P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7749 {
         #[serde(flatten)]
@@ -14475,7 +14475,7 @@ mod holders {
         pub m1: IN1E1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7757 {
         #[serde(flatten)]
@@ -14502,7 +14502,7 @@ mod holders {
         pub m1: IS1E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7781 {
         #[serde(flatten)]
@@ -14511,7 +14511,7 @@ mod holders {
         pub m1: IN0E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7789 {
         #[serde(flatten)]
@@ -14520,7 +14520,7 @@ mod holders {
         pub m1: IN0OptOI1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7797 {
         #[serde(flatten)]
@@ -14529,7 +14529,7 @@ mod holders {
         pub m1: IN1A1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7805 {
         #[serde(flatten)]
@@ -14556,7 +14556,7 @@ mod holders {
         pub m1: IS1A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7829 {
         #[serde(flatten)]
@@ -14565,7 +14565,7 @@ mod holders {
         pub m1: IN0A1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7837 {
         #[serde(flatten)]
@@ -14592,7 +14592,7 @@ mod holders {
         pub m1: IN1FP1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7861 {
         #[serde(flatten)]
@@ -14619,7 +14619,7 @@ mod holders {
         pub m1: IS1P1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7885 {
         #[serde(flatten)]
@@ -14646,7 +14646,7 @@ mod holders {
         pub m1: IN1FO1SS,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7909 {
         #[serde(flatten)]
@@ -14673,7 +14673,7 @@ mod holders {
         pub m1: IS1OptOI1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7933 {
         #[serde(flatten)]
@@ -14682,7 +14682,7 @@ mod holders {
         pub m1: IN0FO1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7941 {
         #[serde(flatten)]
@@ -14691,7 +14691,7 @@ mod holders {
         pub m1: IN0V1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7949 {
         #[serde(flatten)]
@@ -14700,7 +14700,7 @@ mod holders {
         pub m1: IN1OptOI1N,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7957 {
         #[serde(flatten)]
@@ -14709,7 +14709,7 @@ mod holders {
         pub m1: IN0E1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7965 {
         #[serde(flatten)]
@@ -14718,7 +14718,7 @@ mod holders {
         pub m1: IN0P1S,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7973 {
         #[serde(flatten)]
@@ -14727,7 +14727,7 @@ mod holders {
         pub m1: IN1FP1NN,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7981 {
         #[serde(flatten)]
@@ -14738,7 +14738,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder7989 {
         #[serde(flatten)]
@@ -14771,7 +14771,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8013 {
         #[serde(flatten)]
@@ -14804,7 +14804,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8037 {
         #[serde(flatten)]
@@ -14837,7 +14837,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8061 {
         #[serde(flatten)]
@@ -14870,7 +14870,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8085 {
         #[serde(flatten)]
@@ -14881,7 +14881,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8093 {
         #[serde(flatten)]
@@ -14892,7 +14892,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8101 {
         #[serde(flatten)]
@@ -14903,7 +14903,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8109 {
         #[serde(flatten)]
@@ -14936,7 +14936,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8133 {
         #[serde(flatten)]
@@ -14947,7 +14947,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8141 {
         #[serde(flatten)]
@@ -14958,7 +14958,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8149 {
         #[serde(flatten)]
@@ -14969,7 +14969,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8157 {
         #[serde(flatten)]
@@ -15002,7 +15002,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8181 {
         #[serde(flatten)]
@@ -15013,7 +15013,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8189 {
         #[serde(flatten)]
@@ -15024,7 +15024,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8197 {
         #[serde(flatten)]
@@ -15035,7 +15035,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8205 {
         #[serde(flatten)]
@@ -15046,7 +15046,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8213 {
         #[serde(flatten)]
@@ -15057,7 +15057,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8221 {
         #[serde(flatten)]
@@ -15068,7 +15068,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8229 {
         #[serde(flatten)]
@@ -15079,7 +15079,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8237 {
         #[serde(flatten)]
@@ -15090,7 +15090,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8245 {
         #[serde(flatten)]
@@ -15101,7 +15101,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8253 {
         #[serde(flatten)]
@@ -15112,7 +15112,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8261 {
         #[serde(flatten)]
@@ -15123,7 +15123,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8269 {
         #[serde(flatten)]
@@ -15134,7 +15134,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8277 {
         #[serde(flatten)]
@@ -15145,7 +15145,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8285 {
         #[serde(flatten)]
@@ -15156,7 +15156,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8293 {
         #[serde(flatten)]
@@ -15167,7 +15167,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8301 {
         #[serde(flatten)]
@@ -15178,7 +15178,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8309 {
         #[serde(flatten)]
@@ -15189,7 +15189,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8317 {
         #[serde(flatten)]
@@ -15200,7 +15200,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8325 {
         #[serde(flatten)]
@@ -15211,7 +15211,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8333 {
         #[serde(flatten)]
@@ -15222,7 +15222,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8341 {
         #[serde(flatten)]
@@ -15233,7 +15233,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8349 {
         #[serde(flatten)]
@@ -15244,7 +15244,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8357 {
         #[serde(flatten)]
@@ -15255,7 +15255,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8365 {
         #[serde(flatten)]
@@ -15266,7 +15266,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8373 {
         #[serde(flatten)]
@@ -15277,7 +15277,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8381 {
         #[serde(flatten)]
@@ -15288,7 +15288,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8389 {
         #[serde(flatten)]
@@ -15299,7 +15299,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8397 {
         #[serde(flatten)]
@@ -15310,7 +15310,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8405 {
         #[serde(flatten)]
@@ -15321,7 +15321,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8413 {
         #[serde(flatten)]
@@ -15332,7 +15332,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8421 {
         #[serde(flatten)]
@@ -15343,7 +15343,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8429 {
         #[serde(flatten)]
@@ -15354,7 +15354,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8437 {
         #[serde(flatten)]
@@ -15365,7 +15365,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8445 {
         #[serde(flatten)]
@@ -15376,7 +15376,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8453 {
         #[serde(flatten)]
@@ -15387,7 +15387,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8461 {
         #[serde(flatten)]
@@ -15398,7 +15398,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8469 {
         #[serde(flatten)]
@@ -15409,7 +15409,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8477 {
         #[serde(flatten)]
@@ -15420,7 +15420,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8485 {
         #[serde(flatten)]
@@ -15431,7 +15431,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8493 {
         #[serde(flatten)]
@@ -15442,7 +15442,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8501 {
         #[serde(flatten)]
@@ -15453,7 +15453,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8509 {
         #[serde(flatten)]
@@ -15464,7 +15464,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8517 {
         #[serde(flatten)]
@@ -15475,7 +15475,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8525 {
         #[serde(flatten)]
@@ -15486,7 +15486,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8533 {
         #[serde(flatten)]
@@ -15497,7 +15497,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8541 {
         #[serde(flatten)]
@@ -15508,7 +15508,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8549 {
         #[serde(flatten)]
@@ -15519,7 +15519,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8557 {
         #[serde(flatten)]
@@ -15530,7 +15530,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8565 {
         #[serde(flatten)]
@@ -15541,7 +15541,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8573 {
         #[serde(flatten)]
@@ -15552,7 +15552,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8581 {
         #[serde(flatten)]
@@ -15563,7 +15563,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8589 {
         #[serde(flatten)]
@@ -15574,7 +15574,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8597 {
         #[serde(flatten)]
@@ -15585,7 +15585,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8605 {
         #[serde(flatten)]
@@ -15618,7 +15618,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8629 {
         #[serde(flatten)]
@@ -15651,7 +15651,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8653 {
         #[serde(flatten)]
@@ -15684,7 +15684,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8677 {
         #[serde(flatten)]
@@ -15717,7 +15717,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8701 {
         #[serde(flatten)]
@@ -15728,7 +15728,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8709 {
         #[serde(flatten)]
@@ -15739,7 +15739,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8717 {
         #[serde(flatten)]
@@ -15750,7 +15750,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8725 {
         #[serde(flatten)]
@@ -15783,7 +15783,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8749 {
         #[serde(flatten)]
@@ -15794,7 +15794,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8757 {
         #[serde(flatten)]
@@ -15805,7 +15805,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8765 {
         #[serde(flatten)]
@@ -15816,7 +15816,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8773 {
         #[serde(flatten)]
@@ -15849,7 +15849,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8797 {
         #[serde(flatten)]
@@ -15860,7 +15860,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8805 {
         #[serde(flatten)]
@@ -15871,7 +15871,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8813 {
         #[serde(flatten)]
@@ -15882,7 +15882,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8821 {
         #[serde(flatten)]
@@ -15893,7 +15893,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8829 {
         #[serde(flatten)]
@@ -15904,7 +15904,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8837 {
         #[serde(flatten)]
@@ -15915,7 +15915,7 @@ mod holders {
         pub own: u32,
     }
 
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct Holder8845 {
         #[serde(flatten)]
@@ -15957,7 +15957,7 @@ mod holders {
 
     fn holder21() -> Vec<String> {
         check(
-            "collide2:C2N0:CA10_SS|CFO11_NN",
+            "collide2:C2N0:CA10_SS|CFO11_NNnonstrict",
             &rows2(|m0: CA10SS, m1: CFO11NN| Holder21 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -15965,7 +15965,7 @@ mod holders {
 
     fn holder29() -> Vec<String> {
         check(
-            "collide2:C2N0:CA10_SS|CV11_NN",
+            "collide2:C2N0:CA10_SS|CV11_NNnonstrict",
             &rows2(|m0: CA10SS, m1: CV11NN| Holder29 { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -15998,7 +15998,7 @@ mod holders {
 
     fn holder45() -> Vec<String> {
         check(
-            "collide2:C2N0:CFP10_NN|CA11_NN",
+            "collide2:C2N0:CFP10_NN|CA11_NNnonstrict",
             &rows2(|m0: CFP10NN, m1: CA11NN| Holder45 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16006,7 +16006,7 @@ mod holders {
 
     fn holder53() -> Vec<String> {
         check(
-            "collide2:C2N0:CFT10_NNN|CO11_N",
+            "collide2:C2N0:CFT10_NNN|CO11_Nnonstrict",
             &rows2(|m0: CFT10NNN, m1: Option<COI11N>| Holder53 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -16021,7 +16021,7 @@ mod holders {
 
     fn holder61() -> Vec<String> {
         check(
-            "collide2:C2N0:CO10_N|CT11_NN",
+            "collide2:C2N0:CO10_N|CT11_NNnonstrict",
             &rows2(|m0: Option<COI10N>, m1: CT11NN| Holder61 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -16052,7 +16052,7 @@ mod holders {
 
     fn holder85() -> Vec<String> {
         check(
-            "collide2:C2N0:CT10_NN|CP11_S",
+            "collide2:C2N0:CT10_NN|CP11_Snonstrict",
             &rows2(|m0: CT10NN, m1: CP11S| Holder85 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16060,7 +16060,7 @@ mod holders {
 
     fn holder93() -> Vec<String> {
         check(
-            "collide2:C2N1:CA10_NN|CFO11_NN",
+            "collide2:C2N1:CA10_NN|CFO11_NNnonstrict",
             &rows2(|m0: CA10NN, m1: CFO11NN| Holder93 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16068,7 +16068,7 @@ mod holders {
 
     fn holder101() -> Vec<String> {
         check(
-            "collide2:C2N1:CA10_NN|CV11_NN",
+            "collide2:C2N1:CA10_NN|CV11_NNnonstrict",
             &rows2(|m0: CA10NN, m1: CV11NN| Holder101 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -16098,7 +16098,7 @@ mod holders {
 
     fn holder117() -> Vec<String> {
         check(
-            "collide2:C2N1:CE10_NN|CFT11_NNN",
+            "collide2:C2N1:CE10_NN|CFT11_NNNnonstrict",
             &rows2(|m0: CE10NN, m1: CFT11NNN| Holder117 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16116,7 +16116,7 @@ mod holders {
 
     fn holder125() -> Vec<String> {
         check(
-            "collide2:C2N1:CFO10_NN|CA11_NN",
+            "collide2:C2N1:CFO10_NN|CA11_NNnonstrict",
             &rows2(|m0: CFO10NN, m1: CA11NN| Holder125 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16124,7 +16124,7 @@ mod holders {
 
     fn holder133() -> Vec<String> {
         check(
-            "collide2:C2N1:CFT10_NNN|CE11_NN",
+            "collide2:C2N1:CFT10_NNN|CE11_NNnonstrict",
             &rows2(|m0: CFT10NNN, m1: CE11NN| Holder133 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16142,7 +16142,7 @@ mod holders {
 
     fn holder141() -> Vec<String> {
         check(
-            "collide2:C2N1:CFT10_NNN|CV11_NN",
+            "collide2:C2N1:CFT10_NNN|CV11_NNnonstrict",
             &rows2(|m0: CFT10NNN, m1: CV11NN| Holder141 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -16157,7 +16157,7 @@ mod holders {
 
     fn holder149() -> Vec<String> {
         check(
-            "collide2:C2N1:CO10_S|CFT11_NNN",
+            "collide2:C2N1:CO10_S|CFT11_NNNnonstrict",
             &rows2(|m0: Option<COI10S>, m1: CFT11NNN| Holder149 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -16180,7 +16180,7 @@ mod holders {
 
     fn holder165() -> Vec<String> {
         check(
-            "collide2:C2N1:CT10_NN|CFP11_NN",
+            "collide2:C2N1:CT10_NN|CFP11_NNnonstrict",
             &rows2(|m0: CT10NN, m1: CFP11NN| Holder165 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16188,7 +16188,7 @@ mod holders {
 
     fn holder173() -> Vec<String> {
         check(
-            "collide2:C2N1:CV10_NN|CFT11_NNN",
+            "collide2:C2N1:CV10_NN|CFT11_NNNnonstrict",
             &rows2(|m0: CV10NN, m1: CFT11NNN| Holder173 { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -16291,7 +16291,7 @@ mod holders {
 
     fn holder229() -> Vec<String> {
         check(
-            "main1:H1N0:FP0_NN",
+            "main1:H1N0:FP0_NNnonstrict",
             &rows1(|m0: FP0NN| Holder229 { m0 }),
             &[("-", 'E')],
         )
@@ -16299,7 +16299,7 @@ mod holders {
 
     fn holder237() -> Vec<String> {
         check(
-            "main1:H1N0:T0_NN",
+            "main1:H1N0:T0_NNnonstrict",
             &rows1(|m0: T0NN| Holder237 { m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
@@ -16307,7 +16307,7 @@ mod holders {
 
     fn holder245() -> Vec<String> {
         check(
-            "main1:H1N1:FO0_NN",
+            "main1:H1N1:FO0_NNnonstrict",
             &rows1(|m0: FO0NN| Holder245 { own: 7, m0 }),
             &[("-", 'E')],
         )
@@ -16449,7 +16449,7 @@ mod holders {
 
     fn holder333() -> Vec<String> {
         check(
-            "main2:H2N0:E0_SS|FT1_NNN",
+            "main2:H2N0:E0_SS|FT1_NNNnonstrict",
             &rows2(|m0: E0SS, m1: FT1NNN| Holder333 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16482,7 +16482,7 @@ mod holders {
 
     fn holder349() -> Vec<String> {
         check(
-            "main2:H2N0:FO0_NN|O1_N",
+            "main2:H2N0:FO0_NN|O1_Nnonstrict",
             &rows2(|m0: FO0NN, m1: Option<OI1N>| Holder349 { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -16490,7 +16490,7 @@ mod holders {
 
     fn holder357() -> Vec<String> {
         check(
-            "main2:H2N0:FP0_NN|E1_NN",
+            "main2:H2N0:FP0_NN|E1_NNnonstrict",
             &rows2(|m0: FP0NN, m1: E1NN| Holder357 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16498,7 +16498,7 @@ mod holders {
 
     fn holder365() -> Vec<String> {
         check(
-            "main2:H2N0:FP0_NN|P1_S",
+            "main2:H2N0:FP0_NN|P1_Snonstrict",
             &rows2(|m0: FP0NN, m1: P1S| Holder365 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -16506,7 +16506,7 @@ mod holders {
 
     fn holder373() -> Vec<String> {
         check(
-            "main2:H2N0:FT0_NNN|FP1_NN",
+            "main2:H2N0:FT0_NNN|FP1_NNnonstrict",
             &rows2(|m0: FT0NNN, m1: FP1NN| Holder373 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16529,7 +16529,7 @@ mod holders {
 
     fn holder389() -> Vec<String> {
         check(
-            "main2:H2N0:O0_N|FT1_NNN",
+            "main2:H2N0:O0_N|FT1_NNNnonstrict",
             &rows2(|m0: Option<OI0N>, m1: FT1NNN| Holder389 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -16565,7 +16565,7 @@ mod holders {
 
     fn holder413() -> Vec<String> {
         check(
-            "main2:H2N0:O0_S|V1_NN",
+            "main2:H2N0:O0_S|V1_NNnonstrict",
             &rows2(|m0: Option<OI0S>, m1: V1NN| Holder413 { m0, m1 }),
             &[
                 ("None,Rect", 'E'),
@@ -16578,7 +16578,7 @@ mod holders {
 
     fn holder421() -> Vec<String> {
         check(
-            "main2:H2N0:P0_N|FP1_NN",
+            "main2:H2N0:P0_N|FP1_NNnonstrict",
             &rows2(|m0: P0N, m1: FP1NN| Holder421 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -16602,7 +16602,7 @@ mod holders {
 
     fn holder445() -> Vec<String> {
         check(
-            "main2:H2N0:P0_S|T1_NN",
+            "main2:H2N0:P0_S|T1_NNnonstrict",
             &rows2(|m0: P0S, m1: T1NN| Holder445 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16610,7 +16610,7 @@ mod holders {
 
     fn holder453() -> Vec<String> {
         check(
-            "main2:H2N0:T0_NN|FO1_NN",
+            "main2:H2N0:T0_NN|FO1_NNnonstrict",
             &rows2(|m0: T0NN, m1: FO1NN| Holder453 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16618,7 +16618,7 @@ mod holders {
 
     fn holder461() -> Vec<String> {
         check(
-            "main2:H2N0:T0_NN|V1_NN",
+            "main2:H2N0:T0_NN|V1_NNnonstrict",
             &rows2(|m0: T0NN, m1: V1NN| Holder461 { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -16633,7 +16633,7 @@ mod holders {
 
     fn holder469() -> Vec<String> {
         check(
-            "main2:H2N0:V0_NN|O1_N",
+            "main2:H2N0:V0_NN|O1_Nnonstrict",
             &rows2(|m0: V0NN, m1: Option<OI1N>| Holder469 { m0, m1 }),
             &[
                 ("Rect,None", 'E'),
@@ -16730,7 +16730,7 @@ mod holders {
 
     fn holder517() -> Vec<String> {
         check(
-            "main2:H2N1:E0_NN|FT1_NNN",
+            "main2:H2N1:E0_NN|FT1_NNNnonstrict",
             &rows2(|m0: E0NN, m1: FT1NNN| Holder517 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16771,7 +16771,7 @@ mod holders {
 
     fn holder541() -> Vec<String> {
         check(
-            "main2:H2N1:E0_SS|V1_NN",
+            "main2:H2N1:E0_SS|V1_NNnonstrict",
             &rows2(|m0: E0SS, m1: V1NN| Holder541 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -16786,7 +16786,7 @@ mod holders {
 
     fn holder549() -> Vec<String> {
         check(
-            "main2:H2N1:FO0_NN|FT1_NNN",
+            "main2:H2N1:FO0_NN|FT1_NNNnonstrict",
             &rows2(|m0: FO0NN, m1: FT1NNN| Holder549 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16794,7 +16794,7 @@ mod holders {
 
     fn holder557() -> Vec<String> {
         check(
-            "main2:H2N1:FP0_NN|A1_SS",
+            "main2:H2N1:FP0_NN|A1_SSnonstrict",
             &rows2(|m0: FP0NN, m1: A1SS| Holder557 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16802,7 +16802,7 @@ mod holders {
 
     fn holder565() -> Vec<String> {
         check(
-            "main2:H2N1:FP0_NN|P1_N",
+            "main2:H2N1:FP0_NN|P1_Nnonstrict",
             &rows2(|m0: FP0NN, m1: P1N| Holder565 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -16810,7 +16810,7 @@ mod holders {
 
     fn holder573() -> Vec<String> {
         check(
-            "main2:H2N1:FT0_NNN|FO1_NN",
+            "main2:H2N1:FT0_NNN|FO1_NNnonstrict",
             &rows2(|m0: FT0NNN, m1: FO1NN| Holder573 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -16818,7 +16818,7 @@ mod holders {
 
     fn holder581() -> Vec<String> {
         check(
-            "main2:H2N1:FT0_NNN|V1_NN",
+            "main2:H2N1:FT0_NNN|V1_NNnonstrict",
             &rows2(|m0: FT0NNN, m1: V1NN| Holder581 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -16841,7 +16841,7 @@ mod holders {
 
     fn holder597() -> Vec<String> {
         check(
-            "main2:H2N1:O0_N|V1_NN",
+            "main2:H2N1:O0_N|V1_NNnonstrict",
             &rows2(|m0: Option<OI0N>, m1: V1NN| Holder597 { own: 7, m0, m1 }),
             &[
                 ("None,Rect", 'E'),
@@ -16854,7 +16854,7 @@ mod holders {
 
     fn holder605() -> Vec<String> {
         check(
-            "main2:H2N1:O0_S|FP1_NN",
+            "main2:H2N1:O0_S|FP1_NNnonstrict",
             &rows2(|m0: Option<OI0S>, m1: FP1NN| Holder605 { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -16885,7 +16885,7 @@ mod holders {
 
     fn holder629() -> Vec<String> {
         check(
-            "main2:H2N1:P0_N|T1_NN",
+            "main2:H2N1:P0_N|T1_NNnonstrict",
             &rows2(|m0: P0N, m1: T1NN| Holder629 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -16893,7 +16893,7 @@ mod holders {
 
     fn holder637() -> Vec<String> {
         check(
-            "main2:H2N1:P0_S|FO1_NN",
+            "main2:H2N1:P0_S|FO1_NNnonstrict",
             &rows2(|m0: P0S, m1: FO1NN| Holder637 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -16909,7 +16909,7 @@ mod holders {
 
     fn holder653() -> Vec<String> {
         check(
-            "main2:H2N1:T0_NN|E1_SS",
+            "main2:H2N1:T0_NN|E1_SSnonstrict",
             &rows2(|m0: T0NN, m1: E1SS| Holder653 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16927,7 +16927,7 @@ mod holders {
 
     fn holder661() -> Vec<String> {
         check(
-            "main2:H2N1:T0_NN|T1_NN",
+            "main2:H2N1:T0_NN|T1_NNnonstrict",
             &rows2(|m0: T0NN, m1: T1NN| Holder661 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -16945,7 +16945,7 @@ mod holders {
 
     fn holder669() -> Vec<String> {
         check(
-            "main2:H2N1:V0_NN|FT1_NNN",
+            "main2:H2N1:V0_NN|FT1_NNNnonstrict",
             &rows2(|m0: V0NN, m1: FT1NNN| Holder669 { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -17295,7 +17295,7 @@ mod holders {
 
     fn holder829() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|A1_SS|FT2_NNN",
+            "main3:H3N0:A0_NN|A1_SS|FT2_NNNnonstrict",
             &rows3(|m0: A0NN, m1: A1SS, m2: FT2NNN| Holder829 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -17376,7 +17376,7 @@ mod holders {
 
     fn holder853() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|E1_NN|V2_NN",
+            "main3:H3N0:A0_NN|E1_NN|V2_NNnonstrict",
             &rows3(|m0: A0NN, m1: E1NN, m2: V2NN| Holder853 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -17403,7 +17403,7 @@ mod holders {
 
     fn holder861() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|E1_SS|FP2_NN",
+            "main3:H3N0:A0_NN|E1_SS|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: E1SS, m2: FP2NN| Holder861 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -17457,7 +17457,7 @@ mod holders {
 
     fn holder877() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|FO1_NN|FP2_NN",
+            "main3:H3N0:A0_NN|FO1_NN|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: FO1NN, m2: FP2NN| Holder877 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -17465,7 +17465,7 @@ mod holders {
 
     fn holder885() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|FP1_NN|A2_NN",
+            "main3:H3N0:A0_NN|FP1_NN|A2_NNnonstrict",
             &rows3(|m0: A0NN, m1: FP1NN, m2: A2NN| Holder885 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -17483,7 +17483,7 @@ mod holders {
 
     fn holder893() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|FP1_NN|O2_S",
+            "main3:H3N0:A0_NN|FP1_NN|O2_Snonstrict",
             &rows3(|m0: A0NN, m1: FP1NN, m2: Option<OI2S>| Holder893 { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -17498,7 +17498,7 @@ mod holders {
 
     fn holder901() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|FT1_NNN|E2_SS",
+            "main3:H3N0:A0_NN|FT1_NNN|E2_SSnonstrict",
             &rows3(|m0: A0NN, m1: FT1NNN, m2: E2SS| Holder901 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -17534,7 +17534,7 @@ mod holders {
 
     fn holder909() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|FT1_NNN|T2_NN",
+            "main3:H3N0:A0_NN|FT1_NNN|T2_NNnonstrict",
             &rows3(|m0: A0NN, m1: FT1NNN, m2: T2NN| Holder909 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -17570,7 +17570,7 @@ mod holders {
 
     fn holder917() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|O1_N|FP2_NN",
+            "main3:H3N0:A0_NN|O1_N|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: Option<OI1N>, m2: FP2NN| Holder917 { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -17627,7 +17627,7 @@ mod holders {
 
     fn holder941() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|O1_S|T2_NN",
+            "main3:H3N0:A0_NN|O1_S|T2_NNnonstrict",
             &rows3(|m0: A0NN, m1: Option<OI1S>, m2: T2NN| Holder941 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -17654,7 +17654,7 @@ mod holders {
 
     fn holder949() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|P1_N|FO2_NN",
+            "main3:H3N0:A0_NN|P1_N|FO2_NNnonstrict",
             &rows3(|m0: A0NN, m1: P1N, m2: FO2NN| Holder949 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -17696,7 +17696,7 @@ mod holders {
 
     fn holder981() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|T1_NN|E2_NN",
+            "main3:H3N0:A0_NN|T1_NN|E2_NNnonstrict",
             &rows3(|m0: A0NN, m1: T1NN, m2: E2NN| Holder981 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -17732,7 +17732,7 @@ mod holders {
 
     fn holder989() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|T1_NN|P2_S",
+            "main3:H3N0:A0_NN|T1_NN|P2_Snonstrict",
             &rows3(|m0: A0NN, m1: T1NN, m2: P2S| Holder989 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -17750,7 +17750,7 @@ mod holders {
 
     fn holder997() -> Vec<String> {
         check(
-            "main3:H3N0:A0_NN|V1_NN|FP2_NN",
+            "main3:H3N0:A0_NN|V1_NN|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: V1NN, m2: FP2NN| Holder997 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -17801,7 +17801,7 @@ mod holders {
 
     fn holder1013() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|A1_NN|FT2_NNN",
+            "main3:H3N0:A0_SS|A1_NN|FT2_NNNnonstrict",
             &rows3(|m0: A0SS, m1: A1NN, m2: FT2NNN| Holder1013 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -17882,7 +17882,7 @@ mod holders {
 
     fn holder1037() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|A1_SS|V2_NN",
+            "main3:H3N0:A0_SS|A1_SS|V2_NNnonstrict",
             &rows3(|m0: A0SS, m1: A1SS, m2: V2NN| Holder1037 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -17909,7 +17909,7 @@ mod holders {
 
     fn holder1045() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|E1_NN|FP2_NN",
+            "main3:H3N0:A0_SS|E1_NN|FP2_NNnonstrict",
             &rows3(|m0: A0SS, m1: E1NN, m2: FP2NN| Holder1045 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -17981,7 +17981,7 @@ mod holders {
 
     fn holder1069() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|E1_SS|T2_NN",
+            "main3:H3N0:A0_SS|E1_SS|T2_NNnonstrict",
             &rows3(|m0: A0SS, m1: E1SS, m2: T2NN| Holder1069 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18017,7 +18017,7 @@ mod holders {
 
     fn holder1077() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|FO1_NN|FO2_NN",
+            "main3:H3N0:A0_SS|FO1_NN|FO2_NNnonstrict",
             &rows3(|m0: A0SS, m1: FO1NN, m2: FO2NN| Holder1077 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -18025,7 +18025,7 @@ mod holders {
 
     fn holder1085() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|FO1_NN|V2_NN",
+            "main3:H3N0:A0_SS|FO1_NN|V2_NNnonstrict",
             &rows3(|m0: A0SS, m1: FO1NN, m2: V2NN| Holder1085 { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
@@ -18040,7 +18040,7 @@ mod holders {
 
     fn holder1093() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|FP1_NN|O2_N",
+            "main3:H3N0:A0_SS|FP1_NN|O2_Nnonstrict",
             &rows3(|m0: A0SS, m1: FP1NN, m2: Option<OI2N>| Holder1093 { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -18055,7 +18055,7 @@ mod holders {
 
     fn holder1101() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|FT1_NNN|E2_NN",
+            "main3:H3N0:A0_SS|FT1_NNN|E2_NNnonstrict",
             &rows3(|m0: A0SS, m1: FT1NNN, m2: E2NN| Holder1101 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18091,7 +18091,7 @@ mod holders {
 
     fn holder1109() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|FT1_NNN|P2_S",
+            "main3:H3N0:A0_SS|FT1_NNN|P2_Snonstrict",
             &rows3(|m0: A0SS, m1: FT1NNN, m2: P2S| Holder1109 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18124,7 +18124,7 @@ mod holders {
 
     fn holder1125() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|O1_N|T2_NN",
+            "main3:H3N0:A0_SS|O1_N|T2_NNnonstrict",
             &rows3(|m0: A0SS, m1: Option<OI1N>, m2: T2NN| Holder1125 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -18151,7 +18151,7 @@ mod holders {
 
     fn holder1133() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|O1_S|FO2_NN",
+            "main3:H3N0:A0_SS|O1_S|FO2_NNnonstrict",
             &rows3(|m0: A0SS, m1: Option<OI1S>, m2: FO2NN| Holder1133 { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -18240,7 +18240,7 @@ mod holders {
 
     fn holder1181() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|T1_NN|A2_SS",
+            "main3:H3N0:A0_SS|T1_NN|A2_SSnonstrict",
             &rows3(|m0: A0SS, m1: T1NN, m2: A2SS| Holder1181 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18276,7 +18276,7 @@ mod holders {
 
     fn holder1189() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|T1_NN|P2_N",
+            "main3:H3N0:A0_SS|T1_NN|P2_Nnonstrict",
             &rows3(|m0: A0SS, m1: T1NN, m2: P2N| Holder1189 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18294,7 +18294,7 @@ mod holders {
 
     fn holder1197() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|V1_NN|FO2_NN",
+            "main3:H3N0:A0_SS|V1_NN|FO2_NNnonstrict",
             &rows3(|m0: A0SS, m1: V1NN, m2: FO2NN| Holder1197 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -18309,7 +18309,7 @@ mod holders {
 
     fn holder1205() -> Vec<String> {
         check(
-            "main3:H3N0:A0_SS|V1_NN|V2_NN",
+            "main3:H3N0:A0_SS|V1_NN|V2_NNnonstrict",
             &rows3(|m0: A0SS, m1: V1NN, m2: V2NN| Holder1205 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Rect", 'E'),
@@ -18348,7 +18348,7 @@ mod holders {
 
     fn holder1221() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|A1_NN|V2_NN",
+            "main3:H3N0:E0_NN|A1_NN|V2_NNnonstrict",
             &rows3(|m0: E0NN, m1: A1NN, m2: V2NN| Holder1221 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -18375,7 +18375,7 @@ mod holders {
 
     fn holder1229() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|A1_SS|FP2_NN",
+            "main3:H3N0:E0_NN|A1_SS|FP2_NNnonstrict",
             &rows3(|m0: E0NN, m1: A1SS, m2: FP2NN| Holder1229 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18447,7 +18447,7 @@ mod holders {
 
     fn holder1253() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|E1_NN|T2_NN",
+            "main3:H3N0:E0_NN|E1_NN|T2_NNnonstrict",
             &rows3(|m0: E0NN, m1: E1NN, m2: T2NN| Holder1253 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18483,7 +18483,7 @@ mod holders {
 
     fn holder1261() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|E1_SS|FO2_NN",
+            "main3:H3N0:E0_NN|E1_SS|FO2_NNnonstrict",
             &rows3(|m0: E0NN, m1: E1SS, m2: FO2NN| Holder1261 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18519,7 +18519,7 @@ mod holders {
 
     fn holder1277() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|FO1_NN|E2_SS",
+            "main3:H3N0:E0_NN|FO1_NN|E2_SSnonstrict",
             &rows3(|m0: E0NN, m1: FO1NN, m2: E2SS| Holder1277 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -18537,7 +18537,7 @@ mod holders {
 
     fn holder1285() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|FO1_NN|T2_NN",
+            "main3:H3N0:E0_NN|FO1_NN|T2_NNnonstrict",
             &rows3(|m0: E0NN, m1: FO1NN, m2: T2NN| Holder1285 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -18555,7 +18555,7 @@ mod holders {
 
     fn holder1293() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|FP1_NN|FT2_NNN",
+            "main3:H3N0:E0_NN|FP1_NN|FT2_NNNnonstrict",
             &rows3(|m0: E0NN, m1: FP1NN, m2: FT2NNN| Holder1293 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -18573,7 +18573,7 @@ mod holders {
 
     fn holder1301() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|FT1_NNN|A2_SS",
+            "main3:H3N0:E0_NN|FT1_NNN|A2_SSnonstrict",
             &rows3(|m0: E0NN, m1: FT1NNN, m2: A2SS| Holder1301 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18609,7 +18609,7 @@ mod holders {
 
     fn holder1309() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|FT1_NNN|P2_N",
+            "main3:H3N0:E0_NN|FT1_NNN|P2_Nnonstrict",
             &rows3(|m0: E0NN, m1: FT1NNN, m2: P2N| Holder1309 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18627,7 +18627,7 @@ mod holders {
 
     fn holder1317() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|O1_N|FO2_NN",
+            "main3:H3N0:E0_NN|O1_N|FO2_NNnonstrict",
             &rows3(|m0: E0NN, m1: Option<OI1N>, m2: FO2NN| Holder1317 { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -18765,7 +18765,7 @@ mod holders {
 
     fn holder1381() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|T1_NN|A2_NN",
+            "main3:H3N0:E0_NN|T1_NN|A2_NNnonstrict",
             &rows3(|m0: E0NN, m1: T1NN, m2: A2NN| Holder1381 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18801,7 +18801,7 @@ mod holders {
 
     fn holder1389() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|T1_NN|O2_S",
+            "main3:H3N0:E0_NN|T1_NN|O2_Snonstrict",
             &rows3(|m0: E0NN, m1: T1NN, m2: Option<OI2S>| Holder1389 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -18828,7 +18828,7 @@ mod holders {
 
     fn holder1397() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|V1_NN|E2_SS",
+            "main3:H3N0:E0_NN|V1_NN|E2_SSnonstrict",
             &rows3(|m0: E0NN, m1: V1NN, m2: E2SS| Holder1397 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -18855,7 +18855,7 @@ mod holders {
 
     fn holder1405() -> Vec<String> {
         check(
-            "main3:H3N0:E0_NN|V1_NN|T2_NN",
+            "main3:H3N0:E0_NN|V1_NN|T2_NNnonstrict",
             &rows3(|m0: E0NN, m1: V1NN, m2: T2NN| Holder1405 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -18882,7 +18882,7 @@ mod holders {
 
     fn holder1413() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|A1_NN|FP2_NN",
+            "main3:H3N0:E0_SS|A1_NN|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: A1NN, m2: FP2NN| Holder1413 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -18954,7 +18954,7 @@ mod holders {
 
     fn holder1437() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|A1_SS|T2_NN",
+            "main3:H3N0:E0_SS|A1_SS|T2_NNnonstrict",
             &rows3(|m0: E0SS, m1: A1SS, m2: T2NN| Holder1437 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -18990,7 +18990,7 @@ mod holders {
 
     fn holder1445() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|E1_NN|FO2_NN",
+            "main3:H3N0:E0_SS|E1_NN|FO2_NNnonstrict",
             &rows3(|m0: E0SS, m1: E1NN, m2: FO2NN| Holder1445 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -19080,7 +19080,7 @@ mod holders {
 
     fn holder1477() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|FO1_NN|E2_NN",
+            "main3:H3N0:E0_SS|FO1_NN|E2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FO1NN, m2: E2NN| Holder1477 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -19098,7 +19098,7 @@ mod holders {
 
     fn holder1485() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|FO1_NN|P2_S",
+            "main3:H3N0:E0_SS|FO1_NN|P2_Snonstrict",
             &rows3(|m0: E0SS, m1: FO1NN, m2: P2S| Holder1485 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -19106,7 +19106,7 @@ mod holders {
 
     fn holder1493() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|FP1_NN|FP2_NN",
+            "main3:H3N0:E0_SS|FP1_NN|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FP1NN, m2: FP2NN| Holder1493 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -19114,7 +19114,7 @@ mod holders {
 
     fn holder1501() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|FT1_NNN|A2_NN",
+            "main3:H3N0:E0_SS|FT1_NNN|A2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FT1NNN, m2: A2NN| Holder1501 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -19150,7 +19150,7 @@ mod holders {
 
     fn holder1509() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|FT1_NNN|O2_S",
+            "main3:H3N0:E0_SS|FT1_NNN|O2_Snonstrict",
             &rows3(|m0: E0SS, m1: FT1NNN, m2: Option<OI2S>| Holder1509 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -19318,7 +19318,7 @@ mod holders {
 
     fn holder1573() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|P1_S|FT2_NNN",
+            "main3:H3N0:E0_SS|P1_S|FT2_NNNnonstrict",
             &rows3(|m0: E0SS, m1: P1S, m2: FT2NNN| Holder1573 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -19351,7 +19351,7 @@ mod holders {
 
     fn holder1589() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|T1_NN|O2_N",
+            "main3:H3N0:E0_SS|T1_NN|O2_Nnonstrict",
             &rows3(|m0: E0SS, m1: T1NN, m2: Option<OI2N>| Holder1589 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -19378,7 +19378,7 @@ mod holders {
 
     fn holder1597() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|V1_NN|E2_NN",
+            "main3:H3N0:E0_SS|V1_NN|E2_NNnonstrict",
             &rows3(|m0: E0SS, m1: V1NN, m2: E2NN| Holder1597 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -19405,7 +19405,7 @@ mod holders {
 
     fn holder1605() -> Vec<String> {
         check(
-            "main3:H3N0:E0_SS|V1_NN|P2_S",
+            "main3:H3N0:E0_SS|V1_NN|P2_Snonstrict",
             &rows3(|m0: E0SS, m1: V1NN, m2: P2S| Holder1605 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -19420,7 +19420,7 @@ mod holders {
 
     fn holder1613() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|A1_NN|FP2_NN",
+            "main3:H3N0:FO0_NN|A1_NN|FP2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: A1NN, m2: FP2NN| Holder1613 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19428,7 +19428,7 @@ mod holders {
 
     fn holder1621() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|A1_SS|A2_NN",
+            "main3:H3N0:FO0_NN|A1_SS|A2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: A1SS, m2: A2NN| Holder1621 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19446,7 +19446,7 @@ mod holders {
 
     fn holder1629() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|A1_SS|O2_S",
+            "main3:H3N0:FO0_NN|A1_SS|O2_Snonstrict",
             &rows3(|m0: FO0NN, m1: A1SS, m2: Option<OI2S>| Holder1629 { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -19461,7 +19461,7 @@ mod holders {
 
     fn holder1637() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|E1_NN|E2_SS",
+            "main3:H3N0:FO0_NN|E1_NN|E2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: E1NN, m2: E2SS| Holder1637 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19479,7 +19479,7 @@ mod holders {
 
     fn holder1645() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|E1_NN|T2_NN",
+            "main3:H3N0:FO0_NN|E1_NN|T2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: E1NN, m2: T2NN| Holder1645 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19497,7 +19497,7 @@ mod holders {
 
     fn holder1653() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|E1_SS|FT2_NNN",
+            "main3:H3N0:FO0_NN|E1_SS|FT2_NNNnonstrict",
             &rows3(|m0: FO0NN, m1: E1SS, m2: FT2NNN| Holder1653 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19515,7 +19515,7 @@ mod holders {
 
     fn holder1661() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|FO1_NN|A2_SS",
+            "main3:H3N0:FO0_NN|FO1_NN|A2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: FO1NN, m2: A2SS| Holder1661 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19523,7 +19523,7 @@ mod holders {
 
     fn holder1669() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|FO1_NN|P2_N",
+            "main3:H3N0:FO0_NN|FO1_NN|P2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: FO1NN, m2: P2N| Holder1669 { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -19531,7 +19531,7 @@ mod holders {
 
     fn holder1677() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|FP1_NN|FO2_NN",
+            "main3:H3N0:FO0_NN|FP1_NN|FO2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: FP1NN, m2: FO2NN| Holder1677 { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -19539,7 +19539,7 @@ mod holders {
 
     fn holder1685() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|FP1_NN|V2_NN",
+            "main3:H3N0:FO0_NN|FP1_NN|V2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: FP1NN, m2: V2NN| Holder1685 { m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19547,7 +19547,7 @@ mod holders {
 
     fn holder1693() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|FT1_NNN|O2_N",
+            "main3:H3N0:FO0_NN|FT1_NNN|O2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: FT1NNN, m2: Option<OI2N>| Holder1693 { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -19562,7 +19562,7 @@ mod holders {
 
     fn holder1701() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|O1_N|E2_NN",
+            "main3:H3N0:FO0_NN|O1_N|E2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: E2NN| Holder1701 { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
@@ -19577,7 +19577,7 @@ mod holders {
 
     fn holder1709() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|O1_N|P2_S",
+            "main3:H3N0:FO0_NN|O1_N|P2_Snonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: P2S| Holder1709 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -19585,7 +19585,7 @@ mod holders {
 
     fn holder1717() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|O1_S|FP2_NN",
+            "main3:H3N0:FO0_NN|O1_S|FP2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: FP2NN| Holder1717 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -19593,7 +19593,7 @@ mod holders {
 
     fn holder1725() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|P1_N|A2_NN",
+            "main3:H3N0:FO0_NN|P1_N|A2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: P1N, m2: A2NN| Holder1725 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19601,7 +19601,7 @@ mod holders {
 
     fn holder1733() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|P1_N|O2_S",
+            "main3:H3N0:FO0_NN|P1_N|O2_Snonstrict",
             &rows3(|m0: FO0NN, m1: P1N, m2: Option<OI2S>| Holder1733 { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -19609,7 +19609,7 @@ mod holders {
 
     fn holder1741() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|P1_S|E2_SS",
+            "main3:H3N0:FO0_NN|P1_S|E2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: P1S, m2: E2SS| Holder1741 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19617,7 +19617,7 @@ mod holders {
 
     fn holder1749() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|P1_S|T2_NN",
+            "main3:H3N0:FO0_NN|P1_S|T2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: P1S, m2: T2NN| Holder1749 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19625,7 +19625,7 @@ mod holders {
 
     fn holder1757() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|T1_NN|FT2_NNN",
+            "main3:H3N0:FO0_NN|T1_NN|FT2_NNNnonstrict",
             &rows3(|m0: FO0NN, m1: T1NN, m2: FT2NNN| Holder1757 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19643,7 +19643,7 @@ mod holders {
 
     fn holder1765() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|V1_NN|A2_SS",
+            "main3:H3N0:FO0_NN|V1_NN|A2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: V1NN, m2: A2SS| Holder1765 { m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -19658,7 +19658,7 @@ mod holders {
 
     fn holder1773() -> Vec<String> {
         check(
-            "main3:H3N0:FO0_NN|V1_NN|P2_N",
+            "main3:H3N0:FO0_NN|V1_NN|P2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: V1NN, m2: P2N| Holder1773 { m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19666,7 +19666,7 @@ mod holders {
 
     fn holder1781() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|A1_NN|FO2_NN",
+            "main3:H3N0:FP0_NN|A1_NN|FO2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: A1NN, m2: FO2NN| Holder1781 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19674,7 +19674,7 @@ mod holders {
 
     fn holder1789() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|A1_NN|V2_NN",
+            "main3:H3N0:FP0_NN|A1_NN|V2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: A1NN, m2: V2NN| Holder1789 { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -19689,7 +19689,7 @@ mod holders {
 
     fn holder1797() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|A1_SS|O2_N",
+            "main3:H3N0:FP0_NN|A1_SS|O2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: A1SS, m2: Option<OI2N>| Holder1797 { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -19704,7 +19704,7 @@ mod holders {
 
     fn holder1805() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|E1_NN|E2_NN",
+            "main3:H3N0:FP0_NN|E1_NN|E2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: E1NN, m2: E2NN| Holder1805 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19722,7 +19722,7 @@ mod holders {
 
     fn holder1813() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|E1_NN|P2_S",
+            "main3:H3N0:FP0_NN|E1_NN|P2_Snonstrict",
             &rows3(|m0: FP0NN, m1: E1NN, m2: P2S| Holder1813 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19730,7 +19730,7 @@ mod holders {
 
     fn holder1821() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|E1_SS|FP2_NN",
+            "main3:H3N0:FP0_NN|E1_SS|FP2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: E1SS, m2: FP2NN| Holder1821 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19738,7 +19738,7 @@ mod holders {
 
     fn holder1829() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|FO1_NN|A2_NN",
+            "main3:H3N0:FP0_NN|FO1_NN|A2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: FO1NN, m2: A2NN| Holder1829 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19746,7 +19746,7 @@ mod holders {
 
     fn holder1837() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|FO1_NN|O2_S",
+            "main3:H3N0:FP0_NN|FO1_NN|O2_Snonstrict",
             &rows3(|m0: FP0NN, m1: FO1NN, m2: Option<OI2S>| Holder1837 { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -19754,7 +19754,7 @@ mod holders {
 
     fn holder1845() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|FP1_NN|E2_SS",
+            "main3:H3N0:FP0_NN|FP1_NN|E2_SSnonstrict",
             &rows3(|m0: FP0NN, m1: FP1NN, m2: E2SS| Holder1845 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19762,7 +19762,7 @@ mod holders {
 
     fn holder1853() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|FP1_NN|T2_NN",
+            "main3:H3N0:FP0_NN|FP1_NN|T2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: FP1NN, m2: T2NN| Holder1853 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19770,7 +19770,7 @@ mod holders {
 
     fn holder1861() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|FT1_NNN|FT2_NNN",
+            "main3:H3N0:FP0_NN|FT1_NNN|FT2_NNNnonstrict",
             &rows3(|m0: FP0NN, m1: FT1NNN, m2: FT2NNN| Holder1861 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -19788,7 +19788,7 @@ mod holders {
 
     fn holder1869() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|O1_N|A2_SS",
+            "main3:H3N0:FP0_NN|O1_N|A2_SSnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: A2SS| Holder1869 { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
@@ -19803,7 +19803,7 @@ mod holders {
 
     fn holder1877() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|O1_N|P2_N",
+            "main3:H3N0:FP0_NN|O1_N|P2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: P2N| Holder1877 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -19811,7 +19811,7 @@ mod holders {
 
     fn holder1885() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|O1_S|FO2_NN",
+            "main3:H3N0:FP0_NN|O1_S|FO2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: FO2NN| Holder1885 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -19819,7 +19819,7 @@ mod holders {
 
     fn holder1893() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|O1_S|V2_NN",
+            "main3:H3N0:FP0_NN|O1_S|V2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: V2NN| Holder1893 { m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
@@ -19832,7 +19832,7 @@ mod holders {
 
     fn holder1901() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|P1_N|O2_N",
+            "main3:H3N0:FP0_NN|P1_N|O2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: P1N, m2: Option<OI2N>| Holder1901 { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -19840,7 +19840,7 @@ mod holders {
 
     fn holder1909() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|P1_S|E2_NN",
+            "main3:H3N0:FP0_NN|P1_S|E2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: P1S, m2: E2NN| Holder1909 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -19848,7 +19848,7 @@ mod holders {
 
     fn holder1917() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|P1_S|P2_S",
+            "main3:H3N0:FP0_NN|P1_S|P2_Snonstrict",
             &rows3(|m0: FP0NN, m1: P1S, m2: P2S| Holder1917 { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -19856,7 +19856,7 @@ mod holders {
 
     fn holder1925() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|T1_NN|FP2_NN",
+            "main3:H3N0:FP0_NN|T1_NN|FP2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: T1NN, m2: FP2NN| Holder1925 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -19864,7 +19864,7 @@ mod holders {
 
     fn holder1933() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|V1_NN|A2_NN",
+            "main3:H3N0:FP0_NN|V1_NN|A2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: V1NN, m2: A2NN| Holder1933 { m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -19879,7 +19879,7 @@ mod holders {
 
     fn holder1941() -> Vec<String> {
         check(
-            "main3:H3N0:FP0_NN|V1_NN|O2_S",
+            "main3:H3N0:FP0_NN|V1_NN|O2_Snonstrict",
             &rows3(|m0: FP0NN, m1: V1NN, m2: Option<OI2S>| Holder1941 { m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
@@ -19892,7 +19892,7 @@ mod holders {
 
     fn holder1949() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|A1_NN|E2_SS",
+            "main3:H3N0:FT0_NNN|A1_NN|E2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: A1NN, m2: E2SS| Holder1949 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -19928,7 +19928,7 @@ mod holders {
 
     fn holder1957() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|A1_NN|T2_NN",
+            "main3:H3N0:FT0_NNN|A1_NN|T2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: A1NN, m2: T2NN| Holder1957 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -19964,7 +19964,7 @@ mod holders {
 
     fn holder1965() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|A1_SS|FT2_NNN",
+            "main3:H3N0:FT0_NNN|A1_SS|FT2_NNNnonstrict",
             &rows3(|m0: FT0NNN, m1: A1SS, m2: FT2NNN| Holder1965 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -20000,7 +20000,7 @@ mod holders {
 
     fn holder1973() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|E1_NN|A2_SS",
+            "main3:H3N0:FT0_NNN|E1_NN|A2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: E1NN, m2: A2SS| Holder1973 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -20036,7 +20036,7 @@ mod holders {
 
     fn holder1981() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|E1_NN|P2_N",
+            "main3:H3N0:FT0_NNN|E1_NN|P2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: E1NN, m2: P2N| Holder1981 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -20054,7 +20054,7 @@ mod holders {
 
     fn holder1989() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|E1_SS|FO2_NN",
+            "main3:H3N0:FT0_NNN|E1_SS|FO2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: E1SS, m2: FO2NN| Holder1989 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -20072,7 +20072,7 @@ mod holders {
 
     fn holder1997() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|E1_SS|V2_NN",
+            "main3:H3N0:FT0_NNN|E1_SS|V2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: E1SS, m2: V2NN| Holder1997 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -20099,7 +20099,7 @@ mod holders {
 
     fn holder2005() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|FO1_NN|O2_N",
+            "main3:H3N0:FT0_NNN|FO1_NN|O2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: FO1NN, m2: Option<OI2N>| Holder2005 { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -20114,7 +20114,7 @@ mod holders {
 
     fn holder2013() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|FP1_NN|E2_NN",
+            "main3:H3N0:FT0_NNN|FP1_NN|E2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: FP1NN, m2: E2NN| Holder2013 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -20132,7 +20132,7 @@ mod holders {
 
     fn holder2021() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|FP1_NN|P2_S",
+            "main3:H3N0:FT0_NNN|FP1_NN|P2_Snonstrict",
             &rows3(|m0: FT0NNN, m1: FP1NN, m2: P2S| Holder2021 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -20140,7 +20140,7 @@ mod holders {
 
     fn holder2029() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|FT1_NNN|FP2_NN",
+            "main3:H3N0:FT0_NNN|FT1_NNN|FP2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: FT1NNN, m2: FP2NN| Holder2029 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -20158,7 +20158,7 @@ mod holders {
 
     fn holder2037() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|O1_N|A2_NN",
+            "main3:H3N0:FT0_NNN|O1_N|A2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: A2NN| Holder2037 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -20185,7 +20185,7 @@ mod holders {
 
     fn holder2045() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|O1_N|O2_S",
+            "main3:H3N0:FT0_NNN|O1_N|O2_Snonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: Option<OI2S>| Holder2045 { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
@@ -20206,7 +20206,7 @@ mod holders {
 
     fn holder2053() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|O1_S|E2_SS",
+            "main3:H3N0:FT0_NNN|O1_S|E2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: E2SS| Holder2053 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -20233,7 +20233,7 @@ mod holders {
 
     fn holder2061() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|O1_S|T2_NN",
+            "main3:H3N0:FT0_NNN|O1_S|T2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: T2NN| Holder2061 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -20260,7 +20260,7 @@ mod holders {
 
     fn holder2069() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|P1_N|FT2_NNN",
+            "main3:H3N0:FT0_NNN|P1_N|FT2_NNNnonstrict",
             &rows3(|m0: FT0NNN, m1: P1N, m2: FT2NNN| Holder2069 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -20278,7 +20278,7 @@ mod holders {
 
     fn holder2077() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|P1_S|A2_SS",
+            "main3:H3N0:FT0_NNN|P1_S|A2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: P1S, m2: A2SS| Holder2077 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -20296,7 +20296,7 @@ mod holders {
 
     fn holder2085() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|P1_S|P2_N",
+            "main3:H3N0:FT0_NNN|P1_S|P2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: P1S, m2: P2N| Holder2085 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -20304,7 +20304,7 @@ mod holders {
 
     fn holder2093() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|T1_NN|FO2_NN",
+            "main3:H3N0:FT0_NNN|T1_NN|FO2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: T1NN, m2: FO2NN| Holder2093 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -20322,7 +20322,7 @@ mod holders {
 
     fn holder2101() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|T1_NN|V2_NN",
+            "main3:H3N0:FT0_NNN|T1_NN|V2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: T1NN, m2: V2NN| Holder2101 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -20349,7 +20349,7 @@ mod holders {
 
     fn holder2109() -> Vec<String> {
         check(
-            "main3:H3N0:FT0_NNN|V1_NN|O2_N",
+            "main3:H3N0:FT0_NNN|V1_NN|O2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: V1NN, m2: Option<OI2N>| Holder2109 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,None", 'E'),
@@ -20493,7 +20493,7 @@ mod holders {
 
     fn holder2157() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|E1_NN|FT2_NNN",
+            "main3:H3N0:O0_N|E1_NN|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FT2NNN| Holder2157 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -20556,7 +20556,7 @@ mod holders {
 
     fn holder2181() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|E1_SS|V2_NN",
+            "main3:H3N0:O0_N|E1_SS|V2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: E1SS, m2: V2NN| Holder2181 { m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'E'),
@@ -20577,7 +20577,7 @@ mod holders {
 
     fn holder2189() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|FO1_NN|FT2_NNN",
+            "main3:H3N0:O0_N|FO1_NN|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: FT2NNN| Holder2189 { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -20592,7 +20592,7 @@ mod holders {
 
     fn holder2197() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|FP1_NN|A2_SS",
+            "main3:H3N0:O0_N|FP1_NN|A2_SSnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: A2SS| Holder2197 { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -20607,7 +20607,7 @@ mod holders {
 
     fn holder2205() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|FP1_NN|P2_N",
+            "main3:H3N0:O0_N|FP1_NN|P2_Nnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: P2N| Holder2205 { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -20615,7 +20615,7 @@ mod holders {
 
     fn holder2213() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|FT1_NNN|FO2_NN",
+            "main3:H3N0:O0_N|FT1_NNN|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: FO2NN| Holder2213 { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -20630,7 +20630,7 @@ mod holders {
 
     fn holder2221() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|FT1_NNN|V2_NN",
+            "main3:H3N0:O0_N|FT1_NNN|V2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: V2NN| Holder2221 { m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'E'),
@@ -20664,7 +20664,7 @@ mod holders {
 
     fn holder2237() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|O1_N|V2_NN",
+            "main3:H3N0:O0_N|O1_N|V2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: V2NN| Holder2237 { m0, m1, m2 }),
             &[
                 ("None,None,Rect", 'E'),
@@ -20681,7 +20681,7 @@ mod holders {
 
     fn holder2245() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|O1_S|FP2_NN",
+            "main3:H3N0:O0_N|O1_S|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: FP2NN| Holder2245 { m0, m1, m2 }),
             &[
                 ("None,None,-", 'E'),
@@ -20723,7 +20723,7 @@ mod holders {
 
     fn holder2269() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|P1_N|T2_NN",
+            "main3:H3N0:O0_N|P1_N|T2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: P1N, m2: T2NN| Holder2269 { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -20738,7 +20738,7 @@ mod holders {
 
     fn holder2277() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|P1_S|FO2_NN",
+            "main3:H3N0:O0_N|P1_S|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: P1S, m2: FO2NN| Holder2277 { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -20754,7 +20754,7 @@ mod holders {
 
     fn holder2293() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|T1_NN|E2_SS",
+            "main3:H3N0:O0_N|T1_NN|E2_SSnonstrict",
             &rows3(|m0: Option<OI0N>, m1: T1NN, m2: E2SS| Holder2293 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -20781,7 +20781,7 @@ mod holders {
 
     fn holder2301() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|T1_NN|T2_NN",
+            "main3:H3N0:O0_N|T1_NN|T2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: T1NN, m2: T2NN| Holder2301 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -20808,7 +20808,7 @@ mod holders {
 
     fn holder2309() -> Vec<String> {
         check(
-            "main3:H3N0:O0_N|V1_NN|FT2_NNN",
+            "main3:H3N0:O0_N|V1_NN|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: V1NN, m2: FT2NNN| Holder2309 { m0, m1, m2 }),
             &[
                 ("None,Rect,Dot", 'E'),
@@ -20904,7 +20904,7 @@ mod holders {
 
     fn holder2341() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|A1_SS|FT2_NNN",
+            "main3:H3N0:O0_S|A1_SS|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FT2NNN| Holder2341 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -20967,7 +20967,7 @@ mod holders {
 
     fn holder2365() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|E1_NN|V2_NN",
+            "main3:H3N0:O0_S|E1_NN|V2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: E1NN, m2: V2NN| Holder2365 { m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'E'),
@@ -20988,7 +20988,7 @@ mod holders {
 
     fn holder2373() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|E1_SS|FP2_NN",
+            "main3:H3N0:O0_S|E1_SS|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: E1SS, m2: FP2NN| Holder2373 { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -21030,7 +21030,7 @@ mod holders {
 
     fn holder2389() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|FO1_NN|FP2_NN",
+            "main3:H3N0:O0_S|FO1_NN|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: FP2NN| Holder2389 { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -21038,7 +21038,7 @@ mod holders {
 
     fn holder2397() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|FP1_NN|A2_NN",
+            "main3:H3N0:O0_S|FP1_NN|A2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: A2NN| Holder2397 { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -21053,7 +21053,7 @@ mod holders {
 
     fn holder2405() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|FP1_NN|O2_S",
+            "main3:H3N0:O0_S|FP1_NN|O2_Snonstrict",
             &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: Option<OI2S>| Holder2405 { m0, m1, m2 }),
             &[
                 ("None,-,None", 'E'),
@@ -21066,7 +21066,7 @@ mod holders {
 
     fn holder2413() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|FT1_NNN|E2_SS",
+            "main3:H3N0:O0_S|FT1_NNN|E2_SSnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: E2SS| Holder2413 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -21093,7 +21093,7 @@ mod holders {
 
     fn holder2421() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|FT1_NNN|T2_NN",
+            "main3:H3N0:O0_S|FT1_NNN|T2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: T2NN| Holder2421 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -21120,7 +21120,7 @@ mod holders {
 
     fn holder2429() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|O1_N|FP2_NN",
+            "main3:H3N0:O0_S|O1_N|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: FP2NN| Holder2429 { m0, m1, m2 }),
             &[
                 ("None,None,-", 'E'),
@@ -21167,7 +21167,7 @@ mod holders {
 
     fn holder2453() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|O1_S|T2_NN",
+            "main3:H3N0:O0_S|O1_S|T2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: T2NN| Holder2453 { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'E'),
@@ -21188,7 +21188,7 @@ mod holders {
 
     fn holder2461() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|P1_N|FO2_NN",
+            "main3:H3N0:O0_S|P1_N|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: P1N, m2: FO2NN| Holder2461 { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -21227,7 +21227,7 @@ mod holders {
 
     fn holder2493() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|T1_NN|E2_NN",
+            "main3:H3N0:O0_S|T1_NN|E2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: T1NN, m2: E2NN| Holder2493 { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -21254,7 +21254,7 @@ mod holders {
 
     fn holder2501() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|T1_NN|P2_S",
+            "main3:H3N0:O0_S|T1_NN|P2_Snonstrict",
             &rows3(|m0: Option<OI0S>, m1: T1NN, m2: P2S| Holder2501 { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -21269,7 +21269,7 @@ mod holders {
 
     fn holder2509() -> Vec<String> {
         check(
-            "main3:H3N0:O0_S|V1_NN|FP2_NN",
+            "main3:H3N0:O0_S|V1_NN|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: V1NN, m2: FP2NN| Holder2509 { m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
@@ -21300,7 +21300,7 @@ mod holders {
 
     fn holder2525() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|A1_NN|FT2_NNN",
+            "main3:H3N0:P0_N|A1_NN|FT2_NNNnonstrict",
             &rows3(|m0: P0N, m1: A1NN, m2: FT2NNN| Holder2525 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21341,7 +21341,7 @@ mod holders {
 
     fn holder2549() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|A1_SS|V2_NN",
+            "main3:H3N0:P0_N|A1_SS|V2_NNnonstrict",
             &rows3(|m0: P0N, m1: A1SS, m2: V2NN| Holder2549 { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -21356,7 +21356,7 @@ mod holders {
 
     fn holder2557() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|E1_NN|FP2_NN",
+            "main3:H3N0:P0_N|E1_NN|FP2_NNnonstrict",
             &rows3(|m0: P0N, m1: E1NN, m2: FP2NN| Holder2557 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21390,7 +21390,7 @@ mod holders {
 
     fn holder2581() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|E1_SS|T2_NN",
+            "main3:H3N0:P0_N|E1_SS|T2_NNnonstrict",
             &rows3(|m0: P0N, m1: E1SS, m2: T2NN| Holder2581 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21408,7 +21408,7 @@ mod holders {
 
     fn holder2589() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|FO1_NN|FO2_NN",
+            "main3:H3N0:P0_N|FO1_NN|FO2_NNnonstrict",
             &rows3(|m0: P0N, m1: FO1NN, m2: FO2NN| Holder2589 { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -21416,7 +21416,7 @@ mod holders {
 
     fn holder2597() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|FO1_NN|V2_NN",
+            "main3:H3N0:P0_N|FO1_NN|V2_NNnonstrict",
             &rows3(|m0: P0N, m1: FO1NN, m2: V2NN| Holder2597 { m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -21424,7 +21424,7 @@ mod holders {
 
     fn holder2605() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|FP1_NN|O2_N",
+            "main3:H3N0:P0_N|FP1_NN|O2_Nnonstrict",
             &rows3(|m0: P0N, m1: FP1NN, m2: Option<OI2N>| Holder2605 { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -21432,7 +21432,7 @@ mod holders {
 
     fn holder2613() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|FT1_NNN|E2_NN",
+            "main3:H3N0:P0_N|FT1_NNN|E2_NNnonstrict",
             &rows3(|m0: P0N, m1: FT1NNN, m2: E2NN| Holder2613 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21450,7 +21450,7 @@ mod holders {
 
     fn holder2621() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|FT1_NNN|P2_S",
+            "main3:H3N0:P0_N|FT1_NNN|P2_Snonstrict",
             &rows3(|m0: P0N, m1: FT1NNN, m2: P2S| Holder2621 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21466,7 +21466,7 @@ mod holders {
 
     fn holder2637() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|O1_N|T2_NN",
+            "main3:H3N0:P0_N|O1_N|T2_NNnonstrict",
             &rows3(|m0: P0N, m1: Option<OI1N>, m2: T2NN| Holder2637 { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
@@ -21481,7 +21481,7 @@ mod holders {
 
     fn holder2645() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|O1_S|FO2_NN",
+            "main3:H3N0:P0_N|O1_S|FO2_NNnonstrict",
             &rows3(|m0: P0N, m1: Option<OI1S>, m2: FO2NN| Holder2645 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -21529,7 +21529,7 @@ mod holders {
 
     fn holder2693() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|T1_NN|A2_SS",
+            "main3:H3N0:P0_N|T1_NN|A2_SSnonstrict",
             &rows3(|m0: P0N, m1: T1NN, m2: A2SS| Holder2693 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21547,7 +21547,7 @@ mod holders {
 
     fn holder2701() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|T1_NN|P2_N",
+            "main3:H3N0:P0_N|T1_NN|P2_Nnonstrict",
             &rows3(|m0: P0N, m1: T1NN, m2: P2N| Holder2701 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21555,7 +21555,7 @@ mod holders {
 
     fn holder2709() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|V1_NN|FO2_NN",
+            "main3:H3N0:P0_N|V1_NN|FO2_NNnonstrict",
             &rows3(|m0: P0N, m1: V1NN, m2: FO2NN| Holder2709 { m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21563,7 +21563,7 @@ mod holders {
 
     fn holder2717() -> Vec<String> {
         check(
-            "main3:H3N0:P0_N|V1_NN|V2_NN",
+            "main3:H3N0:P0_N|V1_NN|V2_NNnonstrict",
             &rows3(|m0: P0N, m1: V1NN, m2: V2NN| Holder2717 { m0, m1, m2 }),
             &[
                 ("-,Rect,Rect", 'E'),
@@ -21584,7 +21584,7 @@ mod holders {
 
     fn holder2733() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|A1_NN|V2_NN",
+            "main3:H3N0:P0_S|A1_NN|V2_NNnonstrict",
             &rows3(|m0: P0S, m1: A1NN, m2: V2NN| Holder2733 { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -21599,7 +21599,7 @@ mod holders {
 
     fn holder2741() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|A1_SS|FP2_NN",
+            "main3:H3N0:P0_S|A1_SS|FP2_NNnonstrict",
             &rows3(|m0: P0S, m1: A1SS, m2: FP2NN| Holder2741 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21633,7 +21633,7 @@ mod holders {
 
     fn holder2765() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|E1_NN|T2_NN",
+            "main3:H3N0:P0_S|E1_NN|T2_NNnonstrict",
             &rows3(|m0: P0S, m1: E1NN, m2: T2NN| Holder2765 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21651,7 +21651,7 @@ mod holders {
 
     fn holder2773() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|E1_SS|FO2_NN",
+            "main3:H3N0:P0_S|E1_SS|FO2_NNnonstrict",
             &rows3(|m0: P0S, m1: E1SS, m2: FO2NN| Holder2773 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21667,7 +21667,7 @@ mod holders {
 
     fn holder2789() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|FO1_NN|E2_SS",
+            "main3:H3N0:P0_S|FO1_NN|E2_SSnonstrict",
             &rows3(|m0: P0S, m1: FO1NN, m2: E2SS| Holder2789 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -21675,7 +21675,7 @@ mod holders {
 
     fn holder2797() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|FO1_NN|T2_NN",
+            "main3:H3N0:P0_S|FO1_NN|T2_NNnonstrict",
             &rows3(|m0: P0S, m1: FO1NN, m2: T2NN| Holder2797 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -21683,7 +21683,7 @@ mod holders {
 
     fn holder2805() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|FP1_NN|FT2_NNN",
+            "main3:H3N0:P0_S|FP1_NN|FT2_NNNnonstrict",
             &rows3(|m0: P0S, m1: FP1NN, m2: FT2NNN| Holder2805 { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -21691,7 +21691,7 @@ mod holders {
 
     fn holder2813() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|FT1_NNN|A2_SS",
+            "main3:H3N0:P0_S|FT1_NNN|A2_SSnonstrict",
             &rows3(|m0: P0S, m1: FT1NNN, m2: A2SS| Holder2813 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21709,7 +21709,7 @@ mod holders {
 
     fn holder2821() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|FT1_NNN|P2_N",
+            "main3:H3N0:P0_S|FT1_NNN|P2_Nnonstrict",
             &rows3(|m0: P0S, m1: FT1NNN, m2: P2N| Holder2821 { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -21717,7 +21717,7 @@ mod holders {
 
     fn holder2829() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|O1_N|FO2_NN",
+            "main3:H3N0:P0_S|O1_N|FO2_NNnonstrict",
             &rows3(|m0: P0S, m1: Option<OI1N>, m2: FO2NN| Holder2829 { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -21788,7 +21788,7 @@ mod holders {
 
     fn holder2893() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|T1_NN|A2_NN",
+            "main3:H3N0:P0_S|T1_NN|A2_NNnonstrict",
             &rows3(|m0: P0S, m1: T1NN, m2: A2NN| Holder2893 { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -21806,7 +21806,7 @@ mod holders {
 
     fn holder2901() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|T1_NN|O2_S",
+            "main3:H3N0:P0_S|T1_NN|O2_Snonstrict",
             &rows3(|m0: P0S, m1: T1NN, m2: Option<OI2S>| Holder2901 { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -21821,7 +21821,7 @@ mod holders {
 
     fn holder2909() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|V1_NN|E2_SS",
+            "main3:H3N0:P0_S|V1_NN|E2_SSnonstrict",
             &rows3(|m0: P0S, m1: V1NN, m2: E2SS| Holder2909 { m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -21836,7 +21836,7 @@ mod holders {
 
     fn holder2917() -> Vec<String> {
         check(
-            "main3:H3N0:P0_S|V1_NN|T2_NN",
+            "main3:H3N0:P0_S|V1_NN|T2_NNnonstrict",
             &rows3(|m0: P0S, m1: V1NN, m2: T2NN| Holder2917 { m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -21851,7 +21851,7 @@ mod holders {
 
     fn holder2925() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|A1_NN|FT2_NNN",
+            "main3:H3N0:T0_NN|A1_NN|FT2_NNNnonstrict",
             &rows3(|m0: T0NN, m1: A1NN, m2: FT2NNN| Holder2925 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -21887,7 +21887,7 @@ mod holders {
 
     fn holder2933() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|A1_SS|A2_SS",
+            "main3:H3N0:T0_NN|A1_SS|A2_SSnonstrict",
             &rows3(|m0: T0NN, m1: A1SS, m2: A2SS| Holder2933 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -21923,7 +21923,7 @@ mod holders {
 
     fn holder2941() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|A1_SS|P2_N",
+            "main3:H3N0:T0_NN|A1_SS|P2_Nnonstrict",
             &rows3(|m0: T0NN, m1: A1SS, m2: P2N| Holder2941 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -21941,7 +21941,7 @@ mod holders {
 
     fn holder2949() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|E1_NN|FO2_NN",
+            "main3:H3N0:T0_NN|E1_NN|FO2_NNnonstrict",
             &rows3(|m0: T0NN, m1: E1NN, m2: FO2NN| Holder2949 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -21959,7 +21959,7 @@ mod holders {
 
     fn holder2957() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|E1_NN|V2_NN",
+            "main3:H3N0:T0_NN|E1_NN|V2_NNnonstrict",
             &rows3(|m0: T0NN, m1: E1NN, m2: V2NN| Holder2957 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -21986,7 +21986,7 @@ mod holders {
 
     fn holder2965() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|E1_SS|O2_N",
+            "main3:H3N0:T0_NN|E1_SS|O2_Nnonstrict",
             &rows3(|m0: T0NN, m1: E1SS, m2: Option<OI2N>| Holder2965 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -22013,7 +22013,7 @@ mod holders {
 
     fn holder2973() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|FO1_NN|E2_NN",
+            "main3:H3N0:T0_NN|FO1_NN|E2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FO1NN, m2: E2NN| Holder2973 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -22031,7 +22031,7 @@ mod holders {
 
     fn holder2981() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|FO1_NN|P2_S",
+            "main3:H3N0:T0_NN|FO1_NN|P2_Snonstrict",
             &rows3(|m0: T0NN, m1: FO1NN, m2: P2S| Holder2981 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22039,7 +22039,7 @@ mod holders {
 
     fn holder2989() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|FP1_NN|FP2_NN",
+            "main3:H3N0:T0_NN|FP1_NN|FP2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FP1NN, m2: FP2NN| Holder2989 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22047,7 +22047,7 @@ mod holders {
 
     fn holder2997() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|FT1_NNN|A2_NN",
+            "main3:H3N0:T0_NN|FT1_NNN|A2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FT1NNN, m2: A2NN| Holder2997 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -22083,7 +22083,7 @@ mod holders {
 
     fn holder3005() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|FT1_NNN|O2_S",
+            "main3:H3N0:T0_NN|FT1_NNN|O2_Snonstrict",
             &rows3(|m0: T0NN, m1: FT1NNN, m2: Option<OI2S>| Holder3005 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -22110,7 +22110,7 @@ mod holders {
 
     fn holder3013() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|O1_N|E2_SS",
+            "main3:H3N0:T0_NN|O1_N|E2_SSnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1N>, m2: E2SS| Holder3013 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -22137,7 +22137,7 @@ mod holders {
 
     fn holder3021() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|O1_N|T2_NN",
+            "main3:H3N0:T0_NN|O1_N|T2_NNnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1N>, m2: T2NN| Holder3021 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -22164,7 +22164,7 @@ mod holders {
 
     fn holder3029() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|O1_S|FT2_NNN",
+            "main3:H3N0:T0_NN|O1_S|FT2_NNNnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1S>, m2: FT2NNN| Holder3029 { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -22191,7 +22191,7 @@ mod holders {
 
     fn holder3037() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|P1_N|A2_SS",
+            "main3:H3N0:T0_NN|P1_N|A2_SSnonstrict",
             &rows3(|m0: T0NN, m1: P1N, m2: A2SS| Holder3037 { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -22209,7 +22209,7 @@ mod holders {
 
     fn holder3045() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|P1_N|P2_N",
+            "main3:H3N0:T0_NN|P1_N|P2_Nnonstrict",
             &rows3(|m0: T0NN, m1: P1N, m2: P2N| Holder3045 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22217,7 +22217,7 @@ mod holders {
 
     fn holder3053() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|P1_S|FO2_NN",
+            "main3:H3N0:T0_NN|P1_S|FO2_NNnonstrict",
             &rows3(|m0: T0NN, m1: P1S, m2: FO2NN| Holder3053 { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22225,7 +22225,7 @@ mod holders {
 
     fn holder3061() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|P1_S|V2_NN",
+            "main3:H3N0:T0_NN|P1_S|V2_NNnonstrict",
             &rows3(|m0: T0NN, m1: P1S, m2: V2NN| Holder3061 { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
@@ -22240,7 +22240,7 @@ mod holders {
 
     fn holder3069() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|T1_NN|O2_N",
+            "main3:H3N0:T0_NN|T1_NN|O2_Nnonstrict",
             &rows3(|m0: T0NN, m1: T1NN, m2: Option<OI2N>| Holder3069 { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -22267,7 +22267,7 @@ mod holders {
 
     fn holder3077() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|V1_NN|E2_NN",
+            "main3:H3N0:T0_NN|V1_NN|E2_NNnonstrict",
             &rows3(|m0: T0NN, m1: V1NN, m2: E2NN| Holder3077 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -22294,7 +22294,7 @@ mod holders {
 
     fn holder3085() -> Vec<String> {
         check(
-            "main3:H3N0:T0_NN|V1_NN|P2_S",
+            "main3:H3N0:T0_NN|V1_NN|P2_Snonstrict",
             &rows3(|m0: T0NN, m1: V1NN, m2: P2S| Holder3085 { m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -22309,7 +22309,7 @@ mod holders {
 
     fn holder3093() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|A1_NN|FP2_NN",
+            "main3:H3N0:V0_NN|A1_NN|FP2_NNnonstrict",
             &rows3(|m0: V0NN, m1: A1NN, m2: FP2NN| Holder3093 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
@@ -22324,7 +22324,7 @@ mod holders {
 
     fn holder3101() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|A1_SS|A2_NN",
+            "main3:H3N0:V0_NN|A1_SS|A2_NNnonstrict",
             &rows3(|m0: V0NN, m1: A1SS, m2: A2NN| Holder3101 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -22351,7 +22351,7 @@ mod holders {
 
     fn holder3109() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|A1_SS|O2_S",
+            "main3:H3N0:V0_NN|A1_SS|O2_Snonstrict",
             &rows3(|m0: V0NN, m1: A1SS, m2: Option<OI2S>| Holder3109 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,None", 'E'),
@@ -22372,7 +22372,7 @@ mod holders {
 
     fn holder3117() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|E1_NN|E2_SS",
+            "main3:H3N0:V0_NN|E1_NN|E2_SSnonstrict",
             &rows3(|m0: V0NN, m1: E1NN, m2: E2SS| Holder3117 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -22399,7 +22399,7 @@ mod holders {
 
     fn holder3125() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|E1_NN|T2_NN",
+            "main3:H3N0:V0_NN|E1_NN|T2_NNnonstrict",
             &rows3(|m0: V0NN, m1: E1NN, m2: T2NN| Holder3125 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -22426,7 +22426,7 @@ mod holders {
 
     fn holder3133() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|E1_SS|FT2_NNN",
+            "main3:H3N0:V0_NN|E1_SS|FT2_NNNnonstrict",
             &rows3(|m0: V0NN, m1: E1SS, m2: FT2NNN| Holder3133 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -22453,7 +22453,7 @@ mod holders {
 
     fn holder3141() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|FO1_NN|A2_SS",
+            "main3:H3N0:V0_NN|FO1_NN|A2_SSnonstrict",
             &rows3(|m0: V0NN, m1: FO1NN, m2: A2SS| Holder3141 { m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -22468,7 +22468,7 @@ mod holders {
 
     fn holder3149() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|FO1_NN|P2_N",
+            "main3:H3N0:V0_NN|FO1_NN|P2_Nnonstrict",
             &rows3(|m0: V0NN, m1: FO1NN, m2: P2N| Holder3149 { m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22476,7 +22476,7 @@ mod holders {
 
     fn holder3157() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|FP1_NN|FO2_NN",
+            "main3:H3N0:V0_NN|FP1_NN|FO2_NNnonstrict",
             &rows3(|m0: V0NN, m1: FP1NN, m2: FO2NN| Holder3157 { m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -22484,7 +22484,7 @@ mod holders {
 
     fn holder3165() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|FP1_NN|V2_NN",
+            "main3:H3N0:V0_NN|FP1_NN|V2_NNnonstrict",
             &rows3(|m0: V0NN, m1: FP1NN, m2: V2NN| Holder3165 { m0, m1, m2 }),
             &[
                 ("Rect,-,Rect", 'E'),
@@ -22497,7 +22497,7 @@ mod holders {
 
     fn holder3173() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|FT1_NNN|O2_N",
+            "main3:H3N0:V0_NN|FT1_NNN|O2_Nnonstrict",
             &rows3(|m0: V0NN, m1: FT1NNN, m2: Option<OI2N>| Holder3173 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,None", 'E'),
@@ -22518,7 +22518,7 @@ mod holders {
 
     fn holder3181() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|O1_N|E2_NN",
+            "main3:H3N0:V0_NN|O1_N|E2_NNnonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1N>, m2: E2NN| Holder3181 { m0, m1, m2 }),
             &[
                 ("Rect,None,Dot", 'E'),
@@ -22539,7 +22539,7 @@ mod holders {
 
     fn holder3189() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|O1_N|P2_S",
+            "main3:H3N0:V0_NN|O1_N|P2_Snonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1N>, m2: P2S| Holder3189 { m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
@@ -22552,7 +22552,7 @@ mod holders {
 
     fn holder3197() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|O1_S|FP2_NN",
+            "main3:H3N0:V0_NN|O1_S|FP2_NNnonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1S>, m2: FP2NN| Holder3197 { m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
@@ -22565,7 +22565,7 @@ mod holders {
 
     fn holder3205() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|P1_N|A2_NN",
+            "main3:H3N0:V0_NN|P1_N|A2_NNnonstrict",
             &rows3(|m0: V0NN, m1: P1N, m2: A2NN| Holder3205 { m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -22580,7 +22580,7 @@ mod holders {
 
     fn holder3213() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|P1_N|O2_S",
+            "main3:H3N0:V0_NN|P1_N|O2_Snonstrict",
             &rows3(|m0: V0NN, m1: P1N, m2: Option<OI2S>| Holder3213 { m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
@@ -22593,7 +22593,7 @@ mod holders {
 
     fn holder3221() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|P1_S|E2_SS",
+            "main3:H3N0:V0_NN|P1_S|E2_SSnonstrict",
             &rows3(|m0: V0NN, m1: P1S, m2: E2SS| Holder3221 { m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -22608,7 +22608,7 @@ mod holders {
 
     fn holder3229() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|P1_S|T2_NN",
+            "main3:H3N0:V0_NN|P1_S|T2_NNnonstrict",
             &rows3(|m0: V0NN, m1: P1S, m2: T2NN| Holder3229 { m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -22623,7 +22623,7 @@ mod holders {
 
     fn holder3237() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|T1_NN|FT2_NNN",
+            "main3:H3N0:V0_NN|T1_NN|FT2_NNNnonstrict",
             &rows3(|m0: V0NN, m1: T1NN, m2: FT2NNN| Holder3237 { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -22650,7 +22650,7 @@ mod holders {
 
     fn holder3245() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|V1_NN|A2_SS",
+            "main3:H3N0:V0_NN|V1_NN|A2_SSnonstrict",
             &rows3(|m0: V0NN, m1: V1NN, m2: A2SS| Holder3245 { m0, m1, m2 }),
             &[
                 ("Rect,Rect,Dot", 'E'),
@@ -22671,7 +22671,7 @@ mod holders {
 
     fn holder3253() -> Vec<String> {
         check(
-            "main3:H3N0:V0_NN|V1_NN|P2_N",
+            "main3:H3N0:V0_NN|V1_NN|P2_Nnonstrict",
             &rows3(|m0: V0NN, m1: V1NN, m2: P2N| Holder3253 { m0, m1, m2 }),
             &[
                 ("Rect,Rect,-", 'E'),
@@ -22684,7 +22684,7 @@ mod holders {
 
     fn holder3261() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|A1_NN|FO2_NN",
+            "main3:H3N1:A0_NN|A1_NN|FO2_NNnonstrict",
             &rows3(|m0: A0NN, m1: A1NN, m2: FO2NN| Holder3261 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -22900,7 +22900,7 @@ mod holders {
 
     fn holder3325() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|FO1_NN|A2_NN",
+            "main3:H3N1:A0_NN|FO1_NN|A2_NNnonstrict",
             &rows3(|m0: A0NN, m1: FO1NN, m2: A2NN| Holder3325 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -22918,7 +22918,7 @@ mod holders {
 
     fn holder3333() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|FO1_NN|O2_S",
+            "main3:H3N1:A0_NN|FO1_NN|O2_Snonstrict",
             &rows3(|m0: A0NN, m1: FO1NN, m2: Option<OI2S>| Holder3333 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -22933,7 +22933,7 @@ mod holders {
 
     fn holder3341() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|FP1_NN|E2_SS",
+            "main3:H3N1:A0_NN|FP1_NN|E2_SSnonstrict",
             &rows3(|m0: A0NN, m1: FP1NN, m2: E2SS| Holder3341 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -22951,7 +22951,7 @@ mod holders {
 
     fn holder3349() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|FP1_NN|T2_NN",
+            "main3:H3N1:A0_NN|FP1_NN|T2_NNnonstrict",
             &rows3(|m0: A0NN, m1: FP1NN, m2: T2NN| Holder3349 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -22969,7 +22969,7 @@ mod holders {
 
     fn holder3357() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|FT1_NNN|FT2_NNN",
+            "main3:H3N1:A0_NN|FT1_NNN|FT2_NNNnonstrict",
             &rows3(|m0: A0NN, m1: FT1NNN, m2: FT2NNN| Holder3357 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -23085,7 +23085,7 @@ mod holders {
 
     fn holder3389() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|O1_S|FT2_NNN",
+            "main3:H3N1:A0_NN|O1_S|FT2_NNNnonstrict",
             &rows3(|m0: A0NN, m1: Option<OI1S>, m2: FT2NNN| Holder3389 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -23141,7 +23141,7 @@ mod holders {
 
     fn holder3413() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|P1_N|V2_NN",
+            "main3:H3N1:A0_NN|P1_N|V2_NNnonstrict",
             &rows3(|m0: A0NN, m1: P1N, m2: V2NN| Holder3413 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
@@ -23156,7 +23156,7 @@ mod holders {
 
     fn holder3421() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|P1_S|FP2_NN",
+            "main3:H3N1:A0_NN|P1_S|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: P1S, m2: FP2NN| Holder3421 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -23182,7 +23182,7 @@ mod holders {
 
     fn holder3437() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|T1_NN|FP2_NN",
+            "main3:H3N1:A0_NN|T1_NN|FP2_NNnonstrict",
             &rows3(|m0: A0NN, m1: T1NN, m2: FP2NN| Holder3437 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -23200,7 +23200,7 @@ mod holders {
 
     fn holder3445() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|V1_NN|A2_NN",
+            "main3:H3N1:A0_NN|V1_NN|A2_NNnonstrict",
             &rows3(|m0: A0NN, m1: V1NN, m2: A2NN| Holder3445 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -23227,7 +23227,7 @@ mod holders {
 
     fn holder3453() -> Vec<String> {
         check(
-            "main3:H3N1:A0_NN|V1_NN|O2_S",
+            "main3:H3N1:A0_NN|V1_NN|O2_Snonstrict",
             &rows3(|m0: A0NN, m1: V1NN, m2: Option<OI2S>| Holder3453 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,None", 'E'),
@@ -23464,7 +23464,7 @@ mod holders {
 
     fn holder3517() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|E1_SS|FT2_NNN",
+            "main3:H3N1:A0_SS|E1_SS|FT2_NNNnonstrict",
             &rows3(|m0: A0SS, m1: E1SS, m2: FT2NNN| Holder3517 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -23527,7 +23527,7 @@ mod holders {
 
     fn holder3533() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|FO1_NN|O2_N",
+            "main3:H3N1:A0_SS|FO1_NN|O2_Nnonstrict",
             &rows3(|m0: A0SS, m1: FO1NN, m2: Option<OI2N>| Holder3533 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -23542,7 +23542,7 @@ mod holders {
 
     fn holder3541() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|FP1_NN|E2_NN",
+            "main3:H3N1:A0_SS|FP1_NN|E2_NNnonstrict",
             &rows3(|m0: A0SS, m1: FP1NN, m2: E2NN| Holder3541 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -23560,7 +23560,7 @@ mod holders {
 
     fn holder3549() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|FP1_NN|P2_S",
+            "main3:H3N1:A0_SS|FP1_NN|P2_Snonstrict",
             &rows3(|m0: A0SS, m1: FP1NN, m2: P2S| Holder3549 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -23568,7 +23568,7 @@ mod holders {
 
     fn holder3557() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|FT1_NNN|FP2_NN",
+            "main3:H3N1:A0_SS|FT1_NNN|FP2_NNnonstrict",
             &rows3(|m0: A0SS, m1: FT1NNN, m2: FP2NN| Holder3557 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -23613,7 +23613,7 @@ mod holders {
 
     fn holder3573() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|O1_N|FT2_NNN",
+            "main3:H3N1:A0_SS|O1_N|FT2_NNNnonstrict",
             &rows3(|m0: A0SS, m1: Option<OI1N>, m2: FT2NNN| Holder3573 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -23676,7 +23676,7 @@ mod holders {
 
     fn holder3597() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|O1_S|V2_NN",
+            "main3:H3N1:A0_SS|O1_S|V2_NNnonstrict",
             &rows3(|m0: A0SS, m1: Option<OI1S>, m2: V2NN| Holder3597 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'E'),
@@ -23697,7 +23697,7 @@ mod holders {
 
     fn holder3605() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|P1_N|FP2_NN",
+            "main3:H3N1:A0_SS|P1_N|FP2_NNnonstrict",
             &rows3(|m0: A0SS, m1: P1N, m2: FP2NN| Holder3605 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -23731,7 +23731,7 @@ mod holders {
 
     fn holder3629() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|P1_S|T2_NN",
+            "main3:H3N1:A0_SS|P1_S|T2_NNnonstrict",
             &rows3(|m0: A0SS, m1: P1S, m2: T2NN| Holder3629 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -23749,7 +23749,7 @@ mod holders {
 
     fn holder3637() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|T1_NN|FO2_NN",
+            "main3:H3N1:A0_SS|T1_NN|FO2_NNnonstrict",
             &rows3(|m0: A0SS, m1: T1NN, m2: FO2NN| Holder3637 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -23767,7 +23767,7 @@ mod holders {
 
     fn holder3645() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|T1_NN|V2_NN",
+            "main3:H3N1:A0_SS|T1_NN|V2_NNnonstrict",
             &rows3(|m0: A0SS, m1: T1NN, m2: V2NN| Holder3645 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -23794,7 +23794,7 @@ mod holders {
 
     fn holder3653() -> Vec<String> {
         check(
-            "main3:H3N1:A0_SS|V1_NN|O2_N",
+            "main3:H3N1:A0_SS|V1_NN|O2_Nnonstrict",
             &rows3(|m0: A0SS, m1: V1NN, m2: Option<OI2N>| Holder3653 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,None", 'E'),
@@ -23977,7 +23977,7 @@ mod holders {
 
     fn holder3701() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|E1_NN|FT2_NNN",
+            "main3:H3N1:E0_NN|E1_NN|FT2_NNNnonstrict",
             &rows3(|m0: E0NN, m1: E1NN, m2: FT2NNN| Holder3701 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24058,7 +24058,7 @@ mod holders {
 
     fn holder3725() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|E1_SS|V2_NN",
+            "main3:H3N1:E0_NN|E1_SS|V2_NNnonstrict",
             &rows3(|m0: E0NN, m1: E1SS, m2: V2NN| Holder3725 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -24085,7 +24085,7 @@ mod holders {
 
     fn holder3733() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|FO1_NN|FT2_NNN",
+            "main3:H3N1:E0_NN|FO1_NN|FT2_NNNnonstrict",
             &rows3(|m0: E0NN, m1: FO1NN, m2: FT2NNN| Holder3733 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -24103,7 +24103,7 @@ mod holders {
 
     fn holder3741() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|FP1_NN|A2_SS",
+            "main3:H3N1:E0_NN|FP1_NN|A2_SSnonstrict",
             &rows3(|m0: E0NN, m1: FP1NN, m2: A2SS| Holder3741 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -24121,7 +24121,7 @@ mod holders {
 
     fn holder3749() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|FP1_NN|P2_N",
+            "main3:H3N1:E0_NN|FP1_NN|P2_Nnonstrict",
             &rows3(|m0: E0NN, m1: FP1NN, m2: P2N| Holder3749 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -24129,7 +24129,7 @@ mod holders {
 
     fn holder3757() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|FT1_NNN|FO2_NN",
+            "main3:H3N1:E0_NN|FT1_NNN|FO2_NNnonstrict",
             &rows3(|m0: E0NN, m1: FT1NNN, m2: FO2NN| Holder3757 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -24147,7 +24147,7 @@ mod holders {
 
     fn holder3765() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|FT1_NNN|V2_NN",
+            "main3:H3N1:E0_NN|FT1_NNN|V2_NNnonstrict",
             &rows3(|m0: E0NN, m1: FT1NNN, m2: V2NN| Holder3765 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -24189,7 +24189,7 @@ mod holders {
 
     fn holder3781() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|O1_N|V2_NN",
+            "main3:H3N1:E0_NN|O1_N|V2_NNnonstrict",
             &rows3(|m0: E0NN, m1: Option<OI1N>, m2: V2NN| Holder3781 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'E'),
@@ -24210,7 +24210,7 @@ mod holders {
 
     fn holder3789() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|O1_S|FP2_NN",
+            "main3:H3N1:E0_NN|O1_S|FP2_NNnonstrict",
             &rows3(|m0: E0NN, m1: Option<OI1S>, m2: FP2NN| Holder3789 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -24260,7 +24260,7 @@ mod holders {
 
     fn holder3813() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|P1_N|T2_NN",
+            "main3:H3N1:E0_NN|P1_N|T2_NNnonstrict",
             &rows3(|m0: E0NN, m1: P1N, m2: T2NN| Holder3813 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -24278,7 +24278,7 @@ mod holders {
 
     fn holder3821() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|P1_S|FO2_NN",
+            "main3:H3N1:E0_NN|P1_S|FO2_NNnonstrict",
             &rows3(|m0: E0NN, m1: P1S, m2: FO2NN| Holder3821 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -24294,7 +24294,7 @@ mod holders {
 
     fn holder3837() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|T1_NN|E2_SS",
+            "main3:H3N1:E0_NN|T1_NN|E2_SSnonstrict",
             &rows3(|m0: E0NN, m1: T1NN, m2: E2SS| Holder3837 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24330,7 +24330,7 @@ mod holders {
 
     fn holder3845() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|T1_NN|T2_NN",
+            "main3:H3N1:E0_NN|T1_NN|T2_NNnonstrict",
             &rows3(|m0: E0NN, m1: T1NN, m2: T2NN| Holder3845 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24366,7 +24366,7 @@ mod holders {
 
     fn holder3853() -> Vec<String> {
         check(
-            "main3:H3N1:E0_NN|V1_NN|FT2_NNN",
+            "main3:H3N1:E0_NN|V1_NN|FT2_NNNnonstrict",
             &rows3(|m0: E0NN, m1: V1NN, m2: FT2NNN| Holder3853 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -24492,7 +24492,7 @@ mod holders {
 
     fn holder3885() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|A1_SS|FT2_NNN",
+            "main3:H3N1:E0_SS|A1_SS|FT2_NNNnonstrict",
             &rows3(|m0: E0SS, m1: A1SS, m2: FT2NNN| Holder3885 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24573,7 +24573,7 @@ mod holders {
 
     fn holder3909() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|E1_NN|V2_NN",
+            "main3:H3N1:E0_SS|E1_NN|V2_NNnonstrict",
             &rows3(|m0: E0SS, m1: E1NN, m2: V2NN| Holder3909 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -24600,7 +24600,7 @@ mod holders {
 
     fn holder3917() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|E1_SS|FP2_NN",
+            "main3:H3N1:E0_SS|E1_SS|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: E1SS, m2: FP2NN| Holder3917 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -24654,7 +24654,7 @@ mod holders {
 
     fn holder3933() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|FO1_NN|FP2_NN",
+            "main3:H3N1:E0_SS|FO1_NN|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FO1NN, m2: FP2NN| Holder3933 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -24662,7 +24662,7 @@ mod holders {
 
     fn holder3941() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|FP1_NN|A2_NN",
+            "main3:H3N1:E0_SS|FP1_NN|A2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FP1NN, m2: A2NN| Holder3941 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -24680,7 +24680,7 @@ mod holders {
 
     fn holder3949() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|FP1_NN|O2_S",
+            "main3:H3N1:E0_SS|FP1_NN|O2_Snonstrict",
             &rows3(|m0: E0SS, m1: FP1NN, m2: Option<OI2S>| Holder3949 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -24695,7 +24695,7 @@ mod holders {
 
     fn holder3957() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|FT1_NNN|E2_SS",
+            "main3:H3N1:E0_SS|FT1_NNN|E2_SSnonstrict",
             &rows3(|m0: E0SS, m1: FT1NNN, m2: E2SS| Holder3957 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24731,7 +24731,7 @@ mod holders {
 
     fn holder3965() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|FT1_NNN|T2_NN",
+            "main3:H3N1:E0_SS|FT1_NNN|T2_NNnonstrict",
             &rows3(|m0: E0SS, m1: FT1NNN, m2: T2NN| Holder3965 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24767,7 +24767,7 @@ mod holders {
 
     fn holder3973() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|O1_N|FP2_NN",
+            "main3:H3N1:E0_SS|O1_N|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: Option<OI1N>, m2: FP2NN| Holder3973 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -24824,7 +24824,7 @@ mod holders {
 
     fn holder3997() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|O1_S|T2_NN",
+            "main3:H3N1:E0_SS|O1_S|T2_NNnonstrict",
             &rows3(|m0: E0SS, m1: Option<OI1S>, m2: T2NN| Holder3997 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -24851,7 +24851,7 @@ mod holders {
 
     fn holder4005() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|P1_N|FO2_NN",
+            "main3:H3N1:E0_SS|P1_N|FO2_NNnonstrict",
             &rows3(|m0: E0SS, m1: P1N, m2: FO2NN| Holder4005 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -24893,7 +24893,7 @@ mod holders {
 
     fn holder4037() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|T1_NN|E2_NN",
+            "main3:H3N1:E0_SS|T1_NN|E2_NNnonstrict",
             &rows3(|m0: E0SS, m1: T1NN, m2: E2NN| Holder4037 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -24929,7 +24929,7 @@ mod holders {
 
     fn holder4045() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|T1_NN|P2_S",
+            "main3:H3N1:E0_SS|T1_NN|P2_Snonstrict",
             &rows3(|m0: E0SS, m1: T1NN, m2: P2S| Holder4045 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -24947,7 +24947,7 @@ mod holders {
 
     fn holder4053() -> Vec<String> {
         check(
-            "main3:H3N1:E0_SS|V1_NN|FP2_NN",
+            "main3:H3N1:E0_SS|V1_NN|FP2_NNnonstrict",
             &rows3(|m0: E0SS, m1: V1NN, m2: FP2NN| Holder4053 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -24962,7 +24962,7 @@ mod holders {
 
     fn holder4061() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|A1_NN|A2_NN",
+            "main3:H3N1:FO0_NN|A1_NN|A2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: A1NN, m2: A2NN| Holder4061 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -24980,7 +24980,7 @@ mod holders {
 
     fn holder4069() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|A1_NN|O2_S",
+            "main3:H3N1:FO0_NN|A1_NN|O2_Snonstrict",
             &rows3(|m0: FO0NN, m1: A1NN, m2: Option<OI2S>| Holder4069 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -24995,7 +24995,7 @@ mod holders {
 
     fn holder4077() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|A1_SS|E2_SS",
+            "main3:H3N1:FO0_NN|A1_SS|E2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: A1SS, m2: E2SS| Holder4077 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25013,7 +25013,7 @@ mod holders {
 
     fn holder4085() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|A1_SS|T2_NN",
+            "main3:H3N1:FO0_NN|A1_SS|T2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: A1SS, m2: T2NN| Holder4085 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25031,7 +25031,7 @@ mod holders {
 
     fn holder4093() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|E1_NN|FT2_NNN",
+            "main3:H3N1:FO0_NN|E1_NN|FT2_NNNnonstrict",
             &rows3(|m0: FO0NN, m1: E1NN, m2: FT2NNN| Holder4093 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25049,7 +25049,7 @@ mod holders {
 
     fn holder4101() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|E1_SS|A2_SS",
+            "main3:H3N1:FO0_NN|E1_SS|A2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: E1SS, m2: A2SS| Holder4101 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25067,7 +25067,7 @@ mod holders {
 
     fn holder4109() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|E1_SS|P2_N",
+            "main3:H3N1:FO0_NN|E1_SS|P2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: E1SS, m2: P2N| Holder4109 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25075,7 +25075,7 @@ mod holders {
 
     fn holder4117() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|FO1_NN|FO2_NN",
+            "main3:H3N1:FO0_NN|FO1_NN|FO2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: FO1NN, m2: FO2NN| Holder4117 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -25083,7 +25083,7 @@ mod holders {
 
     fn holder4125() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|FO1_NN|V2_NN",
+            "main3:H3N1:FO0_NN|FO1_NN|V2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: FO1NN, m2: V2NN| Holder4125 { own: 7, m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25091,7 +25091,7 @@ mod holders {
 
     fn holder4133() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|FP1_NN|O2_N",
+            "main3:H3N1:FO0_NN|FP1_NN|O2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: FP1NN, m2: Option<OI2N>| Holder4133 { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -25099,7 +25099,7 @@ mod holders {
 
     fn holder4141() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|FT1_NNN|E2_NN",
+            "main3:H3N1:FO0_NN|FT1_NNN|E2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: FT1NNN, m2: E2NN| Holder4141 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25117,7 +25117,7 @@ mod holders {
 
     fn holder4149() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|FT1_NNN|P2_S",
+            "main3:H3N1:FO0_NN|FT1_NNN|P2_Snonstrict",
             &rows3(|m0: FO0NN, m1: FT1NNN, m2: P2S| Holder4149 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25125,7 +25125,7 @@ mod holders {
 
     fn holder4157() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|O1_N|FP2_NN",
+            "main3:H3N1:FO0_NN|O1_N|FP2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: FP2NN| Holder4157 { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -25133,7 +25133,7 @@ mod holders {
 
     fn holder4165() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|O1_S|A2_NN",
+            "main3:H3N1:FO0_NN|O1_S|A2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: A2NN| Holder4165 { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
@@ -25148,7 +25148,7 @@ mod holders {
 
     fn holder4173() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|O1_S|O2_S",
+            "main3:H3N1:FO0_NN|O1_S|O2_Snonstrict",
             &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder4173 {
                 own: 7,
                 m0,
@@ -25166,7 +25166,7 @@ mod holders {
 
     fn holder4181() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|P1_N|E2_SS",
+            "main3:H3N1:FO0_NN|P1_N|E2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: P1N, m2: E2SS| Holder4181 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25174,7 +25174,7 @@ mod holders {
 
     fn holder4189() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|P1_N|T2_NN",
+            "main3:H3N1:FO0_NN|P1_N|T2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: P1N, m2: T2NN| Holder4189 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25182,7 +25182,7 @@ mod holders {
 
     fn holder4197() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|P1_S|FT2_NNN",
+            "main3:H3N1:FO0_NN|P1_S|FT2_NNNnonstrict",
             &rows3(|m0: FO0NN, m1: P1S, m2: FT2NNN| Holder4197 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25190,7 +25190,7 @@ mod holders {
 
     fn holder4205() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|T1_NN|A2_SS",
+            "main3:H3N1:FO0_NN|T1_NN|A2_SSnonstrict",
             &rows3(|m0: FO0NN, m1: T1NN, m2: A2SS| Holder4205 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25208,7 +25208,7 @@ mod holders {
 
     fn holder4213() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|T1_NN|P2_N",
+            "main3:H3N1:FO0_NN|T1_NN|P2_Nnonstrict",
             &rows3(|m0: FO0NN, m1: T1NN, m2: P2N| Holder4213 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25216,7 +25216,7 @@ mod holders {
 
     fn holder4221() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|V1_NN|FO2_NN",
+            "main3:H3N1:FO0_NN|V1_NN|FO2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: V1NN, m2: FO2NN| Holder4221 { own: 7, m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25224,7 +25224,7 @@ mod holders {
 
     fn holder4229() -> Vec<String> {
         check(
-            "main3:H3N1:FO0_NN|V1_NN|V2_NN",
+            "main3:H3N1:FO0_NN|V1_NN|V2_NNnonstrict",
             &rows3(|m0: FO0NN, m1: V1NN, m2: V2NN| Holder4229 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Rect", 'E'),
@@ -25237,7 +25237,7 @@ mod holders {
 
     fn holder4237() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|A1_NN|O2_N",
+            "main3:H3N1:FP0_NN|A1_NN|O2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: A1NN, m2: Option<OI2N>| Holder4237 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -25252,7 +25252,7 @@ mod holders {
 
     fn holder4245() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|A1_SS|E2_NN",
+            "main3:H3N1:FP0_NN|A1_SS|E2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: A1SS, m2: E2NN| Holder4245 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25270,7 +25270,7 @@ mod holders {
 
     fn holder4253() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|A1_SS|P2_S",
+            "main3:H3N1:FP0_NN|A1_SS|P2_Snonstrict",
             &rows3(|m0: FP0NN, m1: A1SS, m2: P2S| Holder4253 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25278,7 +25278,7 @@ mod holders {
 
     fn holder4261() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|E1_NN|FP2_NN",
+            "main3:H3N1:FP0_NN|E1_NN|FP2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: E1NN, m2: FP2NN| Holder4261 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25286,7 +25286,7 @@ mod holders {
 
     fn holder4269() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|E1_SS|A2_NN",
+            "main3:H3N1:FP0_NN|E1_SS|A2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: E1SS, m2: A2NN| Holder4269 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25304,7 +25304,7 @@ mod holders {
 
     fn holder4277() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|E1_SS|O2_S",
+            "main3:H3N1:FP0_NN|E1_SS|O2_Snonstrict",
             &rows3(|m0: FP0NN, m1: E1SS, m2: Option<OI2S>| Holder4277 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -25319,7 +25319,7 @@ mod holders {
 
     fn holder4285() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|FO1_NN|E2_SS",
+            "main3:H3N1:FP0_NN|FO1_NN|E2_SSnonstrict",
             &rows3(|m0: FP0NN, m1: FO1NN, m2: E2SS| Holder4285 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25327,7 +25327,7 @@ mod holders {
 
     fn holder4293() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|FO1_NN|T2_NN",
+            "main3:H3N1:FP0_NN|FO1_NN|T2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: FO1NN, m2: T2NN| Holder4293 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25335,7 +25335,7 @@ mod holders {
 
     fn holder4301() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|FP1_NN|FT2_NNN",
+            "main3:H3N1:FP0_NN|FP1_NN|FT2_NNNnonstrict",
             &rows3(|m0: FP0NN, m1: FP1NN, m2: FT2NNN| Holder4301 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25343,7 +25343,7 @@ mod holders {
 
     fn holder4309() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|FT1_NNN|A2_SS",
+            "main3:H3N1:FP0_NN|FT1_NNN|A2_SSnonstrict",
             &rows3(|m0: FP0NN, m1: FT1NNN, m2: A2SS| Holder4309 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25361,7 +25361,7 @@ mod holders {
 
     fn holder4317() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|FT1_NNN|P2_N",
+            "main3:H3N1:FP0_NN|FT1_NNN|P2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: FT1NNN, m2: P2N| Holder4317 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -25369,7 +25369,7 @@ mod holders {
 
     fn holder4325() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|O1_N|FO2_NN",
+            "main3:H3N1:FP0_NN|O1_N|FO2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: FO2NN| Holder4325 { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -25377,7 +25377,7 @@ mod holders {
 
     fn holder4333() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|O1_N|V2_NN",
+            "main3:H3N1:FP0_NN|O1_N|V2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: V2NN| Holder4333 { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
@@ -25390,7 +25390,7 @@ mod holders {
 
     fn holder4341() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|O1_S|O2_N",
+            "main3:H3N1:FP0_NN|O1_S|O2_Nnonstrict",
             &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: Option<OI2N>| Holder4341 {
                 own: 7,
                 m0,
@@ -25408,7 +25408,7 @@ mod holders {
 
     fn holder4349() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|P1_N|E2_NN",
+            "main3:H3N1:FP0_NN|P1_N|E2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: P1N, m2: E2NN| Holder4349 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -25416,7 +25416,7 @@ mod holders {
 
     fn holder4357() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|P1_N|P2_S",
+            "main3:H3N1:FP0_NN|P1_N|P2_Snonstrict",
             &rows3(|m0: FP0NN, m1: P1N, m2: P2S| Holder4357 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -25424,7 +25424,7 @@ mod holders {
 
     fn holder4365() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|P1_S|FP2_NN",
+            "main3:H3N1:FP0_NN|P1_S|FP2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: P1S, m2: FP2NN| Holder4365 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -25432,7 +25432,7 @@ mod holders {
 
     fn holder4373() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|T1_NN|A2_NN",
+            "main3:H3N1:FP0_NN|T1_NN|A2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: T1NN, m2: A2NN| Holder4373 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -25450,7 +25450,7 @@ mod holders {
 
     fn holder4381() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|T1_NN|O2_S",
+            "main3:H3N1:FP0_NN|T1_NN|O2_Snonstrict",
             &rows3(|m0: FP0NN, m1: T1NN, m2: Option<OI2S>| Holder4381 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
@@ -25465,7 +25465,7 @@ mod holders {
 
     fn holder4389() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|V1_NN|E2_SS",
+            "main3:H3N1:FP0_NN|V1_NN|E2_SSnonstrict",
             &rows3(|m0: FP0NN, m1: V1NN, m2: E2SS| Holder4389 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -25480,7 +25480,7 @@ mod holders {
 
     fn holder4397() -> Vec<String> {
         check(
-            "main3:H3N1:FP0_NN|V1_NN|T2_NN",
+            "main3:H3N1:FP0_NN|V1_NN|T2_NNnonstrict",
             &rows3(|m0: FP0NN, m1: V1NN, m2: T2NN| Holder4397 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -25495,7 +25495,7 @@ mod holders {
 
     fn holder4405() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|A1_NN|FT2_NNN",
+            "main3:H3N1:FT0_NNN|A1_NN|FT2_NNNnonstrict",
             &rows3(|m0: FT0NNN, m1: A1NN, m2: FT2NNN| Holder4405 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -25531,7 +25531,7 @@ mod holders {
 
     fn holder4413() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|A1_SS|A2_SS",
+            "main3:H3N1:FT0_NNN|A1_SS|A2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: A1SS, m2: A2SS| Holder4413 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -25567,7 +25567,7 @@ mod holders {
 
     fn holder4421() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|A1_SS|P2_N",
+            "main3:H3N1:FT0_NNN|A1_SS|P2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: A1SS, m2: P2N| Holder4421 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -25585,7 +25585,7 @@ mod holders {
 
     fn holder4429() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|E1_NN|FO2_NN",
+            "main3:H3N1:FT0_NNN|E1_NN|FO2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: E1NN, m2: FO2NN| Holder4429 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -25603,7 +25603,7 @@ mod holders {
 
     fn holder4437() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|E1_NN|V2_NN",
+            "main3:H3N1:FT0_NNN|E1_NN|V2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: E1NN, m2: V2NN| Holder4437 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -25630,7 +25630,7 @@ mod holders {
 
     fn holder4445() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|E1_SS|O2_N",
+            "main3:H3N1:FT0_NNN|E1_SS|O2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: E1SS, m2: Option<OI2N>| Holder4445 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -25657,7 +25657,7 @@ mod holders {
 
     fn holder4453() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|FO1_NN|E2_NN",
+            "main3:H3N1:FT0_NNN|FO1_NN|E2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: FO1NN, m2: E2NN| Holder4453 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -25675,7 +25675,7 @@ mod holders {
 
     fn holder4461() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|FO1_NN|P2_S",
+            "main3:H3N1:FT0_NNN|FO1_NN|P2_Snonstrict",
             &rows3(|m0: FT0NNN, m1: FO1NN, m2: P2S| Holder4461 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -25683,7 +25683,7 @@ mod holders {
 
     fn holder4469() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|FP1_NN|FP2_NN",
+            "main3:H3N1:FT0_NNN|FP1_NN|FP2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: FP1NN, m2: FP2NN| Holder4469 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -25691,7 +25691,7 @@ mod holders {
 
     fn holder4477() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|FT1_NNN|A2_NN",
+            "main3:H3N1:FT0_NNN|FT1_NNN|A2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: FT1NNN, m2: A2NN| Holder4477 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -25727,7 +25727,7 @@ mod holders {
 
     fn holder4485() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|FT1_NNN|O2_S",
+            "main3:H3N1:FT0_NNN|FT1_NNN|O2_Snonstrict",
             &rows3(|m0: FT0NNN, m1: FT1NNN, m2: Option<OI2S>| Holder4485 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -25754,7 +25754,7 @@ mod holders {
 
     fn holder4493() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|O1_N|E2_SS",
+            "main3:H3N1:FT0_NNN|O1_N|E2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: E2SS| Holder4493 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -25781,7 +25781,7 @@ mod holders {
 
     fn holder4501() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|O1_N|T2_NN",
+            "main3:H3N1:FT0_NNN|O1_N|T2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: T2NN| Holder4501 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -25808,7 +25808,7 @@ mod holders {
 
     fn holder4509() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|O1_S|FT2_NNN",
+            "main3:H3N1:FT0_NNN|O1_S|FT2_NNNnonstrict",
             &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: FT2NNN| Holder4509 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -25835,7 +25835,7 @@ mod holders {
 
     fn holder4517() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|P1_N|A2_SS",
+            "main3:H3N1:FT0_NNN|P1_N|A2_SSnonstrict",
             &rows3(|m0: FT0NNN, m1: P1N, m2: A2SS| Holder4517 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -25853,7 +25853,7 @@ mod holders {
 
     fn holder4525() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|P1_N|P2_N",
+            "main3:H3N1:FT0_NNN|P1_N|P2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: P1N, m2: P2N| Holder4525 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -25861,7 +25861,7 @@ mod holders {
 
     fn holder4533() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|P1_S|FO2_NN",
+            "main3:H3N1:FT0_NNN|P1_S|FO2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: P1S, m2: FO2NN| Holder4533 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -25869,7 +25869,7 @@ mod holders {
 
     fn holder4541() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|P1_S|V2_NN",
+            "main3:H3N1:FT0_NNN|P1_S|V2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: P1S, m2: V2NN| Holder4541 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
@@ -25884,7 +25884,7 @@ mod holders {
 
     fn holder4549() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|T1_NN|O2_N",
+            "main3:H3N1:FT0_NNN|T1_NN|O2_Nnonstrict",
             &rows3(|m0: FT0NNN, m1: T1NN, m2: Option<OI2N>| Holder4549 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -25911,7 +25911,7 @@ mod holders {
 
     fn holder4557() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|V1_NN|E2_NN",
+            "main3:H3N1:FT0_NNN|V1_NN|E2_NNnonstrict",
             &rows3(|m0: FT0NNN, m1: V1NN, m2: E2NN| Holder4557 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
@@ -25938,7 +25938,7 @@ mod holders {
 
     fn holder4565() -> Vec<String> {
         check(
-            "main3:H3N1:FT0_NNN|V1_NN|P2_S",
+            "main3:H3N1:FT0_NNN|V1_NN|P2_Snonstrict",
             &rows3(|m0: FT0NNN, m1: V1NN, m2: P2S| Holder4565 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -25968,7 +25968,7 @@ mod holders {
 
     fn holder4581() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|A1_NN|T2_NN",
+            "main3:H3N1:O0_N|A1_NN|T2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: A1NN, m2: T2NN| Holder4581 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -25995,7 +25995,7 @@ mod holders {
 
     fn holder4589() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|A1_SS|FO2_NN",
+            "main3:H3N1:O0_N|A1_SS|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FO2NN| Holder4589 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -26120,7 +26120,7 @@ mod holders {
 
     fn holder4637() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|FO1_NN|A2_SS",
+            "main3:H3N1:O0_N|FO1_NN|A2_SSnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: A2SS| Holder4637 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -26135,7 +26135,7 @@ mod holders {
 
     fn holder4645() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|FO1_NN|P2_N",
+            "main3:H3N1:O0_N|FO1_NN|P2_Nnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: P2N| Holder4645 { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -26143,7 +26143,7 @@ mod holders {
 
     fn holder4653() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|FP1_NN|FO2_NN",
+            "main3:H3N1:O0_N|FP1_NN|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: FO2NN| Holder4653 { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -26151,7 +26151,7 @@ mod holders {
 
     fn holder4661() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|FP1_NN|V2_NN",
+            "main3:H3N1:O0_N|FP1_NN|V2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: V2NN| Holder4661 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
@@ -26164,7 +26164,7 @@ mod holders {
 
     fn holder4669() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|FT1_NNN|O2_N",
+            "main3:H3N1:O0_N|FT1_NNN|O2_Nnonstrict",
             &rows3(
                 |m0: Option<OI0N>, m1: FT1NNN, m2: Option<OI2N>| Holder4669 { own: 7, m0, m1, m2 },
             ),
@@ -26302,7 +26302,7 @@ mod holders {
 
     fn holder4717() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|P1_N|FT2_NNN",
+            "main3:H3N1:O0_N|P1_N|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: P1N, m2: FT2NNN| Holder4717 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -26338,7 +26338,7 @@ mod holders {
 
     fn holder4741() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|P1_S|V2_NN",
+            "main3:H3N1:O0_N|P1_S|V2_NNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: P1S, m2: V2NN| Holder4741 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
@@ -26351,7 +26351,7 @@ mod holders {
 
     fn holder4749() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|T1_NN|FT2_NNN",
+            "main3:H3N1:O0_N|T1_NN|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0N>, m1: T1NN, m2: FT2NNN| Holder4749 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -26378,7 +26378,7 @@ mod holders {
 
     fn holder4757() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|V1_NN|A2_SS",
+            "main3:H3N1:O0_N|V1_NN|A2_SSnonstrict",
             &rows3(|m0: Option<OI0N>, m1: V1NN, m2: A2SS| Holder4757 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,Dot", 'E'),
@@ -26399,7 +26399,7 @@ mod holders {
 
     fn holder4765() -> Vec<String> {
         check(
-            "main3:H3N1:O0_N|V1_NN|P2_N",
+            "main3:H3N1:O0_N|V1_NN|P2_Nnonstrict",
             &rows3(|m0: Option<OI0N>, m1: V1NN, m2: P2N| Holder4765 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
@@ -26412,7 +26412,7 @@ mod holders {
 
     fn holder4773() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|A1_NN|FO2_NN",
+            "main3:H3N1:O0_S|A1_NN|FO2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FO2NN| Holder4773 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -26590,7 +26590,7 @@ mod holders {
 
     fn holder4837() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|FO1_NN|A2_NN",
+            "main3:H3N1:O0_S|FO1_NN|A2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: A2NN| Holder4837 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -26605,7 +26605,7 @@ mod holders {
 
     fn holder4845() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|FO1_NN|O2_S",
+            "main3:H3N1:O0_S|FO1_NN|O2_Snonstrict",
             &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: Option<OI2S>| Holder4845 {
                 own: 7,
                 m0,
@@ -26623,7 +26623,7 @@ mod holders {
 
     fn holder4853() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|FP1_NN|E2_SS",
+            "main3:H3N1:O0_S|FP1_NN|E2_SSnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: E2SS| Holder4853 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -26638,7 +26638,7 @@ mod holders {
 
     fn holder4861() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|FP1_NN|T2_NN",
+            "main3:H3N1:O0_S|FP1_NN|T2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: T2NN| Holder4861 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
@@ -26653,7 +26653,7 @@ mod holders {
 
     fn holder4869() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|FT1_NNN|FT2_NNN",
+            "main3:H3N1:O0_S|FT1_NNN|FT2_NNNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: FT2NNN| Holder4869 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
@@ -26756,7 +26756,7 @@ mod holders {
 
     fn holder4901() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|O1_S|FT2_NNN",
+            "main3:H3N1:O0_S|O1_S|FT2_NNNnonstrict",
             &rows3(
                 |m0: Option<OI0S>, m1: Option<OI1S>, m2: FT2NNN| Holder4901 { own: 7, m0, m1, m2 },
             ),
@@ -26809,7 +26809,7 @@ mod holders {
 
     fn holder4925() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|P1_N|V2_NN",
+            "main3:H3N1:O0_S|P1_N|V2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: P1N, m2: V2NN| Holder4925 { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
@@ -26822,7 +26822,7 @@ mod holders {
 
     fn holder4933() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|P1_S|FP2_NN",
+            "main3:H3N1:O0_S|P1_S|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: P1S, m2: FP2NN| Holder4933 { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
@@ -26845,7 +26845,7 @@ mod holders {
 
     fn holder4949() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|T1_NN|FP2_NN",
+            "main3:H3N1:O0_S|T1_NN|FP2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: T1NN, m2: FP2NN| Holder4949 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
@@ -26860,7 +26860,7 @@ mod holders {
 
     fn holder4957() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|V1_NN|A2_NN",
+            "main3:H3N1:O0_S|V1_NN|A2_NNnonstrict",
             &rows3(|m0: Option<OI0S>, m1: V1NN, m2: A2NN| Holder4957 { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,Dot", 'E'),
@@ -26881,7 +26881,7 @@ mod holders {
 
     fn holder4965() -> Vec<String> {
         check(
-            "main3:H3N1:O0_S|V1_NN|O2_S",
+            "main3:H3N1:O0_S|V1_NN|O2_Snonstrict",
             &rows3(|m0: Option<OI0S>, m1: V1NN, m2: Option<OI2S>| Holder4965 {
                 own: 7,
                 m0,
@@ -27013,7 +27013,7 @@ mod holders {
 
     fn holder5029() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|E1_SS|FT2_NNN",
+            "main3:H3N1:P0_N|E1_SS|FT2_NNNnonstrict",
             &rows3(|m0: P0N, m1: E1SS, m2: FT2NNN| Holder5029 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -27046,7 +27046,7 @@ mod holders {
 
     fn holder5045() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|FO1_NN|O2_N",
+            "main3:H3N1:P0_N|FO1_NN|O2_Nnonstrict",
             &rows3(|m0: P0N, m1: FO1NN, m2: Option<OI2N>| Holder5045 { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
@@ -27054,7 +27054,7 @@ mod holders {
 
     fn holder5053() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|FP1_NN|E2_NN",
+            "main3:H3N1:P0_N|FP1_NN|E2_NNnonstrict",
             &rows3(|m0: P0N, m1: FP1NN, m2: E2NN| Holder5053 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -27062,7 +27062,7 @@ mod holders {
 
     fn holder5061() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|FP1_NN|P2_S",
+            "main3:H3N1:P0_N|FP1_NN|P2_Snonstrict",
             &rows3(|m0: P0N, m1: FP1NN, m2: P2S| Holder5061 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -27070,7 +27070,7 @@ mod holders {
 
     fn holder5069() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|FT1_NNN|FP2_NN",
+            "main3:H3N1:P0_N|FT1_NNN|FP2_NNnonstrict",
             &rows3(|m0: P0N, m1: FT1NNN, m2: FP2NN| Holder5069 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -27093,7 +27093,7 @@ mod holders {
 
     fn holder5085() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|O1_N|FT2_NNN",
+            "main3:H3N1:P0_N|O1_N|FT2_NNNnonstrict",
             &rows3(|m0: P0N, m1: Option<OI1N>, m2: FT2NNN| Holder5085 { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
@@ -27129,7 +27129,7 @@ mod holders {
 
     fn holder5109() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|O1_S|V2_NN",
+            "main3:H3N1:P0_N|O1_S|V2_NNnonstrict",
             &rows3(|m0: P0N, m1: Option<OI1S>, m2: V2NN| Holder5109 { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
@@ -27142,7 +27142,7 @@ mod holders {
 
     fn holder5117() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|P1_N|FP2_NN",
+            "main3:H3N1:P0_N|P1_N|FP2_NNnonstrict",
             &rows3(|m0: P0N, m1: P1N, m2: FP2NN| Holder5117 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -27166,7 +27166,7 @@ mod holders {
 
     fn holder5141() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|P1_S|T2_NN",
+            "main3:H3N1:P0_N|P1_S|T2_NNnonstrict",
             &rows3(|m0: P0N, m1: P1S, m2: T2NN| Holder5141 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -27174,7 +27174,7 @@ mod holders {
 
     fn holder5149() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|T1_NN|FO2_NN",
+            "main3:H3N1:P0_N|T1_NN|FO2_NNnonstrict",
             &rows3(|m0: P0N, m1: T1NN, m2: FO2NN| Holder5149 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -27182,7 +27182,7 @@ mod holders {
 
     fn holder5157() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|T1_NN|V2_NN",
+            "main3:H3N1:P0_N|T1_NN|V2_NNnonstrict",
             &rows3(|m0: P0N, m1: T1NN, m2: V2NN| Holder5157 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -27197,7 +27197,7 @@ mod holders {
 
     fn holder5165() -> Vec<String> {
         check(
-            "main3:H3N1:P0_N|V1_NN|O2_N",
+            "main3:H3N1:P0_N|V1_NN|O2_Nnonstrict",
             &rows3(|m0: P0N, m1: V1NN, m2: Option<OI2N>| Holder5165 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
@@ -27294,7 +27294,7 @@ mod holders {
 
     fn holder5213() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|E1_NN|FT2_NNN",
+            "main3:H3N1:P0_S|E1_NN|FT2_NNNnonstrict",
             &rows3(|m0: P0S, m1: E1NN, m2: FT2NNN| Holder5213 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -27335,7 +27335,7 @@ mod holders {
 
     fn holder5237() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|E1_SS|V2_NN",
+            "main3:H3N1:P0_S|E1_SS|V2_NNnonstrict",
             &rows3(|m0: P0S, m1: E1SS, m2: V2NN| Holder5237 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -27350,7 +27350,7 @@ mod holders {
 
     fn holder5245() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|FO1_NN|FT2_NNN",
+            "main3:H3N1:P0_S|FO1_NN|FT2_NNNnonstrict",
             &rows3(|m0: P0S, m1: FO1NN, m2: FT2NNN| Holder5245 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -27358,7 +27358,7 @@ mod holders {
 
     fn holder5253() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|FP1_NN|A2_SS",
+            "main3:H3N1:P0_S|FP1_NN|A2_SSnonstrict",
             &rows3(|m0: P0S, m1: FP1NN, m2: A2SS| Holder5253 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -27366,7 +27366,7 @@ mod holders {
 
     fn holder5261() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|FP1_NN|P2_N",
+            "main3:H3N1:P0_S|FP1_NN|P2_Nnonstrict",
             &rows3(|m0: P0S, m1: FP1NN, m2: P2N| Holder5261 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -27374,7 +27374,7 @@ mod holders {
 
     fn holder5269() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|FT1_NNN|FO2_NN",
+            "main3:H3N1:P0_S|FT1_NNN|FO2_NNnonstrict",
             &rows3(|m0: P0S, m1: FT1NNN, m2: FO2NN| Holder5269 { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
@@ -27382,7 +27382,7 @@ mod holders {
 
     fn holder5277() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|FT1_NNN|V2_NN",
+            "main3:H3N1:P0_S|FT1_NNN|V2_NNnonstrict",
             &rows3(|m0: P0S, m1: FT1NNN, m2: V2NN| Holder5277 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
@@ -27405,7 +27405,7 @@ mod holders {
 
     fn holder5293() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|O1_N|V2_NN",
+            "main3:H3N1:P0_S|O1_N|V2_NNnonstrict",
             &rows3(|m0: P0S, m1: Option<OI1N>, m2: V2NN| Holder5293 { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
@@ -27418,7 +27418,7 @@ mod holders {
 
     fn holder5301() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|O1_S|FP2_NN",
+            "main3:H3N1:P0_S|O1_S|FP2_NNnonstrict",
             &rows3(|m0: P0S, m1: Option<OI1S>, m2: FP2NN| Holder5301 { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
@@ -27449,7 +27449,7 @@ mod holders {
 
     fn holder5325() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|P1_N|T2_NN",
+            "main3:H3N1:P0_S|P1_N|T2_NNnonstrict",
             &rows3(|m0: P0S, m1: P1N, m2: T2NN| Holder5325 { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
@@ -27457,7 +27457,7 @@ mod holders {
 
     fn holder5333() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|P1_S|FO2_NN",
+            "main3:H3N1:P0_S|P1_S|FO2_NNnonstrict",
             &rows3(|m0: P0S, m1: P1S, m2: FO2NN| Holder5333 { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
@@ -27473,7 +27473,7 @@ mod holders {
 
     fn holder5349() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|T1_NN|E2_SS",
+            "main3:H3N1:P0_S|T1_NN|E2_SSnonstrict",
             &rows3(|m0: P0S, m1: T1NN, m2: E2SS| Holder5349 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -27491,7 +27491,7 @@ mod holders {
 
     fn holder5357() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|T1_NN|T2_NN",
+            "main3:H3N1:P0_S|T1_NN|T2_NNnonstrict",
             &rows3(|m0: P0S, m1: T1NN, m2: T2NN| Holder5357 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
@@ -27509,7 +27509,7 @@ mod holders {
 
     fn holder5365() -> Vec<String> {
         check(
-            "main3:H3N1:P0_S|V1_NN|FT2_NNN",
+            "main3:H3N1:P0_S|V1_NN|FT2_NNNnonstrict",
             &rows3(|m0: P0S, m1: V1NN, m2: FT2NNN| Holder5365 { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
@@ -27524,7 +27524,7 @@ mod holders {
 
     fn holder5373() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|A1_NN|A2_SS",
+            "main3:H3N1:T0_NN|A1_NN|A2_SSnonstrict",
             &rows3(|m0: T0NN, m1: A1NN, m2: A2SS| Holder5373 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -27560,7 +27560,7 @@ mod holders {
 
     fn holder5381() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|A1_NN|P2_N",
+            "main3:H3N1:T0_NN|A1_NN|P2_Nnonstrict",
             &rows3(|m0: T0NN, m1: A1NN, m2: P2N| Holder5381 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -27578,7 +27578,7 @@ mod holders {
 
     fn holder5389() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|A1_SS|FO2_NN",
+            "main3:H3N1:T0_NN|A1_SS|FO2_NNnonstrict",
             &rows3(|m0: T0NN, m1: A1SS, m2: FO2NN| Holder5389 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -27596,7 +27596,7 @@ mod holders {
 
     fn holder5397() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|A1_SS|V2_NN",
+            "main3:H3N1:T0_NN|A1_SS|V2_NNnonstrict",
             &rows3(|m0: T0NN, m1: A1SS, m2: V2NN| Holder5397 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
@@ -27623,7 +27623,7 @@ mod holders {
 
     fn holder5405() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|E1_NN|O2_N",
+            "main3:H3N1:T0_NN|E1_NN|O2_Nnonstrict",
             &rows3(|m0: T0NN, m1: E1NN, m2: Option<OI2N>| Holder5405 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
@@ -27650,7 +27650,7 @@ mod holders {
 
     fn holder5413() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|E1_SS|E2_NN",
+            "main3:H3N1:T0_NN|E1_SS|E2_NNnonstrict",
             &rows3(|m0: T0NN, m1: E1SS, m2: E2NN| Holder5413 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -27686,7 +27686,7 @@ mod holders {
 
     fn holder5421() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|E1_SS|P2_S",
+            "main3:H3N1:T0_NN|E1_SS|P2_Snonstrict",
             &rows3(|m0: T0NN, m1: E1SS, m2: P2S| Holder5421 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -27704,7 +27704,7 @@ mod holders {
 
     fn holder5429() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|FO1_NN|FP2_NN",
+            "main3:H3N1:T0_NN|FO1_NN|FP2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FO1NN, m2: FP2NN| Holder5429 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -27712,7 +27712,7 @@ mod holders {
 
     fn holder5437() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|FP1_NN|A2_NN",
+            "main3:H3N1:T0_NN|FP1_NN|A2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FP1NN, m2: A2NN| Holder5437 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
@@ -27730,7 +27730,7 @@ mod holders {
 
     fn holder5445() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|FP1_NN|O2_S",
+            "main3:H3N1:T0_NN|FP1_NN|O2_Snonstrict",
             &rows3(|m0: T0NN, m1: FP1NN, m2: Option<OI2S>| Holder5445 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -27745,7 +27745,7 @@ mod holders {
 
     fn holder5453() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|FT1_NNN|E2_SS",
+            "main3:H3N1:T0_NN|FT1_NNN|E2_SSnonstrict",
             &rows3(|m0: T0NN, m1: FT1NNN, m2: E2SS| Holder5453 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -27781,7 +27781,7 @@ mod holders {
 
     fn holder5461() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|FT1_NNN|T2_NN",
+            "main3:H3N1:T0_NN|FT1_NNN|T2_NNnonstrict",
             &rows3(|m0: T0NN, m1: FT1NNN, m2: T2NN| Holder5461 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -27817,7 +27817,7 @@ mod holders {
 
     fn holder5469() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|O1_N|FT2_NNN",
+            "main3:H3N1:T0_NN|O1_N|FT2_NNNnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1N>, m2: FT2NNN| Holder5469 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -27844,7 +27844,7 @@ mod holders {
 
     fn holder5477() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|O1_S|A2_SS",
+            "main3:H3N1:T0_NN|O1_S|A2_SSnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1S>, m2: A2SS| Holder5477 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
@@ -27871,7 +27871,7 @@ mod holders {
 
     fn holder5485() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|O1_S|P2_N",
+            "main3:H3N1:T0_NN|O1_S|P2_Nnonstrict",
             &rows3(|m0: T0NN, m1: Option<OI1S>, m2: P2N| Holder5485 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
@@ -27886,7 +27886,7 @@ mod holders {
 
     fn holder5493() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|P1_N|FO2_NN",
+            "main3:H3N1:T0_NN|P1_N|FO2_NNnonstrict",
             &rows3(|m0: T0NN, m1: P1N, m2: FO2NN| Holder5493 { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -27894,7 +27894,7 @@ mod holders {
 
     fn holder5501() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|P1_N|V2_NN",
+            "main3:H3N1:T0_NN|P1_N|V2_NNnonstrict",
             &rows3(|m0: T0NN, m1: P1N, m2: V2NN| Holder5501 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
@@ -27909,7 +27909,7 @@ mod holders {
 
     fn holder5509() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|P1_S|O2_N",
+            "main3:H3N1:T0_NN|P1_S|O2_Nnonstrict",
             &rows3(|m0: T0NN, m1: P1S, m2: Option<OI2N>| Holder5509 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
@@ -27924,7 +27924,7 @@ mod holders {
 
     fn holder5517() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|T1_NN|E2_NN",
+            "main3:H3N1:T0_NN|T1_NN|E2_NNnonstrict",
             &rows3(|m0: T0NN, m1: T1NN, m2: E2NN| Holder5517 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
@@ -27960,7 +27960,7 @@ mod holders {
 
     fn holder5525() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|T1_NN|P2_S",
+            "main3:H3N1:T0_NN|T1_NN|P2_Snonstrict",
             &rows3(|m0: T0NN, m1: T1NN, m2: P2S| Holder5525 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
@@ -27978,7 +27978,7 @@ mod holders {
 
     fn holder5533() -> Vec<String> {
         check(
-            "main3:H3N1:T0_NN|V1_NN|FP2_NN",
+            "main3:H3N1:T0_NN|V1_NN|FP2_NNnonstrict",
             &rows3(|m0: T0NN, m1: V1NN, m2: FP2NN| Holder5533 { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
@@ -27993,7 +27993,7 @@ mod holders {
 
     fn holder5541() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|A1_NN|A2_NN",
+            "main3:H3N1:V0_NN|A1_NN|A2_NNnonstrict",
             &rows3(|m0: V0NN, m1: A1NN, m2: A2NN| Holder5541 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28020,7 +28020,7 @@ mod holders {
 
     fn holder5549() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|A1_NN|O2_S",
+            "main3:H3N1:V0_NN|A1_NN|O2_Snonstrict",
             &rows3(|m0: V0NN, m1: A1NN, m2: Option<OI2S>| Holder5549 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,None", 'E'),
@@ -28041,7 +28041,7 @@ mod holders {
 
     fn holder5557() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|A1_SS|E2_SS",
+            "main3:H3N1:V0_NN|A1_SS|E2_SSnonstrict",
             &rows3(|m0: V0NN, m1: A1SS, m2: E2SS| Holder5557 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28068,7 +28068,7 @@ mod holders {
 
     fn holder5565() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|A1_SS|T2_NN",
+            "main3:H3N1:V0_NN|A1_SS|T2_NNnonstrict",
             &rows3(|m0: V0NN, m1: A1SS, m2: T2NN| Holder5565 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28095,7 +28095,7 @@ mod holders {
 
     fn holder5573() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|E1_NN|FT2_NNN",
+            "main3:H3N1:V0_NN|E1_NN|FT2_NNNnonstrict",
             &rows3(|m0: V0NN, m1: E1NN, m2: FT2NNN| Holder5573 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28122,7 +28122,7 @@ mod holders {
 
     fn holder5581() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|E1_SS|A2_SS",
+            "main3:H3N1:V0_NN|E1_SS|A2_SSnonstrict",
             &rows3(|m0: V0NN, m1: E1SS, m2: A2SS| Holder5581 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28149,7 +28149,7 @@ mod holders {
 
     fn holder5589() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|E1_SS|P2_N",
+            "main3:H3N1:V0_NN|E1_SS|P2_Nnonstrict",
             &rows3(|m0: V0NN, m1: E1SS, m2: P2N| Holder5589 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
@@ -28164,7 +28164,7 @@ mod holders {
 
     fn holder5597() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|FO1_NN|FO2_NN",
+            "main3:H3N1:V0_NN|FO1_NN|FO2_NNnonstrict",
             &rows3(|m0: V0NN, m1: FO1NN, m2: FO2NN| Holder5597 { own: 7, m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
@@ -28172,7 +28172,7 @@ mod holders {
 
     fn holder5605() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|FO1_NN|V2_NN",
+            "main3:H3N1:V0_NN|FO1_NN|V2_NNnonstrict",
             &rows3(|m0: V0NN, m1: FO1NN, m2: V2NN| Holder5605 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Rect", 'E'),
@@ -28185,7 +28185,7 @@ mod holders {
 
     fn holder5613() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|FP1_NN|O2_N",
+            "main3:H3N1:V0_NN|FP1_NN|O2_Nnonstrict",
             &rows3(|m0: V0NN, m1: FP1NN, m2: Option<OI2N>| Holder5613 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
@@ -28198,7 +28198,7 @@ mod holders {
 
     fn holder5621() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|FT1_NNN|E2_NN",
+            "main3:H3N1:V0_NN|FT1_NNN|E2_NNnonstrict",
             &rows3(|m0: V0NN, m1: FT1NNN, m2: E2NN| Holder5621 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28225,7 +28225,7 @@ mod holders {
 
     fn holder5629() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|FT1_NNN|P2_S",
+            "main3:H3N1:V0_NN|FT1_NNN|P2_Snonstrict",
             &rows3(|m0: V0NN, m1: FT1NNN, m2: P2S| Holder5629 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
@@ -28240,7 +28240,7 @@ mod holders {
 
     fn holder5637() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|O1_N|FP2_NN",
+            "main3:H3N1:V0_NN|O1_N|FP2_NNnonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1N>, m2: FP2NN| Holder5637 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
@@ -28253,7 +28253,7 @@ mod holders {
 
     fn holder5645() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|O1_S|A2_NN",
+            "main3:H3N1:V0_NN|O1_S|A2_NNnonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1S>, m2: A2NN| Holder5645 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,Dot", 'E'),
@@ -28274,7 +28274,7 @@ mod holders {
 
     fn holder5653() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|O1_S|O2_S",
+            "main3:H3N1:V0_NN|O1_S|O2_Snonstrict",
             &rows3(|m0: V0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder5653 {
                 own: 7,
                 m0,
@@ -28296,7 +28296,7 @@ mod holders {
 
     fn holder5661() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|P1_N|E2_SS",
+            "main3:H3N1:V0_NN|P1_N|E2_SSnonstrict",
             &rows3(|m0: V0NN, m1: P1N, m2: E2SS| Holder5661 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -28311,7 +28311,7 @@ mod holders {
 
     fn holder5669() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|P1_N|T2_NN",
+            "main3:H3N1:V0_NN|P1_N|T2_NNnonstrict",
             &rows3(|m0: V0NN, m1: P1N, m2: T2NN| Holder5669 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -28326,7 +28326,7 @@ mod holders {
 
     fn holder5677() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|P1_S|FT2_NNN",
+            "main3:H3N1:V0_NN|P1_S|FT2_NNNnonstrict",
             &rows3(|m0: V0NN, m1: P1S, m2: FT2NNN| Holder5677 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
@@ -28341,7 +28341,7 @@ mod holders {
 
     fn holder5685() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|T1_NN|A2_SS",
+            "main3:H3N1:V0_NN|T1_NN|A2_SSnonstrict",
             &rows3(|m0: V0NN, m1: T1NN, m2: A2SS| Holder5685 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
@@ -28368,7 +28368,7 @@ mod holders {
 
     fn holder5693() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|T1_NN|P2_N",
+            "main3:H3N1:V0_NN|T1_NN|P2_Nnonstrict",
             &rows3(|m0: V0NN, m1: T1NN, m2: P2N| Holder5693 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
@@ -28383,7 +28383,7 @@ mod holders {
 
     fn holder5701() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|V1_NN|FO2_NN",
+            "main3:H3N1:V0_NN|V1_NN|FO2_NNnonstrict",
             &rows3(|m0: V0NN, m1: V1NN, m2: FO2NN| Holder5701 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Rect,-", 'E'),
@@ -28396,7 +28396,7 @@ mod holders {
 
     fn holder5709() -> Vec<String> {
         check(
-            "main3:H3N1:V0_NN|V1_NN|V2_NN",
+            "main3:H3N1:V0_NN|V1_NN|V2_NNnonstrict",
             &rows3(|m0: V0NN, m1: V1NN, m2: V2NN| Holder5709 { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Rect,Rect", 'E'),
@@ -30086,7 +30086,7 @@ mod holders {
 
     fn holder6789() -> Vec<String> {
         check(
-            "mixed2:H2N0:E0_SS|FO1_NS",
+            "mixed2:H2N0:E0_SS|FO1_NSnonstrict",
             &rows2(|m0: E0SS, m1: FO1NS| Holder6789 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30112,7 +30112,7 @@ mod holders {
 
     fn holder6805() -> Vec<String> {
         check(
-            "mixed2:H2N0:FO0_NS|E1_SS",
+            "mixed2:H2N0:FO0_NS|E1_SSnonstrict",
             &rows2(|m0: FO0NS, m1: E1SS| Holder6805 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30120,7 +30120,7 @@ mod holders {
 
     fn holder6813() -> Vec<String> {
         check(
-            "mixed2:H2N0:FO0_NS|P1_N",
+            "mixed2:H2N0:FO0_NS|P1_Nnonstrict",
             &rows2(|m0: FO0NS, m1: P1N| Holder6813 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30128,7 +30128,7 @@ mod holders {
 
     fn holder6821() -> Vec<String> {
         check(
-            "mixed2:H2N0:FP0_NS|E1_NN",
+            "mixed2:H2N0:FP0_NS|E1_NNnonstrict",
             &rows2(|m0: FP0NS, m1: E1NN| Holder6821 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30136,7 +30136,7 @@ mod holders {
 
     fn holder6829() -> Vec<String> {
         check(
-            "mixed2:H2N0:FP0_NS|O1_S",
+            "mixed2:H2N0:FP0_NS|O1_Snonstrict",
             &rows2(|m0: FP0NS, m1: Option<OI1S>| Holder6829 { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -30188,7 +30188,7 @@ mod holders {
 
     fn holder6869() -> Vec<String> {
         check(
-            "mixed2:H2N0:P0_S|FO1_NS",
+            "mixed2:H2N0:P0_S|FO1_NSnonstrict",
             &rows2(|m0: P0S, m1: FO1NS| Holder6869 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30253,7 +30253,7 @@ mod holders {
 
     fn holder6917() -> Vec<String> {
         check(
-            "mixed2:H2N1:E0_SS|FO1_NS",
+            "mixed2:H2N1:E0_SS|FO1_NSnonstrict",
             &rows2(|m0: E0SS, m1: FO1NS| Holder6917 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30279,7 +30279,7 @@ mod holders {
 
     fn holder6933() -> Vec<String> {
         check(
-            "mixed2:H2N1:FO0_NS|E1_SS",
+            "mixed2:H2N1:FO0_NS|E1_SSnonstrict",
             &rows2(|m0: FO0NS, m1: E1SS| Holder6933 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30287,7 +30287,7 @@ mod holders {
 
     fn holder6941() -> Vec<String> {
         check(
-            "mixed2:H2N1:FO0_NS|P1_N",
+            "mixed2:H2N1:FO0_NS|P1_Nnonstrict",
             &rows2(|m0: FO0NS, m1: P1N| Holder6941 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30295,7 +30295,7 @@ mod holders {
 
     fn holder6949() -> Vec<String> {
         check(
-            "mixed2:H2N1:FP0_NS|E1_NN",
+            "mixed2:H2N1:FP0_NS|E1_NNnonstrict",
             &rows2(|m0: FP0NS, m1: E1NN| Holder6949 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30303,7 +30303,7 @@ mod holders {
 
     fn holder6957() -> Vec<String> {
         check(
-            "mixed2:H2N1:FP0_NS|O1_S",
+            "mixed2:H2N1:FP0_NS|O1_Snonstrict",
             &rows2(|m0: FP0NS, m1: Option<OI1S>| Holder6957 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -30355,7 +30355,7 @@ mod holders {
 
     fn holder6997() -> Vec<String> {
         check(
-            "mixed2:H2N1:P0_S|FO1_NS",
+            "mixed2:H2N1:P0_S|FO1_NSnonstrict",
             &rows2(|m0: P0S, m1: FO1NS| Holder6997 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30371,7 +30371,7 @@ mod holders {
 
     fn holder7013() -> Vec<String> {
         check(
-            "nest1:H1N0:IN0(A0_SS)",
+            "nest1:H1N0:IN0(A0_SS)nonstrict",
             &rows1(|m0: IN0A0SS| Holder7013 { m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
@@ -30403,7 +30403,7 @@ mod holders {
 
     fn holder7045() -> Vec<String> {
         check(
-            "nest1:H1N0:IN1(V0_NN)",
+            "nest1:H1N0:IN1(V0_NN)nonstrict",
             &rows1(|m0: IN1V0NN| Holder7045 { m0 }),
             &[("Rect", 'E'), ("Wrap", 'E')],
         )
@@ -30427,7 +30427,7 @@ mod holders {
 
     fn holder7069() -> Vec<String> {
         check(
-            "nest1:H1N1:IN0(FP0_NN)",
+            "nest1:H1N1:IN0(FP0_NN)nonstrict",
             &rows1(|m0: IN0FP0NN| Holder7069 { own: 7, m0 }),
             &[("-", 'E')],
         )
@@ -30451,7 +30451,7 @@ mod holders {
 
     fn holder7093() -> Vec<String> {
         check(
-            "nest1:H1N1:IN1(T0_NN)",
+            "nest1:H1N1:IN1(T0_NN)nonstrict",
             &rows1(|m0: IN1T0NN| Holder7093 { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
@@ -30475,7 +30475,7 @@ mod holders {
 
     fn holder7117() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_NN|IN0(FO1_NN)",
+            "nest2:H2N0:A0_NN|IN0(FO1_NN)nonstrict",
             &rows2(|m0: A0NN, m1: IN0FO1NN| Holder7117 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30483,7 +30483,7 @@ mod holders {
 
     fn holder7125() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_NN|IN0(P1_S)",
+            "nest2:H2N0:A0_NN|IN0(P1_S)nonstrict",
             &rows2(|m0: A0NN, m1: IN0P1S| Holder7125 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30491,7 +30491,7 @@ mod holders {
 
     fn holder7133() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_NN|IN1(E1_SS)",
+            "nest2:H2N0:A0_NN|IN1(E1_SS)nonstrict",
             &rows2(|m0: A0NN, m1: IN1E1SS| Holder7133 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30509,7 +30509,7 @@ mod holders {
 
     fn holder7141() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_NN|IN1(P1_N)",
+            "nest2:H2N0:A0_NN|IN1(P1_N)nonstrict",
             &rows2(|m0: A0NN, m1: IN1P1N| Holder7141 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30553,7 +30553,7 @@ mod holders {
 
     fn holder7165() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_SS|IN0(E1_NN)",
+            "nest2:H2N0:A0_SS|IN0(E1_NN)nonstrict",
             &rows2(|m0: A0SS, m1: IN0E1NN| Holder7165 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30571,7 +30571,7 @@ mod holders {
 
     fn holder7173() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_SS|IN0(O1_S)",
+            "nest2:H2N0:A0_SS|IN0(O1_S)nonstrict",
             &rows2(|m0: A0SS, m1: IN0OptOI1S| Holder7173 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -30586,7 +30586,7 @@ mod holders {
 
     fn holder7181() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_SS|IN1(A1_SS)",
+            "nest2:H2N0:A0_SS|IN1(A1_SS)nonstrict",
             &rows2(|m0: A0SS, m1: IN1A1SS| Holder7181 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30604,7 +30604,7 @@ mod holders {
 
     fn holder7189() -> Vec<String> {
         check(
-            "nest2:H2N0:A0_SS|IN1(O1_N)",
+            "nest2:H2N0:A0_SS|IN1(O1_N)nonstrict",
             &rows2(|m0: A0SS, m1: IN1OptOI1N| Holder7189 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -30655,7 +30655,7 @@ mod holders {
 
     fn holder7213() -> Vec<String> {
         check(
-            "nest2:H2N0:E0_NN|IN0(A1_NN)",
+            "nest2:H2N0:E0_NN|IN0(A1_NN)nonstrict",
             &rows2(|m0: E0NN, m1: IN0A1NN| Holder7213 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30673,7 +30673,7 @@ mod holders {
 
     fn holder7221() -> Vec<String> {
         check(
-            "nest2:H2N0:E0_NN|IN0(FT1_NNN)",
+            "nest2:H2N0:E0_NN|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: E0NN, m1: IN0FT1NNN| Holder7221 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30714,7 +30714,7 @@ mod holders {
 
     fn holder7245() -> Vec<String> {
         check(
-            "nest2:H2N0:E0_NN|IN1(V1_NN)",
+            "nest2:H2N0:E0_NN|IN1(V1_NN)nonstrict",
             &rows2(|m0: E0NN, m1: IN1V1NN| Holder7245 { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -30745,7 +30745,7 @@ mod holders {
 
     fn holder7269() -> Vec<String> {
         check(
-            "nest2:H2N0:E0_SS|IN0(FP1_NN)",
+            "nest2:H2N0:E0_SS|IN0(FP1_NN)nonstrict",
             &rows2(|m0: E0SS, m1: IN0FP1NN| Holder7269 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30779,7 +30779,7 @@ mod holders {
 
     fn holder7293() -> Vec<String> {
         check(
-            "nest2:H2N0:E0_SS|IN1(T1_NN)",
+            "nest2:H2N0:E0_SS|IN1(T1_NN)nonstrict",
             &rows2(|m0: E0SS, m1: IN1T1NN| Holder7293 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30827,7 +30827,7 @@ mod holders {
 
     fn holder7317() -> Vec<String> {
         check(
-            "nest2:H2N0:FO0_NN|IN0(FO1_NN)",
+            "nest2:H2N0:FO0_NN|IN0(FO1_NN)nonstrict",
             &rows2(|m0: FO0NN, m1: IN0FO1NN| Holder7317 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30835,7 +30835,7 @@ mod holders {
 
     fn holder7325() -> Vec<String> {
         check(
-            "nest2:H2N0:FO0_NN|IN0(V1_NN)",
+            "nest2:H2N0:FO0_NN|IN0(V1_NN)nonstrict",
             &rows2(|m0: FO0NN, m1: IN0V1NN| Holder7325 { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30843,7 +30843,7 @@ mod holders {
 
     fn holder7333() -> Vec<String> {
         check(
-            "nest2:H2N0:FO0_NN|IN1(O1_N)",
+            "nest2:H2N0:FO0_NN|IN1(O1_N)nonstrict",
             &rows2(|m0: FO0NN, m1: IN1OptOI1N| Holder7333 { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -30851,7 +30851,7 @@ mod holders {
 
     fn holder7341() -> Vec<String> {
         check(
-            "nest2:H2N0:FP0_NN|IN0(E1_NN)",
+            "nest2:H2N0:FP0_NN|IN0(E1_NN)nonstrict",
             &rows2(|m0: FP0NN, m1: IN0E1NN| Holder7341 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -30859,7 +30859,7 @@ mod holders {
 
     fn holder7349() -> Vec<String> {
         check(
-            "nest2:H2N0:FP0_NN|IN0(P1_S)",
+            "nest2:H2N0:FP0_NN|IN0(P1_S)nonstrict",
             &rows2(|m0: FP0NN, m1: IN0P1S| Holder7349 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30867,7 +30867,7 @@ mod holders {
 
     fn holder7357() -> Vec<String> {
         check(
-            "nest2:H2N0:FP0_NN|IN1(FP1_NN)",
+            "nest2:H2N0:FP0_NN|IN1(FP1_NN)nonstrict",
             &rows2(|m0: FP0NN, m1: IN1FP1NN| Holder7357 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -30875,7 +30875,7 @@ mod holders {
 
     fn holder7365() -> Vec<String> {
         check(
-            "nest2:H2N0:FT0_NNN|IN0(A1_NN)",
+            "nest2:H2N0:FT0_NNN|IN0(A1_NN)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN0A1NN| Holder7365 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30893,7 +30893,7 @@ mod holders {
 
     fn holder7373() -> Vec<String> {
         check(
-            "nest2:H2N0:FT0_NNN|IN0(O1_S)",
+            "nest2:H2N0:FT0_NNN|IN0(O1_S)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN0OptOI1S| Holder7373 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -30908,7 +30908,7 @@ mod holders {
 
     fn holder7381() -> Vec<String> {
         check(
-            "nest2:H2N0:FT0_NNN|IN1(E1_SS)",
+            "nest2:H2N0:FT0_NNN|IN1(E1_SS)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN1E1SS| Holder7381 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30926,7 +30926,7 @@ mod holders {
 
     fn holder7389() -> Vec<String> {
         check(
-            "nest2:H2N0:FT0_NNN|IN1(T1_NN)",
+            "nest2:H2N0:FT0_NNN|IN1(T1_NN)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN1T1NN| Holder7389 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30944,7 +30944,7 @@ mod holders {
 
     fn holder7397() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(A0_NN)|FT1_NNN",
+            "nest2:H2N0:IN0(A0_NN)|FT1_NNNnonstrict",
             &rows2(|m0: IN0A0NN, m1: FT1NNN| Holder7397 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30962,7 +30962,7 @@ mod holders {
 
     fn holder7405() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(A0_SS)|A1_SS",
+            "nest2:H2N0:IN0(A0_SS)|A1_SSnonstrict",
             &rows2(|m0: IN0A0SS, m1: A1SS| Holder7405 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -30980,7 +30980,7 @@ mod holders {
 
     fn holder7413() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(A0_SS)|P1_N",
+            "nest2:H2N0:IN0(A0_SS)|P1_Nnonstrict",
             &rows2(|m0: IN0A0SS, m1: P1N| Holder7413 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30988,7 +30988,7 @@ mod holders {
 
     fn holder7421() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(E0_NN)|FO1_NN",
+            "nest2:H2N0:IN0(E0_NN)|FO1_NNnonstrict",
             &rows2(|m0: IN0E0NN, m1: FO1NN| Holder7421 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -30996,7 +30996,7 @@ mod holders {
 
     fn holder7429() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(E0_NN)|V1_NN",
+            "nest2:H2N0:IN0(E0_NN)|V1_NNnonstrict",
             &rows2(|m0: IN0E0NN, m1: V1NN| Holder7429 { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -31011,7 +31011,7 @@ mod holders {
 
     fn holder7437() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(E0_SS)|O1_N",
+            "nest2:H2N0:IN0(E0_SS)|O1_Nnonstrict",
             &rows2(|m0: IN0E0SS, m1: Option<OI1N>| Holder7437 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31026,7 +31026,7 @@ mod holders {
 
     fn holder7445() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(FO0_NN)|E1_NN",
+            "nest2:H2N0:IN0(FO0_NN)|E1_NNnonstrict",
             &rows2(|m0: IN0FO0NN, m1: E1NN| Holder7445 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31034,7 +31034,7 @@ mod holders {
 
     fn holder7453() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(FO0_NN)|P1_S",
+            "nest2:H2N0:IN0(FO0_NN)|P1_Snonstrict",
             &rows2(|m0: IN0FO0NN, m1: P1S| Holder7453 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31042,7 +31042,7 @@ mod holders {
 
     fn holder7461() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(FP0_NN)|FP1_NN",
+            "nest2:H2N0:IN0(FP0_NN)|FP1_NNnonstrict",
             &rows2(|m0: IN0FP0NN, m1: FP1NN| Holder7461 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31050,7 +31050,7 @@ mod holders {
 
     fn holder7469() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(FT0_NNN)|A1_NN",
+            "nest2:H2N0:IN0(FT0_NNN)|A1_NNnonstrict",
             &rows2(|m0: IN0FT0NNN, m1: A1NN| Holder7469 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31068,7 +31068,7 @@ mod holders {
 
     fn holder7477() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(FT0_NNN)|O1_S",
+            "nest2:H2N0:IN0(FT0_NNN)|O1_Snonstrict",
             &rows2(|m0: IN0FT0NNN, m1: Option<OI1S>| Holder7477 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31083,7 +31083,7 @@ mod holders {
 
     fn holder7485() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(O0_N)|E1_SS",
+            "nest2:H2N0:IN0(O0_N)|E1_SSnonstrict",
             &rows2(|m0: IN0OptOI0N, m1: E1SS| Holder7485 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31098,7 +31098,7 @@ mod holders {
 
     fn holder7493() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(O0_N)|T1_NN",
+            "nest2:H2N0:IN0(O0_N)|T1_NNnonstrict",
             &rows2(|m0: IN0OptOI0N, m1: T1NN| Holder7493 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31113,7 +31113,7 @@ mod holders {
 
     fn holder7501() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(O0_S)|FT1_NNN",
+            "nest2:H2N0:IN0(O0_S)|FT1_NNNnonstrict",
             &rows2(|m0: IN0OptOI0S, m1: FT1NNN| Holder7501 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31128,7 +31128,7 @@ mod holders {
 
     fn holder7509() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(P0_N)|A1_SS",
+            "nest2:H2N0:IN0(P0_N)|A1_SSnonstrict",
             &rows2(|m0: IN0P0N, m1: A1SS| Holder7509 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31136,7 +31136,7 @@ mod holders {
 
     fn holder7517() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(P0_N)|P1_N",
+            "nest2:H2N0:IN0(P0_N)|P1_Nnonstrict",
             &rows2(|m0: IN0P0N, m1: P1N| Holder7517 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31144,7 +31144,7 @@ mod holders {
 
     fn holder7525() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(P0_S)|FO1_NN",
+            "nest2:H2N0:IN0(P0_S)|FO1_NNnonstrict",
             &rows2(|m0: IN0P0S, m1: FO1NN| Holder7525 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31152,7 +31152,7 @@ mod holders {
 
     fn holder7533() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(P0_S)|V1_NN",
+            "nest2:H2N0:IN0(P0_S)|V1_NNnonstrict",
             &rows2(|m0: IN0P0S, m1: V1NN| Holder7533 { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31160,7 +31160,7 @@ mod holders {
 
     fn holder7541() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(T0_NN)|O1_N",
+            "nest2:H2N0:IN0(T0_NN)|O1_Nnonstrict",
             &rows2(|m0: IN0T0NN, m1: Option<OI1N>| Holder7541 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31175,7 +31175,7 @@ mod holders {
 
     fn holder7549() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(V0_NN)|E1_NN",
+            "nest2:H2N0:IN0(V0_NN)|E1_NNnonstrict",
             &rows2(|m0: IN0V0NN, m1: E1NN| Holder7549 { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -31190,7 +31190,7 @@ mod holders {
 
     fn holder7557() -> Vec<String> {
         check(
-            "nest2:H2N0:IN0(V0_NN)|P1_S",
+            "nest2:H2N0:IN0(V0_NN)|P1_Snonstrict",
             &rows2(|m0: IN0V0NN, m1: P1S| Holder7557 { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31198,7 +31198,7 @@ mod holders {
 
     fn holder7565() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(A0_NN)|FP1_NN",
+            "nest2:H2N0:IN1(A0_NN)|FP1_NNnonstrict",
             &rows2(|m0: IN1A0NN, m1: FP1NN| Holder7565 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31206,7 +31206,7 @@ mod holders {
 
     fn holder7573() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(A0_SS)|A1_NN",
+            "nest2:H2N0:IN1(A0_SS)|A1_NNnonstrict",
             &rows2(|m0: IN1A0SS, m1: A1NN| Holder7573 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31224,7 +31224,7 @@ mod holders {
 
     fn holder7581() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(A0_SS)|O1_S",
+            "nest2:H2N0:IN1(A0_SS)|O1_Snonstrict",
             &rows2(|m0: IN1A0SS, m1: Option<OI1S>| Holder7581 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31239,7 +31239,7 @@ mod holders {
 
     fn holder7589() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(E0_NN)|E1_SS",
+            "nest2:H2N0:IN1(E0_NN)|E1_SSnonstrict",
             &rows2(|m0: IN1E0NN, m1: E1SS| Holder7589 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31257,7 +31257,7 @@ mod holders {
 
     fn holder7597() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(E0_NN)|T1_NN",
+            "nest2:H2N0:IN1(E0_NN)|T1_NNnonstrict",
             &rows2(|m0: IN1E0NN, m1: T1NN| Holder7597 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31275,7 +31275,7 @@ mod holders {
 
     fn holder7605() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(E0_SS)|FT1_NNN",
+            "nest2:H2N0:IN1(E0_SS)|FT1_NNNnonstrict",
             &rows2(|m0: IN1E0SS, m1: FT1NNN| Holder7605 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31293,7 +31293,7 @@ mod holders {
 
     fn holder7613() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(FO0_NN)|A1_SS",
+            "nest2:H2N0:IN1(FO0_NN)|A1_SSnonstrict",
             &rows2(|m0: IN1FO0NN, m1: A1SS| Holder7613 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31301,7 +31301,7 @@ mod holders {
 
     fn holder7621() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(FO0_NN)|P1_N",
+            "nest2:H2N0:IN1(FO0_NN)|P1_Nnonstrict",
             &rows2(|m0: IN1FO0NN, m1: P1N| Holder7621 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31309,7 +31309,7 @@ mod holders {
 
     fn holder7629() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(FP0_NN)|FO1_NN",
+            "nest2:H2N0:IN1(FP0_NN)|FO1_NNnonstrict",
             &rows2(|m0: IN1FP0NN, m1: FO1NN| Holder7629 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31317,7 +31317,7 @@ mod holders {
 
     fn holder7637() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(FP0_NN)|V1_NN",
+            "nest2:H2N0:IN1(FP0_NN)|V1_NNnonstrict",
             &rows2(|m0: IN1FP0NN, m1: V1NN| Holder7637 { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31325,7 +31325,7 @@ mod holders {
 
     fn holder7645() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(FT0_NNN)|O1_N",
+            "nest2:H2N0:IN1(FT0_NNN)|O1_Nnonstrict",
             &rows2(|m0: IN1FT0NNN, m1: Option<OI1N>| Holder7645 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31340,7 +31340,7 @@ mod holders {
 
     fn holder7653() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(O0_N)|E1_NN",
+            "nest2:H2N0:IN1(O0_N)|E1_NNnonstrict",
             &rows2(|m0: IN1OptOI0N, m1: E1NN| Holder7653 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31355,7 +31355,7 @@ mod holders {
 
     fn holder7661() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(O0_N)|P1_S",
+            "nest2:H2N0:IN1(O0_N)|P1_Snonstrict",
             &rows2(|m0: IN1OptOI0N, m1: P1S| Holder7661 { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -31363,7 +31363,7 @@ mod holders {
 
     fn holder7669() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(O0_S)|FP1_NN",
+            "nest2:H2N0:IN1(O0_S)|FP1_NNnonstrict",
             &rows2(|m0: IN1OptOI0S, m1: FP1NN| Holder7669 { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -31371,7 +31371,7 @@ mod holders {
 
     fn holder7677() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(P0_N)|A1_NN",
+            "nest2:H2N0:IN1(P0_N)|A1_NNnonstrict",
             &rows2(|m0: IN1P0N, m1: A1NN| Holder7677 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31379,7 +31379,7 @@ mod holders {
 
     fn holder7685() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(P0_N)|O1_S",
+            "nest2:H2N0:IN1(P0_N)|O1_Snonstrict",
             &rows2(|m0: IN1P0N, m1: Option<OI1S>| Holder7685 { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -31387,7 +31387,7 @@ mod holders {
 
     fn holder7693() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(P0_S)|E1_SS",
+            "nest2:H2N0:IN1(P0_S)|E1_SSnonstrict",
             &rows2(|m0: IN1P0S, m1: E1SS| Holder7693 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31395,7 +31395,7 @@ mod holders {
 
     fn holder7701() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(P0_S)|T1_NN",
+            "nest2:H2N0:IN1(P0_S)|T1_NNnonstrict",
             &rows2(|m0: IN1P0S, m1: T1NN| Holder7701 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31403,7 +31403,7 @@ mod holders {
 
     fn holder7709() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(T0_NN)|FT1_NNN",
+            "nest2:H2N0:IN1(T0_NN)|FT1_NNNnonstrict",
             &rows2(|m0: IN1T0NN, m1: FT1NNN| Holder7709 { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31421,7 +31421,7 @@ mod holders {
 
     fn holder7717() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(V0_NN)|A1_SS",
+            "nest2:H2N0:IN1(V0_NN)|A1_SSnonstrict",
             &rows2(|m0: IN1V0NN, m1: A1SS| Holder7717 { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -31436,7 +31436,7 @@ mod holders {
 
     fn holder7725() -> Vec<String> {
         check(
-            "nest2:H2N0:IN1(V0_NN)|P1_N",
+            "nest2:H2N0:IN1(V0_NN)|P1_Nnonstrict",
             &rows2(|m0: IN1V0NN, m1: P1N| Holder7725 { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31444,7 +31444,7 @@ mod holders {
 
     fn holder7733() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_N|IN0(FO1_NN)",
+            "nest2:H2N0:O0_N|IN0(FO1_NN)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN0FO1NN| Holder7733 { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -31452,7 +31452,7 @@ mod holders {
 
     fn holder7741() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_N|IN0(P1_S)",
+            "nest2:H2N0:O0_N|IN0(P1_S)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN0P1S| Holder7741 { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -31460,7 +31460,7 @@ mod holders {
 
     fn holder7749() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_N|IN1(E1_SS)",
+            "nest2:H2N0:O0_N|IN1(E1_SS)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN1E1SS| Holder7749 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31475,7 +31475,7 @@ mod holders {
 
     fn holder7757() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_N|IN1(P1_N)",
+            "nest2:H2N0:O0_N|IN1(P1_N)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN1P1N| Holder7757 { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -31513,7 +31513,7 @@ mod holders {
 
     fn holder7781() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_S|IN0(E1_NN)",
+            "nest2:H2N0:O0_S|IN0(E1_NN)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN0E1NN| Holder7781 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31528,7 +31528,7 @@ mod holders {
 
     fn holder7789() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_S|IN0(O1_S)",
+            "nest2:H2N0:O0_S|IN0(O1_S)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN0OptOI1S| Holder7789 { m0, m1 }),
             &[
                 ("None,None", 'E'),
@@ -31541,7 +31541,7 @@ mod holders {
 
     fn holder7797() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_S|IN1(A1_SS)",
+            "nest2:H2N0:O0_S|IN1(A1_SS)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN1A1SS| Holder7797 { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -31556,7 +31556,7 @@ mod holders {
 
     fn holder7805() -> Vec<String> {
         check(
-            "nest2:H2N0:O0_S|IN1(O1_N)",
+            "nest2:H2N0:O0_S|IN1(O1_N)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN1OptOI1N| Holder7805 { m0, m1 }),
             &[
                 ("None,None", 'E'),
@@ -31599,7 +31599,7 @@ mod holders {
 
     fn holder7829() -> Vec<String> {
         check(
-            "nest2:H2N0:P0_N|IN0(A1_NN)",
+            "nest2:H2N0:P0_N|IN0(A1_NN)nonstrict",
             &rows2(|m0: P0N, m1: IN0A1NN| Holder7829 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31607,7 +31607,7 @@ mod holders {
 
     fn holder7837() -> Vec<String> {
         check(
-            "nest2:H2N0:P0_N|IN0(FT1_NNN)",
+            "nest2:H2N0:P0_N|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: P0N, m1: IN0FT1NNN| Holder7837 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31631,7 +31631,7 @@ mod holders {
 
     fn holder7861() -> Vec<String> {
         check(
-            "nest2:H2N0:P0_N|IN1(V1_NN)",
+            "nest2:H2N0:P0_N|IN1(V1_NN)nonstrict",
             &rows2(|m0: P0N, m1: IN1V1NN| Holder7861 { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31655,7 +31655,7 @@ mod holders {
 
     fn holder7885() -> Vec<String> {
         check(
-            "nest2:H2N0:P0_S|IN0(FP1_NN)",
+            "nest2:H2N0:P0_S|IN0(FP1_NN)nonstrict",
             &rows2(|m0: P0S, m1: IN0FP1NN| Holder7885 { m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -31679,7 +31679,7 @@ mod holders {
 
     fn holder7909() -> Vec<String> {
         check(
-            "nest2:H2N0:P0_S|IN1(T1_NN)",
+            "nest2:H2N0:P0_S|IN1(T1_NN)nonstrict",
             &rows2(|m0: P0S, m1: IN1T1NN| Holder7909 { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -31703,7 +31703,7 @@ mod holders {
 
     fn holder7933() -> Vec<String> {
         check(
-            "nest2:H2N0:T0_NN|IN0(FO1_NN)",
+            "nest2:H2N0:T0_NN|IN0(FO1_NN)nonstrict",
             &rows2(|m0: T0NN, m1: IN0FO1NN| Holder7933 { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31711,7 +31711,7 @@ mod holders {
 
     fn holder7941() -> Vec<String> {
         check(
-            "nest2:H2N0:T0_NN|IN0(V1_NN)",
+            "nest2:H2N0:T0_NN|IN0(V1_NN)nonstrict",
             &rows2(|m0: T0NN, m1: IN0V1NN| Holder7941 { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -31726,7 +31726,7 @@ mod holders {
 
     fn holder7949() -> Vec<String> {
         check(
-            "nest2:H2N0:T0_NN|IN1(O1_N)",
+            "nest2:H2N0:T0_NN|IN1(O1_N)nonstrict",
             &rows2(|m0: T0NN, m1: IN1OptOI1N| Holder7949 { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -31741,7 +31741,7 @@ mod holders {
 
     fn holder7957() -> Vec<String> {
         check(
-            "nest2:H2N0:V0_NN|IN0(E1_NN)",
+            "nest2:H2N0:V0_NN|IN0(E1_NN)nonstrict",
             &rows2(|m0: V0NN, m1: IN0E1NN| Holder7957 { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -31756,7 +31756,7 @@ mod holders {
 
     fn holder7965() -> Vec<String> {
         check(
-            "nest2:H2N0:V0_NN|IN0(P1_S)",
+            "nest2:H2N0:V0_NN|IN0(P1_S)nonstrict",
             &rows2(|m0: V0NN, m1: IN0P1S| Holder7965 { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31764,7 +31764,7 @@ mod holders {
 
     fn holder7973() -> Vec<String> {
         check(
-            "nest2:H2N0:V0_NN|IN1(FP1_NN)",
+            "nest2:H2N0:V0_NN|IN1(FP1_NN)nonstrict",
             &rows2(|m0: V0NN, m1: IN1FP1NN| Holder7973 { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31772,7 +31772,7 @@ mod holders {
 
     fn holder7981() -> Vec<String> {
         check(
-            "nest2:H2N1:A0_NN|IN0(A1_NN)",
+            "nest2:H2N1:A0_NN|IN0(A1_NN)nonstrict",
             &rows2(|m0: A0NN, m1: IN0A1NN| Holder7981 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31790,7 +31790,7 @@ mod holders {
 
     fn holder7989() -> Vec<String> {
         check(
-            "nest2:H2N1:A0_NN|IN0(FT1_NNN)",
+            "nest2:H2N1:A0_NN|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: A0NN, m1: IN0FT1NNN| Holder7989 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31831,7 +31831,7 @@ mod holders {
 
     fn holder8013() -> Vec<String> {
         check(
-            "nest2:H2N1:A0_NN|IN1(V1_NN)",
+            "nest2:H2N1:A0_NN|IN1(V1_NN)nonstrict",
             &rows2(|m0: A0NN, m1: IN1V1NN| Holder8013 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -31862,7 +31862,7 @@ mod holders {
 
     fn holder8037() -> Vec<String> {
         check(
-            "nest2:H2N1:A0_SS|IN0(FP1_NN)",
+            "nest2:H2N1:A0_SS|IN0(FP1_NN)nonstrict",
             &rows2(|m0: A0SS, m1: IN0FP1NN| Holder8037 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31896,7 +31896,7 @@ mod holders {
 
     fn holder8061() -> Vec<String> {
         check(
-            "nest2:H2N1:A0_SS|IN1(T1_NN)",
+            "nest2:H2N1:A0_SS|IN1(T1_NN)nonstrict",
             &rows2(|m0: A0SS, m1: IN1T1NN| Holder8061 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31944,7 +31944,7 @@ mod holders {
 
     fn holder8085() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_NN|IN0(FO1_NN)",
+            "nest2:H2N1:E0_NN|IN0(FO1_NN)nonstrict",
             &rows2(|m0: E0NN, m1: IN0FO1NN| Holder8085 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31952,7 +31952,7 @@ mod holders {
 
     fn holder8093() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_NN|IN0(P1_S)",
+            "nest2:H2N1:E0_NN|IN0(P1_S)nonstrict",
             &rows2(|m0: E0NN, m1: IN0P1S| Holder8093 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -31960,7 +31960,7 @@ mod holders {
 
     fn holder8101() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_NN|IN1(E1_SS)",
+            "nest2:H2N1:E0_NN|IN1(E1_SS)nonstrict",
             &rows2(|m0: E0NN, m1: IN1E1SS| Holder8101 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -31978,7 +31978,7 @@ mod holders {
 
     fn holder8109() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_NN|IN1(P1_N)",
+            "nest2:H2N1:E0_NN|IN1(P1_N)nonstrict",
             &rows2(|m0: E0NN, m1: IN1P1N| Holder8109 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32022,7 +32022,7 @@ mod holders {
 
     fn holder8133() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_SS|IN0(E1_NN)",
+            "nest2:H2N1:E0_SS|IN0(E1_NN)nonstrict",
             &rows2(|m0: E0SS, m1: IN0E1NN| Holder8133 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32040,7 +32040,7 @@ mod holders {
 
     fn holder8141() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_SS|IN0(O1_S)",
+            "nest2:H2N1:E0_SS|IN0(O1_S)nonstrict",
             &rows2(|m0: E0SS, m1: IN0OptOI1S| Holder8141 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -32055,7 +32055,7 @@ mod holders {
 
     fn holder8149() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_SS|IN1(A1_SS)",
+            "nest2:H2N1:E0_SS|IN1(A1_SS)nonstrict",
             &rows2(|m0: E0SS, m1: IN1A1SS| Holder8149 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32073,7 +32073,7 @@ mod holders {
 
     fn holder8157() -> Vec<String> {
         check(
-            "nest2:H2N1:E0_SS|IN1(O1_N)",
+            "nest2:H2N1:E0_SS|IN1(O1_N)nonstrict",
             &rows2(|m0: E0SS, m1: IN1OptOI1N| Holder8157 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -32124,7 +32124,7 @@ mod holders {
 
     fn holder8181() -> Vec<String> {
         check(
-            "nest2:H2N1:FO0_NN|IN0(A1_NN)",
+            "nest2:H2N1:FO0_NN|IN0(A1_NN)nonstrict",
             &rows2(|m0: FO0NN, m1: IN0A1NN| Holder8181 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32132,7 +32132,7 @@ mod holders {
 
     fn holder8189() -> Vec<String> {
         check(
-            "nest2:H2N1:FO0_NN|IN0(O1_S)",
+            "nest2:H2N1:FO0_NN|IN0(O1_S)nonstrict",
             &rows2(|m0: FO0NN, m1: IN0OptOI1S| Holder8189 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32140,7 +32140,7 @@ mod holders {
 
     fn holder8197() -> Vec<String> {
         check(
-            "nest2:H2N1:FO0_NN|IN1(E1_SS)",
+            "nest2:H2N1:FO0_NN|IN1(E1_SS)nonstrict",
             &rows2(|m0: FO0NN, m1: IN1E1SS| Holder8197 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32148,7 +32148,7 @@ mod holders {
 
     fn holder8205() -> Vec<String> {
         check(
-            "nest2:H2N1:FO0_NN|IN1(T1_NN)",
+            "nest2:H2N1:FO0_NN|IN1(T1_NN)nonstrict",
             &rows2(|m0: FO0NN, m1: IN1T1NN| Holder8205 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32156,7 +32156,7 @@ mod holders {
 
     fn holder8213() -> Vec<String> {
         check(
-            "nest2:H2N1:FP0_NN|IN0(FT1_NNN)",
+            "nest2:H2N1:FP0_NN|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: FP0NN, m1: IN0FT1NNN| Holder8213 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32164,7 +32164,7 @@ mod holders {
 
     fn holder8221() -> Vec<String> {
         check(
-            "nest2:H2N1:FP0_NN|IN1(A1_SS)",
+            "nest2:H2N1:FP0_NN|IN1(A1_SS)nonstrict",
             &rows2(|m0: FP0NN, m1: IN1A1SS| Holder8221 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32172,7 +32172,7 @@ mod holders {
 
     fn holder8229() -> Vec<String> {
         check(
-            "nest2:H2N1:FP0_NN|IN1(P1_N)",
+            "nest2:H2N1:FP0_NN|IN1(P1_N)nonstrict",
             &rows2(|m0: FP0NN, m1: IN1P1N| Holder8229 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32180,7 +32180,7 @@ mod holders {
 
     fn holder8237() -> Vec<String> {
         check(
-            "nest2:H2N1:FT0_NNN|IN0(FO1_NN)",
+            "nest2:H2N1:FT0_NNN|IN0(FO1_NN)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN0FO1NN| Holder8237 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32188,7 +32188,7 @@ mod holders {
 
     fn holder8245() -> Vec<String> {
         check(
-            "nest2:H2N1:FT0_NNN|IN0(V1_NN)",
+            "nest2:H2N1:FT0_NNN|IN0(V1_NN)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN0V1NN| Holder8245 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -32203,7 +32203,7 @@ mod holders {
 
     fn holder8253() -> Vec<String> {
         check(
-            "nest2:H2N1:FT0_NNN|IN1(O1_N)",
+            "nest2:H2N1:FT0_NNN|IN1(O1_N)nonstrict",
             &rows2(|m0: FT0NNN, m1: IN1OptOI1N| Holder8253 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -32218,7 +32218,7 @@ mod holders {
 
     fn holder8261() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(A0_NN)|E1_NN",
+            "nest2:H2N1:IN0(A0_NN)|E1_NNnonstrict",
             &rows2(|m0: IN0A0NN, m1: E1NN| Holder8261 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32236,7 +32236,7 @@ mod holders {
 
     fn holder8269() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(A0_NN)|P1_S",
+            "nest2:H2N1:IN0(A0_NN)|P1_Snonstrict",
             &rows2(|m0: IN0A0NN, m1: P1S| Holder8269 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32244,7 +32244,7 @@ mod holders {
 
     fn holder8277() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(A0_SS)|FP1_NN",
+            "nest2:H2N1:IN0(A0_SS)|FP1_NNnonstrict",
             &rows2(|m0: IN0A0SS, m1: FP1NN| Holder8277 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32252,7 +32252,7 @@ mod holders {
 
     fn holder8285() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(E0_NN)|A1_NN",
+            "nest2:H2N1:IN0(E0_NN)|A1_NNnonstrict",
             &rows2(|m0: IN0E0NN, m1: A1NN| Holder8285 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32270,7 +32270,7 @@ mod holders {
 
     fn holder8293() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(E0_NN)|O1_S",
+            "nest2:H2N1:IN0(E0_NN)|O1_Snonstrict",
             &rows2(|m0: IN0E0NN, m1: Option<OI1S>| Holder8293 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -32285,7 +32285,7 @@ mod holders {
 
     fn holder8301() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(E0_SS)|E1_SS",
+            "nest2:H2N1:IN0(E0_SS)|E1_SSnonstrict",
             &rows2(|m0: IN0E0SS, m1: E1SS| Holder8301 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32303,7 +32303,7 @@ mod holders {
 
     fn holder8309() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(E0_SS)|T1_NN",
+            "nest2:H2N1:IN0(E0_SS)|T1_NNnonstrict",
             &rows2(|m0: IN0E0SS, m1: T1NN| Holder8309 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32321,7 +32321,7 @@ mod holders {
 
     fn holder8317() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(FO0_NN)|FT1_NNN",
+            "nest2:H2N1:IN0(FO0_NN)|FT1_NNNnonstrict",
             &rows2(|m0: IN0FO0NN, m1: FT1NNN| Holder8317 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32329,7 +32329,7 @@ mod holders {
 
     fn holder8325() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(FP0_NN)|A1_SS",
+            "nest2:H2N1:IN0(FP0_NN)|A1_SSnonstrict",
             &rows2(|m0: IN0FP0NN, m1: A1SS| Holder8325 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32337,7 +32337,7 @@ mod holders {
 
     fn holder8333() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(FP0_NN)|P1_N",
+            "nest2:H2N1:IN0(FP0_NN)|P1_Nnonstrict",
             &rows2(|m0: IN0FP0NN, m1: P1N| Holder8333 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32345,7 +32345,7 @@ mod holders {
 
     fn holder8341() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(FT0_NNN)|FO1_NN",
+            "nest2:H2N1:IN0(FT0_NNN)|FO1_NNnonstrict",
             &rows2(|m0: IN0FT0NNN, m1: FO1NN| Holder8341 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32353,7 +32353,7 @@ mod holders {
 
     fn holder8349() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(FT0_NNN)|V1_NN",
+            "nest2:H2N1:IN0(FT0_NNN)|V1_NNnonstrict",
             &rows2(|m0: IN0FT0NNN, m1: V1NN| Holder8349 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -32368,7 +32368,7 @@ mod holders {
 
     fn holder8357() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(O0_N)|O1_N",
+            "nest2:H2N1:IN0(O0_N)|O1_Nnonstrict",
             &rows2(|m0: IN0OptOI0N, m1: Option<OI1N>| Holder8357 { own: 7, m0, m1 }),
             &[
                 ("None,None", 'E'),
@@ -32381,7 +32381,7 @@ mod holders {
 
     fn holder8365() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(O0_S)|E1_NN",
+            "nest2:H2N1:IN0(O0_S)|E1_NNnonstrict",
             &rows2(|m0: IN0OptOI0S, m1: E1NN| Holder8365 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32396,7 +32396,7 @@ mod holders {
 
     fn holder8373() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(O0_S)|P1_S",
+            "nest2:H2N1:IN0(O0_S)|P1_Snonstrict",
             &rows2(|m0: IN0OptOI0S, m1: P1S| Holder8373 { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -32404,7 +32404,7 @@ mod holders {
 
     fn holder8381() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(P0_N)|FP1_NN",
+            "nest2:H2N1:IN0(P0_N)|FP1_NNnonstrict",
             &rows2(|m0: IN0P0N, m1: FP1NN| Holder8381 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32412,7 +32412,7 @@ mod holders {
 
     fn holder8389() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(P0_S)|A1_NN",
+            "nest2:H2N1:IN0(P0_S)|A1_NNnonstrict",
             &rows2(|m0: IN0P0S, m1: A1NN| Holder8389 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32420,7 +32420,7 @@ mod holders {
 
     fn holder8397() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(P0_S)|O1_S",
+            "nest2:H2N1:IN0(P0_S)|O1_Snonstrict",
             &rows2(|m0: IN0P0S, m1: Option<OI1S>| Holder8397 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32428,7 +32428,7 @@ mod holders {
 
     fn holder8405() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(T0_NN)|E1_SS",
+            "nest2:H2N1:IN0(T0_NN)|E1_SSnonstrict",
             &rows2(|m0: IN0T0NN, m1: E1SS| Holder8405 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32446,7 +32446,7 @@ mod holders {
 
     fn holder8413() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(T0_NN)|T1_NN",
+            "nest2:H2N1:IN0(T0_NN)|T1_NNnonstrict",
             &rows2(|m0: IN0T0NN, m1: T1NN| Holder8413 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32464,7 +32464,7 @@ mod holders {
 
     fn holder8421() -> Vec<String> {
         check(
-            "nest2:H2N1:IN0(V0_NN)|FT1_NNN",
+            "nest2:H2N1:IN0(V0_NN)|FT1_NNNnonstrict",
             &rows2(|m0: IN0V0NN, m1: FT1NNN| Holder8421 { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -32479,7 +32479,7 @@ mod holders {
 
     fn holder8429() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(A0_NN)|A1_SS",
+            "nest2:H2N1:IN1(A0_NN)|A1_SSnonstrict",
             &rows2(|m0: IN1A0NN, m1: A1SS| Holder8429 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32497,7 +32497,7 @@ mod holders {
 
     fn holder8437() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(A0_NN)|P1_N",
+            "nest2:H2N1:IN1(A0_NN)|P1_Nnonstrict",
             &rows2(|m0: IN1A0NN, m1: P1N| Holder8437 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32505,7 +32505,7 @@ mod holders {
 
     fn holder8445() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(A0_SS)|FO1_NN",
+            "nest2:H2N1:IN1(A0_SS)|FO1_NNnonstrict",
             &rows2(|m0: IN1A0SS, m1: FO1NN| Holder8445 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32513,7 +32513,7 @@ mod holders {
 
     fn holder8453() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(A0_SS)|V1_NN",
+            "nest2:H2N1:IN1(A0_SS)|V1_NNnonstrict",
             &rows2(|m0: IN1A0SS, m1: V1NN| Holder8453 { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
@@ -32528,7 +32528,7 @@ mod holders {
 
     fn holder8461() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(E0_NN)|O1_N",
+            "nest2:H2N1:IN1(E0_NN)|O1_Nnonstrict",
             &rows2(|m0: IN1E0NN, m1: Option<OI1N>| Holder8461 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -32543,7 +32543,7 @@ mod holders {
 
     fn holder8469() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(E0_SS)|E1_NN",
+            "nest2:H2N1:IN1(E0_SS)|E1_NNnonstrict",
             &rows2(|m0: IN1E0SS, m1: E1NN| Holder8469 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32561,7 +32561,7 @@ mod holders {
 
     fn holder8477() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(E0_SS)|P1_S",
+            "nest2:H2N1:IN1(E0_SS)|P1_Snonstrict",
             &rows2(|m0: IN1E0SS, m1: P1S| Holder8477 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32569,7 +32569,7 @@ mod holders {
 
     fn holder8485() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(FO0_NN)|FP1_NN",
+            "nest2:H2N1:IN1(FO0_NN)|FP1_NNnonstrict",
             &rows2(|m0: IN1FO0NN, m1: FP1NN| Holder8485 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32577,7 +32577,7 @@ mod holders {
 
     fn holder8493() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(FP0_NN)|A1_NN",
+            "nest2:H2N1:IN1(FP0_NN)|A1_NNnonstrict",
             &rows2(|m0: IN1FP0NN, m1: A1NN| Holder8493 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32585,7 +32585,7 @@ mod holders {
 
     fn holder8501() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(FP0_NN)|O1_S",
+            "nest2:H2N1:IN1(FP0_NN)|O1_Snonstrict",
             &rows2(|m0: IN1FP0NN, m1: Option<OI1S>| Holder8501 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32593,7 +32593,7 @@ mod holders {
 
     fn holder8509() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(FT0_NNN)|E1_SS",
+            "nest2:H2N1:IN1(FT0_NNN)|E1_SSnonstrict",
             &rows2(|m0: IN1FT0NNN, m1: E1SS| Holder8509 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32611,7 +32611,7 @@ mod holders {
 
     fn holder8517() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(FT0_NNN)|T1_NN",
+            "nest2:H2N1:IN1(FT0_NNN)|T1_NNnonstrict",
             &rows2(|m0: IN1FT0NNN, m1: T1NN| Holder8517 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32629,7 +32629,7 @@ mod holders {
 
     fn holder8525() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(O0_N)|FT1_NNN",
+            "nest2:H2N1:IN1(O0_N)|FT1_NNNnonstrict",
             &rows2(|m0: IN1OptOI0N, m1: FT1NNN| Holder8525 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32644,7 +32644,7 @@ mod holders {
 
     fn holder8533() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(O0_S)|A1_SS",
+            "nest2:H2N1:IN1(O0_S)|A1_SSnonstrict",
             &rows2(|m0: IN1OptOI0S, m1: A1SS| Holder8533 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32659,7 +32659,7 @@ mod holders {
 
     fn holder8541() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(O0_S)|P1_N",
+            "nest2:H2N1:IN1(O0_S)|P1_Nnonstrict",
             &rows2(|m0: IN1OptOI0S, m1: P1N| Holder8541 { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -32667,7 +32667,7 @@ mod holders {
 
     fn holder8549() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(P0_N)|FO1_NN",
+            "nest2:H2N1:IN1(P0_N)|FO1_NNnonstrict",
             &rows2(|m0: IN1P0N, m1: FO1NN| Holder8549 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32675,7 +32675,7 @@ mod holders {
 
     fn holder8557() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(P0_N)|V1_NN",
+            "nest2:H2N1:IN1(P0_N)|V1_NNnonstrict",
             &rows2(|m0: IN1P0N, m1: V1NN| Holder8557 { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32683,7 +32683,7 @@ mod holders {
 
     fn holder8565() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(P0_S)|O1_N",
+            "nest2:H2N1:IN1(P0_S)|O1_Nnonstrict",
             &rows2(|m0: IN1P0S, m1: Option<OI1N>| Holder8565 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32691,7 +32691,7 @@ mod holders {
 
     fn holder8573() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(T0_NN)|E1_NN",
+            "nest2:H2N1:IN1(T0_NN)|E1_NNnonstrict",
             &rows2(|m0: IN1T0NN, m1: E1NN| Holder8573 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32709,7 +32709,7 @@ mod holders {
 
     fn holder8581() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(T0_NN)|P1_S",
+            "nest2:H2N1:IN1(T0_NN)|P1_Snonstrict",
             &rows2(|m0: IN1T0NN, m1: P1S| Holder8581 { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32717,7 +32717,7 @@ mod holders {
 
     fn holder8589() -> Vec<String> {
         check(
-            "nest2:H2N1:IN1(V0_NN)|FP1_NN",
+            "nest2:H2N1:IN1(V0_NN)|FP1_NNnonstrict",
             &rows2(|m0: IN1V0NN, m1: FP1NN| Holder8589 { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
@@ -32725,7 +32725,7 @@ mod holders {
 
     fn holder8597() -> Vec<String> {
         check(
-            "nest2:H2N1:O0_N|IN0(A1_NN)",
+            "nest2:H2N1:O0_N|IN0(A1_NN)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN0A1NN| Holder8597 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32740,7 +32740,7 @@ mod holders {
 
     fn holder8605() -> Vec<String> {
         check(
-            "nest2:H2N1:O0_N|IN0(FT1_NNN)",
+            "nest2:H2N1:O0_N|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN0FT1NNN| Holder8605 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32776,7 +32776,7 @@ mod holders {
 
     fn holder8629() -> Vec<String> {
         check(
-            "nest2:H2N1:O0_N|IN1(V1_NN)",
+            "nest2:H2N1:O0_N|IN1(V1_NN)nonstrict",
             &rows2(|m0: Option<OI0N>, m1: IN1V1NN| Holder8629 { own: 7, m0, m1 }),
             &[
                 ("None,Rect", 'E'),
@@ -32805,7 +32805,7 @@ mod holders {
 
     fn holder8653() -> Vec<String> {
         check(
-            "nest2:H2N1:O0_S|IN0(FP1_NN)",
+            "nest2:H2N1:O0_S|IN0(FP1_NN)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN0FP1NN| Holder8653 { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
@@ -32836,7 +32836,7 @@ mod holders {
 
     fn holder8677() -> Vec<String> {
         check(
-            "nest2:H2N1:O0_S|IN1(T1_NN)",
+            "nest2:H2N1:O0_S|IN1(T1_NN)nonstrict",
             &rows2(|m0: Option<OI0S>, m1: IN1T1NN| Holder8677 { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
@@ -32877,7 +32877,7 @@ mod holders {
 
     fn holder8701() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_N|IN0(FO1_NN)",
+            "nest2:H2N1:P0_N|IN0(FO1_NN)nonstrict",
             &rows2(|m0: P0N, m1: IN0FO1NN| Holder8701 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32885,7 +32885,7 @@ mod holders {
 
     fn holder8709() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_N|IN0(P1_S)",
+            "nest2:H2N1:P0_N|IN0(P1_S)nonstrict",
             &rows2(|m0: P0N, m1: IN0P1S| Holder8709 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32893,7 +32893,7 @@ mod holders {
 
     fn holder8717() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_N|IN1(E1_SS)",
+            "nest2:H2N1:P0_N|IN1(E1_SS)nonstrict",
             &rows2(|m0: P0N, m1: IN1E1SS| Holder8717 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32901,7 +32901,7 @@ mod holders {
 
     fn holder8725() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_N|IN1(P1_N)",
+            "nest2:H2N1:P0_N|IN1(P1_N)nonstrict",
             &rows2(|m0: P0N, m1: IN1P1N| Holder8725 { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
@@ -32925,7 +32925,7 @@ mod holders {
 
     fn holder8749() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_S|IN0(E1_NN)",
+            "nest2:H2N1:P0_S|IN0(E1_NN)nonstrict",
             &rows2(|m0: P0S, m1: IN0E1NN| Holder8749 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32933,7 +32933,7 @@ mod holders {
 
     fn holder8757() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_S|IN0(O1_S)",
+            "nest2:H2N1:P0_S|IN0(O1_S)nonstrict",
             &rows2(|m0: P0S, m1: IN0OptOI1S| Holder8757 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32941,7 +32941,7 @@ mod holders {
 
     fn holder8765() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_S|IN1(A1_SS)",
+            "nest2:H2N1:P0_S|IN1(A1_SS)nonstrict",
             &rows2(|m0: P0S, m1: IN1A1SS| Holder8765 { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
@@ -32949,7 +32949,7 @@ mod holders {
 
     fn holder8773() -> Vec<String> {
         check(
-            "nest2:H2N1:P0_S|IN1(O1_N)",
+            "nest2:H2N1:P0_S|IN1(O1_N)nonstrict",
             &rows2(|m0: P0S, m1: IN1OptOI1N| Holder8773 { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
@@ -32973,7 +32973,7 @@ mod holders {
 
     fn holder8797() -> Vec<String> {
         check(
-            "nest2:H2N1:T0_NN|IN0(A1_NN)",
+            "nest2:H2N1:T0_NN|IN0(A1_NN)nonstrict",
             &rows2(|m0: T0NN, m1: IN0A1NN| Holder8797 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -32991,7 +32991,7 @@ mod holders {
 
     fn holder8805() -> Vec<String> {
         check(
-            "nest2:H2N1:T0_NN|IN0(O1_S)",
+            "nest2:H2N1:T0_NN|IN0(O1_S)nonstrict",
             &rows2(|m0: T0NN, m1: IN0OptOI1S| Holder8805 { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
@@ -33006,7 +33006,7 @@ mod holders {
 
     fn holder8813() -> Vec<String> {
         check(
-            "nest2:H2N1:T0_NN|IN1(E1_SS)",
+            "nest2:H2N1:T0_NN|IN1(E1_SS)nonstrict",
             &rows2(|m0: T0NN, m1: IN1E1SS| Holder8813 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -33024,7 +33024,7 @@ mod holders {
 
     fn holder8821() -> Vec<String> {
         check(
-            "nest2:H2N1:T0_NN|IN1(T1_NN)",
+            "nest2:H2N1:T0_NN|IN1(T1_NN)nonstrict",
             &rows2(|m0: T0NN, m1: IN1T1NN| Holder8821 { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
@@ -33042,7 +33042,7 @@ mod holders {
 
     fn holder8829() -> Vec<String> {
         check(
-            "nest2:H2N1:V0_NN|IN0(FT1_NNN)",
+            "nest2:H2N1:V0_NN|IN0(FT1_NNN)nonstrict",
             &rows2(|m0: V0NN, m1: IN0FT1NNN| Holder8829 { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -33057,7 +33057,7 @@ mod holders {
 
     fn holder8837() -> Vec<String> {
         check(
-            "nest2:H2N1:V0_NN|IN1(A1_SS)",
+            "nest2:H2N1:V0_NN|IN1(A1_SS)nonstrict",
             &rows2(|m0: V0NN, m1: IN1A1SS| Holder8837 { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
@@ -33072,7 +33072,7 @@ mod holders {
 
     fn holder8845() -> Vec<String> {
         check(
-            "nest2:H2N1:V0_NN|IN1(P1_N)",
+            "nest2:H2N1:V0_NN|IN1(P1_N)nonstrict",
             &rows2(|m0: V0NN, m1: IN1P1N| Holder8845 { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )

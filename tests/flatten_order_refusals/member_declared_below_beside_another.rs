@@ -10,7 +10,7 @@ pub enum Hue {
     Warm { warmth: u32 },
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Parcel {
     #[serde(flatten)]

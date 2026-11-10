@@ -257,7 +257,7 @@ pub struct Hanking {
 
 /// A member that names a function flattened after a struct that names one on itself, where serde
 /// hands the function every key but its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Marling {
     #[serde(flatten)]
@@ -284,7 +284,7 @@ pub struct Mousing {
 
 /// A member that names a function flattened after a struct with a flattened member of its own,
 /// where serde hands the function every key but its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bowsing {
     #[serde(flatten)]
@@ -308,7 +308,7 @@ pub struct Footing {
 
 /// A struct flattened after a struct, where serde hands it the keys neither the first nor its
 /// holder took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Splaying {
     #[serde(flatten)]

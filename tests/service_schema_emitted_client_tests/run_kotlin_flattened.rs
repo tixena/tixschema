@@ -1368,11 +1368,11 @@ fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does
 /// enum and an enum under a tag alone that names a function on itself, is read wherever its read
 /// succeeds and is `null` wherever it throws, as serde reads it, and is written back as serde
 /// writes it back. An enum under a tag key the emitter wrote is `null` where neither its tag nor
-/// its content key is there, and its tag beside no member refuses the payload, as TypeScript and
-/// Zod refuse it, where serde reads `None`. A struct declared below its holder whose serializer
-/// the plugin writes is looked for by the keys its descriptor names: `null` where none is there,
-/// and a key that does not read refuses the payload, as TypeScript and Zod refuse it, where serde
-/// reads `None`.
+/// its content key is there, and its tag beside no member refuses the payload, as TypeScript
+/// refuses it, and Zod beside a strict holder, where serde reads `None`. A struct declared below
+/// its holder whose serializer the plugin writes is looked for by the keys its descriptor names:
+/// `null` where none is there, and a key that does not read refuses the payload, as TypeScript and
+/// Zod refuse it, where serde reads `None`.
 #[test]
 fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does() {
     let serde_told: Vec<String> = UNRECORDED
@@ -1408,8 +1408,8 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         .chain(["refused"])
         .chain(CLAPPING_READ_BACK)
         .collect();
-    // TypeScript and Zod refuse each: the tag of `Hitched` and of `Bridled` beside no member, and
-    // the key `Nippering` reads held as a number.
+    // TypeScript refuses each, and Zod but beside the `nonstrict` `Snagging`: the tag of `Hitched`
+    // and of `Bridled` beside no member, and the key `Nippering` reads held as a number.
     for (at, refused) in [
         (
             6,

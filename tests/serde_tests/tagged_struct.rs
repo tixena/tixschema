@@ -14,7 +14,7 @@ mod on_a_schema_surface {
     }
 
     /// Flattens a tagged struct, whose key serde then writes into this one's object.
-    #[model_schema()]
+    #[model_schema(nonstrict)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     pub struct TaggedOuter {
         pub id: u32,

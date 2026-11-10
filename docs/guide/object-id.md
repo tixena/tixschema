@@ -65,7 +65,7 @@ Key details:
 
 - Uses `{ "$oid": "hex_string" }` format matching MongoDB's native serialization.
 - Validates 24-character hexadecimal ObjectId strings via regex.
-- Refuses a key beside `$oid`, as Serde refuses it: Zod writes the `$oid` object as a `z.strictObject`, and the JSON Schema writes `"additionalProperties": false`. A flattened `ObjectId` is joined as a flattened struct is, so its holder refuses a key none of its members reads, where Serde reads past it.
+- Refuses a key beside `$oid`, as Serde refuses it: Zod writes the `$oid` object as a `z.strictObject`, and the JSON Schema writes `"additionalProperties": false`. A flattened `ObjectId` is joined as a flattened struct is, and its holder is marked `nonstrict`, so that Zod and the JSON Schema read past a key none of its members reads, as Serde does ([Order and strictness of flattened members](flatten.md#order-and-strictness-of-flattened-members)).
 - Supports ObjectIds in arrays, HashMaps, optional fields, and deeply nested structures.
 - The MongoDB crate is a dev-dependency only -- zero production overhead.
 

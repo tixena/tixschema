@@ -81,7 +81,7 @@ pub struct BareParcel {
 }
 
 /// An open member that reads every key, ahead of a member that takes its own: open.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OpenParcel {
     #[serde(flatten)]
@@ -103,7 +103,7 @@ pub struct LastParcel {
 }
 
 /// Two open members that read every key: open.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TwoOpenParcel {
     #[serde(flatten)]

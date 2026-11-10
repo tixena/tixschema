@@ -3,9 +3,13 @@
 //!
 //! The attribute stays off a type that is `nonstrict`, off one the author already wrote it on, and
 //! off one that flattens a member serde leaves the keys of in the object it reads them from:
-//! serde would refuse the very keys such a member is declared to hold.
+//! serde would refuse the very keys such a member is declared to hold. A strict struct whose serde
+//! read then refuses no such key, under a tag of its own or beside a flattened member that reads
+//! past one, is refused, so that it is marked `nonstrict`.
 
-use super::flatten_order::{Culprit, a_variant_refuses_a_stray, refused_by_a_member, takes_only};
+use super::flatten_order::{
+    Culprit, a_variant_refuses_a_stray, open_member_refusal, refused_by_a_member, takes_only,
+};
 use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::{
     Tagging, derived_serde_attributes, has_serde_transparent, parse_serde_field_attributes,
@@ -420,8 +424,28 @@ fn own_tag_error(
     )
 }
 
-/// The refusal of a `nonstrict` type whose author also wrote `deny_unknown_fields`, which asks
-/// for the opposite.
+/// The refusal of a strict struct that flattens a member which reads every key still left and
+/// refuses none, where no member it flattens refuses such a key: serde cannot refuse a key no
+/// member declares beside it, so the struct says `nonstrict` and every surface reads past one.
+fn reads_past_a_stray_error(
+    item_struct: &ItemStruct,
+    args: &ModelSchemaArgs,
+) -> Option<proc_macro2::TokenStream> {
+    if !matches!(item_struct.fields, Fields::Named(_))
+        || !reads_a_member(&item_struct.fields)
+        || struct_tag(item_struct).is_some()
+        || !writes_deny(&item_struct.attrs, args)
+        || refused_by_a_member(&item_struct.fields, &item_struct.generics)
+    {
+        return None;
+    }
+    let (field, message) = open_member_refusal(item_struct)?;
+    Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
+}
+
+/// The refusal of a strict struct serde cannot close, by [`own_tag_error`] and
+/// [`reads_past_a_stray_error`], and of a `nonstrict` type whose author also wrote
+/// `deny_unknown_fields`, which asks for the opposite.
 pub(super) fn conflict_errors(
     item: &Item,
     args: &ModelSchemaArgs,
@@ -434,7 +458,8 @@ pub(super) fn conflict_errors(
         return Vec::new();
     };
     if let Item::Struct(item_struct) = item
-        && let Some(refused) = own_tag_error(item_struct, args)
+        && let Some(refused) =
+            own_tag_error(item_struct, args).or_else(|| reads_past_a_stray_error(item_struct, args))
     {
         return vec![refused];
     }

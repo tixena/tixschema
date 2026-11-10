@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model_schema: type `Customer` flattens `contact`, which reads past a key no member declares, so serde cannot refuse such a key beside it. Mark `Customer` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does.
+  --> tests/flatten_order_refusals/a_strict_holder_flattening_a_member_declared_below_that_reads_past_a_key.rs:12:18
+   |
+12 |     pub contact: Contact,
+   |                  ^^^^^^^ evaluation of `_` failed here
