@@ -28,7 +28,7 @@ regex = "1.10"
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
 # Hashes the files of a skills folder at expansion; nothing of it reaches a consumer at run time.
-sha2 = "0.10"
+sha2 = "0.10.1"
 
 [dev-dependencies]
 mongodb = ">=3.7"
