@@ -20,16 +20,16 @@ Common configurations:
 
 ```toml
 # Default (serde + zod + typescript)
-tixschema = "0.3"
+tixschema = "0.4"
 
 # All features including optional ones
-tixschema = { version = "0.3", features = ["serde", "zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.4", features = ["serde", "zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod)
-tixschema = { version = "0.3", default-features = false, features = ["typescript"] }
+tixschema = { version = "0.4", default-features = false, features = ["typescript"] }
 
 # TypeScript + Zod with serde: the default `web` set, written out
-tixschema = { version = "0.3", default-features = false, features = ["serde", "zod", "typescript"] }
+tixschema = { version = "0.4", default-features = false, features = ["serde", "zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
