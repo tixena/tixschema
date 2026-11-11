@@ -399,30 +399,9 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 /// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
-/// field each names: Zod names a member of a variant, an arm of a `Result` holding a text, and a
-/// flattened member at the union, the `Result` and the member that holds the value; reads a
-/// number written with a fraction or an exponent, or `-0`, for an integer, which `JSON.parse`
-/// reads as the integer; and refuses an `i64` key a JavaScript `number` holds no exact integer of
-/// under the key.
-const NODE_APART: [(&str, Option<&str>); 17] = [
-    ("a boolean for a number in a variant", Some("peal")),
-    (
-        "a text for a number in a flattened member",
-        Some("frame.oak"),
-    ),
-    ("a text in an arm of a Result", Some("tally")),
-    ("an integral fraction for a u32", None),
-    ("an exponent for a u32", None),
-    ("a capital exponent for a u32", None),
-    ("a fraction of zero for a u32", None),
-    ("a fraction of zero below zero for a u32", None),
-    ("a zero below zero for a u32", None),
-    ("an integral fraction for an i64", None),
-    ("an exponent for an i64", None),
-    ("a capital exponent for an i64", None),
-    ("a fraction of zero for an i64", None),
-    ("a fraction of zero below zero for an i64", None),
-    ("a zero below zero for an i64", None),
+/// field each names: Zod refuses an `i64` key a JavaScript `number` holds no exact integer of under
+/// the key, which the Rust dispatcher reads.
+const NODE_APART: [(&str, Option<&str>); 2] = [
     ("the largest i64 key", Some("tolls.9223372036854775807")),
     ("the least i64 key", Some("tolls.-9223372036854775808")),
 ];

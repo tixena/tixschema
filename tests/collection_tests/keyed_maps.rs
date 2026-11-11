@@ -222,7 +222,7 @@ flattened, a key of a brand over a char: read
 flattened, a key of a brand over a char, of two chars: refused
     Unrecognized key: \"tt\"
 flattened, a key of a brand over a char, a count of text: refused
-    't': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 under a tag and a content key: read
 under a tag and a content key, a key of text: refused
     'body.depths': invalid value: expected key to be a number in quotes

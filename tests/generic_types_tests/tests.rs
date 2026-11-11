@@ -522,7 +522,7 @@ mod zod {
             "Got: {zod}"
         );
         assert!(
-            zod.contains("= EcmDocument$SchemaFactory(z.string(), z.number());"),
+            zod.contains("= EcmDocument$SchemaFactory(z.string(), z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()));"),
             "Got: {zod}"
         );
     }
@@ -623,7 +623,7 @@ mod zod {
         );
         assert!(zod.contains("id: idType,"), "Got: {zod}");
         assert!(
-            zod.contains(".and(z.lazy(() => Envelope$Schema))"),
+            zod.contains(".and(z.lazy(() => Envelope$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
             "Got: {zod}"
         );
     }
@@ -823,7 +823,7 @@ mod zod {
     fn a_reference_carrying_arguments_calls_the_factory() {
         let zod = WireFolder::zod_schema();
         assert!(
-            zod.contains("doc: EcmDocument$SchemaFactory(z.string(), z.number()),"),
+            zod.contains("doc: EcmDocument$SchemaFactory(z.string(), z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())),"),
             "Got: {zod}"
         );
         assert!(zod.contains("plain: Envelope$Schema,"), "Got: {zod}");
@@ -834,7 +834,7 @@ mod zod {
     fn a_forwarded_parameter_is_an_argument_like_any_other() {
         let zod = FolderTree::<String>::zod_schema();
         assert!(
-            zod.contains("root: EcmDocument$SchemaFactory(idType, z.number()),"),
+            zod.contains("root: EcmDocument$SchemaFactory(idType, z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())),"),
             "Got: {zod}"
         );
     }
@@ -858,7 +858,7 @@ mod zod {
             "Got: {zod}"
         );
         assert!(
-            zod.contains("many: z.array(EcmDocument$SchemaFactory(idType, z.number())),"),
+            zod.contains("many: z.array(EcmDocument$SchemaFactory(idType, z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()))),"),
             "Got: {zod}"
         );
         assert!(!zod.contains("HashSet$SchemaFactory"), "Got: {zod}");
