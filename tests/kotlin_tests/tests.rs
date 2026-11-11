@@ -41,6 +41,7 @@ use super::flattened_models::{
     yawing_kotlin,
 };
 use super::kotlin_pathed::PATHED;
+use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 #[cfg(feature = "serde")]
@@ -585,7 +586,9 @@ fn test_width_table() {
 fn test_plain_enum() {
     let kotlin = renumbered(&status_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("@Serializable enum class Status"),
+        kotlin.contains(
+            "@Serializable(with = StatusUnjudged::class) @KeepGeneratedSerializer enum class Status"
+        ),
         "got: {kotlin}"
     );
     assert!(
@@ -2308,8 +2311,20 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     );
     assert_eq!(
         renumbered(&reserved_member_kotlin::kotlin_definition()),
-        "@Serializable enum class ReservedMember { Default, In, Other; fun validate(): \
-         List<String> = emptyList() }"
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             ReservedMemberUnjudged::class) @KeepGeneratedSerializer enum class ReservedMember \
+             {{ Default, In, Other; fun validate(): List<String> = emptyList() }} {}",
+            plain_enum_unjudged(
+                "ReservedMember",
+                &[
+                    ("Default", "Default", &[]),
+                    ("In", "In", &[]),
+                    ("Other", "Other", &[])
+                ],
+                "element"
+            )
+        )
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

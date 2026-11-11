@@ -1126,7 +1126,7 @@ export function Status$Variant(value: unknown): string {
 /// `Status::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const Status$RawSchema = z.enum(["active", "inactive", "pending"]).meta({
+const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
   description: "Status",
   examples: [],
 });

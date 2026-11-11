@@ -7,10 +7,11 @@ use core::iter::once;
 
 use syn::Attribute;
 
-use super::read::PATHED;
+use super::read::{PATHED, read_at};
 use super::{KotlinField, kotlin_quoted};
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
+use crate::field_type::EXPECTED_VALUE;
 
 /// The names `#[serde(alias = "...")]` writes on a variant or a field, in the order written.
 #[cfg(feature = "serde")]
@@ -70,25 +71,17 @@ pub fn keys_named(payload: &str, renamed: &[(String, String)]) -> String {
     )
 }
 
-/// `payload`, the Kotlin expression of a `JsonElement`, with a string that `renamed` names an
-/// alias of read as the name the variant is written under, as serde reads a plain enum.
-pub fn text_named(payload: &str, renamed: &[(String, String)]) -> String {
-    if renamed.is_empty() {
-        return payload.to_owned();
-    }
-    format!(
-        "{payload}.let {{ whole: JsonElement -> if (whole is JsonPrimitive && whole.isString) \
-         when (whole.content) {{ {}else -> whole }} else whole }}",
-        arms(renamed, &|name| format!("JsonPrimitive({name})"))
-    )
-}
-
-/// `{Type}Unjudged`, the one serializer of a plain enum that reads a variant under an alias: it
-/// writes each variant under its wire name, and reads it under that name and each alias, as serde
-/// does. `variants` holds each variant's Kotlin name, wire name and aliases.
+/// `{Type}Unjudged`, the one serializer of a plain enum: it writes each variant under its wire
+/// name, and reads it as serde does, from a string or from an object of one key over `null`, under
+/// that name and each alias. A value of another kind is refused in serde's words for text that is
+/// not the document, a value under the key other than `null` as a unit variant is refused, and a
+/// name no variant takes as an unknown variant. `variants` holds each variant's Kotlin name, wire
+/// name and aliases, and `correction` the Kotlin expression of the payload `element` holds,
+/// corrected by the functions the enum names.
 pub fn plain_enum_serializer(
     export_name: &str,
     variants: &[(String, String, Vec<String>)],
+    correction: &str,
 ) -> String {
     let written = variants
         .iter()
@@ -107,13 +100,20 @@ pub fn plain_enum_serializer(
         })
         .collect::<Vec<_>>()
         .join("; ");
+    let reads = format!(
+        "val held = {correction}; val entry = (held as? JsonObject)?.entries?.singleOrNull(); val \
+         name = if (held is JsonPrimitive && held.isString) held.content else entry?.key ?: throw \
+         SerializationException(\"{EXPECTED_VALUE}\"); val variant = when (name) {{ {read}; else -> \
+         throw SerializationException(\"unknown variant `\" + name + \"`\") }}; if (entry != null \
+         && entry.value !is JsonNull) kotlinSchemaUnder(\".\" + entry.key) {{ throw \
+         SerializationException(\"invalid type: expected unit\") }}; variant"
+    );
     format!(
         "object {export_name}Unjudged : KSerializer<{export_name}> {{ override val descriptor: \
          SerialDescriptor = {export_name}.generatedSerializer().descriptor; \
          override fun serialize(encoder: Encoder, value: {export_name}) = \
          encoder.encodeString(when (value) {{ {written} }}); {PATHED}override fun \
-         deserialize(decoder: Decoder): {export_name} {{ val name = decoder.decodeString(); return \
-         kotlinSchemaAt(decoder) {{ when (name) {{ {read}; else -> throw \
-         SerializationException(\"unknown variant \" + name) }} }} }} }}"
+         deserialize(decoder: Decoder): {export_name} {{ val input = decoder as JsonDecoder; {} }} }}",
+        read_at("input", "input.decodeJsonElement()", &reads)
     )
 }

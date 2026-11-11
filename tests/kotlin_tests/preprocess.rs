@@ -8,6 +8,7 @@ use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
+use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{DECODED, judged};
 use super::read::{judged_over, kept};
 
@@ -167,10 +168,12 @@ fn a_plain_enum_that_names_a_function_has_one_serializer_that_calls_it() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              TierUnjudged::class) @KeepGeneratedSerializer enum class Tier {{ Express, Standard; \
-             fun validate(): List<String> = emptyList() }} \
-             @OptIn(ExperimentalSerializationApi::class) object TierUnjudged : \
-             KSerializer<Tier> {}",
-            transform("Tier", "Tier.generatedSerializer()", "unwrapped(element)")
+             fun validate(): List<String> = emptyList() }} {}",
+            plain_enum_unjudged(
+                "Tier",
+                &[("Express", "Express", &[]), ("Standard", "Standard", &[])],
+                "unwrapped(element)"
+            )
         )
     );
 }

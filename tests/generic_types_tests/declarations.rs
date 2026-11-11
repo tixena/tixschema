@@ -171,24 +171,50 @@ const BYTES_ARRAY_LITERAL: &str = r#"import type { BytesImage } from "./index.js
 export const literal: BytesImage = { contentType: "image/png", data: [137, 80, 78, 71] };
 "#;
 
-/// What a consumer writes with the bytes of a `BytesImage`: hands them to `TextDecoder`, reads them
-/// as a `Uint8Array`, and builds them with `Uint8Array.from`.
-const BYTES_CONSUMER: &str = r#"import { BytesImage$Schema, type BytesImage, type BytesHolder } from "./index.js";
+/// What a consumer writes with the bytes of a `BytesImage`: hands them to `TextDecoder`, `Blob`,
+/// `fetch` and `crypto.subtle`, reads them as a `Uint8Array<ArrayBuffer>`, builds them with
+/// `Uint8Array.from`, and holds the schema's output to the published type.
+const BYTES_CONSUMER: &str = r#"import type { z } from "zod";
+import { BytesImage$Schema, type BytesImage, type BytesHolder } from "./index.js";
+
+type Same<Left, Right> = (<Held>() => Held extends Left ? 1 : 2) extends <Held>() => Held extends Right ? 1 : 2 ? true : false;
+const sameAsPublished: Same<z.infer<typeof BytesImage$Schema>, BytesImage> = true;
 
 export function textOf(image: BytesImage): string {
-  const bytes: Uint8Array = image.data;
+  const bytes: Uint8Array<ArrayBuffer> = image.data;
   return new TextDecoder().decode(bytes);
+}
+
+export function blobOf(image: BytesImage, read: z.infer<typeof BytesImage$Schema>): [Blob, Blob] {
+  return [new Blob([image.data], { type: image.contentType }), new Blob([read.data])];
+}
+
+export async function sent(image: BytesImage, read: z.infer<typeof BytesImage$Schema>): Promise<Array<Response>> {
+  return [await fetch("https://example.test", { method: "POST", body: image.data }), await fetch("https://example.test", { method: "POST", body: read.data })];
+}
+
+export async function digests(image: BytesImage, read: z.infer<typeof BytesImage$Schema>): Promise<Array<ArrayBuffer>> {
+  return [await crypto.subtle.digest("SHA-256", image.data), await crypto.subtle.digest("SHA-256", read.data)];
 }
 
 export function built(): BytesImage {
   return { contentType: "image/png", data: Uint8Array.from([137, 80, 78, 71]) };
 }
 
-export function rows(holder: BytesHolder): Array<Uint8Array> {
+export function rows(holder: BytesHolder): Array<Uint8Array<ArrayBuffer>> {
   return [holder.data, ...holder.rows, ...Object.values(holder.keyed).flatMap((held) => (held ? [held] : []))];
 }
 
 export const parsed: BytesImage = BytesImage$Schema.parse({ contentType: "a", data: [1] });
+export { sameAsPublished };
+"#;
+
+/// A bytes value typed over any buffer, which the published type refuses.
+const BYTES_WIDE_BUFFER: &str = r#"import type { BytesImage } from "./index.js";
+
+export function wide(data: Uint8Array<ArrayBufferLike>): BytesImage {
+  return { contentType: "image/png", data };
+}
 "#;
 
 const BYTES_CONSUMER_PROJECT: &str = r#"{
@@ -1174,6 +1200,9 @@ const WIRE_FORM: &str = "function exactJson(text) {
 }
 function wireForm(value) {
   if (typeof value === \"bigint\") return JSON.rawJSON(value.toString());
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");
+  }
   if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => wireForm(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
@@ -6529,8 +6558,8 @@ fn type_check_a_vec_of_u8_is_read_as_a_uint8array_under_zod() {
     );
 }
 
-/// The published `Uint8Array` is the type `TextDecoder`, `Uint8Array.from` and the schema's parse hand
-/// bytes to and from under `tsc --strict`, and a literal array is refused where bytes are held.
+/// The published `Uint8Array<ArrayBuffer>` is the type `TextDecoder`, `Blob`, `fetch`, `crypto.subtle`,
+/// `Uint8Array.from` and the schema's parse hand bytes to and from under `tsc --strict`, and a literal array or a view over any buffer is refused where bytes are held.
 #[test]
 fn type_check_a_vec_of_u8_is_a_uint8array_a_consumer_holds() {
     let Some(at) = built_from("bytes-consumer", &bytes_bundle()) else {
@@ -6541,6 +6570,8 @@ fn type_check_a_vec_of_u8_is_a_uint8array_a_consumer_holds() {
     let accepted = compiled(&at, "tsconfig.consumer.json").unwrap();
     fs::write(at.join("src/consumer.ts"), BYTES_ARRAY_LITERAL).unwrap();
     let refused = compiled(&at, "tsconfig.consumer.json").unwrap();
+    fs::write(at.join("src/consumer.ts"), BYTES_WIDE_BUFFER).unwrap();
+    let wide = compiled(&at, "tsconfig.consumer.json").unwrap();
     fs::remove_dir_all(&at).unwrap();
     assert!(accepted.0, "tsc --strict reports:\n{}", accepted.1);
     assert!(
@@ -6549,4 +6580,9 @@ fn type_check_a_vec_of_u8_is_a_uint8array_a_consumer_holds() {
         refused.1
     );
     assert!(refused.1.contains("TS2740"), "{}", refused.1);
+    assert!(
+        !wide.0 && wide.1.contains("TS2322"),
+        "a view over any buffer is not the published type:\n{}",
+        wide.1
+    );
 }

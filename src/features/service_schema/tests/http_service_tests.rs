@@ -103,7 +103,8 @@ export type ConversationClientServiceHttpFaultHandler = (fault: ConversationClie
 /**
  * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON number of
  * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that `number`, and any
- * other is refused. Each `Uint8Array` is the plain array of its bytes.
+ * other is refused. Each `Date` is its RFC 3339 text with no fraction on whole seconds, as
+ * chrono writes it. Each `Uint8Array` is the plain array of its bytes.
  */
 function conversationClientServiceHttpAnswered(value: unknown): unknown {
   if (typeof value === \"bigint\") {
@@ -111,6 +112,9 @@ function conversationClientServiceHttpAnswered(value: unknown): unknown {
     if (typeof raw === \"function\") return raw(value.toString());
     if (Number.isSafeInteger(Number(value))) return Number(value);
     throw new RangeError(`${value} is written exactly only through JSON.rawJSON, which this runtime has not`);
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");
   }
   if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));
