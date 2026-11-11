@@ -10,8 +10,8 @@ use syn::meta::ParseNestedMeta;
 use syn::punctuated::Punctuated;
 use syn::token::Paren;
 use syn::{
-    Attribute, Data, DeriveInput, Field, GenericArgument, Ident, Lifetime, LitStr, PathArguments,
-    ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
+    Attribute, Data, DeriveInput, Field, GenericArgument, Generics, Ident, Lifetime, LitStr,
+    PathArguments, ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate, parse_quote,
 };
 
 use super::{consume_unread_value, derived_serde_attributes};
@@ -564,6 +564,74 @@ pub fn read_bounds(input: &DeriveInput) -> ReadBounds {
         predicates,
         written_by_container,
     }
+}
+
+/// `predicates` without each bound that `generics` already declare on the parameter it bounds,
+/// a trait matched by the last segment of its path: a bound written twice is refused by
+/// `clippy::trait_duplication_in_bounds` in the consumer's crate.
+pub fn undeclared_bounds(
+    generics: &Generics,
+    predicates: Vec<WherePredicate>,
+) -> Vec<WherePredicate> {
+    let last_segment = |bound: &TypeParamBound| {
+        if let TypeParamBound::Trait(written) = bound
+            && written.maybe.is_none()
+        {
+            written
+                .path
+                .segments
+                .last()
+                .map(|segment| quote::ToTokens::to_token_stream(segment).to_string())
+        } else {
+            None
+        }
+    };
+    let names = |ty: &Type, param: &Ident| matches!(ty, Type::Path(path) if path.qself.is_none() && path.path.is_ident(param));
+    let declared_on = |param: &Ident| -> Vec<String> {
+        let inline = generics
+            .type_params()
+            .filter(|declared| declared.ident == *param)
+            .flat_map(|declared| declared.bounds.iter());
+        let in_where = generics
+            .where_clause
+            .iter()
+            .flat_map(|clause| clause.predicates.iter())
+            .filter_map(|predicate| {
+                if let WherePredicate::Type(typed) = predicate
+                    && names(&typed.bounded_ty, param)
+                {
+                    Some(typed.bounds.iter())
+                } else {
+                    None
+                }
+            })
+            .flatten();
+        inline.chain(in_where).filter_map(last_segment).collect()
+    };
+    predicates
+        .into_iter()
+        .filter_map(|predicate| {
+            let WherePredicate::Type(mut typed) = predicate else {
+                return Some(predicate);
+            };
+            let Some(param) = generics
+                .type_params()
+                .map(|declared| &declared.ident)
+                .find(|declared| names(&typed.bounded_ty, declared))
+            else {
+                return Some(WherePredicate::Type(typed));
+            };
+            let declared = declared_on(param);
+            typed.bounds = typed
+                .bounds
+                .into_iter()
+                .filter(|bound| {
+                    last_segment(bound).is_none_or(|written| !declared.contains(&written))
+                })
+                .collect();
+            (!typed.bounds.is_empty()).then_some(WherePredicate::Type(typed))
+        })
+        .collect()
 }
 
 #[cfg(test)]
