@@ -551,3 +551,47 @@ fn a_read_from_the_decoder_reads_an_integer_through_the_fitting_read() {
         "listed.decode(SwiftSchemaFit<UInt8>.self).value"
     );
 }
+
+/// The read of a member typed with an alias of a fixed-width integer, or of an `Optional` of one,
+/// names the alias inside `SwiftSchemaFit`; one of a list of such an integer is read as the list it
+/// names is. A member typed with an alias of any other type is read as it was.
+#[test]
+fn an_alias_of_an_integer_is_read_through_the_fitting_read() {
+    for alias in [
+        syn::parse_quote! { pub type Sounding = i64; },
+        syn::parse_quote! { pub type Fathoms = Option<u32>; },
+        syn::parse_quote! { pub type Soundings = Vec<Sounding>; },
+        syn::parse_quote! { pub type Resounding = Sounding; },
+        syn::parse_quote! { pub type Bearing = String; },
+    ] {
+        assert!(emitted(&alias).contains("public typealias "));
+    }
+    let chart: Item = syn::parse_quote! {
+        pub struct Chart {
+            pub depth: Sounding,
+            pub fathoms: Fathoms,
+            pub soundings: Soundings,
+            pub listed: Vec<Sounding>,
+            pub resounded: Resounding,
+            pub bearing: Bearing,
+        }
+    };
+    let written = emitted(&chart);
+    for read in [
+        "self.depth = try container.decode(SwiftSchemaFit<SoundingType>.self, forKey: .depth).value",
+        "self.fathoms = try container.decode(SwiftSchemaFit<FathomsType>.self, forKey: .fathoms).value",
+        "self.soundings = try container.decode([SwiftSchemaFit<SoundingType>].self, forKey: \
+         .soundings).map({ $0.value })",
+        "self.listed = try container.decode([SwiftSchemaFit<SoundingType>].self, forKey: \
+         .listed).map({ $0.value })",
+        "self.resounded = try container.decode(SwiftSchemaFit<ResoundingType>.self, forKey: \
+         .resounded).value",
+        "self.bearing = try container.decode(BearingType.self, forKey: .bearing)",
+    ] {
+        assert!(written.contains(read), "{read} is not in: {written}");
+    }
+    assert_eq!(
+        Source::Decoder.plain("FathomsType", &[]),
+        "SwiftSchemaFit<FathomsType>(from: decoder).value"
+    );
+}

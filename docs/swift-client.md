@@ -114,9 +114,11 @@ to keep.
   reads the integer from its own decoder and holds it in `value`; it throws `dataCorrupted` at
   that decoder's coding path in serde's words where Foundation refused the integer with an error
   that is no `DecodingError`, and where the number was written with a fraction or an exponent:
-  ``invalid type: floating point `1.0`, expected u32``, the number spelled from its `Double`. It
-  tells such a number from the decoder `JSONDecoder` hands `init(from:)`, the private
-  `FoundationEssentials.JSONDecoderImpl`, read through `Mirror`: the last of its stored `values` is
+  ``invalid type: floating point `1.0`, expected u32``, the number spelled from its `Double`, and
+  the integer named as serde names it: `expected` peels each `Optional<...>` off
+  `String(describing: SwiftSchemaLeaf.self)`, so a parameter filled with `UInt32?` names `u32`
+  where it named `Optional<UInt32>`. It tells such a number from the decoder `JSONDecoder` hands
+  `init(from:)`, the private `FoundationEssentials.JSONDecoderImpl`, read through `Mirror`: the last of its stored `values` is
   the number being read, `number(Region, containsExponent: Bool)`, and `Region.count` is the byte
   count of its text, which differs from that of the integer written plainly where it holds a
   fraction (`-0` included). These are not public API: where `Mirror` finds none of them, under
@@ -136,6 +138,19 @@ to keep.
   only where it is a `FixedWidthInteger`, an `Optional` of one included, so a parameter filled with
   a `Double`, a `String` or a model reads what Foundation reads, and a type that declares no
   parameter writes the text it wrote.
+- **An alias of an integer is read through the fitting read too.** A holder names an alias by
+  the name its `typealias` declares, `SixtyRevisionType`, which `fit_held` cannot read the integer
+  off, so `alias_swift_tokens` hands `read::note_alias` the Swift type each alias that declares no
+  parameter names, and `FITTED_ALIASES` records, by the alias's Swift name, how `fit_held` reads
+  it, for every holder written after it. An alias of a fixed-width integer, or of an `Optional` of
+  one, another such alias among its targets, is read as `SwiftSchemaFit` of the alias,
+  `container.decode(SwiftSchemaFit<SixtyRevisionType>.self, forKey: .aliased).value`: a
+  `typealias` is transparent, so `expected` names the integer, `i64`. An alias of a list or a map
+  of one is read as its target is, `[SwiftSchemaFit<Int64>]` mapped back with `.map({ $0.value })`,
+  whose value is the alias's. Every caller of `read::fitted` and `Source::plain` reads it, the
+  newtype variant of an untagged enum over `pub type Sounded = Option<u32>` among them,
+  `SwiftSchemaFit<SoundedType>(from: decoder).value`. An alias that names no integer, and one that
+  declares a parameter, are read as Foundation reads them.
 - **A `Float` is read as a `Double` and narrowed**, as serde reads an `f32`: Foundation refuses
   one beyond its range, `1e39`, with `The given data was not valid JSON.` under an empty coding
   path, where serde reads an infinity of its sign. `read::fitted` writes a read whose type holds a
