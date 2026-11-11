@@ -6,6 +6,7 @@ use super::fault;
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
+use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
@@ -102,11 +103,14 @@ class __N__McpRaw {
 
 /**
  * `value` as JSON text with the keys of every object in order, as serde_json writes them: a
- * `bigint` as its digits, a `Uint8Array` as the array of its bytes and a raw text as it stands.
+ * `bigint` and a `JSON.rawJSON` holder as its digits, a `Uint8Array` as the array of its bytes
+ * and a raw text as it stands.
  */
 function __p__McpText(value: unknown): string {
   if (value instanceof __N__McpRaw) return value.text;
   if (typeof value === "bigint") return value.toString();
+  const isRaw: unknown = Reflect.get(JSON, "isRawJSON");
+  if (typeof isRaw === "function" && isRaw(value) === true) return JSON.stringify(value);
   if (value instanceof Uint8Array) return __p__McpText(Array.from(value));
   if (Array.isArray(value)) {
     return `[${value.map((held: unknown) => (held === undefined ? "null" : __p__McpText(held))).join(",")}]`;
@@ -753,10 +757,27 @@ const __p__McpUnreadable: ReadonlySet<string> = new Set([
 
 type __p__McpIssue = {
   readonly code: string;
+  readonly message: string;
   readonly path: ReadonlyArray<PropertyKey>;
   readonly keys?: ReadonlyArray<string>;
   readonly errors?: ReadonlyArray<ReadonlyArray<__p__McpIssue>>;
+  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown };
 };
+
+/** Whether `issue` keeps the arguments from reading. serde reads them out of a value, where a `Result` of other than one key is a value of the wrong kind. */
+function __p__McpUnreadableIssue(issue: __p__McpIssue): boolean {
+  return (
+    __p__McpUnreadable.has(issue.code) ||
+    issue.params?.undeserializable === true ||
+    issue.params?.numberKey === true
+  );
+}
+
+/** The words serde refuses a key of a map keyed by a number in where it reads it as text that is not the document, out of a value, which reads the text after the number as no number; none for any other issue. */
+function __p__McpNoNumber(issue: __p__McpIssue): string | undefined {
+  if (issue.params?.numberKey !== true || issue.params.undeserializable !== true) return undefined;
+  return issue.message === "__EXPECTED_QUOTE__" ? "__EXPECTED_NUMERIC_KEY__" : issue.message;
+}
 
 /** The path of an issue: below an `invalid_union`, the deepest path any of its alternatives reached; below `unrecognized_keys`, the first key. */
 function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
@@ -785,7 +806,7 @@ function __p__McpListed(
   });
 }
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, `undeserializable-payload` naming no field where the first value that does not read is a key that is no number, and otherwise `failed-validation` naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -802,9 +823,11 @@ function __p__McpUnread(
       .join("; ");
     return __FAULT__("failed-validation", operation, detail, answers);
   }
-  const unreadable = issues.filter((issue) => __p__McpUnreadable.has(issue.code));
+  const unreadable = issues.filter(__p__McpUnreadableIssue);
   const unread = unreadable[0];
   if (unread === undefined) return undefined;
+  const noNumber = __p__McpNoNumber(unread);
+  if (noNumber !== undefined) return __FAULT__("undeserializable-payload", operation, noNumber);
   const steps = __p__McpSteps(unread);
   const detail = unreadable
     .flatMap((issue) =>
@@ -1779,7 +1802,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.extend([
         part(service, &named, &prefix),
         operations(service, &named, &prefix),
-        message::read_fn(&format!("{prefix}McpRead")),
+        message::envelope_read_fn(&format!("{prefix}McpRead")),
         fill(TEXT),
         fault_fn(&named, &prefix),
         fill(WRITER),
@@ -2631,6 +2654,8 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .replace("__ASKING__", if asks { ASKING } else { "" })
         .replace("__DRIVEN__", &driven)
         .replace("__FAULT__", &fault)
+        .replace("__EXPECTED_NUMERIC_KEY__", EXPECTED_NUMERIC_KEY)
+        .replace("__EXPECTED_QUOTE__", &EXPECTED_QUOTE.replace('"', "\\\""))
         .replace("__N__", named)
         .replace("__p__", prefix)
 }

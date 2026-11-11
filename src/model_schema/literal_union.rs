@@ -239,14 +239,44 @@ pub fn union_of(candidates: &[Candidate]) -> ZodUnion {
             discriminated: false,
         };
     };
+    let joined = format!(
+        "z.discriminatedUnion({}, [{}])",
+        ts_quoted(&plan.key),
+        options(candidates, &plan)
+    );
     ZodUnion {
-        code: format!(
-            "z.discriminatedUnion({}, [{}])",
-            ts_quoted(&plan.key),
-            options(candidates, &plan)
-        ),
+        code: if keyed_by_a_number(&shapes, &plan.key) {
+            read_unboxed_key(&joined, &plan.key)
+        } else {
+            joined
+        },
         discriminated: true,
     }
+}
+
+/// Whether a variant holds `key` to a number.
+fn keyed_by_a_number(shapes: &[&Shape], key: &str) -> bool {
+    shapes.iter().any(|shape| {
+        matches!(shape, Shape::Object(members) if members.iter().any(|member| {
+            member.key == key
+                && member
+                    .literal
+                    .as_ref()
+                    .is_some_and(|literal| literal.value.starts_with("number "))
+        }))
+    })
+}
+
+/// `union`, a discriminated union on `key`, handed an object whose `key` holds a `Number` object
+/// with the number in its place: the service code reads a number written with a fraction or an
+/// exponent as one, and the union looks its option up by the key's own value.
+fn read_unboxed_key(union: &str, key: &str) -> String {
+    let quoted = ts_quoted(key);
+    format!(
+        "z.preprocess((held) => typeof held === \"object\" && held !== null && !Array.isArray(held) \
+         && Reflect.get(held, {quoted}) instanceof Number ? {{ ...held, {quoted}: \
+         Number(Reflect.get(held, {quoted})) }} : held, {union})"
+    )
 }
 
 /// The options of a union, joined: each variant as it is written, and the one a [`Plan`] says omits

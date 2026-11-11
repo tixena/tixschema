@@ -61,10 +61,10 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = kotlin_ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "put(\"error\", Json.encodeToJsonElement(serializer<BalanceError>(), answered.error))"
+            "put(\"error\", billingServiceWsWritten(serializer<BalanceError>(), answered.error))"
         ),
-        "the dispatcher writes the declared error through its own serializer, whole. \
-         Got: {written}"
+        "the dispatcher writes the declared error through its own serializer, whole, as serde \
+         writes it. Got: {written}"
     );
     assert!(
         !written.contains("errorMessage"),
@@ -191,6 +191,63 @@ fn request_ids_start_at_one_and_correlate_through_a_completable_deferred() {
         "the id is assigned and the deferred registered under one lock, so a concurrent `request` \
          never reads a stale `nextId` or races the same pending entry. Got: {request_body}"
     );
+}
+
+#[test]
+fn a_request_takes_its_deferred_back_out_of_pending_however_it_ends() {
+    for service in [KOTLIN_WS_SERVICE, SHADOWED_LOCAL_SERVICE] {
+        let written = kotlin_ws_client_of(service);
+        let request_body = body_from(&written, "suspend fun request(");
+        assert!(
+            request_body.contains(
+                "      )\n      return deferred.await()\n    } finally {\n      \
+                 synchronized(this) { pending.remove(id) }\n    }\n  }"
+            ),
+            "a frame the socket refuses, and a caller cancelled while it waits, are answered by no \
+             reply, so nothing is left waiting for one. Got: {request_body}"
+        );
+    }
+}
+
+#[test]
+fn a_client_call_cancelled_while_it_waits_lets_the_cancellation_through() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    for (call, uncarried) in [
+        (
+            "suspend fun window(",
+            "return ConversationClientServiceWindowResult.Fault(",
+        ),
+        (
+            "suspend fun purgeConversation(",
+            "throw ConversationClientServiceWsRefusal(",
+        ),
+    ] {
+        let method = body_from(&written, call);
+        assert!(
+            method.contains(&format!(
+                "}} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+                 throw cancelled\n    }} catch (uncarried: Throwable) {{\n      {uncarried}"
+            )),
+            "a cancelled caller ends cancelled rather than answering `transport-failure`. \
+             Got: {method}"
+        );
+    }
+}
+
+#[test]
+fn a_handler_cancelled_while_it_runs_lets_the_cancellation_through() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    for arm_marker in ["\"window\" -> {", "\"purge-conversation\" -> {"] {
+        let arm = body_from(&written, arm_marker);
+        assert!(
+            arm.contains(
+                "} catch (cancelled: kotlinx.coroutines.CancellationException) {\n        \
+                 throw cancelled\n      } catch (unexpected: Throwable) {"
+            ),
+            "a dispatch whose scope is cancelled reaches no `onFault` and answers no fault. \
+             Got: {arm}"
+        );
+    }
 }
 
 #[test]
@@ -680,7 +737,7 @@ fn the_dispatcher_writes_a_bare_date_reply_through_the_serializer_of_its_form() 
         "        try {\n          when (answered) {\n            is DatingServiceStampResult.Ok -> \
          send(buildJsonObject { put(\"kind\", \"reply\"); put(\"id\", id); put(\"service\", \
          \"DatingService\"); put(\"ok\", true); put(\"value\", \
-         Json.encodeToJsonElement(KotlinText2, answered.value)) }.toString())\n",
+         datingServiceWsWritten(KotlinText2, answered.value)) }.toString())\n",
         "        } catch (unwritten: SerializationException) {\n          \
          val fault = datingServiceWsHandlerPanic(\"stamp\", unwritten.toString())\n          \
          onFault(fault)\n",

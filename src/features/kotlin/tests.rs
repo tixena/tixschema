@@ -121,6 +121,24 @@ fn mapped_judging(named: &str) -> String {
     )
 }
 
+/// The serializer of a map keyed by the brand `named`, which holds a brand over a text: each key
+/// read as [`mapped_judging`] reads it, where the refusal of the brand it holds is thrown under the
+/// key's text as well.
+fn mapped_over_a_brand(named: &str) -> String {
+    mapped_reading(
+        named,
+        &format!(
+            "val key = try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, \
+             JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: SerializationException) \
+             {{ if (refused.cause?.message != \"validate()\") throw refused; throw \
+             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}; \
+             val violations = key.validate(); if (violations.isNotEmpty()) throw \
+             SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \"': \" \
+             + it }}); key to {MAPPED_VALUE}"
+        ),
+    )
+}
+
 /// The annotations of a type the plugin reads, which keeps the plugin's serializer.
 fn kept(named: &str) -> String {
     format!(
@@ -152,16 +170,21 @@ fn number(named: &str, kotlin: &str, expected: &str) -> String {
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
          serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
-         {PATHED}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
-         JsonDecoder ?: return held.deserialize(decoder); val element = json.decodeJsonElement(); \
-         return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || element.isString) throw \
-         SerializationException(\"invalid type: \" + (if (element is JsonPrimitive) \"string \" \
-         else \"\") + element + \", expected {expected}\"); try {{ \
-         json.json.decodeFromJsonElement(held, element) }} catch (refused: \
-         SerializationException) {{ throw \
+         {PATHED}{FLOATING}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = \
+         decoder as? JsonDecoder ?: return held.deserialize(decoder); val element = \
+         json.decodeJsonElement(); return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive \
+         || element.isString) throw SerializationException(\"invalid type: \" + (if (element is \
+         JsonPrimitive) \"string \" else \"\") + element + \", expected {expected}\"); val text = \
+         element.content; val wide = text.toDoubleOrNull(); if (wide != null && (text == \"-0\" || \
+         text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if (wide.isInfinite()) throw \
+         SerializationException(\"number out of range\"); throw \
+         SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
+         expected {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
+         (refused: SerializationException) {{ throw \
          SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}",
-        PATHED = read::PATHED
+        PATHED = read::PATHED,
+        FLOATING = super::texts::FLOATING
     )
 }
 
@@ -389,6 +412,36 @@ fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
     ] {
         assert!(kotlin.contains(declared), "{declared} is not in: {kotlin}");
     }
+}
+
+/// A brand over a brand over a text writes the serializer of a map keyed by it, which places the
+/// refusal of the brand it holds under the key's text, as it places its own.
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_keyed_by_a_brand_over_a_text_brand_places_the_inner_refusal_under_the_key() {
+    let tone: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Tone(String);
+    };
+    let outer: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Outer(Tone);
+    };
+    let toned = plain(&tone);
+    assert!(toned.ends_with(&mapped_judging("Tone")), "got: {toned}");
+    let nested = plain(&outer);
+    assert!(
+        nested.ends_with(&mapped_over_a_brand("Outer")),
+        "got: {nested}"
+    );
+    let item: ItemStruct = syn::parse_quote! {
+        struct Chord {
+            outer: BTreeMap<Outer, String>,
+        }
+    };
+    let kotlin = plain(&item);
+    let declared = "val outer: @Serializable(with = OuterMapSerializer::class) Map<Outer, String>";
+    assert!(kotlin.contains(declared), "{declared} is not in: {kotlin}");
 }
 
 /// Only a brand that holds a string, or a brand or an alias that answers one, answers its text.

@@ -144,7 +144,9 @@ fn test_basic_struct_zod_schema() {
     assert!(zod_schema.contains("id: z.string()"));
     assert!(zod_schema.contains("name: z.string()"));
     assert!(zod_schema.contains("age: z.number().int()"));
-    assert!(zod_schema.contains("height: z.number()"));
+    assert!(zod_schema.contains(
+        "height: z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number().transform("
+    ));
     #[cfg(feature = "serde")]
     let is_active = "is_active: z.boolean()";
     #[cfg(not(feature = "serde"))]

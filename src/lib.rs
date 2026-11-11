@@ -1237,7 +1237,9 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - **An untagged enum** (`#[serde(untagged)]`): `A | B` in TypeScript, `z.union` in Zod, `anyOf`
 ///   in JSON Schema. A variant with no data and a tuple variant of several slots are refused.
 /// - **A flattened field** (`#[serde(flatten)]`): `{ ... } & B` in TypeScript,
-///   `.and(z.lazy(() => B$Schema))` in Zod, and one closed object holding both in JSON Schema.
+///   `.and(z.lazy(() => B$Schema).superRefine(...))` in Zod, which refuses a value of the wrong
+///   type inside `B` at the holder as serde does, and one closed object holding both in JSON
+///   Schema.
 ///   Only a value serde writes as an object can be flattened, and an untagged enum is declared
 ///   above the type that flattens it.
 /// - **A unit struct**: `Record<string, never>`, written as `{}`.
@@ -1942,7 +1944,8 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// the value, and `validate()` judges it. Every serde read calls them, from JSON text, a
 /// `serde_json::Value`, a BSON document or any other format that describes itself, and so do a
 /// holder's read, the recovering decode, a `MongoDB` operation and a service dispatcher. Zod wraps
-/// the schema in `z.preprocess(name, ...)`, the first name outermost. JSON Schema calls no
+/// the schema in `z.preprocess(name, ...)`, the first name outermost, inside one preprocess that
+/// hands the first function each number as a `number`. JSON Schema calls no
 /// function, and a value built in code is never corrected. A key the payload does not hold is read
 /// as serde reads an absent key, without the field's Rust function, where Zod calls the function
 /// with `undefined`.

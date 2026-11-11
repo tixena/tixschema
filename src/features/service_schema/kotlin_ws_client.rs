@@ -61,6 +61,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
     published.extend(fault_helpers(&named, &fn_prefix, answers));
     published.push(frame_read_fn(&fn_prefix));
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        published.push(written_fn(&fn_prefix));
+    }
     if answers {
         published.push(refused_at_fn(&fn_prefix));
         published.push(refused_fn(&named, &fn_prefix));
@@ -200,13 +207,15 @@ fn transport_header_stmt(named: &str) -> String {
 }
 
 /// Assigns the next id and registers the pending deferred under one lock, then sends the request
-/// frame and awaits the reply outside it.
+/// frame and awaits the reply outside it. The deferred goes back out of `pending` however the
+/// call ends: a `send` that throws and a caller cancelled while it waits leave nothing waiting.
 fn transport_request_stmt(named: &str, has_headers: bool) -> String {
     if has_headers {
         return format!(
             "/// Sends `operation` with `payload` and `headers` as a `request` frame and answers\n  \
              /// with the matching `reply` frame's own fields, or `null` once the connection closes\n  \
-             /// before one arrives.\n  \
+             /// before one arrives. Throws what the socket's `send` throws, and `CancellationException` to\n  \
+             /// a caller cancelled while it waits; either way it leaves nothing waiting for the reply.\n  \
              suspend fun request(operation: String, payload: JsonElement?, headers: JsonObject): JsonObject? {{\n    \
              val deferred = CompletableDeferred<JsonObject?>()\n    \
              val id = synchronized(this) {{\n      \
@@ -214,23 +223,29 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
              pending[assigned] = deferred\n      \
              assigned\n    \
              }}\n    \
-             send(\n      \
-             buildJsonObject {{\n        \
-             put(\"kind\", \"request\")\n        \
-             put(\"id\", id)\n        \
-             put(\"service\", \"{named}\")\n        \
-             put(\"operation\", operation)\n        \
-             put(\"payload\", payload ?: JsonNull)\n        \
-             if (headers.isNotEmpty()) put(\"headers\", headers)\n      \
-             }},\n    \
-             )\n    \
-             return deferred.await()\n  \
+             try {{\n      \
+             send(\n        \
+             buildJsonObject {{\n          \
+             put(\"kind\", \"request\")\n          \
+             put(\"id\", id)\n          \
+             put(\"service\", \"{named}\")\n          \
+             put(\"operation\", operation)\n          \
+             put(\"payload\", payload ?: JsonNull)\n          \
+             if (headers.isNotEmpty()) put(\"headers\", headers)\n        \
+             }},\n      \
+             )\n      \
+             return deferred.await()\n    \
+             }} finally {{\n      \
+             synchronized(this) {{ pending.remove(id) }}\n    \
+             }}\n  \
              }}\n\n  "
         );
     }
     format!(
         "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
          /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+         /// Throws what the socket's `send` throws, and `CancellationException` to a caller cancelled\n  \
+         /// while it waits; either way it leaves nothing waiting for the reply.\n  \
          suspend fun request(operation: String, payload: JsonElement?): JsonObject? {{\n    \
          val deferred = CompletableDeferred<JsonObject?>()\n    \
          val id = synchronized(this) {{\n      \
@@ -238,16 +253,20 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
          pending[assigned] = deferred\n      \
          assigned\n    \
          }}\n    \
-         send(\n      \
-         buildJsonObject {{\n        \
-         put(\"kind\", \"request\")\n        \
-         put(\"id\", id)\n        \
-         put(\"service\", \"{named}\")\n        \
-         put(\"operation\", operation)\n        \
-         put(\"payload\", payload ?: JsonNull)\n      \
-         }},\n    \
-         )\n    \
-         return deferred.await()\n  \
+         try {{\n      \
+         send(\n        \
+         buildJsonObject {{\n          \
+         put(\"kind\", \"request\")\n          \
+         put(\"id\", id)\n          \
+         put(\"service\", \"{named}\")\n          \
+         put(\"operation\", operation)\n          \
+         put(\"payload\", payload ?: JsonNull)\n        \
+         }},\n      \
+         )\n      \
+         return deferred.await()\n    \
+         }} finally {{\n      \
+         synchronized(this) {{ pending.remove(id) }}\n    \
+         }}\n  \
          }}\n\n  "
     )
 }
@@ -466,6 +485,8 @@ fn client_method(
 {headers_build}    \
              try {{\n      \
              transport.notify({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+             }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+             throw cancelled\n    \
              }} catch (uncarried: Throwable) {{\n      \
              throw {named}WsRefusal({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
              }}\n  \
@@ -480,6 +501,8 @@ fn client_method(
 {headers_build}    \
                  val reply = try {{\n      \
                  transport.request({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+                 throw cancelled\n    \
                  }} catch (uncarried: Throwable) {{\n      \
                  return {result}.Fault({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
                  }}\n    \
@@ -912,8 +935,9 @@ fn header_in_read_stmt(
 }
 
 /// The `val replyHeaders = ...` statement a reply arm writes before sending: one `put` per
-/// element of `extra`, read off `accessor_root`, a `null` `Option<T>` element omitted.
-fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
+/// element of `extra`, read off `accessor_root` and written by `writer` ([`written_fn`]), a `null`
+/// `Option<T>` element omitted.
+fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str, writer: &str) -> String {
     let mut stmt = String::from("            val replyHeaders = buildJsonObject {\n");
     for field in extra {
         let accessor = format!("{accessor_root}.{}", field.kotlin_prop);
@@ -922,14 +946,13 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
             let written = read_serializer(inner);
             let _ = writeln!(
                 stmt,
-                "              {accessor}?.let {{ put({name}, \
-                 Json.encodeToJsonElement({written}, it)) }}"
+                "              {accessor}?.let {{ put({name}, {writer}({written}, it)) }}"
             );
         } else {
             let written = read_serializer(&field.ty);
             let _ = writeln!(
                 stmt,
-                "              put({name}, Json.encodeToJsonElement({written}, {accessor}))"
+                "              put({name}, {writer}({written}, {accessor}))"
             );
         }
     }
@@ -939,35 +962,42 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
 
 /// The `Ok` reply's `replyHeaders` statement and body expression. Called only where `header_out`
 /// was declared, so `success` is a tuple.
-fn ok_reply_parts(shape: &HttpShape, success: &Type) -> (String, String) {
+fn ok_reply_parts(shape: &HttpShape, success: &Type, writer: &str) -> (String, String) {
     let extra = header_elements(&shape.header_out, success, "headerOut");
     let written = read_serializer(body_type(shape.header_out.len(), success));
-    let body_expr = format!("Json.encodeToJsonElement({written}, answered.value.value)");
-    (header_write_stmt(&extra, "answered.value"), body_expr)
+    let body_expr = format!("{writer}({written}, answered.value.value)");
+    (
+        header_write_stmt(&extra, "answered.value", writer),
+        body_expr,
+    )
 }
 
 /// [`ok_reply_parts`]'s own twin on the declared-error side.
-fn declared_reply_parts(shape: &HttpShape, error: &Type) -> (String, String) {
+fn declared_reply_parts(shape: &HttpShape, error: &Type, writer: &str) -> (String, String) {
     let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
     let written = read_serializer(body_type(shape.error_header_out.len(), error));
-    let body_expr = format!("Json.encodeToJsonElement({written}, answered.error.error)");
-    (header_write_stmt(&extra, "answered.error"), body_expr)
+    let body_expr = format!("{writer}({written}, answered.error.error)");
+    (
+        header_write_stmt(&extra, "answered.error", writer),
+        body_expr,
+    )
 }
 
 /// The `is {result}.Ok -> ...` arm: the original one-line `send` where the operation declared no
 /// `header_out`, else a block that writes `replyHeaders` beside the body.
 fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> String {
+    let writer = written_call(named);
     if shape.header_out.is_empty() {
         let ok_value = if is_unit_type(success) {
             "JsonNull".to_owned()
         } else {
             let written = read_serializer(success);
-            format!("Json.encodeToJsonElement({written}, answered.value)")
+            format!("{writer}({written}, answered.value)")
         };
         let ok_frame = reply_frame_expr(named, "true", "value", &ok_value);
         return format!("          is {result}.Ok -> send({ok_frame})\n");
     }
-    let (headers_stmt, body_expr) = ok_reply_parts(shape, success);
+    let (headers_stmt, body_expr) = ok_reply_parts(shape, success, &writer);
     format!(
         "          is {result}.Ok -> {{\n\
 {headers_stmt}            \
@@ -987,17 +1017,18 @@ fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> Strin
 
 /// [`ok_arm`]'s own twin on the declared-error side.
 fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> String {
+    let writer = written_call(named);
     if shape.error_header_out.is_empty() {
         let written = read_serializer(error);
         let declared_frame = reply_frame_expr(
             named,
             "false",
             "error",
-            &format!("Json.encodeToJsonElement({written}, answered.error)"),
+            &format!("{writer}({written}, answered.error)"),
         );
         return format!("          is {result}.Declared -> send({declared_frame})\n");
     }
-    let (headers_stmt, body_expr) = declared_reply_parts(shape, error);
+    let (headers_stmt, body_expr) = declared_reply_parts(shape, error, &writer);
     format!(
         "          is {result}.Declared -> {{\n\
 {headers_stmt}            \
@@ -1047,6 +1078,8 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 arm,
                 "      try {{\n        \
                  handlers.{call}({call_args})\n      \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n        \
+                 throw cancelled\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
@@ -1076,6 +1109,8 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 arm,
                 "      val answered = try {{\n        \
                  handlers.{call}({call_args})\n      \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n        \
+                 throw cancelled\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
@@ -1137,19 +1172,44 @@ fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String>
     ]
 }
 
+/// The name of the function [`written_fn`] declares for the service `named`.
+fn written_call(named: &str) -> String {
+    format!("{}WsWritten", RenameRule::CamelCase.apply_to_variant(named))
+}
+
+/// The function the attachment writes a reply's value, its declared error and each `header_out`
+/// with, as serde writes them: a `Float` or a `Double` that is not finite as `null`, where kotlinx
+/// refuses it.
+fn written_fn(fn_prefix: &str) -> String {
+    format!(
+        "private val {fn_prefix}WsWrites = Json {{ allowSpecialFloatingPointValues = true }}\n\n\
+         /// `value` as serde writes it: a `Float` or a `Double` that is not finite as `null`.\n\
+         private fun <T> {fn_prefix}WsWritten(serializer: SerializationStrategy<T>, value: T): JsonElement {{\n  \
+         fun finite(element: JsonElement): JsonElement = when (element) {{\n    \
+         is JsonObject -> JsonObject(element.mapValues {{ (_, item) -> finite(item) }})\n    \
+         is JsonArray -> JsonArray(element.map(::finite))\n    \
+         is JsonPrimitive -> if (!element.isString && element.content in setOf(\"Infinity\", \"-Infinity\", \"NaN\")) JsonNull else element\n  \
+         }}\n  \
+         return finite({fn_prefix}WsWrites.encodeToJsonElement(serializer, value))\n\
+         }}"
+    )
+}
+
 /// The function that reads the frame a text holds, refusing one that holds a number beyond a
-/// `Double`: kotlinx keeps such a number as its text, and serde reads no frame that holds one.
+/// `Double`: kotlinx keeps such a number as its text, and serde reads no frame that holds one. The
+/// `mcp` server judges each message it reads by the same `{fn_prefix}WsHeld`.
 fn frame_read_fn(fn_prefix: &str) -> String {
     format!(
-        "/// The frame `text` holds, refused where it holds a number beyond a `Double`, which serde reads no frame holding.\n\
+        "/// Whether `element` holds no number beyond a `Double`: serde reads no text that holds one.\n\
+         private fun {fn_prefix}WsHeld(element: JsonElement): Boolean = when (element) {{\n  \
+         is JsonObject -> element.values.all(::{fn_prefix}WsHeld)\n  \
+         is JsonArray -> element.all(::{fn_prefix}WsHeld)\n  \
+         is JsonPrimitive -> element.isString || element.content.toDoubleOrNull()?.isInfinite() != true\n\
+         }}\n\n\
+         /// The frame `text` holds, refused where it holds a number beyond a `Double`, which serde reads no frame holding.\n\
          private fun {fn_prefix}WsFrame(text: String): JsonObject {{\n  \
          val frame = Json.parseToJsonElement(text).jsonObject\n  \
-         fun held(element: JsonElement): Boolean = when (element) {{\n    \
-         is JsonObject -> element.values.all(::held)\n    \
-         is JsonArray -> element.all(::held)\n    \
-         is JsonPrimitive -> element.isString || element.content.toDoubleOrNull()?.isInfinite() != true\n  \
-         }}\n  \
-         if (!held(frame)) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\")\n  \
+         if (!{fn_prefix}WsHeld(frame)) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\")\n  \
          return frame\n\
          }}"
     )
