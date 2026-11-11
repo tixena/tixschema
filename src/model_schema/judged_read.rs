@@ -37,7 +37,9 @@ use crate::features::serde::NAMED_READ_HOOK_PREFIX;
 use crate::features::serde::has_serde_read_hook;
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_key_omission;
-use crate::features::serde::read_bounds::{ReadBounds, read_bounds, written_lifetimes};
+use crate::features::serde::read_bounds::{
+    ReadBounds, read_bounds, undeclared_bounds, written_lifetimes,
+};
 use crate::features::serde::{
     derive_reads_a_default, derives_deserialize, derives_serialize, read_hook, serde_conversion,
 };
@@ -1372,7 +1374,7 @@ fn without_serde(attrs: &mut Vec<Attribute>) {
 
 /// Takes the item's own `Deserialize` off it. Where it derives no `Serialize` either, no derive
 /// is left to read its serde attributes, and they are taken off with it.
-fn leave_the_read_to_the_macro<'item, F>(attrs: &mut Vec<Attribute>, fields: F)
+pub fn leave_the_read_to_the_macro<'item, F>(attrs: &mut Vec<Attribute>, fields: F)
 where
     F: Iterator<Item = &'item mut Field>,
 {
@@ -1980,7 +1982,9 @@ fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: boo
     };
     let read_where = read_at.make_where_clause();
     read_where.predicates.extend(outlived(&bounds));
-    read_where.predicates.extend(bounds.predicates);
+    read_where
+        .predicates
+        .extend(undeclared_bounds(&input.generics, bounds.predicates));
     let (read_impl_generics, _, read_where_clause) = read_at.split_for_impl();
     let judged = if publishes_validate {
         quote! {

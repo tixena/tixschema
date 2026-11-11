@@ -74,7 +74,7 @@ use declaring_crate::{
 declaring_crate::ledger_ws_rpc_client!();
 ```
 
-The dispatcher's crate names `serde`, `serde_json` and `tracing` in its own manifest, the panic guard logging through it; the client's crate names `serde` and `serde_json` and not `tracing` -- nothing in a client catches a panic -- and needs no runtime crate beyond those two for `FrameSession`'s own correlation map either, `core` and `std` being enough for a mutex and a waker.
+The dispatcher's crate names `serde`, `serde_json`, `serde_path_to_error` and `tracing` in its own manifest, the panic guard logging through `tracing`; the client's crate names `serde`, `serde_json` and `serde_path_to_error` and not `tracing` -- nothing in a client catches a panic -- and needs no runtime crate beyond those three for `FrameSession`'s own correlation map either, `core` and `std` being enough for a mutex and a waker.
 
 **Refusals.** `amqp_rpc` and `ws_rpc` both answer every reply inside `{ ok, value, error }`, `ws_rpc` over its own frame rather than a queue message; `http_rest` does not, which is exactly why `body = "stream"` and `part(...)`-claimed file parts are `http_rest`-only grammar, and only meaningful on an operation that also carries an `http(...)` binding. A service that asks for `http_rest` beside `ws_rpc` (or `amqp_rpc`) on such an operation is refused at the declaration, naming the operation and the transport: a `body = "stream"` operation's `StreamedAnswer` and a `part(...)`-claimed file part are both a `Box<dyn BodySource + Send>`, publishing neither `Serialize` nor `Deserialize`, and neither has a carrier inside the envelope the other transport answers with, nor inside the tool result `mcp` answers with:
 

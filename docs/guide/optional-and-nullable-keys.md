@@ -35,8 +35,9 @@ This is a TypeScript-only knob -- the Zod schema and JSON Schema are unchanged (
 The bare `nullable` flag is for the `Option<T>` field whose empty state genuinely *is* `null` on the wire — the key is always written and `null` is its value, not the absence of one. Where the default coerces an incoming `null` away to `undefined` and leaves the key optional, `nullable` renders the field as `T | null` with the key **required** on all three surfaces:
 
 ```rust
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentMetadata {
     pub name: String,
     #[model_schema_prop(nullable)]

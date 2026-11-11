@@ -11,7 +11,7 @@ fn test_should_generate_json_schema() {
 #[test]
 fn test_json_schema_method_generation() {
     let fields = vec![];
-    let method = generate_struct_json_schema_method(&fields, &[], "Node", &[], None);
+    let method = generate_struct_json_schema_method(&fields, &[], "Node", "Node", &[], None);
     let method_str = method.to_string();
 
     assert!(method_str.contains("json_schema"));
@@ -24,7 +24,7 @@ fn test_json_schema_method_generation() {
 fn test_json_schema_method_flatten_emits_merge() {
     let fields = vec![];
     let no_flatten =
-        generate_struct_json_schema_method(&fields, &[], "Node", &[], None).to_string();
+        generate_struct_json_schema_method(&fields, &[], "Node", "Node", &[], None).to_string();
     let with_flatten = generate_struct_json_schema_method(
         &fields,
         &[MergedSource {
@@ -35,6 +35,7 @@ fn test_json_schema_method_flatten_emits_merge() {
             unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
+        "Node",
         "Node",
         &[],
         None,
@@ -58,6 +59,7 @@ fn test_the_merge_wraps_branches_in_the_spelling_its_source_used() {
             unit_member: quote::quote! { false },
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
+        "Node",
         "Node",
         &[],
         None,
@@ -95,6 +97,7 @@ fn test_an_optional_merged_source_carries_its_absence_into_the_merge() {
                 unit_member: quote::quote! { false },
                 value: quote::quote! { serde_json::json!({ "type": "object" }) },
             }],
+            "Node",
             "Node",
             &[],
             None,
@@ -136,6 +139,7 @@ fn test_the_absence_of_a_source_read_as_entries_admits_the_keys_it_leaves() {
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
+        "Node",
         &[],
         None,
     )
@@ -172,6 +176,7 @@ fn test_the_merge_expands_branches_to_a_fixed_point_under_a_path_terminator() {
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
+        "Node",
         &[],
         None,
     )
@@ -207,6 +212,7 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
             value: quote::quote! { serde_json::json!({ "type": "object" }) },
         }],
         "Node",
+        "Node",
         &[],
         None,
     )
@@ -235,7 +241,8 @@ fn test_the_merge_reads_a_tagged_unit_variant_at_the_edges_own_depth() {
 
 #[test]
 fn test_json_schema_methods_pair_an_entry_point_with_a_guarded_body() {
-    let methods = json_schema_methods("Node", &quote::quote! { body }, &[], None).to_string();
+    let methods =
+        json_schema_methods("Node", "Node", &quote::quote! { body }, &[], None).to_string();
 
     assert!(methods.contains("pub fn json_schema ()"), "{methods}");
     assert!(methods.contains("pub fn json_schema_within"), "{methods}");
@@ -245,7 +252,8 @@ fn test_json_schema_methods_pair_an_entry_point_with_a_guarded_body() {
 
 #[test]
 fn test_the_deferred_reference_points_at_the_hoisted_defs_entry() {
-    let methods = json_schema_methods("Node", &quote::quote! { body }, &[], None).to_string();
+    let methods =
+        json_schema_methods("Node", "Node", &quote::quote! { body }, &[], None).to_string();
 
     assert!(
         methods.contains("\"#/$defs/\""),
@@ -261,7 +269,7 @@ fn test_the_deferred_reference_points_at_the_hoisted_defs_entry() {
 #[test]
 fn test_plain_enum_publishes_the_guarded_method_too() {
     let method =
-        generate_plain_enum_json_schema_method(&[quote::quote! { "a" }], "Flag", &[], None);
+        generate_plain_enum_json_schema_method(&[quote::quote! { "a" }], "Flag", "Flag", &[], None);
 
     assert!(
         method.to_string().contains("pub fn json_schema_within"),
@@ -275,8 +283,14 @@ fn test_the_in_flight_recording_carries_the_filling_beside_the_name() {
         binding: proc_macro2::Ident::new("_arg_value_type", proc_macro2::Span::call_site()),
         default: quote::quote! { serde_json::json!({ "type": "string" }) },
     }];
-    let methods =
-        json_schema_methods("Node", &quote::quote! { body }, &parameters, None).to_string();
+    let methods = json_schema_methods(
+        "Node",
+        "TreeNode",
+        &quote::quote! { body },
+        &parameters,
+        None,
+    )
+    .to_string();
 
     assert!(
         methods.contains(
@@ -293,18 +307,36 @@ fn test_the_in_flight_recording_carries_the_filling_beside_the_name() {
         "{methods}"
     );
     assert!(
-        methods.contains("in_flight . push ((\"Node\" , filling))"),
+        methods.contains(
+            "const IDENTITY : & str = :: core :: concat ! (:: core :: module_path ! () , \"::\" , \
+             \"TreeNode\")"
+        ),
+        "{methods}"
+    );
+    assert!(
+        methods.contains("in_flight . push ((IDENTITY , filling))"),
         "{methods}"
     );
 }
 
 #[test]
-fn test_a_re_entered_name_is_read_against_the_filling_in_flight() {
-    let methods = json_schema_methods("Node", &quote::quote! { body }, &[], None).to_string();
+fn test_a_re_entered_type_is_read_against_the_filling_in_flight() {
+    let methods =
+        json_schema_methods("Node", "TreeNode", &quote::quote! { body }, &[], None).to_string();
 
     assert!(
-        methods.contains("in_flight . iter () . find (| (named , _) | * named == \"Node\")"),
+        methods.contains("in_flight . iter () . find (| (named , _) | * named == IDENTITY)"),
         "{methods}"
+    );
+    assert!(
+        methods.contains("let provisional = format ! (\"{key}~{IDENTITY}\")"),
+        "{methods}"
+    );
+    assert!(
+        methods.contains(
+            "return serde_json :: json ! ({ \"$ref\" : format ! (\"{pointer_prefix}{provisional}\") })"
+        ),
+        "a reference to a type in flight does not point at its provisional key: {methods}"
     );
     assert!(
         methods.contains("if * in_flight_filling != filling"),
@@ -324,8 +356,8 @@ fn test_a_re_entered_name_is_read_against_the_filling_in_flight() {
 fn a_document_holds_the_examples_keyword_only_where_examples_are_given() {
     let body = quote::quote! { body };
     let values = quote::quote! { ::core::option::Option::Some(serde_json::json!([1])) };
-    let with = json_schema_methods("Node", &body, &[], Some(&values)).to_string();
-    let without = json_schema_methods("Node", &body, &[], None).to_string();
+    let with = json_schema_methods("Node", "Node", &body, &[], Some(&values)).to_string();
+    let without = json_schema_methods("Node", "Node", &body, &[], None).to_string();
 
     let keyword = "\"examples\" . to_string ()";
     assert!(with.contains(keyword), "{with}");
@@ -339,8 +371,14 @@ fn a_generic_types_documents_hold_the_examples_keyword_at_its_arguments_too() {
         default: quote::quote! { serde_json::json!({}) },
     }];
     let values = quote::quote! { ::core::option::Option::Some(serde_json::json!([1])) };
-    let methods = json_schema_methods("Node", &quote::quote! { body }, &parameters, Some(&values))
-        .to_string();
+    let methods = json_schema_methods(
+        "Node",
+        "Node",
+        &quote::quote! { body },
+        &parameters,
+        Some(&values),
+    )
+    .to_string();
 
     assert_eq!(
         methods.matches("\"examples\" . to_string ()").count(),

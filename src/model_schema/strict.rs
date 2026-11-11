@@ -5,16 +5,20 @@
 //! off one that flattens a member serde leaves the keys of in the object it reads them from:
 //! serde would refuse the very keys such a member is declared to hold. A strict struct whose serde
 //! read then refuses no such key, under a tag of its own or beside a flattened member that reads
-//! past one, is refused, so that it is marked `nonstrict`.
+//! past one, is refused, so that it is marked `nonstrict`, and so is a strict enum a variant of
+//! which flattens such a member. A strict struct serde reads no member of is read through a read
+//! the macro writes, which refuses every key, and is refused where serde reads it through a
+//! conversion.
 
 use super::flatten_order::{
-    Culprit, a_variant_refuses_a_stray, open_member_refusal, refused_by_a_member, takes_only,
+    Culprit, a_variant_refuses_a_stray, held_open_refusal, open_member_refusal,
+    open_variant_refusal, refused_by_a_member, takes_only,
 };
 use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::{
-    Tagging, derived_serde_attributes, has_serde_transparent, parse_serde_field_attributes,
-    parse_serde_key_omission, parse_serde_type_attributes, read_hook, struct_tag,
-    variant_on_the_wire,
+    Tagging, derived_serde_attributes, derives_deserialize, has_serde_transparent,
+    parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes, read_hook,
+    struct_tag, variant_on_the_wire,
 };
 use crate::utils::{record_unconsumed, to_snake_case};
 use proc_macro2::TokenStream;
@@ -155,6 +159,44 @@ fn reads_a_member(fields: &Fields) -> bool {
     fields
         .iter()
         .any(|field| !parse_serde_key_omission(&field.attrs).skips_deserializing)
+}
+
+/// Whether the macro writes the read of `item_struct` that refuses every key: a strict braced
+/// struct serde reads no member of and writes none of it does not read, whose derive under
+/// `deny_unknown_fields` would declare an enum of no variant for the keys.
+pub(super) fn read_by_the_macro(item_struct: &ItemStruct, args: &ModelSchemaArgs) -> bool {
+    !args.nonstrict
+        && matches!(item_struct.fields, Fields::Named(_))
+        && !reads_a_member(&item_struct.fields)
+        && !writes_an_unread_key(&item_struct.fields)
+}
+
+/// The conversion serde reads the item `attrs` belong to through, where its author wrote one:
+/// `remote`, `from` or `try_from`.
+fn read_conversion(attrs: &[Attribute]) -> Option<syn::Path> {
+    let mut found = None;
+    for attr in derived_serde_attributes(attrs) {
+        attr.parse_nested_meta(|nested| {
+            if ["remote", "from", "try_from"]
+                .iter()
+                .any(|key| nested.path.is_ident(key))
+            {
+                found.get_or_insert_with(|| nested.path.clone());
+            }
+            if nested.input.peek(Token![=]) {
+                nested.value()?.parse::<syn::Expr>()?;
+            } else if nested.input.peek(Paren) {
+                nested.input.parse::<proc_macro2::Group>()?;
+            } else {
+                // A bare key: nothing to step over.
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|e| {
+            log::trace!("Failed to parse serde container attribute: {e}");
+        });
+    }
+    found
 }
 
 /// Whether the macro writes the attribute on a container that carries `attrs`.
@@ -338,10 +380,11 @@ pub(super) fn closed_by_hand(attrs: &[Attribute]) -> bool {
 }
 
 /// The struct as a type that refuses a key it does not declare, where it refuses one: closed by
-/// its author or by the macro, or a struct of no member whose read the macro writes.
+/// its author or by the macro, or a struct serde reads no member of, whose read the macro writes.
 pub(super) fn struct_culprit(item_struct: &ItemStruct, args: &ModelSchemaArgs) -> Option<Culprit> {
     let by_hand = closed_by_hand(&item_struct.attrs);
-    let read_written = item_struct.fields.is_empty() && !args.nonstrict;
+    let read_written =
+        (item_struct.fields.is_empty() && !args.nonstrict) || read_by_the_macro(item_struct, args);
     (by_hand || read_written || closes_struct(item_struct, args)).then(|| Culprit {
         by_hand,
         holds_more: false,
@@ -424,6 +467,34 @@ fn own_tag_error(
     )
 }
 
+/// The refusal of a strict braced struct serde reads no member of, read through a conversion: the
+/// read the macro writes for such a struct, which refuses every key, cannot be read through the
+/// conversion, so the struct says `nonstrict`.
+fn converted_unread_error(
+    item_struct: &ItemStruct,
+    args: &ModelSchemaArgs,
+) -> Option<proc_macro2::TokenStream> {
+    if !read_by_the_macro(item_struct, args) || !derives_deserialize(&item_struct.attrs) {
+        return None;
+    }
+    let written = read_conversion(&item_struct.attrs)?;
+    let name = item_struct.ident.unraw();
+    let key = quote::ToTokens::to_token_stream(&written).to_string();
+    Some(
+        syn::Error::new_spanned(
+            written,
+            prefixed_guard_message(&format!(
+                "type `{name}` is read through `#[serde({key} = ...)]`, and serde reads none of \
+                 its members: the read `#[model_schema()]` writes for such a type to refuse a key \
+                 no member declares cannot be read through `{key}`. Mark `{name}` \
+                 `#[model_schema(nonstrict)]`, so serde reads it through `{key}` and every other \
+                 surface reads past such a key"
+            )),
+        )
+        .to_compile_error(),
+    )
+}
+
 /// The refusal of a strict struct that flattens a member which reads every key still left and
 /// refuses none, where no member it flattens refuses such a key: serde cannot refuse a key no
 /// member declares beside it, so the struct says `nonstrict` and every surface reads past one.
@@ -443,24 +514,47 @@ fn reads_past_a_stray_error(
     Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
 }
 
-/// The refusal of a strict struct serde cannot close, by [`own_tag_error`] and
-/// [`reads_past_a_stray_error`], and of a `nonstrict` type whose author also wrote
+/// The refusal of a strict enum a struct variant of which flattens a member that reads every key
+/// still left and refuses none, where no variant refuses such a key. [`held_open_refusal`] answers
+/// instead where another level of the enum would refuse one, with the newtype fix.
+fn variant_reads_past_a_stray_error(
+    item_enum: &ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Option<proc_macro2::TokenStream> {
+    if !writes_deny(&item_enum.attrs, args)
+        || a_variant_refuses_a_stray(item_enum)
+        || held_open_refusal(item_enum, args).is_some()
+    {
+        return None;
+    }
+    let (field, message) = open_variant_refusal(item_enum)?;
+    Some(syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error())
+}
+
+/// The refusal of a strict struct or enum serde cannot close, by [`own_tag_error`],
+/// [`reads_past_a_stray_error`], [`converted_unread_error`] and
+/// [`variant_reads_past_a_stray_error`], and of a `nonstrict` type whose author also wrote
 /// `deny_unknown_fields`, which asks for the opposite.
 pub(super) fn conflict_errors(
     item: &Item,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    let attrs = if let Item::Struct(item_struct) = item {
-        &item_struct.attrs
+    let (attrs, cannot_close) = if let Item::Struct(item_struct) = item {
+        (
+            &item_struct.attrs,
+            own_tag_error(item_struct, args)
+                .or_else(|| reads_past_a_stray_error(item_struct, args))
+                .or_else(|| converted_unread_error(item_struct, args)),
+        )
     } else if let Item::Enum(item_enum) = item {
-        &item_enum.attrs
+        (
+            &item_enum.attrs,
+            variant_reads_past_a_stray_error(item_enum, args),
+        )
     } else {
         return Vec::new();
     };
-    if let Item::Struct(item_struct) = item
-        && let Some(refused) =
-            own_tag_error(item_struct, args).or_else(|| reads_past_a_stray_error(item_struct, args))
-    {
+    if let Some(refused) = cannot_close {
         return vec![refused];
     }
     let Some(written) = written_deny(attrs).filter(|_| args.nonstrict) else {

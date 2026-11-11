@@ -215,8 +215,8 @@ fn dispatcher_macro(
          body or `206` with `content-range` for a range slice), a declared error at its mapped \
          status with the error type itself as the body, or a fault the caller's own installed \
          `FaultHandler` decides the answer for. The \
-         invoking crate names `serde`, `serde_json` and `tracing` in its own manifest, because \
-         the items below call them.\n\n\
+         invoking crate names `serde`, `serde_json`, `serde_path_to_error` and `tracing` in its \
+         own manifest, because the items below call them.\n\n\
          {placement}",
         transport.name()
     );
@@ -1578,8 +1578,9 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          `200`, `Partial` with `content-range` at `206`, both with their `content-type`), a \
          mapped status into the declared error, and anything else - including a fixed fault \
          status this crate did not expect at that code - into a fault.\n\n\
-         The invoking crate names `serde` and `serde_json` in its own manifest. It names no \
-         `tracing`: nothing here catches a panic, so nothing here has anything to write down.\n\n\
+         The invoking crate names `serde`, `serde_json` and `serde_path_to_error` in its own \
+         manifest. It names no `tracing`: nothing here catches a panic, so nothing here has \
+         anything to write down.\n\n\
          {placement}",
         transport.name()
     );

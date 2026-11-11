@@ -10106,8 +10106,14 @@ fn a_parameter_with_no_declared_default_falls_back_to_string() {
 fn branded_json_schema_method_carries_no_cfg_attribute() {
     let args = super::ModelSchemaArgs::default();
     for inner in branded_json_inners() {
-        let tokens =
-            super::build_branded_json_schema_method(&args, &inner, "DocumentId", &[], None);
+        let tokens = super::build_branded_json_schema_method(
+            &args,
+            &inner,
+            "DocumentId",
+            "DocumentId",
+            &[],
+            None,
+        );
         assert_no_cfg_attribute(&tokens, "build_branded_json_schema_method");
     }
 }
@@ -18055,6 +18061,7 @@ fn brand_json_schema_over(inner_ty: &syn::Type) -> String {
         &super::ModelSchemaArgs::default(),
         &super::branded_json_inner(&super::get_field_def("_inner", inner_ty, "")),
         "Wrapped",
+        "Wrapped",
         &[],
         None,
     )
@@ -23376,4 +23383,50 @@ fn a_type_that_writes_examples_gets_the_keyword_in_its_schema_modules_document()
         "an example earns the keyword"
     );
     assert!(super::json_schema_examples(&[]).is_none());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_strict_struct_serde_reads_no_member_of_is_refused_under_a_conversion() {
+    for (key, members) in [
+        ("from", "#[serde(skip)] pub held: u32"),
+        ("try_from", "#[serde(skip)] pub held: u32"),
+        ("remote", "#[serde(skip)] pub held: u32"),
+        ("from", ""),
+        ("try_from", ""),
+        ("remote", ""),
+    ] {
+        let tokens = expansion_over(&format!(
+            "#[derive(Serialize, Deserialize, Default)] #[serde({key} = \"Unread\")] pub struct \
+             Converted {{ {members} }}"
+        ));
+        assert_eq!(
+            refusal_texts(&tokens),
+            vec![format!(
+                "model_schema: type `Converted` is read through `#[serde({key} = ...)]`, and \
+                 serde reads none of its members: the read `#[model_schema()]` writes for such a \
+                 type to refuse a key no member declares cannot be read through `{key}`. Mark \
+                 `Converted` `#[model_schema(nonstrict)]`, so serde reads it through `{key}` and \
+                 every other surface reads past such a key"
+            )],
+            "{key} {members}"
+        );
+    }
+    let lenient = expansion_with_args_over(
+        "nonstrict",
+        "#[derive(Serialize, Deserialize, Default)] #[serde(from = \"Unread\")] pub struct \
+         Converted { #[serde(skip)] pub held: u32 }",
+    );
+    assert_eq!(refusal_texts(&lenient), Vec::<String>::new());
+    for members in ["#[serde(skip)] pub held: u32", ""] {
+        let written_to = expansion_over(&format!(
+            "#[derive(Serialize, Deserialize, Default)] #[serde(into = \"Unread\")] pub struct \
+             Converted {{ {members} }}"
+        ));
+        assert_eq!(
+            refusal_texts(&written_to),
+            Vec::<String>::new(),
+            "{members}"
+        );
+    }
 }

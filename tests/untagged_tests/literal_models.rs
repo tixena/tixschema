@@ -135,7 +135,7 @@ pub struct Amount {
     pub decimals: u8,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "dataType")]
 pub enum Kind {

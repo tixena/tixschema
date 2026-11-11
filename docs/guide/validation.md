@@ -8,7 +8,7 @@ Use `#[model_schema_prop(...)]` on individual fields to add validation constrain
 use tixschema::{model_schema, model_schema_prop};
 use serde::{Deserialize, Serialize};
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 pub struct UserProfile {
     #[model_schema_prop(minLength = 3, maxLength = 30, pattern = "^[a-z0-9_]+$")]

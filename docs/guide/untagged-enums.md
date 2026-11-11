@@ -8,13 +8,13 @@ This rule, and the refusal of a variant that reads every object ahead of a varia
 
 ```rust
 /// ISO-8601 date string; branded newtype carrying the regex pattern.
-#[model_schema(pattern = r"^\d{4}-\d{2}-\d{2}$")]
+#[model_schema(enable = ["jsonschema"], pattern = r"^\d{4}-\d{2}-\d{2}$")]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DateString(pub String);
 
 /// A date sample value: an ISO date string OR an epoch number.
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DateValue {
@@ -52,7 +52,7 @@ The `\d` the brand was declared with reaches the schema as `[0-9]`, the members 
 Named-struct variants render each member as a closed object:
 
 ```rust
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NamedUnion {
@@ -95,14 +95,14 @@ The tagged twin of that declaration is refused with `'slug': too short: minimum 
 The slot of a newtype variant carries the same attribute, which is how a free-text arm refuses some text with no brand declared for it:
 
 ```rust
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 pub enum KnownMimeType {
     #[serde(rename = "application/pdf")]
     Pdf,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MimeType {

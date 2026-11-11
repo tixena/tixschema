@@ -420,6 +420,8 @@ fn chapter(name: &str) -> Option<&'static str> {
         )),
         "object-id.md" => Some(include_str!("../../docs/guide/object-id.md")),
         "preprocess.md" => Some(include_str!("../../docs/guide/preprocess.md")),
+        "serde-attributes.md" => Some(include_str!("../../docs/guide/serde-attributes.md")),
+        "services.md" => Some(include_str!("../../docs/guide/services.md")),
         "swift.md" => Some(include_str!("../../docs/guide/swift.md")),
         "troubleshooting.md" => Some(include_str!("../../docs/guide/troubleshooting.md")),
         "untagged-enums.md" => Some(include_str!("../../docs/guide/untagged-enums.md")),
