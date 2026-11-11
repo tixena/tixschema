@@ -342,10 +342,16 @@ the consumer's view; this is what a change has to keep.
   throws the read's error where it holds one. Zod's union tries the type over the function's
   answer first, and its branch without the type takes an object of no key beyond its holder's
   own, so serde's refusal of `{"note":"n"}` and its `None` for a function that answers `null` are
-  not followed. `tests/kotlin_tests/corrected_options_models.rs` holds `Reeved`, `Wormed` and
-  `Moused` with what serde, TypeScript and Zod read of each payload, which
-  `tests/generic_types_tests/declarations.rs` measures, and `run_kotlin_flattened.rs` holds the
-  Kotlin read to Zod's. An optional enum under a tag key the emitter wrote, whose member names no
+  not followed. Under a `nonstrict` holder the read is `if ({member}Corrected is JsonNull) null
+  else lenient.decodeFromJsonElement(...)`, `null` exactly where the function answers `JsonNull`,
+  as serde and the holder's Zod schema read it, the answer read whole under `input.json`, as is
+  that of a member that names a function with no `Option` (`answer_read`), so its type refuses a
+  key it does not declare, as serde refuses it, and the read of a member whose keys are there is
+  `runCatching { ... }.getOrNull()` (`read_or_judged` for a serializer that judges), so a read
+  that throws is `null`. `tests/kotlin_tests/corrected_options_models.rs` holds `Reeved`, `Wormed`
+  and `Moused`, and their `nonstrict` twins `Parcelled`, `Served` and `Marled`, with what serde,
+  TypeScript and Zod read of each payload, which `tests/generic_types_tests/declarations.rs`
+  measures, and `run_kotlin_flattened.rs` holds the Kotlin read to Zod's. An optional enum under a tag key the emitter wrote, whose member names no
   function, is looked for by the tag, then the content key, which `enum_kotlin_tokens` records in
   `KOTLIN_TAG_KEYS` (`tag_keys`, `recorded_tag_keys`): `if ({rest}.keys.any { it in setOf("kind",
   "body") }) ... else null`, so a tag or a content that does not read refuses the payload with

@@ -28,7 +28,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::corrected_options_models::{
-    CORRECTED, frapped_kotlin, moused_kotlin, reeved_kotlin, tholepin_kotlin, wormed_kotlin,
+    CORRECTED, OPEN_CORRECTED, frapped_kotlin, marled_kotlin, moused_kotlin, parcelled_kotlin,
+    reeved_kotlin, seized_kotlin, served_kotlin, snaked_kotlin, tholepin_kotlin, wormed_kotlin,
 };
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
@@ -54,12 +55,12 @@ use super::runtime::ran_kotlin;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::swift_flattened_options_models::{
-    Crowning, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
-    Heeling, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING, Pitching,
-    Ratline, SQUARING, Squaring, Thimble, becket_kotlin, crowning_kotlin, easing_kotlin,
-    fidding_kotlin, flaking_kotlin, grommet_kotlin, heeling_kotlin, lowering_kotlin,
-    nippering_kotlin, pitching_kotlin, ratline_kotlin, shackle_kotlin, squaring_kotlin,
-    tabling_kotlin, thimble_kotlin, toggle_kotlin,
+    Crowning, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, Gasketing,
+    HEELING, Heeling, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lowering, PITCHING,
+    Pitching, Ratline, SQUARING, Squaring, Thimble, becket_kotlin, crowning_kotlin, easing_kotlin,
+    fidding_kotlin, flaking_kotlin, gasketing_kotlin, grommet_kotlin, heeling_kotlin,
+    lowering_kotlin, nippering_kotlin, pitching_kotlin, ratline_kotlin, shackle_kotlin,
+    squaring_kotlin, tabling_kotlin, thimble_kotlin, toggle_kotlin,
 };
 use super::tuple_variants_models::labelling_kotlin;
 use super::unrecorded_options_models::{
@@ -130,6 +131,9 @@ const FUNCTIONS: &str = r#"
 fun asGiven(payload: JsonElement): JsonElement = payload
 
 fun asNull(payload: JsonElement): JsonElement = JsonNull
+
+fun nullWhereNoted(payload: JsonElement): JsonElement =
+    if (payload is JsonObject && "note" in payload) JsonNull else payload
 
 fun withItsKeys(payload: JsonElement): JsonElement =
     if (payload is JsonObject) {
@@ -1363,13 +1367,59 @@ fn an_optional_struct_that_takes_no_key_reads_and_writes_in_kotlin_as_serde_does
     assert_eq!(printed, expected, "the Kotlin read is not the read above");
 }
 
+/// Beside the `nonstrict` `Gasketing`, an optional struct that takes a key is read where the key is
+/// there and reads, and is `null` where it is absent and where it does not read, as serde and Zod
+/// read it. The holder is written back as serde writes it back.
+#[test]
+fn an_optional_struct_beside_a_nonstrict_holder_reads_in_kotlin_as_serde_does() {
+    let rows = [LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED];
+    let serde_told = rows.map(|json| {
+        told_by_serde(json, |read: &Gasketing| {
+            format!("{} {}", self::json(&read.tabling), self::json(read))
+        })
+    });
+    assert_eq!(
+        serde_told,
+        [
+            "{\"label\":\"north\"} {\"note\":\"n\",\"label\":\"north\"}",
+            "null {\"note\":\"n\"}",
+            "null {\"note\":\"n\"}",
+        ],
+        "serde no longer reads each payload as it did"
+    );
+    let mut expected = String::new();
+    let mut main = String::from(ENTRY_READ);
+    main.push_str("fun main() {\n");
+    for (at, (json, told)) in rows.iter().zip(&serde_told).enumerate() {
+        let _ = writeln!(expected, "{at}: {told}");
+        let _ = writeln!(
+            main,
+            "    entry(\"{at}\", Gasketing.serializer(), \"\"\"{json}\"\"\") {{ \
+             \"${{Json.encodeToString(serializer<Tabling?>(), it.tabling)}} \
+             ${{Json.encodeToString(Gasketing.serializer(), it)}}\" }}"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        tabling_kotlin::kotlin_definition(),
+        gasketing_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not serde's");
+}
+
 /// An optional member whose type the emitter recorded no keys for and whose serializer is written
 /// by hand, a struct declared below its holder with a flattened member of its own, an untagged
 /// enum and an enum under a tag alone that names a function on itself, is read wherever its read
 /// succeeds and is `null` wherever it throws, as serde reads it, and is written back as serde
 /// writes it back. An enum under a tag key the emitter wrote is `null` where neither its tag nor
-/// its content key is there, and its tag beside no member refuses the payload, as TypeScript
-/// refuses it, and Zod beside a strict holder, where serde reads `None`. A struct declared below
+/// its content key is there, and its tag beside no member refuses the payload beside a strict
+/// holder, as TypeScript and Zod refuse it, where serde reads `None`, and reads `null` beside a
+/// `nonstrict` one, as serde and Zod read it. A struct declared below
 /// its holder whose serializer the plugin writes is looked for by the keys its descriptor names:
 /// `null` where none is there, and a key that does not read refuses the payload, as TypeScript and
 /// Zod refuse it, where serde reads `None`.
@@ -1408,14 +1458,10 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         .chain(["refused"])
         .chain(CLAPPING_READ_BACK)
         .collect();
-    // TypeScript refuses each, and Zod but beside the `nonstrict` `Snagging`: the tag of `Hitched`
-    // and of `Bridled` beside no member, and the key `Nippering` reads held as a number.
+    // TypeScript and Zod refuse each: the tag of `Bridled` beside no member, and the key
+    // `Nippering` reads held as a number. The tag of `Hitched` beside no member reads `null` beside
+    // the `nonstrict` `Snagging`, as serde and Zod read it.
     for (at, refused) in [
-        (
-            6,
-            "refused: MissingFieldException: Field 'label' is required for type with serial name \
-             'Bay', but it was missing at path: $",
-        ),
         (10, "refused: SerializationException: missing field `held`"),
         (
             16,
@@ -1580,12 +1626,14 @@ fn zod_reads_every_payload_of_a_nonstrict_holder_of_an_option_declared_below() {
 /// keys, or no key at all for a type whose keys are not known, and refuses the payload where it
 /// holds one: each payload reads as the Zod schema of its holder reads it, written back with its
 /// keys in order, where serde refuses a type the answer does not read and reads `null` as `None`.
+/// Beside a `nonstrict` holder it is `null` exactly where the function answers `null`: each payload
+/// of [`OPEN_CORRECTED`] reads as serde and Zod read it.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_kotlin_as_zod_does() {
     let mut expected = String::new();
     let mut main = String::from(ENTRY_READ);
     main.push_str("fun main() {\n");
-    for (at, row) in CORRECTED.iter().enumerate() {
+    for (at, row) in CORRECTED.iter().chain(&OPEN_CORRECTED).enumerate() {
         let _ = writeln!(expected, "{at}: {}", row.zod);
         let _ = writeln!(
             main,
@@ -1605,6 +1653,11 @@ fn an_optional_type_that_names_a_function_reads_in_kotlin_as_zod_does() {
         wormed_kotlin::kotlin_definition(),
         frapped_kotlin::kotlin_definition(),
         moused_kotlin::kotlin_definition(),
+        parcelled_kotlin::kotlin_definition(),
+        served_kotlin::kotlin_definition(),
+        marled_kotlin::kotlin_definition(),
+        snaked_kotlin::kotlin_definition(),
+        seized_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -1759,34 +1812,34 @@ fn option_rows() -> Vec<OptionRow> {
 /// A flattened `Option` of an enum under a tag key the emitter wrote is looked for by its tag, then
 /// its content key, in the whole object its holder reads, as TypeScript and Zod read it: `null`
 /// where neither is there, and the enum read where one is, so a read that throws refuses the
-/// payload.
+/// payload beside the strict `Squaring`, and is `null` beside the `nonstrict` `Lowering`, as serde
+/// and Zod read it.
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kotlin() {
-    let looked_for = |kotlin: &str, prop: &str, read_as: &str, keys: &str| {
-        let held = format!(
-            "val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) \
-             lenient.decodeFromJsonElement({read_as}Unjudged, obj) else null;"
-        );
+    let looked_for = |kotlin: &str, prop: &str, read: &str, keys: &str| {
+        let held =
+            format!("val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) {read} else null;");
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     };
     looked_for(
         &lowering_kotlin::kotlin_definition(),
         "grommet",
-        "Grommet",
+        "runCatching { lenient.decodeFromJsonElement(GrommetUnjudged, obj) }.getOrNull()",
         "\"kind\"",
     );
     looked_for(
         &squaring_kotlin::kotlin_definition(),
         "becket",
-        "Becket",
+        "lenient.decodeFromJsonElement(BecketUnjudged, obj)",
         "\"kind\", \"body\"",
     );
 }
 
 /// Each payload of each holder of a flattened `Option` of an enum reads in Kotlin as serde reads
 /// it, but where the object holds the tag or the content key of an enum under a tag key and the
-/// enum does not read it: TypeScript and Zod refuse each of those, and so does the Kotlin read,
-/// with what the enum's read throws, where serde reads `None`. A variant's member with no tag
+/// enum does not read it beside the strict `Squaring`: TypeScript and Zod refuse each of those, and
+/// so does the Kotlin read, with what the enum's read throws, where serde reads `None`. Beside the
+/// `nonstrict` `Lowering` each reads `null`, as serde and Zod read it. A variant's member with no tag
 /// reads `null`, as serde reads it. An untagged enum and one declared below its holder, which have
 /// no key to be looked for by, are `null` wherever their read throws, as serde reads `None`.
 #[test]
@@ -1823,8 +1876,6 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
     let mut in_kotlin: Vec<String> = rows.iter().map(|row| row.serde.clone()).collect();
     let mistyped = "SerializationException: invalid type: string \"x\", expected u32";
     for (at, refused) in [
-        (3, mistyped),
-        (4, "SerializationException: unknown tag Gale"),
         (9, mistyped),
         (10, "SerializationException: unknown tag Gale"),
         (11, "SerializationException: missing field `kind`"),

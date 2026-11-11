@@ -11,8 +11,10 @@
 //! serde drops it.
 //! [`Grommeting`] holds a struct declared below it that breaks a rule, which serde refuses.
 //! `kotlin_tests/tests.rs` pins the Kotlin text,
-//! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs it against serde, and
-//! `generic_types_tests/declarations.rs` holds TypeScript and Zod to [`UNRECORDED`].
+//! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs it against serde,
+//! `run_dart_flattened_options.rs` and `run_swift_flattened_options.rs` run the rows of
+//! [`OPEN_HOLDERS`] in Dart and Swift against serde, and `generic_types_tests/declarations.rs`
+//! holds TypeScript and Zod to [`UNRECORDED`].
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -164,6 +166,10 @@ pub const GROMMETING_READ_BACK: [&str; 4] = [
     "{}",
     "{}",
 ];
+
+/// The holders of [`UNRECORDED`] that are `nonstrict`, whose every row reads on each surface as
+/// serde reads it.
+pub const OPEN_HOLDERS: [&str; 3] = ["Fiddling", "Snagging", "Slipping"];
 
 /// A payload of a holder below, what serde writes back of it, and whether TypeScript and Zod take
 /// it as the holder's type.
@@ -324,7 +330,7 @@ fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
             row.holder
         );
         assert_eq!(
-            read_back == row.json || ["Fiddling", "Snagging", "Slipping"].contains(&row.holder),
+            read_back == row.json || OPEN_HOLDERS.contains(&row.holder),
             row.taken_by_zod,
             "serde and Zod part otherwise on `{}` as {}",
             row.json,

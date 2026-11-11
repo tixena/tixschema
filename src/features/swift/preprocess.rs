@@ -17,6 +17,7 @@ use super::{Shaped, lookup_swift_name, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
 use crate::field_type::{FieldDef, FieldDefType};
+use crate::utils::is_nonstrict;
 
 /// The one key an `ObjectId` is written under.
 const OID: &str = "$oid";
@@ -66,6 +67,29 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } } }";
 
+/// Added to [`PAYLOAD`] where a member is read from what its functions answer as the type reads a
+/// payload of its own: `read` with no `swiftSchemaFlat`, so the type refuses a key it does not
+/// declare.
+const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.Type, \
+     from payload: Any, at path: [CodingKey]) throws -> Read { \
+     guard JSONSerialization.isValidJSONObject([payload]), \
+     let written = try? JSONSerialization.data(withJSONObject: payload, \
+     options: [.fragmentsAllowed]) else { \
+     throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: path, \
+     debugDescription: \"a preprocess answered a value that is not JSON\")) }; \
+     func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
+     DecodingError.Context(codingPath: path + context.codingPath, \
+     debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
+     do { return try JSONDecoder().decode(type, from: written) } \
+     catch DecodingError.typeMismatch(let asked, let context) { \
+     throw DecodingError.typeMismatch(asked, placed(context)) } \
+     catch DecodingError.valueNotFound(let asked, let context) { \
+     throw DecodingError.valueNotFound(asked, placed(context)) } \
+     catch DecodingError.keyNotFound(let key, let context) { \
+     throw DecodingError.keyNotFound(key, placed(context)) } \
+     catch DecodingError.dataCorrupted(let context) { \
+     throw DecodingError.dataCorrupted(placed(context)) } }; ";
+
 /// Added to [`PAYLOAD`] where a flattened member holds a type the emitter has not written: the
 /// payload is the name of the one entry over `null` that reads as the type, where there is one, as
 /// a plain enum is written flattened, and the payload itself for any other type.
@@ -88,6 +112,7 @@ pub(super) struct Entry {
 }
 
 /// One member that names functions, as its read is written.
+#[derive(Clone, Copy)]
 pub(super) struct Member<'member> {
     pub def: &'member FieldDef,
     /// Whether the member is flattened and holds a type the emitter has not written, a plain enum
@@ -101,6 +126,10 @@ pub(super) struct Member<'member> {
     pub plain: Plain<'member>,
     /// The Swift type the member is declared as.
     pub real_type: &'member str,
+    /// Whether the type is read from what the functions answer as a payload of its own, refusing a
+    /// key it does not declare: a member flattened beside a `nonstrict` holder, whose functions
+    /// serde hands the keys left alone.
+    pub refusing: bool,
     /// What the member's locals and the type written for it are named from.
     pub stem: &'member str,
     /// The unit variants of the externally tagged enum a flattened member holds, which its read
@@ -111,6 +140,7 @@ pub(super) struct Member<'member> {
 }
 
 /// How a member is read where `validate()` walks nothing it holds.
+#[derive(Clone, Copy)]
 pub(super) enum Plain<'member> {
     /// Item by item, through a type written for it, where it holds an array of a fixed length.
     Counted(&'member Shaped),
@@ -537,7 +567,14 @@ pub(super) fn entry(
         entry_payload(stem, entries),
         value(member, "decoder.codingPath", sink, twins)
     );
-    if optional {
+    if optional && is_nonstrict() {
+        // The holder's Zod schema reads the enum as absent where its entry does not read, as serde
+        // reads `None`.
+        format!(
+            "{opened}if {held} {{ do {{ {read} }} catch {{ {nil} }} }} else {{ {nil} }}",
+            nil = sink("nil")
+        )
+    } else if optional {
         format!("{opened}if {held} {{ {read} }} else {{ {} }}", sink("nil"))
     } else {
         format!(
@@ -670,7 +707,8 @@ pub(super) fn member(
 /// its functions, and hand the value to `sink`, as the holder's Zod schema reads it. Where the read
 /// throws, an answer of `null` among it, the value is `nil` where the object the functions are
 /// handed holds none of `keys`, or no key at all where `keys` is empty, and the read's error is
-/// thrown where it holds one.
+/// thrown where it holds one. Under a `nonstrict` holder the value is `nil` exactly where the
+/// functions answer `null`, and read from any other answer, as serde reads it.
 pub(super) fn optional(
     member: &Member<'_>,
     source: &Source,
@@ -679,6 +717,20 @@ pub(super) fn optional(
     twins: &mut Vec<String>,
 ) -> String {
     let stem = member.stem;
+    if is_nonstrict() {
+        let handed_stem = format!("{stem}Handed");
+        let (handed, path) = source.payload(&handed_stem, member.keys);
+        let answered = Member {
+            functions: &[],
+            ..*member
+        };
+        return format!(
+            "{handed}let {stem}Payload: Any = {}; if {stem}Payload is NSNull {{ {} }} else {{ {} }}",
+            called(member.functions, &format!("{handed_stem}Payload")),
+            sink("nil"),
+            value(&answered, &path, sink, twins)
+        );
+    }
     let (handed, path) = source.payload(stem, member.keys);
     let object = format!("({stem}Payload as? [String: Any] ?? [:])");
     let held = if keys.is_empty() {
@@ -737,7 +789,12 @@ fn value(
         } else {
             corrected.clone()
         };
-        format!("try SwiftSchemaPayload.read({read_as}.self, from: {from}, at: {path})")
+        let reader = if member.refusing {
+            "readRefusing"
+        } else {
+            "read"
+        };
+        format!("try SwiftSchemaPayload.{reader}({read_as}.self, from: {from}, at: {path})")
     };
     let held = |value: &str| format!("self.value = {value}");
     let statements = if member.walked {
@@ -816,14 +873,22 @@ pub(super) fn units_of(def: &FieldDef) -> Vec<Entry> {
 
 /// [`PAYLOAD`], with the functions the reads in `read` name.
 pub(super) fn payload_for(read: &str) -> String {
-    if read.contains("SwiftSchemaPayload.flat(") {
+    let named: String = [
+        ("SwiftSchemaPayload.flat(", FLAT),
+        ("SwiftSchemaPayload.readRefusing(", REFUSING),
+    ]
+    .into_iter()
+    .filter(|(called, _)| read.contains(called))
+    .map(|(_, written)| written)
+    .collect();
+    if named.is_empty() {
+        PAYLOAD.to_owned()
+    } else {
         PAYLOAD.replacen(
             "private struct Key",
-            &format!("{FLAT}private struct Key"),
+            &format!("{named}private struct Key"),
             1,
         )
-    } else {
-        PAYLOAD.to_owned()
     }
 }
 
