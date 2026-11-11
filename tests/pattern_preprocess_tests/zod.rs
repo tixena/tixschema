@@ -92,7 +92,11 @@ fn the_wrap_is_inside_the_brand_and_the_meta() {
     let plain = Grade::zod_schema();
     assert!(
         bound(&plain)
-            .starts_with("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.enum([\"Express\", \"Standard\"]))).meta({\n"),
+            .starts_with("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.enum([\"Express\", \"Standard\"]).superRefine("),
+        "got: {plain}"
+    );
+    assert!(
+        bound(&plain).contains("}, { when: () => true }))).meta({\n"),
         "got: {plain}"
     );
     for schema in [Parcel::zod_schema(), Stack::zod_schema()] {
@@ -199,7 +203,7 @@ fn a_flattened_type_is_handed_the_payload_without_its_holders_keys() {
         pinned.contains(
             ".and(z.lazy(() => z.preprocess((held) => typeof held === \"object\" && held !== null \
              && !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
-             ![\"dock\"].includes(key))) : held, Tagged$Schema)).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+             ![\"dock\"].includes(key))) : held, Tagged$Schema)).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
         ),
         "got: {pinned}"
     );

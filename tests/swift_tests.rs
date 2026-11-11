@@ -32,6 +32,12 @@ mod swift_fitted;
 #[path = "support/swift_key_number.rs"]
 mod swift_key_number;
 
+/// What the emitter writes into the read of a plain enum.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_plain_enum.rs"]
+mod swift_plain_enum;
+
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/validate.rs"]

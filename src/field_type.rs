@@ -27,6 +27,13 @@ use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text}
     feature = "swift"
 ))]
 use crate::utils::NumberKey;
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+use crate::utils::reads_one_key_named;
 use crate::utils::{
     MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
 };
@@ -90,12 +97,30 @@ const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 #[cfg(any(feature = "zod", feature = "dart"))]
 pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
 
-/// The check a union of objects of one key each, an externally tagged enum's and a `Result`'s,
-/// refuses an object of one key through: by the refusal of the arm that key names, at its own
-/// place, as serde names a value inside the variant it reads. An object whose key no arm names
-/// keeps the union's refusal. The arm's issues are final, and written back without their input.
+/// What the Data words of serde read a value `held` as: the Rust type it names in an
+/// `invalid type: ` refusal. A plain JavaScript arrow function.
 #[cfg(feature = "zod")]
-pub const ZOD_NAMED_ARM: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const \
+pub const ZOD_SAID: &str = "(held) => typeof held === \"number\" ? (Number.isInteger(held) ? \
+     \"integer `\" : \"floating point `\") + held + \"`\" : \
+     Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + \
+     Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : \
+     typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \
+     \"sequence\" : held === null ? \"unit value\" : \"map\"";
+
+/// The check an optional member's union reads its issues through: a value that is neither `null`
+/// nor absent is refused by the issues of the member's own schema, the second alternative, which
+/// the union would otherwise hide behind one issue of its own.
+#[cfg(feature = "zod")]
+const ZOD_OPTION_ARM: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const at = \
+     ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? \
+     []).length === 0); const refused = ctx.issues[at]; if (held !== null && held !== undefined && \
+     refused?.code === \"invalid_union\") ctx.issues.splice(at, 1, ...(refused.errors[1] ?? \
+     []).map((issue) => ({ ...issue, input: undefined }))); }, \
+     { when: () => true })";
+
+/// [`zod_named_arm`] of a union no variant of which carries data.
+#[cfg(feature = "zod")]
+const ZOD_NAMED_KEY: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const \
      keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? \
      Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \
      \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const \
@@ -129,6 +154,16 @@ pub const ZOD_UNBOXED: &str = "function unboxed(held) { if (held instanceof Numb
     feature = "swift"
 ))]
 pub const EXPECTED_VALUE: &str = "expected value";
+
+/// What a refusal of `expected value` is worded as where serde reads the value from content its
+/// holder buffers, which it refuses as a value of the wrong kind.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const BUFFERED_WORDS: &str = "invalid type: expected string or map";
 
 /// What `serde_json` says of a map key read as a number whose text opens with neither a digit nor
 /// `-`: a refusal it classifies as text that is not the document.
@@ -234,6 +269,25 @@ pub enum VariantKind {
     /// Unit variant with no fields: `Status::Active`
     /// Generates: `{ type: "Active" }`.
     Unit,
+}
+
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+impl VariantKind {
+    /// What serde says a variant of this kind is when a read hands it a string, the unit variant,
+    /// instead of the value it carries; none for a unit variant, which a string names.
+    pub const fn carried_as(&self) -> Option<&'static str> {
+        match self {
+            Self::Named => Some("struct variant"),
+            Self::TupleMultiple => Some("tuple variant"),
+            Self::TupleSingle => Some("newtype variant"),
+            Self::Unit => None,
+        }
+    }
 }
 
 /// Enum representing the possible types a field can have in the schema generation system.
@@ -1587,6 +1641,55 @@ impl FieldDef {
         }
     }
 
+    /// Whether a read of this member can reach a value serde refuses as text that is not the
+    /// document, an externally tagged enum's or a `Result`'s: a `Result`, a plain or an externally
+    /// tagged enum declared above, or a container of one.
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    pub fn reads_one_key(&self) -> bool {
+        match &self.field_type {
+            FieldDefType::SiblingType(name, arguments) if is_sequence_wrapper(name) => {
+                arguments.iter().any(Self::reads_one_key)
+            }
+            FieldDefType::SiblingType(name, _) => reads_one_key_named(name),
+            FieldDefType::Result(_, _) => true,
+            FieldDefType::Map(_, value) => value.reads_one_key(),
+            FieldDefType::Tuple(slots) => slots.iter().any(Self::reads_one_key),
+            FieldDefType::Boolean
+            | FieldDefType::BooleanLiteral(_)
+            | FieldDefType::Char
+            | FieldDefType::F32
+            | FieldDefType::F64
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::I8
+            | FieldDefType::Isize
+            | FieldDefType::NumberLiteral(_)
+            | FieldDefType::Range(_, _)
+            | FieldDefType::String
+            | FieldDefType::StringLiteral(_)
+            | FieldDefType::TypeParam(_)
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::U8
+            | FieldDefType::Unknown
+            | FieldDefType::Usize => false,
+            #[cfg(feature = "mongodb")]
+            FieldDefType::ObjectId => false,
+            #[cfg(feature = "chrono")]
+            FieldDefType::DateTime
+            | FieldDefType::NaiveDate
+            | FieldDefType::NaiveDateTime
+            | FieldDefType::NaiveTime => false,
+        }
+    }
+
     /// What the externally tagged enum this field names recorded for each of its variants, each of
     /// the enum's own type parameters filled with the argument written at its position as a
     /// reference to the enum writes it. Nothing where a position the variants name has no argument.
@@ -2098,7 +2201,13 @@ impl FieldDef {
                 let arms = result_union(ok, err, |arm, held| {
                     format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
                 });
-                zod_one_key_union(&format!("z.union([{}]){ZOD_NAMED_ARM}", arms.join(", ")))
+                let carrying: Vec<(String, &str)> = RESULT_ARMS
+                    .into_iter()
+                    .zip([ok, err])
+                    .filter(|(_, def)| !def.is_unit())
+                    .map(|(arm, _)| (arm.to_owned(), "newtype variant"))
+                    .collect();
+                zod_one_key_union(&arms.join(", "), &carrying)
             }
             FieldDefType::Tuple(lst) if lst.is_empty() => "z.null()".to_owned(),
             FieldDefType::Tuple(lst) => {
@@ -2773,9 +2882,14 @@ impl FieldDef {
                 });
                 self.zod_preprocess_wrap(union)
             } else {
+                let refused_by_member = if self.reads_one_key() {
+                    ZOD_OPTION_ARM
+                } else {
+                    ""
+                };
                 zod_union_around(&self.zod_base(), &calls, |held| {
                     format!(
-                        "z.union([z.null().transform(() => undefined), {held}, z.undefined()]).prefault(undefined)"
+                        "z.union([z.null().transform(() => undefined), {held}, z.undefined()]){refused_by_member}.prefault(undefined)"
                     )
                 })
             }
@@ -2917,18 +3031,121 @@ fn result_union(
     [arm(ok_key, ok), arm(err_key, err)]
 }
 
-/// `union`, the schema of an externally tagged enum or a `Result`, behind the check that refuses
-/// what serde refuses as text that is not the document: a value that is neither a string nor an
-/// object of one key. The issue says so in serde's words, and a service answers it as the Rust
-/// dispatcher does.
+/// What a refusal of `expected value` becomes where serde reads the value from buffered content:
+/// a plain JavaScript arrow function from the value refused to serde's Data words for it, and for
+/// a value an issue no longer holds, a union having dropped it, the words for none. An object of
+/// other than one key is a value of the right kind with the wrong number of keys.
 #[cfg(feature = "zod")]
-pub fn zod_one_key_union(union: &str) -> String {
+pub fn zod_buffered_words() -> String {
+    format!(
+        "(held) => held === undefined ? \"{BUFFERED_WORDS}\" : typeof held === \"object\" && held \
+         !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single \
+         key\" : \"invalid type: \" + ({ZOD_SAID})(held) + \", expected string or map\""
+    )
+}
+
+/// The arrow function that reads one issue of a value serde reads from buffered content, a
+/// flattened member or the members of an internally tagged variant: a refusal of the shape of an
+/// externally tagged enum or a `Result` becomes a Data refusal at the holder, and so does the
+/// refusal of a string that names a variant carrying data. Another issue is `undefined`.
+#[cfg(feature = "zod")]
+pub fn zod_buffered_issue() -> String {
+    format!(
+        "(issue) => issue.code === \"custom\" && issue.params?.variant === true ? {{ ...issue, \
+         path: [] }} : issue.code === \"custom\" && issue.params?.undeserializable === true && \
+         issue.message === \"{EXPECTED_VALUE}\" ? {{ ...issue, message: ({})(issue.input), params: \
+         undefined, path: [] }} : undefined",
+        zod_buffered_words()
+    )
+}
+
+/// The check that reads the issues of a value serde reads from buffered content through
+/// [`zod_buffered_issue`], and leaves every other issue as it is.
+#[cfg(feature = "zod")]
+pub fn zod_buffered() -> String {
+    format!(
+        ".superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, \
+         ...ctx.issues.map((issue) => ({})(issue) ?? issue)); }}, {{ when: () => true }})",
+        zod_buffered_issue()
+    )
+}
+
+/// The check a union of objects of one key each, an externally tagged enum's and a `Result`'s,
+/// refuses a value through: an object of one key by the refusal of the arm that key names, at its
+/// own place, as serde names a value inside the variant it reads, and a string that names one of
+/// `carrying`, the variants that carry data and what serde expects of each, by the variant's own
+/// step. An object whose key no arm names keeps the union's refusal. The arm's issues are final,
+/// and written back without their input.
+#[cfg(feature = "zod")]
+fn zod_named_arm(carrying: &[(String, &str)]) -> String {
+    if carrying.is_empty() {
+        return ZOD_NAMED_KEY.to_owned();
+    }
+    let pairs: Vec<String> = carrying
+        .iter()
+        .map(|(name, expected)| format!("[{}, {}]", ts_quoted(name), ts_quoted(expected)))
+        .collect();
+    format!(
+        ".superRefine((_read, ctx) => {{ const held = ctx.value; const carrying = [{}]; const keys \
+         = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) \
+         : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && \
+         (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held \
+         === \"string\" ? carrying.find(([name]) => name === held) : undefined; const arm = \
+         keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) \
+         => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== \
+         undefined && refused?.code === \"invalid_union\") ctx.issues.splice(at, 1, {{ code: \
+         \"custom\", message: \"invalid type: unit variant, expected \" + named[1], input: \
+         undefined, path: [named[0]], params: {{ variant: true }} }}); else if (arm !== undefined) \
+         ctx.issues.splice(at, 1, ...arm.map((issue) => ({{ ...issue, input: undefined }}))); }}, \
+         {{ when: () => true }})",
+        pairs.join(", ")
+    )
+}
+
+/// The union of `arms`, the schema of an externally tagged enum or a `Result`, behind the check
+/// that refuses what serde refuses as text that is not the document: a value that is neither a
+/// string nor an object of one key. The issue says so in serde's words, and a service answers it
+/// as the Rust dispatcher does. `carrying` names the variants that carry data, which a string
+/// is refused under.
+#[cfg(feature = "zod")]
+pub fn zod_one_key_union(arms: &str, carrying: &[(String, &str)]) -> String {
+    let union = format!("z.union([{arms}]){}", zod_named_arm(carrying));
+    format!("{}.pipe({union})", zod_one_key_read())
+}
+
+/// `z.unknown()` behind the check that refuses a value that is neither a string nor an object of
+/// one key, in serde's words for text that is not the document.
+#[cfg(feature = "zod")]
+fn zod_one_key_read() -> String {
     format!(
         "z.unknown().check((ctx) => {{ if (ctx.value !== undefined && typeof ctx.value !== \
          \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
          Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({{ \
          code: \"custom\", message: \"{EXPECTED_VALUE}\", input: ctx.value, params: {{ \
-         undeserializable: true }} }}); }}).pipe({union})"
+         undeserializable: true }} }}); }})"
+    )
+}
+
+/// The schema of a plain enum of the variant names `options`, each written as the quoted string it
+/// is: the `z.enum` over them, whose check reads what serde reads beside a string. serde reads the
+/// variant from an object of one key over `null` as well, and refuses any other value as it refuses
+/// the shape of an externally tagged enum's; the variant a key over a value other than `null` names
+/// is refused under that key as a unit variant. The schema stays an enumeration, which a map keyed
+/// by it reads its keys from, and its output is the string union.
+#[cfg(feature = "zod")]
+pub fn zod_plain_enum(options: &str) -> String {
+    format!(
+        "z.enum([{options}]).superRefine((_read, ctx) => {{ const held = Reflect.get(ctx, \"value\"); \
+         if (held === undefined || typeof held === \"string\") return; const keys = typeof held === \
+         \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if \
+         (keys.length !== 1) {{ ctx.issues.splice(0, ctx.issues.length, {{ code: \"custom\", message: \
+         \"{EXPECTED_VALUE}\", input: held, params: {{ undeserializable: true }} }}); \
+         return; }} const [key] = keys; if (![{options}].includes(key)) return; \
+         const value = Reflect.get(held, key); if (value !== null) {{ \
+         ctx.issues.splice(0, ctx.issues.length, {{ code: \"custom\", message: \"invalid type: \" + \
+         ({ZOD_SAID})(value) + \", expected unit\", input: value, path: [key] }}); return; }} \
+         ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, \"value\", key); }}, {{ when: () => \
+         true }})",
     )
 }
 

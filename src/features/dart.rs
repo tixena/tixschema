@@ -27,8 +27,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, EXPECTED_VALUE, F32_READ_BOUND, FieldDef, FieldDefType,
-    INVALID_NUMBER, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, VariantKind,
+    BUFFERED_WORDS, EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, EXPECTED_VALUE, F32_READ_BOUND, FieldDef,
+    FieldDefType, INVALID_NUMBER, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, VariantKind,
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
@@ -75,12 +75,13 @@ const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
 
 /// The members an emitted class declares beside those of an enum, which a function of the same name
 /// is called through a forwarder for: the holder of a brand's value and the static helpers.
-const DART_CLASS_MEMBERS: [&str; 10] = [
+const DART_CLASS_MEMBERS: [&str; 11] = [
     "_boundLength",
     "_boundText",
     "_heldBound",
     "_number",
     "_readAt",
+    "_readBuffered",
     "_readFlattened",
     "_repeats",
     "_under",
@@ -119,7 +120,7 @@ const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { t
 /// holder buffers and places a refusal inside it at the holder, so the path the refusal carries is
 /// dropped, but for the key a `missing field` or an unknown key names.
 const READ_FLATTENED: &str = "static Read _readFlattened<Read>(Read Function() read) { try { \
-     return read(); } on FormatException catch (refused) { final at = refused.source; if (at is! \
+     return _readBuffered(read); } on FormatException catch (refused) { final at = refused.source; if (at is! \
      List<Object> || at.isEmpty) rethrow; final message = refused.message; throw \
      FormatException(message, <Object>[if (message.startsWith('missing field ') || \
      message.startsWith('Unknown key of a ')) at.last]); } }";
@@ -587,6 +588,18 @@ pub fn read_at_function(name: &str) -> String {
          throw FormatException('$refused', <Object>[key]); if (refused is FormatException) {{ \
          final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
          is List<Object>) ...at]); }} rethrow; }} }}"
+    )
+}
+
+/// The helper a class reads a member serde reads from content its holder buffers with, an
+/// internally tagged variant's. serde refuses a value that is neither a string nor an object of
+/// one key there as a value of the wrong kind, and names the holder, so the refusal in serde's
+/// words for text that is not the document loses its path and the words.
+fn read_buffered() -> String {
+    format!(
+        "static Read _readBuffered<Read>(Read Function() read) {{ try {{ return read(); }} on \
+         FormatException catch (refused) {{ if (refused.message != '{EXPECTED_VALUE}') rethrow; \
+         throw const FormatException('{BUFFERED_WORDS}'); }} }}"
     )
 }
 
@@ -2610,9 +2623,22 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
             format!("final {object} when {named} => {class}{arm}{arguments}({decoded})")
         }
     });
+    let carried = RESULT_ARMS
+        .into_iter()
+        .zip([ok, err])
+        .filter(|(_, def)| !def.is_unit())
+        .fold(String::new(), |mut carried, (arm, _)| {
+            let key = quoted(arm);
+            let _ = write!(
+                carried,
+                "final {written} when {written} == {key} => throw FormatException('invalid type: \
+                 unit variant, expected newtype variant', <Object>[{key}]), "
+            );
+            carried
+        });
     format!(
-        "switch ({expr}) {{ final {written} when {written} is! String && ({written} is! Map || \
-         {written}.length != 1) => throw const FormatException('{EXPECTED_VALUE}'), final \
+        "switch ({expr}) {{ {carried}final {written} when {written} is! String && ({written} is! \
+         Map || {written}.length != 1) => throw const FormatException('{EXPECTED_VALUE}'), final \
          {written} => switch ({written} as Map<String, dynamic>) {{ {}, final {object} => throw \
          FormatException('Not a Result: ${{{object}.keys}}') }} }}",
         arms.collect::<Vec<_>>().join(", ")
@@ -4138,7 +4164,7 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 read,
             );
             // The default is read as a payload is, and no function is called for it.
-            match &field.default_at {
+            let decoded = match &field.default_at {
                 Some(at) => {
                     let absent =
                         dart_decode_expr(&field.field_def, &format!("jsonDecode('{at}')"), read);
@@ -4154,6 +4180,11 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                         Some(&field.wire_name),
                     ),
                 ),
+            };
+            if tag_key.is_some() && field.field_def.reads_one_key() {
+                format!("_readBuffered(() => {decoded})")
+            } else {
+                decoded
             }
         };
         write!(acc, "{}: {decode},", field.member).unwrap();
@@ -4263,10 +4294,21 @@ fn tag_checked_reads(
     });
     let reads = with_read_at(own, called);
     if fields.iter().any(|field| field.flatten) {
-        format!("{reads} {READ_FLATTENED}")
+        format!("{reads} {} {READ_FLATTENED}", read_buffered())
+    } else if buffers_members(fields, tag_key) {
+        format!("{reads} {}", read_buffered())
     } else {
         reads
     }
+}
+
+/// Whether the members of a class are read from content its holder buffers, an internally tagged
+/// variant's, and one of them can hold a value that is read from one key.
+fn buffers_members(fields: &[DartField], tag_key: Option<&str>) -> bool {
+    tag_key.is_some()
+        && fields
+            .iter()
+            .any(|field| !field.flatten && field.field_def.reads_one_key())
 }
 
 /// [`tag_checked_reads`] before the helper its reads call.
@@ -5051,6 +5093,28 @@ fn variant_read(
     }
 }
 
+/// The arms of the string read of an externally tagged enum that refuse a string naming a variant
+/// that carries a value, as serde refuses a unit variant there, under the step of the string
+/// `json` names.
+fn carried_string_arms(item_enum: &ItemEnum, rule: RenameRule, json: &str) -> Vec<String> {
+    item_enum
+        .variants
+        .iter()
+        .filter_map(|variant| {
+            let wire_tag = rename_override(&variant.attrs)
+                .unwrap_or_else(|| rule.apply_to_variant(&variant.ident.to_string()));
+            let names = read_as(wire_tag, read_aliases(&variant.attrs));
+            variant_wire_kind(variant).carried_as().map(|expected| {
+                format!(
+                    "case {}: throw FormatException('invalid type: unit variant, expected \
+                     {expected}', <Object>[{json}]);",
+                    any_of(&names)
+                )
+            })
+        })
+        .collect()
+}
+
 /// The arm of an externally tagged enum's object read for a unit variant read under `names`:
 /// serde reads it from an entry of its name over `null` as well, the one it writes flattened.
 fn unit_entry_arm(
@@ -5172,7 +5236,11 @@ fn tagged_enum_dart_source(
             external_dispatch(
                 export_name,
                 &corrects,
-                &is_string_dispatch_arms,
+                &[
+                    is_string_dispatch_arms,
+                    carried_string_arms(item_enum, variant_rule, &corrects.json),
+                ]
+                .concat(),
                 &map_dispatch_arms,
             ),
         )
@@ -5376,17 +5444,22 @@ fn plain_enum_dart_source(
             acc
         });
     let validate = validate_members(&own_check_elements(checks), &Helpers::default(), false);
+    let (key, found) = (declared("key"), declared("found"));
     let unjudged = unjudged_read(
         &corrects,
-        " as String",
+        "",
         true,
-        &Answer::Value(format!(
-            "switch ({json}) {{ {match_arms} _ => throw FormatException('Unknown {export_name}: ' \
-             + {json}) }}"
+        &Answer::Statements(format!(
+            "final {key} = switch ({json}) {{ final String text => text, final Map<String, \
+             dynamic> object when object.length == 1 => object.keys.first, _ => throw const \
+             FormatException('{EXPECTED_VALUE}') }}; final {found} = switch ({key}) {{ \
+             {match_arms} _ => throw FormatException('Unknown {export_name}: ' + {key}) }}; if \
+             ({json} is Map && {json}.values.first != null) throw FormatException('invalid type: \
+             expected unit', <Object>[{key}]); return {found};"
         )),
     );
     let (matched, taken_as) = (&unjudged.body, &unjudged.taken_as);
-    let payload_ty = payload_kind(&corrects, "String");
+    let payload_ty = payload_kind(&corrects, "dynamic");
     // An enum that names no check has nothing to refuse, and one that names no function either
     // reads as it did.
     let reads = if !checks.is_empty() {
@@ -5397,8 +5470,8 @@ fn plain_enum_dart_source(
         )
     } else if corrects.own.is_empty() {
         format!(
-            "static {export_name} fromJson(String json) {matched} static {export_name} \
-             fromJsonUnjudged(String json) => fromJson(json);"
+            "static {export_name} fromJson(dynamic json) {matched} static {export_name} \
+             fromJsonUnjudged(dynamic json) => fromJson(json);"
         )
     } else {
         format!(

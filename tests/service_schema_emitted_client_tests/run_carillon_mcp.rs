@@ -17,9 +17,10 @@ use serde_json::{Value, json};
 use super::CarillonMcpServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
-    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart,
-    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
+    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_chord_dart,
+    carillon_error_dart, carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart,
+    carillon_pitch_dart, carillon_swing_dart, carillon_tone_dart, carillon_turn_dart,
+    carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -401,13 +402,16 @@ fn assert_read_as_rust(read: &Value, tolled: &Value) {
 fn node_bundle() -> String {
     use super::CarillonMcpServiceSchema;
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonOuterTone,
-        CarillonPeal, CarillonPitch, CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonError, CarillonFrame,
+        CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonSwing, CarillonTone, CarillonTurn,
+        CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         CarillonBell::ts_definition(),
         CarillonBell::zod_schema(),
+        CarillonChord::ts_definition(),
+        CarillonChord::zod_schema(),
         CarillonPeal::ts_definition(),
         CarillonPeal::zod_schema(),
         CarillonPitch::ts_definition(),
@@ -568,6 +572,7 @@ fn dart_source() -> String {
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
         carillon_bell_dart::dart_definition(),
+        carillon_chord_dart::dart_definition(),
         carillon_peal_dart::dart_definition(),
         carillon_pitch_dart::dart_definition(),
         carillon_swing_dart::dart_definition(),
@@ -626,10 +631,10 @@ fn kotlin_source() -> String {
         carillon_mcp_service_fault_fields_kotlin, carillon_mcp_service_fault_kind_kotlin,
     };
     use super::carillon_service::{
-        carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin, carillon_error_kotlin,
-        carillon_frame_kotlin, carillon_outer_tone_kotlin, carillon_peal_kotlin,
-        carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin,
-        carillon_yoke_kotlin,
+        carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin, carillon_chord_kotlin,
+        carillon_error_kotlin, carillon_frame_kotlin, carillon_outer_tone_kotlin,
+        carillon_peal_kotlin, carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin,
+        carillon_turn_kotlin, carillon_yoke_kotlin,
     };
 
     let raw = |text: &str| format!("\"\"\"{text}\"\"\"");
@@ -643,6 +648,7 @@ fn kotlin_source() -> String {
          import kotlinx.serialization.builtins.*"
             .to_owned(),
         carillon_bell_kotlin::kotlin_definition(),
+        carillon_chord_kotlin::kotlin_definition(),
         carillon_peal_kotlin::kotlin_definition(),
         carillon_pitch_kotlin::kotlin_definition(),
         carillon_swing_kotlin::kotlin_definition(),
@@ -688,15 +694,17 @@ fn swift_source() -> String {
         carillon_mcp_service_fault_fields_swift, carillon_mcp_service_fault_kind_swift,
     };
     use super::carillon_service::{
-        carillon_beam_swift, carillon_bell_swift, carillon_chime_swift, carillon_error_swift,
-        carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift,
-        carillon_swing_swift, carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
+        carillon_beam_swift, carillon_bell_swift, carillon_chime_swift, carillon_chord_swift,
+        carillon_error_swift, carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift,
+        carillon_pitch_swift, carillon_swing_swift, carillon_tone_swift, carillon_turn_swift,
+        carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
     [
         "import Foundation".to_owned(),
         carillon_bell_swift::swift_definition(),
+        carillon_chord_swift::swift_definition(),
         carillon_peal_swift::swift_definition(),
         carillon_pitch_swift::swift_definition(),
         carillon_swing_swift::swift_definition(),

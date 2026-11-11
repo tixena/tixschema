@@ -1832,6 +1832,30 @@ fn one_key_container(key_type: &str) -> String {
     )
 }
 
+/// The statement that refuses `tag`, a string, as a unit variant where the variant it names carries
+/// a value, as serde refuses it: under the variant's own step, `expected` being what the variant is.
+fn unit_for_data(key_type: &str, expected: &str) -> String {
+    format!(
+        "throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [{key_type}(stringValue: tag)!], debugDescription: \"invalid type: unit variant, expected \
+         {expected}\"))"
+    )
+}
+
+/// The arm of the string read of an externally tagged enum that refuses a string naming `variant`
+/// where it carries a value, and none for a unit variant.
+fn carried_unit_arm(variant: &Variant, wire_tag: &str) -> String {
+    variant_wire_kind(variant)
+        .carried_as()
+        .map_or_else(String::new, |expected| {
+            format!(
+                "case {}: {}; ",
+                aliases::case_names(wire_tag, &aliases::written_on(&variant.attrs)),
+                unit_for_data("SwiftSchemaExternalCodingKey", expected)
+            )
+        })
+}
+
 /// A `Result` leaf: an enum of its own, `{hint}Result`, of one case per arm, read from and written
 /// as the object whose one key names the arm, and walked by its `validate()` under that key. An
 /// arm of `()` is a case with no value, written as `null`. Any other value is refused, as serde
@@ -1898,9 +1922,29 @@ fn result_shape(
         shapes.push(slot.shape);
     }
     let generic_params = bounded_generic_params(&parameters_reached(&[ok, err]));
+    let carried = RESULT_ARMS
+        .into_iter()
+        .zip([ok, err])
+        .filter(|(_, def)| !def.is_unit())
+        .fold(String::new(), |mut carried, (arm, _)| {
+            let _ = write!(
+                carried,
+                "case \"{arm}\": {}; ",
+                unit_for_data("SwiftSchemaAnyKey", "newtype variant")
+            );
+            carried
+        });
     let both = read::both(
         &format!(
-            "{}switch key.stringValue {{ {reads}default: {} }}",
+            "{}{}switch key.stringValue {{ {reads}default: {} }}",
+            if carried.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "if let single = try? decoder.singleValueContainer(), let tag = try? \
+                     single.decode(String.self) {{ switch tag {{ {carried}default: break }} }}; "
+                )
+            },
             one_key_container("SwiftSchemaAnyKey"),
             refused("Not one key, Ok or Err, of a Result")
         ),
@@ -4568,30 +4612,29 @@ fn plain_enum_swift_source(
     cases.push_str(&aliases::raw_value_init(&variants));
     validate::note(rust_ident, None, !checks.is_empty());
     let validate = validate::method(&validate::own_checks(checks));
-    // With no check and no function there is nothing to judge or to call, and the read stays the
-    // one Swift synthesizes.
-    let reads = if checks.is_empty() && args.preprocess.is_empty() {
-        format!(
-            "public {} {{ try self.init(from: decoder) }}; ",
-            read::UNJUDGED
-        )
-    } else {
-        read::both(
-            &format!(
-                "let container = try decoder.singleValueContainer(); \
-                 let raw = try container.decode(String.self); \
-                 guard let read = {export_name}(rawValue: raw) else {{ \
-                 throw DecodingError.dataCorruptedError(in: container, debugDescription: \
-                 \"Cannot initialize {export_name} from invalid String value \\(raw)\") }}; \
-                 self = read"
-            ),
-            &preprocess::Written {
-                named: export_name,
-                own: args.preprocess,
-                ..preprocess::Written::default()
-            },
-        )
-    };
+    let reads = read::both(
+        &format!(
+            "let raw: String; var entry: SwiftSchemaAnyKey? = nil; if let single = try? \
+             decoder.singleValueContainer(), let text = try? single.decode(String.self) {{ raw = \
+             text }} else {{ guard let container = try? decoder.container(keyedBy: \
+             SwiftSchemaAnyKey.self), container.allKeys.count == 1, let key = \
+             container.allKeys.first else {{ throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"{EXPECTED_VALUE}\")) }}; entry = key; raw = key.stringValue }}; \
+             guard let read = {export_name}(rawValue: raw) else {{ throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"unknown variant `\\(raw)`\")) }}; if let entry, let container = try? \
+             decoder.container(keyedBy: SwiftSchemaAnyKey.self), !((try? \
+             container.decodeNil(forKey: entry)) ?? false) {{ throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+             [entry], debugDescription: \"invalid type: expected unit\")) }}; self = read"
+        ),
+        &preprocess::Written {
+            named: export_name,
+            own: args.preprocess,
+            ..preprocess::Written::default()
+        },
+    );
     let body = format!(
         "public enum {export_name}: String, Codable, Sendable {{ {cases}{reads}{validate} }}"
     );
@@ -4632,6 +4675,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             Some(wire_tag.as_str()),
             aux,
         );
+        unit_decode_arms.push_str(&carried_unit_arm(variant, &wire_tag));
         ruled.push((case_name.clone(), payload.rules.clone()));
         cases.push_str(&variant_case(&case_name, payload.held.as_deref()));
         slots.extend(payload.converted.as_ref().map(|slot| slot.shape.clone()));
@@ -4836,12 +4880,11 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 &|held| format!("self = .{case_name}({held})"),
                 &mut twins,
             );
-            let beside =
-                refused_in_its_arm(variant, payload.keys.as_deref(), tag_key, args.preprocess);
             write!(
                 decode_arms,
-                "case {}: {beside}{read}; ",
-                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
+                "case {}: {}; ",
+                aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs)),
+                guarded_read(variant, &payload, (tag_key, args.preprocess), &read)
             )
             .unwrap();
             let then = format!("{}; ", payload.written_beside("payload"));
@@ -4889,6 +4932,33 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
+}
+
+/// The statements of the arm of `variant`, under the tag `tag_key` alone, that refuse a stray key
+/// and then `read` its payload, placing the refusal of a member serde reads from the content the
+/// tag's object buffers at the holder.
+fn guarded_read(
+    variant: &Variant,
+    payload: &VariantPayload,
+    (tag_key, corrects): (&str, &[FunctionName]),
+    read: &str,
+) -> String {
+    let beside = refused_in_its_arm(variant, payload.keys.as_deref(), tag_key, corrects);
+    if variant_buffers_members(variant) {
+        format!("{beside}{}", read::buffered(read))
+    } else {
+        format!("{beside}{read}")
+    }
+}
+
+/// Whether the variant has named members, one of which can hold a value serde refuses as text that
+/// is not the document, which serde reads from the content the tag's object buffers.
+fn variant_buffers_members(variant: &Variant) -> bool {
+    variant_wire_kind(variant) == VariantKind::Named
+        && variant
+            .fields
+            .iter()
+            .any(|field| get_field_def("value", &field.ty, "").reads_one_key())
 }
 
 /// The arm that reads a unit variant under a tag and a content key from an object with no content
