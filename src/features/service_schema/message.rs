@@ -133,8 +133,9 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
 /// `bigint` in it, at any depth of a list or a plain object, through `JSON.rawJSON`, which
 /// `JSON.stringify` writes as the JSON number of its digits. Without `JSON.rawJSON` a `bigint` a
 /// `number` holds exactly is that `number`, and any other is refused with a `RangeError`. Each
-/// `Uint8Array` is answered as the plain array of its bytes. Every other value is answered as it
-/// is.
+/// `Date` is answered as the text chrono writes: `toISOString()` with no `.000` on whole seconds.
+/// Each `Uint8Array` is answered as the plain array of its bytes. Every other value is answered
+/// as it is.
 pub fn wire_fn(function: &str) -> String {
     format!(
         "/**\n \
@@ -142,7 +143,8 @@ pub fn wire_fn(function: &str) -> String {
          number of\n \
          * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that \
          `number`, and any\n \
-         * other is refused. Each `Uint8Array` is the plain array of its bytes.\n \
+         * other is refused. Each `Date` is its RFC 3339 text with no fraction on whole seconds, as\n \
+         * chrono writes it. Each `Uint8Array` is the plain array of its bytes.\n \
          */\n\
          function {function}(value: unknown): unknown {{\n  \
          if (typeof value === \"bigint\") {{\n    \
@@ -151,6 +153,10 @@ pub fn wire_fn(function: &str) -> String {
          if (Number.isSafeInteger(Number(value))) return Number(value);\n    \
          throw new RangeError(`${{value}} is written exactly only through JSON.rawJSON, which this \
          runtime has not`);\n  \
+         }}\n  \
+         if (value instanceof Date) {{\n    \
+         return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \
+         \"Z\");\n  \
          }}\n  \
          if (value instanceof Uint8Array) return Array.from(value);\n  \
          if (Array.isArray(value)) return value.map((held) => {function}(held));\n  \
