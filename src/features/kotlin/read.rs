@@ -59,7 +59,7 @@ pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: Serialization
 /// holder buffers and places a refusal inside it at the holder, so the refusal states the root as
 /// its path, which the holder's `kotlinSchemaAt` rebases, drops the place it states, and keeps the
 /// key it names as unknown or missing.
-const FLATTENED: &str = "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
+pub const FLATTENED: &str = "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
      KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) \
      { if (refused.cause?.message == \"validate()\") throw refused; throw \
      SerializationException(refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token \

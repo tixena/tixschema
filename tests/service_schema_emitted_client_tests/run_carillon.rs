@@ -14,9 +14,10 @@ use serde_json::{Value, json};
 use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
-    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart,
-    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
+    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_deep_dart,
+    carillon_error_dart, carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart,
+    carillon_pitch_dart, carillon_swing_dart, carillon_tone_dart, carillon_turn_dart,
+    carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -470,7 +471,10 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
             json!({ "case": case.0, "answer": answer, "struck": struck, "value": value })
         })
         .collect();
-    assert_eq!(told, expected, "{attached}");
+    for (one_told, one_expected) in told.iter().zip(&expected) {
+        assert_eq!(one_told, one_expected, "{attached}");
+    }
+    assert_eq!(told.len(), expected.len(), "{attached}");
 }
 
 /// Holds what a client answered to each payload to [`read_as_rust`].
@@ -482,11 +486,11 @@ fn assert_read_as_rust(read: &Value, apart: &[(&str, Option<&str>)]) {
             .map(|(case, answer)| json!({ "case": case.0, "answer": answer }))
             .collect()
     };
-    assert_eq!(
-        named(read.as_array().unwrap()),
-        named(&read_as_rust(apart)),
-        "{read}"
-    );
+    let (told, expected) = (named(read.as_array().unwrap()), named(&read_as_rust(apart)));
+    for (one_told, one_expected) in told.iter().zip(&expected) {
+        assert_eq!(one_told, one_expected);
+    }
+    assert_eq!(told.len(), expected.len(), "{read}");
 }
 
 /// `items` as the elements of a list literal, each written by `literal`.
@@ -513,6 +517,7 @@ fn dart_source() -> String {
         carillon_pitch_dart::dart_definition(),
         carillon_swing_dart::dart_definition(),
         carillon_turn_dart::dart_definition(),
+        carillon_deep_dart::dart_definition(),
         carillon_beam_dart::dart_definition(),
         carillon_frame_dart::dart_definition(),
         carillon_yoke_dart::dart_definition(),
@@ -570,9 +575,9 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_outer_tone_kotlin,
-        carillon_peal_kotlin, carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin,
-        carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_deep_kotlin, carillon_error_kotlin, carillon_frame_kotlin,
+        carillon_outer_tone_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
+        carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin, carillon_yoke_kotlin,
     };
 
     let frames: Vec<String> = payloads()
@@ -595,6 +600,7 @@ fn kotlin_source() -> String {
         carillon_pitch_kotlin::kotlin_definition(),
         carillon_swing_kotlin::kotlin_definition(),
         carillon_turn_kotlin::kotlin_definition(),
+        carillon_deep_kotlin::kotlin_definition(),
         carillon_beam_kotlin::kotlin_definition(),
         carillon_frame_kotlin::kotlin_definition(),
         carillon_yoke_kotlin::kotlin_definition(),
@@ -649,9 +655,9 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift,
-        carillon_pitch_swift, carillon_swing_swift, carillon_tone_swift, carillon_turn_swift,
-        carillon_yoke_swift,
+        carillon_deep_swift, carillon_error_swift, carillon_frame_swift, carillon_outer_tone_swift,
+        carillon_peal_swift, carillon_pitch_swift, carillon_swing_swift, carillon_tone_swift,
+        carillon_turn_swift, carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
@@ -662,6 +668,7 @@ fn swift_source() -> String {
         carillon_pitch_swift::swift_definition(),
         carillon_swing_swift::swift_definition(),
         carillon_turn_swift::swift_definition(),
+        carillon_deep_swift::swift_definition(),
         carillon_beam_swift::swift_definition(),
         carillon_frame_swift::swift_definition(),
         carillon_yoke_swift::swift_definition(),
@@ -705,9 +712,9 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 /// The TypeScript module the attachment and the client run in.
 fn node_bundle() -> String {
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonOuterTone,
-        CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSwing, CarillonTone,
-        CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonDeep, CarillonError, CarillonFrame,
+        CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSwing,
+        CarillonTone, CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -721,6 +728,8 @@ fn node_bundle() -> String {
         CarillonSwing::zod_schema(),
         CarillonTurn::ts_definition(),
         CarillonTurn::zod_schema(),
+        CarillonDeep::ts_definition(),
+        CarillonDeep::zod_schema(),
         CarillonBeam::ts_definition(),
         CarillonBeam::zod_schema(),
         CarillonFrame::ts_definition(),

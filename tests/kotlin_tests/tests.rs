@@ -2058,8 +2058,8 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         ),
         (
             renumbered(&whelping_kotlin::kotlin_definition()),
-            "\"Hoisted\" -> kotlinSchemaInner(input.json, \"\", serializer<WhelpingHoisted>(), \
-             obj);",
+            "\"Hoisted\" -> kotlinSchemaFlattened { kotlinSchemaInner(input.json, \"\", \
+             serializer<WhelpingHoisted>(), obj) };",
         ),
         (
             renumbered(&broaching_kotlin::kotlin_definition()),

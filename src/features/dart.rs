@@ -116,8 +116,9 @@ const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { t
      (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
      []; } }";
 
-/// The helper a class reads a flattened member with. serde reads such a member from the keys its
-/// holder buffers and places a refusal inside it at the holder, so the path the refusal carries is
+/// The helper a class reads a flattened member with, and an enum reads a braced variant under an
+/// internal tag with. serde reads such a value from the keys its holder buffers and places a
+/// refusal inside it at the holder, so the path the refusal carries is
 /// dropped, but for the key a `missing field` or an unknown key names.
 const READ_FLATTENED: &str = "static Read _readFlattened<Read>(Read Function() read) { try { \
      return read(); } on FormatException catch (refused) { final at = refused.source; if (at is! \
@@ -4890,7 +4891,7 @@ fn tagged_variant_tokens(
                 "{subclass_name}{generic_params}.fromJsonUnjudged({payload_expr}{fa})",
                 fa = codec.from_json_args,
             );
-            (class_text, from_json)
+            (class_text, read_in_place(shape, from_json))
         }
         VariantPayload::Value(field_def) => {
             // serde hands a slot beside its tag the object without the tag.
@@ -4924,6 +4925,30 @@ fn tagged_variant_tokens(
                 format!("{subclass_name}{generic_params}({decode})"),
             )
         }
+    }
+}
+
+/// The helper an internally tagged enum with a braced variant holds, ahead of a space.
+fn read_helper_of_an_enum(item_enum: &ItemEnum, shape: &TagShape<'_>) -> String {
+    if shape.merge_tag_into_object
+        && item_enum
+            .variants
+            .iter()
+            .any(|variant| matches!(variant.fields, Fields::Named(_)))
+    {
+        format!(" {READ_FLATTENED}")
+    } else {
+        String::new()
+    }
+}
+
+/// `read`, the read of a braced variant, through the helper of its enum where the enum is
+/// internally tagged: serde reads such a variant from the keys its enum buffers.
+fn read_in_place(shape: &TagShape<'_>, read: String) -> String {
+    if shape.merge_tag_into_object {
+        format!("_readFlattened(() => {read})")
+    } else {
+        read
     }
 }
 
@@ -5151,8 +5176,9 @@ fn tagged_enum_dart_source(
         called,
     );
 
+    let helper = read_helper_of_an_enum(item_enum, &shape);
     let base = format!(
-        "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads} \
+        "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads}{helper} \
          dynamic toJson({tp}); {VALIDATE_DECLARED} }}",
         tp = codec.to_json_params,
     );

@@ -669,10 +669,10 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
         &format!(
             "{}{{ final json = unwrapped(payload) as Map<String, dynamic>; final tag = \
              _readAt(json, 'kind', () => json['kind'] as String); switch (tag) {{ case 'Air': \
-             return ShipmentAir.fromJsonUnjudged(json); case 'Boxed': return \
+             return _readFlattened(() => ShipmentAir.fromJsonUnjudged(json)); case 'Boxed': return \
              ShipmentBoxed(Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('kind'))))); \
              case 'Ground': return ShipmentGround(); default: throw FormatException('Unknown \
-             Shipment: ' + tag); }} }} {READ_AT} dynamic toJson();",
+             Shipment: ' + tag); }} }} {READ_AT} {READ_FLATTENED} dynamic toJson();",
             plain_pair("Shipment", "dynamic", "payload")
         ),
     );

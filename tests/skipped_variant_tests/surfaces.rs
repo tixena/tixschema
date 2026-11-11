@@ -44,7 +44,7 @@ export function Berthage$Variant(value: unknown): string {
 const BERTHAGE_ZOD: &str = r#"const Berthage$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
   kind: z.literal("Open"),
   note: z.string(),
-})]);
+}).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })]);
 
 export const Berthage$Schema: ZodType<Berthage> = Berthage$RawSchema.meta({
   examples: []

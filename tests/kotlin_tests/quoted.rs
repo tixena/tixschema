@@ -75,7 +75,7 @@ fn an_enums_names_are_escaped_in_its_kotlin_text() {
             r#"@SerialName("He\"ld") @Serializable data class LeviedHeld("#,
             r#"@SerialName("Calm\\") @Serializable data object LeviedStill : Levied"#,
             r#"put("ki'nd", "He\"ld")"#,
-            r#""Bid\$Ask" -> kotlinSchemaInner(input.json, "", serializer<LeviedBid>(), JsonObject(obj - "ki'nd"))"#,
+            r#""Bid\$Ask" -> kotlinSchemaFlattened { kotlinSchemaInner(input.json, "", serializer<LeviedBid>(), JsonObject(obj - "ki'nd")) }"#,
         ],
     );
     holds_each(

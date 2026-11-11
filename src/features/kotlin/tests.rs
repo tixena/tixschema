@@ -8,7 +8,7 @@ mod texts;
 
 use proc_macro2::{Span, TokenTree};
 
-use super::read::{DECODED, INNER};
+use super::read::{DECODED, FLATTENED, INNER};
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -1186,8 +1186,8 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     };
     let rest = |variant: &str| {
         format!(
-            "\"{variant}\" -> kotlinSchemaInner(input.json, \"\", serializer<Lift{variant}>(), \
-             JsonObject(obj - \"kind\"))"
+            "\"{variant}\" -> kotlinSchemaFlattened {{ kotlinSchemaInner(input.json, \"\", \
+             serializer<Lift{variant}>(), JsonObject(obj - \"kind\")) }}"
         )
     };
     assert_eq!(
@@ -1208,7 +1208,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              SerialDescriptor = buildClassSerialDescriptor(\"Lift\"); override fun \
              serialize(encoder: Encoder, value: Lift) {{ val output = encoder as JsonEncoder; \
              output.encodeJsonElement(when (value) {{ {}; is LiftHeld -> buildJsonObject {{ \
-             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}override fun \
+             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}{FLATTENED}override fun \
              deserialize(decoder: Decoder): Lift {{ val input = decoder as JsonDecoder; val \
              element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj = \
              element.let {{ it as? JsonObject ?: throw SerializationException(\"expected an \

@@ -484,19 +484,23 @@ const WRITTEN_AS_OBJECT: &str = "a JSON object";
 #[cfg(feature = "zod")]
 const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform(() => ({}))";
 
-/// The check a flattened member joins its holder through. serde reads such a member from the keys
-/// its holder buffers and names the holder for a value inside it of the wrong type, so a type
-/// refusal moves to the holder's place; a missing key, an unknown key and a broken bound stay where
-/// Zod puts them.
+/// The check a flattened member, and a braced variant of an internally tagged enum, is read
+/// through. serde reads such a value from the keys its holder buffers: it names the holder for a
+/// value inside it of the wrong type and for a number beyond its width, and the holder with the
+/// key alone for a key missing below the value's own keys. A missing key of its own, an unknown key
+/// and a broken bound stay where Zod puts them. A width is a bound that carries no message of its
+/// own.
 #[cfg(feature = "zod")]
 const ZOD_AT_THE_HOLDER: &str = ".superRefine((_read, ctx) => { ctx.issues.splice(0, \
      ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last \
      = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above \
      = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, \
      step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" \
-     && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && \
-     [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, \
-     path: [] } : issue; })); }, { when: () => true })";
+     && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = \
+     [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code); const width = \
+     [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; \
+     if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || \
+     (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })";
 
 /// A name a Cargo feature of this crate reads: the feature, what the name is read as under it, and
 /// the fewest type arguments it is read with.
@@ -13841,7 +13845,16 @@ fn render_internal_variant(
             .collect();
         #[cfg(feature = "zod")]
         let zod = variant_flatten_zod(
-            &format!("{}({})", zod_own_object(), parts.schema_code),
+            &format!(
+                "{}({}){}",
+                zod_own_object(),
+                parts.schema_code,
+                if matches!(variant.kind, VariantKind::Named) {
+                    ZOD_AT_THE_HOLDER
+                } else {
+                    ""
+                }
+            ),
             &own_keys,
             &variant.flattened_fields,
         );

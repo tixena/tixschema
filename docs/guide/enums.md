@@ -208,6 +208,8 @@ Add `#[serde(tag = "...", content = "...")]` to get the adjacently tagged `{ typ
 
 An enum that names `tag` but no `content` is internally tagged: there is no key for a variant's data, so Serde writes it as members of the object the tag is written in. A struct variant's fields sit beside the tag, and so do the members of a newtype variant's inner type -- which the surfaces describe as an intersection, the same composition `#[serde(flatten)]` uses.
 
+serde reads a struct variant from the keys the enum buffers, so a value inside it of the wrong type is refused at the enum, as it is inside a flattened member: with `#[serde(tag = "kind")] pub enum Turn { Half { #[model_schema_prop(maximum = 100)] arc: u32 } }` held under `turn`, `{"turn":{"kind":"Half","arc":"x"}}` is refused at `turn` on every surface -- the variant's object in the Zod union ends on the check a flattened member is read through, and the Dart, Kotlin and Swift reads place the refusal at the enum. A missing key (`{"turn":{"kind":"Half"}}` at `turn.arc`), an unknown key and a value outside a declared bound (`"arc":101` at `turn.arc`) keep their place, and the union stays a `z.discriminatedUnion`.
+
 A variant carrying nothing is the tag alone, `{"type":"Bare"}`, and an enum whose variants are *all* unit variants is written that way throughout -- one object per variant, each holding only the tag. That is the shape of a service's error code, and it is described as the tagged object union it is written as, never as the bare string union the same variants would publish with no `tag` named.
 
 ```rust

@@ -3512,6 +3512,19 @@ fn slot_read(
     )
 }
 
+/// `read`, the read of a braced variant under a tag alone, through the refusal that names its enum:
+/// serde reads such a variant from the keys its enum buffers.
+fn buffered_read(tagging: Tagging<'_>, payload: &VariantPayload, read: String) -> String {
+    if matches!(
+        (tagging, payload),
+        (Tagging::Unwrapped, VariantPayload::Named(_))
+    ) {
+        read::flattened(&read)
+    } else {
+        read
+    }
+}
+
 /// `read`, a variant's read of what its enum hands it, under the variant's step: serde names the
 /// variant's entry, or the content key, ahead of what it refuses below.
 fn under_variant_step(tagging: Tagging<'_>, read: String) -> String {
@@ -3739,7 +3752,8 @@ fn dispatched_tagged_variant(
             ),
         ),
     };
-    let decode_expr = under_variant_step(ctx.tagging, read_expr);
+    let decode_expr =
+        under_variant_step(ctx.tagging, buffered_read(ctx.tagging, &payload, read_expr));
 
     let (key, tag) = (kotlin_quoted(tag_key), kotlin_quoted(&wire_tag));
     let serialize_arm = match (ctx.tagging, &content_expr) {

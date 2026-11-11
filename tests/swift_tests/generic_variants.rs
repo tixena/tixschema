@@ -156,7 +156,7 @@ fn the_struct_of_a_variant_declares_the_parameter_its_members_name() {
             "public enum Hold<Stowed: Codable & Sendable>: Codable, Sendable { \
              case closed(HoldClosedPayload); case empty; \
              case kegged(HoldKeggedPayload<Stowed>); case laden(HoldLadenPayload<Stowed>); ",
-            "case \"Kegged\": self = .kegged(try HoldKeggedPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); case \"Laden\": self = .laden(try HoldLadenPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])); ",
+            "case \"Kegged\": do { self = .kegged(try HoldKeggedPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; case \"Laden\": do { self = .laden(try HoldLadenPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
         ],
     );
 }
@@ -168,8 +168,8 @@ fn the_struct_of_a_variant_whose_members_name_no_parameter_declares_none() {
         &swift,
         &[
             "public struct HoldClosedPayload: Codable, Sendable { public let deck: UInt32; ",
-            "case \"Closed\": self = .closed(try HoldClosedPayload(swiftSchemaUnjudged: decoder, \
-             swiftSchemaWithout: taken + [\"kind\"])); ",
+            "case \"Closed\": do { self = .closed(try HoldClosedPayload(swiftSchemaUnjudged: \
+             decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
         ],
     );
 }

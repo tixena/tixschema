@@ -49,9 +49,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let careening = careening_kotlin::kotlin_definition();
     for held in [
         format!(
-            "\"Berth\", \"Pier\" -> kotlinSchemaInner(input.json, \"\", \
+            "\"Berth\", \"Pier\" -> kotlinSchemaFlattened {{ kotlinSchemaInner(input.json, \"\", \
              serializer<CareeningBerth>(), \
-             JsonObject(obj - \"kind\").{NAME_AS_LABEL});"
+             JsonObject(obj - \"kind\").{NAME_AS_LABEL}) }};"
         ),
         "\"Calm\", \"Still\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
          \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \

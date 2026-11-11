@@ -4769,10 +4769,13 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 source: &source,
                 stem: swift_bare(&case_name),
             };
-            let read = payload.read(
-                &from,
-                &|held| format!("self = .{case_name}({held})"),
-                &mut twins,
+            let read = buffered_read(
+                variant,
+                payload.read(
+                    &from,
+                    &|held| format!("self = .{case_name}({held})"),
+                    &mut twins,
+                ),
             );
             let beside =
                 refused_in_its_arm(variant, payload.keys.as_deref(), tag_key, args.preprocess);
@@ -4797,10 +4800,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             encode_arms.push_str(&tagged_encode_arm(&case_name, &wire_tag, None));
         }
     }
-    let tag_coding_key = format!(
-        "private enum SwiftSchemaTagCodingKeys: String, CodingKey {{ case swiftSchemaTag = {} }};",
-        swift_quoted(tag_key)
-    );
+    let tag_coding_key = tag_coding_keys(tag_key);
     let reads = read::both(
         &format!(
             "let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); \
@@ -4827,6 +4827,24 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
+}
+
+/// The coding keys an internally tagged enum reads its tag through.
+fn tag_coding_keys(tag_key: &str) -> String {
+    format!(
+        "private enum SwiftSchemaTagCodingKeys: String, CodingKey {{ case swiftSchemaTag = {} }};",
+        swift_quoted(tag_key)
+    )
+}
+
+/// `read`, the read of a variant under a tag alone, through the refusal that names its enum where
+/// the variant is braced: serde reads such a variant from the keys its enum buffers.
+fn buffered_read(variant: &Variant, read: String) -> String {
+    if matches!(variant.fields, Fields::Named(_)) {
+        read::flattened(&read)
+    } else {
+        read
+    }
 }
 
 /// The arm that reads a unit variant under a tag and a content key from an object with no content

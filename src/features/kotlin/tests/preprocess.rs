@@ -690,8 +690,8 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
         "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, \
          unwrapped(JsonObject(obj - \"kind\")), \"Boxed\", \"\")); "
             .to_owned(),
-        "\"Loose\" -> kotlinSchemaInner(input.json, \"\", serializer<LiftLoose>(), JsonObject(obj \
-         - \"kind\")) else -> "
+        "\"Loose\" -> kotlinSchemaFlattened { kotlinSchemaInner(input.json, \"\", \
+         serializer<LiftLoose>(), JsonObject(obj - \"kind\")) } else -> "
             .to_owned(),
         "data class LiftLoose(@Serializable(with = LiftLooseLabelPreprocess::class) val label: \
          String) : Lift {"

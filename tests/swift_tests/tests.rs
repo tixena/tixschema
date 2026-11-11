@@ -280,7 +280,7 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
         "got: {swift}"
     );
     assert!(swift.contains(
-        "case \"Foo\": self = .foo(try InternalTaggedFooPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"type\"]))"
+        "case \"Foo\": do { self = .foo(try InternalTaggedFooPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"type\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }"
     ));
     assert!(
         swift.contains("case \"Reset\": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"type\" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self = .reset"),
