@@ -312,7 +312,9 @@ fn the_tuple_and_the_map_of_a_field_declare_the_parameter_they_reach() {
             "public struct StackByNumberKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
              public var storage: [UInt32: Stowed]; ",
             "public init(storage: [UInt32: Stowed]) { self.storage = storage }; ",
-            "result[key] = try container.decode(Stowed.self, forKey: codingKey) }; ",
+            "result[key] = try Self.swiftSchemaFitted({ try container.decode(Stowed.self, forKey: \
+             codingKey) }, again: { _ = try container.decode(SwiftSchemaFit<Stowed>.self, forKey: \
+             codingKey) }) }; ",
             "public struct StackListedKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
              public var storage: [UInt32: Stowed]; ",
             "public struct StackByCaskKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \

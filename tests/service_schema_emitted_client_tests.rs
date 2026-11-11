@@ -385,6 +385,29 @@ mod held_maps;
 #[path = "service_schema_emitted_client_tests/run_swift_held_maps.rs"]
 mod run_swift_held_maps;
 
+/// The models a type parameter is read on, filled with a fixed-width integer, a wide integer and a
+/// model, in each place a type holds one.
+#[cfg(all(test, feature = "swift"))]
+#[path = "swift_tests/fitted_parameters_models.rs"]
+mod fitted_parameters_models;
+
+/// What the Swift emitter writes into a type whose reads read a fixed-width integer.
+#[cfg(all(test, feature = "swift"))]
+#[path = "support/swift_fitted.rs"]
+mod swift_fitted;
+
+/// What the Swift backend reads a type parameter through.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/fitted_parameters.rs"]
+mod fitted_parameters;
+
+/// A type parameter filled with a fixed-width integer that does not fit, refused by the emitted
+/// Swift types where serde refuses it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_fitted_parameters.rs"]
+mod run_swift_fitted_parameters;
+
 /// The models a tuple struct that declares one slot is written on.
 #[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]
