@@ -2884,23 +2884,25 @@ pub fn zod_one_key_union(union: &str) -> String {
 /// `record`, a map keyed by `number`, behind the check that reads each key as serde reads the text
 /// between its quotes. A key serde refuses as text that is not the document is refused in its
 /// words, marked `undeserializable`; a float for an integer key at the map, and an integer beyond
-/// its type under the number, as the Rust dispatcher names each.
+/// its type under the number, as the Rust dispatcher names each. Each refusal is marked
+/// `numberKey`, which an `mcp` server reads apart.
 #[cfg(feature = "zod")]
 fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
     let marked = |said: &str| {
         format!(
             "ctx.issues.push({{ code: \"custom\", message: {said}, input: text, params: {{ \
-             undeserializable: true }} }}); return; "
+             undeserializable: true, numberKey: true }} }}); return; "
         )
     };
     let expected = number.expected;
     let integer = number.range.map_or_else(String::new, |(least, most)| {
         format!(
             "if (float) {{ ctx.issues.push({{ code: \"custom\", message: \"invalid type: floating \
-             point `\" + number + \"`, expected {expected}\", input: text }}); return; }} if \
-             (BigInt(number) < {least}n || BigInt(number) > {most}n) {{ ctx.issues.push({{ code: \
-             \"custom\", message: \"invalid value: integer `\" + number + \"`, expected \
-             {expected}\", input: text, path: [number] }}); return; }} "
+             point `\" + number + \"`, expected {expected}\", input: text, params: {{ numberKey: \
+             true }} }}); return; }} if (BigInt(number) < {least}n || BigInt(number) > {most}n) {{ \
+             ctx.issues.push({{ code: \"custom\", message: \"invalid value: integer `\" + number + \
+             \"`, expected {expected}\", input: text, path: [number], params: {{ numberKey: true }} \
+             }}); return; }} "
         )
     });
     format!(

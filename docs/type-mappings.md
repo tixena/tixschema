@@ -97,7 +97,10 @@ between its quotes ahead of the record (`zod_number_keys_read`), which Zod would
 after it. A key serde classifies as text that is not the document, ``invalid value: expected key
 to be a number in quotes``, ``invalid number``, ``number out of range`` or ``expected `"` ``, is a
 `custom` issue of those words marked `params.undeserializable`; a float for a key of an integer
-type an issue at the map, and an integer beyond the type one under the number. Every client reads
+type an issue at the map, and an integer beyond the type one under the number. Each is marked
+`params.numberKey` as well: the TypeScript `mcp` server, which reads the arguments as serde reads
+them out of a value, answers a marked key serde classifies as text that is not the document as
+`undeserializable-payload` and any other marked key as `failed-validation`. Every client reads
 a key by the same grammar (`number_key_read` in Dart, `kotlinSchemaKeyNumber` in Kotlin,
 `swiftSchemaKeyNumber` in Swift), and `run_carillon.rs` holds each answer to the Rust
 dispatcher's.
