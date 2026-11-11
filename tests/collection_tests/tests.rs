@@ -1241,7 +1241,9 @@ fn test_comprehensive_hashmap_typescript_generation() {
     assert!(zod_schema.contains("string_value: z.record(z.string(), z.string())"));
     assert!(zod_schema.contains(&format!("u64_value: z.record(z.string(), {I64_ZOD})")));
     assert!(zod_schema.contains(&format!("i64_value: z.record(z.string(), {I64_ZOD})")));
-    assert!(zod_schema.contains("f64_value: z.record(z.string(), z.number())"));
+    assert!(zod_schema.contains(
+        "f64_value: z.record(z.string(), z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()))"
+    ));
     assert!(zod_schema.contains("bool_value: z.record(z.string(), z.boolean())"));
 
     assert!(zod_schema.contains("string_array: z.record(z.string(), z.array(z.string()))"));
@@ -1251,7 +1253,9 @@ fn test_comprehensive_hashmap_typescript_generation() {
     assert!(zod_schema.contains(&format!(
         "i64_array: z.record(z.string(), z.array({I64_ZOD}))"
     )));
-    assert!(zod_schema.contains("f64_array: z.record(z.string(), z.array(z.number()))"));
+    assert!(zod_schema.contains(
+        "f64_array: z.record(z.string(), z.array(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))"
+    ));
     assert!(zod_schema.contains("bool_array: z.record(z.string(), z.array(z.boolean()))"));
 
     // An `Option` map value is null-flavored, not undefined-flavored: the entry it sits in cannot
@@ -3600,7 +3604,9 @@ fn test_set_element_zod_generation() {
         ),
         format!("labels: z.array(z.string()){REPEAT_CHECK},"),
         // The preprocess wrap belongs once, outside the array — where the `Vec` spelling puts it.
-        format!("preprocessed_labels: z.preprocess(trim, z.array(z.string()){REPEAT_CHECK}),"),
+        format!(
+            "preprocessed_labels: z.preprocess(function unboxed(held) {{ if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : {{ ...held }}; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }}, z.preprocess(trim, z.array(z.string()){REPEAT_CHECK})),"
+        ),
         format!("sibling_tags: z.array(MetricTag$Schema){REPEAT_CHECK},"),
         format!("small_ids: z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK},"),
     ] {

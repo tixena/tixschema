@@ -47,7 +47,11 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let headered = declares_header_in(service);
-    let mut published = vec![heartbeat_class(&named), transport_class(&named, headered)];
+    let mut published = vec![
+        heartbeat_class(&named),
+        transport_class(&named, headered),
+        held_fn(&fn_prefix),
+    ];
     if has_one_way(service) {
         published.push(refusal_class(&named));
     }
@@ -98,6 +102,17 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// The reviver every text a frame or an `mcp` message is read from passes `jsonDecode`: it refuses
+/// the infinity `jsonDecode` reads a number beyond a `double` as, since serde reads no text that
+/// holds one.
+fn held_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// Each value as `jsonDecode` reads it, but for the infinity it reads a number beyond a `double` as: serde reads no text that holds one.\n\
+         Object? _{fn_prefix}WsHeld(Object? key, Object? value) =>\n    \
+         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;"
+    )
 }
 
 /// The function that answers the field a fault names for a value a read refused, as the Rust
@@ -300,6 +315,7 @@ fn signed_zeros_fn() -> String {
 
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
+    let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
     let signed_zeros = signed_zeros_fn();
     format!(
         "/// Writes one frame straight onto the sink.\n  \
@@ -312,15 +328,11 @@ fn transport_class_rest(named: &str) -> String {
          /// exposes the same shape, so an attachment for any service sharing this connection\n  \
          /// reaches it here rather than through a transport type of its own.\n  \
          {FRAMES_RECORD_TYPE} get frames => (inbound: _controller.stream, send: send);\n\n  \
-         /// Each value of a frame as `jsonDecode` reads it, but for the infinity it reads a number\n  \
-         /// beyond a `double` as: serde reads no frame that holds one, and neither does this.\n  \
-         static Object? _held(Object? key, Object? value) =>\n      \
-         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n  \
          {signed_zeros}\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(_signedZeros(raw as String), reviver: _held) as Map<String, dynamic>;\n    \
+         frame = jsonDecode(_signedZeros(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \
@@ -586,6 +598,14 @@ fn refused_fault(fn_prefix: &str, wire: &str) -> String {
     format!("_{fn_prefix}WsRefused({wire}, rejected)")
 }
 
+/// The fault a client answers for the value of `header` its read refused, naming the header.
+pub(super) fn header_refused_fault(fn_prefix: &str, wire: &str, header: &str) -> String {
+    format!(
+        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {})",
+        quoted(header)
+    )
+}
+
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
 /// `margin` is the leading whitespace, since the two call sites nest at different depths.
 fn header_value_decode_stmts(
@@ -608,6 +628,7 @@ fn header_value_decode_stmts(
         let local = format!("{local_prefix}{index}");
         let dart_ty = dart_type_of(ty);
         let decode = dart_json_decode(ty, &format!("{headers_expr}?[{name}]"));
+        let refused = header_refused_fault(fn_prefix, wire, header);
         let _ = write!(
             stmt,
             "{margin}late final {dart_ty} {local};\n\
@@ -615,7 +636,7 @@ fn header_value_decode_stmts(
              {margin}  {local} = {decode};\n\
              {margin}}} catch (rejected) {{\n\
              {margin}  return {result}Fault(\n\
-             {margin}    _{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {name}),\n\
+             {margin}    {refused},\n\
              {margin}  );\n\
              {margin}}}\n"
         );

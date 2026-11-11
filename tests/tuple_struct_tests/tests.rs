@@ -483,7 +483,7 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
     for (zod, binding) in [
         (
             PreprocessedSlot::zod_schema(),
-            "const PreprocessedSlot$RawSchema = z.preprocess(trim, z.string());",
+            "const PreprocessedSlot$RawSchema = z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trim, z.string()));",
         ),
         (
             LiteralSlot::zod_schema(),

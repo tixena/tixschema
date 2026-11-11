@@ -87,7 +87,7 @@ fn zod_joins_the_variants_by_their_literal_exactly_where_the_rule_holds() {
 fn a_flattened_discriminated_union_is_one_operand() {
     let written = Kind::zod_schema();
     assert!(
-        written.contains(".and(z.lazy(() => Calculation$Schema))") && !written.contains("path"),
+        written.contains(".and(z.lazy(() => Calculation$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))") && !written.contains("path: z."),
         "Kind is written as:\n{written}"
     );
 }
@@ -98,7 +98,7 @@ fn a_flattened_discriminated_union_is_one_operand() {
 fn a_flattened_alias_of_a_discriminated_union_is_one_operand() {
     let written = AliasedPanel::zod_schema();
     assert!(
-        !written.contains("path"),
+        !written.contains("path: z."),
         "AliasedPanel is written as:\n{written}"
     );
 }

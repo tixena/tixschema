@@ -2160,6 +2160,7 @@ mod published_structs;
 #[cfg(test)]
 mod published {
     built_and_read_back!(
+        carillon_mcp_dispatcher,
         mcp_asking_dispatcher,
         mcp_bare_dispatcher,
         mcp_depot_dispatcher,
@@ -2226,6 +2227,72 @@ use carillon_service::CarillonServiceSchema;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_carillon.rs"]
 mod run_carillon;
+
+/// `SoundingService`, whose message holds an integer and a float of each width the reader tells
+/// apart, and the TypeScript surfaces handed a number written with a fraction or an exponent in
+/// each, measured against its Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_node_integral_floats.rs"]
+mod run_node_integral_floats;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/sounding_ws_rpc_transport.rs"]
+mod sounding_ws_rpc_transport;
+
+#[cfg(test)]
+use run_node_integral_floats::{SoundingService, sounding_service_schema};
+
+/// `CarillonMcpService`, whose first tool takes the message of `CarillonService` and whose second
+/// answers a bell beside a header, and what its Rust dispatcher and client answer to a value of
+/// the wrong kind, to what is no document and to a header that holds no number.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_service.rs"]
+mod carillon_mcp_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_dispatcher.rs"]
+mod carillon_mcp_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_client.rs"]
+mod carillon_mcp_client;
+
+#[cfg(test)]
+use carillon_mcp_service::{
+    CarillonMcpService, CarillonMcpServiceSchema, carillon_mcp_service_schema,
+};
+
+/// The emitted TypeScript, Dart and Kotlin `mcp` servers and the TypeScript, Dart, Kotlin and
+/// Swift `mcp` clients of `CarillonMcpService`, measured against it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_carillon_mcp.rs"]
+mod run_carillon_mcp;
+
+/// `CarillonLedgerMcpService`, whose one tool takes a ledger that holds a `u64`, which a build
+/// with `swift` or `kotlin` refuses, and what the emitted TypeScript `mcp` server writes of it.
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_ledger_mcp_service.rs"]
+mod carillon_ledger_mcp_service;
+
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/carillon_ledger_mcp_dispatcher.rs"]
+mod carillon_ledger_mcp_dispatcher;
+
+#[cfg(all(test, not(any(feature = "swift", feature = "kotlin"))))]
+use carillon_ledger_mcp_service::{
+    CarillonLedgerMcpService, CarillonLedgerMcpServiceSchema, carillon_ledger_mcp_service_schema,
+};
+
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+mod published_ledger {
+    built_and_read_back!(carillon_ledger_mcp_dispatcher);
+}
 
 /// Structs that hold no key on the wire, strict and `nonstrict`.
 #[cfg(test)]

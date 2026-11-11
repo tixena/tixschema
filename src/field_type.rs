@@ -77,6 +77,36 @@ const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 #[cfg(any(feature = "zod", feature = "dart"))]
 pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
 
+/// The check a union of objects of one key each, an externally tagged enum's and a `Result`'s,
+/// refuses an object of one key through: by the refusal of the arm that key names, at its own
+/// place, as serde names a value inside the variant it reads. An object whose key no arm names
+/// keeps the union's refusal. The arm's issues are final, and written back without their input.
+#[cfg(feature = "zod")]
+pub const ZOD_NAMED_ARM: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const \
+     keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? \
+     Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \
+     \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const \
+     arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) \
+     => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) \
+     ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: \
+     () => true })";
+
+/// What a float's schema reads a number through. The service code reads a number written with a
+/// fraction or an exponent whose value is an integer as a `Number` object, which no integer's
+/// schema reads, as serde reads such a number as a float; a float's schema reads it as its number.
+#[cfg(feature = "zod")]
+const ZOD_FLOATED: &str = "(held) => (held instanceof Number ? held.valueOf() : held)";
+
+/// What a value is handed to a `preprocess` function through: each `Number` object the service
+/// code reads a number written with a fraction or an exponent as, at any depth of a list or a plain
+/// object, read back to its number, so the function is handed what `JSON.parse` reads.
+#[cfg(feature = "zod")]
+pub const ZOD_UNBOXED: &str = "function unboxed(held) { if (held instanceof Number) return \
+     held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && \
+     Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = \
+     Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of \
+     Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }";
+
 /// What `serde_json` says of a `Result` written as an object of other than one key: a refusal it
 /// classifies as text that is not the document.
 #[cfg(any(
@@ -1975,7 +2005,7 @@ impl FieldDef {
                      ctx.value !== null && !Array.isArray(ctx.value) && \
                      Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", \
                      message: \"{EXPECTED_VALUE}\", input: ctx.value, params: {{ \
-                     undeserializable: true }} }}); }}).pipe(z.union([{}]))",
+                     undeserializable: true }} }}); }}).pipe(z.union([{}]){ZOD_NAMED_ARM})",
                     arms.join(", ")
                 )
             }
@@ -2018,7 +2048,7 @@ impl FieldDef {
             FieldDefType::String => self.zod_string_type(),
             FieldDefType::StringLiteral(literal) => self.zod_literal(&ts_quoted(literal)),
             FieldDefType::BooleanLiteral(value) => self.zod_literal(&value.to_string()),
-            FieldDefType::NumberLiteral(value) => self.zod_literal(&format_number_literal(*value)),
+            FieldDefType::NumberLiteral(value) => self.zod_number_literal(*value),
             FieldDefType::U8
             | FieldDefType::U16
             | FieldDefType::U32
@@ -2030,11 +2060,14 @@ impl FieldDef {
             FieldDefType::U64 | FieldDefType::I64 => self.zod_bigint_type(),
             // serde reads an `f32` beyond its range as an infinity of its sign.
             FieldDefType::F32 => format!(
-                "{}.transform((read) => Math.abs(read) < {F32_READ_BOUND} ? read : read < 0 ? \
-                 -Infinity : Infinity)",
+                "z.preprocess({ZOD_FLOATED}, {}.transform((read) => Math.abs(read) < \
+                 {F32_READ_BOUND} ? read : read < 0 ? -Infinity : Infinity))",
                 self.zod_number_type("z.number()")
             ),
-            FieldDefType::F64 => self.zod_number_type("z.number()"),
+            FieldDefType::F64 => format!(
+                "z.preprocess({ZOD_FLOATED}, {})",
+                self.zod_number_type("z.number()")
+            ),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_zod_schema(),
             #[cfg(feature = "chrono")]
@@ -2481,6 +2514,17 @@ impl FieldDef {
         matches!(&self.field_type, FieldDefType::SiblingType(name, _) if names_a_zod_preprocess(name))
     }
 
+    /// [`Self::zod_literal`] of the number `value`, ending on [`zod_boxed_literal`].
+    #[cfg(feature = "zod")]
+    fn zod_number_literal(&self, value: f64) -> String {
+        let written = format_number_literal(value);
+        format!(
+            "{}{}",
+            self.zod_literal(&written),
+            zod_boxed_literal(&written)
+        )
+    }
+
     /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
     /// min/max constraints. A side of the range a declared bound narrows is left to the bound.
     #[cfg(feature = "zod")]
@@ -2761,14 +2805,32 @@ fn range_object(kind: RangeKind, member: impl Fn(&str) -> String, separator: &st
     format!("{{ {} }}", members.join(separator))
 }
 
+/// The check a numeric literal reads the `Number` object the service code reads a number written
+/// with a fraction or an exponent as: a literal whose value it holds reads as the literal, as serde
+/// reads `2.0` for an `f64` held to `2`. The literal stays a `z.literal`, which a
+/// `z.discriminatedUnion` reads its values off.
+#[cfg(feature = "zod")]
+fn zod_boxed_literal(written: &str) -> String {
+    format!(
+        ".check(z.superRefine((_read, ctx) => {{ ctx.value = {written}; ctx.issues.splice(0, \
+         ctx.issues.length, ...ctx.issues.filter((issue) => issue.code !== \"invalid_value\")); }}, {{ \
+         when: (payload) => payload.value instanceof Number && payload.value.valueOf() === {written} \
+         }}))"
+    )
+}
+
 /// `schema` inside one `z.preprocess(fn, …)` per function named, the first one written outermost,
-/// so each is handed the answer of the one before it. A field's schema and a type's own
-/// expression are both wrapped here.
+/// so each is handed the answer of the one before it, and the first handed the value through
+/// [`ZOD_UNBOXED`]. A field's schema and a type's own expression are both wrapped here.
 #[cfg(feature = "zod")]
 pub fn zod_preprocess_wrap(schema: String, functions: &[FunctionName]) -> String {
-    functions.iter().rev().fold(schema, |wrapped, function| {
+    if functions.is_empty() {
+        return schema;
+    }
+    let wrapped = functions.iter().rev().fold(schema, |wrapped, function| {
         format!("z.preprocess({}, {wrapped})", function.name)
-    })
+    });
+    format!("z.preprocess({ZOD_UNBOXED}, {wrapped})")
 }
 
 /// `schema` with one `.check(…)` per function named, in the order written. Each hands its

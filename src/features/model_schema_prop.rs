@@ -179,7 +179,8 @@ impl LiteralValue {
 ///   payload before the field is read from it, in the order written, each over the answer of the
 ///   one before. Every Rust read of the type calls the snake case of each name over a
 ///   `serde_json::Value`, and the Zod schema nests them, the first outermost:
-///   `z.preprocess(fn1, z.preprocess(fn2, innerSchema))`.
+///   `z.preprocess(unboxed, z.preprocess(fn1, z.preprocess(fn2, innerSchema)))`, `unboxed` handing
+///   `fn1` each number as a `number`.
 ///
 /// ## Checks
 ///

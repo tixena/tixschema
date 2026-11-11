@@ -19,39 +19,39 @@ fn the_wrap_opens_the_expression_of_every_shape() {
     for (schema, opens) in [
         (
             ClosedDock::zod_schema(),
-            "z.preprocess(unwrapped, z.strictObject({\n}))",
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.strictObject({\n})))",
         ),
         (
             Stack::zod_schema(),
-            "z.preprocess(unwrapped, z.tuple([z.array(z.string()), z.number().int().min(0).max(4294967295)]))",
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.tuple([z.array(z.string()), z.number().int().min(0).max(4294967295)])))",
         ),
         (
             Parcel::zod_schema(),
-            "z.preprocess(withoutFragile, z.strictObject({\n",
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(withoutFragile, z.strictObject({\n",
         ),
         (
             Shipment::zod_schema(),
-            "z.preprocess(unwrapped, z.discriminatedUnion(",
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion(",
         ),
         (
             Handover::zod_schema(),
-            "z.preprocess(unwrapped, z.discriminatedUnion(",
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion(",
         ),
         (
             Transfer::zod_schema(),
             if cfg!(feature = "serde") {
-                "z.preprocess(unwrapped, z.union([z.literal(\"Held\"), "
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.union([z.literal(\"Held\"), "
             } else {
-                "z.preprocess(unwrapped, z.discriminatedUnion("
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion("
             },
         ),
         (
             Reference::zod_schema(),
             if cfg!(feature = "serde") {
-                "z.preprocess(unwrapped, z.union([z.strictObject({ name: z.string(), }), \
-                 z.number().int().min(0).max(4294967295)]))"
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.union([z.strictObject({ name: z.string(), }), \
+                 z.number().int().min(0).max(4294967295)])))"
             } else {
-                "z.preprocess(unwrapped, z.discriminatedUnion("
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion("
             },
         ),
     ] {
@@ -68,7 +68,7 @@ fn several_functions_nest_in_the_order_written() {
     let schema = Wrapped::zod_schema();
     assert!(
         bound(&schema)
-            .starts_with("z.preprocess(unwrapped, z.preprocess(withoutFragile, z.strictObject({\n"),
+            .starts_with("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.preprocess(withoutFragile, z.strictObject({\n"),
         "got: {schema}"
     );
     assert!(schema.contains("\n})))"), "got: {schema}");
@@ -79,15 +79,15 @@ fn several_functions_nest_in_the_order_written() {
 fn the_wrap_is_inside_the_brand_and_the_meta() {
     let brand = Label::zod_schema();
     let branded = if cfg!(feature = "typescript") {
-        "z.preprocess(unwrapped, z.preprocess(trimmed, z.string())).brand<\"Label\">().meta({\n"
+        "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.preprocess(trimmed, z.string()))).brand<\"Label\">().meta({\n"
     } else {
-        "z.preprocess(unwrapped, z.preprocess(trimmed, z.string())).brand().meta({\n"
+        "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.preprocess(trimmed, z.string()))).brand().meta({\n"
     };
     assert!(bound(&brand).starts_with(branded), "got: {brand}");
     let plain = Grade::zod_schema();
     assert!(
         bound(&plain)
-            .starts_with("z.preprocess(unwrapped, z.enum([\"Express\", \"Standard\"])).meta({\n"),
+            .starts_with("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.enum([\"Express\", \"Standard\"]))).meta({\n"),
         "got: {plain}"
     );
     for schema in [Parcel::zod_schema(), Stack::zod_schema()] {
@@ -103,12 +103,16 @@ fn the_wrap_is_inside_the_builder_of_a_generic_type() {
     let schema = Crate::<String>::zod_schema();
     assert!(
         schema.contains(
-            ") =>\n  z.preprocess(unwrapped, z.strictObject({\n  codes: z.array(codeType),\n  \
-             label: z.string(),\n}));\n"
+            ") =>\n  z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.strictObject({\n  codes: z.array(codeType),\n  \
+             label: z.string(),\n})));\n"
         ),
         "got: {schema}"
     );
-    assert_eq!(schema.matches("z.preprocess(").count(), 1, "got: {schema}");
+    assert_eq!(
+        schema.matches("z.preprocess(unwrapped, ").count(),
+        1,
+        "got: {schema}"
+    );
 }
 
 /// A check is written on the type's own expression, and the wrap around both.
@@ -117,7 +121,7 @@ fn the_wrap_is_around_the_expression_and_its_check() {
     let schema = Weighed::zod_schema();
     assert!(
         bound(&schema).starts_with(
-            "z.preprocess(unwrapped, z.strictObject({\n  grams: z.number().int().min(0).max(4294967295),\n}).check((ctx) \
+            "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.strictObject({\n  grams: z.number().int().min(0).max(4294967295),\n}).check((ctx) \
              => {\n"
         ),
         "got: {schema}"
@@ -136,8 +140,8 @@ fn the_wrap_of_a_field_is_written_as_it_was() {
     let schema = Parcel::zod_schema();
     assert!(
         schema.contains(
-            "  label: z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: \
-             minimum length is 1, got ${String(issue.input).length}` })),\n"
+            "  label: z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: \
+             minimum length is 1, got ${String(issue.input).length}` }))),\n"
         ),
         "got: {schema}"
     );
@@ -162,7 +166,8 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
         for member in ["Carrier$Members[0]", "Carrier$Members[1]"] {
             assert!(
                 routed.contains("Routed$OwnSchema.and(z.lazy(() => z.preprocess((held) => ")
-                    && routed.contains(&format!(".includes(key))) : held, {member})))")),
+                    && routed
+                        .contains(&format!(".includes(key))) : held, {member})).superRefine(")),
                 "got: {routed}"
             );
         }
@@ -172,7 +177,7 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
         );
         let carrier = Carrier::zod_schema();
         assert!(
-            carrier.contains("export const Carrier$Members = [\n  z.preprocess(trimmedPlate, z."),
+            carrier.contains("export const Carrier$Members = [\n  z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trimmedPlate, z."),
             "got: {carrier}"
         );
     }
@@ -189,7 +194,7 @@ fn a_flattened_type_is_handed_the_payload_without_its_holders_keys() {
         pinned.contains(
             ".and(z.lazy(() => z.preprocess((held) => typeof held === \"object\" && held !== null \
              && !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
-             ![\"dock\"].includes(key))) : held, Tagged$Schema)))"
+             ![\"dock\"].includes(key))) : held, Tagged$Schema)).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
         ),
         "got: {pinned}"
     );
