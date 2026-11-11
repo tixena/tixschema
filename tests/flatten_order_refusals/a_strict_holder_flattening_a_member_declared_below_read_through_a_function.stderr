@@ -1,0 +1,6 @@
+error: model_schema: type `Release` flattens `version`, read through `as_written`, whose answer tixschema cannot see, so the other surfaces cannot refuse a key no member declares as serde does. Mark `Release` `#[model_schema(nonstrict)]`, so every surface reads past such a key.
+  --> tests/flatten_order_refusals/a_strict_holder_flattening_a_member_declared_below_read_through_a_function.rs:16:5
+   |
+16 | /     #[serde(flatten, deserialize_with = "as_written")]
+17 | |     pub version: Version,
+   | |________________________^

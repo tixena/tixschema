@@ -349,7 +349,8 @@ the consumer's view; this is what a change has to keep.
   key it does not declare, as serde refuses it, and the read of a member whose keys are there is
   `runCatching { ... }.getOrNull()` (`read_or_judged` for a serializer that judges), so a read
   that throws is `null`. `tests/kotlin_tests/corrected_options_models.rs` holds `Reeved`, `Wormed`
-  and `Moused`, and their `nonstrict` twins `Parcelled`, `Served` and `Marled`, with what serde,
+  and `Moused`, and the second holders of their members, `Parcelled`, `Served` and `Marled`, each
+  `nonstrict`, with what serde,
   TypeScript and Zod read of each payload, which `tests/generic_types_tests/declarations.rs`
   measures, and `run_kotlin_flattened.rs` holds the Kotlin read to Zod's. An optional enum under a tag key the emitter wrote, whose member names no
   function, is looked for by the tag, then the content key, which `enum_kotlin_tokens` records in

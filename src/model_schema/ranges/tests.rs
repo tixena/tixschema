@@ -1763,11 +1763,21 @@ fn a_map_flattened_with_a_key_serde_reads_from_text_builds() {
         "pub struct Unflattened { pub rest: BTreeMap<u32, u8> }",
         "pub struct HeldUnflattened { pub counted: Counted }",
         "pub struct Unread { #[serde(flatten, skip_deserializing)] pub rest: BTreeMap<u32, u8> }",
-        "pub struct ReadByHand { #[serde(flatten, deserialize_with = \"read_lines\")] \
-         pub rest: BTreeMap<u32, u8> }",
     ] {
         assert_eq!(refused(source), NONE, "{source}");
     }
+    // A strict holder of a member read through a function of its author's says `nonstrict`.
+    assert_eq!(
+        refusals(super::super::exec_model_schema(
+            syn::parse_str("nonstrict").unwrap(),
+            syn::parse_str(
+                "#[derive(Serialize, Deserialize)] pub struct ReadByHand { #[serde(flatten, \
+                 deserialize_with = \"read_lines\")] pub rest: BTreeMap<u32, u8> }"
+            )
+            .unwrap(),
+        )),
+        NONE
+    );
     assert_eq!(
         refused_generic("pub struct Keyed<T> { #[serde(flatten)] pub rest: BTreeMap<T, u8> }"),
         NONE

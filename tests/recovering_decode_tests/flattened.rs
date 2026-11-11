@@ -287,7 +287,7 @@ enum Seen {
 }
 
 /// A flattened map read by a hook named like what the walk of a flattened type keeps its keys as.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Marked {
     #[serde(flatten, deserialize_with = "declared")]

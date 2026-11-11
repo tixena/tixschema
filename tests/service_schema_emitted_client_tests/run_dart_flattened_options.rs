@@ -267,9 +267,10 @@ fn rows() -> Vec<Row> {
             .in_dart("refused: type 'Null' is not a subtype of type 'int' in type cast"),
         kinking("kinking refused", KINKING_SHORT),
         tarring("tarring refused", TARRING_SHORT),
-        // Refused by serde, which hands the function none of the struct's keys: `null`, as Zod
-        // reads it.
-        veering("veering absent", LAPPING_ABSENT).in_dart("null {\"note\":\"n\"}"),
+        // Refused by serde, which hands the function none of the struct's keys, and by the Dart
+        // read in its own words.
+        veering("veering absent", LAPPING_ABSENT)
+            .in_dart("refused: type 'Null' is not a subtype of type 'String' in type cast"),
     ]
 }
 
@@ -479,62 +480,14 @@ fn a_flattened_struct_is_read_from_the_whole_object() {
     );
 }
 
-/// A flattened `Option` that names a function is read from what the function answers, in a closure
-/// that answers `null` where that read throws and the object the function is handed holds none of
-/// its struct's keys, or no key at all for an enum, whose keys are not known, and throws again
-/// where it holds one.
-#[test]
-fn a_flattened_option_that_names_a_function_is_tried_on_what_the_function_answers() {
-    let handed = "({...json}..remove('note'))";
-    let tried = |called: &str, read: &str, held: &str| {
-        format!(
-            "switch ({called}({handed})) {{ final corrected => (() {{ try {{ return {read}; }} \
-             catch (_) {{ if ({handed}{held}) rethrow; return null; }} }})() }}"
-        )
-    };
-    let by_label = ".keys.any(const ['label'].contains)";
-    assert_written(
-        &veering_dart::dart_definition(),
-        &format!(
-            "Veering(note: json['note'] as String,tabling: {},);",
-            tried("asGiven", "Tabling.fromJsonUnjudged(corrected)", by_label)
-        ),
-    );
-    assert_written(
-        &reeved_dart::dart_definition(),
-        &format!(
-            "Reeved(note: json['note'] as String,tholepin: {},);",
-            tried("asGiven", "Tholepin.fromJsonUnjudged(corrected)", by_label)
-        ),
-    );
-    assert_written(
-        &wormed_dart::dart_definition(),
-        &format!(
-            "Wormed(note: json['note'] as String,tholepin: {},);",
-            tried("asNull", "Tholepin.fromJsonUnjudged(corrected)", by_label)
-        ),
-    );
-    assert_written(
-        &moused_dart::dart_definition(),
-        &format!(
-            "Moused(frapped: {},note: json['note'] as String,);",
-            tried(
-                "asGiven",
-                "Frapped.fromJsonUnjudged(corrected)",
-                ".isNotEmpty"
-            )
-        ),
-    );
-}
-
 /// A flattened `Option` is `null` where the object holds none of its type's keys, alone in its
 /// holder, beside a member of its holder's own and in a variant under a tag key, as serde reads
 /// it, and a model it holds that breaks its rule refuses the payload in serde's words. Where the
 /// object holds a key its type does not read, a key held as a number or one of two keys, serde
 /// reads `None` and the Dart read refuses the payload, as TypeScript and Zod refuse it, but for a
 /// type whose keys are not known, read as `null` as serde reads it. One that names a function,
-/// handed none of its struct's keys, is `null`, as Zod reads it, where serde refuses what the
-/// function answers. Each holder is written back as serde writes it back.
+/// handed none of its struct's keys, is refused, as serde refuses what the function answers. Each
+/// holder is written back as serde writes it back.
 #[test]
 fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
     let rows = rows();
@@ -721,14 +674,10 @@ fn corrected_definitions() -> Vec<String> {
     ]
 }
 
-/// An optional member that names a function is read from what the function answers, and where
-/// that read throws is `null` where the object the function is handed holds none of its struct's
-/// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
-/// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
-/// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
-/// type the answer does not read and reads `null` as `None`. Beside a `nonstrict` holder it is
-/// `null` exactly where the function answers `null`: each payload of [`OPEN_CORRECTED`] reads as
-/// serde and Zod read it.
+/// Beside a `nonstrict` holder, an optional member that names a function is `null` exactly where
+/// the function answers `null`, and is read from any other answer: each payload of [`CORRECTED`]
+/// and [`OPEN_CORRECTED`] reads as serde and the Zod schema of its holder read it, written back
+/// with its keys sorted.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_dart_as_zod_does() {
     let mut expected = String::new();
@@ -765,6 +714,27 @@ fn an_optional_type_that_names_a_function_reads_in_dart_as_zod_does() {
 /// function answers `null`, and its type from any other answer.
 #[test]
 fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_where_it_answers_no_null() {
+    assert_written(
+        &veering_dart::dart_definition(),
+        "Veering(note: json['note'] as String,tabling: switch \
+         (asGiven(({...json}..remove('note')))) { null => null, final corrected => \
+         Tabling.fromJsonUnjudged(corrected) },);",
+    );
+    assert_written(
+        &reeved_dart::dart_definition(),
+        "tholepin: switch (asGiven(({...json}..remove('note')))) { null => null, final corrected \
+         => Tholepin.fromJsonUnjudged(corrected) },",
+    );
+    assert_written(
+        &wormed_dart::dart_definition(),
+        "tholepin: switch (asNull(({...json}..remove('note')))) { null => null, final corrected => \
+         Tholepin.fromJsonUnjudged(corrected) },",
+    );
+    assert_written(
+        &moused_dart::dart_definition(),
+        "Moused(frapped: switch (asGiven(({...json}..remove('note')))) { null => null, final \
+         corrected => Frapped.fromJsonUnjudged(corrected) },note: json['note'] as String,);",
+    );
     assert_written(
         &served_dart::dart_definition(),
         "tholepin: switch (asNull(({...json}..remove('note')))) { null => null, final corrected => \

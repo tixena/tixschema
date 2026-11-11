@@ -496,8 +496,10 @@ fn converted_unread_error(
 }
 
 /// The refusal of a strict struct that flattens a member which reads every key still left and
-/// refuses none, where no member it flattens refuses such a key: serde cannot refuse a key no
-/// member declares beside it, so the struct says `nonstrict` and every surface reads past one.
+/// refuses none, or one read through a function of its author's, where no member it flattens
+/// refuses such a key: serde cannot refuse a key no member declares beside the first, and whether
+/// it refuses one beside the second depends on what the function answers, which the expansion
+/// cannot see, so the struct says `nonstrict` and every surface reads past one.
 fn reads_past_a_stray_error(
     item_struct: &ItemStruct,
     args: &ModelSchemaArgs,
@@ -515,8 +517,9 @@ fn reads_past_a_stray_error(
 }
 
 /// The refusal of a strict enum a struct variant of which flattens a member that reads every key
-/// still left and refuses none, where no variant refuses such a key. [`held_open_refusal`] answers
-/// instead where another level of the enum would refuse one, with the newtype fix.
+/// still left and refuses none, or one read through a function of its author's, where no variant
+/// refuses such a key. [`held_open_refusal`] answers instead where another level of the enum would
+/// refuse one, with the newtype fix.
 fn variant_reads_past_a_stray_error(
     item_enum: &ItemEnum,
     args: &ModelSchemaArgs,

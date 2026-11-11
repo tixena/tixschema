@@ -1,15 +1,14 @@
 //! The models of an optional flattened member that names a function: a struct the Kotlin emitter
 //! recorded keys for, and an enum under a tag alone, whose serializer is written by hand and
 //! declares no key, each read from what a function that answers the payload as it was handed
-//! answers, and the struct under a function that answers `null`, each beside a strict holder and
-//! a `nonstrict` one, and a struct flattened with no `Option`. serde hands the function the object
-//! without its holder's own keys, reads `None` where it answers `null`, and refuses an answer the
-//! type does not read, a key the type does not declare among them. The Zod schema of the holder
-//! hands the function the same object and reads the type from what it answers; where that read
-//! fails, a strict holder takes an object that holds no key beyond its own, with the type absent,
-//! and a `nonstrict` one takes the type absent only where the function answers `null`, its own
-//! object closed beside the type, as serde reads it, so [`OPEN_CORRECTED`] reads on every surface
-//! as serde reads it.
+//! answers, and the struct under a function that answers `null`, each beside two `nonstrict`
+//! holders, and a struct flattened with no `Option`: a holder not marked `nonstrict` of such a
+//! member does not build. serde hands the function the object without its holder's own keys, reads
+//! `None` where it answers `null`, and refuses an answer the type does not read, a key the type
+//! does not declare among them. The Zod schema of the holder hands the function the same object,
+//! reads the type from what it answers, and takes the type absent only where the function answers
+//! `null`, its own object closed beside the type, as serde reads it, so [`CORRECTED`] and
+//! [`OPEN_CORRECTED`] read on every surface as serde reads them.
 //! `kotlin_tests/tests.rs` pins the Kotlin text and `swift_tests/flattened_options.rs` the Swift
 //! text, `run_kotlin_flattened.rs`, `run_swift_flattened_options.rs` and
 //! `run_dart_flattened_options.rs` of `service_schema_emitted_client_tests` hold the Kotlin, the
@@ -26,7 +25,8 @@ use tixschema::model_schema;
 
 /// Each holder's payloads: the type held, no key of it, and a key of it that does not read or
 /// beside a key it reads that is absent. What serde reads of each, written back, and what Zod reads
-/// of it, its keys in order, are stated beside whether TypeScript takes it.
+/// of it, its keys in order, are stated beside whether TypeScript takes it. Zod reads each as serde
+/// reads it.
 pub const CORRECTED: [Corrected; 10] = [
     Corrected {
         holder: "Reeved",
@@ -42,7 +42,7 @@ pub const CORRECTED: [Corrected; 10] = [
         read_back: read_of::<Reeved>,
         serde: "refused: missing field `label` at line 1 column 12",
         typed: true,
-        zod: r#"{"note":"n"}"#,
+        zod: "refused",
     },
     Corrected {
         holder: "Reeved",
@@ -66,7 +66,7 @@ pub const CORRECTED: [Corrected; 10] = [
         read_back: read_of::<Moused>,
         serde: "refused: missing field `kind` at line 1 column 12",
         typed: true,
-        zod: r#"{"note":"a"}"#,
+        zod: "refused",
     },
     Corrected {
         holder: "Moused",
@@ -90,7 +90,7 @@ pub const CORRECTED: [Corrected; 10] = [
         read_back: read_of::<Wormed>,
         serde: r#"{"note":"n"}"#,
         typed: true,
-        zod: "refused",
+        zod: r#"{"note":"n"}"#,
     },
     Corrected {
         holder: "Wormed",
@@ -106,11 +106,11 @@ pub const CORRECTED: [Corrected; 10] = [
         read_back: read_of::<Wormed>,
         serde: r#"{"note":"n"}"#,
         typed: false,
-        zod: "refused",
+        zod: r#"{"note":"n"}"#,
     },
 ];
 
-/// The payloads of [`CORRECTED`], each read as the `nonstrict` holder of the same member:
+/// The payloads of [`CORRECTED`], each read as the second holder of the same member:
 /// [`Parcelled`] for `Reeved`, [`Marled`] for `Moused` and [`Served`] for `Wormed`, then a key no
 /// member declares beside each, which the function hands a strict type or answers `null` over, and
 /// the payloads of [`Snaked`], whose function reads the object without its holder's own keys, and
@@ -273,7 +273,7 @@ pub struct Tholepin {
 }
 
 /// [`Tholepin`] optional, read from what a function answers, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Reeved {
     pub note: String,
@@ -283,7 +283,7 @@ pub struct Reeved {
 }
 
 /// [`Tholepin`] optional, under a function that answers `null`, which serde reads as `None`.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wormed {
     pub note: String,
@@ -301,7 +301,7 @@ pub enum Frapped {
 }
 
 /// [`Frapped`] optional, read from what a function answers, ahead of a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Moused {
     #[model_schema_prop(preprocess = ["asGiven"])]
@@ -310,7 +310,7 @@ pub struct Moused {
     pub note: String,
 }
 
-/// [`Reeved`] `nonstrict`.
+/// The member of [`Reeved`], in a holder of its own.
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parcelled {
@@ -320,7 +320,8 @@ pub struct Parcelled {
     pub tholepin: Option<Tholepin>,
 }
 
-/// [`Wormed`] `nonstrict`: its holder reads past the keys of the `None` serde reads.
+/// The member of [`Wormed`], in a holder of its own, which reads past the keys of the `None`
+/// serde reads.
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Served {
@@ -330,7 +331,7 @@ pub struct Served {
     pub tholepin: Option<Tholepin>,
 }
 
-/// [`Moused`] `nonstrict`.
+/// The member of [`Moused`], in a holder of its own.
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Marled {
@@ -402,12 +403,11 @@ fn as_zod_prints(serde: &str) -> String {
 }
 
 /// serde reads each payload from what its holder's function answers, as [`CORRECTED`] and
-/// [`OPEN_CORRECTED`] state. Zod reads each payload of a `nonstrict` holder as serde reads it, and
-/// TypeScript, which calls no function, takes every payload the Zod schema of a strict holder
-/// takes.
+/// [`OPEN_CORRECTED`] state, Zod reads each as serde reads it, and TypeScript takes each payload
+/// serde reads back as it was written.
 #[test]
 fn serde_reads_an_optional_flattened_type_from_what_its_function_answers() {
-    for row in OPEN_CORRECTED {
+    for row in CORRECTED.iter().chain(&OPEN_CORRECTED) {
         assert_eq!(
             (row.read_back)(row.json),
             row.serde,
@@ -422,18 +422,9 @@ fn serde_reads_an_optional_flattened_type_from_what_its_function_answers() {
             row.json,
             row.holder
         );
-    }
-    for row in CORRECTED {
-        assert_eq!(
-            (row.read_back)(row.json),
-            row.serde,
-            "serde no longer reads `{}` as {} did",
-            row.json,
-            row.holder
-        );
         assert!(
-            row.typed || row.zod == "refused",
-            "Zod takes `{}` as {}, which TypeScript is stated to refuse",
+            row.typed || as_zod_prints(row.serde) != as_zod_prints(row.json),
+            "TypeScript is stated to refuse `{}` as {}, which serde reads back as it was written",
             row.json,
             row.holder
         );

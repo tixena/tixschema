@@ -1261,7 +1261,7 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
         ),
         (
             renumbered(&whipping_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+            "val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - labellingKeys)));"
                 .to_owned(),
         ),
@@ -1273,13 +1273,13 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
         ),
         (
             renumbered(&hitching_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+            "val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - setOf(\"note\") - labellingKeys)));"
                 .to_owned(),
         ),
         (
             renumbered(&bending_kotlin::kotlin_definition()),
-            "val extra = lenient.decodeFromJsonElement(BuntingUnjudged, withItsKeys(obj));"
+            "val extra = input.json.decodeFromJsonElement(BuntingUnjudged, withItsKeys(obj));"
                 .to_owned(),
         ),
         (
@@ -1305,7 +1305,7 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
         (renumbered(&rousing_kotlin::kotlin_definition()), hauled),
         (
             renumbered(&rousing_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+            "val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - hauledKeys)));",
         ),
         (
@@ -1330,7 +1330,7 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
             "val marlineKeys = setOf(\"label\"); val marline = \
              input.json.decodeFromJsonElement(MarlineUnjudged, JsonObject(obj.filterKeys { it in \
              setOf(\"label\", \"spare\") })); val tallyKeys = setOf(\"keys\"); \
-             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - marlineKeys)));",
         ),
         (
@@ -1473,61 +1473,6 @@ fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key
     }
 }
 
-/// An optional flattened member that names a function is read from what the function answers,
-/// which is called first, and where that read throws is `null` where the object the function is
-/// handed holds none of its type's keys, or no key at all where its serializer's descriptor names
-/// none, and refuses the payload where it holds one.
-#[test]
-#[cfg(feature = "serde")]
-fn an_optional_type_that_names_a_function_is_read_from_what_the_function_answers() {
-    let read = |prop: &str, keys: &str, (function, serializer): (&str, &str), held: &str| {
-        format!(
-            "val {prop}Keys = {keys}; val {prop}Corrected = {function}(JsonObject(obj - \
-             setOf(\"note\"))); val {prop} = runCatching {{ \
-             lenient.decodeFromJsonElement({serializer}, {prop}Corrected) }}.getOrElse {{ if \
-             ({held}) throw it else null }};"
-        )
-    };
-    let any_key =
-        |prop: &str| format!("JsonObject(obj - setOf(\"note\")).keys.any({prop}Keys::contains)");
-    let tholepin = ("setOf(\"label\")", any_key("tholepin"));
-    for (kotlin, held) in [
-        (
-            renumbered(&reeved_kotlin::kotlin_definition()),
-            read(
-                "tholepin",
-                tholepin.0,
-                ("asGiven", "TholepinUnjudged"),
-                &tholepin.1,
-            ),
-        ),
-        (
-            renumbered(&wormed_kotlin::kotlin_definition()),
-            read(
-                "tholepin",
-                tholepin.0,
-                ("asNull", "TholepinUnjudged"),
-                &tholepin.1,
-            ),
-        ),
-        (
-            renumbered(&moused_kotlin::kotlin_definition()),
-            read(
-                "frapped",
-                "(FrappedUnjudged).descriptor.elementNames.toSet()",
-                ("asGiven", "FrappedUnjudged"),
-                &format!(
-                    "if (frappedKeys.isEmpty()) JsonObject(obj - setOf(\"note\")).isNotEmpty() \
-                     else {}",
-                    any_key("frapped")
-                ),
-            ),
-        ),
-    ] {
-        assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
-    }
-}
-
 /// Beside a `nonstrict` holder, an optional flattened member that names a function is `null` where
 /// the function answers `null`, and is read from any other answer under the caller's `Json`, so a
 /// read that throws, a key its type does not declare among them, refuses the payload, as serde
@@ -1543,6 +1488,30 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
         )
     };
     for (kotlin, held) in [
+        (
+            renumbered(&reeved_kotlin::kotlin_definition()),
+            read(
+                "tholepin",
+                "setOf(\"label\")",
+                ("asGiven", "TholepinUnjudged"),
+            ),
+        ),
+        (
+            renumbered(&wormed_kotlin::kotlin_definition()),
+            read(
+                "tholepin",
+                "setOf(\"label\")",
+                ("asNull", "TholepinUnjudged"),
+            ),
+        ),
+        (
+            renumbered(&moused_kotlin::kotlin_definition()),
+            read(
+                "frapped",
+                "(FrappedUnjudged).descriptor.elementNames.toSet()",
+                ("asGiven", "FrappedUnjudged"),
+            ),
+        ),
         (
             renumbered(&served_kotlin::kotlin_definition()),
             read(
@@ -1739,7 +1708,7 @@ fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
             renumbered(&chafing_kotlin::kotlin_definition()),
             "val fairleadKeys = setOf(\"kind\", \"held\"); val fairlead = \
              lenient.decodeFromJsonElement(SnubberUnjudged, obj); val tallyKeys = setOf(\"keys\"); \
-             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+             val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - fairleadKeys)));",
         ),
         (
@@ -1830,7 +1799,7 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         ),
         (
             renumbered(&heaving_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+            "val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - tackingEntry.key)));"
                 .to_owned(),
         ),
@@ -1842,7 +1811,7 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         ),
         (
             renumbered(&scudding_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
+            "val tally = input.json.decodeFromJsonElement(BuntingUnjudged, \
              withItsKeys(JsonObject(obj - hatchEntry.key - labellingKeys)));"
                 .to_owned(),
         ),

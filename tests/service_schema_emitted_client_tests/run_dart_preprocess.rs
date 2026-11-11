@@ -469,7 +469,7 @@ pub struct Twinned {
 }
 
 /// A flattened member that names a function, between two members of its holder.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Sorted {
     pub dock: String,

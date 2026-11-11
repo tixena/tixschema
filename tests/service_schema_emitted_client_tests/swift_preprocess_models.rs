@@ -104,7 +104,7 @@ pub struct Listing {
 }
 
 /// A flattened member that names a function of its own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Docked {
     pub dock: String,

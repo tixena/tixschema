@@ -207,7 +207,7 @@ pub struct Pennon {
 
 /// A member under an alias beside a member that names a function flattened after it: serde hands
 /// the function the keys the member did not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fairleading {
     #[serde(alias = "name")]
@@ -219,7 +219,7 @@ pub struct Fairleading {
 
 /// [`Hawsing`] flattened ahead of a member that names a function: serde hands the function the
 /// keys the struct did not take, an alias of its member among those it took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fothering {
     #[serde(flatten)]

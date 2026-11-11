@@ -2277,7 +2277,7 @@ pub enum DeclaredTack {
 
 /// [`DeclaredTack`] flattened beside a member of its holder's own, under a function that answers
 /// the payload as it was handed: serde writes a unit variant as its name over `null`.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclaredYaw {
     pub note: String,
@@ -5509,12 +5509,10 @@ fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_r
     );
 }
 
-/// An optional flattened member that names a function is read by the Zod schema of its holder
-/// under `node` from what the function answers, and is absent where that read fails and the object
-/// holds none of its type's keys, and the payload refused where it holds one. Beside a `nonstrict`
-/// holder it is absent exactly where the function answers `null`, and each payload reads as serde
-/// reads it. TypeScript, which calls no function, takes the type's keys whatever the function
-/// answers.
+/// An optional flattened member that names a function is read by the Zod schema of its
+/// `nonstrict` holder under `node` from what the function answers, absent exactly where the
+/// function answers `null`, and each payload reads as serde reads it. TypeScript, which calls no
+/// function, takes the type's keys whatever the function answers.
 #[test]
 fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_answer() {
     let rows: Vec<&corrected_options::Corrected> = corrected_options::CORRECTED
