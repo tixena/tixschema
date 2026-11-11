@@ -693,7 +693,10 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
     fn a_fault_carries_exactly_the_keys_its_typescript_declares() {
         let encoded = dispatched("nothing-answers-to-this", b"{}", "probe");
         let carried = keys(&encoded);
-        let declared = object_members("ProbeServiceFaultFields");
+        let declared: Vec<String> = object_members("ProbeServiceFaultFields")
+            .into_iter()
+            .map(|named| named.trim_end_matches('?').to_owned())
+            .collect();
         for named in &carried {
             assert!(
                 declared.contains(named),
@@ -702,15 +705,21 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         }
         for named in &declared {
             assert!(
-                carried.contains(named) || named == "field",
-                "`{named}` is declared and never written; only `field` may be absent. \
-                 Got: {carried:?}"
+                carried.contains(named) || named == "field" || named == "issues",
+                "`{named}` is declared and never written; only `field` and `issues` may be \
+                 absent. Got: {carried:?}"
             );
         }
         assert!(
             !carried.contains(&"field".to_owned()),
             "an absent field is omitted, which is what lets the TypeScript spell it \
              `string | undefined`. Got: {}",
+            String::from_utf8_lossy(&encoded)
+        );
+        assert!(
+            !carried.contains(&"issues".to_owned()),
+            "a fault of one problem omits its issues rather than writing them as null or empty. \
+             Got: {}",
             String::from_utf8_lossy(&encoded)
         );
     }
