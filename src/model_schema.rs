@@ -23,6 +23,7 @@ use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(feature = "serde")]
 use core::iter;
+use core::mem;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
@@ -21524,7 +21525,10 @@ fn apply_model_schema_prop_meta(
         && !matches!(field_def.field_type, FieldDefType::I64 | FieldDefType::U64)
         && let Some(collapsed) = literal_field_type(literal, &field_def.field_type)
     {
-        field_def.field_type = collapsed;
+        let declared = mem::replace(&mut field_def.field_type, collapsed);
+        if let Some(held) = &mut field_def.model_schema_prop_meta {
+            held.collapsed_from = Some(declared);
+        }
     }
 
     apply_constraint_docs(field_def, final_name);
