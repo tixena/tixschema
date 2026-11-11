@@ -263,7 +263,7 @@ A model is read unjudged where the holder's `validate()` asks it for what it rep
 | in a field, a nullable, a list, a map's values, a tuple written as a field's type, a `#[serde(flatten)]` member, a slot of a tuple struct or of a variant | once, with its holder, each message at its full place |
 | behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList` |
 | by a brand, and by a member that writes a length or a pattern of its own on a brand | by itself: `too short: minimum length is 2, got 1`, where Rust writes the member's key in front, `'code': too short: ...` |
-| by a brand over a number or a `bool` as a map's key | by itself, each message under the key's text at the path of the map: `'13': 13 is outside of the scale at path: $.pitches`, where Rust writes `'pitches.13': 13 is outside of the scale` |
+| by a brand over a text, a number, a date or a `bool` as a map's key | by itself, as the map reads the key, each message under the key's text at the path of the map: `'13': 13 is outside of the scale at path: $.pitches`, where Rust writes `'pitches.13': 13 is outside of the scale`, and over a text `'mute': mute is silent at path: $.tones` |
 | where its type is declared below its holder, is an alias, or is a type of your own | by itself: the emitter has written no `{Type}Unjudged` under that name when it writes the holder |
 
 Rust reads a model declared below its holder unjudged, so the two differ there: a holder that breaks a bound of its own and holds such a model that breaks one answers both messages in Rust, and the model's alone in Kotlin. Declare the model above the type that holds it, and the two answer the same text.
