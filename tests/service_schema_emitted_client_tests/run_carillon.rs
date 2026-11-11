@@ -3,9 +3,11 @@
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
 //! same payload, but for the cases the TypeScript table of its own records: the message read, a
 //! frame dropped, or the fault's kind and the field it names, and an attachment calls no handler
-//! for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
+//! for a frame it refuses or drops and replies to a message it reads as the Rust dispatcher does.
+//! Each client then refuses to send an `f32` read as an infinity. Each run resolves on the replies
+//! it counts, with no clock.
 
-use super::carillon_service::{CASES, STRUCK, frame, payload, rust_answers};
+use super::carillon_service::{CASES, STRUCK, frame, over_ws, payload, rust_answers};
 use core::fmt::Write as _;
 use serde_json::{Value, json};
 
@@ -23,10 +25,11 @@ use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 
 /// The attachment handed each frame through a transport, and what it replied and how many strikes
-/// reached the handler; then the client handed each payload as the reply. A frame the transport
-/// hands no attachment is told by the one sent after it, which names another service, reaching the
-/// attachments first; a reply the client drops, by the declared error sent after it settling the
-/// call.
+/// reached the handler; then the client handed each payload as the reply; then the client handed an
+/// `f32` it reads as an infinity to send, over a socket that counts what it is sent. A frame the
+/// transport hands no attachment is told by the one sent after it, which names another service,
+/// reaching the attachments first; a reply the client drops, and a message it sends, by the
+/// declared error sent after it settling the call.
 #[cfg(feature = "dart")]
 const DART_DRIVER: &str = r#"
 List<String> withinScale(CarillonPitch value) =>
@@ -110,12 +113,39 @@ void main() async {
     await outbound.close();
     await inbound.close();
   }
-  print(jsonEncode(<String, dynamic>{'attached': attached, 'read': read}));
+  var sent = 0;
+  final counted = StreamController<dynamic>(sync: true);
+  final answering = StreamController<dynamic>();
+  counted.stream.listen((text) {
+    sent += 1;
+    final id = jsonEncode((jsonDecode(text as String) as Map<String, dynamic>)['id']);
+    answering.add('{"kind":"reply","id":$id,"service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}');
+  });
+  final refusing = CarillonServiceWsTransport(
+    sink: counted.sink,
+    stream: answering.stream,
+    heartbeat: CarillonServiceWsHeartbeat.off(),
+  );
+  final infinite = CarillonChime.fromJson(jsonDecode(whole.replaceFirst('"ring":1.5', '"ring":1e39')) as Map<String, dynamic>);
+  final unsent = await CarillonServiceWsClient(refusing).strike(infinite);
+  refusing.close();
+  await counted.close();
+  await answering.close();
+  final refused = switch (unsent) {
+    CarillonServiceStrikeResultFault(:final fault) => <String, dynamic>{
+      'kind': fault.kind.toJson(),
+      'detail': fault.detail,
+      'sent': sent,
+    },
+    _ => told(unsent),
+  };
+  print(jsonEncode(<String, dynamic>{'attached': attached, 'read': read, 'refused': refused}));
 }
 "#;
 
-/// The attachment handed each frame, then the client handed each payload as the reply, each told
-/// apart from a frame dropped as the Dart driver tells them.
+/// The attachment handed each frame, then the client handed each payload as the reply, then the
+/// client handed an `f32` it reads as an infinity to send, each told apart as the Dart driver tells
+/// them.
 #[cfg(feature = "kotlin")]
 const KOTLIN_DRIVER: &str = r#"
 fun withinScale(value: CarillonPitch): List<String> =
@@ -141,6 +171,18 @@ class Replying(private val value: String) : CarillonServiceWsSocket {
     override fun send(text: String) {
         val id = Json.parseToJsonElement(text).jsonObject.getValue("id").jsonPrimitive.content
         onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":true,"value":$value}""")
+        onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
+    }
+    override fun close() { onClose?.invoke() }
+}
+
+class Counted : CarillonServiceWsSocket {
+    override var onMessage: ((String) -> Unit)? = null
+    override var onClose: (() -> Unit)? = null
+    var sent = 0
+    override fun send(text: String) {
+        sent += 1
+        val id = Json.parseToJsonElement(text).jsonObject.getValue("id").jsonPrimitive.content
         onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
     }
     override fun close() { onClose?.invoke() }
@@ -192,9 +234,20 @@ fun main() = runBlocking {
         read.add(told(CarillonServiceWsClient(transport).strike(whole)))
         transport.close()
     }
+    val counted = Counted()
+    val refusing = CarillonServiceWsTransport(counted, CarillonServiceWsOptions(heartbeat = null))
+    val infinite = Json.decodeFromString(serializer<CarillonChime>(), WHOLE.replace("\"ring\":1.5", "\"ring\":1e39"))
+    val unsent = CarillonServiceWsClient(refusing).strike(infinite)
+    refusing.close()
+    val refused = if (unsent is CarillonServiceStrikeResult.Fault) buildJsonObject {
+        put("kind", Json.encodeToJsonElement(serializer<CarillonServiceFaultKind>(), unsent.fault.kind))
+        put("detail", unsent.fault.detail)
+        put("sent", counted.sent)
+    } else told(unsent)
     println(buildJsonObject {
         put("attached", JsonArray(attached))
         put("read", JsonArray(read))
+        put("refused", refused)
     }.toString())
 }
 "#;
@@ -347,14 +400,28 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
 /// field each names: Zod names a member of a variant, an arm of a `Result` holding a text, and a
-/// flattened member at the union, the `Result` and the member that holds the value.
-const NODE_APART: [(&str, Option<&str>); 3] = [
+/// flattened member at the union, the `Result` and the member that holds the value; and reads a
+/// number written with a fraction or an exponent, or `-0`, for an integer, which `JSON.parse`
+/// reads as the integer.
+const NODE_APART: [(&str, Option<&str>); 15] = [
     ("a boolean for a number in a variant", Some("peal")),
     (
         "a text for a number in a flattened member",
         Some("frame.oak"),
     ),
     ("a text in an arm of a Result", Some("tally")),
+    ("an integral fraction for a u32", None),
+    ("an exponent for a u32", None),
+    ("a capital exponent for a u32", None),
+    ("a fraction of zero for a u32", None),
+    ("a fraction of zero below zero for a u32", None),
+    ("a zero below zero for a u32", None),
+    ("an integral fraction for an i64", None),
+    ("an exponent for an i64", None),
+    ("a capital exponent for an i64", None),
+    ("a fraction of zero for an i64", None),
+    ("a fraction of zero below zero for an i64", None),
+    ("a zero below zero for an i64", None),
 ];
 
 /// Each payload of [`CASES`].
@@ -390,19 +457,14 @@ fn elsewhere() -> String {
 }
 
 /// Holds what an attachment replied to each frame to [`read_as_rust`]: the message handed to the
-/// handler, the frame dropped, or the fault's kind and field with no strike reached; and the
-/// message read whole to the reply that hands it back. What a reply writes of an `f32` read as an
-/// infinity is the surface's own: serde writes it as `null`.
+/// handler, the frame dropped, or the fault's kind and field with no strike reached; and the reply
+/// to each message the Rust dispatcher reads to the one it writes, an `f32` read as an infinity
+/// written as `null`, as serde writes it.
 fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
-    let replied = attached.as_array().unwrap();
-    assert_eq!(
-        replied[0]["reply"]["value"],
-        serde_json::from_str::<Value>(STRUCK).unwrap(),
-        "{attached}"
-    );
+    let is_apart = |named: &str| apart.iter().any(|(case, _)| *case == named);
     let told: Vec<Value> = CASES
         .into_iter()
-        .zip(replied)
+        .zip(attached.as_array().unwrap())
         .map(|(case, told)| {
             let reply = &told["reply"];
             let answer = if reply == "dropped" {
@@ -415,7 +477,12 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
                     "field": reply["error"]["fault"]["field"],
                 })
             };
-            json!({ "case": case.0, "answer": answer, "struck": told["struck"] })
+            let value = if is_apart(case.0) {
+                &Value::Null
+            } else {
+                &reply["value"]
+            };
+            json!({ "case": case.0, "answer": answer, "struck": told["struck"], "value": value })
         })
         .collect();
     let expected: Vec<Value> = CASES
@@ -423,7 +490,11 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
         .zip(read_as_rust(apart))
         .map(|(case, answer)| {
             let struck = u8::from(answer == "read");
-            json!({ "case": case.0, "answer": answer, "struck": struck })
+            let value = over_ws(&payload(case))
+                .0
+                .filter(|_| !is_apart(case.0))
+                .map_or(Value::Null, |reply| reply["value"].clone());
+            json!({ "case": case.0, "answer": answer, "struck": struck, "value": value })
         })
         .collect();
     assert_eq!(told, expected, "{attached}");
@@ -502,6 +573,14 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
+    assert_eq!(
+        told["refused"],
+        json!({
+            "kind": "transport-failure",
+            "detail": "Converting object to an encodable object failed: Infinity",
+            "sent": 0_i32,
+        })
+    );
 }
 
 #[cfg(feature = "dart")]
@@ -572,6 +651,21 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
+    let refused = &told["refused"];
+    assert_eq!(
+        (&refused["kind"], &refused["sent"]),
+        (&json!("transport-failure"), &json!(0_i32)),
+        "{refused}"
+    );
+    assert!(
+        refused["detail"].as_str().is_some_and(|detail| {
+            detail.starts_with(
+            "kotlinx.serialization.json.JsonEncodingException: Unexpected special floating-point \
+             value Infinity"
+        )
+        }),
+        "{refused}"
+    );
 }
 
 /// The Swift program the client runs in.

@@ -2,8 +2,8 @@
 //! to what serde reads: a `char` and a chrono date or time, kept as a `String`, read as the Zod
 //! schema of their form reads them and sent in the form serde writes ([`TextForm`]); an integer
 //! narrower than a Dart `int`, and an `f32`, kept as a `double`, read and sent within the range
-//! of the Rust type. Each refuses with a `FormatException`, written inline, as every refusal of the
-//! Dart client is.
+//! of the Rust type, an `f32` that is not finite sent as it is held. Each refuses with a
+//! `FormatException`, written inline, as every refusal of the Dart client is.
 
 use super::declared;
 use crate::features::text_forms::TextForm;
@@ -95,4 +95,15 @@ pub fn number_held(field_type: &FieldDefType, number: &str) -> Option<String> {
         "(switch ({number}) {{ final {named} when {condition} => {named}, final {named} => throw \
          FormatException('expected {expected}, found ${named}') }})"
     ))
+}
+
+/// `number`, the Dart `double` of an `f32` value `toJson` writes: below the bound in size, or not
+/// finite, which serde writes as `null` and `jsonEncode` refuses.
+pub fn float_sent(number: &str) -> String {
+    let named = declared("number");
+    format!(
+        "(switch ({number}) {{ final {named} when {named}.abs() < {F32_READ_BOUND} || \
+         !{named}.isFinite => {named}, final {named} => throw FormatException('expected a 32-bit \
+         float, found ${named}') }})"
+    )
 }
