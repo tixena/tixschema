@@ -4,8 +4,9 @@
 use super::prompts;
 use super::resources::{self, Resourced};
 use super::{Carried, error_carried, success_carried, writer};
-use super::{content, interview, listen, skills, tasks};
+use super::{content, interview, listen, mismatches, skills, tasks};
 use crate::features::service_schema::registry_ident;
+use crate::service_schema::mcp_tools::read_apart;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationOutcome, ServiceDef, argument_local, written,
 };
@@ -31,8 +32,9 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
          `route`, `McpEndpoint`, `serve`, `answer`, `McpHttpRequest`, `McpHttpResponse`, \
          `serve_http`, `answer_http`, `serve_listening`, `answer_listening`, `serve_http_listening`, \
          `answer_http_listening`, `McpChange`, `McpServer`, `McpCall`, `McpInFlight`, `McpEventWriter` and `McpHttpStream` - so the caller supplies the module they land in and two \
-         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json` \
-         and `tracing` in its own manifest, because the items below call them. The service's \
+         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json`, \
+         `serde_path_to_error` and `tracing` in its own manifest, because the items below call \
+         them. The service's \
          `{schema}` is reached as `$crate::{schema}`, so a service declared in a submodule \
          re-exports it at the crate root.\n\n\
          {placement}",
@@ -166,6 +168,15 @@ fn route(
         .then(|| replying_helpers(module))
         .into_iter();
     let tool_results = (!tools.is_empty()).then(|| tool_results(module));
+    let walks = mismatches::helpers(
+        module,
+        schema,
+        &mismatches::Listing {
+            prompts: prompts::lists(service),
+            reads: !held.templates.is_empty(),
+            tools: !tools.is_empty(),
+        },
+    );
     let asking = interview::any(service).then(interview::helpers);
     let blocks = (content::any(service) || content::prompt_messages(service))
         .then(|| content::helpers(service, module));
@@ -202,6 +213,7 @@ fn route(
         #guard
         #(#replies)*
         #tool_results
+        #walks
         #asking
         #base64
         #blocks
@@ -333,6 +345,7 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
             };
         }
     });
+    let passed = read_apart(operation);
     let called = quote! { caught(move || svc.#method(ctx #(, #call)*)).await };
     let settled = settled(operation, schema, &called, tool);
     let prepared = interview::preparation(operation, module, schema, tool);
@@ -372,7 +385,7 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                 ::core::result::Result::Ok(received) => received,
                 ::core::result::Result::Err(rejected) => {
                     return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
-                        refused_payload(#tool, &rejected),
+                        refused_arguments(#tool, $crate::#schema::#wrapped(), &[#(#passed),*], params, &rejected),
                     )));
                 }
             };

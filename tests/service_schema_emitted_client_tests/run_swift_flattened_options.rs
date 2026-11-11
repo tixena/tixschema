@@ -11,7 +11,8 @@
 //! refuse it: a struct's key, an entry under a name an externally tagged enum's variant is read
 //! under, and the tag or the content key of an enum under a tag key. A type whose keys are not
 //! known, an untagged enum and an enum declared below its holder among them, is read as `nil`
-//! there, as serde reads it, and so is the map of dates where an entry is no date. The map of
+//! there, as serde reads it, and so is every type a `nonstrict` holder flattens and the map of
+//! dates where an entry is no date. The map of
 //! dates absent is built in code. A member that names a function and is handed none of its
 //! struct's keys reads `nil`, as Zod reads it, where serde refuses what the function answers; the
 //! holders of `corrected_options_models.rs` are read as Zod reads each of their payloads.
@@ -26,18 +27,25 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::corrected_options_models::{
-    CORRECTED, frapped_swift, moused_swift, reeved_swift, tholepin_swift, wormed_swift,
+    CORRECTED, OPEN_CORRECTED, frapped_swift, marled_swift, moused_swift, parcelled_swift,
+    reeved_swift, seized_swift, served_swift, snaked_swift, tholepin_swift, wormed_swift,
 };
+use super::run_swift_tagged_slots::sorted;
 use super::runtime::judged;
 use super::swift_flattened_options_models::{
-    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
-    Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lapping,
-    Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT, SENNIT_ABSENT,
-    SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering, becket_swift,
-    crowning_swift, easing_swift, fidding_swift, flaking_swift, gasket_swift, grommet_swift,
-    heeling_swift, kinking_swift, lapping_swift, lowering_swift, nippering_swift, painter_swift,
-    pitching_swift, plaiting_swift, ratline_swift, sennit_swift, shackle_swift, squaring_swift,
-    tabling_swift, tarring_swift, thimble_swift, toggle_swift, veering_swift,
+    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking,
+    Gasketing, HEELING, Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED,
+    LOWERING, Lapping, Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT,
+    SENNIT_ABSENT, SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering,
+    becket_swift, crowning_swift, easing_swift, fidding_swift, flaking_swift, gasket_swift,
+    gasketing_swift, grommet_swift, heeling_swift, kinking_swift, lapping_swift, lowering_swift,
+    nippering_swift, painter_swift, pitching_swift, plaiting_swift, ratline_swift, sennit_swift,
+    shackle_swift, squaring_swift, tabling_swift, tarring_swift, thimble_swift, toggle_swift,
+    veering_swift,
+};
+use super::unrecorded_options_models::{
+    OPEN_HOLDERS, READ_BACK, UNRECORDED, bight_swift, crowned_swift, fiddling_swift, hitched_swift,
+    slipped_swift, slipping_swift, snagging_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -82,6 +90,8 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
 const CORRECTED_HELPERS: &str = "
 func asNull(_ payload: Any) -> Any { NSNull() }
 
+func nullWhereNoted(_ payload: Any) -> Any { (payload as? [String: Any])?[\"note\"] != nil ? NSNull() : payload }
+
 func told<Read: Codable>(_ type: Read.Type, _ payload: String) -> String {
   guard let read = try? JSONDecoder().decode(type, from: Data(payload.utf8)) else { return \"refused\" }
   return written(read)
@@ -122,19 +132,6 @@ impl Row {
             name,
             serde: written(&serde_json::from_str::<T>(json).unwrap()),
             swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
-        }
-    }
-
-    /// The holder read as `T`, named `read_as` in Swift, from `json`, which serde refuses and the
-    /// Swift read reads as `read`, as Zod reads it.
-    fn read_by_zod<T>(name: &'static str, read_as: &str, json: &str, read: &'static str) -> Self
-    where
-        T: DeserializeOwned,
-    {
-        Self {
-            decided: Some(read),
-            swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
-            ..Self::refused::<T>(name, read_as, json)
         }
     }
 
@@ -189,18 +186,8 @@ fn enum_rows() -> Vec<Row> {
         Row::read::<Lowering>("lowering absent", "Lowering", LOWERING[0]),
         Row::read::<Lowering>("lowering", "Lowering", LOWERING[1]),
         Row::read::<Lowering>("lowering unit", "Lowering", LOWERING[2]),
-        Row::decided::<Lowering>(
-            "lowering mistyped",
-            "Lowering",
-            LOWERING[3],
-            "mismatch at 'turns'",
-        ),
-        Row::decided::<Lowering>(
-            "lowering unnamed",
-            "Lowering",
-            LOWERING[4],
-            "unknown tag Gale",
-        ),
+        Row::read::<Lowering>("lowering mistyped", "Lowering", LOWERING[3]),
+        Row::read::<Lowering>("lowering unnamed", "Lowering", LOWERING[4]),
         Row::read::<Lowering>("lowering untagged", "Lowering", LOWERING[5]),
         Row::read::<Squaring>("squaring absent", "Squaring", SQUARING[0]),
         Row::read::<Squaring>("squaring", "Squaring", SQUARING[1]),
@@ -258,6 +245,9 @@ fn rows() -> Vec<Row> {
         Row::read::<Fidding>("fidding absent", "Fidding", FLAKING_ABSENT),
         Row::read::<Fidding>("fidding unread", "Fidding", LAPPING_ABSENT),
         Row::read::<Ratline>("ratline mistyped", "Ratline", FLAKING_MISTYPED),
+        Row::read::<Gasketing>("gasketing", "Gasketing", LAPPING),
+        Row::read::<Gasketing>("gasketing absent", "Gasketing", LAPPING_ABSENT),
+        Row::read::<Gasketing>("gasketing mistyped", "Gasketing", LAPPING_MISTYPED),
         Row::decided::<Lapping>("lapping mistyped", "Lapping", LAPPING_MISTYPED, mistyped),
         Row::decided::<Flaking>("flaking mistyped", "Flaking", FLAKING_MISTYPED, mistyped),
         Row::decided::<Sennit>("sennit mistyped", "Sennit", SENNIT_MISTYPED, mistyped),
@@ -271,7 +261,7 @@ fn rows() -> Vec<Row> {
         ),
         Row::refused::<Kinking>("kinking refused", "Kinking", KINKING_SHORT),
         Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
-        Row::read_by_zod::<Veering>("veering absent", "Veering", LAPPING_ABSENT, LAPPING_ABSENT),
+        Row::refused::<Veering>("veering absent", "Veering", LAPPING_ABSENT),
     ];
     rows.extend(enum_rows());
     rows
@@ -283,6 +273,7 @@ fn printed(rows: &[Row]) -> Option<String> {
     let definitions = [
         tabling_swift::swift_definition(),
         lapping_swift::swift_definition(),
+        gasketing_swift::swift_definition(),
         flaking_swift::swift_definition(),
         sennit_swift::swift_definition(),
         gasket_swift::swift_definition(),
@@ -339,13 +330,13 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// its keys beside its holder's own. A flattened `Option` is read as `nil` where the object holds
 /// none of its type's keys, as serde reads it, and a model it holds that breaks its rule refuses
 /// the payload in serde's words; one that names a function, handed none of its struct's keys, is
-/// `nil`, as Zod reads it, where serde refuses what the function answers. Where the object holds
-/// a key its type does not read, a key
-/// held as a number or one of two keys, a variant's entry, tag or content that does not read, or
+/// refused, as serde refuses what the function answers. Where the object holds a key its type does
+/// not read, a key held as a number or one of two keys, a variant's entry, tag or content that does not read, or
 /// a content with no tag, serde reads `None` and the Swift read refuses the payload, but for a
 /// type whose keys are not known and a map of dates one of whose entries is no date, each read as
-/// `nil` as serde reads it: an untagged enum and an enum declared below its holder among them. An
-/// enum under a tag key alone is `nil` where its tag is absent, a member of a variant there or not.
+/// `nil` as serde reads it: an untagged enum and an enum declared below its holder among them, and
+/// so for every type beside the `nonstrict` `Lowering` and `Heeling`. An enum under a tag key
+/// alone is `nil` where its tag is absent, a member of a variant there or not.
 #[test]
 fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     let rows = rows();
@@ -375,6 +366,9 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
          fidding absent: {}\n\
          fidding unread: {}\n\
          ratline mistyped: {}\n\
+         gasketing: {\"label\":\"north\",\"note\":\"n\"}\n\
+         gasketing absent: {\"note\":\"n\"}\n\
+         gasketing mistyped: {\"note\":\"n\"}\n\
          lapping mistyped: {\"note\":\"n\"}\n\
          flaking mistyped: {}\n\
          sennit mistyped: {\"kind\":\"Laid\",\"note\":\"n\"}\n\
@@ -416,17 +410,15 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     );
 }
 
-/// An optional member that names a function is read from what the function answers, and where
-/// that read throws is `nil` where the object the function is handed holds none of its struct's
-/// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
-/// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
-/// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
-/// type the answer does not read and reads `null` as `None`.
+/// Beside a `nonstrict` holder, an optional member that names a function is `nil` exactly where
+/// the function answers `null`, and is read from any other answer: each payload of [`CORRECTED`]
+/// and [`OPEN_CORRECTED`] reads as serde and the Zod schema of its holder read it, written back
+/// with its keys sorted.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_swift_as_zod_does() {
     let mut expected = String::new();
     let mut main = String::new();
-    for (at, row) in CORRECTED.iter().enumerate() {
+    for (at, row) in CORRECTED.iter().chain(&OPEN_CORRECTED).enumerate() {
         assert_eq!(
             (row.read_back)(row.json),
             row.serde,
@@ -448,6 +440,11 @@ fn an_optional_type_that_names_a_function_reads_in_swift_as_zod_does() {
         wormed_swift::swift_definition(),
         frapped_swift::swift_definition(),
         moused_swift::swift_definition(),
+        parcelled_swift::swift_definition(),
+        served_swift::swift_definition(),
+        marled_swift::swift_definition(),
+        snaked_swift::swift_definition(),
+        seized_swift::swift_definition(),
         HELPERS.to_owned(),
         CORRECTED_HELPERS.to_owned(),
         main,
@@ -469,4 +466,55 @@ fn an_optional_type_that_names_a_function_reads_in_swift_as_zod_does() {
         run.stdout, run.stderr
     );
     assert_eq!(run.stdout, expected, "the Swift read is not the Zod read");
+}
+
+/// Beside a `nonstrict` holder, an optional member whose read throws is `nil` wherever its keys
+/// are, and the holder reads past them: each row of [`UNRECORDED`] whose holder is one of
+/// [`OPEN_HOLDERS`] reads as serde reads it, written back with its keys sorted, an enum's tag
+/// beside no member of its variant among them.
+#[test]
+fn an_optional_type_beside_a_nonstrict_holder_reads_in_swift_as_serde_does() {
+    let mut expected = String::new();
+    let mut main = String::new();
+    for (at, (row, read_back)) in UNRECORDED.iter().zip(READ_BACK).enumerate() {
+        if !OPEN_HOLDERS.contains(&row.holder) {
+            continue;
+        }
+        let _ = writeln!(expected, "{at}: {}", sorted(read_back));
+        let _ = writeln!(
+            main,
+            "print(\"{at}: \\(told({}.self, #\"{}\"#))\")",
+            row.holder, row.json
+        );
+    }
+    let source = [
+        "import Foundation".to_owned(),
+        bight_swift::swift_definition(),
+        fiddling_swift::swift_definition(),
+        crowned_swift::swift_definition(),
+        hitched_swift::swift_definition(),
+        snagging_swift::swift_definition(),
+        slipped_swift::swift_definition(),
+        slipping_swift::swift_definition(),
+        HELPERS.to_owned(),
+        CORRECTED_HELPERS.to_owned(),
+        main,
+    ]
+    .join("\n\n");
+    let Some(run) = judged(
+        "swift-unrecorded-options",
+        RUNTIME_VAR,
+        "swift",
+        &["-warnings-as-errors"],
+        "main.swift",
+        &source,
+    ) else {
+        return;
+    };
+    assert!(
+        run.succeeded,
+        "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        run.stdout, run.stderr
+    );
+    assert_eq!(run.stdout, expected, "the Swift read is not serde's");
 }

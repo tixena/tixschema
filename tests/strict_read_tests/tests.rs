@@ -153,6 +153,62 @@ pub struct Nothing {
 
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
+pub struct Counter {
+    #[serde(skip, default = "seven")]
+    pub start: u32,
+    #[serde(skip)]
+    pub total: u32,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
+pub struct Settings {
+    #[serde(skip)]
+    pub label: String,
+    #[serde(skip)]
+    pub retries: u32,
+    #[serde(skip, default = "seven")]
+    pub start: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            label: "main".to_owned(),
+            retries: 3,
+            start: 0,
+        }
+    }
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Memo<T: Default> {
+    #[serde(skip)]
+    pub held: T,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(bound(deserialize = ""))]
+pub struct Shelf<T> {
+    #[serde(skip)]
+    pub items: Vec<T>,
+}
+
+/// A type with no `Default`, which `Shelf` holds under the bound its author wrote.
+pub struct Unmade;
+
+#[model_schema(nonstrict)]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LenientNothing {
+    #[serde(skip)]
+    pub held: u8,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Unread {
     #[serde(skip_deserializing)]
     pub computed: u32,
@@ -210,6 +266,10 @@ pub enum Reading {
         gauge: Gauge,
     },
     Missing,
+}
+
+fn seven() -> u32 {
+    7
 }
 
 fn read<T>(json: &str) -> Result<(), String>
@@ -355,9 +415,57 @@ fn a_member_serde_writes_and_never_reads_keeps_its_own_writes_readable() {
 }
 
 #[test]
-fn a_struct_with_no_member_serde_reads_under_a_key_of_its_own_is_not_closed() {
-    let read = serde_json::from_str::<Nothing>(r#"{"a":1}"#).unwrap();
-    assert_eq!(read.held, 0);
+fn a_struct_with_no_member_serde_reads_refuses_a_key_and_reads_an_empty_object() {
+    let refused = read::<Nothing>(r#"{"stray":1}"#).unwrap_err();
+    assert!(
+        refused.contains("unknown field `stray`, there are no fields"),
+        "{refused}"
+    );
+    let empty = serde_json::from_str::<Nothing>("{}").unwrap();
+    assert_eq!(empty.held, 0);
+    let lenient = serde_json::from_str::<LenientNothing>(r#"{"stray":1}"#).unwrap();
+    assert_eq!(lenient.held, 0);
+}
+
+#[test]
+fn a_struct_with_no_member_serde_reads_builds_each_member_from_its_default() {
+    let counter = serde_json::from_str::<Counter>("{}").unwrap();
+    assert_eq!((counter.start, counter.total), (7, 0));
+    let settings = serde_json::from_str::<Settings>("{}").unwrap();
+    assert_eq!(
+        (settings.label.as_str(), settings.retries, settings.start),
+        ("main", 3, 7)
+    );
+    for refused in [
+        read::<Counter>(r#"{"start":1}"#),
+        read::<Settings>(r#"{"stray":1}"#),
+    ] {
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|told| told.contains("unknown field")),
+            "{refused:?}"
+        );
+    }
+}
+
+#[test]
+fn a_generic_struct_with_no_member_serde_reads_refuses_a_key_under_the_bounds_serde_asks() {
+    let memo = serde_json::from_str::<Memo<String>>("{}").unwrap();
+    assert_eq!(memo.held, "");
+    let shelf = serde_json::from_str::<Shelf<Unmade>>("{}").unwrap();
+    assert!(shelf.items.is_empty());
+    for refused in [
+        read::<Memo<u32>>(r#"{"stray":1}"#),
+        read::<Shelf<Unmade>>(r#"{"stray":1}"#),
+    ] {
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|told| told.contains("unknown field `stray`")),
+            "{refused:?}"
+        );
+    }
 }
 
 #[test]

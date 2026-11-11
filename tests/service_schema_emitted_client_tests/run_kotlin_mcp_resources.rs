@@ -16,8 +16,8 @@ use super::mcp_library_service::{
     library_guide_request_kotlin, suggest_books_request_kotlin,
 };
 use super::mcp_shelf_service::{
-    assert_faults, fault_requests, get_slot_request_kotlin, shelf_label_kotlin,
-    suggest_slots_request_kotlin,
+    assert_faults, fault_requests, get_bay_request_kotlin, get_slot_request_kotlin,
+    shelf_label_kotlin, suggest_slots_request_kotlin,
 };
 use super::runtime::ran_kotlin;
 use super::{BareServiceSchema, DepotServiceSchema, LibraryServiceSchema, ShelfServiceSchema};
@@ -124,6 +124,9 @@ const FAULT_DRIVER: &str = r#"
 object ShelfHandlers : ShelfServiceHandlers {
     override suspend fun getCount(req: UInt): ShelfServiceGetCountResult =
         ShelfServiceGetCountResult.Ok(req.toString())
+
+    override suspend fun getBay(req: GetBayRequest): ShelfServiceGetBayResult =
+        ShelfServiceGetBayResult.Ok(req.bay.toString() + "/" + req.level)
 
     override suspend fun getSlot(req: GetSlotRequest): ShelfServiceGetSlotResult =
         ShelfServiceGetSlotResult.Ok(req.aisle.toString() + "/" + req.slot)
@@ -284,6 +287,7 @@ fn fault_module() -> String {
     parts.extend([
         shelf_label_kotlin::kotlin_definition(),
         book_error_kotlin::kotlin_definition(),
+        get_bay_request_kotlin::kotlin_definition(),
         get_slot_request_kotlin::kotlin_definition(),
         suggest_slots_request_kotlin::kotlin_definition(),
         shelf_service_schema::shelf_service_fault_fields_kotlin::kotlin_definition(),

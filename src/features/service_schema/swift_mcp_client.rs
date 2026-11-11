@@ -43,7 +43,7 @@ public protocol @N@McpTransport: Sendable {
 }";
 
 const SUPPORT: &str = r#"func @P@McpFault(_ kind: @N@FaultKind, _ operation: String, _ detail: String) -> @N@Fault {
-  @N@Fault(detail: detail, field: nil, kind: kind, operation: operation)
+  @N@Fault(detail: detail, field: nil, issues: nil, kind: kind, operation: operation)
 }
 
 func @P@McpDatedEncoder() -> JSONEncoder {
@@ -176,18 +176,18 @@ struct @N@McpTagged: Decodable {
 struct @N@McpInError: Decodable {
   struct Failure: Decodable { let data: @N@McpTagged }
   let error: Failure
-}
+}"#;
 
-struct @N@McpInText: Decodable {
+const IN_TEXT: &str = "struct @N@McpInText: Decodable {
   let text: @N@McpTagged
-}
+}";
 
-struct @N@McpResult<Payload: Decodable>: Decodable {
+const RESULT: &str = "struct @N@McpResult<Payload: Decodable>: Decodable {
   struct Inner: Decodable { let structuredContent: Payload }
   let result: Inner
-}
+}";
 
-struct @N@McpDeclared<Payload: Decodable>: Decodable {
+const SUPPORT_TAIL: &str = "struct @N@McpDeclared<Payload: Decodable>: Decodable {
   let error: Payload
 }
 
@@ -200,9 +200,9 @@ enum @N@McpReading {
   case succeeded
   case declared(Data)
   case faulted(@N@Fault)
-}
+}";
 
-func @P@McpClassify(_ tool: String, _ raw: Data) -> @N@McpReading {
+const CLASSIFY: &str = r#"func @P@McpClassify(_ tool: String, _ raw: Data) -> @N@McpReading {
   let probe: @N@McpProbe
   do {
     probe = try JSONDecoder().decode(@N@McpProbe.self, from: raw)
@@ -263,7 +263,7 @@ const ACTOR_HEAD: &str = r#"public actor @N@McpClient {
 
 "#;
 
-const PROMPTS: &str = r#"struct @N@McpFirstText: Decodable {
+const FIRST_TEXT: &str = "struct @N@McpFirstText: Decodable {
   struct Inner: Decodable {
     struct Message: Decodable {
       struct Content: Decodable { let text: String? }
@@ -272,14 +272,14 @@ const PROMPTS: &str = r#"struct @N@McpFirstText: Decodable {
     let messages: [Message]
   }
   let result: Inner
-}
+}";
 
-struct @N@McpMessages<Payload: Decodable>: Decodable {
+const MESSAGES: &str = "struct @N@McpMessages<Payload: Decodable>: Decodable {
   struct Inner: Decodable { let messages: Payload }
   let result: Inner
-}
+}";
 
-func @P@McpClassifyPrompt(_ prompt: String, _ raw: Data) -> @N@McpReading {
+const PROMPTS: &str = r#"func @P@McpClassifyPrompt(_ prompt: String, _ raw: Data) -> @N@McpReading {
   let probe: @N@McpProbe
   do {
     probe = try JSONDecoder().decode(@N@McpProbe.self, from: raw)
@@ -620,13 +620,32 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let service = &declared.enveloped();
     let named = service.ident.to_string();
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
+    let tools = service.operations.iter().any(OperationDef::is_mcp_tool);
+    let prompts = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    let messages = service.operations.iter().any(is_prompt_messages);
+    let first_text = service
+        .operations
+        .iter()
+        .any(|operation| operation.is_mcp_prompt() && !is_prompt_messages(operation));
+    let filled_when = |written: bool, template: &str| {
+        if written {
+            fill(template, &prefix, &named)
+        } else {
+            String::new()
+        }
+    };
     let mut published = vec![
         fill(TRANSPORT, &prefix, &named),
         fill(SUPPORT, &prefix, &named),
+        filled_when(tools, IN_TEXT),
+        filled_when(service.operations.iter().any(reads_result), RESULT),
+        fill(SUPPORT_TAIL, &prefix, &named),
+        filled_when(tools, CLASSIFY),
+        filled_when(first_text, FIRST_TEXT),
+        filled_when(messages, MESSAGES),
+        filled_when(prompts, PROMPTS),
     ];
-    if service.operations.iter().any(OperationDef::is_mcp_prompt) {
-        published.push(fill(PROMPTS, &prefix, &named));
-    }
+    published.retain(|text| !text.is_empty());
     if service.operations.iter().any(is_content_list) {
         published.push(fill(BLOCKS, &prefix, &named));
     }
@@ -665,6 +684,18 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
             text
         }
     }
+}
+
+/// Whether the method of `operation` reads its success out of `structuredContent` through
+/// `McpResult`.
+fn reads_result(operation: &OperationDef) -> bool {
+    operation.is_mcp_tool()
+        && operation.mcp.content.is_none()
+        && matches!(
+            &operation.outcome,
+            OperationOutcome::Reply { success, error: _error }
+                if !HttpShape::of(operation).header_out.is_empty() || !is_unit_type(success)
+        )
 }
 
 fn wrapped_marker(at: usize) -> String {

@@ -18,14 +18,14 @@ use crate::features::dart::{
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
-    answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages,
+    answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages, read_apart,
 };
 use crate::service_schema::parse::{
-    HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
-    ServiceDef, is_unit_type, option_inner, wire_key, written,
+    HttpShape, McpCompletesKind, McpResourceUri, OperationDef, OperationInputs, OperationOutcome,
+    PathSegment, ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use crate::service_schema::transport::mcp::resources::Resourced;
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
@@ -352,6 +352,7 @@ const VERSION_MARKER: &str = "@VERSION@";
 const RESOURCES_MARKER: &str = "@RESOURCES@";
 const TEMPLATES_MARKER: &str = "@TEMPLATES@";
 const PROMPTS_MARKER: &str = "@PROMPTS@";
+const READS_MARKER: &str = "@READS@";
 const SKILLS_MARKER: &str = "@SKILLS@";
 const SKILL_FILES_MARKER: &str = "@SKILLFILES@";
 
@@ -1613,7 +1614,7 @@ impl Calls {
                     if is_unit_type(success) {
                         calls.empty = true;
                     } else {
-                        calls.ok = true;
+                        calls.ok |= !is_content_list(operation);
                     }
                 }
             }
@@ -1631,6 +1632,13 @@ struct MethodHead {
     parameters: String,
     tool: String,
     wire: String,
+}
+
+/// The schema a read's refused message is walked against, and whether every mismatch is listed
+/// or the first named alone.
+struct Walked<'text> {
+    every: bool,
+    schema: &'text str,
 }
 
 /// The operations of `service` that are tools.
@@ -1893,73 +1901,102 @@ fn scopes_table(table: &ScopeTable) -> String {
     text
 }
 
-/// The Dart that names the path of the value a message does not read at, from the JSON schema the
-/// catalog holds for it.
+/// The Dart that names the path of each value a message does not read at, from the JSON schema
+/// the catalog holds for it: the first one, or with `every` all of them, a key of `passed` read
+/// past at the top.
 fn unread_helpers(named: &str, prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     format!(
-        "{fields} _{prefix}McpUnreadFault(String operation, String detail, Object? schema, Object? source) {{\n  \
-         final found = _{prefix}McpMismatch(schema, source);\n  \
-         if (found == null || found.isEmpty) {{\n    \
+        "{fields} _{prefix}McpUnreadFault(String operation, String detail, Object? schema, Object? source, \
+         {{List<String> passed = const <String>[], bool every = false}}) {{\n  \
+         final found = <(String, String)>[];\n  \
+         _{prefix}McpMismatches(schema, source, null, passed, const <String>[], found);\n  \
+         if (found.isEmpty || found.first.$1.isEmpty) {{\n    \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
          }}\n  \
-         final path = found.join('.');\n  \
-         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, \"'$path': $detail\", field: path);\n\
+         final path = found.first.$1;\n  \
+         final first = \"'$path': $detail\";\n  \
+         if (!every || found.length < 2) {{\n    \
+         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, first, field: path);\n  \
+         }}\n  \
+         final lines = <String>[first];\n  \
+         final issues = <{issue}>[{issue}(detail: detail, field: path)];\n  \
+         for (final (at, said) in found.skip(1)) {{\n    \
+         lines.add(at.isEmpty ? said : \"'$at': $said\");\n    \
+         issues.add({issue}(detail: said, field: at.isEmpty ? null : at));\n  \
+         }}\n  \
+         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, lines.join('; '), field: path, issues: issues);\n\
          }}\n\n\
-         List<String>? _{prefix}McpMismatch(Object? schema, Object? value, [Object? defs]) {{\n  \
-         if (schema is! Map) return null;\n  \
+         void _{prefix}McpMismatches(Object? schema, Object? value, Object? defs, List<String> passed, List<String> at, \
+         List<(String, String)> found) {{\n  \
+         if (schema is! Map) return;\n  \
          defs ??= schema['\\$defs'];\n  \
+         void refuse(List<String> steps, String said) => found.add((steps.join('.'), said));\n  \
          final reference = schema['\\$ref'];\n  \
          if (reference is String) {{\n    \
-         return _{prefix}McpMismatch(defs is Map ? defs[reference.substring(reference.lastIndexOf('/') + 1)] : null, value, defs);\n  \
+         _{prefix}McpMismatches(defs is Map ? defs[reference.substring(reference.lastIndexOf('/') + 1)] : null, value, defs, passed, at, found);\n    \
+         return;\n  \
          }}\n  \
          final alternatives = schema['anyOf'];\n  \
          if (alternatives is List) {{\n    \
-         if (value == null) return null;\n    \
+         if (value == null) return;\n    \
+         List<(String, String)>? named;\n    \
          for (final alternative in alternatives) {{\n      \
          if (alternative is Map && alternative['type'] == 'null') continue;\n      \
-         return _{prefix}McpMismatch(alternative, value, defs);\n    \
+         final own = <(String, String)>[];\n      \
+         _{prefix}McpMismatches(alternative, value, defs, passed, at, own);\n      \
+         if (own.isEmpty) return;\n      \
+         named ??= own;\n    \
          }}\n    \
-         return null;\n  \
+         if (named != null) found.addAll(named);\n    \
+         return;\n  \
          }}\n  \
          final allowed = schema['enum'];\n  \
-         if (allowed is List && !allowed.contains(value)) return <String>[];\n  \
+         if (allowed is List && !allowed.contains(value)) {{\n    \
+         refuse(at, 'invalid value, expected one of the listed values');\n    \
+         return;\n  \
+         }}\n  \
          switch (schema['type']) {{\n    \
          case 'object':\n      \
-         if (value is! Map) return <String>[];\n      \
+         if (value is! Map) {{\n        \
+         refuse(at, 'invalid type, expected an object');\n        \
+         return;\n      \
+         }}\n      \
          final properties = schema['properties'];\n      \
          final others = schema['additionalProperties'];\n      \
          for (final entry in value.entries) {{\n        \
+         final key = '${{entry.key}}';\n        \
+         if (passed.contains(key)) continue;\n        \
          final declared = properties is Map && properties.containsKey(entry.key);\n        \
-         if (!declared && others == false) return <String>['${{entry.key}}'];\n        \
-         final held = declared ? properties[entry.key] : others;\n        \
-         final found = _{prefix}McpMismatch(held, entry.value, defs);\n        \
-         if (found != null) return <String>['${{entry.key}}', ...found];\n      \
+         if (!declared && others == false) {{\n          \
+         refuse(<String>[...at, key], 'unknown field `$key`');\n          \
+         continue;\n        \
+         }}\n        \
+         _{prefix}McpMismatches(declared ? properties[entry.key] : others, entry.value, defs, const <String>[], <String>[...at, key], found);\n      \
          }}\n      \
          final required = schema['required'];\n      \
          if (required is List) {{\n        \
          for (final key in required) {{\n          \
-         if (!value.containsKey(key)) return <String>['$key'];\n        \
+         if (!value.containsKey(key) && !passed.contains(key)) refuse(<String>[...at, '$key'], 'missing field `$key`');\n        \
          }}\n      \
-         }}\n      \
-         return null;\n    \
+         }}\n    \
          case 'array':\n      \
-         if (value is! List) return <String>[];\n      \
-         for (var at = 0; at < value.length; at += 1) {{\n        \
-         final found = _{prefix}McpMismatch(schema['items'], value[at], defs);\n        \
-         if (found != null) return <String>['$at', ...found];\n      \
+         if (value is! List) {{\n        \
+         refuse(at, 'invalid type, expected an array');\n        \
+         return;\n      \
          }}\n      \
-         return null;\n    \
+         for (var index = 0; index < value.length; index += 1) {{\n        \
+         _{prefix}McpMismatches(schema['items'], value[index], defs, const <String>[], <String>[...at, '$index'], found);\n      \
+         }}\n    \
          case 'string':\n      \
-         return value is String ? null : <String>[];\n    \
+         if (value is! String) refuse(at, 'invalid type, expected a string');\n    \
          case 'integer':\n      \
-         return value is int || (value is double && value == value.truncateToDouble()) ? null : <String>[];\n    \
+         if (!(value is int || (value is double && value == value.truncateToDouble()))) refuse(at, 'invalid type, expected an integer');\n    \
          case 'number':\n      \
-         return value is num ? null : <String>[];\n    \
+         if (value is! num) refuse(at, 'invalid type, expected a number');\n    \
          case 'boolean':\n      \
-         return value is bool ? null : <String>[];\n    \
-         default:\n      \
-         return null;\n  \
+         if (value is! bool) refuse(at, 'invalid type, expected a boolean');\n  \
          }}\n\
          }}",
     )
@@ -2006,7 +2043,33 @@ fn schema_lookups(prefix: &str, tools: bool, service: &ServiceDef) -> String {
              }}"
         );
     }
+    if reads_templates(service) {
+        let _ = write!(
+            text,
+            "\n\n/// The schema of the message each resource template reads, as the JSON text Rust wrote.\n\
+             const _{prefix}McpReadInputs = <String>[{READS_MARKER}];\n\n\
+             Object? _{prefix}McpReadSchema(String operation) {{\n  \
+             for (final written in _{prefix}McpReadInputs) {{\n    \
+             final parsed = jsonDecode(written);\n    \
+             if (parsed is Map && parsed['name'] == operation) return parsed['input'];\n  \
+             }}\n  \
+             return null;\n\
+             }}"
+        );
+    }
     text
+}
+
+/// Whether a resource template of the service reads a message, which a refused read is walked
+/// against.
+fn reads_templates(service: &ServiceDef) -> bool {
+    service.operations.iter().any(|operation| {
+        operation
+            .mcp
+            .resource
+            .as_ref()
+            .is_some_and(McpResourceUri::is_template)
+    })
 }
 
 fn answer_helpers(
@@ -2020,9 +2083,10 @@ fn answer_helpers(
     let panics =
         calls.declared || held.any() || service.operations.iter().any(OperationDef::is_mcp_prompt);
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     let mut text = format!(
-        "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail, {{String? field}}) =>\n    \
-         {fields}(detail: detail, field: field, kind: kind, operation: operation);\n\n\
+        "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail, {{String? field, List<{issue}>? issues}}) =>\n    \
+         {fields}(detail: detail, field: field, issues: issues, kind: kind, operation: operation);\n\n\
          String? _{prefix}McpField(String message) {{\n  \
          if (!message.startsWith(\"'\")) return null;\n  \
          final end = message.indexOf(\"'\", 1);\n  \
@@ -2164,6 +2228,16 @@ fn wrapped_check(
     (wrapped, refusal)
 }
 
+/// The arguments of `_McpUnreadFault` that list every mismatch of a tool's message, read past the
+/// keys read apart from it.
+fn every_mismatch(operation: &OperationDef) -> String {
+    let passed: Vec<String> = read_apart(operation)
+        .iter()
+        .map(|key| quoted(key))
+        .collect();
+    format!("passed: const <String>[{}], every: true", passed.join(", "))
+}
+
 fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let shape = HttpShape::of(operation);
     let tool = quoted(operation.mcp_tool_name());
@@ -2201,17 +2275,18 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          try {{\n      \
          {unjudged};\n    \
          }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread.message, _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n    \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread.message, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$unread', _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n    \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$unread', _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
          }}\n    \
          return _{prefix}McpFaultResult(\n      \
          _{prefix}McpFault({kind}.failedValidation, {tool}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$rejected', _{prefix}McpMessageSchema({tool}, {wrapped}), source));\n  \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$rejected', _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \
          }}\n",
         op = pascal(operation),
+        every = every_mismatch(operation),
         answers = answers_stmt(named, prefix, operation),
         fault_param = if matches!(operation.outcome, OperationOutcome::OneWay) {
             format!("\n  void Function({named}FaultFields fault)? onFault,")
@@ -2887,10 +2962,15 @@ fn resource_body(
     prefix: &str,
     operation: &OperationDef,
     source: &str,
-    schema: &str,
+    walked: &Walked<'_>,
     refusal: &str,
     answer: &str,
 ) -> String {
+    let schema = if walked.every {
+        format!("{}, source, every: true", walked.schema)
+    } else {
+        format!("{}, source", walked.schema)
+    };
     let OperationOutcome::Reply { error, success: ty } = &operation.outcome else {
         return String::new();
     };
@@ -2913,15 +2993,15 @@ fn resource_body(
          try {{\n      \
          {unjudged};\n    \
          }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread.message, {schema}, source));\n    \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread.message, {schema}));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$unread', {schema}, source));\n    \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$unread', {schema}));\n    \
          }}\n    \
          return _{prefix}McpUnread(\n      \
          _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$rejected', {schema}, source));\n  \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$rejected', {schema}));\n  \
          }}\n  \
          try {{\n    \
          final answered = await handlers.{call}(ctx, decoded);\n    \
@@ -2989,6 +3069,11 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
     } else {
         ""
     };
+    let read_schema = if resource.is_template() {
+        format!("_{prefix}McpReadSchema({})", quoted(&operation.wire_name))
+    } else {
+        "null".to_owned()
+    };
     let head = format!(
         "Future<{named}McpAnswer> _{prefix}McpRead{op}<Ctx>(\n  \
          {named}Handlers<Ctx> handlers,\n  \
@@ -3004,7 +3089,10 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
             prefix,
             operation,
             &source,
-            "null",
+            &Walked {
+                every: resource.is_template(),
+                schema: &read_schema,
+            },
             "'Resource not found'",
             &success,
         )
@@ -3056,7 +3144,10 @@ fn skill_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
             prefix,
             operation,
             "path",
-            "null",
+            &Walked {
+                every: false,
+                schema: "null",
+            },
             "'Skill file not found'",
             &success,
         )
@@ -3181,7 +3272,10 @@ fn resource_listing(named: &str, prefix: &str, operation: &OperationDef) -> Stri
             prefix,
             operation,
             source,
-            "null",
+            &Walked {
+                every: false,
+                schema: "null",
+            },
             "'Resources could not be listed'",
             &success,
         )
@@ -3222,7 +3316,10 @@ fn resource_completion(named: &str, prefix: &str, operation: &OperationDef) -> O
             prefix,
             operation,
             &source,
-            &completion_schema,
+            &Walked {
+                every: false,
+                schema: &completion_schema,
+            },
             "'Completion refused'",
             &success,
         )
@@ -3343,10 +3440,13 @@ fn prompt_function(named: &str, prefix: &str, operation: &OperationDef) -> Strin
             prefix,
             operation,
             &source,
-            &format!(
-                "_{prefix}McpPromptSchema({})",
-                quoted(operation.mcp_tool_name())
-            ),
+            &Walked {
+                every: true,
+                schema: &format!(
+                    "_{prefix}McpPromptSchema({})",
+                    quoted(operation.mcp_tool_name())
+                ),
+            },
             &refusal,
             &success,
         )
@@ -3829,6 +3929,11 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .map(|prompt| literal(&prompt.to_string()))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let reads = Self::mcp_read_inputs()
+                .into_iter()
+                .map(|(name, input)| literal(&::serde_json::json!({ "input": input, "name": name }).to_string()))
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             #skill_literals
             let instructions = match Self::MCP_INSTRUCTIONS {
                 ::core::option::Option::Some(text) => literal(text),
@@ -3840,6 +3945,7 @@ pub fn seam(declared: &ServiceDef) -> TokenStream {
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#PROMPTS_MARKER, &prompts)
+                .replace(#READS_MARKER, &reads)
                 .replace(#SKILLS_MARKER, &skills)
                 .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#INSTRUCTIONS_MARKER, &instructions)

@@ -214,15 +214,16 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
 }
 
 /// An optional flattened externally tagged enum is read as no value where the object it is handed
-/// holds no entry under a variant's name, and from that entry where it holds one.
+/// holds no entry under a variant's name, and from that entry where it holds one: under the
+/// `nonstrict` `Caulking`, as no value where that entry does not read.
 #[test]
 fn an_optional_flattened_externally_tagged_enum_is_null_where_no_entry_is() {
     assert_written(
         &caulking_dart::dart_definition(),
         &format!(
-            "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : \
-             Hatching.fromJsonUnjudged(entry) }}),note: _readAt(json, 'note', () => json['note'] \
-             as String),);",
+            "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : (() {{ try \
+             {{ return Hatching.fromJsonUnjudged(entry); }} catch (_) {{ return null; }} }})() \
+             }}),note: _readAt(json, 'note', () => json['note'] as String),);",
             first_of(
                 "({...json}..remove('note'))",
                 "Hatching",

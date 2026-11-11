@@ -1,0 +1,7 @@
+error: model_schema: type `Release` flattens `version`, read through `asGiven`, whose answer tixschema cannot see, so the other surfaces cannot refuse a key no member declares as serde does. Mark `Release` `#[model_schema(nonstrict)]`, so every surface reads past such a key.
+  --> tests/flatten_order_refusals/a_strict_holder_flattening_a_member_read_through_a_preprocess.rs:22:5
+   |
+22 | /     #[model_schema_prop(preprocess = ["asGiven"])]
+23 | |     #[serde(flatten)]
+24 | |     pub version: Version,
+   | |________________________^

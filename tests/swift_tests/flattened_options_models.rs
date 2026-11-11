@@ -8,8 +8,8 @@
 //! holder, beside a member of its holder's own. serde writes the keys of a flattened member that
 //! holds a value beside its holder's own, and nothing for one that holds none, and reads one that
 //! names no function as `None` wherever the type it holds does not read from the object it is
-//! handed. `run_kotlin_flattened.rs` reads [`Crowning`], [`Fidding`], [`Lowering`], [`Squaring`],
-//! [`Heeling`], [`Pitching`], [`Thimble`] and [`Easing`] as well.
+//! handed. `run_kotlin_flattened.rs` reads [`Crowning`], [`Fidding`], [`Gasketing`], [`Lowering`],
+//! [`Squaring`], [`Heeling`], [`Pitching`], [`Thimble`] and [`Easing`] as well.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -117,6 +117,16 @@ pub struct Lapping {
     pub tabling: Option<Tabling>,
 }
 
+/// [`Lapping`] `nonstrict`: a key of [`Tabling`] that does not read is read as `None` on every
+/// surface, as serde reads it, and the holder reads past it.
+#[model_schema(nonstrict)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gasketing {
+    pub note: String,
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub tabling: Option<Tabling>,
+}
+
 /// A flattened `Option`, the one member of its holder.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -212,7 +222,7 @@ pub struct Fidding {
 }
 
 /// A flattened `Option` read from what a function answers, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Veering {
     pub note: String,
@@ -370,6 +380,15 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
         assert_eq!(
             lapping,
             Lapping {
+                note: "n".to_owned(),
+                tabling: None,
+            },
+            "{json}"
+        );
+        let gasketing: Gasketing = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            gasketing,
+            Gasketing {
                 note: "n".to_owned(),
                 tabling: None,
             },

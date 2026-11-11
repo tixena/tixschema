@@ -1,12 +1,13 @@
-//! The resource reads and completions whose answer is a fault, with the kind, field and operation
-//! every `mcp` server answers for them: the Rust dispatcher and the emitted TypeScript and Dart
-//! servers all run this one table.
+//! The resource reads and completions whose answer is a fault, with the kind, field, listed
+//! problems and operation every `mcp` server answers for them: the Rust dispatcher and the emitted
+//! TypeScript and Dart servers all run this one table.
 
 use serde_json::Value;
 
-pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
+pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 5] = [
     ResourceFaultCase {
         field: None,
+        issues: &[],
         kind: "failed-validation",
         method: "resources/read",
         operation: "get-count",
@@ -14,6 +15,7 @@ pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
     },
     ResourceFaultCase {
         field: Some("aisle"),
+        issues: &[],
         kind: "failed-validation",
         method: "resources/read",
         operation: "get-slot",
@@ -21,6 +23,7 @@ pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
     },
     ResourceFaultCase {
         field: Some("chosen"),
+        issues: &[],
         kind: "failed-validation",
         method: "completion/complete",
         operation: "suggest-slots",
@@ -28,16 +31,27 @@ pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 4] = [
     },
     ResourceFaultCase {
         field: Some("typed"),
+        issues: &[],
         kind: "failed-validation",
         method: "completion/complete",
         operation: "suggest-slots",
         params: r#"{"ref":{"type":"ref/resource","uri":"shelf://aisles/{aisle}/slots/{slot}"},"argument":{"name":"slot","value":"too-long"},"context":{"arguments":{}}}"#,
     },
+    ResourceFaultCase {
+        field: Some("bay"),
+        issues: &["bay", "level"],
+        kind: "failed-validation",
+        method: "resources/read",
+        operation: "get-bay",
+        params: r#"{"uri":"shelf://bays/east/levels/top"}"#,
+    },
 ];
 
-/// One `resources/read` or `completion/complete` and the fault it must answer.
+/// One `resources/read` or `completion/complete` and the fault it must answer. `issues` is the
+/// field of each problem the fault lists, in order, and empty where it lists none.
 pub struct ResourceFaultCase {
     pub field: Option<&'static str>,
+    pub issues: &'static [&'static str],
     pub kind: &'static str,
     pub method: &'static str,
     pub operation: &'static str,
@@ -58,6 +72,14 @@ impl ResourceFaultCase {
             self.field,
             "{reply:#}"
         );
+        let fields: Vec<&str> = fault
+            .get("issues")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|issue| issue["field"].as_str().unwrap())
+            .collect();
+        assert_eq!(fields, self.issues, "{reply:#}");
     }
 
     /// The params of the request, as a JSON value.

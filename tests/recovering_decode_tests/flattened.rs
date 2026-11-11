@@ -287,7 +287,7 @@ enum Seen {
 }
 
 /// A flattened map read by a hook named like what the walk of a flattened type keeps its keys as.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Marked {
     #[serde(flatten, deserialize_with = "declared")]
@@ -1103,17 +1103,20 @@ fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function(
 
 #[test]
 fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
-    let stored = json!({ "legacy": true, "title": "t" });
     assert_eq!(
-        serde_json::from_value::<Traced>(stored.clone()).unwrap(),
+        serde_json::from_value::<Traced>(json!({ "title": "t" })).unwrap(),
         Traced {
             title: "t".to_owned(),
             trace: Trace::Pending { cached: 0 },
         }
     );
+    let stored = json!({ "legacy": true, "title": "t" });
+    assert!(!serde_reads::<Traced>(&stored));
     assert_eq!(
         listed!(Traced, traced_schema, stored),
-        ["legacy: unknown: found Bool(true)"]
+        [
+            "the value itself: no variant: found Object {\"legacy\": Bool(true)}, tried Made, Pending"
+        ]
     );
 }
 

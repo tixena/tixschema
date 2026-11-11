@@ -1,0 +1,7 @@
+error: model_schema: type `Corner` (variant `Noted`) flattens `tholepin`, read through `asNull`, whose answer tixschema cannot see, so the other surfaces cannot refuse a key no member declares as serde does. Mark `Corner` `#[model_schema(nonstrict)]`, so every surface reads past such a key.
+  --> tests/flatten_order_refusals/a_strict_enum_variant_flattening_a_member_read_through_a_function_beside_a_refusing_variant.rs:31:9
+   |
+31 | /         #[model_schema_prop(preprocess = ["asNull"])]
+32 | |         #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+33 | |         tholepin: Option<Tholepin>,
+   | |__________________________________^

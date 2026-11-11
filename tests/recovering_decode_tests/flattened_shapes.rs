@@ -307,7 +307,7 @@ struct Pocket {
 }
 
 /// A flattened `Option` read through a hook.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct DirectMaybe {
     id: String,
@@ -321,7 +321,7 @@ struct DirectMaybe {
 }
 
 /// A flattened struct read through a hook.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct ThroughHook {
     id: String,
@@ -330,7 +330,7 @@ struct ThroughHook {
 }
 
 /// A flattened map read through a hook.
-#[model_schema(enable = ["decode_with"])]
+#[model_schema(nonstrict, enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct MapThroughHook {
     #[serde(flatten, deserialize_with = "as_written")]

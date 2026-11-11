@@ -48,8 +48,9 @@ fn dispatcher_macro(
          It takes no arguments and emits bare items - `IncomingMessage`, `Reply` and `dispatch`, \
          beside the readers an arm needs, plus this transport's own frame codec, `FrameReply` and \
          `answer` - so the caller supplies the module they land in and two transports in one \
-         crate cannot collide. The invoking crate names `serde`, `serde_json` and `tracing` in \
-         its own manifest, because the items below call them.\n\n\
+         crate cannot collide. The invoking crate names `serde`, `serde_json`, \
+         `serde_path_to_error` and `tracing` in its own manifest, because the items below call \
+         them.\n\n\
          {placement}",
         transport.name()
     );
@@ -440,10 +441,11 @@ fn client_macro_docs(
          per operation, plus this transport's own `SERVICE`, `Frame`, `request_frame`, \
          `notify_frame`, `FrameWriter` and `FrameSession` - so the caller supplies the module \
          they land in and two transports in one crate cannot collide.\n\n\
-         The invoking crate names `serde` and `serde_json` in its own manifest, the expansion \
-         calling both. It names no `tracing`: nothing here catches a panic, so nothing here has \
-         anything to write down. `FrameSession`'s correlation map names no runtime crate beyond \
-         those two either - `core` and `std` are enough for a mutex and a waker.\n\n\
+         The invoking crate names `serde`, `serde_json` and `serde_path_to_error` in its own \
+         manifest, the expansion calling all three. It names no `tracing`: nothing here catches a \
+         panic, so nothing here has anything to write down. `FrameSession`'s correlation map \
+         names no runtime crate beyond those three either - `core` and `std` are enough for a \
+         mutex and a waker.\n\n\
          {placement}\n\n\
          The `use` names the types the author declared one by one - the messages, the successes \
          and the errors a method signature spells, which this expansion writes exactly as they \

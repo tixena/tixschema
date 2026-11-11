@@ -9,7 +9,9 @@
 //! the reads are run under the Swift toolchain in
 //! `tests/service_schema_emitted_client_tests/run_swift_flattened_options.rs`.
 
-use super::corrected_options_models::{moused_swift, reeved_swift, wormed_swift};
+use super::corrected_options_models::{
+    marled_swift, moused_swift, reeved_swift, seized_swift, served_swift, wormed_swift,
+};
 use super::flattened_options_models::{
     crowning_swift, easing_swift, fidding_swift, flaking_swift, heeling_swift, kinking_swift,
     lapping_swift, lowering_swift, painter_swift, pitching_swift, ratline_swift, sennit_swift,
@@ -167,8 +169,9 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
 /// enum's keys, and as the enum otherwise, a read that throws refusing the payload: an externally
 /// tagged enum by the names its variants are read under, and an enum under a tag key alone by its
 /// tag and one under a tag and a content key by both, in the whole object, as TypeScript and Zod
-/// read them. An untagged enum, which has no keys, and an enum declared below its holder are read
-/// as `nil` wherever their read throws.
+/// read them. Beside the `nonstrict` `Lowering` a read that throws is `nil`, as serde and Zod read
+/// it. An untagged enum, which has no keys, and an enum declared below its holder are read as `nil`
+/// wherever their read throws.
 #[test]
 fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     assert_written(
@@ -192,8 +195,9 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     assert_written(
         &lowering_swift::swift_definition(),
         "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { \
-         [\"kind\"].contains($0.stringValue) }) { self.grommet = try Grommet(from: decoder) } else \
-         { self.grommet = nil }; self.note = try container.decode(String.self, forKey: .note) }",
+         [\"kind\"].contains($0.stringValue) }) { do { self.grommet = try Grommet(from: decoder) } \
+         catch { self.grommet = nil } } else { self.grommet = nil }; self.note = try \
+         container.decode(String.self, forKey: .note) }",
     );
     assert_written(
         &squaring_swift::swift_definition(),
@@ -213,46 +217,6 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     );
 }
 
-/// A flattened `Option` that names a function reads its type from what the function answers, an
-/// answer of `null` among it, and where that read throws is `nil` where the object the function is
-/// handed holds none of its struct's keys, or no key at all for an enum, whose keys are not known,
-/// and refuses the payload where it holds one, as the Zod schema of its holder reads it.
-#[test]
-fn a_flattened_option_that_names_a_function_reads_what_it_answers_as_zod_does() {
-    assert_written(
-        &veering_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); let tablingPayload = try \
-         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; do { self.tabling \
-         = try SwiftSchemaPayload.read(Tabling.self, from: asGiven(tablingPayload), at: \
-         decoder.codingPath) } catch { if [\"label\"].contains(where: { (tablingPayload as? \
-         [String: Any] ?? [:])[$0] != nil }) { throw error }; self.tabling = nil } };",
-    );
-    assert_written(
-        &reeved_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); let tholepinPayload = try \
-         SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; do { \
-         self.tholepin = try SwiftSchemaPayload.read(Tholepin.self, from: \
-         asGiven(tholepinPayload), at: decoder.codingPath) } catch { if \
-         [\"label\"].contains(where: { (tholepinPayload as? [String: Any] ?? [:])[$0] != nil }) { \
-         throw error }; self.tholepin = nil } };",
-    );
-    assert_written(
-        &wormed_swift::swift_definition(),
-        "do { self.tholepin = try SwiftSchemaPayload.read(Tholepin.self, from: \
-         asNull(tholepinPayload), at: decoder.codingPath) } catch { if \
-         [\"label\"].contains(where: { (tholepinPayload as? [String: Any] ?? [:])[$0] != nil }) { \
-         throw error }; self.tholepin = nil } };",
-    );
-    assert_written(
-        &moused_swift::swift_definition(),
-        "let frappedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
-         [\"note\"]).value; do { self.frapped = try SwiftSchemaPayload.read(Frapped.self, from: \
-         asGiven(frappedPayload), at: decoder.codingPath) } catch { if !(frappedPayload as? \
-         [String: Any] ?? [:]).isEmpty { throw error }; self.frapped = nil }; self.note = try \
-         container.decode(String.self, forKey: .note) };",
-    );
-}
-
 /// A struct flattened bare is read from the whole object its holder reads, as TypeScript and Zod
 /// read it: a read that throws refuses the payload.
 #[test]
@@ -260,5 +224,74 @@ fn a_struct_flattened_bare_reads_the_whole_object() {
     assert_written(
         &crowning_swift::swift_definition(),
         "self.note = try container.decode(String.self, forKey: .note); self.tabling = try Tabling(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: CodingKeys.self); try container.encode(self.note, forKey: .note); try self.tabling.encode(to: encoder) };",
+    );
+}
+
+/// Beside a `nonstrict` holder, an optional flattened member that names a function is `nil` where
+/// its functions answer `null`, and is read from any other answer as a payload of its own, so a
+/// read that throws, a key its type does not declare among them, refuses the payload, as serde
+/// reads it. A member flattened with no `Option` is read from the answer the same way, through
+/// the read its type declares beside the payload helper.
+#[test]
+fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does() {
+    let note_and_tholepin = |function: &str| {
+        format!(
+            "self.note = try container.decode(String.self, forKey: .note); let \
+             tholepinHandedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+             [\"note\"]).value; let tholepinPayload: Any = {function}(tholepinHandedPayload); if \
+             tholepinPayload is NSNull {{ self.tholepin = nil }} else {{ self.tholepin = try \
+             SwiftSchemaPayload.readRefusing(Tholepin.self, from: tholepinPayload, at: \
+             decoder.codingPath) }} }};"
+        )
+    };
+    assert_written(
+        &reeved_swift::swift_definition(),
+        &note_and_tholepin("asGiven"),
+    );
+    assert_written(
+        &wormed_swift::swift_definition(),
+        &note_and_tholepin("asNull"),
+    );
+    assert_written(
+        &veering_swift::swift_definition(),
+        "self.note = try container.decode(String.self, forKey: .note); let tablingHandedPayload = \
+         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; let \
+         tablingPayload: Any = asGiven(tablingHandedPayload); if tablingPayload is NSNull { \
+         self.tabling = nil } else { self.tabling = try \
+         SwiftSchemaPayload.readRefusing(Tabling.self, from: tablingPayload, at: \
+         decoder.codingPath) } };",
+    );
+    for holder in [
+        moused_swift::swift_definition(),
+        marled_swift::swift_definition(),
+    ] {
+        assert_written(
+            &holder,
+            "let frappedHandedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+             [\"note\"]).value; let frappedPayload: Any = asGiven(frappedHandedPayload); if \
+             frappedPayload is NSNull { self.frapped = nil } else { self.frapped = try \
+             SwiftSchemaPayload.readRefusing(Frapped.self, from: frappedPayload, at: \
+             decoder.codingPath) }; \
+             self.note = try container.decode(String.self, forKey: .note) };",
+        );
+    }
+    assert_written(
+        &served_swift::swift_definition(),
+        "self.note = try container.decode(String.self, forKey: .note); let tholepinHandedPayload = \
+         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; let \
+         tholepinPayload: Any = asNull(tholepinHandedPayload); if tholepinPayload is NSNull { \
+         self.tholepin = nil } else { self.tholepin = try \
+         SwiftSchemaPayload.readRefusing(Tholepin.self, \
+         from: tholepinPayload, at: decoder.codingPath) } };",
+    );
+    assert_written(
+        &seized_swift::swift_definition(),
+        "let tholepinPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+         [\"note\"]).value; self.tholepin = try SwiftSchemaPayload.readRefusing(Tholepin.self, \
+         from: asGiven(tholepinPayload), at: decoder.codingPath) };",
+    );
+    assert_written(
+        &seized_swift::swift_definition(),
+        "static func readRefusing<Read: Decodable>",
     );
 }

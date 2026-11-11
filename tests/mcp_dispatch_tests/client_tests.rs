@@ -403,6 +403,28 @@ fn a_fault_in_a_result_is_that_fault() {
     assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(fault.field(), Some("document_id"));
     assert_eq!(fault.detail(), "'document_id': too short");
+    assert_eq!(fault.issues(), []);
+}
+
+#[test]
+fn a_fault_that_lists_its_problems_keeps_each_one_at_its_field() {
+    let text = "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.title': missing field `title`\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}";
+    let result = json!({ "resultType": "complete", "content": [{ "type": "text", "text": text }], "isError": true });
+    let client = DocumentServiceClient::new(Canned::answering(&result_text(&result)));
+    let fault = fault_of(ask(&client, "doc-1"));
+    assert_eq!(fault.field(), Some("drafts.0.title"));
+    let issues: Vec<(Option<&str>, &str)> = fault
+        .issues()
+        .iter()
+        .map(|issue| (issue.field(), issue.detail()))
+        .collect();
+    assert_eq!(
+        issues,
+        [
+            (Some("drafts.0.title"), "missing field `title`"),
+            (Some("drafts.1.title"), "missing field `title`"),
+        ]
+    );
 }
 
 #[test]

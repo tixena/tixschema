@@ -7,7 +7,7 @@ use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{answers_key, is_content_pair, is_prompt_messages};
+use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, is_unit_type, wire_key, written,
@@ -722,12 +722,12 @@ function __p__McpAsking(
   return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
 }"#;
 
-const CONTENT: &str = r#"/** One block of `content`, which the dispatcher has already written as the specification writes it. */
+const BLOCK: &str = "/** One block of `content`, which the dispatcher has already written as the specification writes it. */
 function __p__McpBlock(block: unknown): Record<string, unknown> {
   return __p__McpObject(block) ?? {};
-}
+}";
 
-/**
+const CONTENT: &str = r#"/**
  * The blocks a content tool answers: the one image or audio block of a pair, or the blocks of a
  * list. A pair of any other content type has none, and answers as an operation with no flag does.
  */
@@ -772,7 +772,20 @@ function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
   return deepest;
 }
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read; none where it reads or only the validator refuses it. */
+/** Each issue at its dotted path, one per key of an `unrecognized_keys` issue. */
+function __p__McpListed(
+  issues: ReadonlyArray<__p__McpIssue & { readonly message: string }>,
+): Array<{ detail: string; field: string | undefined }> {
+  return issues.flatMap((issue) => {
+    if (issue.code === "unrecognized_keys" && issue.keys !== undefined) {
+      return issue.keys.map((key) => ({ detail: `Unrecognized key: "${key}"`, field: [...issue.path, key].join(".") }));
+    }
+    const steps = __p__McpSteps(issue);
+    return [{ detail: issue.message, field: steps.length === 0 ? undefined : steps.join(".") }];
+  });
+}
+
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -789,13 +802,20 @@ function __p__McpUnread(
       .join("; ");
     return __FAULT__("failed-validation", operation, detail, answers);
   }
-  const unread = issues.find((issue) => __p__McpUnreadable.has(issue.code));
+  const unreadable = issues.filter((issue) => __p__McpUnreadable.has(issue.code));
+  const unread = unreadable[0];
   if (unread === undefined) return undefined;
   const steps = __p__McpSteps(unread);
-  const detail = issues
-    .map((issue) => (issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
+  const detail = unreadable
+    .flatMap((issue) =>
+      issue.code === "unrecognized_keys" && issue.keys !== undefined
+        ? issue.keys.map((key) => `'${[...issue.path, key].join(".")}': Unrecognized key: "${key}"`)
+        : [issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`],
+    )
     .join("; ");
-  return __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
+  const fault = __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
+  const listed = __p__McpListed(unreadable);
+  return listed.length < 2 ? fault : { ...fault, issues: listed };
 }
 
 /** The `-32603` answer of a handler that came apart. */
@@ -2385,22 +2405,23 @@ fn interview_text(service: &ServiceDef, named: &str, prefix: &str) -> String {
     }
 }
 
+/// `__p__McpBlock` where a content tool or the prompt route calls it, and `__p__McpBlocks` where a
+/// content tool does.
 fn content_text(service: &ServiceDef, prefix: &str) -> String {
-    if service
+    let content = service
         .operations
         .iter()
-        .any(|operation| operation.mcp.content.is_some())
-        || prompt_messages(service)
-    {
-        filled(CONTENT, "", prefix)
-    } else {
-        String::new()
-    }
-}
-
-/// Whether a prompt answers a list of messages.
-fn prompt_messages(service: &ServiceDef) -> bool {
-    service.operations.iter().any(is_prompt_messages)
+        .any(|operation| operation.mcp.content.is_some());
+    let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    [
+        (content || prompting).then_some(BLOCK),
+        content.then_some(CONTENT),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|template| filled(template, "", prefix))
+    .collect::<Vec<_>>()
+    .join("\n\n")
 }
 
 /// The scopes `prompts/get` needs, by the name of the prompt.

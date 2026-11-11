@@ -1211,10 +1211,23 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
         "      detail: parsed.detail,\n      \
          field: parsed.field as string | undefined,\n      \
          kind: parsed.kind as {named}FaultKind,\n      \
-         operation: parsed.operation,"
+         operation: parsed.operation,\n      \
+         ...(listed === undefined ? {{}} : {{ issues: listed }}),"
     );
     format!(
-        "/**\n \
+        "/** The problems a fault body lists, `undefined` where one of them is no problem. */\n\
+         function {prefix}HttpIssuesOf(value: unknown): Array<{named}FaultIssue> | undefined {{\n  \
+         if (!Array.isArray(value)) return undefined;\n  \
+         const listed: Array<{named}FaultIssue> = [];\n  \
+         for (const entry of value) {{\n    \
+         if (typeof entry !== \"object\" || entry === null) return undefined;\n    \
+         const {{ detail, field }} = entry as {{ detail?: unknown; field?: unknown }};\n    \
+         if (typeof detail !== \"string\" || (field !== undefined && typeof field !== \"string\")) return undefined;\n    \
+         listed.push({{ detail, field }});\n  \
+         }}\n  \
+         return listed;\n\
+         }}\n\n\
+         /**\n \
          * Reads a fixed fault status's own body back into a `{named}Fault`, from whatever it \
          holds.\n \
          * A body that does not read as the fixed fault shape is itself a defect answered as \
@@ -1226,9 +1239,11 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          const parsed = {prefix}HttpRead(text) as {{\n      \
          detail?: unknown;\n      \
          field?: unknown;\n      \
+         issues?: unknown;\n      \
          kind?: unknown;\n      \
          operation?: unknown;\n    \
          }};\n    \
+         const listed = parsed.issues === undefined ? undefined : {prefix}HttpIssuesOf(parsed.issues);\n    \
          const knownKinds: ReadonlyArray<unknown> = [\n      \
          \"failed-validation\",\n      \
          \"handler-panic\",\n      \
@@ -1239,6 +1254,7 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          if (\n      \
          typeof parsed.detail === \"string\" &&\n      \
          (parsed.field === undefined || typeof parsed.field === \"string\") &&\n      \
+         (parsed.issues === undefined || listed !== undefined) &&\n      \
          typeof parsed.kind === \"string\" &&\n      \
          knownKinds.includes(parsed.kind) &&\n      \
          typeof parsed.operation === \"string\"\n    \

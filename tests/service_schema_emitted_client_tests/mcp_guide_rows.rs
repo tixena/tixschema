@@ -23,7 +23,11 @@ const EVENT_PREFIX: &str = "event: message\ndata: ";
 
 /// The requests whose validation fault is compared without its detail, which each language words
 /// in its own terms.
-const FAULTED_ANSWERS: [&str; 2] = ["get_missing_argument", "get_wrong_type"];
+const FAULTED_ANSWERS: [&str; 3] = [
+    "get_missing_argument",
+    "get_wrong_type",
+    "get_two_wrong_types",
+];
 
 /// The tool calls answered with a fault in the result's text, compared without its detail.
 const FAULTED_TOOL_ANSWERS: [&str; 1] = ["tool_version_stray"];
@@ -300,6 +304,13 @@ pub fn requests() -> Vec<(&'static str, String)> {
             "get_wrong_type",
             get("review-document-type", &json!({ "documentType": 5_u8 })),
         ),
+        (
+            "get_two_wrong_types",
+            get(
+                "review-document-type",
+                &json!({ "documentType": 5_u8, "focus": 6_u8 }),
+            ),
+        ),
         ("get_unknown", get("nothing", &json!({}))),
         ("get_panic", get("greet", &json!({ "name": "boom" }))),
         (
@@ -494,6 +505,14 @@ fn without_detail(answer: &Value) -> Value {
     let mut stripped = answer.clone();
     let fault = stripped["error"]["data"]["fault"].as_object_mut().unwrap();
     fault.remove("detail");
+    for issue in fault
+        .get_mut("issues")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        issue.as_object_mut().unwrap().remove("detail");
+    }
     stripped["error"]["message"] = Value::Null;
     stripped
 }
@@ -789,4 +808,27 @@ where
         Poll::Pending => None,
     }
     .unwrap()
+}
+
+#[test]
+fn a_prompt_whose_arguments_hold_two_problems_names_both_in_one_fault() {
+    let (reply, calls) = answered(&get(
+        "review-document-type",
+        &json!({ "documentType": 5_u8, "focus": 6_u8 }),
+    ));
+    assert_eq!(calls, Vec::<Value>::new());
+    let answer: Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(
+        answer["error"]["data"]["fault"],
+        json!({
+            "detail": "'documentType': invalid type: integer `5`, expected a string; 'focus': invalid type, expected a string",
+            "field": "documentType",
+            "issues": [
+                { "detail": "invalid type: integer `5`, expected a string", "field": "documentType" },
+                { "detail": "invalid type, expected a string", "field": "focus" },
+            ],
+            "kind": "failed-validation",
+            "operation": "review-document-type",
+        })
+    );
 }

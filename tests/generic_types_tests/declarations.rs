@@ -1195,6 +1195,10 @@ const AS_GIVEN_OR_NULL: &str = "export function asGiven(payload: unknown): unkno
 
 export function asNull(_payload: unknown): unknown {
   return null;
+}
+
+export function nullWhereNoted(payload: unknown): unknown {
+  return typeof payload === \"object\" && payload !== null && \"note\" in payload ? null : payload;
 }";
 
 /// Parses each payload through the schema of the type it is read as, and prints what each read
@@ -2273,7 +2277,7 @@ pub enum DeclaredTack {
 
 /// [`DeclaredTack`] flattened beside a member of its holder's own, under a function that answers
 /// the payload as it was handed: serde writes a unit variant as its name over `null`.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeclaredYaw {
     pub note: String,
@@ -3225,6 +3229,16 @@ fn corrected_options_bundle() -> String {
         corrected_options::Frapped::zod_schema(),
         corrected_options::Moused::ts_definition(),
         corrected_options::Moused::zod_schema(),
+        corrected_options::Parcelled::ts_definition(),
+        corrected_options::Parcelled::zod_schema(),
+        corrected_options::Served::ts_definition(),
+        corrected_options::Served::zod_schema(),
+        corrected_options::Marled::ts_definition(),
+        corrected_options::Marled::zod_schema(),
+        corrected_options::Snaked::ts_definition(),
+        corrected_options::Snaked::zod_schema(),
+        corrected_options::Seized::ts_definition(),
+        corrected_options::Seized::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -5495,13 +5509,17 @@ fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_r
     );
 }
 
-/// An optional flattened member that names a function is read by the Zod schema of its holder
-/// under `node` from what the function answers, and is absent where that read fails and the object
-/// holds none of its type's keys, and the payload refused where it holds one. TypeScript, which
-/// calls no function, takes the type's keys whatever the function answers.
+/// An optional flattened member that names a function is read by the Zod schema of its
+/// `nonstrict` holder under `node` from what the function answers, absent exactly where the
+/// function answers `null`, and each payload reads as serde reads it. TypeScript, which calls no
+/// function, takes the type's keys whatever the function answers.
 #[test]
 fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_answer() {
-    let listed: Vec<(String, &str)> = corrected_options::CORRECTED
+    let rows: Vec<&corrected_options::Corrected> = corrected_options::CORRECTED
+        .iter()
+        .chain(&corrected_options::OPEN_CORRECTED)
+        .collect();
+    let listed: Vec<(String, &str)> = rows
         .iter()
         .map(|row| (format!("{}$Schema", row.holder), row.json))
         .collect();
@@ -5511,10 +5529,7 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     else {
         return;
     };
-    let zod: Vec<&str> = corrected_options::CORRECTED
-        .iter()
-        .map(|row| row.zod)
-        .collect();
+    let zod: Vec<&str> = rows.iter().map(|row| row.zod).collect();
     assert_eq!(
         printed,
         zod.join("\n"),
@@ -5523,9 +5538,11 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     let Some(at) = built_from("corrected-options-payloads", &corrected_options_bundle()) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { Moused, Reeved, Wormed } from \"./lib/index.js\";\n");
-    for (position, row) in corrected_options::CORRECTED.iter().enumerate() {
+    let mut payloads = String::from(
+        "import type { Marled, Moused, Parcelled, Reeved, Seized, Served, Snaked, Wormed } from \
+         \"./lib/index.js\";\n",
+    );
+    for (position, row) in rows.iter().enumerate() {
         let _ = writeln!(
             payloads,
             "export const row{position}: {} = {};",
@@ -5537,13 +5554,10 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
     let (_, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
     fs::remove_dir_all(&at).unwrap();
     // A row's line is its position after the import.
-    let typed: Vec<bool> = (0..corrected_options::CORRECTED.len())
+    let typed: Vec<bool> = (0..rows.len())
         .map(|row| !said.contains(&format!("consumer.ts({},", row + 2)))
         .collect();
-    let stated: Vec<bool> = corrected_options::CORRECTED
-        .iter()
-        .map(|row| row.typed)
-        .collect();
+    let stated: Vec<bool> = rows.iter().map(|row| row.typed).collect();
     assert_eq!(
         typed, stated,
         "TypeScript does not take what it is stated to take:\n{said}\n{payloads}"

@@ -753,9 +753,10 @@ mod flattened_models;
 
 /// An optional flattened member whose type the Kotlin emitter recorded no keys for: a struct
 /// declared below its holder with a flattened member of its own, and an enum under each tagging
-/// but serde's own.
+/// but serde's own, read by the Kotlin run, and beside a `nonstrict` holder by the Swift and the
+/// Dart run.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 #[path = "kotlin_tests/unrecorded_options_models.rs"]
 mod unrecorded_options_models;
 
@@ -1252,8 +1253,8 @@ mod flattened_stray_models;
 #[path = "service_schema_emitted_client_tests/run_flattened_strays.rs"]
 mod run_flattened_strays;
 
-/// A `nonstrict` holder of a member that reads every key, and a strict holder of one that refuses
-/// a key it does not declare.
+/// `nonstrict` holders of a member that reads every key, a strict holder of one that refuses a key
+/// it does not declare, and enums whose variants hold each.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/read_past_models.rs"]
 mod read_past_models;
@@ -2184,3 +2185,40 @@ mod empty_struct_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_empty_structs.rs"]
 mod run_empty_structs;
+
+/// Enums with a braced variant serde reads no member of, under each tagging, strict and
+/// `nonstrict`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/empty_variant_models.rs"]
+mod empty_variant_models;
+
+/// Those enums read by Zod, Dart, Kotlin and Swift beside serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_empty_variants.rs"]
+mod run_empty_variants;
+
+/// Five MCP services of one operation each, whose emitted servers and clients write each helper
+/// only where something calls it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/mcp_note_services.rs"]
+mod mcp_note_services;
+
+#[cfg(test)]
+use mcp_note_services::{
+    NoteBlocksService, NoteCountService, NoteGreetingService, NotePreviewService,
+    NoteReviewService, note_blocks_service_schema, note_count_service_schema,
+    note_greeting_service_schema, note_preview_service_schema, note_review_service_schema,
+};
+
+/// `dart analyze` over the Dart server and client of each of those services.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_mcp_notes.rs"]
+mod run_dart_mcp_notes;
+
+/// The Kotlin server and client and the Swift client of each of those services, read for a
+/// declaration nothing calls.
+#[cfg(test)]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/mcp_note_declarations.rs"]
+mod mcp_note_declarations;

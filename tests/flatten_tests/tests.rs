@@ -782,7 +782,7 @@ struct GuestLetter {
 }
 
 /// A nonstrict enum under a tag alone whose newtype variant holds a strict struct, which refuses a
-/// stray key serde hands it beside the tag.
+/// stray key serde hands it beside the tag, beside a variant that reads one past.
 #[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind")]
@@ -1187,7 +1187,7 @@ enum OptionalSourceVariant {
 }
 
 /// Two choices in one variant: the combinations are the cross product of their members.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum TwoChoiceVariant {
     Named {
@@ -1200,12 +1200,30 @@ enum TwoChoiceVariant {
 }
 
 /// An `Option` over a choice: the source's own members, and the absence beside them.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum OptionalChoiceVariant {
     Named {
         #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
         choice: Option<VariantChoice>,
+        x: String,
+    },
+}
+
+/// A `nonstrict` enum one variant of which flattens a choice that reads past a key it does not
+/// declare, beside a variant whose choice refuses one: serde judges each variant by itself, so it
+/// reads such a key past in the one and refuses it in the other.
+#[model_schema(nonstrict)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+enum RefusingBesideOpenVariant {
+    Open {
+        #[serde(flatten)]
+        choice: VariantChoice,
+        x: String,
+    },
+    Refusing {
+        #[serde(flatten)]
+        choice: ThreeBranchChoice,
         x: String,
     },
 }
@@ -4201,7 +4219,7 @@ fn test_two_variant_sources_write_their_cross_product() {
 #[cfg(feature = "zod")]
 fn test_two_variant_sources_write_their_cross_product_in_zod() {
     let zod = TwoChoiceVariant::zod_schema();
-    let own = "z.strictObject({\n  x: z.string(),\n})";
+    let own = "z.object({\n  x: z.string(),\n})";
     assert!(
         zod.contains(&format!(
             "\"Named\": z.union([\n  \
@@ -4249,12 +4267,56 @@ fn test_an_optional_multi_branch_variant_source_offers_its_branches_and_the_abse
     assert!(
         zod.contains(
             "\"Named\": z.union([\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}),\n])"
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n  \
+             z.object({\n  x: z.string(),\n}),\n])"
         ),
         "Got: {zod}"
     );
+}
+
+#[test]
+fn test_a_nonstrict_enum_reads_a_stray_key_past_or_refuses_it_in_each_variant_by_itself() {
+    for (value, written) in [
+        (
+            RefusingBesideOpenVariant::Open {
+                choice: VariantChoice::Left(ChoiceLeft {
+                    left: "l".to_owned(),
+                }),
+                x: "y".to_owned(),
+            },
+            serde_json::json!({ "Open": { "left": "l", "x": "y" } }),
+        ),
+        (
+            RefusingBesideOpenVariant::Refusing {
+                choice: ThreeBranchChoice::Middle(ChoiceMiddle { middle: true }),
+                x: "y".to_owned(),
+            },
+            serde_json::json!({ "Refusing": { "middle": true, "x": "y" } }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(&value).unwrap(), written);
+        assert_eq!(
+            serde_json::from_value::<RefusingBesideOpenVariant>(written).unwrap(),
+            value
+        );
+    }
+    assert_eq!(
+        serde_json::from_value::<RefusingBesideOpenVariant>(
+            serde_json::json!({ "Open": { "left": "l", "stray": 1_u8, "x": "y" } }),
+        )
+        .unwrap(),
+        RefusingBesideOpenVariant::Open {
+            choice: VariantChoice::Left(ChoiceLeft {
+                left: "l".to_owned(),
+            }),
+            x: "y".to_owned(),
+        }
+    );
+    serde_json::from_value::<RefusingBesideOpenVariant>(
+        serde_json::json!({ "Refusing": { "middle": true, "stray": 1_u8, "x": "y" } }),
+    )
+    .unwrap_err();
 }
 
 #[test]
@@ -4520,16 +4582,20 @@ fn the_schema_of_a_nonstrict_holder_refuses_a_stray_key_its_strict_member_refuse
 }
 
 #[test]
-fn the_schema_of_a_nonstrict_enum_refuses_a_stray_key_a_variant_refuses() {
-    let stray = r#"{"depth":2,"ink":"red","kind":"Stamped","stray":1}"#;
-    serde_json::from_str::<Docket>(stray).unwrap_err();
+fn the_schema_of_a_nonstrict_enum_refuses_a_stray_key_in_the_variant_that_refuses_one() {
+    serde_json::from_str::<Docket>(r#"{"depth":2,"ink":"red","kind":"Stamped","stray":1}"#)
+        .unwrap_err();
+    serde_json::from_str::<Docket>(r#"{"kind":"Noted","note":"n","stray":1}"#).unwrap();
     let zod = Docket::zod_schema();
-    assert!(!zod.contains("z.object("), "{zod}");
     assert!(
-        !serde_json::to_string(&Docket::json_schema())
-            .unwrap()
-            .contains(r#""additionalProperties":true"#),
-        "{}",
-        Docket::json_schema()
+        zod.contains("z.object({\n  kind: z.literal(\"Noted\"),")
+            && zod.contains("z.strictObject({\n  kind: z.literal(\"Stamped\"),\n})"),
+        "{zod}"
+    );
+    let written = serde_json::to_string(&Docket::json_schema()).unwrap();
+    assert_eq!(
+        written.matches(r#""additionalProperties":true"#).count(),
+        1,
+        "{written}"
     );
 }

@@ -160,7 +160,7 @@ function __p__ReplyHeader<Parsed>(
   };
 }";
 
-const BLOCKS: &str = r#"/** `text` decoded from base64 as the array of its bytes, `undefined` where it is none. */
+const UNBASE64: &str = r#"/** `text` decoded from base64 as the array of its bytes, `undefined` where it is none. */
 function __p__Unbase64(text: unknown): Array<number> | undefined {
   if (typeof text !== "string") return undefined;
   try {
@@ -168,9 +168,9 @@ function __p__Unbase64(text: unknown): Array<number> | undefined {
   } catch {
     return undefined;
   }
-}
+}"#;
 
-/** The structured pair of an answer: its own, or its one image or audio block written as one. */
+const PAIR_SOURCE: &str = r#"/** The structured pair of an answer: its own, or its one image or audio block written as one. */
 function __p__PairSource(structured: unknown, blocks: unknown): unknown {
   if (structured !== undefined) return structured;
   const block = Array.isArray(blocks) ? __p__Object(blocks[0]) : undefined;
@@ -411,7 +411,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         .any(|operation| operation.mcp.content.is_some())
         || messages
     {
-        published.push(fill(BLOCKS));
+        published.push(fill(UNBASE64));
+    }
+    if service.operations.iter().any(is_content_pair) {
+        published.push(fill(PAIR_SOURCE));
     }
     if service.operations.iter().any(is_content_list) || messages {
         published.push(fill(LIST));
@@ -509,15 +512,29 @@ fn minted_fn(named: &str, prefix: &str, suffix: &str, kind: &str) -> String {
 }
 
 fn fault_of_fn(named: &str, prefix: &str) -> String {
-    let members =
-        "      detail,\n      field,\n      kind: kind as __N__FaultKind,\n      operation,"
-            .replace("__N__", named);
+    let members = "      detail,\n      field,\n      kind: kind as __N__FaultKind,\n      operation,\n      \
+                   ...(listed === undefined ? {} : { issues: listed }),"
+        .replace("__N__", named);
     format!(
-        "/** A fault read back from the text of an answer, `undefined` where it is none. */\n\
+        "/** The problems a fault lists, `undefined` where one of them is no problem. */\n\
+         function {prefix}IssuesOf(value: unknown): Array<{named}FaultIssue> | undefined {{\n  \
+         if (!Array.isArray(value)) return undefined;\n  \
+         const listed: Array<{named}FaultIssue> = [];\n  \
+         for (const entry of value) {{\n    \
+         const held = {prefix}Object(entry);\n    \
+         if (held === undefined) return undefined;\n    \
+         const {{ detail, field }} = held;\n    \
+         if (typeof detail !== \"string\" || (field !== undefined && typeof field !== \"string\")) return undefined;\n    \
+         listed.push({{ detail, field }});\n  \
+         }}\n  \
+         return listed;\n\
+         }}\n\n\
+         /** A fault read back from the text of an answer, `undefined` where it is none. */\n\
          function {prefix}FaultOf(value: unknown): {named}Fault | undefined {{\n  \
          const held = {prefix}Object(value);\n  \
          if (held === undefined) return undefined;\n  \
-         const {{ detail, field, kind, operation }} = held;\n  \
+         const {{ detail, field, issues, kind, operation }} = held;\n  \
+         const listed = issues === undefined ? undefined : {prefix}IssuesOf(issues);\n  \
          const kinds: ReadonlyArray<unknown> = [\n    \
          \"failed-validation\",\n    \
          \"handler-panic\",\n    \
@@ -528,6 +545,7 @@ fn fault_of_fn(named: &str, prefix: &str) -> String {
          if (\n    \
          typeof detail === \"string\" &&\n    \
          (field === undefined || typeof field === \"string\") &&\n    \
+         (issues === undefined || listed !== undefined) &&\n    \
          typeof kind === \"string\" &&\n    \
          kinds.includes(kind) &&\n    \
          typeof operation === \"string\"\n  \

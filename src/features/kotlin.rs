@@ -60,7 +60,7 @@ use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict, option_alias,
-    to_snake_case, type_parameters_in_scope,
+    to_snake_case, type_parameters_in_scope, within_variant,
 };
 
 #[cfg(feature = "serde")]
@@ -1809,7 +1809,7 @@ pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
 }
 
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
-fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
+pub fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
 }
 
@@ -2135,7 +2135,12 @@ fn own_field_plan(
 /// no keys for whose serializer's descriptor names no element, which is refused where it reads with
 /// no judgement and breaks a rule. One that names a function is read from what the function
 /// answers, and where that read throws is `null` where `rest` holds none of its keys, or no key at
-/// all where it has none to look for, and refused where it holds one.
+/// all where it has none to look for, and refused where it holds one. Under a `nonstrict` holder,
+/// whose Zod schema reads the member as absent wherever its type does not read, an optional field
+/// whose keys are there is `null` where its read throws, and one that names a function is `null`
+/// exactly where the function answers `null`, as serde reads it. A field that names a function
+/// is read there from the whole answer under the caller's `Json`, so its type refuses a key it
+/// does not declare, as serde refuses it.
 fn flatten_struct_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -2153,31 +2158,44 @@ fn flatten_struct_field_plan(
     )];
     let functions = preprocess::of(&field.field_def);
     let handed = preprocess::corrected(functions, rest);
-    let corrected = if is_unseen(&base) {
-        read::flat(&inner_serializer, &handed)
-    } else {
-        handed
+    let flat = |element: &str| {
+        if is_unseen(&base) {
+            read::flat(&inner_serializer, element)
+        } else {
+            element.to_owned()
+        }
     };
+    let corrected = flat(&handed);
     let known = read_keys(&base).or_else(|| unrecorded_keys(&base));
-    // A member that reads every key left and refuses one it does not declare is handed those keys,
-    // as serde hands them, and read under the caller's `Json`, so it refuses a key no member reads.
-    let reader = if refusing { "input.json" } else { "lenient" };
-    let decoded = known.as_ref().map_or_else(
-        || format!("{reader}.decodeFromString({inner_serializer}, {corrected}.toString())"),
-        |keys| {
-            format!(
-                "input.json.decodeFromString({inner_serializer}, \
-                 JsonObject({corrected}.filterKeys {{ it in {} }}).toString())",
-                kotlin_set_of(keys)
-            )
-        },
+    let answer_read = !functions.is_empty() && is_nonstrict();
+    let decoded = flattened_decoded(
+        &inner_serializer,
+        &corrected,
+        known.as_deref(),
+        refusing,
+        answer_read,
     );
     // With no key to look for, the type is held wherever it reads, as serde holds it.
     let tried = format!("runCatching {{ {decoded} }}.getOrNull()");
+    let where_held = if !is_nonstrict() {
+        decoded.clone()
+    } else if read::member_read_unjudged(&base) {
+        tried.clone()
+    } else {
+        read_or_judged(&inner_serializer, &corrected)
+    };
     let looked_for =
-        |keys: &str| format!("if ({rest}.keys.any {{ it in {keys} }}) {decoded} else null");
+        |keys: &str| format!("if ({rest}.keys.any {{ it in {keys} }}) {where_held} else null");
     let read = if !field.field_def.is_optional() {
         decoded
+    } else if answer_read {
+        let answered = format!("{}Corrected", kotlin_bare(prop));
+        statements.push(format!("val {answered} = {handed}"));
+        format!(
+            "if ({answered} is JsonNull) null else \
+             input.json.decodeFromString({inner_serializer}, {}.toString())",
+            flat(&answered)
+        )
     } else if !functions.is_empty() {
         // Zod's union tries the type over what the function answers ahead of the branch without
         // it, which takes an object that holds none of the type's keys.
@@ -2230,6 +2248,35 @@ fn flatten_struct_field_plan(
         serialize,
         taken: keys_ident,
     }
+}
+
+/// The read of a flattened member's type by `serializer` from `corrected`, the object the member is
+/// handed or what its functions answer. A member that reads every key left and refuses one it does
+/// not declare (`refusing`) is read under the caller's `Json`, so it refuses a key no member reads,
+/// one whose keys are `known` from those keys alone under it, and any other leniently. Beside a
+/// `nonstrict` holder the whole answer of a member's functions (`answer_read`) is read under the
+/// caller's `Json`, as serde reads it under the type's own strictness.
+fn flattened_decoded(
+    serializer: &str,
+    corrected: &str,
+    known: Option<&[String]>,
+    refusing: bool,
+    answer_read: bool,
+) -> String {
+    if answer_read {
+        return format!("input.json.decodeFromString({serializer}, {corrected}.toString())");
+    }
+    let reader = if refusing { "input.json" } else { "lenient" };
+    known.map_or_else(
+        || format!("{reader}.decodeFromString({serializer}, {corrected}.toString())"),
+        |keys| {
+            format!(
+                "input.json.decodeFromString({serializer}, \
+                 JsonObject({corrected}.filterKeys {{ it in {} }}).toString())",
+                kotlin_set_of(keys)
+            )
+        },
+    )
 }
 
 /// The keys a flattened `Option` of the type parameter `def` describes is looked for by where the
@@ -2327,7 +2374,9 @@ fn merged_beside(def: &FieldDef, written: &str) -> String {
 /// names it holds, one list per variant, which serde refuses the holder without and an optional
 /// enum reads no value without, and the key of that entry, which the members flattened after it
 /// are handed the object without. Entries under two names are refused, as TypeScript and Zod
-/// refuse them, naming each variant they belong to once, in the order the enum declares them.
+/// refuse them, naming each variant they belong to once, in the order the enum declares them. An
+/// optional enum under a `nonstrict` holder reads no value where its entry does not read, as serde
+/// and Zod read it.
 fn flatten_enum_field_plan(
     field: &KotlinField,
     prop: &str,
@@ -2359,9 +2408,17 @@ fn flatten_enum_field_plan(
          }}.firstOrNull()"
     );
     let (decode, entry_taken) = if field.field_def.is_optional() {
+        let entry_decoded = format!(
+            "input.json.decodeFromString({inner_serializer}, JsonObject(mapOf(it.toPair())).toString())"
+        );
+        let held = if is_nonstrict() {
+            format!("runCatching {{ {entry_decoded} }}.getOrNull()")
+        } else {
+            entry_decoded
+        };
         (
             format!(
-                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ input.json.decodeFromString({inner_serializer}, JsonObject(mapOf(it.toPair())).toString()) }}"
+                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ {held} }}"
             ),
             format!("setOfNotNull({entry_ident}?.key)"),
         )
@@ -3389,8 +3446,14 @@ fn variant_subclass(
         ),
         VariantPayload::Named(fields) => (
             format!(
-                "{annotation}{}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                "{annotation}{}@Serializable {} {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
                 read::opted_in_ignoring_unknown_keys(),
+                // kotlinc refuses a data class of no property.
+                if fields.is_empty() {
+                    "class"
+                } else {
+                    "data class"
+                },
                 data_class_params(fields, Some(plugin))
             ),
             None,
@@ -3653,7 +3716,7 @@ fn dispatched_tagged_enum_kotlin_source(
     let (subclasses, serialize_arms, deserialize_arms): (Vec<_>, Vec<_>, Vec<_>) = item_enum
         .variants
         .iter()
-        .map(|variant| dispatched_tagged_variant(variant, &ctx))
+        .map(|variant| within_variant(&variant.ident, || dispatched_tagged_variant(variant, &ctx)))
         .fold(
             (Vec::new(), Vec::new(), Vec::new()),
             |(mut subclasses, mut serializes, mut deserializes),
@@ -3747,20 +3810,24 @@ fn untagged_enum_kotlin_source(
             owner: &subclass_name,
             type_parameters: &type_parameters,
         };
-        let (declaration, _) = variant_subclass(
-            export_name,
-            &plugin,
-            &generic_params,
-            &nothing_generic_args,
-            None,
-            bare_value,
-            &payload,
-        );
+        let (declaration, serializer) = within_variant(&variant.ident, || {
+            let (declaration, _) = variant_subclass(
+                export_name,
+                &plugin,
+                &generic_params,
+                &nothing_generic_args,
+                None,
+                bare_value,
+                &payload,
+            );
+            let serializer = variant_serializer(&plugin, &generic_params, &payload, None);
+            (declaration, serializer)
+        });
         subclasses.push(format!(
             "{declaration} {{ {} }}",
             rules.written("override ")
         ));
-        subclasses.extend(variant_serializer(&plugin, &generic_params, &payload, None));
+        subclasses.extend(serializer);
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
             "is {subclass_name} -> output.json.encodeToJsonElement({subclass_serializer}, value)"

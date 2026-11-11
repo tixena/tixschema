@@ -153,7 +153,12 @@ Where the map is optional, that call is what the arrow is handed. A list or an `
 JSON Schema has no type parameters. A generic type's document has to be built from one concrete filling, and nothing in the declaration says which — so `default_types` says it, one `Parameter = Type` pair per type parameter:
 
 ```rust
-#[model_schema(default_types(IdType = String, DateType = f64))]
+#[model_schema(enable = ["jsonschema"], default_types(IdType = String))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DocumentId<IdType>(pub IdType);
+
+#[model_schema(enable = ["jsonschema"], default_types(IdType = String, DateType = f64))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EcmDocument<IdType, DateType> {

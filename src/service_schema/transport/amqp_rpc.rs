@@ -25,8 +25,8 @@
 //! the headers table.
 //!
 //! A crate that places the server macro is the one crate on the bus: it names `lapin`, `tokio` and
-//! `futures` in its own manifest, beside `serde`, `serde_json` and `tracing`, because the items
-//! below call all six.
+//! `futures` in its own manifest, beside `serde`, `serde_json`, `serde_path_to_error` and
+//! `tracing`, because the items below call all seven.
 //!
 //! # The dispatcher: what one arm does, and in what order
 //!
@@ -181,8 +181,9 @@
 //! author declared it in, and the fault, the envelope, the message aliases and the per-operation
 //! validators inside `$crate::{service}_schema` — which resolves in the crate that *defined* the
 //! macro. Every runtime crate is reached through a leading `::` and resolves in the invoking crate,
-//! which is therefore the one that names it: `::serde`, `::serde_json`, `::tracing`, `::core` and
-//! `::std` for the dispatcher, `::serde`, `::serde_json` and `::core` for the client. The client
+//! which is therefore the one that names it: `::serde`, `::serde_json`, `::serde_path_to_error`,
+//! `::tracing`, `::core` and `::std` for the dispatcher, `::serde`, `::serde_json`,
+//! `::serde_path_to_error` and `::core` for the client. The client
 //! reaches no `::tracing` — nothing there catches a panic, so nothing there has anything to write
 //! down, and a caller that only wants to make calls names one crate fewer than a crate that answers
 //! them.
@@ -647,9 +648,9 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          here.\n\n\
          It takes no arguments and emits bare items - the transport seam, the client type and one \
          method per operation - so the module they land in is the invoking crate's to name.\n\n\
-         The invoking crate names `serde` and `serde_json` in its own manifest, the expansion \
-         calling both. It names no `tracing`: nothing here catches a panic, so nothing here has \
-         anything to write down.\n\n\
+         The invoking crate names `serde`, `serde_json` and `serde_path_to_error` in its own \
+         manifest, the expansion calling all three. It names no `tracing`: nothing here catches a \
+         panic, so nothing here has anything to write down.\n\n\
          {placement}\n\n\
          The `use` names the types the author declared one by one - the messages, the successes \
          and the errors a method signature spells, which this expansion writes exactly as they \
@@ -1213,8 +1214,9 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
          here.\n\n\
          It takes no arguments and emits bare items - `IncomingMessage`, `Reply` and `dispatch`, \
          beside the readers an arm needs - so the caller supplies the module they land in and two \
-         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json` \
-         and `tracing` in its own manifest, because the items below call them.\n\n\
+         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json`, \
+         `serde_path_to_error` and `tracing` in its own manifest, because the items below call \
+         them.\n\n\
          {placement}",
         transport.name()
     );
@@ -1259,8 +1261,17 @@ pub(super) fn fault_wire_types() -> TokenStream {
         struct FaultOnTheWire {
             detail: ::std::string::String,
             field: ::core::option::Option<::std::string::String>,
+            #[serde(default)]
+            issues: ::std::vec::Vec<IssueOnTheWire>,
             kind: FaultKindOnTheWire,
             operation: ::std::string::String,
+        }
+
+        /// One problem a fault lists, as it arrives.
+        #[derive(::serde::Deserialize)]
+        struct IssueOnTheWire {
+            detail: ::std::string::String,
+            field: ::core::option::Option<::std::string::String>,
         }
 
         /// The kinds, spelled as the wire spells them.
@@ -1294,8 +1305,9 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
     let Generated {
         fault,
         call_error: _call_error,
-        module: _module,
+        module,
     } = generated;
+    let issue = quote! { $crate::#module::ServiceFaultIssue };
     quote! {
         impl FaultOnTheWire {
             /// The fault itself, minted through the constructors the service's own module
@@ -1307,6 +1319,12 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
                         &self.operation,
                         self.field.as_deref(),
                         &self.detail,
+                    )
+                    .with_issues(
+                        self.issues
+                            .iter()
+                            .map(|issue| #issue::new(issue.field.as_deref(), &issue.detail))
+                            .collect(),
                     ),
                     FaultKindOnTheWire::HandlerPanic => {
                         #fault::handler_panic(&self.operation, &self.detail)
@@ -2443,8 +2461,8 @@ fn server_macro(service: &ServiceDef, transport: Transport, non_exhaustive: bool
          `serve_until`, the consumer loop itself, and `serve_deliveries`, the loop it runs with the \
          broker taken out. The caller supplies the module they land in, and \
          two transports in one crate cannot collide. The invoking crate names `lapin`, `tokio`, \
-         `futures`, `serde`, `serde_json` and `tracing` in its own manifest, because the items \
-         below call all six.\n\n\
+         `futures`, `serde`, `serde_json`, `serde_path_to_error` and `tracing` in its own \
+         manifest, because the items below call all seven.\n\n\
          # Where to place it\n\n\
          In a module of its own file, with the `mod` declaration above the crate's `use` \
          items:\n\n\

@@ -256,7 +256,7 @@ pub struct Netting {
 /// An optional map, the one member, under a function that answers the payload as it was handed:
 /// serde reads the
 /// map from what it answers, and refuses an entry that does not read as a count.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CorrectedLocker {
     #[model_schema_prop(preprocess = ["asGiven"])]
@@ -266,7 +266,7 @@ pub struct CorrectedLocker {
 
 /// An optional map, the one member, under a function that answers `null`, which serde reads as
 /// `None`.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EmptiedLocker {
     #[model_schema_prop(preprocess = ["asNull"])]
@@ -355,7 +355,7 @@ pub struct Noting {
 
 /// A member that names a function flattened after a struct: serde hands the function the keys the
 /// struct did not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Whipping {
     #[serde(flatten)]
@@ -367,7 +367,7 @@ pub struct Whipping {
 
 /// A member that names a function flattened after a struct, with a member of its holder's own
 /// between them: serde hands the function the keys neither took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hitching {
     #[serde(flatten)]
@@ -380,7 +380,7 @@ pub struct Hitching {
 
 /// A member that names a function flattened ahead of a struct: serde hands the function every key,
 /// the struct's among them, and the struct the keys it reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Bending {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
@@ -450,7 +450,7 @@ pub struct Unwritten {
 
 /// A member that names a function flattened after [`Unwritten`]: serde hands the function the keys
 /// the struct did not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rousing {
     #[serde(flatten)]
@@ -544,7 +544,7 @@ pub struct Marline {
 
 /// A member that names a function flattened after [`Marline`]: serde hands the function the key
 /// of the member the struct never reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gammoning {
     #[serde(flatten)]
@@ -602,7 +602,7 @@ pub struct Belting {
 
 /// [`Stowing`] with its enum under a function that answers the payload as it was handed, which
 /// serde writes as it writes [`Stowing`]'s.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Yawing {
     pub note: String,
@@ -613,7 +613,7 @@ pub struct Yawing {
 
 /// A member that names a function flattened after an externally tagged enum, where serde hands
 /// the function every entry but the one the enum took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Heaving {
     #[serde(flatten)]
@@ -634,7 +634,7 @@ pub enum Snubber {
 
 /// [`Snubber`] flattened ahead of a member that names a function: serde hands the function every
 /// key but the tag and the content.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Chafing {
     #[serde(flatten)]
@@ -671,7 +671,7 @@ pub enum Jibing {
 }
 
 /// A member that names a function flattened after [`Jibing`].
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Cleating {
     #[serde(flatten)]
@@ -683,7 +683,7 @@ pub struct Cleating {
 
 /// A struct and a member that names a function flattened after an externally tagged enum, where
 /// serde hands the struct every entry but the enum's, and the function every entry neither took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Scudding {
     #[serde(flatten)]

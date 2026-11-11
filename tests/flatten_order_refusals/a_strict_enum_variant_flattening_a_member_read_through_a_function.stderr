@@ -1,0 +1,6 @@
+error: model_schema: type `Event` (variant `Released`) flattens `version`, read through `as_written::deserialize`, whose answer tixschema cannot see, so the other surfaces cannot refuse a key no member declares as serde does. Mark `Event` `#[model_schema(nonstrict)]`, so every surface reads past such a key.
+  --> tests/flatten_order_refusals/a_strict_enum_variant_flattening_a_member_read_through_a_function.rs:35:9
+   |
+35 | /         #[serde(flatten, with = "as_written")]
+36 | |         version: Version,
+   | |________________________^

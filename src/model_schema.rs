@@ -123,6 +123,7 @@ use crate::utils::{
 };
 use crate::utils::{
     TrivialPattern, is_nonstrict, record_field_validator, record_nonstrict, trivial_pattern,
+    within_variant,
 };
 
 use crate::features::serde::brand_slot;
@@ -176,8 +177,14 @@ use crate::features::serde::defaults::SerdeDefaults;
     )
 ))]
 use crate::features::serde::defaults::default_refusals;
+#[cfg(feature = "serde")]
+use crate::features::serde::defaults::unread_members_built;
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
+#[cfg(feature = "serde")]
+use crate::features::serde::read_bounds;
+#[cfg(feature = "serde")]
+use crate::utils::written_names;
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -495,6 +502,7 @@ struct DiscriminatedVariant {
     /// The variant's own `#[serde(flatten)]` sources, apart from `field_defs`: they write no key of
     /// their own.
     flattened_fields: Vec<FieldDef>,
+    ident: syn::Ident,
     kind: VariantKind,
 }
 
@@ -1148,10 +1156,18 @@ struct UnitRead {
 #[cfg(any(feature = "typescript", feature = "zod"))]
 struct MergedOperand {
     absence: SourceAbsence,
+    /// What reads the source as absent where serde reads it as `None` only where its functions
+    /// answer `null` (see [`zod_absent_where_answered_null`]).
+    #[cfg(feature = "zod")]
+    answered_null: Option<String>,
     /// What the source contributes per branch when it names a registered choice — one operand per
     /// branch, empty otherwise (falls back to `spelling`).
     #[cfg(feature = "zod")]
     branches: Vec<String>,
+    /// Whether a branch that holds the source joins the holder's own object closed (see
+    /// [`zod_closes_beside_holder`]).
+    #[cfg(feature = "zod")]
+    closes: bool,
     /// Whether serde reads the source as the entries of a map, which its absence leaves in the
     /// object (see [`flattened_as_entries`]).
     #[cfg(feature = "zod")]
@@ -2389,7 +2405,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
-    record_nonstrict(reads_past_a_stray(&item, &parsed_args));
+    record_strictness(&item, &parsed_args);
     #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
@@ -2430,7 +2446,8 @@ fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let form = mcp_form::items(item);
     let flattened = flatten_order::tokens(item, args);
     let units = strict::unit_reads(item, args);
-    quote! { #wrapper #form #flattened #units }
+    let braced = strict::braced_reads(item, args);
+    quote! { #wrapper #form #flattened #units #braced }
 }
 
 #[cfg(not(feature = "serde"))]
@@ -3493,7 +3510,11 @@ fn compute_flatten_outputs(
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
             #[cfg(feature = "zod")]
+            answered_null: None,
+            #[cfg(feature = "zod")]
             branches: Vec::new(),
+            #[cfg(feature = "zod")]
+            closes: false,
             #[cfg(feature = "zod")]
             entries: false,
             spelling: flattened_ts_spelling(fld),
@@ -3507,10 +3528,13 @@ fn compute_flatten_outputs(
         .iter()
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
+            answered_null: zod_absent_where_answered_null(fld)
+                .map(|absent| zod_beside_holder(fld, own_keys, &absent)),
             branches: flattened_zod_branches(fld)
                 .iter()
                 .map(|branch| zod_beside_holder(fld, own_keys, branch))
                 .collect(),
+            closes: zod_closes_beside_holder(fld),
             entries: flattened_as_entries(fld),
             spelling: zod_beside_holder(fld, own_keys, &fld.zod_merged_schema()),
         })
@@ -3525,12 +3549,12 @@ fn compute_flatten_outputs(
 }
 
 /// `schema`, the Zod spelling of the flattened source `fld`, handed the keys the holder's own
-/// members `own_keys` do not take where the type names a `preprocess`, as serde hands its function
-/// them: an intersection hands both sides the whole object. A payload that is no object is handed
-/// on as it is.
+/// members `own_keys` do not take where the type or the member names a `preprocess`, as serde hands
+/// its function them: an intersection hands both sides the whole object. A payload that is no
+/// object is handed on as it is.
 #[cfg(feature = "zod")]
 fn zod_beside_holder(fld: &FieldDef, own_keys: &[String], schema: &str) -> String {
-    if own_keys.is_empty() || !fld.zod_names_a_preprocess() {
+    if own_keys.is_empty() || !(fld.zod_names_a_preprocess() || member_names_a_preprocess(fld)) {
         return schema.to_owned();
     }
     let taken = own_keys
@@ -3543,6 +3567,38 @@ fn zod_beside_holder(fld: &FieldDef, own_keys: &[String], schema: &str) -> Strin
          !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
          ![{taken}].includes(key))) : held, {schema})"
     )
+}
+
+/// Whether the flattened member `fld` names a `preprocess` of its own.
+#[cfg(feature = "zod")]
+fn member_names_a_preprocess(fld: &FieldDef) -> bool {
+    fld.model_schema_prop_meta
+        .as_ref()
+        .is_some_and(|meta| !meta.preprocess.is_empty())
+}
+
+/// Whether a branch that holds the flattened member `fld` joins a `nonstrict` holder's own object
+/// closed: serde reads the member from what its functions answer, as its type reads it, so a key
+/// that type refuses is refused beside every member. The intersection reports such a key only
+/// where the holder's own object refuses it too.
+#[cfg(feature = "zod")]
+fn zod_closes_beside_holder(fld: &FieldDef) -> bool {
+    is_nonstrict() && member_names_a_preprocess(fld)
+}
+
+/// The operand a `nonstrict` holder's object joins where the flattened `Option` `fld`, which names
+/// a `preprocess` and holds no map, is absent: taken only where its functions answer `null`, as
+/// serde reads `None` from no other answer, and holding no key, so the holder reads past the
+/// member's keys. `None` for every other source.
+#[cfg(feature = "zod")]
+fn zod_absent_where_answered_null(fld: &FieldDef) -> Option<String> {
+    let functions = &fld.model_schema_prop_meta.as_ref()?.preprocess;
+    (zod_closes_beside_holder(fld) && fld.is_optional() && !flattened_as_entries(fld)).then(|| {
+        format!(
+            "{}.transform(() => ({{}}))",
+            zod_preprocess_wrap("z.null()".to_owned(), functions)
+        )
+    })
 }
 
 /// Whether the registration a flattened source names offers its own absence, which is the second
@@ -3694,6 +3750,7 @@ fn struct_schema_impl_items(
             &bodies.2,
             &flatten_merged_sources(flattened_fields),
             item_name,
+            rust_ident,
             &schema_parameters(generics, args),
             docs.json_examples.as_ref(),
         ));
@@ -6230,16 +6287,20 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     type_path.path.get_ident().cloned()
 }
 
-/// Whether serde reads past a key no member of `item` declares.
+/// Records whether serde reads past a key no member of `item` declares, and the variants of a
+/// `nonstrict` enum that refuse one all the same.
 #[cfg(feature = "serde")]
-fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
-    strict::reads_past_a_stray(item, args)
+fn record_strictness(item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(
+        strict::reads_past_a_stray(item, args),
+        strict::refusing_variants(item, args),
+    );
 }
 
 /// Without serde nothing flattens, and `nonstrict` alone says it.
 #[cfg(not(feature = "serde"))]
-const fn reads_past_a_stray(_item: &Item, args: &ModelSchemaArgs) -> bool {
-    args.nonstrict
+fn record_strictness(_item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(args.nonstrict, Vec::new());
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
@@ -8602,14 +8663,16 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     #[cfg(all(feature = "serde", feature = "zod"))]
     record_object_model(&rust_ident, &item_struct, &collected, args);
 
-    // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
+    let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
+
     #[cfg(feature = "serde")]
     let unit_struct_impls = unit_struct_impls_for(
         &mut item_struct,
         UnitRead {
-            publishes_validate: !args.check.is_empty(),
+            publishes_validate: validate_method.is_some(),
             strict: !args.nonstrict,
         },
+        args,
     );
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
@@ -8629,8 +8692,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         args,
         &docs,
     );
-
-    let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
     let mut delegate_impl_items =
         struct_delegate_items(&module_ident, &item_name, &item_struct, false, args);
@@ -8702,6 +8763,10 @@ fn struct_output_with_unit_impls(
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
+    // The serde attributes go where no derive is left to read them, after every surface above has.
+    if matches!(read.fields, syn::Fields::Named(_)) && !unit_struct_impls.is_empty() {
+        judged_read::leave_the_read_to_the_macro(&mut read.attrs, read.fields.iter_mut());
+    }
     let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of(parts.item);
@@ -8832,6 +8897,8 @@ fn enum_output_with_decode(
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
+    #[cfg(feature = "serde")]
+    strict::unskip_braced_members(&mut read);
     let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of_enum(parts.item);
@@ -8873,22 +8940,22 @@ fn enum_output_with_decode(
 fn unit_struct_impls_for(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
+    args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
         record_unit_struct(&item_struct.ident.to_string());
         return unit_struct_serde_impls(item_struct, read);
     }
-    if read.strict
-        && matches!(&item_struct.fields, syn::Fields::Named(named) if named.named.is_empty())
-    {
+    if strict::read_by_the_macro(item_struct, args) {
         return empty_struct_read(item_struct, read);
     }
     quote! {}
 }
 
-/// Takes `Deserialize` off the derive of a braced struct of no member and answers with a read that
-/// refuses every key: serde's derive would declare an enum of no variant for the keys, which
-/// `clippy::empty_enums` refuses in the consumer's crate.
+/// Takes `Deserialize` off the derive of a braced struct serde reads no member of and answers with
+/// a read that refuses every key and builds each member as serde's derive builds it, under the
+/// bounds that derive asks: under `deny_unknown_fields` it would declare an enum of no variant for
+/// the keys, which `clippy::empty_enums` refuses in the consumer's crate.
 #[cfg(feature = "serde")]
 fn empty_struct_read(
     item_struct: &mut syn::ItemStruct,
@@ -8897,6 +8964,20 @@ fn empty_struct_read(
     if !derives_deserialize(&item_struct.attrs) {
         return quote! {};
     }
+    let input = syn::DeriveInput::from(item_struct.clone());
+    let written = written_names(quote::ToTokens::to_token_stream(&input));
+    let built = unread_members_built(
+        item_struct,
+        &judged_read::unclaimed_parameter("container_default", &written),
+    );
+    let mut generics = item_struct.generics.clone();
+    generics
+        .make_where_clause()
+        .predicates
+        .extend(read_bounds::undeclared_bounds(
+            &item_struct.generics,
+            judged_read::authored_read_bounds(&input).predicates,
+        ));
     let mut kept_attrs = Vec::with_capacity(item_struct.attrs.len());
     for attr in item_struct.attrs.drain(..) {
         let listed = attr
@@ -8920,13 +9001,7 @@ fn empty_struct_read(
         }
     }
     item_struct.attrs = kept_attrs;
-    if !derives_serialize(&item_struct.attrs) {
-        item_struct
-            .attrs
-            .retain(|attr| !attr.path().is_ident("serde"));
-    }
-    let name = &item_struct.ident;
-    unit_struct_read(name, read, &quote! { #name {} })
+    unit_struct_read(&item_struct.ident, &generics, read, &built)
 }
 
 /// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
@@ -8993,7 +9068,14 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| unit_struct_read(name, read, &quote! { #name }));
+    let deserialize_impl = reads.then(|| {
+        unit_struct_read(
+            name,
+            &item_struct.generics,
+            read,
+            &quote! { ::core::result::Result::Ok(#name) },
+        )
+    });
 
     quote! {
         #serialize_impl
@@ -9001,12 +9083,14 @@ fn unit_struct_serde_impls(
     }
 }
 
-/// The `Deserialize` of the struct `name` of no member, which reads `{}` as `built`: alone, or
+/// The `Deserialize` of the struct `name` of no member serde reads, written on `generics`, which
+/// reads `{}` and answers with `built`, the statements that answer `Ok` of the value: alone, or
 /// after `model_schema_read_unjudged` where the struct publishes `validate()` or names a
 /// `preprocess`.
 #[cfg(feature = "serde")]
 fn unit_struct_read(
     name: &syn::Ident,
+    generics: &syn::Generics,
     how: UnitRead,
     built: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
@@ -9014,6 +9098,77 @@ fn unit_struct_read(
         publishes_validate,
         strict,
     } = how;
+    let reader = judged_read::unclaimed_parameter(
+        "D",
+        &written_names(quote::ToTokens::to_token_stream(generics)),
+    );
+    let read = unit_struct_body(name, strict, built);
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let mut read_at = generics.clone();
+    read_at.params.insert(0, syn::parse_quote! { 'de });
+    let (read_impl_generics, _, _) = read_at.split_for_impl();
+    let corrected = judged_read::unit_struct_correction(name);
+    if !publishes_validate && corrected.is_none() {
+        return quote! {
+            impl #read_impl_generics ::serde::Deserialize<'de> for #name #type_generics #where_clause {
+                fn deserialize<#reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        };
+    }
+    let unjudged = corrected.map_or_else(
+        || {
+            quote! {
+                /// The read alone, for a holder that judges the whole value once.
+                pub fn model_schema_read_unjudged<'de, #reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        },
+        |(correction, of_corrected)| {
+            quote! {
+                #correction
+
+                /// The read of a payload the functions `preprocess` names on the type have
+                /// corrected.
+                pub fn #of_corrected<'de, #reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        },
+    );
+    let judged = if publishes_validate {
+        let refusal = refusal_from_violations();
+        quote! {
+            let read = Self::model_schema_read_unjudged(deserializer)?;
+            read.validate().map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    } else {
+        quote! { Self::model_schema_read_unjudged(deserializer) }
+    };
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #unjudged
+        }
+
+        impl #read_impl_generics ::serde::Deserialize<'de> for #name #type_generics #where_clause {
+            fn deserialize<#reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                #judged
+            }
+        }
+    }
+}
+
+/// The body of the read of the struct `name` of no member serde reads: `{}` read, a key refused
+/// where `strict` and read past where not, and then `built`.
+#[cfg(feature = "serde")]
+fn unit_struct_body(
+    name: &syn::Ident,
+    strict: bool,
+    built: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let type_name = name.to_string();
     let expecting = format!("an empty object for `{type_name}`");
     let entries = if strict {
@@ -9036,19 +9191,19 @@ fn unit_struct_read(
             }
             match map.next_key::<UnknownKey>()? {
                 ::core::option::Option::Some(unknown) => match unknown.0 {},
-                ::core::option::Option::None => ::core::result::Result::Ok(#built),
+                ::core::option::Option::None => ::core::result::Result::Ok(()),
             }
         }
     } else {
         quote! {
             while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-            ::core::result::Result::Ok(#built)
+            ::core::result::Result::Ok(())
         }
     };
-    let read = quote! {
+    quote! {
         struct UnitStructVisitor;
         impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
-            type Value = #name;
+            type Value = ();
             fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                 formatter.write_str(#expecting)
             }
@@ -9059,59 +9214,8 @@ fn unit_struct_read(
                 #entries
             }
         }
-        deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
-    };
-    let corrected = judged_read::unit_struct_correction(name);
-    if !publishes_validate && corrected.is_none() {
-        return quote! {
-            impl<'de> ::serde::Deserialize<'de> for #name {
-                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        };
-    }
-    let unjudged = corrected.map_or_else(
-        || {
-            quote! {
-                /// The read alone, for a holder that judges the whole value once.
-                pub fn model_schema_read_unjudged<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        },
-        |(correction, of_corrected)| {
-            quote! {
-                #correction
-
-                /// The read of a payload the functions `preprocess` names on the type have
-                /// corrected.
-                pub fn #of_corrected<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        },
-    );
-    let judged = if publishes_validate {
-        let refusal = refusal_from_violations();
-        quote! {
-            let read = Self::model_schema_read_unjudged(deserializer)?;
-            read.validate().map_err(#refusal)?;
-            ::core::result::Result::Ok(read)
-        }
-    } else {
-        quote! { Self::model_schema_read_unjudged(deserializer) }
-    };
-    quote! {
-        impl #name {
-            #unjudged
-        }
-
-        impl<'de> ::serde::Deserialize<'de> for #name {
-            fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                #judged
-            }
-        }
+        deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)?;
+        #built
     }
 }
 
@@ -9509,6 +9613,7 @@ fn tuple_struct_json_schema_items(
     [
         json_schema_methods(
             item_name,
+            &item_struct.ident.to_string(),
             &tuple_struct_json_body(item_name, shape),
             &schema_parameters(&item_struct.generics, args),
             struct_json_examples(item_struct, shape).as_ref(),
@@ -10540,6 +10645,7 @@ fn build_branded_json_schema_method(
     args: &ModelSchemaArgs,
     json_inner: &BrandedJsonInner,
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -10553,7 +10659,7 @@ fn build_branded_json_schema_method(
         }
         BrandedJsonInner::Slot(inner) => branded_slot_json_schema(args, inner, def_name),
     };
-    json_schema_methods(def_name, &body, parameters, examples)
+    json_schema_methods(def_name, rust_ident, &body, parameters, examples)
 }
 
 /// The `FieldDef` every surface renders from: the written one with each name that is one of the
@@ -11353,6 +11459,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
             args,
             &branded_json_inner(&value_inner),
             &item_name,
+            &rust_ident,
             &schema_parameters(&item_struct.generics, args),
             json_schema_examples(&item_struct.attrs).as_ref(),
         ));
@@ -12218,7 +12325,7 @@ fn process_plain_enum(
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
         // No slot to fill: Rust refuses an all-unit enum that leaves a type parameter unused, so a
         // plain enum reaches here declaring none — whatever consts and lifetimes it also binds.
-        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum.attrs, args),
+        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -12506,7 +12613,6 @@ fn collect_discriminated_variants(
         let mut flattened_fields: Vec<FieldDef> = Vec::new();
         let mut bound: Vec<BoundMember> = Vec::new();
         let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
-        let total_fields = item.fields.len();
         for (index, field) in item.fields.iter_mut().enumerate() {
             let omission = parse_serde_key_omission(&field.attrs);
             let positional = field.ident.is_none();
@@ -12546,7 +12652,7 @@ fn collect_discriminated_variants(
             push_described_field(&mut field_defs, f_def);
         }
         per_variant_checks.push((
-            variant_check_pattern(&item.ident, &declared_kind, total_fields, &bound),
+            variant_check_pattern(&item.ident, &declared_kind, item.fields.len(), &bound),
             checks,
         ));
 
@@ -12556,6 +12662,7 @@ fn collect_discriminated_variants(
                 discriminator_value: final_name,
                 field_defs,
                 flattened_fields,
+                ident: item.ident.clone(),
                 kind: wire_kind,
             });
         }
@@ -12959,7 +13066,9 @@ fn render_external_variant(
         );
     }
 
-    let (content_ts, content_zod, content_json) = render_external_content(variant, self_type_name);
+    let (content_ts, content_zod, content_json) = within_variant(&variant.ident, || {
+        render_external_content(variant, self_type_name)
+    });
 
     #[cfg(feature = "zod")]
     let zod = {
@@ -13665,7 +13774,9 @@ fn render_internal_variants(
                 .filter(|variant| variant_on_the_wire(variant)),
         )
         .map(|(variant, declared)| {
-            render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            within_variant(&declared.ident, || {
+                render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            })
         })
         .collect()
 }
@@ -13971,11 +14082,9 @@ fn render_untagged_variant(
 ) -> Result<(String, String, proc_macro2::TokenStream), syn::Error> {
     match (kind, members.field_defs.as_slice()) {
         (VariantKind::TupleSingle, [fld]) => Ok(render_untagged_tuple_single(fld, self_type_name)),
-        (VariantKind::Named, _) => Ok(render_untagged_named(
-            members,
-            self_type_name,
-            &variant.ident.to_string(),
-        )),
+        (VariantKind::Named, _) => Ok(within_variant(&variant.ident, || {
+            render_untagged_named(members, self_type_name, &variant.ident.to_string())
+        })),
         (VariantKind::Unit, _) if lone_slot_off_wire(variant) => {
             Err(collapsed_untagged_variant_error(variant))
         }
@@ -15289,9 +15398,9 @@ fn generate_variant_code(
             // Unit variant: no additional fields beyond the discriminator TypeScript: { type:
             // "Variant" } Zod: { type: z.literal("Variant") }
         }
-        VariantKind::Named => {
+        VariantKind::Named => within_variant(&variant.ident, || {
             write_adjacent_named_variant_fields(variant, content_name, self_type_name, &mut parts);
-        }
+        }),
         VariantKind::TupleSingle => {
             write_tuple_single_variant_fields(field_defs, content_name, self_type_name, &mut parts);
         }
@@ -21422,6 +21531,7 @@ fn generate_json_schema_method(
     json_schema_fields: &[proc_macro2::TokenStream],
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -21429,6 +21539,7 @@ fn generate_json_schema_method(
         json_schema_fields,
         flatten_json_schemas,
         def_name,
+        rust_ident,
         parameters,
         examples,
     )
@@ -22517,29 +22628,46 @@ fn zod_operand_contributions(operand: &MergedOperand) -> Vec<&str> {
 /// source naming a choice, one more without the source wherever it offers its own absence, and the
 /// cross product of those across the sources. Always at least one, the empty chain a source-less
 /// object closes with. The absence of a source read as entries holds the keys serde drops with it.
+/// Each chain is told with whether it holds a source that closes the holder's own object.
 #[cfg(feature = "zod")]
-fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<String> {
-    let mut joins = vec![String::new()];
+fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<(String, bool)> {
+    let mut joins = vec![(String::new(), false)];
     for operand in operands {
         joins = joins
             .iter()
-            .flat_map(|join| {
-                let mut grown: Vec<String> = zod_operand_contributions(operand)
+            .flat_map(|(join, closed)| {
+                let mut grown: Vec<(String, bool)> = zod_operand_contributions(operand)
                     .into_iter()
-                    .map(|schema| format!("{join}.and({})", deferred_zod_operand(schema)))
+                    .map(|schema| {
+                        (
+                            format!("{join}.and({})", deferred_zod_operand(schema)),
+                            *closed || operand.closes,
+                        )
+                    })
                     .collect();
                 if operand.absence.offered() {
-                    grown.push(if operand.entries {
+                    let absent = if operand.entries {
                         format!("{join}.and({ZOD_DROPPED_ENTRIES})")
+                    } else if let Some(answered) = &operand.answered_null {
+                        format!("{join}.and({answered})")
                     } else {
                         join.clone()
-                    });
+                    };
+                    grown.push((absent, *closed));
                 }
                 grown
             })
             .collect();
     }
     joins
+}
+
+/// `own`, the Zod object of a holder's own members, closed to a key none of them declares: a
+/// `nonstrict` holder's is written `z.object`, and a strict holder's is closed already.
+#[cfg(feature = "zod")]
+fn zod_closed_own(own: &str) -> String {
+    own.strip_prefix("z.object(")
+        .map_or_else(|| own.to_owned(), |rest| format!("z.strictObject({rest}"))
 }
 
 /// What the object's schema is written as: the statements bound ahead of it, and the expression
@@ -22553,19 +22681,30 @@ fn zod_merged_statements(
     // The root is decided once every combination is counted: one combination writes the object's
     // own keys where they stood, and more bind them to a name.
     let joins = zod_merged_joins(operands);
-    if let [only] = joins.as_slice() {
-        return (String::new(), format!("{own}{only}"));
+    if let [(only, closed)] = joins.as_slice() {
+        let root = if *closed {
+            zod_closed_own(own)
+        } else {
+            own.to_owned()
+        };
+        return (String::new(), format!("{root}{only}"));
     }
 
     let own_name = format!("{item_name}$OwnSchema");
-    let written = joins.iter().fold(String::new(), |mut acc, join| {
-        let _ = writeln!(acc, "  {own_name}{join},");
+    let closed_name = format!("{item_name}$ClosedSchema");
+    let written = joins.iter().fold(String::new(), |mut acc, (join, closed)| {
+        let root = if *closed { &closed_name } else { &own_name };
+        let _ = writeln!(acc, "  {root}{join},");
         acc
     });
-    (
-        format!("const {own_name} = {own};\n\n"),
-        format!("z.union([\n{written}])"),
-    )
+    let mut bound = String::new();
+    if joins.iter().any(|(_, closed)| !closed) {
+        let _ = write!(bound, "const {own_name} = {own};\n\n");
+    }
+    if joins.iter().any(|(_, closed)| *closed) {
+        let _ = write!(bound, "const {closed_name} = {};\n\n", zod_closed_own(own));
+    }
+    (bound, format!("z.union([\n{written}])"))
 }
 
 /// The same multiplication [`zod_merged_statements`] performs, written where the object stands
@@ -22573,12 +22712,14 @@ fn zod_merged_statements(
 /// once there is more than one.
 #[cfg(feature = "zod")]
 fn zod_merged_object(own: &str, operands: &[MergedOperand]) -> String {
+    let closed_own = zod_closed_own(own);
+    let root = |closed: bool| if closed { closed_own.as_str() } else { own };
     let joins = zod_merged_joins(operands);
-    if let [only] = joins.as_slice() {
-        return format!("{own}{only}");
+    if let [(only, closed)] = joins.as_slice() {
+        return format!("{}{only}", root(*closed));
     }
-    let written = joins.iter().fold(String::new(), |mut acc, join| {
-        let _ = writeln!(acc, "  {own}{join},");
+    let written = joins.iter().fold(String::new(), |mut acc, (join, closed)| {
+        let _ = writeln!(acc, "  {}{join},", root(*closed));
         acc
     });
     format!("z.union([\n{written}])")
@@ -22672,7 +22813,7 @@ fn bind_item_jsdoc_local(docs: &str) -> proc_macro2::TokenStream {
 fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
-    attrs: &[syn::Attribute],
+    item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if !args.enable.jsonschema {
@@ -22681,8 +22822,9 @@ fn generate_plain_enum_json_schema_method(
     generate_plain_enum_json_schema_method_impl(
         enumerated,
         def_name,
+        &item_enum.ident.to_string(),
         &[],
-        json_schema_examples(attrs).as_ref(),
+        json_schema_examples(&item_enum.attrs).as_ref(),
     )
 }
 
@@ -22785,6 +22927,7 @@ fn enum_json_schema_methods(
     }
     json_schema_methods(
         def_name,
+        &item_enum.ident.to_string(),
         &quote::quote! { { #main_schema_code } },
         &schema_parameters(&item_enum.generics, args),
         json_schema_examples(&item_enum.attrs).as_ref(),
@@ -22997,6 +23140,7 @@ fn generate_alias_json_schema_method(
         own.or_else(|| republished_json_examples(&surface_field_def(&alias.generics, field_def)));
     json_schema_methods(
         export_name,
+        &alias.ident.to_string(),
         &body,
         &schema_parameters(&alias.generics, args),
         values.as_ref(),

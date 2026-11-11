@@ -458,6 +458,55 @@ fn held_default(ty: &syn::Type, written: Written) -> TokenStream {
     }
 }
 
+/// The statements that answer `Ok` of the value serde's derive builds for a braced struct none of
+/// whose members it reads: each member from its own `default`, else from the container's, held
+/// under `container`, else from `Default`.
+#[cfg(feature = "serde")]
+pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> TokenStream {
+    let whole = written_default(&item.attrs);
+    let mut reads_the_whole = false;
+    let members: Vec<TokenStream> = item
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let member = field.ident.as_ref()?;
+            let value = if written_default(&field.attrs).is_none() && whole.is_some() {
+                reads_the_whole = true;
+                quote! { #container.#member }
+            } else {
+                unread_member_built(field).0
+            };
+            let built_in = field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"));
+            Some(quote! { #(#built_in)* #member: #value })
+        })
+        .collect();
+    let held = whole.filter(|_| reads_the_whole).map(|written| {
+        let built = match written {
+            Written::Bare => quote! { ::core::default::Default::default() },
+            Written::Function(path) => quote! { #path() },
+        };
+        quote! { let #container: Self = #built; }
+    });
+    quote! {
+        #held
+        ::core::result::Result::Ok(Self { #(#members),* })
+    }
+}
+
+/// The value serde's derive builds for `field`, a member it does not read, where no container's
+/// default answers for it: from the function its `default` names, else from `Default`, and
+/// whether `Default` builds it.
+#[cfg(feature = "serde")]
+pub fn unread_member_built(field: &Field) -> (TokenStream, bool) {
+    match written_default(&field.attrs) {
+        Some(Written::Function(path)) => (quote! { #path() }, false),
+        Some(Written::Bare) | None => (quote! { ::core::default::Default::default() }, true),
+    }
+}
+
 /// Whether `text` holds the placeholder of a default.
 #[cfg(feature = "zod")]
 pub fn holds_a_placeholder(text: &str) -> bool {
