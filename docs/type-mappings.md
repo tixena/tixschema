@@ -560,11 +560,16 @@ change has to keep.
   (`read_member_keys` in `src/features/serde.rs`), reached in generated code through
   `wire_key_{operation}` in the service's schema module: the Rust dispatcher inserts the path's
   value under it, `openapi()` reads the member's schema under it, and `ts_http_client()` and
-  `ts_http_service()` write it at run time over `message::wire_key_marker`. An inherent const is
-  found ahead of the fallback trait's, so a message `#[model_schema()]` did not write answers `None`
-  and the placeholder's own text is the key. The module holds a `const _` per placeholder that
-  panics where the message lists no such member, so `{documentId}` is refused on every surface at
-  once.
+  `ts_http_service()` write it at run time over `message::wire_key_marker`. Beside each key
+  `WIRE_KEYS` holds the form the placeholder's text is read in (`path_text_form` in
+  `src/service_schema/parse.rs`), reached through `wire_form_{operation}`: the Rust dispatcher's
+  `path_text_value` and the TypeScript dispatcher's `{prefix}HttpPathText` read the text in it as
+  `decode_expr` and `decode_ts_expr` read a placeholder of a generated message, and
+  `ts_http_service()` writes it over `message::wire_form_marker`. An enum and a struct of slots
+  publish a table of no member. An inherent const is found ahead of the fallback trait's, so a
+  message `#[model_schema()]` did not write answers `None`. The module holds a `const _` per
+  placeholder that panics where the message answers `None` or lists no such member, so
+  `{documentId}` is refused on every surface at once.
 - **A value written as text is written in the form the Rust dispatcher reads**: a path
   placeholder, a query field, a `header_in` and a text part. `text_types` in
   `src/features/service_schema.rs` lists the types an operation writes as text, which each client

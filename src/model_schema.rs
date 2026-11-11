@@ -153,6 +153,8 @@ use crate::features::serde::{
     tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
     variant_steps, written_and_read_by_the_author,
 };
+#[cfg(feature = "serde")]
+use crate::service_schema::parse::path_text_form;
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
@@ -3109,7 +3111,7 @@ fn enum_delegate_items(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    build_struct_delegate_items(
+    let mut items = build_struct_delegate_items(
         module_ident,
         item_name,
         &item_enum.ident.to_string(),
@@ -3123,7 +3125,9 @@ fn enum_delegate_items(
         .as_ref(),
         false,
         args,
-    )
+    );
+    items.push(no_wire_keys_item());
+    items
 }
 
 /// The delegates on the type of a plain enum, which match the branded ones, with the
@@ -3148,6 +3152,7 @@ fn plain_enum_delegate_items(
         .into_iter()
         .chain(examples)
         .chain(validate)
+        .chain([no_wire_keys_item()])
         .collect();
     (items, test)
 }
@@ -8716,21 +8721,46 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 }
 
 /// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
-/// reads the member's key on the wire from.
+/// reads the member's key on the wire from, and the form its text is read in.
 #[cfg(feature = "serde")]
 fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
-    let (names, keys): (Vec<String>, Vec<String>) =
-        read_member_keys(item_struct).into_iter().unzip();
+    wire_keys_const(
+        read_member_keys(item_struct)
+            .into_iter()
+            .map(|(name, key, ty)| (name, key, path_text_form(ty)))
+            .collect(),
+    )
+}
+
+/// The constant [`wire_keys_item`] writes, listing no member: an enum and a struct of slots hold
+/// none a path placeholder binds.
+#[cfg(feature = "serde")]
+fn no_wire_keys_item() -> TokenStream {
+    wire_keys_const(Vec::new())
+}
+
+#[cfg(feature = "serde")]
+fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
+    let listed = members
+        .into_iter()
+        .map(|(name, key, form)| quote! { (#name, #key, #form) });
     quote! {
-        #[doc = " Each member serde reads under a key of its own, as its name in Rust and that key."]
-        pub const WIRE_KEYS: ::core::option::Option<&'static [(&'static str, &'static str)]> =
-            ::core::option::Option::Some(&[#((#names, #keys)),*]);
+        #[doc = " Each member serde reads under a key of its own, as its name in Rust, that key and"]
+        #[doc = " the form a path placeholder's text is read in for it."]
+        pub const WIRE_KEYS: ::core::option::Option<
+            &'static [(&'static str, &'static str, &'static str)],
+        > = ::core::option::Option::Some(&[#(#listed),*]);
     }
 }
 
 /// Nothing, where no `serde` feature reads the attributes a key is written from.
 #[cfg(not(feature = "serde"))]
 fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(not(feature = "serde"))]
+fn no_wire_keys_item() -> TokenStream {
     TokenStream::new()
 }
 
@@ -9815,13 +9845,14 @@ fn process_tuple_struct(
 
     let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
-    let delegate_impl_items = struct_delegate_items(
+    let mut delegate_impl_items = struct_delegate_items(
         &module_ident,
         &item_name,
         &item_struct,
         tuple_struct_shows_sibling_examples(&slots.shape),
         args,
     );
+    delegate_impl_items.push(no_wire_keys_item());
 
     // Read after every slot carries the serde attributes generation hangs on it.
     let decode_with = struct_decode_with(&item_struct, args);
@@ -11477,8 +11508,9 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         args,
     );
 
-    let delegate_impl_items =
+    let mut delegate_impl_items =
         build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty(), args);
+    delegate_impl_items.push(no_wire_keys_item());
 
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);

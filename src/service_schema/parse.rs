@@ -75,6 +75,14 @@ const RESOURCE_URI: (&str, &str) = ("`mcp(resource = ...)`'s URI", "URI");
 /// so declared no `error_status` table to read a code from.
 pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 
+/// The words a declared message publishes a member's form in, beside its key.
+pub const BIGINT_FORM: &str = "bigint";
+pub const BOOLEAN_FORM: &str = "boolean";
+pub const NUMBER_FORM: &str = "number";
+pub const TEXT_FORM: &str = "text";
+/// Written ahead of the form of a list's item: the text is split on `,`.
+pub const LIST_FORM: &str = "list of ";
+
 /// One service, read once.
 #[derive(Clone)]
 pub struct ServiceDef {
@@ -754,6 +762,22 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
         | WireScalarKind::Unsigned64 => ScalarKind::Number,
         WireScalarKind::Text => ScalarKind::Text,
     }
+}
+
+/// The form the text of a path placeholder that binds a member of `ty` is read in: the judgement
+/// [`scalar_kind`] makes, with a `u64` and an `i64` apart as the `bigint` TypeScript holds them as.
+pub fn path_text_form(ty: &Type) -> String {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(item) = vec_inner(base) {
+        return format!("{LIST_FORM}{}", path_text_form(item));
+    }
+    match wire_scalar_kind(base) {
+        WireScalarKind::Bool => BOOLEAN_FORM,
+        WireScalarKind::Float | WireScalarKind::Integer => NUMBER_FORM,
+        WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => BIGINT_FORM,
+        WireScalarKind::Text => TEXT_FORM,
+    }
+    .to_owned()
 }
 
 /// Whether `ty` is a `u64` or an `i64`, or a brand, a struct of one slot or an alias over one
