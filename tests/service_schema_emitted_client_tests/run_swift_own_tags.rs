@@ -190,9 +190,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
             format!(
                 "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
                  decoder.container(keyedBy: CodingKeys.self); self.label = try \
-                 Self.swiftSchemaFitted({{ try container.decode(Held.self, forKey: .label) }}, \
-                 again: {{ _ = try container.decode(SwiftSchemaFit<Held>.self, forKey: .label) \
-                 }}) }};",
+                 container.decode(SwiftSchemaFit<Held>.self, forKey: .label).value }};",
                 tag_held("Gonfalon")
             ),
         ),

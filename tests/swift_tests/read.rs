@@ -588,16 +588,14 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
 }
 
 /// A value behind a type parameter is read through `Decodable`, so a model there judges itself,
-/// and read again through `SwiftSchemaFit` where Foundation refuses it with no coding path.
+/// within `SwiftSchemaFit`, which refuses an integer there at its own coding path.
 #[test]
 fn a_value_behind_a_type_parameter_is_read_through_decodable_and_fitted() {
     holds(
         &envelope_swift::swift_definition(),
         &[
             "self.note = try container.decode(String.self, forKey: .note); ",
-            "self.value = try Self.swiftSchemaFitted({ try container.decode(T.self, forKey: \
-             .value) }, again: { _ = try container.decode(SwiftSchemaFit<T>.self, forKey: .value) \
-             }) }; ",
+            "self.value = try container.decode(SwiftSchemaFit<T>.self, forKey: .value).value }; ",
         ],
     );
 }
@@ -633,8 +631,7 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     holds(
         &marker_swift::swift_definition(),
         &[
-            "self.value = try Self.swiftSchemaFitted({ try container.decode(IdType.self) }, again: \
-             { _ = try container.decode(SwiftSchemaFit<IdType>.self) }) }; ",
+            "self.value = try container.decode(SwiftSchemaFit<IdType>.self).value }; ",
             concat!(
                 "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
                 "if let held = value as? String { if held.unicodeScalars.count < 2 {",
@@ -1038,8 +1035,8 @@ fn a_fixed_array_is_read_from_an_array_of_its_length() {
                 "var listed = try container.nestedUnkeyedContainer(forKey: .grid); ",
                 "var items: [[UInt8]] = []; while !listed.isAtEnd { ",
                 "var listed1 = try listed.nestedUnkeyedContainer(); var items1: [UInt8] = []; ",
-                "while !listed1.isAtEnd { items1.append(try Self.swiftSchemaFitted({ try \
-                 listed1.decode(UInt8.self) }, again: { _ = try listed1.decode(SwiftSchemaFit<UInt8>.self) })) }; ",
+                "while !listed1.isAtEnd { items1.append(try \
+                 listed1.decode(SwiftSchemaFit<UInt8>.self).value) }; ",
                 "guard items1.count == 2 else { throw DecodingError.dataCorrupted(",
                 "DecodingError.Context(codingPath: listed1.codingPath, debugDescription: ",
                 r#""invalid length \(items1.count), expected 2")) }; items.append(items1) }; "#,
@@ -1047,13 +1044,12 @@ fn a_fixed_array_is_read_from_an_array_of_its_length() {
                 "DecodingError.Context(codingPath: listed.codingPath, debugDescription: ",
                 r#""invalid length \(items.count), expected 3")) }; self.grid = items; "#,
             ),
-            "self.listed = try Self.swiftSchemaFitted({ try container.decode([UInt8].self, forKey: \
-             .listed) }, again: { _ = try container.decode([SwiftSchemaFit<UInt8>].self, forKey: .listed) }); ",
+            "self.listed = try container.decode([SwiftSchemaFit<UInt8>].self, forKey: \
+             .listed).map({ $0.value }); ",
             concat!(
                 "var listed2 = try container.nestedUnkeyedContainer(forKey: .pair); ",
                 "var items2: [UInt8] = []; while !listed2.isAtEnd { ",
-                "items2.append(try Self.swiftSchemaFitted({ try listed2.decode(UInt8.self) }, \
-                 again: { _ = try listed2.decode(SwiftSchemaFit<UInt8>.self) })) }; ",
+                "items2.append(try listed2.decode(SwiftSchemaFit<UInt8>.self).value) }; ",
                 "guard items2.count == 2 else { throw DecodingError.dataCorrupted(",
                 "DecodingError.Context(codingPath: listed2.codingPath, debugDescription: ",
                 r#""invalid length \(items2.count), expected 2")) }; self.pair = items2 }; "#,

@@ -83,9 +83,7 @@ fn a_wrapper_reads_a_brand_key_through_its_inner_and_writes_the_inner_text_of_it
         &swift,
         &[
             "let wireKey = codingKey.stringValue; let key = Callsign(value: wireKey); \
-             result[key] = try Self.swiftSchemaFitted({ try container.decode(UInt8.self, forKey: \
-             codingKey) }, again: { _ = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: \
-             codingKey) })",
+             result[key] = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey).value",
             "let wireKey = key.value; ",
             "guard let key = ((UInt32(wireKey)).map { Burgee(value: $0) }) else { \
              throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \

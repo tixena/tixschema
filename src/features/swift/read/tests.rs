@@ -421,25 +421,28 @@ fn a_brand_over_an_optional_date_calls_its_closure_with_try() {
     assert!(written.contains(call), "{call} is not in: {written}");
 }
 
-/// A type parameter in scope is read again through `SwiftSchemaFit` alone, in a list, as a map's
-/// value and under an `Optional`, as a fixed-width integer is; a type that is no parameter, and
-/// one that holds a parameter as its argument, are read once.
+/// A type parameter in scope is read through `SwiftSchemaFit` alone, in a list, as a map's value
+/// and under an `Optional`, as a fixed-width integer is; a type that is no parameter, and one that
+/// holds a parameter as its argument, are read as they are.
 #[test]
-fn a_type_parameter_in_scope_is_read_again_through_the_fitting_read() {
+fn a_type_parameter_in_scope_is_read_through_the_fitting_read() {
     let parameters = ["Held".to_owned()];
-    for (read_as, fit) in [
-        ("Held", "SwiftSchemaFit<Held>"),
-        ("[Held]", "[SwiftSchemaFit<Held>]"),
-        ("[String: Held]", "[String: SwiftSchemaFit<Held>]"),
-        ("Held?", "SwiftSchemaFit<Held>?"),
-        ("[Held?]", "[SwiftSchemaFit<Held>?]"),
+    for (read_as, read) in [
+        ("Held", "SwiftSchemaFit<Held>.self).value"),
+        ("[Held]", "[SwiftSchemaFit<Held>].self).map({ $0.value })"),
+        (
+            "[String: Held]",
+            "[String: SwiftSchemaFit<Held>].self).mapValues({ $0.value })",
+        ),
+        ("Held?", "SwiftSchemaFit<Held>?.self)?.value"),
+        (
+            "[Held?]",
+            "[SwiftSchemaFit<Held>?].self).map({ $0?.value })",
+        ),
     ] {
         assert_eq!(
             fitted("container.decode(", read_as, ".self)", &parameters),
-            format!(
-                "Self.swiftSchemaFitted({{ try container.decode({read_as}.self) }}, again: {{ _ = \
-                 try container.decode({fit}.self) }})"
-            )
+            format!("container.decode({read}")
         );
     }
     for read_as in ["Stowed", "Tether<Held>", "String"] {
@@ -451,5 +454,100 @@ fn a_type_parameter_in_scope_is_read_again_through_the_fitting_read() {
     assert_eq!(
         fitted("container.decode(", "Held", ".self)", &[]),
         "container.decode(Held.self)"
+    );
+}
+
+/// A fixed-width integer is read once, through `SwiftSchemaFit`, and mapped back to the type it is
+/// declared as: alone, in a list, in a list of lists under an `Optional`, as a map's value, under
+/// an `Optional`, and under a key that may be absent.
+#[test]
+fn an_integer_is_read_once_through_the_fitting_read_and_mapped_back() {
+    let keyed = |call: &str, read_as: &str| fitted(call, read_as, ".self, forKey: .held)", &[]);
+    for (call, read_as, read) in [
+        (
+            "container.decode(",
+            "UInt32",
+            "container.decode(SwiftSchemaFit<UInt32>.self, forKey: .held).value",
+        ),
+        (
+            "container.decode(",
+            "[Int64]",
+            "container.decode([SwiftSchemaFit<Int64>].self, forKey: .held).map({ $0.value })",
+        ),
+        (
+            "container.decode(",
+            "[[Int64]?]",
+            "container.decode([[SwiftSchemaFit<Int64>]?].self, forKey: .held).map({ \
+             $0?.map({ $0.value }) })",
+        ),
+        (
+            "container.decode(",
+            "[String: Int64]",
+            "container.decode([String: SwiftSchemaFit<Int64>].self, forKey: .held).mapValues({ \
+             $0.value })",
+        ),
+        (
+            "container.decode(",
+            "Int64?",
+            "container.decode(SwiftSchemaFit<Int64>?.self, forKey: .held)?.value",
+        ),
+        (
+            "container.decodeIfPresent(",
+            "Int64",
+            "container.decodeIfPresent(SwiftSchemaFit<Int64>.self, forKey: .held)?.value",
+        ),
+        (
+            "container.decodeIfPresent(",
+            "[Int64]",
+            "container.decodeIfPresent([SwiftSchemaFit<Int64>].self, forKey: .held)?.map({ \
+             $0.value })",
+        ),
+    ] {
+        assert_eq!(keyed(call, read_as), read);
+    }
+    for read_as in [
+        "Double",
+        "String",
+        "[Double]",
+        "[String: Bool]",
+        "Int64Type",
+    ] {
+        assert_eq!(
+            keyed("container.decode(", read_as),
+            format!("container.decode({read_as}.self, forKey: .held)")
+        );
+    }
+}
+
+/// A read from the decoder the initializer was handed reads each fixed-width integer and each
+/// type parameter through `SwiftSchemaFit` and maps it back, from every such source.
+#[test]
+fn a_read_from_the_decoder_reads_an_integer_through_the_fitting_read() {
+    let parameters = ["Held".to_owned()];
+    for source in [
+        Source::Decoder,
+        Source::Beside("taken".to_owned()),
+        Source::Keeping("[\"held\"]".to_owned()),
+    ] {
+        for (read_as, read) in [
+            ("UInt32", "SwiftSchemaFit<UInt32>(from: decoder).value"),
+            (
+                "[Int64]",
+                "[SwiftSchemaFit<Int64>](from: decoder).map({ $0.value })",
+            ),
+            (
+                "[String: Held]",
+                "[String: SwiftSchemaFit<Held>](from: decoder).mapValues({ $0.value })",
+            ),
+            ("Int64?", "SwiftSchemaFit<Int64>?(from: decoder)?.value"),
+            ("Double", "Double(from: decoder)"),
+            ("Stowed", "Stowed(from: decoder)"),
+        ] {
+            assert_eq!(source.plain(read_as, &parameters), read);
+        }
+    }
+    assert_eq!(
+        Source::Listed("listed".to_owned()).plain("UInt8", &[]),
+        "listed.decode(SwiftSchemaFit<UInt8>.self).value"
     );
 }

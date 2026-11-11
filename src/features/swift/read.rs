@@ -20,39 +20,61 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
      var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } }";
 
-/// The Swift integers Foundation refuses a number outside the range of, or one with a fraction,
-/// in an error no coding path reaches: [`fitted`] reads them again through [`FITTED`].
+/// The Swift integers Foundation refuses a number outside the range of in an error no coding path
+/// reaches, and reads a number written with a fraction or an exponent into: [`fitted`] reads them
+/// through [`FITTED`].
 const FIXED_WIDTH: [&str; 8] = [
     "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32",
 ];
 
-/// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one integer and
-/// refuses one that does not fit at its own coding path, in serde's words, and the read that
-/// reads a value again through it where Foundation's read refused it with no coding path.
+/// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one value and
+/// holds it in `value`. It refuses an integer that does not fit, and one written with a fraction
+/// or an exponent, at its own coding path, in serde's words. It tells such a number by the byte
+/// count of its text and its exponent mark, which `JSONDecoder`'s own decoder holds in stored
+/// properties it reads through `Mirror`; under any other decoder the number reads as Foundation
+/// reads it. A type parameter filled with a `Float` reads one beyond its range as a `Double`
+/// narrowed to an infinity of its sign, as serde reads an `f32`.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
+     let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
-     _ = try single.decode(SwiftSchemaLeaf.self) } catch let refused where !(refused is \
+     value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where \
+     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) { do { value = \
+     Float(try single.decode(Double.self)) as! SwiftSchemaLeaf } catch let wider where !(wider is \
      DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-     decoder.codingPath, debugDescription: Self.refusal(refused), underlyingError: refused)) } }; \
-     private static func refusal(_ refused: Error) -> String { let said = \"\\(refused)\"; let \
-     text = \
-     said.range(of: \"parsed: \\\"\").flatMap { start in said[start.upperBound...].firstIndex(of: \
-     \"\\\"\").map { String(said[start.upperBound..<$0]) } } ?? said; let expected = [\"Int\": \
+     decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: wider)) } } \
+     catch let refused where !(refused is DecodingError) { throw \
+     DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+     debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
+     if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
+     written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
+     DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+     debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     private static func written(_ decoder: Decoder) -> (count: Int, exponent: Bool)? { func \
+     child(_ of: Any, _ label: String) -> Any? { Mirror(reflecting: of).children.first { \
+     $0.label == label }?.value }; guard let values = child(decoder, \"values\") as? [Any], let \
+     top = values.last, let number = child(top, \"number\") else { return nil }; let parts = \
+     Mirror(reflecting: number).children.map(\\.value); guard parts.count == 2, let count = \
+     child(parts[0], \"count\") as? Int, let exponent = parts[1] as? Bool else { return nil }; \
+     return (count, exponent) }; private static var expected: String { [\"Int\": \
      \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
      \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(describing: \
-     SwiftSchemaLeaf.self)] ?? String(describing: SwiftSchemaLeaf.self); let digits = \
-     text.hasPrefix(\"-\") ? text.dropFirst() : Substring(text); if !digits.isEmpty, \
-     digits.allSatisfy({ (\"0\"...\"9\").contains($0) }), text.hasPrefix(\"-\") ? Int64(text) != \
-     nil : digits.count < 20 || (digits.count == 20 && digits <= \"18446744073709551615\") { \
-     return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
-     Double(text), number.isFinite else { return \"number out of range\" }; var spelled = \
+     SwiftSchemaLeaf.self)] ?? String(describing: SwiftSchemaLeaf.self) }; \
+     private static func floating(_ number: Double) -> String { var spelled = \
      number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
      spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
      spelled = String(spelled[..<mark]) + (exponent.hasPrefix(\"-\") ? \"e-\" : \"e+\") + \
      (figures.isEmpty ? \"0\" : String(figures)) }; return \"invalid type: floating point \
-     `\\(spelled)`, expected \\(expected)\" } }; private static func swiftSchemaFitted<Read>(_ \
-     read: () throws -> Read, again: () throws -> Void) throws -> Read { do { return try read() } \
-     catch let refused where !(refused is DecodingError) { try again(); throw refused } }";
+     `\\(spelled)`, expected \\(expected)\" }; \
+     private static func refusal(_ refused: Error) -> String { let said = \"\\(refused)\"; let \
+     text = \
+     said.range(of: \"parsed: \\\"\").flatMap { start in said[start.upperBound...].firstIndex(of: \
+     \"\\\"\").map { String(said[start.upperBound..<$0]) } } ?? said; let digits = \
+     text.hasPrefix(\"-\") ? text.dropFirst() : Substring(text); if !digits.isEmpty, \
+     digits.allSatisfy({ (\"0\"...\"9\").contains($0) }), text.hasPrefix(\"-\") ? Int64(text) != \
+     nil : digits.count < 20 || (digits.count == 20 && digits <= \"18446744073709551615\") { \
+     return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
+     Double(text), number.isFinite else { return \"number out of range\" }; return \
+     floating(number) } }";
 
 /// What a type holds whose flattened members [`flattened`] reads: the refusal of a value inside
 /// one, placed at the holder.
@@ -278,12 +300,16 @@ impl Source {
     }
 
     /// The value read as the type `read_as`, which may name the type parameters `parameters`,
-    /// through `Decodable`, [`fitted`].
+    /// through `Decodable`, each fixed-width integer and type parameter it holds read through
+    /// `SwiftSchemaFit` ([`fitted`]).
     pub(super) fn plain(&self, read_as: &str, parameters: &[String]) -> String {
         match self {
-            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
-                format!("{read_as}(from: decoder)")
-            }
+            Self::Beside(_) | Self::Decoder | Self::Keeping(_) => fit_held(read_as, parameters)
+                .zip(unfit(read_as, parameters))
+                .map_or_else(
+                    || format!("{read_as}(from: decoder)"),
+                    |(fit, unfit)| format!("{fit}(from: decoder){unfit}"),
+                ),
             Self::Keyed {
                 container,
                 key,
@@ -338,39 +364,70 @@ fn fit_held(read_as: &str, parameters: &[String]) -> Option<String> {
     if let Some(held) = read_as.strip_suffix('?') {
         return fit_held(held, parameters).map(|fit| format!("{fit}?"));
     }
-    if let Some(listed) = read_as
-        .strip_prefix('[')
-        .and_then(|rest| rest.strip_suffix(']'))
-    {
-        return match listed_value_at(listed) {
-            Some(at) => {
-                let value = fit_held(listed[at + 1..].trim(), parameters)?;
-                Some(format!("[{}: {value}]", &listed[..at]))
-            }
-            None => fit_held(listed, parameters).map(|fit| format!("[{fit}]")),
-        };
+    if let Some((key, held)) = bracketed(read_as) {
+        let fit = fit_held(held, parameters)?;
+        return Some(key.map_or_else(|| format!("[{fit}]"), |named| format!("[{named}: {fit}]")));
     }
-    (FIXED_WIDTH.contains(&read_as) || parameters.iter().any(|named| named == read_as))
-        .then(|| format!("SwiftSchemaFit<{read_as}>"))
+    fits(read_as, parameters).then(|| format!("SwiftSchemaFit<{read_as}>"))
 }
 
-/// The read `{call}{read_as}{rest}`, which Foundation refuses with no coding path where `read_as`
-/// holds a fixed-width integer that does not fit: such a read, and one of a type parameter of
-/// `parameters`, is read again through `SwiftSchemaFit`, which refuses at the integer's own coding
-/// path. A `Float` is read as a `Double` and narrowed, as serde reads an `f32`: Foundation refuses
-/// one beyond its range, which serde reads as an infinity of its sign. The expression is written
-/// after a `try`.
+/// What turns a value of [`fit_held`]'s type for `read_as` back into a `read_as`: `.value` of each
+/// `SwiftSchemaFit`, behind a `?` under an `Optional`, in a `.map` over a list and a `.mapValues`
+/// over a map. `None` exactly where [`fit_held`] answers `None`. The closure is passed in
+/// parentheses, as a read may stand in the condition of an `if`, where Swift refuses a trailing one.
+fn unfit(read_as: &str, parameters: &[String]) -> Option<String> {
+    if let Some(held) = read_as.strip_suffix('?') {
+        return unfit(held, parameters).map(|inner| format!("?{inner}"));
+    }
+    if let Some((key, held)) = bracketed(read_as) {
+        let inner = unfit(held, parameters)?;
+        let mapping = if key.is_some() { "mapValues" } else { "map" };
+        return Some(format!(".{mapping}({{ $0{inner} }})"));
+    }
+    fits(read_as, parameters).then(|| ".value".to_owned())
+}
+
+/// Whether `read_as` is itself read through `SwiftSchemaFit`: a fixed-width integer, or one of the
+/// type parameters `parameters`, which such an integer may fill.
+fn fits(read_as: &str, parameters: &[String]) -> bool {
+    FIXED_WIDTH.contains(&read_as) || parameters.iter().any(|named| named == read_as)
+}
+
+/// The key and the value of the map `[Key: Value]`, or no key and the item of the list `[Item]`;
+/// `None` for a type written in no brackets.
+fn bracketed(read_as: &str) -> Option<(Option<&str>, &str)> {
+    let listed = read_as.strip_prefix('[')?.strip_suffix(']')?;
+    let mut depth = 0_i32;
+    let colon = listed.char_indices().find_map(|(at, written)| {
+        match written {
+            '[' | '<' | '(' => depth += 1_i32,
+            ']' | '>' | ')' => depth -= 1_i32,
+            ':' if depth == 0_i32 => return Some(at),
+            _ => {}
+        }
+        None
+    });
+    Some(colon.map_or((None, listed), |at| {
+        (Some(&listed[..at]), listed[at + 1..].trim())
+    }))
+}
+
+/// The read `{call}{read_as}{rest}`, with each fixed-width integer and each type parameter of
+/// `parameters` that `read_as` holds read through `SwiftSchemaFit`, which refuses at the
+/// integer's own coding path, and mapped back to `read_as`. A `Float` is read as a `Double` and
+/// narrowed, as serde reads an `f32`: Foundation refuses one beyond its range, which serde reads
+/// as an infinity of its sign. A `call` that ends in `decodeIfPresent(` answers an `Optional`, so
+/// the mapping is written behind a `?`. The expression is written after a `try`.
 pub(super) fn fitted(call: &str, read_as: &str, rest: &str, parameters: &[String]) -> String {
-    if let Some(fit) = fit_held(read_as, parameters) {
-        return format!(
-            "Self.swiftSchemaFitted({{ try {call}{read_as}{rest} }}, again: {{ _ = try \
-             {call}{fit}{rest} }})"
-        );
+    let present = call.ends_with("decodeIfPresent(");
+    if let Some((fit, unfit)) = fit_held(read_as, parameters).zip(unfit(read_as, parameters)) {
+        let behind = if present { "?" } else { "" };
+        return format!("{call}{fit}{rest}{behind}{unfit}");
     }
     let Some(wide) = widened(read_as) else {
         return format!("{call}{read_as}{rest}");
     };
-    let answered = if call.contains("IfPresent(") {
+    let answered = if present {
         format!("{read_as}?")
     } else {
         read_as.to_owned()
@@ -387,17 +444,13 @@ fn widened(read_as: &str) -> Option<String> {
     if let Some(held) = read_as.strip_suffix('?') {
         return widened(held).map(|wide| format!("{wide}?"));
     }
-    let listed = read_as.strip_prefix('[')?.strip_suffix(']')?;
-    match listed_value_at(listed) {
-        Some(at) => {
-            let value = widened(listed[at + 1..].trim())?;
-            Some(format!("[{}: {value}]", &listed[..at]))
-        }
-        None => widened(listed).map(|wide| format!("[{wide}]")),
-    }
+    let (key, held) = bracketed(read_as)?;
+    let wide = widened(held)?;
+    Some(key.map_or_else(|| format!("[{wide}]"), |named| format!("[{named}: {wide}]")))
 }
 
-/// `wide`, read as the type [`widened`] holds `read_as` as, narrowed back to `read_as`.
+/// `wide`, read as the type [`widened`] holds `read_as` as, narrowed back to `read_as`. The
+/// closure is passed in parentheses, as [`unfit`]'s is.
 fn narrowed(read_as: &str, wide: &str) -> String {
     if read_as == "Float" {
         return format!("Float({wide})");
@@ -406,35 +459,13 @@ fn narrowed(read_as: &str, wide: &str) -> String {
         return wide.to_owned();
     }
     if let Some(held) = read_as.strip_suffix('?') {
-        return format!("({wide}).map {{ {} }}", narrowed(held, "$0"));
+        return format!("({wide}).map({{ {} }})", narrowed(held, "$0"));
     }
-    let listed = read_as
-        .strip_prefix('[')
-        .and_then(|rest| rest.strip_suffix(']'))
-        .unwrap_or(read_as);
-    listed_value_at(listed).map_or_else(
-        || format!("({wide}).map {{ {} }}", narrowed(listed, "$0")),
-        |at| {
-            format!(
-                "({wide}).mapValues {{ {} }}",
-                narrowed(listed[at + 1..].trim(), "$0")
-            )
-        },
-    )
-}
-
-/// Where the `:` of a map's type `listed`, written between its brackets, stands at its own depth.
-fn listed_value_at(listed: &str) -> Option<usize> {
-    let mut depth = 0_i32;
-    listed.char_indices().find_map(|(at, written)| {
-        match written {
-            '[' | '<' | '(' => depth += 1_i32,
-            ']' | '>' | ')' => depth -= 1_i32,
-            ':' if depth == 0_i32 => return Some(at),
-            _ => {}
-        }
-        None
-    })
+    let Some((key, held)) = bracketed(read_as) else {
+        return wide.to_owned();
+    };
+    let mapping = if key.is_some() { "mapValues" } else { "map" };
+    format!("({wide}).{mapping}({{ {} }})", narrowed(held, "$0"))
 }
 
 /// `read`, the statements that read a flattened member, placing a refusal inside it at the
@@ -494,7 +525,7 @@ fn block_end(statements: &str) -> Option<usize> {
 /// The helpers the statements of `read` name: [`FITTED`] and [`FLATTENED`].
 pub(super) fn helpers_for(read: &str) -> String {
     let mut helpers = String::new();
-    if read.contains("swiftSchemaFitted(") {
+    if read.contains("SwiftSchemaFit<") {
         helpers.push_str(FITTED);
         helpers.push_str("; ");
     }
