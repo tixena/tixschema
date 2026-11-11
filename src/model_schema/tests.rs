@@ -22162,9 +22162,9 @@ fn the_absence_of_an_option_that_names_a_function_beside_a_nonstrict_holder_is_a
         ..ModelSchemaPropMeta::default()
     });
     assert_eq!(super::zod_absent_where_answered_null(&def), None);
-    record_nonstrict(true);
+    record_nonstrict(true, Vec::new());
     let answered = super::zod_absent_where_answered_null(&def);
-    record_nonstrict(false);
+    record_nonstrict(false, Vec::new());
     let answered_null =
         "z.preprocess(unwrapped, z.preprocess(asNull, z.null())).transform(() => ({}))";
     assert_eq!(answered.as_deref(), Some(answered_null));

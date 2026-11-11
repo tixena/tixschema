@@ -463,7 +463,7 @@ fn an_optional_member_that_names_a_function_beside_a_nonstrict_holder_is_nil_whe
 {
     let functions = named(&["asNull"]);
     let def = get_field_def("held", &syn::parse_quote!(PreprocessOptionalHere), "");
-    record_nonstrict(true);
+    record_nonstrict(true, Vec::new());
     let read = optional(
         &Member {
             def: &def,
@@ -483,7 +483,7 @@ fn an_optional_member_that_names_a_function_beside_a_nonstrict_holder_is_nil_whe
         &|held| format!("self.held = {held}"),
         &mut Vec::new(),
     );
-    record_nonstrict(false);
+    record_nonstrict(false, Vec::new());
     assert_eq!(
         read,
         "let heldHandedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
