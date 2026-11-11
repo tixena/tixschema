@@ -454,7 +454,10 @@ fn an_absent_key_and_a_null_of_an_optional_and_a_nullable_member_are_read_as_nil
         &anchorage_swift::swift_definition(),
         &[
             "self.anchorNote = try container.decodeIfPresent(String.self, forKey: .anchorNote); ",
-            "self.flattened = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"anchorNote\", \"heldParcel\"]); if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) { self.heldParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil } }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"anchorNote\", \"reason\", \"heldParcel\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+            "self.flattened = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+             taken + [\"anchorNote\", \"heldParcel\"]) } catch let refused as DecodingError { \
+             throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; if \
+             container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) { self.heldParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil } }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"anchorNote\", \"reason\", \"heldParcel\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
             concat!(
                 "if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
@@ -565,13 +568,19 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
     holds(
         &berthed_swift::swift_definition(),
         &[
-            "self.parcel = try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"quay\"]); self.quay = try container.decode(String.self, forKey: .quay) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"fragileItemCodes\", \"itemCodeList\", \"label\", \"quay\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+            "self.parcel = try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + \
+             [\"quay\"]) } catch let refused as DecodingError { throw \
+             Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; self.quay = try \
+             container.decode(String.self, forKey: .quay) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"fragileItemCodes\", \"itemCodeList\", \"label\", \"quay\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
         ],
     );
     holds(
         &with_flatten_swift::swift_definition(),
         &[
-            "self.extra = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"id\"]); self.id = try container.decode(String.self, forKey: .id) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"reason\", \"id\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+            "self.extra = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+             taken + [\"id\"]) } catch let refused as DecodingError { throw \
+             Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; self.id = try \
+             container.decode(String.self, forKey: .id) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"reason\", \"id\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
         ],
     );
 }
@@ -1023,7 +1032,8 @@ fn a_fixed_array_is_read_from_an_array_of_its_length() {
                 "var listed = try container.nestedUnkeyedContainer(forKey: .grid); ",
                 "var items: [[UInt8]] = []; while !listed.isAtEnd { ",
                 "var listed1 = try listed.nestedUnkeyedContainer(); var items1: [UInt8] = []; ",
-                "while !listed1.isAtEnd { items1.append(try listed1.decode(UInt8.self)) }; ",
+                "while !listed1.isAtEnd { items1.append(try Self.swiftSchemaFitted({ try \
+                 listed1.decode(UInt8.self) }, again: { _ = try listed1.decode(SwiftSchemaFit<UInt8>.self) })) }; ",
                 "guard items1.count == 2 else { throw DecodingError.dataCorrupted(",
                 "DecodingError.Context(codingPath: listed1.codingPath, debugDescription: ",
                 r#""invalid length \(items1.count), expected 2")) }; items.append(items1) }; "#,
@@ -1031,11 +1041,13 @@ fn a_fixed_array_is_read_from_an_array_of_its_length() {
                 "DecodingError.Context(codingPath: listed.codingPath, debugDescription: ",
                 r#""invalid length \(items.count), expected 3")) }; self.grid = items; "#,
             ),
-            "self.listed = try container.decode([UInt8].self, forKey: .listed); ",
+            "self.listed = try Self.swiftSchemaFitted({ try container.decode([UInt8].self, forKey: \
+             .listed) }, again: { _ = try container.decode([SwiftSchemaFit<UInt8>].self, forKey: .listed) }); ",
             concat!(
                 "var listed2 = try container.nestedUnkeyedContainer(forKey: .pair); ",
                 "var items2: [UInt8] = []; while !listed2.isAtEnd { ",
-                "items2.append(try listed2.decode(UInt8.self)) }; ",
+                "items2.append(try Self.swiftSchemaFitted({ try listed2.decode(UInt8.self) }, \
+                 again: { _ = try listed2.decode(SwiftSchemaFit<UInt8>.self) })) }; ",
                 "guard items2.count == 2 else { throw DecodingError.dataCorrupted(",
                 "DecodingError.Context(codingPath: listed2.codingPath, debugDescription: ",
                 r#""invalid length \(items2.count), expected 2")) }; self.pair = items2 }; "#,

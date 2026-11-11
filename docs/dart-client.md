@@ -128,9 +128,12 @@ consumer's view; this is what a change has to keep.
   path of the value refused as its `FormatException`'s `source`, a list of steps the helper puts
   its own ahead of, and keeps the `message`. A read that fails where the object does not hold the
   key is refused with ``missing field `{key}` ``, as serde words it; a cast's `TypeError` becomes a
-  `FormatException` of its words, and a Dart parser's refusal one with the path. The `ws_rpc`
-  attachment and client name the joined path as the fault's `field`, or the place a `validate()`
-  message opens with (`refused_at_fn` in `dart_ws_client.rs`).
+  `FormatException` of its words, and a Dart parser's refusal one with the path. A flattened
+  member is read through `_readFlattened` (`READ_FLATTENED`, which a class with one declares),
+  which drops the path of its refusal but for the key a `missing field` or an unknown key names,
+  so the holder's step is the place, as serde names the holder. The `ws_rpc` attachment and
+  client name the joined path as the fault's `field`, or the place a `validate()` message opens
+  with (`refused_at_fn` in `dart_ws_client.rs`).
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever

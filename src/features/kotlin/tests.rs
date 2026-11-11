@@ -768,8 +768,9 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
          buildClassSerialDescriptor(\"Yard\"); override fun serialize(",
         "output.json.encodeToJsonElement(BaseUnjudged, value.base).jsonObject.forEach { (k, v) \
          -> put(k, v) }",
-        "val baseKeys = setOf(\"name\"); val base = input.json.decodeFromString(BaseUnjudged, \
-         JsonObject(obj.filterKeys { it in setOf(\"name\") }).toString())",
+        "val baseKeys = setOf(\"name\"); val base = kotlinSchemaFlattened { \
+         input.json.decodeFromString(BaseUnjudged, JsonObject(obj.filterKeys { it in \
+         setOf(\"name\") }).toString()) }",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -780,8 +781,8 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
          val byDock: Map<String, Parcel>) {",
         "value.byDock.forEach { (k, v) -> put(k, output.json.encodeToJsonElement(ParcelUnjudged, \
          v)) }",
-        "val byDock = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, ParcelUnjudged, \
-         v, k, \".\" + k) }",
+        "val byDock = kotlinSchemaFlattened { obj.mapValues { (k, v) -> \
+         kotlinSchemaDecoded(input.json, ParcelUnjudged, v, k, \".\" + k) } }",
     ] {
         assert!(map.contains(held), "no `{held}` in: {map}");
     }
@@ -815,12 +816,12 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
     assert!(written.ends_with(&judged("Pennant")), "got: {written}");
     let kotlin = plain(&item);
     for held in [
-        "val pennantKeys = setOf(\"label\", \"name\"); val pennant = \
+        "val pennantKeys = setOf(\"label\", \"name\"); val pennant = kotlinSchemaFlattened { \
          input.json.decodeFromString(PennantUnjudged, JsonObject(obj.filterKeys { it in \
-         setOf(\"label\", \"name\", \"spare\", \"kind\") }).toString());",
+         setOf(\"label\", \"name\", \"spare\", \"kind\") }).toString()) };",
         "val unseenKeys = (serializer<Unseen>()).descriptor.elementNames.toSet(); val unseen = \
-         lenient.decodeFromString(serializer<Unseen>(), kotlinSchemaFlat(serializer<Unseen>(), \
-         JsonObject(obj - pennantKeys)).toString());",
+         kotlinSchemaFlattened { lenient.decodeFromString(serializer<Unseen>(), \
+         kotlinSchemaFlat(serializer<Unseen>(), JsonObject(obj - pennantKeys)).toString()) };",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -986,19 +987,20 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     let after_clew = "JsonObject(obj - setOf(\"note\") - hankKeys - clewKeys)";
     for held in [
         format!(
-            "val hankKeys = (HankUnjudged).descriptor.elementNames.toSet(); val hank = if \
-             (obj.keys.any {{ it in setOf(\"kind\") }}) {} else null;",
+            "val hankKeys = (HankUnjudged).descriptor.elementNames.toSet(); val hank = \
+             kotlinSchemaFlattened {{ if (obj.keys.any {{ it in setOf(\"kind\") }}) {} else null \
+             }};",
             decoded("HankUnjudged", "obj")
         ),
         format!(
-            "val clewKeys = setOf(\"kind\", \"body\"); val clew = if (obj.keys.any {{ it in \
-             setOf(\"kind\", \"body\") }}) {} else null;",
+            "val clewKeys = setOf(\"kind\", \"body\"); val clew = kotlinSchemaFlattened {{ if \
+             (obj.keys.any {{ it in setOf(\"kind\", \"body\") }}) {} else null }};",
             decoded("ClewUnjudged", "obj")
         ),
         format!(
-            "val brailKeys = (BrailUnjudged).descriptor.elementNames.toSet(); val brail = if \
-             (brailKeys.isEmpty()) runCatching {{ {} }}.getOrNull() else if \
-             ({after_clew}.keys.any {{ it in brailKeys }}) {} else null;",
+            "val brailKeys = (BrailUnjudged).descriptor.elementNames.toSet(); val brail = \
+             kotlinSchemaFlattened {{ if (brailKeys.isEmpty()) runCatching {{ {} }}.getOrNull() \
+             else if ({after_clew}.keys.any {{ it in brailKeys }}) {} else null }};",
             decoded("BrailUnjudged", after_clew),
             decoded("BrailUnjudged", after_clew)
         ),

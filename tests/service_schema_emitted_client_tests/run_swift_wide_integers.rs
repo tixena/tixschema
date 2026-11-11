@@ -40,15 +40,15 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 }
 "#;
 
-/// What the Swift read answers of each payload of [`REFUSED`], in its order: `JSONDecoder` answers
-/// a number beyond an `Int64` and a fraction as data that is not valid JSON.
+/// What the Swift read answers of each payload of [`REFUSED`], in its order: a number beyond an
+/// `Int64` and a fraction in serde's words.
 const SWIFT_REFUSED: [&str; 8] = [
-    "dataCorrupted: The given data was not valid JSON.",
+    "dataCorrupted: invalid value: integer `9223372036854775808`, expected i64",
     "typeMismatch: Int64 at ''",
-    "dataCorrupted: The given data was not valid JSON.",
-    "dataCorrupted: The given data was not valid JSON.",
+    "dataCorrupted: invalid type: floating point `-9.223372036854776e+18`, expected i64",
+    "dataCorrupted: invalid type: floating point `1.5`, expected i64",
     "dataCorrupted: 'level': too large: maximum is 5, got 6",
-    "dataCorrupted: The given data was not valid JSON.",
+    "dataCorrupted: invalid value: integer `9223372036854775808`, expected i64",
     "dataCorrupted: 'fixed': not the literal 214, got 215",
     "typeMismatch: Int64 at 'keyed.4'",
 ];

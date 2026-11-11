@@ -597,8 +597,10 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
         &[
             &format!(
                 "{BESIDE} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
-                 self.carton = try Carton(swiftSchemaUnjudged: decoder, \
-                 swiftSchemaWithout: taken + [\"dock\", \"rackRow\"]); "
+                 do {{ self.carton = try Carton(swiftSchemaUnjudged: decoder, \
+                 swiftSchemaWithout: taken + [\"dock\", \"rackRow\"]) }} catch let refused as \
+                 DecodingError {{ throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) \
+                 }}; "
             ),
             ALONE,
         ],
@@ -607,8 +609,10 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
         &stacked_swift::swift_definition(),
         &[
             concat!(
-                "self.racked = try Racked(swiftSchemaUnjudged: decoder, ",
-                r#"swiftSchemaWithout: taken + ["tier"]); "#,
+                "do { self.racked = try Racked(swiftSchemaUnjudged: decoder, ",
+                r#"swiftSchemaWithout: taken + ["tier"]) } "#,
+                "catch let refused as DecodingError { throw ",
+                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
             ),
             ALONE,
         ],
@@ -628,10 +632,12 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
         &bayed_swift::swift_definition(),
         &[
             concat!(
-                "let bayPayload = try SwiftSchemaPayload(from: decoder, ",
+                "do { let bayPayload = try SwiftSchemaPayload(from: decoder, ",
                 r#"without: taken + ["dock"]).value; "#,
                 "self.bay = try SwiftSchemaPayload.readRefusing(Bay.self, ",
-                "from: withItsKeys(bayPayload), at: decoder.codingPath); ",
+                "from: withItsKeys(bayPayload), at: decoder.codingPath) } ",
+                "catch let refused as DecodingError { throw ",
+                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
             ),
             ALONE,
         ],
@@ -657,8 +663,10 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
         &aliased_swift::swift_definition(),
         &[
             concat!(
-                "self.carton = try LaterCartonType(swiftSchemaUnjudged: decoder, ",
-                r#"swiftSchemaWithout: taken + ["dock"]); "#,
+                "do { self.carton = try LaterCartonType(swiftSchemaUnjudged: decoder, ",
+                r#"swiftSchemaWithout: taken + ["dock"]) } "#,
+                "catch let refused as DecodingError { throw ",
+                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
             ),
             ALONE,
         ],
@@ -673,11 +681,13 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
                 "self.value = try Behind(swiftSchemaUnjudged: decoder) } }",
             ),
             concat!(
-                "let behindPayload = try SwiftSchemaPayload(from: decoder, ",
+                "do { let behindPayload = try SwiftSchemaPayload(from: decoder, ",
                 r#"without: taken + ["dock"]).value; "#,
                 "self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, ",
                 "from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, ",
-                "at: decoder.codingPath), at: decoder.codingPath).value; ",
+                "at: decoder.codingPath), at: decoder.codingPath).value } ",
+                "catch let refused as DecodingError { throw ",
+                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
             ),
         ],
     );
@@ -759,7 +769,8 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "let slot1Payload = try SwiftSchemaPayload(from: slot1Decoder).value; ",
                 "slot1 = try SwiftSchemaPayload.read(SwiftSchemaReadSlot1.self, ",
                 "from: unwrapped(slot1Payload), at: slot1Decoder.codingPath).value; ",
-                "slot2 = try container.decode(UInt32.self);  }; ",
+                "slot2 = try Self.swiftSchemaFitted({ try container.decode(UInt32.self) }, again: \
+                 { _ = try container.decode(SwiftSchemaFit<UInt32>.self) });  }; ",
             ),
             concat!(
                 "private struct SwiftSchemaReadSlot1: Decodable { let value: Carton; ",

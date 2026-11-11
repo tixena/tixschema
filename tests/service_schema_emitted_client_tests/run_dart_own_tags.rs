@@ -155,16 +155,18 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             pennant_dart::dart_definition(),
             format!(
                 "factory Pennant.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Pennant(labelling: Labelling.fromJsonUnjudged((switch (({{...json}}..remove('note'))) \
-                 {{ final whole => \
-                 {{ for (final key in const ['label']) if (whole.containsKey(key)) key: \
-                 whole[key] }} }})),note: _readAt(json, 'note', () => json['note'] as String),); }}",
+                 Pennant(labelling: _readFlattened(() => \
+                 Labelling.fromJsonUnjudged((switch (({{...json}}..remove('note'))) {{ final whole \
+                 => {{ for (final key in const ['label']) if (whole.containsKey(key)) key: \
+                 whole[key] }} }}))),note: _readAt(json, 'note', () => json['note'] as String),); \
+                 }}",
                 tag_held("json", "Pennant")
             ),
         ),
         (
             dressing_dart::dart_definition(),
-            "Dressing(ensign: Ensign.fromJsonUnjudged(({...json}..remove('north'))),north: \
+            "Dressing(ensign: _readFlattened(() => \
+             Ensign.fromJsonUnjudged(({...json}..remove('north')))),north: \
              _readAt(json, 'north', () => (switch (json['north'] as \
              int) { final number when number >= 0 && number <= 255 => number, final number => \
              throw FormatException('expected an integer from 0 to 255, found $number') })),)"

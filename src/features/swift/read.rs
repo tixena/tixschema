@@ -20,6 +20,54 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
      var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; \
      init?(intValue: Int) { nil } }";
 
+/// The Swift integers Foundation refuses a number outside the range of, or one with a fraction,
+/// in an error no coding path reaches: [`fitted`] reads them again through [`FITTED`].
+const FIXED_WIDTH: [&str; 8] = [
+    "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32",
+];
+
+/// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one integer and
+/// refuses one that does not fit at its own coding path, in serde's words, and the read that
+/// reads a value again through it where Foundation's read refused it with no coding path.
+const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
+     init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
+     _ = try single.decode(SwiftSchemaLeaf.self) } catch let refused where !(refused is \
+     DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+     decoder.codingPath, debugDescription: Self.refusal(refused), underlyingError: refused)) } }; \
+     private static func refusal(_ refused: Error) -> String { let said = \"\\(refused)\"; let \
+     text = \
+     said.range(of: \"parsed: \\\"\").flatMap { start in said[start.upperBound...].firstIndex(of: \
+     \"\\\"\").map { String(said[start.upperBound..<$0]) } } ?? said; let expected = [\"Int\": \
+     \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
+     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(describing: \
+     SwiftSchemaLeaf.self)] ?? String(describing: SwiftSchemaLeaf.self); let digits = \
+     text.hasPrefix(\"-\") ? text.dropFirst() : Substring(text); if !digits.isEmpty, \
+     digits.allSatisfy({ (\"0\"...\"9\").contains($0) }), text.hasPrefix(\"-\") ? Int64(text) != \
+     nil : digits.count < 20 || (digits.count == 20 && digits <= \"18446744073709551615\") { \
+     return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
+     Double(text), number.isFinite else { return \"number out of range\" }; var spelled = \
+     number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
+     spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
+     spelled = String(spelled[..<mark]) + (exponent.hasPrefix(\"-\") ? \"e-\" : \"e+\") + \
+     (figures.isEmpty ? \"0\" : String(figures)) }; return \"invalid type: floating point \
+     `\\(spelled)`, expected \\(expected)\" } }; private static func swiftSchemaFitted<Read>(_ \
+     read: () throws -> Read, again: () throws -> Void) throws -> Read { do { return try read() } \
+     catch let refused where !(refused is DecodingError) { try again(); throw refused } }";
+
+/// What a type holds whose flattened members [`flattened`] reads: the refusal of a value inside
+/// one, placed at the holder.
+const FLATTENED: &str = "private static func swiftSchemaFlattened(_ refused: DecodingError, at \
+     path: [CodingKey]) -> DecodingError { func placed(_ context: DecodingError.Context, keeping \
+     kept: [CodingKey] = []) -> DecodingError.Context { DecodingError.Context(codingPath: path + \
+     kept, debugDescription: context.debugDescription, underlyingError: context.underlyingError) \
+     }; if case .keyNotFound(let key, let context) = refused { return .keyNotFound(key, \
+     placed(context)) }; if case .typeMismatch(let type, let context) = refused { return \
+     .typeMismatch(type, placed(context)) }; if case .valueNotFound(let type, let context) = \
+     refused { return .valueNotFound(type, placed(context)) }; if case .dataCorrupted(let context) \
+     = refused { return .dataCorrupted(placed(context, keeping: \
+     context.debugDescription.hasPrefix(\"unknown field `\") ? Array(context.codingPath.suffix(1)) \
+     : [])) }; return refused }";
+
 /// The read every caller makes: the type's own, then `validate()` on the value read.
 pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
      try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); \
@@ -229,7 +277,7 @@ impl Source {
         }
     }
 
-    /// The value read as the type `read_as` through `Decodable`.
+    /// The value read as the type `read_as` through `Decodable`, [`fitted`].
     pub(super) fn plain(&self, read_as: &str) -> String {
         match self {
             Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
@@ -239,8 +287,12 @@ impl Source {
                 container,
                 key,
                 presence: _presence,
-            } => format!("{container}.decode({read_as}.self, forKey: {key})"),
-            Self::Listed(listed) => format!("{listed}.decode({read_as}.self)"),
+            } => fitted(
+                &format!("{container}.decode("),
+                read_as,
+                &format!(".self, forKey: {key})"),
+            ),
+            Self::Listed(listed) => fitted(&format!("{listed}.decode("), read_as, ".self)"),
         }
     }
 
@@ -273,6 +325,123 @@ impl Source {
             Self::Listed(listed) => format!("{listed}.nestedUnkeyedContainer()"),
         }
     }
+}
+
+/// `read_as`, a Swift type, with each fixed-width integer it holds, alone or in a list, as a map's
+/// value or under an `Optional`, read through `SwiftSchemaFit`; `None` where it holds none there.
+fn fit_held(read_as: &str) -> Option<String> {
+    if let Some(held) = read_as.strip_suffix('?') {
+        return fit_held(held).map(|fit| format!("{fit}?"));
+    }
+    if let Some(listed) = read_as
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        let mut depth = 0_i32;
+        let colon = listed.char_indices().find_map(|(at, written)| {
+            match written {
+                '[' | '<' | '(' => depth += 1_i32,
+                ']' | '>' | ')' => depth -= 1_i32,
+                ':' if depth == 0_i32 => return Some(at),
+                _ => {}
+            }
+            None
+        });
+        return match colon {
+            Some(at) => {
+                let value = fit_held(listed[at + 1..].trim())?;
+                Some(format!("[{}: {value}]", &listed[..at]))
+            }
+            None => fit_held(listed).map(|fit| format!("[{fit}]")),
+        };
+    }
+    FIXED_WIDTH
+        .contains(&read_as)
+        .then(|| format!("SwiftSchemaFit<{read_as}>"))
+}
+
+/// The read `{call}{read_as}{rest}`, which Foundation refuses with no coding path where `read_as`
+/// holds a fixed-width integer that does not fit: such a read is read again through
+/// `SwiftSchemaFit`, which refuses at the integer's own coding path. The expression is written
+/// after a `try`.
+pub(super) fn fitted(call: &str, read_as: &str, rest: &str) -> String {
+    fit_held(read_as).map_or_else(
+        || format!("{call}{read_as}{rest}"),
+        |fit| {
+            format!(
+                "Self.swiftSchemaFitted({{ try {call}{read_as}{rest} }}, again: {{ _ = try \
+                 {call}{fit}{rest} }})"
+            )
+        },
+    )
+}
+
+/// `read`, the statements that read a flattened member, placing a refusal inside it at the
+/// holder: serde reads such a member from the keys its holder buffers. An unknown key keeps its
+/// own step, and a missing one its key. Statements that catch every refusal themselves are left
+/// as they are, as Swift refuses a `catch` no error reaches.
+pub(super) fn flattened(read: &str) -> String {
+    if catches_every_refusal(read) {
+        return read.to_owned();
+    }
+    format!(
+        "do {{ {read} }} catch let refused as DecodingError {{ throw \
+         Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }}"
+    )
+}
+
+/// Whether `read` is one `do { ... } catch { ... }` whose `catch` throws nothing.
+fn catches_every_refusal(read: &str) -> bool {
+    let Some(body) = read.strip_prefix("do { ") else {
+        return false;
+    };
+    let Some(after) = block_end(body).map(|end| &body[end..]) else {
+        return false;
+    };
+    let Some(handled) = after.strip_prefix(" catch { ") else {
+        return false;
+    };
+    block_end(handled).is_some_and(|end| {
+        end == handled.len() && !handled.contains("throw") && !handled.contains("try ")
+    })
+}
+
+/// The index just past the `}` that closes a block whose `{` was just read, in Swift statements;
+/// a brace inside a string literal is no brace.
+fn block_end(statements: &str) -> Option<usize> {
+    let mut depth = 1_usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (at, written) in statements.char_indices() {
+        match (quoted, escaped, written) {
+            (true, true, _) => escaped = false,
+            (true, false, '\\') => escaped = true,
+            (_, false, '"') => quoted = !quoted,
+            (false, _, '{') => depth += 1,
+            (false, _, '}') => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The helpers the statements of `read` name: [`FITTED`] and [`FLATTENED`].
+pub(super) fn helpers_for(read: &str) -> String {
+    let mut helpers = String::new();
+    if read.contains("swiftSchemaFitted(") {
+        helpers.push_str(FITTED);
+        helpers.push_str("; ");
+    }
+    if read.contains("swiftSchemaFlattened(") {
+        helpers.push_str(FLATTENED);
+        helpers.push_str("; ");
+    }
+    helpers
 }
 
 /// The key type the statements of `read` name, where they read a map entry by entry.
@@ -355,7 +524,7 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         String::new()
     };
     let taking = names_taken(body) || names_taken(written.beside);
-    let opened = format!("{key}{payload}{twins}");
+    let opened = format!("{key}{payload}{twins}{}", helpers_for(&read));
     if let Some(refusing) = refused {
         return format!(
             "{opened}public {TAKING} {{ {body} }}; public {UNJUDGED} {{ {refusing}\

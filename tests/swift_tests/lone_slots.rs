@@ -348,9 +348,18 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
             "[String: Stowed]",
         ),
     ] {
+        // An integer is read again where Foundation refuses it with no coding path.
+        let decode = if read_as == "UInt32" {
+            format!(
+                "Self.swiftSchemaFitted({{ try container.decode({read_as}.self) }}, again: {{ _ = \
+                 try container.decode(SwiftSchemaFit<{read_as}>.self) }})"
+            )
+        } else {
+            format!("container.decode({read_as}.self)")
+        };
         let read = format!(
             "{UNJUDGED}let container = try decoder.singleValueContainer(); \
-             self.value = try container.decode({read_as}.self) }}; "
+             self.value = try {decode} }}; "
         );
         holds(&swift, &[opened, &read, WRITTEN]);
         assert!(!swift.contains("Tuple"), "got: {swift}");
@@ -467,7 +476,8 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
         &[
             "public let value: Int64; ",
             "let container = try decoder.singleValueContainer(); \
-             self.value = try container.decode(Int64.self) }; ",
+             self.value = try Self.swiftSchemaFitted({ try container.decode(Int64.self) }, again: \
+             { _ = try container.decode(SwiftSchemaFit<Int64>.self) }) }; ",
             WRITTEN,
         ],
     );

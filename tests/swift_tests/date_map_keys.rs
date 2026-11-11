@@ -22,6 +22,7 @@ use super::date_map_keys_models::{
     shift_swift, stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift,
     timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
+use super::swift_fitted::FITTED;
 use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
 
 /// The two formatters a wrapper of a date key declares ahead of its coding key: one reads and
@@ -443,27 +444,31 @@ fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
              let wireKey = (try Self.swiftSchemaSentDate(key, codingPath: encoder.codingPath)); \
              guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
              try container.encode(value, forKey: codingKey) } } }; ",
-            "public struct RollFlagsKeyedMap: Codable, Sendable { \
-             public var storage: [Bool: UInt8];  \
-             private struct DynamicCodingKey: CodingKey { var stringValue: String; \
-             init?(stringValue: String) { self.stringValue = stringValue }; \
-             var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             public init(storage: [Bool: UInt8]) { self.storage = storage }; \
-             public init(from decoder: Decoder) throws { \
-             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-             var result: [Bool: UInt8] = [:]; for codingKey in container.allKeys { \
-             let wireKey = codingKey.stringValue; \
-             guard let key = (wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil) \
-             else { \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: \"bad key \\(wireKey)\") }; \
-             result[key] = try container.decode(UInt8.self, forKey: codingKey) }; \
-             storage = result }; \
-             public func encode(to encoder: Encoder) throws { \
-             var container = encoder.container(keyedBy: DynamicCodingKey.self); \
-             for (key, value) in storage { let wireKey = (key ? \"true\" : \"false\"); \
-             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
-             try container.encode(value, forKey: codingKey) } } }; ",
+            &format!(
+                "public struct RollFlagsKeyedMap: Codable, Sendable {{ \
+                 public var storage: [Bool: UInt8];  {FITTED}; \
+                 private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
+                 init?(stringValue: String) {{ self.stringValue = stringValue }}; \
+                 var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
+                 public init(storage: [Bool: UInt8]) {{ self.storage = storage }}; \
+                 public init(from decoder: Decoder) throws {{ \
+                 let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+                 var result: [Bool: UInt8] = [:]; for codingKey in container.allKeys {{ \
+                 let wireKey = codingKey.stringValue; \
+                 guard let key = (wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil) \
+                 else {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                 debugDescription: \"bad key \\(wireKey)\") }}; \
+                 result[key] = try Self.swiftSchemaFitted({{ try container.decode(UInt8.self, \
+                 forKey: codingKey) }}, again: {{ _ = try \
+                 container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey) }}) }}; \
+                 storage = result }}; \
+                 public func encode(to encoder: Encoder) throws {{ \
+                 var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+                 for (key, value) in storage {{ let wireKey = (key ? \"true\" : \"false\"); \
+                 guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
+                 try container.encode(value, forKey: codingKey) }} }} }}; "
+            ),
         ],
     );
 }

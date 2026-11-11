@@ -90,6 +90,25 @@ to keep.
   optional member as `nil`, a `nullable` one included, and a written one refused that key. A
   member under `#[serde(default)]` is read as its default where `contains` answers no key
   (section 13).
+- **An integer that does not fit is refused at its coding path.** Foundation's `JSONDecoder`
+  refuses a number outside the range of a fixed-width integer, or one with a fraction, with an
+  error of its own no coding path reaches, which `decode(_:from:)` answers as
+  `The given data was not valid JSON.` under an empty coding path. `read::fitted` writes each
+  Foundation read whose type holds such an integer, alone, in a list, as a map's value or under an
+  `Optional` (`fit_held`), as `Self.swiftSchemaFitted({ read }, again: { read through
+  SwiftSchemaFit })`: the first read is the one Foundation makes, and only where it throws an
+  error that is no `DecodingError` is the value read again with each such integer read as
+  `SwiftSchemaFit` of that integer, which reads it from its own decoder and throws `dataCorrupted` at that
+  decoder's coding path in serde's words. `Source::plain`, `keyed_read`, the value of a brand and
+  of a struct of one slot, and a map's wrapper write their reads through it, and `read::both` and
+  the wrapper declare `FITTED` where a read names it.
+- **A refusal inside a flattened member is placed at its holder** (`read::flattened`), as serde
+  names the holder: `decode_statement` writes a flattened member's statements in
+  `do { ... } catch let refused as DecodingError`, and `swiftSchemaFlattened` (`read::FLATTENED`)
+  rewrites the coding path to the holder's, but for the step of a key `unknown field` names and
+  the key of `keyNotFound`. A flattened externally tagged enum wraps the read of its entry alone
+  (`preprocess::entry`), as the members after it read the entries it found, and statements that
+  catch every refusal themselves are written as they were (`catches_every_refusal`).
 - **Every struct writes its memberwise initializer**, public, the struct written for a tuple
   included: Swift synthesizes none beside a written `init(from:)`.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before

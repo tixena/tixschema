@@ -24,9 +24,16 @@ fn counts_from(object: &str) -> String {
     )
 }
 
-/// The read of a member that names `withItsKeys` from the object `source` names.
+/// The read of a member that names `withItsKeys` from the object `source` names, as a flattened
+/// member is read.
 fn keyed_from(source: &str) -> String {
-    format!("Keying.fromJsonUnjudged(withItsKeys({source}))")
+    flat(&format!("Keying.fromJsonUnjudged(withItsKeys({source}))"))
+}
+
+/// `read`, the read of a flattened member, through the helper that names its holder for a refusal
+/// inside it.
+fn flat(read: &str) -> String {
+    format!("_readFlattened(() => {read})")
 }
 
 /// An object of the one entry of the object `source` names under one of `names`, refused where it
@@ -70,7 +77,10 @@ fn assert_written(definition: &str, fragment: &str) {
 #[test]
 fn a_map_alone_is_read_from_every_key() {
     let spare = spare_dart::dart_definition();
-    assert_written(&spare, &format!("Spare(rest: {},);", counts_from("json")));
+    assert_written(
+        &spare,
+        &format!("Spare(rest: {},);", flat(&counts_from("json"))),
+    );
     assert_written(
         &spare,
         &format!(
@@ -90,8 +100,8 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &clamping_dart::dart_definition(),
         &format!(
-            "Clamping(marking: Marking.fromJsonUnjudged({}),note: _readAt(json, 'note', () => \
-             json['note'] as String),other: {},);",
+            "Clamping(marking: _readFlattened(() => Marking.fromJsonUnjudged({})),note: \
+             _readAt(json, 'note', () => json['note'] as String),other: {},);",
             only("({...json}..remove('note'))", "'label'"),
             keyed_from("({...json}..remove('note')..remove('label'))")
         ),
@@ -106,7 +116,7 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &twin_dart::dart_definition(),
         &format!(
-            "Twin(marking: Marking.fromJsonUnjudged({}),other: {},);",
+            "Twin(marking: _readFlattened(() => Marking.fromJsonUnjudged({})),other: {},);",
             only("json", "'label'"),
             keyed_from("({...json}..remove('label'))")
         ),
@@ -121,7 +131,7 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     assert_written(
         &hoisting_dart::dart_definition(),
         &format!(
-            "Hoisting(extra: {},marking: Marking.fromJsonUnjudged({}),);",
+            "Hoisting(extra: {},marking: _readFlattened(() => Marking.fromJsonUnjudged({})),);",
             keyed_from("json"),
             only("json", "'label'")
         ),
@@ -129,21 +139,22 @@ fn a_function_ahead_of_every_struct_or_after_a_member_that_takes_no_key_is_hande
     assert_written(
         &lacing_dart::dart_definition(),
         &format!(
-            "Lacing(issued: Ticketing.fromJsonUnjudged(json),rest: {},);",
+            "Lacing(issued: _readFlattened(() => Ticketing.fromJsonUnjudged(json)),rest: {},);",
             keyed_from("json")
         ),
     );
     assert_written(
         &rigging_dart::dart_definition(),
         &format!(
-            "Rigging(marking: Marking.fromJsonUnjudged(asGiven(json)),rest: {},);",
+            "Rigging(marking: _readFlattened(() => Marking.fromJsonUnjudged(asGiven(json))),rest: \
+             {},);",
             keyed_from("json")
         ),
     );
     assert_written(
         &belaying_dart::dart_definition(),
         &format!(
-            "Belaying(bracing: Bracing.fromJsonUnjudged(json),rest: {},);",
+            "Belaying(bracing: _readFlattened(() => Bracing.fromJsonUnjudged(json)),rest: {},);",
             keyed_from("json")
         ),
     );
@@ -159,14 +170,15 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
     assert_written(
         &loading_dart::dart_definition(),
         &format!(
-            "Loading(hatching: Hatching.fromJsonUnjudged({hatching}),rest: {},);",
+            "Loading(hatching: _readFlattened(() => Hatching.fromJsonUnjudged({hatching})),rest: \
+             {},);",
             keyed_from(&without_first("json", "'Bay', 'Dock', 'Quay'"))
         ),
     );
     assert_written(
         &kedging_dart::dart_definition(),
         &format!(
-            "Kedging(kedge: Warping.fromJsonUnjudged({}),rest: {},);",
+            "Kedging(kedge: _readFlattened(() => Warping.fromJsonUnjudged({})),rest: {},);",
             first_of(
                 "json",
                 "Warping",
@@ -180,8 +192,9 @@ fn a_function_after_a_flattened_externally_tagged_enum_is_handed_no_entry_of_the
     assert_written(
         &trimming_dart::dart_definition(),
         &format!(
-            "Trimming(hatching: Hatching.fromJsonUnjudged({hatching}),marking: \
-             Marking.fromJsonUnjudged({}),rest: {},);",
+            "Trimming(hatching: _readFlattened(() => \
+             Hatching.fromJsonUnjudged({hatching})),marking: \
+             _readFlattened(() => Marking.fromJsonUnjudged({})),rest: {},);",
             only(&after_the_enum, "'label'"),
             keyed_from(&format!("({{...{after_the_enum}}}..remove('label'))"))
         ),
@@ -196,8 +209,8 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
     assert_written(
         &battening_dart::dart_definition(),
         &format!(
-            "Battening(hatching: Hatching.fromJsonUnjudged({}),note: _readAt(json, 'note', () => \
-             json['note'] as String),);",
+            "Battening(hatching: _readFlattened(() => Hatching.fromJsonUnjudged({})),note: \
+             _readAt(json, 'note', () => json['note'] as String),);",
             first_of(
                 "({...json}..remove('note'))",
                 "Hatching",
@@ -221,9 +234,10 @@ fn an_optional_flattened_externally_tagged_enum_is_null_where_no_entry_is() {
     assert_written(
         &caulking_dart::dart_definition(),
         &format!(
-            "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : (() {{ try \
-             {{ return Hatching.fromJsonUnjudged(entry); }} catch (_) {{ return null; }} }})() \
-             }}),note: _readAt(json, 'note', () => json['note'] as String),);",
+            "Caulking(hatching: _readFlattened(() => (switch ({}) {{ final entry => entry.isEmpty \
+             ? \
+             null : (() {{ try {{ return Hatching.fromJsonUnjudged(entry); }} catch (_) {{ return \
+             null; }} }})() }})),note: _readAt(json, 'note', () => json['note'] as String),);",
             first_of(
                 "({...json}..remove('note'))",
                 "Hatching",
@@ -241,14 +255,14 @@ fn a_function_after_an_enum_read_as_a_map_is_handed_every_key() {
     assert_written(
         &mousing_dart::dart_definition(),
         &format!(
-            "Mousing(frapping: Frapping.fromJsonUnjudged(json),rest: {},);",
+            "Mousing(frapping: _readFlattened(() => Frapping.fromJsonUnjudged(json)),rest: {},);",
             keyed_from("json")
         ),
     );
     assert_written(
         &shoring_dart::dart_definition(),
         &format!(
-            "Shoring(chocking: Chocking.fromJsonUnjudged(json),rest: {},);",
+            "Shoring(chocking: _readFlattened(() => Chocking.fromJsonUnjudged(json)),rest: {},);",
             keyed_from("json")
         ),
     );
@@ -261,8 +275,8 @@ fn an_optional_map_that_names_a_function_is_read_as_it_was() {
     assert_written(
         &hawsehole_dart::dart_definition(),
         &format!(
-            "Hawsehole(counts: switch (asGiven(json)) {{ final corrected => (corrected == null ? \
-             null : {}) }},);",
+            "Hawsehole(counts: _readFlattened(() => switch (asGiven(json)) {{ final corrected => \
+             (corrected == null ? null : {}) }}),);",
             counts_from("(corrected as Map<String, dynamic>)")
         ),
     );

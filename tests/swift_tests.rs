@@ -20,6 +20,12 @@ mod text_forms;
 #[path = "swift_tests/tests.rs"]
 mod tests;
 
+/// What the emitter writes into a type whose reads read a fixed-width integer.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_fitted.rs"]
+mod swift_fitted;
+
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/validate.rs"]

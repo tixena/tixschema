@@ -8,7 +8,7 @@ use serde_json::Value;
 use tixschema::model_schema;
 
 use super::held_numbers::u32_held;
-use super::unknown_keys::{READ_AT, refusing};
+use super::unknown_keys::{READ_AT, READ_FLATTENED, refusing};
 
 /// What a judged read does with the value its unjudged read answered.
 const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
@@ -680,8 +680,9 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
         &shipment,
         &format!(
             "{}=> ShipmentAir(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
-             Tagged.fromJsonUnjudged(({{...json}}..remove('kind')..remove('dock'))),); {READ_AT} \
-             Map<String, dynamic> toJson() =>",
+             _readFlattened(() => \
+             Tagged.fromJsonUnjudged(({{...json}}..remove('kind')..remove('dock')))),); \
+             {READ_AT} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("ShipmentAir", "Map<String, dynamic>", "json")
         ),
     );
@@ -744,8 +745,8 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
         &pinned_dart::dart_definition(),
         &format!(
             "{}=> Pinned(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
-             Tagged.fromJsonUnjudged(({{...json}}..remove('dock'))),); {READ_AT} Map<String, \
-             dynamic> toJson() =>",
+             _readFlattened(() => Tagged.fromJsonUnjudged(({{...json}}..remove('dock')))),); \
+             {READ_AT} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("Pinned", "Map<String, dynamic>", "json")
         ),
     );
@@ -753,17 +754,18 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
         &sorted_dart::dart_definition(),
         &format!(
             "{}=> Sorted(dock: _readAt(json, 'dock', () => json['dock'] as String),listed: \
-             Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('dock')..remove('pier')))),pier: \
-             _readAt(json, 'pier', () => json['pier'] as String),); {READ_AT} Map<String, dynamic> \
-             toJson() =>",
+             _readFlattened(() => \
+             Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('dock')..remove('pier'))))),pier: \
+             _readAt(json, 'pier', () => json['pier'] as String),); {READ_AT} {READ_FLATTENED} \
+             Map<String, dynamic> toJson() =>",
             plain_pair("Sorted", "Map<String, dynamic>", "json")
         ),
     );
     assert_written(
         &account_dart::dart_definition(),
         &format!(
-            "{}=> Account(tagged: Tagged.fromJsonUnjudged(json),); Map<String, dynamic> toJson() \
-             =>",
+            "{}=> Account(tagged: _readFlattened(() => Tagged.fromJsonUnjudged(json)),); \
+             {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("Account", "Map<String, dynamic>", "json")
         ),
     );

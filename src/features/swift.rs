@@ -1215,10 +1215,11 @@ fn map_key_wrapper_struct(
     };
     #[cfg(not(feature = "chrono"))]
     let formatter_decl = String::new();
+    let helpers = read::helpers_for(&format!("{own_read}{entries}"));
     format!(
         "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
          public var storage: [{key_type}: {value_type}]; \
-         {formatter_decl} \
+         {formatter_decl} {helpers}\
          private struct DynamicCodingKey: CodingKey {{ \
          var stringValue: String; init?(stringValue: String) {{ self.stringValue = stringValue }}; \
          var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
@@ -1892,8 +1893,12 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
     } else {
         format!(
             "let container = try decoder.singleValueContainer(); \
-             let wireValue = try container.decode({}.self); self.value = {}",
-            wire_type(&argument.def, &argument.shape),
+             let wireValue = try {}; self.value = {}",
+            read::fitted(
+                "container.decode(",
+                &wire_type(&argument.def, &argument.shape),
+                ".self)"
+            ),
             argument.converted("wireValue")
         )
     };
@@ -2282,7 +2287,7 @@ fn decode_statement(
             },
         }
     };
-    let present = present_statement(
+    let read_present = present_statement(
         field,
         &source,
         handed.withheld,
@@ -2291,6 +2296,13 @@ fn decode_statement(
         locals,
         twins,
     );
+    // A flattened enum places the read of its entry itself, past the locals the members after it
+    // read.
+    let present = if field.flatten && !read_present.contains("swiftSchemaFlattened(") {
+        read::flattened(&read_present)
+    } else {
+        read_present
+    };
     let read = match &field.default_at {
         Some(at) => {
             let path_key = key
@@ -2764,6 +2776,9 @@ fn converted(field: &SwiftField, local: &str) -> String {
 /// as its own type, or as the type it is written as, turned into its own.
 fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
     let (container, key) = field.keyed_at(own);
+    let keyed = format!(".self, forKey: {key})");
+    let decode = format!("{container}.decode(");
+    let decode_if_present = format!("{container}.decodeIfPresent(");
     if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         return if absent_is_nil {
             let inner = field
@@ -2771,26 +2786,33 @@ fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
                 .strip_suffix('?')
                 .unwrap_or(&field.real_type);
             format!(
-                "self.{swift} = try {container}.decodeIfPresent({inner}.self, forKey: {key})",
-                swift = field.swift_name
+                "self.{} = try {}",
+                field.swift_name,
+                read::fitted(&decode_if_present, inner, &keyed)
             )
         } else {
             format!(
-                "self.{swift} = try {container}.decode({real_type}.self, forKey: {key})",
-                swift = field.swift_name,
-                real_type = field.real_type,
+                "self.{} = try {}",
+                field.swift_name,
+                read::fitted(&decode, &field.real_type, &keyed)
             )
         };
     }
     let wire_array = swift_wire_array_type(&field.field_def, &field.shape);
     let read = if field.required {
         if field.field_def.is_optional() {
-            format!("try {container}.decode({wire_array}?.self, forKey: {key})")
+            format!(
+                "try {}",
+                read::fitted(&decode, &format!("{wire_array}?"), &keyed)
+            )
         } else {
-            format!("try {container}.decode({wire_array}.self, forKey: {key})")
+            format!("try {}", read::fitted(&decode, &wire_array, &keyed))
         }
     } else {
-        format!("try {container}.decodeIfPresent({wire_array}.self, forKey: {key})")
+        format!(
+            "try {}",
+            read::fitted(&decode_if_present, &wire_array, &keyed)
+        )
     };
     let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
     format!(
@@ -3832,12 +3854,19 @@ fn value_wrapper_tokens(
 
     let decode = if shaped.converts() {
         format!(
-            "try {{ let wireValue = try container.decode({}.self); return {} }}()",
-            wire_type(&shaped.def, &shaped.shape),
+            "try {{ let wireValue = try {}; return {} }}()",
+            read::fitted(
+                "container.decode(",
+                &wire_type(&shaped.def, &shaped.shape),
+                ".self)"
+            ),
             shaped.converted("wireValue")
         )
     } else {
-        format!("try container.decode({real_type}.self)")
+        format!(
+            "try {}",
+            read::fitted("container.decode(", &real_type, ".self)")
+        )
     };
     let encode = wrapper_write(&shaped);
     let helpers = leaf_helpers_for(&export_name, &generic_params, &[&shaped.shape], None);

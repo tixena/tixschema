@@ -237,7 +237,7 @@ const ROWS: [Row; 33] = [
             r#"{"note":"a","held":{"label":"x","other":1},"label":"n","#,
             r#""rail":{"ringbolt":{"label":"y"}}}"#
         ),
-        kotlin: "refused: Encountered an unknown key 'other' at path: $.held",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Bittering",
         serde: written_back::<Bittering>,
         zod: "refused",
@@ -248,7 +248,7 @@ const ROWS: [Row; 33] = [
             r#"{"note":"a","held":{"label":"x"},"label":"n","#,
             r#""rail":{"ringbolt":{"label":"y","other":1}}}"#
         ),
-        kotlin: "refused: Encountered an unknown key 'other' at path: $.rail.ringbolt",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Bittering",
         serde: written_back::<Bittering>,
         zod: "refused",
@@ -264,7 +264,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
         json: r#"{"note":"a","Fast":{"label":"n","other":1}}"#,
-        kotlin: "refused: Encountered an unknown key 'other' at path: $.Fast",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Snatching",
         serde: written_back::<Snatching>,
         zod: "refused",
@@ -272,7 +272,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"north\":{\"label\":\"n\"}}",
         json: r#"{"north":{"label":"n","other":1}}"#,
-        kotlin: "refused: Encountered an unknown key 'other' at path: $.north",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Halyarding",
         serde: written_back::<Halyarding>,
         zod: "refused",

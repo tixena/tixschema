@@ -184,8 +184,9 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
          SerializationException(\"expected an object, found \" + it) }}; val label = \
          kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"label\"] ?: throw \
          SerializationException(\"missing field `label`\")), \"label\", \".label\"); val \
-         tallyKeys = setOf(\"keys\"); val tally = input.json.decodeFromString(PennonUnjudged, \
-         withItsKeys(JsonObject(obj - setOf(\"label\"))).toString());"
+         tallyKeys = setOf(\"keys\"); val tally = kotlinSchemaFlattened {{ \
+         input.json.decodeFromString(PennonUnjudged, \
+         withItsKeys(JsonObject(obj - setOf(\"label\"))).toString()) }};"
     );
     assert!(fairleading.contains(&held), "no `{held}` in: {fairleading}");
 }
@@ -196,8 +197,8 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
 fn a_flattened_struct_takes_each_alias_of_its_members() {
     let fothering = fothering_kotlin::kotlin_definition();
     let held = "val hawsingKeys = setOf(\"label\", \"name\", \"title\", \"note\", \"remark\"); \
-                val hawsing = input.json.decodeFromString(HawsingUnjudged, \
+                val hawsing = kotlinSchemaFlattened { input.json.decodeFromString(HawsingUnjudged, \
                 JsonObject(obj.filterKeys { it in setOf(\"label\", \"name\", \"title\", \"note\", \
-                \"remark\") }).toString());";
+                \"remark\") }).toString()) };";
     assert!(fothering.contains(held), "no `{held}` in: {fothering}");
 }

@@ -1,9 +1,9 @@
 //! `CarillonService` on `ws_rpc`, whose one operation takes a message that holds a struct in a
 //! list, in a map, in an externally, an adjacently and an internally tagged enum, beside a
-//! flattened member and in a struct with its own tag, numbers, a member with a bound, and answers
-//! the message it was handed. What the Rust dispatcher answers
-//! to each payload names the field every emitted dispatcher and client is measured against.
-//! Nothing here waits on a clock.
+//! flattened member and in a struct with its own tag, numbers alone and in a list, a map keyed by a
+//! brand with a check, a `Result`, a member with a bound, and answers the message it was handed.
+//! What the Rust dispatcher answers to each payload names the field every emitted dispatcher and
+//! client is measured against. Nothing here waits on a clock.
 
 use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
@@ -17,11 +17,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3}}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4}}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 23] = [
+pub const CASES: [(&str, &str, Option<&str>); 36] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -81,12 +81,46 @@ pub const CASES: [(&str, &str, Option<&str>); 23] = [
         "yoke.pin",
         Some(r#""x""#),
     ),
+    ("a flattened member without its member", "frame.oak", None),
+    (
+        "a weight above its bound in a flattened member",
+        "frame.oak",
+        Some("101"),
+    ),
+    ("a key beside a flattened member", "frame.stray", Some("1")),
+    ("a number beyond a u32", "strokes", Some("4294967296")),
+    ("a fraction for a u32", "strokes", Some("1.5")),
+    (
+        "a number beyond an i64",
+        "depth",
+        Some("9223372036854775808"),
+    ),
+    (
+        "a number below an i64",
+        "depth",
+        Some("-9223372036854775809"),
+    ),
+    ("a negative number in a list", "rounds.1", Some("-1")),
+    ("a negative number for a map value", "pitches.3", Some("-1")),
+    ("a key its check refuses", "pitches.13", Some("1")),
+    ("a text in an arm of a Result", "tally.Ok", Some(r#""x""#)),
+    (
+        "a negative number in an arm of a Result",
+        "tally.Ok",
+        Some("-1"),
+    ),
+    (
+        "an unknown arm of a Result",
+        "tally",
+        Some(r#"{"Maybe":1}"#),
+    ),
 ];
 
 /// The cases where the Rust dispatcher names a place above the one the case changes: serde reads a
-/// flattened member from the keys its holder buffers, and names the holder. The emitted reads take
-/// the member's keys off the holder's own object, and name the place the case changes.
-pub const NAMED_ABOVE: [(&str, &str); 1] = [("a text for a number in a flattened member", "frame")];
+/// flattened member from the keys its holder buffers, and names the holder for a value inside it
+/// it refuses. Every emitted read names the place the Rust dispatcher names.
+pub const NAMED_AT_THE_HOLDER: [(&str, &str); 1] =
+    [("a text for a number in a flattened member", "frame")];
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -119,8 +153,14 @@ pub enum CarillonTurn {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CarillonBeam {
+    #[model_schema_prop(maximum = 100)]
     pub oak: u32,
 }
+
+#[model_schema(enable = ["jsonschema"], check = ["withinScale"])]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct CarillonPitch(pub u32);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -141,12 +181,16 @@ pub struct CarillonYoke {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CarillonChime {
     pub bells: Vec<CarillonBell>,
+    pub depth: i64,
     pub frame: CarillonFrame,
     #[model_schema_prop(minLength = 1)]
     pub label: String,
     pub peal: CarillonPeal,
+    pub pitches: BTreeMap<CarillonPitch, u32>,
+    pub rounds: Vec<u32>,
     pub strokes: u32,
     pub swing: CarillonSwing,
+    pub tally: Result<u32, String>,
     pub towers: BTreeMap<String, CarillonBell>,
     pub turn: CarillonTurn,
     pub yoke: CarillonYoke,
@@ -190,6 +234,15 @@ impl CarillonService<()> for Carillon {
     }
 }
 
+/// The check of [`CarillonPitch`]: a pitch within the twelve tones of the scale.
+fn within_scale(value: &CarillonPitch) -> Result<(), Vec<String>> {
+    if value.0 <= 12 {
+        Ok(())
+    } else {
+        Err(vec![format!("{} is outside of the scale", value.0)])
+    }
+}
+
 /// [`STRUCK`] with the change `case` names.
 pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
     let mut changed: Value = serde_json::from_str(STRUCK).unwrap();
@@ -201,13 +254,16 @@ pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
     let mut at = &mut changed;
     for step in ahead {
         at = match step.parse::<usize>() {
-            Ok(index) => &mut at[index],
-            Err(_) => &mut at[*step],
+            Ok(index) if at.is_array() => &mut at[index],
+            _ => &mut at[*step],
         };
     }
-    match value {
-        Some(written) => at[*last] = serde_json::from_str(written).unwrap(),
-        None => {
+    match (value, last.parse::<usize>()) {
+        (Some(written), Ok(index)) if at.is_array() => {
+            at[index] = serde_json::from_str(written).unwrap();
+        }
+        (Some(written), _) => at[*last] = serde_json::from_str(written).unwrap(),
+        (None, _) => {
             at.as_object_mut().unwrap().remove(*last);
         }
     }
@@ -273,7 +329,7 @@ fn the_rust_dispatcher_names_the_place_of_each_case() {
             "{refused}"
         );
         assert_eq!(strikes, 0, "{}", case.0);
-        let place = NAMED_ABOVE
+        let place = NAMED_AT_THE_HOLDER
             .into_iter()
             .find_map(|(named, above)| (named == case.0).then_some(above))
             .unwrap_or(case.1);

@@ -441,9 +441,15 @@ the consumer's view; this is what a change has to keep.
   that hands the decoder on, `listed.deserialize(decoder)` or a judged serializer's read through
   its unjudged one, is not wrapped: kotlinx states that path already. A number serializer reads
   through the tree decoder, which names the primitive it reads `primitive`, and drops that
-  step. The `ws_rpc` attachment and client read the fault's field off the path
-  (`kotlin_ws_client::refused_at_fn`); `run_carillon.rs` holds each shape to the field the Rust
-  dispatcher names.
+  step. The serializer of a `Result` (`result_read`) takes the object off the decoder and reads
+  each arm from its text under the arm's step, and `{Type}KeySerializer` refuses a key its brand's
+  `validate()` refuses inside `kotlinSchemaAt(decoder)`, which states the map's path, each message
+  under the key's text, so the field names the key below its map. A flattened member is read
+  through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
+  and drops the place it states, keeping the key it names as unknown or missing, so the holder's
+  `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the fault's field
+  off the path (`kotlin_ws_client::refused_at_fn`); `run_carillon.rs` holds each shape to the field
+  the Rust dispatcher names.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
   `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as
