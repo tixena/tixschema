@@ -122,7 +122,11 @@ consumer's view; this is what a change has to keep.
 - **Each value read under a step is read through `_readAt`** (`READ_AT_BODY`): a member under
   its key (`constructor_arguments`), an item under its index and a map's value under its key
   (`dart_decode_at`, `map_decode`), a variant's content under its entry or the content key, the
-  tag under its key, and a tuple's position. Each class whose read calls it declares it
+  tag under its key, a `Result`'s arm under its key (`result_decode`), and a tuple's position. A
+  brand that keys a map is built and judged under the key's text, its value read from the text
+  with no step of its own (`judged_key`, `brand_leaf`): a key a brand's `check` refuses is named
+  under its map, `pitches.13`, a key that does not read at the map, `pitches`, and a value an arm
+  refuses under the arm, `tally.Ok`, as the Rust dispatcher names each. Each class whose read calls it declares it
   (`reading_at`, `with_read_at`); a text with no helper, a service's, names its own
   (`read_at_function`), and the read writes no step where none is declared. A refusal carries the
   path of the value refused as its `FormatException`'s `source`, a list of steps the helper puts

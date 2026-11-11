@@ -277,8 +277,9 @@ impl Source {
         }
     }
 
-    /// The value read as the type `read_as` through `Decodable`, [`fitted`].
-    pub(super) fn plain(&self, read_as: &str) -> String {
+    /// The value read as the type `read_as`, which may name the type parameters `parameters`,
+    /// through `Decodable`, [`fitted`].
+    pub(super) fn plain(&self, read_as: &str, parameters: &[String]) -> String {
         match self {
             Self::Beside(_) | Self::Decoder | Self::Keeping(_) => {
                 format!("{read_as}(from: decoder)")
@@ -291,8 +292,11 @@ impl Source {
                 &format!("{container}.decode("),
                 read_as,
                 &format!(".self, forKey: {key})"),
+                parameters,
             ),
-            Self::Listed(listed) => fitted(&format!("{listed}.decode("), read_as, ".self)"),
+            Self::Listed(listed) => {
+                fitted(&format!("{listed}.decode("), read_as, ".self)", parameters)
+            }
         }
     }
 
@@ -327,11 +331,12 @@ impl Source {
     }
 }
 
-/// `read_as`, a Swift type, with each fixed-width integer it holds, alone or in a list, as a map's
-/// value or under an `Optional`, read through `SwiftSchemaFit`; `None` where it holds none there.
-fn fit_held(read_as: &str) -> Option<String> {
+/// `read_as`, a Swift type, with each fixed-width integer and each of `parameters` it holds, alone
+/// or in a list, as a map's value or under an `Optional`, read through `SwiftSchemaFit`; `None`
+/// where it holds none there. What fills a type parameter may be such an integer.
+fn fit_held(read_as: &str, parameters: &[String]) -> Option<String> {
     if let Some(held) = read_as.strip_suffix('?') {
-        return fit_held(held).map(|fit| format!("{fit}?"));
+        return fit_held(held, parameters).map(|fit| format!("{fit}?"));
     }
     if let Some(listed) = read_as
         .strip_prefix('[')
@@ -339,24 +344,24 @@ fn fit_held(read_as: &str) -> Option<String> {
     {
         return match listed_value_at(listed) {
             Some(at) => {
-                let value = fit_held(listed[at + 1..].trim())?;
+                let value = fit_held(listed[at + 1..].trim(), parameters)?;
                 Some(format!("[{}: {value}]", &listed[..at]))
             }
-            None => fit_held(listed).map(|fit| format!("[{fit}]")),
+            None => fit_held(listed, parameters).map(|fit| format!("[{fit}]")),
         };
     }
-    FIXED_WIDTH
-        .contains(&read_as)
+    (FIXED_WIDTH.contains(&read_as) || parameters.iter().any(|named| named == read_as))
         .then(|| format!("SwiftSchemaFit<{read_as}>"))
 }
 
 /// The read `{call}{read_as}{rest}`, which Foundation refuses with no coding path where `read_as`
-/// holds a fixed-width integer that does not fit: such a read is read again through
-/// `SwiftSchemaFit`, which refuses at the integer's own coding path. A `Float` is read as a
-/// `Double` and narrowed, as serde reads an `f32`: Foundation refuses one beyond its range, which
-/// serde reads as an infinity of its sign. The expression is written after a `try`.
-pub(super) fn fitted(call: &str, read_as: &str, rest: &str) -> String {
-    if let Some(fit) = fit_held(read_as) {
+/// holds a fixed-width integer that does not fit: such a read, and one of a type parameter of
+/// `parameters`, is read again through `SwiftSchemaFit`, which refuses at the integer's own coding
+/// path. A `Float` is read as a `Double` and narrowed, as serde reads an `f32`: Foundation refuses
+/// one beyond its range, which serde reads as an infinity of its sign. The expression is written
+/// after a `try`.
+pub(super) fn fitted(call: &str, read_as: &str, rest: &str, parameters: &[String]) -> String {
+    if let Some(fit) = fit_held(read_as, parameters) {
         return format!(
             "Self.swiftSchemaFitted({{ try {call}{read_as}{rest} }}, again: {{ _ = try \
              {call}{fit}{rest} }})"

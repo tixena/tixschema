@@ -11,7 +11,7 @@ use super::kotlin_flattened::FLATTENED;
 use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
 use super::read::{DECODED, judged, kept_inline};
-use super::read::{judged_over, kept, serializers};
+use super::read::{judged_over, kept, mapped, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -362,9 +362,10 @@ fn a_brand_answers_its_text() {
         format!(
             "{} value class Slug(val value: String) {{ fun kotlinSchemaText(): String = value; \
              fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
-             {NO_RULE} }} {}",
+             {NO_RULE} }} {} {}",
             kept_inline("Slug"),
-            serializers("Slug")
+            serializers("Slug"),
+            mapped("Slug")
         )
     );
     assert_eq!(
@@ -372,9 +373,10 @@ fn a_brand_answers_its_text() {
         format!(
             "{} value class Badge(val value: Slug) {{ fun kotlinSchemaText(): String = \
              value.kotlinSchemaText(); fun kotlinSchemaLength(): Int = \
-             value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT} }} {}",
+             value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT} }} {} {}",
             kept_inline("Badge"),
-            serializers("Badge")
+            serializers("Badge"),
+            mapped("Badge")
         )
     );
 }
@@ -442,9 +444,10 @@ fn every_shape_carries_validate() {
             format!(
                 "{} value class CorrelationId(val value: String) {{ fun kotlinSchemaText(): \
                  String = value; fun kotlinSchemaLength(): Int = value.codePointCount(0, \
-                 value.length); {NO_RULE} }} {}",
+                 value.length); {NO_RULE} }} {} {}",
                 kept_inline("CorrelationId"),
-                serializers("CorrelationId")
+                serializers("CorrelationId"),
+                mapped("CorrelationId")
             ),
         ),
         (

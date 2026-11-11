@@ -137,7 +137,8 @@ enum Walk {
     Bound,
     /// Its `validate()`, and the repeat of each set the walk reaches.
     Reported,
-    /// Its `validate()`.
+    /// Its `validate()`, of what a read leaves to it: a map's key, which every read builds
+    /// unjudged, is never what makes a read unjudged.
     Rules,
 }
 
@@ -1034,8 +1035,9 @@ pub(super) fn item_of(def: &FieldDef) -> FieldDef {
 
 /// The statement that runs, of every value `def` holds that has it, what `walk` names: its
 /// `validate()`, or the bound of a brand alone. Each report is under `place` and what the walk
-/// adds to it: the index of an item, the key of an entry. `None` where it holds no such value. A
-/// value behind a type parameter is not reached.
+/// adds to it: the index of an item, the key of an entry, under which the entry's key is judged
+/// as its value is. `None` where it holds no such value. A value behind a type parameter is not
+/// reached.
 fn held_walk(
     walk: Walk,
     owner: &str,
@@ -1064,14 +1066,7 @@ fn held_walk(
         };
     }
     if let FieldDefType::Map(key, entry) = &def.field_type {
-        let (named, held) = (bindings.next_key(), bindings.next_held());
-        let mut at = place.to_vec();
-        at.push(Step::Read(key_text(key, &named)));
-        let below = held_walk(walk, owner, entry, &held, &at, bindings)?;
-        return Some(format!(
-            "for ({named}, {held}) in {value}.sorted(by: {{ {} }}) {{ {below} }}",
-            key_order(key)
-        ));
+        return map_walk(walk, owner, (key, entry), value, place, bindings);
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
         return (!matches!(walk, Walk::Bound) && !slot_rules(owner, slots).is_empty())
@@ -1144,6 +1139,34 @@ fn held_walk(
         Walk::Reported | Walk::Rules => ("validate", validates(named)),
     };
     answers.then(|| reporting(owner, place, &format!("{value}.{asked}()")))
+}
+
+/// [`held_walk`] of the map `value` of `key` to `entry`: each entry's key and value judged under
+/// the entry's step, in the order of its keys, and no value bound that is not judged.
+fn map_walk(
+    walk: Walk,
+    owner: &str,
+    (key, entry): (&FieldDef, &FieldDef),
+    value: &str,
+    place: &[Step],
+    bindings: &mut Bindings,
+) -> Option<String> {
+    let (named, held) = (bindings.next_key(), bindings.next_held());
+    let mut at = place.to_vec();
+    at.push(Step::Read(key_text(key, &named)));
+    let judged_key = (!matches!(walk, Walk::Rules))
+        .then(|| held_walk(walk, owner, key, &named, &at, bindings))
+        .flatten();
+    let below = held_walk(walk, owner, entry, &held, &at, bindings);
+    let bound = if below.is_some() { held.as_str() } else { "_" };
+    let walked: Vec<String> = judged_key.into_iter().chain(below).collect();
+    (!walked.is_empty()).then(|| {
+        format!(
+            "for ({named}, {bound}) in {value}.sorted(by: {{ {} }}) {{ {} }}",
+            key_order(key),
+            walked.join("; ")
+        )
+    })
 }
 
 /// The text serde writes for the key of a map's entry, read off `named`.

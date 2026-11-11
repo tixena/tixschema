@@ -1144,10 +1144,10 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
                     |target| kotlin_serializer_expr(&target, &[]),
                 )
         }
-        FieldDefType::Map(key, value) => format!(
-            "MapSerializer({}, {})",
-            key_serializer_expr(key, type_parameters),
-            kotlin_serializer_expr(value, type_parameters)
+        FieldDefType::Map(key, value) => map_serializer(
+            key,
+            &key_serializer_expr(key, type_parameters),
+            &kotlin_serializer_expr(value, type_parameters),
         ),
         FieldDefType::Range(kind, bound) => {
             range_serializer(*kind, &kotlin_serializer_expr(bound, type_parameters))
@@ -1227,6 +1227,23 @@ pub fn key_object_name(rust_ident: &str) -> String {
     )
 }
 
+/// The serializer a map keyed by the brand written `rust_ident` is read through.
+pub fn map_object_name(rust_ident: &str) -> String {
+    format!(
+        "{}MapSerializer",
+        lookup_kotlin_name(rust_ident).unwrap_or_else(|| rust_ident.to_owned())
+    )
+}
+
+/// A reference to the `KSerializer` of a map keyed by `key`, composed from `keys` and `values`, the
+/// serializers of its keys and of its values.
+fn map_serializer(key: &FieldDef, keys: &str, values: &str) -> String {
+    texts::mapped_by(key).map_or_else(
+        || format!("MapSerializer({keys}, {values})"),
+        |brand| format!("{}({keys}, {values})", map_object_name(&brand)),
+    )
+}
+
 /// The `object` that reads the brand `export_name` as a map key: its value read from the text
 /// serde writes, then built and checked as the brand's own read builds and checks it. A key
 /// `validate()` refuses is refused at the path of its map, each message under the key's text.
@@ -1255,6 +1272,45 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
          KSerializer<{held}> = {read}; override val descriptor: SerialDescriptor = \
          leaf.descriptor; override fun serialize(encoder: Encoder, value: {export_name}) = \
          leaf.serialize(encoder, value.value); {} }}",
+        read::with_decoded(&deserialize)
+    )
+}
+
+/// The class that reads a map keyed by the brand `export_name` entry by entry: the key from its
+/// text at the map's path, as serde names a key that does not read, and the value under the key's
+/// text, which kotlinx would state as the brand's `toString()`. It writes the map as kotlinx
+/// writes it.
+fn map_object(export_name: &str) -> String {
+    let own = format!("Map<{export_name}, KotlinSchemaValue>");
+    let read = format!(
+        "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" + \
+         element)).entries.associate {{ entry -> {} to {} }}",
+        read::decoded(
+            "input.json",
+            "keySerializer",
+            "JsonPrimitive(entry.key)",
+            "entry.key",
+            "\"\""
+        ),
+        read::decoded(
+            "input.json",
+            "valueSerializer",
+            "entry.value",
+            "entry.key",
+            &read::keyed_step("entry.key")
+        ),
+    );
+    let deserialize = format!(
+        "override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
+         {} }}",
+        read::read_at("input", "input.decodeJsonElement()", &read)
+    );
+    format!(
+        "class {export_name}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
+         KSerializer<{export_name}>, private val valueSerializer: KSerializer<KotlinSchemaValue>) \
+         : KSerializer<{own}> {{ private val whole = MapSerializer(keySerializer, \
+         valueSerializer); override val descriptor: SerialDescriptor = whole.descriptor; override \
+         fun serialize(encoder: Encoder, value: {own}) = whole.serialize(encoder, value); {} }}",
         read::with_decoded(&deserialize)
     )
 }
@@ -2963,20 +3019,26 @@ fn value_class_tokens(
         let correction = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
         read::transforming_inline(&export_name, &generic_params, &type_parameters, &correction)
     };
-    let keyed = if type_parameters.is_empty() {
-        texts::key_leaf(&value_field).map(|leaf| {
+    let (keyed, mapped) = if type_parameters.is_empty() {
+        let mapped = texts::keys_a_map(&value_field).then(|| {
+            texts::note_mapped(&rust_ident);
+            map_object(&export_name)
+        });
+        let keyed = texts::key_leaf(&value_field).map(|leaf| {
             texts::note_keyed(&rust_ident);
             key_object(&export_name, &leaf)
-        })
+        });
+        (keyed, mapped)
     } else {
-        None
+        (None, None)
     };
     let kotlin_source = format!(
         "{} value class {export_name}{generic_params}(val value: {value_type}) {{ \
-         {answered}{validated} }} {unjudged} {}{}{alias}",
+         {answered}{validated} }} {unjudged} {}{}{}{alias}",
         read::kept_inline(&export_name),
         rules.judged(&export_name, &generic_params, &type_parameters, false),
-        keyed.map_or_else(String::new, |object| format!(" {object}"))
+        keyed.map_or_else(String::new, |object| format!(" {object}")),
+        mapped.map_or_else(String::new, |object| format!(" {object}"))
     );
 
     kotlin_module_tokens(

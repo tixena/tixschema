@@ -724,7 +724,8 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "unwrapped(",
                 ")",
                 "let container = try decoder.singleValueContainer(); \
-                 self.value = try container.decode(IdType.self)",
+                 self.value = try Self.swiftSchemaFitted({ try container.decode(IdType.self) }, \
+                 again: { _ = try container.decode(SwiftSchemaFit<IdType>.self) })",
             ),
         ),
         (

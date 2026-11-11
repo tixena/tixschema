@@ -1956,6 +1956,44 @@ fn number_leaf(key: &FieldDef) -> Option<FieldDefType> {
     (leaf.array_depth == 0 && !leaf.is_optional()).then_some(leaf.field_type)
 }
 
+/// What a key that names a brand holds once every brand it names is opened, where that is no named
+/// type: the value its text is read as.
+fn brand_leaf(key: &FieldDef) -> Option<FieldDef> {
+    let mut leaf = key.clone();
+    let mut opened = false;
+    while let FieldDefType::SiblingType(name, arguments) = &leaf.field_type {
+        if leaf.array_depth > 0 || leaf.is_optional() || !arguments.is_empty() {
+            return None;
+        }
+        let held = DART_KEY_VALUES.with(|values| values.borrow().get(name).cloned())?;
+        leaf = held;
+        opened = true;
+    }
+    opened.then_some(leaf)
+}
+
+/// The judged read of a key `expr` names that names a declared type. A brand's value is read from
+/// the text with no step, at its map, and the brand is judged under the key's text, as the Rust
+/// dispatcher names each.
+fn judged_key(key: &FieldDef, expr: &str) -> String {
+    let Some(leaf) = brand_leaf(key) else {
+        return dart_decode_expr(key, expr, Read::Judged);
+    };
+    let built = |value: &str| {
+        read_under(
+            "null",
+            expr,
+            &format!("{}.fromJson({value})", dart_base(key)),
+        )
+    };
+    let held = dart_map_key_decode(&leaf, expr);
+    if held == expr {
+        return built(expr);
+    }
+    let named = declared("held");
+    format!("(switch ({held}) {{ final {named} => {} }})", built(&named))
+}
+
 /// The expression that reads one `Map` key back from the `String` JSON always writes it as — the
 /// counterpart of [`dart_map_key_typename`]. `expr` names a `String`. No `validate()` reaches a
 /// key, so a declared type there is read judged.
@@ -1988,16 +2026,7 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
                 // The key is a `String` already, and the analyzer reports a cast of it.
                 FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
                 FieldDefType::Char => forms::text_read(TextForm::Char, expr),
-                FieldDefType::SiblingType(_, _) => number_leaf(key).map_or_else(
-                    || dart_decode_expr(key, expr, Read::Judged),
-                    |leaf| {
-                        format!(
-                            "{}.fromJson({})",
-                            dart_base(key),
-                            number_key_read(&leaf, expr)
-                        )
-                    },
-                ),
+                FieldDefType::SiblingType(_, _) => judged_key(key, expr),
                 FieldDefType::Boolean
                 | FieldDefType::BooleanLiteral(_)
                 | FieldDefType::NumberLiteral(_)
@@ -2330,7 +2359,8 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
 }
 
 /// The map of `key` to `value` the entries of `object` hold, an expression Dart types
-/// `Map<String, dynamic>`.
+/// `Map<String, dynamic>`. An entry's value is read under the key's text, and so is the judgement
+/// of a brand that keys it.
 fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> String {
     let key_ty = dart_map_key_typename(key);
     let value_ty = dart_typename(value);
@@ -2519,10 +2549,10 @@ fn result_arguments(ok: &FieldDef, err: &FieldDef) -> String {
     }
 }
 
-/// The `Result` the object `expr` holds: its one key names the arm, whose value is read as that
-/// arm is. An object of other than one key is refused in serde's words for text that is not the
-/// document, an object of a key no arm names as not a `Result`, and a value under an arm of `()`
-/// other than `null` too.
+/// The `Result` the object `expr` holds: its one key names the arm, whose value is read under that
+/// key as that arm is. An object of other than one key is refused in serde's words for text that
+/// is not the document, an object of a key no arm names as not a `Result`, and a value under an arm
+/// of `()` other than `null` too.
 fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> String {
     let (class, arguments) = (result_class(ok, err), result_arguments(ok, err));
     let object = declared("result");
@@ -2533,7 +2563,7 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
         if def.is_unit() {
             format!("final {object} when {named} && {held} == null => {class}{arm}{arguments}()")
         } else {
-            let decoded = member_decode(def, &held, None, read);
+            let decoded = read_under("null", &key, &member_decode(def, &held, None, read));
             format!("final {object} when {named} => {class}{arm}{arguments}({decoded})")
         }
     });

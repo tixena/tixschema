@@ -587,14 +587,17 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
     );
 }
 
-/// A value behind a type parameter is read through `Decodable`, so a model there judges itself.
+/// A value behind a type parameter is read through `Decodable`, so a model there judges itself,
+/// and read again through `SwiftSchemaFit` where Foundation refuses it with no coding path.
 #[test]
-fn a_value_behind_a_type_parameter_is_read_as_it_was() {
+fn a_value_behind_a_type_parameter_is_read_through_decodable_and_fitted() {
     holds(
         &envelope_swift::swift_definition(),
         &[
             "self.note = try container.decode(String.self, forKey: .note); ",
-            "self.value = try container.decode(T.self, forKey: .value) }; ",
+            "self.value = try Self.swiftSchemaFitted({ try container.decode(T.self, forKey: \
+             .value) }, again: { _ = try container.decode(SwiftSchemaFit<T>.self, forKey: .value) \
+             }) }; ",
         ],
     );
 }
@@ -630,7 +633,8 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     holds(
         &marker_swift::swift_definition(),
         &[
-            "self.value = try container.decode(IdType.self) }; ",
+            "self.value = try Self.swiftSchemaFitted({ try container.decode(IdType.self) }, again: \
+             { _ = try container.decode(SwiftSchemaFit<IdType>.self) }) }; ",
             concat!(
                 "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
                 "if let held = value as? String { if held.unicodeScalars.count < 2 {",

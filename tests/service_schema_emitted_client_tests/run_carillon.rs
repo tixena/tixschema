@@ -1,9 +1,9 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
-//! same payload, but for the cases a surface's table of its own records: the message read, a frame
-//! dropped, or the fault's kind and the field it names, and an attachment calls no handler for a
-//! frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
+//! same payload, but for the cases the TypeScript table of its own records: the message read, a
+//! frame dropped, or the fault's kind and the field it names, and an attachment calls no handler
+//! for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
 
 use super::carillon_service::{CASES, STRUCK, frame, payload, rust_answers};
 use core::fmt::Write as _;
@@ -317,30 +317,6 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
-/// The cases the Dart attachment and client answer apart from the Rust dispatcher, and the field
-/// each names: a key a brand's check refuses is named at its map alone, and a value an arm of a
-/// `Result` refuses at the `Result` alone.
-#[cfg(feature = "dart")]
-const DART_APART: [(&str, Option<&str>); 3] = [
-    ("a key its check refuses", Some("pitches")),
-    ("a text in an arm of a Result", Some("tally")),
-    ("a negative number in an arm of a Result", Some("tally")),
-];
-
-/// The case the Kotlin attachment and client answer apart from the Rust dispatcher, and the field
-/// it names: a value refused in a map keyed by a brand names its key as the brand's `toString()`
-/// writes it, which is the step kotlinx states.
-#[cfg(feature = "kotlin")]
-const KOTLIN_APART: [(&str, Option<&str>); 1] = [(
-    "a negative number for a map value",
-    Some("pitches.CarillonPitch(value=3)"),
-)];
-
-/// The case the Swift client answers apart from the Rust dispatcher: it reads a key a brand's check
-/// refuses, `None` for the message read.
-#[cfg(feature = "swift")]
-const SWIFT_APART: [(&str, Option<&str>); 1] = [("a key its check refuses", None)];
-
 /// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
 /// field each names: Zod names a member of a variant, an arm of a `Result` holding a text, and a
 /// flattened member at the union, the `Result` and the member that holds the value.
@@ -494,8 +470,8 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"], &DART_APART);
-    assert_read_as_rust(&told["read"], &DART_APART);
+    assert_attached_as_rust(&told["attached"], &[]);
+    assert_read_as_rust(&told["read"], &[]);
 }
 
 #[cfg(feature = "dart")]
@@ -561,8 +537,8 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"], &KOTLIN_APART);
-    assert_read_as_rust(&told["read"], &KOTLIN_APART);
+    assert_attached_as_rust(&told["attached"], &[]);
+    assert_read_as_rust(&told["read"], &[]);
 }
 
 /// The Swift program the client runs in.
@@ -620,10 +596,7 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
         "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
         run.stdout, run.stderr
     );
-    assert_read_as_rust(
-        &serde_json::from_str(run.stdout.trim()).unwrap(),
-        &SWIFT_APART,
-    );
+    assert_read_as_rust(&serde_json::from_str(run.stdout.trim()).unwrap(), &[]);
 }
 
 /// The TypeScript module the attachment and the client run in.

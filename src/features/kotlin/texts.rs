@@ -31,6 +31,8 @@ thread_local! {
     static KOTLIN_ALIASES: RefCell<HashMap<String, FieldDef>> = RefCell::new(HashMap::new());
     /// The brands, by Rust ident, that write a serializer for a map key of their own.
     static KOTLIN_KEYED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The brands, by Rust ident, that write a serializer for a map keyed by them.
+    static KOTLIN_MAPPED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The serializer each form the item being expanded reads is read through, so every value of
     /// one form names one. Cleared with the tuple wrappers.
     static KOTLIN_TEXTS: RefCell<Vec<(TextForm, String)>> = const { RefCell::new(Vec::new()) };
@@ -376,7 +378,7 @@ fn is_a_form(field: &FieldDef, key: bool) -> bool {
         })
         || (key
             && matches!(field.field_type, FieldDefType::SiblingType(_, _))
-            && key_leaf(field).is_some())
+            && (key_leaf(field).is_some() || mapped_by(field).is_some()))
 }
 
 /// What `key` reaches, or `None` for a key that reaches neither a brand with a key serializer nor
@@ -417,6 +419,61 @@ pub fn note_keyed(rust_ident: &str) {
     KOTLIN_KEYED.with(|keyed| {
         keyed.borrow_mut().insert(rust_ident.to_owned());
     });
+}
+
+/// Whether a brand that holds `value` keys a map: serde writes the value as a text, or as a number
+/// or a `bool` [`key_leaf`] reads from one.
+pub fn keys_a_map(value: &FieldDef) -> bool {
+    if key_leaf(value).is_some() || mapped_by(value).is_some() {
+        return true;
+    }
+    let mut held = value.clone();
+    loop {
+        if held.array_depth > 0 || held.is_optional() {
+            return false;
+        }
+        let FieldDefType::SiblingType(name, arguments) = &held.field_type else {
+            return matches!(
+                held.field_type,
+                FieldDefType::String | FieldDefType::StringLiteral(_)
+            ) || TextForm::of(&held).is_some();
+        };
+        if !arguments.is_empty() {
+            return false;
+        }
+        let Some(target) = named_by(name) else {
+            return false;
+        };
+        held = target;
+    }
+}
+
+/// Notes the brand written `rust_ident`, which writes a serializer for a map keyed by it.
+pub fn note_mapped(rust_ident: &str) {
+    KOTLIN_MAPPED.with(|mapped| {
+        mapped.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// The brand, by Rust ident, `key` names once its aliases are peeled, where it writes a serializer
+/// for a map keyed by it.
+pub fn mapped_by(key: &FieldDef) -> Option<String> {
+    let mut held = key.clone();
+    loop {
+        if held.array_depth > 0 || held.is_optional() {
+            return None;
+        }
+        let FieldDefType::SiblingType(name, arguments) = &held.field_type else {
+            return None;
+        };
+        if !arguments.is_empty() {
+            return None;
+        }
+        if KOTLIN_MAPPED.with(|mapped| mapped.borrow().contains(name)) {
+            return Some(name.clone());
+        }
+        held = named_by(name)?;
+    }
 }
 
 /// The type the alias written `name` names, where the emitter wrote it above with no type

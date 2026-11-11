@@ -455,9 +455,17 @@ the consumer's view; this is what a change has to keep.
   its unjudged one, is not wrapped: kotlinx states that path already. A number serializer reads
   through the tree decoder, which names the primitive it reads `primitive`, and drops that
   step. The serializer of a `Result` (`result_read`) takes the object off the decoder and reads
-  each arm from its text under the arm's step, and `{Type}KeySerializer` refuses a key its brand's
-  `validate()` refuses inside `kotlinSchemaAt(decoder)`, which states the map's path, each message
-  under the key's text, so the field names the key below its map. A flattened member is read
+  each arm from its text under the arm's step. A brand that keys a map (`texts::keys_a_map`, noted
+  in `KOTLIN_MAPPED` and read back by `texts::mapped_by`) declares `class
+  {Brand}MapSerializer<KotlinSchemaValue>(keySerializer, valueSerializer)` (`map_object`), which
+  takes the object off the decoder and reads each key from its text at the map's path, as serde
+  names a key that does not read, and each value from its text under the key's step: kotlinx records a map entry's step as the decoded key and prints it with
+  `toString()`, which is `Pitch(value=3)` for a value class. `annotated_base` names it on a map the
+  plugin reads, the key keeping the serializer it names, and `map_serializer` composes it where
+  the emitter writes the read. `run_kotlin_brand_key_paths.rs` holds a value refused under a key
+  over a text, a number and a date to the path serde names. `{Type}KeySerializer` refuses a key its brand's `validate()`
+  refuses inside `kotlinSchemaAt(decoder)`, which states the map's path, each message under the
+  key's text, so the field names the key below its map. A flattened member is read
   through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
   `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the fault's field
