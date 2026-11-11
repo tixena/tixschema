@@ -140,7 +140,7 @@ fn test_basic_struct_generates_zod_schema() {
         "Integer fields should use z.number().int(). Got: {zod}"
     );
     assert!(
-        zod.contains("score: z.number()"),
+        zod.contains("score: z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())"),
         "Float fields should use z.number() without .int(). Got: {zod}"
     );
     assert!(

@@ -1800,7 +1800,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.extend([
         part(service, &named, &prefix),
         operations(service, &named, &prefix),
-        message::read_fn(&format!("{prefix}McpRead")),
+        message::envelope_read_fn(&format!("{prefix}McpRead")),
         fill(TEXT),
         fault_fn(&named, &prefix),
         fill(WRITER),

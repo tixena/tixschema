@@ -181,7 +181,7 @@ fn test_preprocess_multiple_fns_zod() {
 
     let schema = PreprocessMultiple::zod_schema();
     assert!(
-        schema.contains("z.preprocess(epoch_to_date, z.preprocess(trim,"),
+        schema.contains("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(epoch_to_date, z.preprocess(trim,"),
         "Schema: {schema}"
     );
 }
@@ -321,7 +321,7 @@ fn test_preprocess_optional_field_zod() {
     // Preprocess wraps the inner schema, then union with null/undefined wraps that
     assert!(
         schema.contains(
-            "z.union([z.null().transform(() => undefined), z.preprocess(trim, z.string()), z.undefined()])"
+            "z.union([z.null().transform(() => undefined), z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trim, z.string())), z.undefined()])"
         ),
         "Expected preprocess inside optional union in Zod schema: {schema}"
     );
@@ -341,11 +341,11 @@ fn test_preprocess_different_fields() {
 
     let schema = PreprocessDiffFields::zod_schema();
     assert!(
-        schema.contains("z.preprocess(trim, z.string())"),
+        schema.contains("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trim, z.string()))"),
         "Expected trim preprocess for name field: {schema}"
     );
     assert!(
-        schema.contains("z.preprocess(to_lowercase, z.string())"),
+        schema.contains("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(to_lowercase, z.string()))"),
         "Expected to_lowercase preprocess for email field: {schema}"
     );
 }
@@ -381,7 +381,7 @@ fn test_preprocess_ordering_three_fns() {
     let schema = PreprocessThreeFns::zod_schema();
     // Nesting order: z.preprocess(a, z.preprocess(b, z.preprocess(c, z.string())))
     assert!(
-        schema.contains("z.preprocess(a, z.preprocess(b, z.preprocess(c, z.string())))"),
+        schema.contains("z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(a, z.preprocess(b, z.preprocess(c, z.string()))))"),
         "Expected correct nesting order a(b(c(inner))): {schema}"
     );
 }

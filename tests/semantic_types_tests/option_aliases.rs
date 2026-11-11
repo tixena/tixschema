@@ -111,7 +111,7 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         format!("relisted: z.array({held}),"),
         format!(
             "resulted: z.unknown().check((ctx) => {{ if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", message: \"expected value\", input: ctx.value, params: {{ undeserializable: true }} }}); }}).pipe(z.union([z.strictObject({{ Ok: {held} }}), \
-             z.strictObject({{ Err: z.string() }})])),"
+             z.strictObject({{ Err: z.string() }})]).superRefine((_read, ctx) => {{ const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({{ ...issue, input: undefined }}))); }}, {{ when: () => true }})),"
         ),
         format!("swung: Swung$SchemaFactory({held}),"),
         format!("swung_option: Swung$SchemaFactory({held}),"),

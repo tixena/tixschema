@@ -141,11 +141,11 @@ export function withoutFragile(payload: unknown): unknown {
 The Zod schema keeps the same order. A type's wrap is around its own expression and its `.check(...)`, a field's around the field's schema and its bounds:
 
 ```ts
-const Parcel$RawSchema = z.preprocess(withoutFragile, z.strictObject({
-  label: z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })),
+const Parcel$RawSchema = z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== "object" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(withoutFragile, z.strictObject({
+  label: z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== "object" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` }))),
   itemCodeList: z.array(z.string()),
   fragileItemCodes: z.array(z.string()),
-}));
+})));
 ```
 
 Several names nest in the order written, the first outermost, so it is the first one called. A type's wrap is inside `.brand()` on a brand, inside the `.meta({ ... })` every binding carries, and inside the builder of a type with a parameter, so every filling of its factory carries it.
@@ -160,7 +160,7 @@ A type that holds another reads it through that type's functions wherever it hol
 
 **In a [MongoDB operation](mongodb-operations.md#mongodb-operations-and-typed-filters)** that reads a row, each row being read through `from_bson_piped`, and in a [service's dispatcher](services.md#service-validation), which reads a request through the functions of its message.
 
-**In the Zod schema**, as one `z.preprocess(name, ...)` per name.
+**In the Zod schema**, as one `z.preprocess(name, ...)` per name, inside one `z.preprocess(function unboxed(held) { ... }, ...)` that hands the first function each number as a `number`: the TypeScript service code reads a number written with a fraction or an exponent as a `Number` object (see [Type mappings](../type-mappings.md)), and the function is handed what `JSON.parse` reads, at any depth of a list or a plain object. An integer under a function is read from what the function answers, so `1.0` there reads as `1`.
 
 **In [the Dart client](#a-preprocess-in-the-dart-client)**, in the read of every type `dart_definition()` writes, under the `dart` feature.
 

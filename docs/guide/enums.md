@@ -188,10 +188,19 @@ export const External$Schema: ZodType<External> = z.union([
   z.strictObject({
     "Single": z.string(),
   }),
-]).meta({
+]).superRefine((_read, ctx) => {
+  const held = ctx.value;
+  const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : [];
+  const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0);
+  const refused = ctx.issues[at];
+  const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined;
+  if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined })));
+}, { when: () => true }).meta({
   examples: []
 });
 ```
+
+The check after the union refuses an object of one key by the refusal of the member that key names, at its own place, as serde names a value inside the variant it reads: `{"Fields":{"a":"a","b":1}}` is refused at `Fields.b`, where the union alone answers one `invalid_union` issue at the enum. An object whose key no variant names, `{"Gone":1}`, keeps the union's issue. A `Result` is read through the same check.
 
 Add `#[serde(tag = "...", content = "...")]` to get the adjacently tagged `{ type, value }` form documented above instead.
 
@@ -247,13 +256,13 @@ Generated Zod -- a flattened member is an intersection, which has no shape of it
 export const Internal$Schema: ZodType<Internal> = z.union([
   z.strictObject({ type: z.literal("Bare") }),
   z.strictObject({ type: z.literal("Fields"), a: z.string(), b: z.boolean() }),
-  z.strictObject({ type: z.literal("Wrapped") }).and(z.lazy(() => TagPayload$Schema)),
+  z.strictObject({ type: z.literal("Wrapped") }).and(z.lazy(() => TagPayload$Schema).superRefine((_read, ctx) => { … }, { when: () => true })),
 ]).meta({
   examples: []
 });
 ```
 
-The content joins the member under `z.lazy` for the reason a flattened base does: the inner type is a `const` of its own and nothing orders one type's schema against another's, so reading the name while the union's `const` initializes would fail for any inner type declared below -- and a cycle running through a variant's content and a `#[serde(flatten)]` base has no order that puts each above the other. Deferred, every module loads whatever order it is assembled in.
+The content joins the member under `z.lazy` for the reason a flattened base does: the inner type is a `const` of its own and nothing orders one type's schema against another's, so reading the name while the union's `const` initializes would fail for any inner type declared below -- and a cycle running through a variant's content and a `#[serde(flatten)]` base has no order that puts each above the other. Deferred, every module loads whatever order it is assembled in. It joins through the check a [flattened](flatten.md#intersection-types-serdeflatten) member joins its holder through: serde reads the content from the keys the tag's object buffers, and names the enum for a value of the wrong type inside it, and so does the schema.
 
 An externally tagged enum held by a newtype variant is written beside the tag as Serde writes it [flattened](flatten.md#intersection-types-serdeflatten): each variant as its entry, a unit variant as its name over `null`. Its own type and schema take a unit variant as its bare name, so the member is joined by each variant's entry instead, as a flattened one is. With `pub enum Palleted { Loose, Stacked { layers: u32 } }` declared above `#[serde(tag = "kind")] pub enum Docketed { External(Palleted) }`, Serde writes `Docketed::External(Palleted::Loose)` as `{"kind":"External","Loose":null}`, which the TypeScript type, `{ kind: "External"; } & ({ "Loose": null; "Stacked"?: never; } | { "Stacked": { layers: number; }; "Loose"?: never; })`, the Zod schema and the JSON Schema read, and which the Dart, Swift and Kotlin clients read and write back as Serde writes it. The tag alone, `{"kind":"External"}`, and the entries of two variants are refused, as Serde refuses them. An alias of such an enum declared above is joined the same way, held there or flattened, and so are a brand and a tuple struct of one slot over it. An enum that declares a type parameter, written with an argument, `External(Choice<u32>)`, is joined the same way, each variant's entry written at the argument, and so is an alias of one. A variant that holds the enum's own type parameter is refused where such an enum fills it: see [Intersection Types](flatten.md#intersection-types-serdeflatten).
 

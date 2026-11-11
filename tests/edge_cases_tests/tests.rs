@@ -279,7 +279,7 @@ fn test_original_bug_reproduction_typescript() {
     let keys = [
         "problematic_map: z.record(z.string(), z.array(z.codec(",
         "string_to_vec_i64: z.record(z.string(), z.array(z.codec(",
-        "string_to_vec_f64: z.record(z.string(), z.array(z.number()))",
+        "string_to_vec_f64: z.record(z.string(), z.array(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))",
         "string_to_vec_bool: z.record(z.string(), z.array(z.boolean()))",
         "string_to_vec_string: z.record(z.string(), z.array(z.string()))",
     ];
@@ -287,7 +287,7 @@ fn test_original_bug_reproduction_typescript() {
     let keys = [
         "problematicMap: z.record(z.string(), z.array(z.codec(",
         "stringToVecI64: z.record(z.string(), z.array(z.codec(",
-        "stringToVecF64: z.record(z.string(), z.array(z.number()))",
+        "stringToVecF64: z.record(z.string(), z.array(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))",
         "stringToVecBool: z.record(z.string(), z.array(z.boolean()))",
         "stringToVecString: z.record(z.string(), z.array(z.string()))",
     ];
@@ -460,7 +460,7 @@ fn test_nested_string_keyed_maps_typescript_and_zod() {
         "counts_by_group: z.record(z.string(), z.record(z.string(), z.number().int())),",
         "labels_by_group: z.record(z.string(), z.record(z.string(), z.string())),",
         "rows_by_group: z.record(z.string(), z.array(z.record(z.string(), z.string()))),",
-        "scores_by_group: z.record(z.string(), z.record(z.string(), z.nullable(z.number()))),",
+        "scores_by_group: z.record(z.string(), z.record(z.string(), z.nullable(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))),",
         "tallies_by_region: z.record(z.string(), z.record(z.string(), z.record(z.string(), z.number().int()))),",
     ];
     #[cfg(not(feature = "serde"))]
@@ -468,7 +468,7 @@ fn test_nested_string_keyed_maps_typescript_and_zod() {
         "countsByGroup: z.record(z.string(), z.record(z.string(), z.number().int())),",
         "labelsByGroup: z.record(z.string(), z.record(z.string(), z.string())),",
         "rowsByGroup: z.record(z.string(), z.array(z.record(z.string(), z.string()))),",
-        "scoresByGroup: z.record(z.string(), z.record(z.string(), z.nullable(z.number()))),",
+        "scoresByGroup: z.record(z.string(), z.record(z.string(), z.nullable(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))),",
         "talliesByRegion: z.record(z.string(), z.record(z.string(), z.record(z.string(), z.number().int()))),",
     ];
     for expected in keys {
