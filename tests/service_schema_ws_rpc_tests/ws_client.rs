@@ -9,3 +9,7 @@ use crate::tests::{
 };
 
 document_session_ws_rpc_client!();
+
+#[cfg(test)]
+#[path = "abandoned_requests.rs"]
+mod abandoned_requests;

@@ -103,11 +103,14 @@ class __N__McpRaw {
 
 /**
  * `value` as JSON text with the keys of every object in order, as serde_json writes them: a
- * `bigint` as its digits, a `Uint8Array` as the array of its bytes and a raw text as it stands.
+ * `bigint` and a `JSON.rawJSON` holder as its digits, a `Uint8Array` as the array of its bytes
+ * and a raw text as it stands.
  */
 function __p__McpText(value: unknown): string {
   if (value instanceof __N__McpRaw) return value.text;
   if (typeof value === "bigint") return value.toString();
+  const isRaw: unknown = Reflect.get(JSON, "isRawJSON");
+  if (typeof isRaw === "function" && isRaw(value) === true) return JSON.stringify(value);
   if (value instanceof Uint8Array) return __p__McpText(Array.from(value));
   if (Array.isArray(value)) {
     return `[${value.map((held: unknown) => (held === undefined ? "null" : __p__McpText(held))).join(",")}]`;

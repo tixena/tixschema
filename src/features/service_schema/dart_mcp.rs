@@ -8,8 +8,8 @@
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, has_one_way, header_call_args, header_out_push_stmt,
-    message_dart_typename, message_decode, message_encode, split_reply_record,
-    success_decode_block,
+    header_refused_fault, message_dart_typename, message_decode, message_encode,
+    split_reply_record, success_decode_block,
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
@@ -1287,11 +1287,11 @@ const CLIENT_CALL: &str = "class _@N@McpCallFault implements Exception {
   final @F@ fault;
 }
 
-@F@ _@P@McpClientFault(@N@FaultKind kind, String operation, String detail, {String? field}) =>
-    @F@(detail: detail, field: field, kind: kind, operation: operation);
+@F@ _@P@McpClientFault(@N@FaultKind kind, String operation, String detail) =>
+    @F@(detail: detail, kind: kind, operation: operation);
 
-@F@ _@P@McpReadFailed(String operation, String detail, {String? field}) =>
-    _@P@McpClientFault(@N@FaultKind.undeserializablePayload, operation, detail, field: field);";
+@F@ _@P@McpReadFailed(String operation, String detail) =>
+    _@P@McpClientFault(@N@FaultKind.undeserializablePayload, operation, detail);";
 
 const CLIENT_PAIR: &str =
     "/// The bytes and the content type an answer's one image or audio block holds, written as the
@@ -3714,15 +3714,23 @@ fn reply_method(
     let result = result_name(named, operation).unwrap_or_default();
     let fields = fault_fields_typescript_name(named);
     let read_failed = format!("_{prefix}McpReadFailed");
-    let ws_failed = format!("_{prefix}WsFailedValidation");
-    // The `ws_rpc` reads answer a refused read through their own classifier; this transport
-    // answers every one it reads as the Rust client does, naming no field.
+    // The `ws_rpc` reads answer a refused read through their own classifier, and name the header
+    // a refused header value was read from; this transport answers every one it reads as the
+    // Rust client does, naming no field.
     let ws_refused = format!("_{prefix}WsRefused({wire}, rejected)");
-    let read_refused = format!("_{prefix}McpReadFailed({wire}, '$rejected')");
+    let read_refused = format!("{read_failed}({wire}, '$rejected')");
+    let as_read = |block: String, headers: &[String]| {
+        headers
+            .iter()
+            .fold(block.replace(&ws_refused, &read_refused), |read, header| {
+                read.replace(&header_refused_fault(prefix, wire, header), &read_refused)
+            })
+    };
     let unit_ok = is_unit_type(success) && shape.header_out.is_empty();
-    let success_block = success_decode_block(&result, prefix, wire, success, &shape.header_out)
-        .replace(&ws_refused, &read_refused)
-        .replace(&ws_failed, &read_failed);
+    let success_block = as_read(
+        success_decode_block(&result, prefix, wire, success, &shape.header_out),
+        &shape.header_out,
+    );
     let reply = if unit_ok {
         String::new()
     } else if shape.header_out.is_empty() {
@@ -3747,10 +3755,10 @@ fn reply_method(
          };\n"
             .to_owned()
     };
-    let error_block =
-        declared_error_decode_stmts(&result, prefix, wire, error, &shape.error_header_out)
-            .replace(&ws_refused, &read_refused)
-            .replace(&ws_failed, &read_failed);
+    let error_block = as_read(
+        declared_error_decode_stmts(&result, prefix, wire, error, &shape.error_header_out),
+        &shape.error_header_out,
+    );
     let error_source = if shape.error_header_out.is_empty() {
         "    final dynamic error = parsed;\n".to_owned()
     } else {

@@ -26,11 +26,12 @@ use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's, the `ws_rpc` client's and dispatcher's, and the `mcp` client's and route's.
-const TAKEN_BY_A_METHOD: [&str; 53] = [
+const TAKEN_BY_A_METHOD: [&str; 54] = [
     "answered",
     "arguments",
     "assigned",
     "body",
+    "cancelled",
     "contentRange",
     "contentType",
     "declaredHead",
@@ -742,7 +743,8 @@ fn send_stmt_one_way(
     has_multipart: bool,
 ) -> String {
     format!(
-        "    val response = try {{\n      {send}\n    }} catch (thrown: Throwable) {{\n      \
+        "    val response = try {{\n      {send}\n    }} catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {{\n      \
+         throw cancelled\n    }} catch (thrown: Throwable) {{\n      \
          throw {named}Refusal({fn_prefix}HttpTransportFailure({wire}, thrown.toString()))\n    \
          }}\n",
         send = send_expr(named, method_str, has_multipart),
@@ -758,7 +760,8 @@ fn send_stmt_reply(
     has_multipart: bool,
 ) -> String {
     format!(
-        "    val response = try {{\n      {send}\n    }} catch (thrown: Throwable) {{\n      \
+        "    val response = try {{\n      {send}\n    }} catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {{\n      \
+         throw cancelled\n    }} catch (thrown: Throwable) {{\n      \
          return {result}.Fault({fn_prefix}HttpTransportFailure({wire}, thrown.toString()))\n    \
          }}\n",
         send = send_expr(named, method_str, has_multipart),
