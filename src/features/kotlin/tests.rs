@@ -47,6 +47,16 @@ fn generated(named: &str) -> String {
     )
 }
 
+/// The unjudged serializer of the plain enum `named` of `variants`, which reads the payload
+/// `correction` answers.
+fn plain_enum_unjudged(named: &str, members: &[&str], correction: &str) -> String {
+    let variants: Vec<(String, String, Vec<String>)> = members
+        .iter()
+        .map(|variant| ((*variant).to_owned(), (*variant).to_owned(), Vec::new()))
+        .collect();
+    aliases::plain_enum_serializer(named, &variants, correction)
+}
+
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 fn judged(named: &str) -> String {
     format!(
@@ -539,7 +549,7 @@ fn a_types_own_check_is_called_on_the_whole_value() {
         format!(
             "{} enum class Grade {{ Express, Unrated; {called} }} {} {}",
             kept("Grade"),
-            generated("Grade"),
+            plain_enum_unjudged("Grade", &["Express", "Unrated"], "element"),
             judged("Grade")
         )
     );

@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::kotlin_plain_enum::plain_enum_unjudged;
+
 #[model_schema(name = "Category")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Genre {
@@ -73,7 +75,12 @@ fn a_renamed_enum_republishes_its_ident_under_every_tagging() {
 fn an_enum_published_under_its_own_ident_writes_no_alias() {
     assert_eq!(
         season_kotlin::kotlin_definition(),
-        "@Serializable enum class Season { Autumn; fun validate(): List<String> = emptyList() }"
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             SeasonUnjudged::class) @KeepGeneratedSerializer enum class Season {{ Autumn; fun \
+             validate(): List<String> = emptyList() }} {}",
+            plain_enum_unjudged("Season", &[("Autumn", "Autumn", &[])], "element")
+        )
     );
 }
 

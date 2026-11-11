@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+use super::unknown_keys::plain_enum_read;
+
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -450,7 +452,7 @@ fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
     assert!(dart.contains("inStock('instock')"));
     assert!(dart.contains("backordered('backordered')"));
     assert!(dart.contains("discontinued('discontinued')"));
-    assert!(dart.contains("static StockStatus fromJson(String json)"));
+    assert!(dart.contains("static StockStatus fromJson(dynamic json)"));
     assert!(dart.contains("String toJson() => wireValue;"));
 }
 
@@ -915,12 +917,18 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
-        "enum ReservedMember { default_('Default'), in_('In'), other('Other'); const \
-         ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
-         fromJson(String json) => switch (json) { 'Default' => ReservedMember.default_,'In' => \
-         ReservedMember.in_,'Other' => ReservedMember.other, _ => throw FormatException('Unknown \
-         ReservedMember: ' + json) }; static ReservedMember fromJsonUnjudged(String json) => \
-         fromJson(json); String toJson() => wireValue; List<String> validate() => const []; }"
+        format!(
+            "enum ReservedMember {{ default_('Default'), in_('In'), other('Other'); const \
+             ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
+             fromJson(dynamic json) {{ {} }} static ReservedMember fromJsonUnjudged(dynamic json) \
+             => fromJson(json); String toJson() => wireValue; List<String> validate() => const []; \
+             }}",
+            plain_enum_read(
+                "ReservedMember",
+                "json",
+                "'Default' => ReservedMember.default_,'In' => ReservedMember.in_,'Other' => ReservedMember.other,"
+            )
+        )
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {

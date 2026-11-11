@@ -2,7 +2,7 @@
 
 #### Plain Enums
 
-An enum whose variants are all unit variants and which names no `tag` and no `untagged` generates a TypeScript string union and `z.enum()` in Zod, matching the bare variant name Serde writes for it. Either attribute changes what Serde writes, and the surfaces follow it rather than the string union. Naming a `tag` moves the variant name under the tag key, into an object, so the same all-unit variants are described as the tagged objects below. Naming `untagged` drops the name altogether -- Serde writes every unit variant as a bare `null` -- and the declaration is refused per variant, the way any unit variant in an untagged enum is refused under "Untagged Enums" below.
+An enum whose variants are all unit variants and which names no `tag` and no `untagged` generates a TypeScript string union and `z.enum()` in Zod, matching the bare variant name Serde writes for it. Serde reads the variant from that name, or from an object of one key over `null`, `{"status":{"Active":null}}`, which the schema and every client read as `Active`; a value that is neither a string nor an object of one key, `1`, `[]`, `true`, `{}` or an object of two keys, is refused as the shape of an externally tagged enum's value is, `undeserializable-payload` naming no field, an object of one key over a value other than `null`, `{"Active":1}`, is refused naming the field under the variant, `status.Active`, and a name no variant takes naming the field, `status`. Either attribute changes what Serde writes, and the surfaces follow it rather than the string union. Naming a `tag` moves the variant name under the tag key, into an object, so the same all-unit variants are described as the tagged objects below. Naming `untagged` drops the name altogether -- Serde writes every unit variant as a bare `null` -- and the declaration is refused per variant, the way any unit variant in an untagged enum is refused under "Untagged Enums" below.
 
 ```rust
 #[model_schema()]
@@ -131,7 +131,7 @@ This generates `kind` as the discriminator and `data` as the value field instead
 
 #### Externally Tagged Enums (No Tagging Attributes)
 
-An enum with data-carrying variants that names neither `tag` nor `content` is externally tagged, which is Serde's default: the variant name is the sole key of an object holding the content, and a unit variant is that name as a bare string. The generated surfaces describe that form -- a JSON Schema `oneOf`, a TypeScript union, and a Zod `z.union([...])`. There is no field every member shares, so the Zod schema is a plain union rather than a `z.discriminatedUnion`, behind a check that refuses a value that is neither a string nor an object of one key with serde's words, ``expected value``, which serde classifies as text that is not the document: a service answers it `undeserializable-payload`, naming no field, as [What is no document](ws-rpc.md) states, and so does each client's read.
+An enum with data-carrying variants that names neither `tag` nor `content` is externally tagged, which is Serde's default: the variant name is the sole key of an object holding the content, and a unit variant is that name as a bare string. The generated surfaces describe that form -- a JSON Schema `oneOf`, a TypeScript union, and a Zod `z.union([...])`. There is no field every member shares, so the Zod schema is a plain union rather than a `z.discriminatedUnion`, behind a check that refuses a value that is neither a string nor an object of one key with serde's words, ``expected value``, which serde classifies as text that is not the document: a service answers it `undeserializable-payload`, naming no field, as [What is no document](ws-rpc.md) states, and so does each client's read. A string that names a variant that carries data, `{"peal":"Swung"}` for a `Swung { arc: u32 }`, and one that names the arm of a `Result` that carries a value, `{"tally":"Ok"}`, is refused under the variant's own step, `peal.Swung` and `tally.Ok`, as serde refuses a unit variant where a struct or a newtype variant is expected, on every surface. An unknown string keeps the enum's place.
 
 ```rust
 #[model_schema()]
@@ -190,17 +190,20 @@ export const External$Schema: ZodType<External> = z.unknown().check((ctx) => { i
   }),
 ]).superRefine((_read, ctx) => {
   const held = ctx.value;
+  const carrying = [["Fields", "struct variant"], ["Pair", "tuple variant"], ["Single", "newtype variant"]];
   const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : [];
   const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0);
   const refused = ctx.issues[at];
+  const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined;
   const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined;
-  if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined })));
+  if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } });
+  else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined })));
 }, { when: () => true })).meta({
   examples: []
 });
 ```
 
-The check after the union refuses an object of one key by the refusal of the member that key names, at its own place, as serde names a value inside the variant it reads: `{"Fields":{"a":"a","b":1}}` is refused at `Fields.b`, where the union alone answers one `invalid_union` issue at the enum. An object whose key no variant names, `{"Gone":1}`, keeps the union's issue. A `Result` is read through the same check.
+The check after the union refuses an object of one key by the refusal of the member that key names, at its own place, as serde names a value inside the variant it reads: `{"Fields":{"a":"a","b":1}}` is refused at `Fields.b`, where the union alone answers one `invalid_union` issue at the enum. An object whose key no variant names, `{"Gone":1}`, keeps the union's issue, and a string that names a variant that carries data, `"Fields"`, is refused under that variant's step, `Fields`, as a unit variant where a struct variant is expected. A `Result` is read through the same check.
 
 Add `#[serde(tag = "...", content = "...")]` to get the adjacently tagged `{ type, value }` form documented above instead.
 
