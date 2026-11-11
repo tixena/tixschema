@@ -1111,7 +1111,8 @@ mod run_swift_units;
 #[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
 mod run_kotlin_units;
 
-/// A limit past what an `f64` holds, and in each written form, for each emitted surface.
+/// A limit past what an `f64` holds, in each written form, and past what an `i32` holds on a
+/// float, for each emitted surface.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/integer_limit_models.rs"]
 mod integer_limit_models;

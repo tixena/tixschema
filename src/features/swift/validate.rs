@@ -161,7 +161,7 @@ impl Number {
     /// below it.
     fn least(self, minimum: &Lit) -> Option<String> {
         match self {
-            Self::Float => Some(limit_text(minimum)),
+            Self::Float => Some(float_literal(minimum)),
             Self::Whole(lowest, highest) => {
                 let written = whole(minimum)?;
                 (lowest < written && written <= highest).then(|| written.to_string())
@@ -173,7 +173,7 @@ impl Number {
     /// above it.
     fn most(self, maximum: &Lit) -> Option<String> {
         match self {
-            Self::Float => Some(limit_text(maximum)),
+            Self::Float => Some(float_literal(maximum)),
             Self::Whole(lowest, highest) => {
                 let written = whole(maximum)?;
                 (lowest <= written && written < highest).then(|| written.to_string())
@@ -954,6 +954,17 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => None,
+    }
+}
+
+/// A bound as the float literal a float is compared with: an integer literal a `Float` or a
+/// `Double` does not hold exactly is a warning in Swift.
+fn float_literal(bound: &Lit) -> String {
+    let written = limit_text(bound);
+    if written.contains('.') {
+        written
+    } else {
+        format!("{written}.0")
     }
 }
 

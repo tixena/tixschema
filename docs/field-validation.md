@@ -50,16 +50,19 @@ repeats none of it. What a change has to keep:
 
 **A limit is the literal written.** `ModelSchemaPropMeta` holds `minimum` and `maximum` as the
 `syn::Lit` of the attribute, and the limit takes its field's type where the generated code
-compiles: `9007199254740993 as i64`. `limit_text` is the one formatter of a surface: an integer's
-digits, with no separator or suffix, or a float as its `Display` writes it, so a sentence cannot
-differ from its check. A refusal at expansion names a float through `format_number_literal`
-(`limit_refused`), the value it holds. `limit_number` is the same limit as an `f64`, for a
+compiles (`compared_limit`): an integer field's through a cast, `9007199254740993 as i64`, and a
+float field's as a literal of its type, `3000000000_f64`, since a cast to a float leaves an
+integer literal an `i32`, which wraps past `2^31`. `limit_text` is the one formatter of a
+surface: an integer's digits, with no separator or suffix, or a float as its `Display` writes it,
+so a sentence cannot differ from its check. A refusal at expansion names a float through
+`format_number_literal` (`limit_refused`), the value it holds. `limit_number` is the same limit as an `f64`, for a
 comparison in the macro alone: past `2^53` it is rounded, so two integer limits are compared as
 `i128` (`limit_above`) and the range guard reads an integer limit as one (`check_bound_in_range`).
 The JSON Schema writes an integer limit through `limit_json`, suffixed, since `json!` reads a bare
 integer as an `i32`, and a float as an `f64`. Zod's `bigint` bound and Swift's comparison with an
-integer drop a float's fraction, as the Rust cast does, and Kotlin writes an integer limit of the
-least `Long` as `Long.MIN_VALUE`, its digits being no literal `kotlinc` reads.
+integer drop a float's fraction, as the Rust cast does, Swift compares a float with a float
+literal, `3000000000.0`, and Kotlin writes an integer limit of the least `Long` as
+`Long.MIN_VALUE`, its digits being no literal `kotlinc` reads.
 `tests/validation_tests/integer_limits.rs` pins the surfaces' text, and `integer_limit_models.rs`
 with `run_{node,dart,swift,kotlin}_integer_limits.rs` runs each.
 

@@ -1,6 +1,6 @@
 //! The models and the payloads each emitted client reads a limit from: a limit past what an `f64`
-//! holds, on each side of it, at the ends of an `i64`, in each written form, and a float limit
-//! beside an integer one. [`REPORT`] is what each client prints, and what the serde read answers.
+//! holds, on each side of it, at the ends of an `i64`, in each written form, a float limit beside
+//! an integer one, and a limit past what an `i32` holds on a float. [`REPORT`] is what each client prints, and what the serde read answers.
 
 use core::fmt::Write as _;
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// Each payload: its name, the type it is read as, and the JSON.
-pub const ROWS: [(&str, &str, &str); 13] = [
+pub const ROWS: [(&str, &str, &str); 16] = [
     (
         "below the ceiling",
         "LimitCeiling",
@@ -75,6 +75,21 @@ pub const ROWS: [(&str, &str, &str); 13] = [
         "LimitEnds",
         r#"{"greatest":0,"least":0,"reach":1000000000000000000,"risen":9223372036854775807,"sunk":-9223372036854775808}"#,
     ),
+    (
+        "wide floats within",
+        "LimitWide",
+        r#"{"held":1.0,"single":1.0,"spelled":1.0,"sunk":1.0,"vast":2000000000.0,"whole":1.0}"#,
+    ),
+    (
+        "wide floats at the limit",
+        "LimitWide",
+        r#"{"held":3000000000.0,"single":3000000000.0,"spelled":3000000000.0,"sunk":-3000000000.0,"vast":1e30,"whole":3000000000.0}"#,
+    ),
+    (
+        "wide floats past",
+        "LimitWide",
+        r#"{"held":4000000000.0,"single":1.0,"spelled":4000000000.0,"sunk":-4000000000.0,"vast":1.0,"whole":4000000000.0}"#,
+    ),
 ];
 
 /// What each client's `validate()` and read print of [`ROWS`], and what the serde read answers.
@@ -102,6 +117,13 @@ the ends past: refused
     'risen': too small: minimum is 9223372036854775807, got 9223372036854775806
     'sunk': too large: maximum is -9223372036854775808, got -9223372036854775807
 below nineteen digits: passes
+wide floats within: passes
+wide floats at the limit: passes
+wide floats past: refused
+    'held': too large: maximum is 3000000000, got 4000000000
+    'spelled': too large: maximum is 3000000000, got 4000000000
+    'sunk': too small: minimum is -3000000000, got -4000000000
+    'whole': too large: maximum is 3000000000, got 4000000000
 ";
 
 /// A limit past what an `f64` holds, from above.
@@ -158,6 +180,26 @@ pub struct LimitEnds {
     pub sunk: i64,
 }
 
+/// Limits past what an `i32` holds on a float: an integer, a float written whole, one from below,
+/// an `f32` under an integer and under a float, and one under an `Option`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LimitWide {
+    #[model_schema_prop(maximum = 3000000000)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<f64>,
+    #[model_schema_prop(maximum = 3000000000)]
+    pub single: f32,
+    #[model_schema_prop(maximum = 3e9)]
+    pub spelled: f64,
+    #[model_schema_prop(minimum = -3000000000)]
+    pub sunk: f64,
+    #[model_schema_prop(maximum = 1e30)]
+    pub vast: f32,
+    #[model_schema_prop(maximum = 3000000000)]
+    pub whole: f64,
+}
+
 /// What the serde read prints of `json`, read as `T`: the messages of a refusal are the ones
 /// `validate()` answers.
 fn printed<T>(name: &str, json: &str) -> String
@@ -185,6 +227,7 @@ fn the_serde_read_answers_the_report_every_client_is_held_to() {
             "LimitFloor" => printed::<LimitFloor>(name, json),
             "LimitForms" => printed::<LimitForms>(name, json),
             "LimitMixed" => printed::<LimitMixed>(name, json),
+            "LimitWide" => printed::<LimitWide>(name, json),
             _ => printed::<LimitEnds>(name, json),
         })
         .collect();
