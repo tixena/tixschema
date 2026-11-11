@@ -46,6 +46,18 @@ thread_local! {
     static KOTLIN_NUMBER_COUNTER: Cell<usize> = const { Cell::new(0) };
 }
 
+/// The private function of an integer's serializer that spells a float as serde does: its shortest
+/// digits, laid out plainly from `0.00001` to below `1e16`, with `.0` where they hold no fraction.
+pub(super) const FLOATING: &str = "private fun floating(number: Double): String { if (number == \
+     0.0) return if (1.0 / number < 0) \"-0.0\" else \"0.0\"; val exact = \
+     java.math.BigDecimal(number.toString()).stripTrailingZeros(); val digits = \
+     exact.movePointRight(exact.scale()).toBigInteger().abs().toString(); val at = digits.length - \
+     1 - exact.scale(); return \
+     (if (number < 0) \"-\" else \"\") + when (at) { in 0..15 -> digits.padEnd(at + 1, \
+     '0').let { it.take(at + 1) + \".\" + it.drop(at + 1).ifEmpty { \"0\" } }; in -5..-1 -> \
+     \"0.\" + \"0\".repeat(-at - 1) + digits; else -> digits.take(1) + (if (digits.length > 1) \
+     \".\" + digits.drop(1) else \"\") + \"e\" + (if (at > 0) \"+\" else \"\") + at } }; ";
+
 /// A number type or `bool` the Kotlin client reads from an unquoted JSON value alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Primitive {
@@ -167,6 +179,19 @@ impl Primitive {
     }
 }
 
+/// What an integer's serializer runs ahead of the library's read: a number written with a
+/// fraction, an exponent or as `-0` refused as serde refuses the float it reads it as, any other
+/// text left to the library.
+fn integral(expected: &str) -> String {
+    format!(
+        "val text = element.content; val wide = text.toDoubleOrNull(); if (wide != null && (text \
+         == \"-0\" || text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if \
+         (wide.isInfinite()) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); throw \
+         SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
+         expected {expected}\") }}; "
+    )
+}
+
 /// The `object` named `named` that reads a number or a `bool` as the library does, but for one
 /// written as a string, which it refuses in serde's words.
 fn number_declared(primitive: Primitive, named: &str) -> String {
@@ -198,41 +223,49 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
              + \", expected {expected}\"); read }} }} }}"
         );
     }
-    // serde reads an `f32` beyond its range as an infinity of its sign, which kotlinx refuses.
-    let widened = match primitive {
-        Primitive::F32 => format!(
-            "val wide = element.content.toDoubleOrNull(); if (wide != null && wide.isInfinite()) \
-             throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); if (wide != null && \
-             wide.toFloat().isInfinite()) return@kotlinSchemaAt if (wide < 0) \
-             Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY; "
+    // serde reads an `f32` beyond its range as an infinity of its sign, which kotlinx refuses, and
+    // refuses a number written with a fraction or an exponent, or `-0`, for an integer, which
+    // kotlinx reads as a `Long` and refuses as an unsigned one in words of its own.
+    let (widened, spelled) = match primitive {
+        Primitive::F32 => (
+            format!(
+                "val wide = element.content.toDoubleOrNull(); if (wide != null && \
+                 wide.isInfinite()) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); if \
+                 (wide != null && wide.toFloat().isInfinite()) return@kotlinSchemaAt if (wide < 0) \
+                 Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY; "
+            ),
+            "",
         ),
-        Primitive::F64 => format!(
-            "if (element.content.toDoubleOrNull()?.isInfinite() == true) throw \
-             SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); "
+        Primitive::F64 => (
+            format!(
+                "if (element.content.toDoubleOrNull()?.isInfinite() == true) throw \
+                 SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); "
+            ),
+            "",
         ),
-        Primitive::Bool
-        | Primitive::BoolKey
-        | Primitive::F32Key
-        | Primitive::F64Key
-        | Primitive::I16
+        Primitive::I16
         | Primitive::I32
         | Primitive::I64
         | Primitive::I8
         | Primitive::Isize
         | Primitive::U16
         | Primitive::U32
-        | Primitive::U8 => String::new(),
+        | Primitive::U8 => (integral(expected), FLOATING),
         #[cfg(feature = "chrono")]
-        Primitive::Millis => String::new(),
+        Primitive::Millis => (integral(expected), FLOATING),
+        Primitive::Bool | Primitive::BoolKey | Primitive::F32Key | Primitive::F64Key => {
+            (String::new(), "")
+        }
     };
     // kotlinx names the primitive a tree decoder reads `primitive`, a step no payload holds.
     format!(
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
          serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
-         {PATHED}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
-         JsonDecoder ?: return held.deserialize(decoder); val element = json.decodeJsonElement(); \
-         return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || element.isString) throw \
+         {PATHED}{spelled}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = \
+         decoder as? JsonDecoder ?: return held.deserialize(decoder); val element = \
+         json.decodeJsonElement(); return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || \
+         element.isString) throw \
          SerializationException(\"invalid type: \" + (if (element is JsonPrimitive) \"string \" \
          else \"\") + element + \", expected {expected}\"); {widened}try {{ \
          json.json.decodeFromJsonElement(held, element) }} catch (refused: SerializationException) \

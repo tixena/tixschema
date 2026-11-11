@@ -61,6 +61,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
     published.extend(fault_helpers(&named, &fn_prefix, answers));
     published.push(frame_read_fn(&fn_prefix));
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        published.push(written_fn(&fn_prefix));
+    }
     if answers {
         published.push(refused_at_fn(&fn_prefix));
         published.push(refused_fn(&named, &fn_prefix));
@@ -912,8 +919,9 @@ fn header_in_read_stmt(
 }
 
 /// The `val replyHeaders = ...` statement a reply arm writes before sending: one `put` per
-/// element of `extra`, read off `accessor_root`, a `null` `Option<T>` element omitted.
-fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
+/// element of `extra`, read off `accessor_root` and written by `writer` ([`written_fn`]), a `null`
+/// `Option<T>` element omitted.
+fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str, writer: &str) -> String {
     let mut stmt = String::from("            val replyHeaders = buildJsonObject {\n");
     for field in extra {
         let accessor = format!("{accessor_root}.{}", field.kotlin_prop);
@@ -922,14 +930,13 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
             let written = read_serializer(inner);
             let _ = writeln!(
                 stmt,
-                "              {accessor}?.let {{ put({name}, \
-                 Json.encodeToJsonElement({written}, it)) }}"
+                "              {accessor}?.let {{ put({name}, {writer}({written}, it)) }}"
             );
         } else {
             let written = read_serializer(&field.ty);
             let _ = writeln!(
                 stmt,
-                "              put({name}, Json.encodeToJsonElement({written}, {accessor}))"
+                "              put({name}, {writer}({written}, {accessor}))"
             );
         }
     }
@@ -939,35 +946,42 @@ fn header_write_stmt(extra: &[HeaderElement], accessor_root: &str) -> String {
 
 /// The `Ok` reply's `replyHeaders` statement and body expression. Called only where `header_out`
 /// was declared, so `success` is a tuple.
-fn ok_reply_parts(shape: &HttpShape, success: &Type) -> (String, String) {
+fn ok_reply_parts(shape: &HttpShape, success: &Type, writer: &str) -> (String, String) {
     let extra = header_elements(&shape.header_out, success, "headerOut");
     let written = read_serializer(body_type(shape.header_out.len(), success));
-    let body_expr = format!("Json.encodeToJsonElement({written}, answered.value.value)");
-    (header_write_stmt(&extra, "answered.value"), body_expr)
+    let body_expr = format!("{writer}({written}, answered.value.value)");
+    (
+        header_write_stmt(&extra, "answered.value", writer),
+        body_expr,
+    )
 }
 
 /// [`ok_reply_parts`]'s own twin on the declared-error side.
-fn declared_reply_parts(shape: &HttpShape, error: &Type) -> (String, String) {
+fn declared_reply_parts(shape: &HttpShape, error: &Type, writer: &str) -> (String, String) {
     let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
     let written = read_serializer(body_type(shape.error_header_out.len(), error));
-    let body_expr = format!("Json.encodeToJsonElement({written}, answered.error.error)");
-    (header_write_stmt(&extra, "answered.error"), body_expr)
+    let body_expr = format!("{writer}({written}, answered.error.error)");
+    (
+        header_write_stmt(&extra, "answered.error", writer),
+        body_expr,
+    )
 }
 
 /// The `is {result}.Ok -> ...` arm: the original one-line `send` where the operation declared no
 /// `header_out`, else a block that writes `replyHeaders` beside the body.
 fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> String {
+    let writer = written_call(named);
     if shape.header_out.is_empty() {
         let ok_value = if is_unit_type(success) {
             "JsonNull".to_owned()
         } else {
             let written = read_serializer(success);
-            format!("Json.encodeToJsonElement({written}, answered.value)")
+            format!("{writer}({written}, answered.value)")
         };
         let ok_frame = reply_frame_expr(named, "true", "value", &ok_value);
         return format!("          is {result}.Ok -> send({ok_frame})\n");
     }
-    let (headers_stmt, body_expr) = ok_reply_parts(shape, success);
+    let (headers_stmt, body_expr) = ok_reply_parts(shape, success, &writer);
     format!(
         "          is {result}.Ok -> {{\n\
 {headers_stmt}            \
@@ -987,17 +1001,18 @@ fn ok_arm(named: &str, result: &str, shape: &HttpShape, success: &Type) -> Strin
 
 /// [`ok_arm`]'s own twin on the declared-error side.
 fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> String {
+    let writer = written_call(named);
     if shape.error_header_out.is_empty() {
         let written = read_serializer(error);
         let declared_frame = reply_frame_expr(
             named,
             "false",
             "error",
-            &format!("Json.encodeToJsonElement({written}, answered.error)"),
+            &format!("{writer}({written}, answered.error)"),
         );
         return format!("          is {result}.Declared -> send({declared_frame})\n");
     }
-    let (headers_stmt, body_expr) = declared_reply_parts(shape, error);
+    let (headers_stmt, body_expr) = declared_reply_parts(shape, error, &writer);
     format!(
         "          is {result}.Declared -> {{\n\
 {headers_stmt}            \
@@ -1135,6 +1150,29 @@ fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String>
             ),
         ),
     ]
+}
+
+/// The name of the function [`written_fn`] declares for the service `named`.
+fn written_call(named: &str) -> String {
+    format!("{}WsWritten", RenameRule::CamelCase.apply_to_variant(named))
+}
+
+/// The function the attachment writes a reply's value, its declared error and each `header_out`
+/// with, as serde writes them: a `Float` or a `Double` that is not finite as `null`, where kotlinx
+/// refuses it.
+fn written_fn(fn_prefix: &str) -> String {
+    format!(
+        "private val {fn_prefix}WsWrites = Json {{ allowSpecialFloatingPointValues = true }}\n\n\
+         /// `value` as serde writes it: a `Float` or a `Double` that is not finite as `null`.\n\
+         private fun <T> {fn_prefix}WsWritten(serializer: SerializationStrategy<T>, value: T): JsonElement {{\n  \
+         fun finite(element: JsonElement): JsonElement = when (element) {{\n    \
+         is JsonObject -> JsonObject(element.mapValues {{ (_, item) -> finite(item) }})\n    \
+         is JsonArray -> JsonArray(element.map(::finite))\n    \
+         is JsonPrimitive -> if (!element.isString && element.content in setOf(\"Infinity\", \"-Infinity\", \"NaN\")) JsonNull else element\n  \
+         }}\n  \
+         return finite({fn_prefix}WsWrites.encodeToJsonElement(serializer, value))\n\
+         }}"
+    )
 }
 
 /// The function that reads the frame a text holds, refusing one that holds a number beyond a

@@ -170,16 +170,21 @@ fn number(named: &str, kotlin: &str, expected: &str) -> String {
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
          serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
-         {PATHED}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
-         JsonDecoder ?: return held.deserialize(decoder); val element = json.decodeJsonElement(); \
-         return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || element.isString) throw \
-         SerializationException(\"invalid type: \" + (if (element is JsonPrimitive) \"string \" \
-         else \"\") + element + \", expected {expected}\"); try {{ \
-         json.json.decodeFromJsonElement(held, element) }} catch (refused: \
-         SerializationException) {{ throw \
+         {PATHED}{FLOATING}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = \
+         decoder as? JsonDecoder ?: return held.deserialize(decoder); val element = \
+         json.decodeJsonElement(); return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive \
+         || element.isString) throw SerializationException(\"invalid type: \" + (if (element is \
+         JsonPrimitive) \"string \" else \"\") + element + \", expected {expected}\"); val text = \
+         element.content; val wide = text.toDoubleOrNull(); if (wide != null && (text == \"-0\" || \
+         text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if (wide.isInfinite()) throw \
+         SerializationException(\"number out of range\"); throw \
+         SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
+         expected {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
+         (refused: SerializationException) {{ throw \
          SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}",
-        PATHED = read::PATHED
+        PATHED = read::PATHED,
+        FLOATING = super::texts::FLOATING
     )
 }
 
