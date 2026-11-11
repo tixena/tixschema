@@ -137,13 +137,7 @@ fn a_default_with_no_json_keeps_its_key_required() {
     assert!(
         harbour.contains(
             "let container = try decoder.container(keyedBy: CodingKeys.self); self.berths = try \
-             Self.swiftSchemaFitted({ try container.decode([Moored].self, forKey: .berths) }, \
-             again: { _ = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .berths) \
-             }); self.flagship = try Self.swiftSchemaFitted({ try container.decode(Moored.self, \
-             forKey: .flagship) }, again: { _ = try container.decode(SwiftSchemaFit<Moored>.self, \
-             forKey: .flagship) }); self.slips = try Self.swiftSchemaFitted({ try \
-             container.decode([Moored].self, forKey: .slips) }, again: { _ = try \
-             container.decode([SwiftSchemaFit<Moored>].self, forKey: .slips) }) }"
+             container.decode([SwiftSchemaFit<Moored>].self, forKey: .berths).map({ $0.value }); self.flagship = try container.decode(SwiftSchemaFit<Moored>.self, forKey: .flagship).value; self.slips = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .slips).map({ $0.value }) }"
         ),
         "{harbour}"
     );
@@ -155,9 +149,7 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
     let basin = basin_swift::swift_definition();
     assert!(
         basin.contains(
-            "if container.contains(.moored) { self.moored = try Self.swiftSchemaFitted({ try \
-             container.decode([Moored].self, forKey: .moored) }, again: { _ = try \
-             container.decode([SwiftSchemaFit<Moored>].self, forKey: .moored) }) } else { let mooredDefaultPayload = try \
+            "if container.contains(.moored) { self.moored = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .moored).map({ $0.value }) } else { let mooredDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"[]\".utf8), options: \
              [.fragmentsAllowed]); self.moored = try SwiftSchemaPayload.read([Moored].self, \
              from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored]) }"

@@ -324,8 +324,7 @@ fn the_parameter_as_a_key_is_held_as_its_text() {
              Sendable { public var storage: [String: UInt32]; ",
             "public let byStowed: [String: UInt32]; ",
             &format!(
-                "{TEXT_KEY}try Self.swiftSchemaFitted({{ try container.decode(UInt32.self, forKey: \
-                 codingKey) }}, again: {{ _ = try container.decode(SwiftSchemaFit<UInt32>.self, forKey: codingKey) }}) }}; "
+                "{TEXT_KEY}try container.decode(SwiftSchemaFit<UInt32>.self, forKey: codingKey).value }}; "
             ),
         ],
     );

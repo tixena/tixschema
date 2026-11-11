@@ -108,8 +108,7 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
         &entries_read(
             "rest",
             "UInt8",
-            "try Self.swiftSchemaFitted({ try keyed.decode(UInt8.self, forKey: entry) }, again: { \
-             _ = try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry) })",
+            "try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry).value",
         ),
     );
     assert_written(&stopping, &format!("{TAKING} {{ do {{ let keyed = "));
@@ -124,8 +123,7 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
         &entries_read(
             "rest",
             "UInt8",
-            "try Self.swiftSchemaFitted({ try keyed.decode(UInt8.self, forKey: entry) }, again: { \
-             _ = try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry) })",
+            "try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry).value",
         ),
     );
     assert_written(&clewing, &format!("{TAKING} {{ do {{ let keyed = "));
@@ -165,8 +163,7 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
          let wireKey = codingKey.stringValue; guard let key = Quarter(rawValue: wireKey) else { \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
          debugDescription: \"bad key \\(wireKey)\") }; \
-         result[key] = try Self.swiftSchemaFitted({ try container.decode(UInt8.self, forKey: \
-         codingKey) }, again: { _ = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey) }) }; \
+         result[key] = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey).value }; \
          storage = result } };",
     );
     assert_written(

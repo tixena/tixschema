@@ -283,15 +283,15 @@ fn the_swift_read_of_a_variant_over_an_option_takes_the_nil_it_reads() {
         (
             fathom_swift::swift_definition(),
             [
-                "do { let value = try UInt32?(from: decoder); self = .count(value); return } \
-                 catch {}; ",
+                "do { let value = try SwiftSchemaFit<UInt32>?(from: decoder)?.value; self = \
+                 .count(value); return } catch {}; ",
                 "if let value = try? Bool(from: decoder) { self = .flag(value); return }; ",
             ],
         ),
         (
             kedged_swift::swift_definition(),
             [
-                "do { let value = try UInt32?(from: decoder); if \
+                "do { let value = try SwiftSchemaFit<UInt32>?(from: decoder)?.value; if \
                  Kedged.swiftSchemaBoundAbove(value).isEmpty { self = .above(value); return } } \
                  catch {}; ",
                 "if let value = try? String(from: decoder) { self = .text(value); return }; ",

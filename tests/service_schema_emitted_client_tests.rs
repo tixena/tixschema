@@ -408,6 +408,17 @@ mod fitted_parameters;
 #[path = "service_schema_emitted_client_tests/run_swift_fitted_parameters.rs"]
 mod run_swift_fitted_parameters;
 
+/// The models a number written with a fraction or an exponent is read on for an integer.
+#[cfg(all(test, feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/integral_float_models.rs"]
+mod integral_float_models;
+
+/// A number written with a fraction or an exponent, refused for an integer by the emitted Swift
+/// types where serde refuses it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_integral_floats.rs"]
+mod run_swift_integral_floats;
+
 /// The models a tuple struct that declares one slot is written on.
 #[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]
