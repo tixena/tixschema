@@ -125,12 +125,11 @@ fn a_path_placeholder_is_filled_by_exact_segment_substitution() {
     assert!(
         method.contains("path += \"/documents/\";")
             && method.contains(
-                "path += encodeURIComponent(documentClientServiceHttpWireText(sending.documentId));"
+                "const text = documentClientServiceHttpPathListText(sending.documentId);"
             )
             && method.contains("path += \"/versions/\";")
-            && method.contains(
-                "path += encodeURIComponent(documentClientServiceHttpWireText(sending.versionId));"
-            ),
+            && method
+                .contains("const text = documentClientServiceHttpPathListText(sending.versionId);"),
         "each segment is pushed in template order, a placeholder reading its own field off the \
          validated message rather than splitting a shared prefix. Got: {method}"
     );
@@ -142,15 +141,12 @@ fn a_placeholder_bound_generated_field_fills_the_path() {
     let method = method_body(&written, "window");
     assert!(
         method.contains(
-            "path += encodeURIComponent(\
-             conversationClientServiceHttpWireText(sending.conversationId));"
+            "const text = conversationClientServiceHttpPathListText(sending.conversationId);"
         ),
         "the field the placeholder names is read off the validated message. Got: {method}"
     );
     assert!(
-        !method.contains(
-            "path += encodeURIComponent(conversationClientServiceHttpWireText(sending));"
-        ),
+        !method.contains("const text = conversationClientServiceHttpPathListText(sending);"),
         "stringifying the whole message would send `[object Object]` as the segment. \
          Got: {method}"
     );
@@ -161,9 +157,7 @@ fn a_lone_placeholder_on_a_scalar_message_still_is_the_whole_message() {
     let written = http_client_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     let method = method_body(&written, "purgeConversation");
     assert!(
-        method.contains(
-            "path += encodeURIComponent(conversationClientServiceHttpWireText(sending));"
-        ),
+        method.contains("const text = conversationClientServiceHttpPathListText(sending);"),
         "a message that already is a wire scalar has no field to read: it is the segment. \
          Got: {method}"
     );
@@ -443,7 +437,7 @@ fn a_named_message_answering_to_one_placeholder_is_read_back_as_the_whole_value(
     let written = http_client_of(MIXED_HTTP_SERVICE);
     let method = method_body(&written, "purgeDocument");
     assert!(
-        method.contains("path += encodeURIComponent(documentClientServiceHttpWireText(sending));"),
+        method.contains("const text = documentClientServiceHttpPathListText(sending);"),
         "a `Named` message with exactly one placeholder is that placeholder's own value, not a \
          field read off it. Got: {method}"
     );

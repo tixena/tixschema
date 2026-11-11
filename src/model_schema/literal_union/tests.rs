@@ -1,4 +1,4 @@
-use super::{Literal, Member, Plan, Shape, plan};
+use super::{Candidate, Literal, Member, Plan, Shape, plan, union_of};
 
 fn held(key: &str, value: &str, optional: bool) -> Member {
     Member {
@@ -6,6 +6,7 @@ fn held(key: &str, value: &str, optional: bool) -> Member {
         literal: Some(Literal {
             optional,
             value: value.to_owned(),
+            whole: false,
         }),
     }
 }
@@ -133,4 +134,38 @@ fn the_first_key_every_variant_holds_a_literal_on_is_the_key() {
         ]),
     ];
     assert_eq!(planned(&shapes), Some(on("kind", None)));
+}
+
+fn candidate_on(key: &str, value: &str, whole: bool) -> Candidate {
+    let option = format!("z.strictObject({{ {key}: z.literal({value}) }})");
+    Candidate {
+        option: option.clone(),
+        plain: option,
+        shape: Shape::Object(vec![Member {
+            key: key.to_owned(),
+            literal: Some(Literal {
+                optional: false,
+                value: format!("number {value}"),
+                whole,
+            }),
+        }]),
+    }
+}
+
+#[test]
+fn only_the_float_literals_of_a_numeric_key_are_read_from_a_number_object() {
+    let mixed = union_of(&[
+        candidate_on("grade", "2", true),
+        candidate_on("grade", "1", false),
+    ]);
+    assert!(
+        mixed
+            .code
+            .contains("[1].includes(Number(Reflect.get(held, \"grade\")))")
+    );
+    let wholes = union_of(&[
+        candidate_on("grade", "2", true),
+        candidate_on("grade", "1", true),
+    ]);
+    assert!(wholes.code.starts_with("z.discriminatedUnion("));
 }

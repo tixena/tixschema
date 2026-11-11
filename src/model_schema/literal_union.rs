@@ -20,6 +20,8 @@ pub struct Literal {
     pub optional: bool,
     /// The literal in the text Zod writes it as, its kind in front.
     pub value: String,
+    /// Whether an integer member is held to it, which reads no number written as a float.
+    pub whole: bool,
 }
 
 /// A named member of a variant's object, under the key serde writes it by.
@@ -101,6 +103,11 @@ fn literal_of(fld: &FieldDef) -> Option<Literal> {
     Some(Literal {
         optional: fld.is_optional(),
         value: literal_text(&fld.field_type)?,
+        whole: fld
+            .model_schema_prop_meta
+            .as_ref()
+            .and_then(|meta| meta.collapsed_from.as_ref())
+            .is_some_and(FieldDefType::is_integer),
     })
 }
 
@@ -245,37 +252,40 @@ pub fn union_of(candidates: &[Candidate]) -> ZodUnion {
         options(candidates, &plan)
     );
     ZodUnion {
-        code: if keyed_by_a_number(&shapes, &plan.key) {
-            read_unboxed_key(&joined, &plan.key)
-        } else {
-            joined
+        code: match floats_on_key(&shapes, &plan.key).as_slice() {
+            [] => joined,
+            floats => read_unboxed_key(&joined, &plan.key, floats),
         },
         discriminated: true,
     }
 }
 
-/// Whether a variant holds `key` to a number.
-fn keyed_by_a_number(shapes: &[&Shape], key: &str) -> bool {
-    shapes.iter().any(|shape| {
-        matches!(shape, Shape::Object(members) if members.iter().any(|member| {
-            member.key == key
-                && member
-                    .literal
-                    .as_ref()
-                    .is_some_and(|literal| literal.value.starts_with("number "))
-        }))
-    })
+/// The values of the float literals the variants hold `key` to, in the text Zod writes them.
+fn floats_on_key(shapes: &[&Shape], key: &str) -> Vec<String> {
+    shapes
+        .iter()
+        .filter_map(|shape| match shape {
+            Shape::Object(members) => members.iter().find(|member| member.key == key),
+            Shape::Unreadable => None,
+        })
+        .filter_map(|member| member.literal.as_ref())
+        .filter(|literal| !literal.whole)
+        .filter_map(|literal| literal.value.strip_prefix("number "))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// `union`, a discriminated union on `key`, handed an object whose `key` holds a `Number` object
-/// with the number in its place: the service code reads a number written with a fraction or an
-/// exponent as one, and the union looks its option up by the key's own value.
-fn read_unboxed_key(union: &str, key: &str) -> String {
+/// of one of the float literals `floats` with the number in its place: the service code reads a
+/// number written with a fraction or an exponent as one, and the union looks its option up by the
+/// key's own value. A `Number` object no float literal holds stays, and no option reads it.
+fn read_unboxed_key(union: &str, key: &str, floats: &[String]) -> String {
     let quoted = ts_quoted(key);
+    let listed = floats.join(", ");
     format!(
         "z.preprocess((held) => typeof held === \"object\" && held !== null && !Array.isArray(held) \
-         && Reflect.get(held, {quoted}) instanceof Number ? {{ ...held, {quoted}: \
-         Number(Reflect.get(held, {quoted})) }} : held, {union})"
+         && Reflect.get(held, {quoted}) instanceof Number && [{listed}].includes(Number(Reflect.get(held, \
+         {quoted}))) ? {{ ...held, {quoted}: Number(Reflect.get(held, {quoted})) }} : held, {union})"
     )
 }
 
