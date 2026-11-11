@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
+use super::kotlin_flattened::FLATTENED;
 use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
 use super::read::{DECODED, judged, kept_inline};
@@ -596,9 +597,9 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              SerializationException(\"expected an object, found \" + it) }; val id = \
              kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"id\"] ?: throw \
              SerializationException(\"missing field `id`\")), \"id\", \".id\"); val stampKeys = \
-             setOf(\"created_at\", \"updated_at\"); val stamp = \
+             setOf(\"created_at\", \"updated_at\"); val stamp = kotlinSchemaFlattened { \
              input.json.decodeFromString(StampUnjudged, JsonObject(obj.filterKeys { it in \
-             setOf(\"created_at\", \"updated_at\") }).toString()); if \
+             setOf(\"created_at\", \"updated_at\") }).toString()) }; if \
              (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
              setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
              SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; Audit(id = \
@@ -641,6 +642,7 @@ fn with_helpers(written: &str) -> String {
         (written.contains("kotlinSchemaDecoded("), DECODED),
         (pathed, PATHED),
         (written.contains("kotlinSchemaInner("), INNER),
+        (written.contains("kotlinSchemaFlattened {"), FLATTENED),
     ]
     .iter()
     .filter(|(used, _)| *used)

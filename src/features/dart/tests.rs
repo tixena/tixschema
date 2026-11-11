@@ -96,11 +96,11 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     };
     let (cleat_from, bollard_from) = (only("'kind', 'turns'"), only("'kind', 'body'"));
     let expected = format!(
-        "Belaying(cleat: ({cleat_from}.keys.any(const ['kind'].contains) ? \
-         Cleat.fromJsonUnjudged({cleat_from}) : null),bollard: \
+        "Belaying(cleat: _readFlattened(() => ({cleat_from}.keys.any(const ['kind'].contains) ? \
+         Cleat.fromJsonUnjudged({cleat_from}) : null)),bollard: _readFlattened(() => \
          ({bollard_from}.keys.any(const ['kind', 'body'].contains) ? \
-         Bollard.fromJsonUnjudged({bollard_from}) : null),bitt: (() {{ try {{ return \
-         Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})(),note: \
+         Bollard.fromJsonUnjudged({bollard_from}) : null)),bitt: _readFlattened(() => (() {{ try \
+         {{ return Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})()),note: \
          _readAt(json, 'note', () => json['note'] as String),);"
     );
     let dart = definition(struct_dart_tokens(&item, &plain_args()));

@@ -42,32 +42,41 @@ const CAREEN_HELD: &str = "guard let careenKey = careenFound.first, \
      throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: \"no variant of enum Careen found in flattened data\")) }; ";
 
+/// `read`, the statements that read a flattened member, which place a refusal inside it at the
+/// holder.
+fn flat(read: &str) -> String {
+    format!(
+        "do {{ {read} }} catch let refused as DecodingError {{ throw \
+         Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }}"
+    )
+}
+
 /// The read of a map flattened into `property`, keyed by text, of entries `value` reads under
 /// `entry`, gathered in a `[String: {value_type}]`: of every key the types around its holder did
 /// not take.
 fn entries_read(property: &str, value_type: &str, value: &str) -> String {
-    format!(
+    flat(&format!(
         "let keyed = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); \
          var entries: [String: {value_type}] = [:]; \
          for entry in keyed.allKeys where !taken.contains(entry.stringValue) {{ \
          entries[entry.stringValue] = {value} }}; self.{property} = entries"
-    )
+    ))
 }
 
 /// The read of the member `property` that names `withItsKeys`, from the payload without `taken`,
 /// beside its `nonstrict` holder: the type read from the function's answer refuses a key it does
 /// not declare, as serde reads it.
 fn handed(property: &str, taken: &str) -> String {
-    format!(
+    flat(&format!(
         "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
          self.{property} = try SwiftSchemaPayload.readRefusing(Counting.self, \
          from: withItsKeys({property}Payload), at: decoder.codingPath)"
-    )
+    ))
 }
 
 /// The read of the `Pennant` flattened into `property`, from the whole object its holder reads.
 fn pennant(property: &str) -> String {
-    format!("self.{property} = try Pennant(from: decoder)")
+    flat(&format!("self.{property} = try Pennant(from: decoder)"))
 }
 
 /// Asserts that `definition` holds `fragment`.
@@ -99,10 +108,11 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
         &entries_read(
             "rest",
             "UInt8",
-            "try keyed.decode(UInt8.self, forKey: entry)",
+            "try Self.swiftSchemaFitted({ try keyed.decode(UInt8.self, forKey: entry) }, again: { \
+             _ = try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry) })",
         ),
     );
-    assert_written(&stopping, &format!("{TAKING} {{ let keyed = "));
+    assert_written(&stopping, &format!("{TAKING} {{ do {{ let keyed = "));
     assert_written(
         &stopping,
         "public func encode(to encoder: Encoder) throws { try self.rest.encode(to: encoder) }",
@@ -114,10 +124,11 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
         &entries_read(
             "rest",
             "UInt8",
-            "try keyed.decode(UInt8.self, forKey: entry)",
+            "try Self.swiftSchemaFitted({ try keyed.decode(UInt8.self, forKey: entry) }, again: { \
+             _ = try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry) })",
         ),
     );
-    assert_written(&clewing, &format!("{TAKING} {{ let keyed = "));
+    assert_written(&clewing, &format!("{TAKING} {{ do {{ let keyed = "));
     assert_written(
         &clewing,
         "public func encode(to encoder: Encoder) throws { try self.rest.encode(to: encoder) }",
@@ -139,8 +150,10 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
     let parceling = parceling_swift::swift_definition();
     assert_written(
         &parceling,
-        "self.rest = try ParcelingRestKeyedMap(swiftSchemaUnjudged: decoder, \
-         swiftSchemaWithout: taken).storage",
+        &flat(
+            "self.rest = try ParcelingRestKeyedMap(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken).storage",
+        ),
     );
     assert_written(
         &parceling,
@@ -152,7 +165,8 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
          let wireKey = codingKey.stringValue; guard let key = Quarter(rawValue: wireKey) else { \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
          debugDescription: \"bad key \\(wireKey)\") }; \
-         result[key] = try container.decode(UInt8.self, forKey: codingKey) }; \
+         result[key] = try Self.swiftSchemaFitted({ try container.decode(UInt8.self, forKey: \
+         codingKey) }, again: { _ = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey) }) }; \
          storage = result } };",
     );
     assert_written(
@@ -162,8 +176,10 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
     let toggling = toggling_swift::swift_definition();
     assert_written(
         &toggling,
-        "self.rest = try TogglingRestKeyedMap<Held>(swiftSchemaUnjudged: decoder, \
-         swiftSchemaWithout: taken).storage",
+        &flat(
+            "self.rest = try TogglingRestKeyedMap<Held>(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken).storage",
+        ),
     );
     assert_written(
         &toggling,
@@ -271,8 +287,11 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     assert_written(
         &splaying,
         &format!(
-            "{flag}self.footing = try Footing(swiftSchemaUnjudged: decoder, \
-             swiftSchemaWithout: taken + [\"note\", \"label\"]); {note}"
+            "{flag}{}; {note}",
+            flat(
+                "self.footing = try Footing(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                 taken + [\"note\", \"label\"])"
+            )
         ),
     );
     assert_written(
@@ -296,9 +315,11 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
         &closed(
             &["label", "mark", "note"],
             &format!(
-                "let container = try decoder.container(keyedBy: CodingKeys.self); \
-                 {flag}self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
-                 taken + [\"note\", \"label\"]); {note}"
+                "let container = try decoder.container(keyedBy: CodingKeys.self); {flag}{}; {note}",
+                flat(
+                    "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                     taken + [\"note\", \"label\"])"
+                )
             ),
         ),
     );
@@ -325,7 +346,7 @@ fn a_struct_flattened_first_is_read_from_the_whole_object_and_a_function_without
     assert_written(&hanking, ALONE);
     assert_written(
         &bowsing_swift::swift_definition(),
-        "self.hanking = try Hanking(from: decoder)",
+        &flat("self.hanking = try Hanking(from: decoder)"),
     );
     let stropping = stropping_swift::swift_definition();
     assert_written(
@@ -336,7 +357,7 @@ fn a_struct_flattened_first_is_read_from_the_whole_object_and_a_function_without
             handed("tally", "taken + [\"label\"]")
         ),
     );
-    assert_written(&stropping, &format!("{TAKING} {{ self.flag = "));
+    assert_written(&stropping, &format!("{TAKING} {{ do {{ self.flag = "));
     assert_written(
         &stropping,
         "public func encode(to encoder: Encoder) throws { \
@@ -356,9 +377,12 @@ fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
         &closed(
             &["label", "mark"],
             &format!(
-                "{}; self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
-                 taken + [\"label\"])",
-                pennant("flag")
+                "{}; {}",
+                pennant("flag"),
+                flat(
+                    "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
+                     taken + [\"label\"])"
+                )
             ),
         ),
     );
@@ -421,7 +445,9 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
         &pointing,
         &closed(
             &["mark"],
-            "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
+            &flat(
+                "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
+            ),
         ),
     );
     assert_written(
@@ -469,28 +495,30 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         &anchoring,
         &format!(
             "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
-             {}{CAREEN_HELD}{CAREEN_READ}; \
-             self.note = try container.decode(String.self, forKey: .note) }}",
-            careen_found("taken + [\"note\"]")
+             {}{CAREEN_HELD}{}; self.note = try container.decode(String.self, forKey: .note) }}",
+            careen_found("taken + [\"note\"]"),
+            flat(CAREEN_READ)
         ),
     );
     let dredging = dredging_swift::swift_definition();
     assert_written(
         &dredging,
         &format!(
-            "{TAKING} {{ {}{CAREEN_HELD}{CAREEN_READ}; {} }}",
+            "{TAKING} {{ {}{CAREEN_HELD}{}; {} }}",
             careen_found("taken"),
+            flat(CAREEN_READ),
             handed("tally", "taken + careenFound")
         ),
     );
     assert_written(
         &fending_swift::swift_definition(),
         &format!(
-            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}\
-             if let careenKey = careenFound.first, let careenHeld = careenObject[careenKey] {{ \
-             {CAREEN_READ} }} else {{ self.careen = nil }}; \
-             self.note = try container.decode(String.self, forKey: .note) }}",
-            careen_found("taken + [\"note\"]")
+            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); \
+             {}if let careenKey = careenFound.first, let careenHeld = careenObject[careenKey] {{ \
+             {} }} else {{ self.careen = nil }}; self.note = try container.decode(String.self, \
+             forKey: .note) }}",
+            careen_found("taken + [\"note\"]"),
+            flat(CAREEN_READ)
         ),
     );
 }

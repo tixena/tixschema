@@ -514,8 +514,8 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          ?: throw SerializationException(\"missing field `dock`\"))), \"dock\", \".dock\");",
         "val note = obj[\"note\"]?.let { kotlinSchemaDecoded(input.json, serializer<String?>(), \
          lowered(trimmed(it)), \"note\", \".note\") };",
-        "val parcel = input.json.decodeFromString(ParcelUnjudged, JsonObject(obj.filterKeys { it \
-         in setOf(\"label\") }).toString());",
+        "val parcel = kotlinSchemaFlattened { input.json.decodeFromString(ParcelUnjudged, \
+         JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString()) };",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -566,14 +566,17 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     };
     let kotlin = plain(&fastened);
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
-    let whole = "val base = input.json.decodeFromString(BaseUnjudged, JsonObject(obj.filterKeys { \
-                 it in setOf(\"name\") }).toString());";
+    let whole = "val base = kotlinSchemaFlattened { input.json.decodeFromString(BaseUnjudged, \
+                 JsonObject(obj.filterKeys { it in setOf(\"name\") }).toString()) };";
     for held in [
         whole.to_owned(),
-        format!("val keyed = lenient.decodeFromString(KeyedUnjudged, {rest}.toString());"),
         format!(
-            "val later = lenient.decodeFromString(serializer<Later>(), \
-             kotlinSchemaFlat(serializer<Later>(), {rest}).toString());"
+            "val keyed = kotlinSchemaFlattened {{ lenient.decodeFromString(KeyedUnjudged, \
+             {rest}.toString()) }};"
+        ),
+        format!(
+            "val later = kotlinSchemaFlattened {{ lenient.decodeFromString(serializer<Later>(), \
+             kotlinSchemaFlat(serializer<Later>(), {rest}).toString()) }};"
         ),
         whole.replace("val base", "val again"),
     ] {
@@ -590,8 +593,8 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let around = plain(&outer);
     assert!(
         around.contains(
-            "val fastened = lenient.decodeFromString(FastenedUnjudged, JsonObject(obj - \
-             setOf(\"yard\")).toString());"
+            "val fastened = kotlinSchemaFlattened { lenient.decodeFromString(FastenedUnjudged, \
+             JsonObject(obj - setOf(\"yard\")).toString()) };"
         ),
         "got: {around}"
     );
@@ -606,8 +609,8 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_member = plain(&girdled);
     assert!(
         named_by_the_member.contains(
-            "val base = lenient.decodeFromString(BaseUnjudged, withItsKeys(JsonObject(obj - \
-             setOf(\"dock\"))).toString());"
+            "val base = kotlinSchemaFlattened { lenient.decodeFromString(BaseUnjudged, \
+             withItsKeys(JsonObject(obj - setOf(\"dock\"))).toString()) };"
         ),
         "got: {named_by_the_member}"
     );
@@ -621,9 +624,9 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_map = plain(&strapped);
     assert!(
         named_by_the_map.contains(
-            "val rest = withItsKeys(obj).let { it as? JsonObject ?: throw \
+            "val rest = kotlinSchemaFlattened { withItsKeys(obj).let { it as? JsonObject ?: throw \
              SerializationException(\"expected an object, found \" + it) }.mapValues { (k, v) -> \
-             kotlinSchemaDecoded(input.json, serializer<String>(), v, k, \".\" + k) }"
+             kotlinSchemaDecoded(input.json, serializer<String>(), v, k, \".\" + k) } }"
         ),
         "got: {named_by_the_map}"
     );

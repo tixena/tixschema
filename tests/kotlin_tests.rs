@@ -19,6 +19,12 @@ mod kotlin_pathed;
 #[path = "support/kotlin_inner.rs"]
 mod kotlin_inner;
 
+/// The private function the emitter writes into a serializer that reads a flattened member.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_flattened.rs"]
+mod kotlin_flattened;
+
 #[cfg(test)]
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/validate.rs"]

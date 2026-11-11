@@ -1481,7 +1481,7 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
         (
             16,
             "refused: SerializationException: Expected quotation mark '\"', but had '5' instead at \
-             path: $.label",
+             path: $",
         ),
     ] {
         in_kotlin[at] = refused;
@@ -1829,8 +1829,10 @@ fn option_rows() -> Vec<OptionRow> {
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kotlin() {
     let looked_for = |kotlin: &str, prop: &str, read: &str, keys: &str| {
-        let held =
-            format!("val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) {read} else null;");
+        let held = format!(
+            "val {prop} = kotlinSchemaFlattened {{ if (obj.keys.any {{ it in setOf({keys}) }}) \
+             {read} else null }};"
+        );
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     };
     looked_for(
@@ -1889,7 +1891,7 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
     let mistyped = "SerializationException: invalid type: string \"x\", expected u32 at path:";
     let unnamed = "SerializationException: unknown tag Gale at path: $";
     for (at, refused) in [
-        (9, format!("{mistyped} $.body.turns")),
+        (9, format!("{mistyped} $")),
         (10, unnamed.to_owned()),
         (
             11,
@@ -1963,10 +1965,11 @@ fn a_unit_variants_entry_reads_in_kotlin_over_null_alone() {
         "invalid type: integer `1`, expected unit at line 1 column 9",
         "serde no longer refuses a unit variant's entry over a number as it did"
     );
-    let refused = "refused: SerializationException: Thimble: Calm takes no value at path: $.Calm";
+    let refused = "refused: SerializationException: Thimble: Calm takes no value at path:";
     let mut in_kotlin = serde_told;
-    in_kotlin[0] = refused.to_owned();
-    in_kotlin[4] = refused.to_owned();
+    in_kotlin[0] = format!("{refused} $.Calm");
+    // Flattened, the enum's refusal is placed at its holder, as serde places it.
+    in_kotlin[4] = format!("{refused} $");
     let mut expected = String::new();
     let mut main = String::from(TOLD_OR_REFUSED);
     main.push_str("fun main() {\n");

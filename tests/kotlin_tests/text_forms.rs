@@ -235,9 +235,10 @@ fn a_flattened_maps_key_is_read_through_the_serializer_of_its_form() {
     );
     assert!(
         kotlin.contains(&format!(
-            "val lines = obj.entries.associate {{ (k, v) -> input.json.decodeFromString({letter}, \
+            "val lines = kotlinSchemaFlattened {{ obj.entries.associate {{ (k, v) -> \
+             input.json.decodeFromString({letter}, \
              JsonPrimitive(k).toString()) to kotlinSchemaDecoded(input.json, KotlinNumber1, v, k, \
-             \".\" + k) }}"
+             \".\" + k) }} }}"
         )),
         "got: {kotlin}"
     );

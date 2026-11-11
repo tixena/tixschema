@@ -55,6 +55,17 @@ pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: Serialization
      KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw \
      kotlinSchemaRebased(refused, \"\\$\" + step) }; ";
 
+/// What a serializer reads a flattened member through. serde reads such a member from the keys its
+/// holder buffers and places a refusal inside it at the holder, so the refusal states the root as
+/// its path, which the holder's `kotlinSchemaAt` rebases, drops the place it states, and keeps the
+/// key it names as unknown or missing.
+const FLATTENED: &str = "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
+     KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) \
+     { if (refused.cause?.message == \"validate()\") throw refused; throw \
+     SerializationException(refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token \
+     at offset \\\\d+: \"), \"\").replaceFirst(Regex(\"^'[^']*': \"), \"\").replace(Regex(\" at \
+     path: \\\\$[^\\\\n]*\"), \" at path: \\\\$\"), refused) }; ";
+
 /// What a serializer reads a part of the element it took apart with: from its text, where
 /// kotlinx states the path of a value it refuses, rebased onto `step`.
 pub const INNER: &str = "private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: String, \
@@ -647,14 +658,23 @@ pub fn helpers_for(declarations: &str) -> String {
     let pathed = inner
         || declarations.contains("kotlinSchemaDecoded(")
         || declarations.contains("kotlinSchemaAt(")
+        || declarations.contains("kotlinSchemaAt<")
         || declarations.contains("kotlinSchemaUnder(");
+    let flattened = declarations.contains("kotlinSchemaFlattened {");
     format!(
-        "{}{}{}{}",
+        "{}{}{}{}{}",
         if decoded { DECODED } else { "" },
         if flat { FLATTENED_NAME } else { "" },
         if pathed { PATHED } else { "" },
-        if inner { INNER } else { "" }
+        if inner { INNER } else { "" },
+        if flattened { FLATTENED } else { "" }
     )
+}
+
+/// `read`, the read of a flattened member, through [`FLATTENED`]: a refusal inside the member
+/// names its holder, as serde names it.
+pub fn flattened(read: &str) -> String {
+    format!("kotlinSchemaFlattened {{ {read} }}")
 }
 
 /// `declarations`, the members of a serializer, behind the private functions its reads name.

@@ -35,7 +35,7 @@ use syn::{
 };
 
 use self::preprocess::Plugin;
-use self::read::{JUDGED, PATHED};
+use self::read::PATHED;
 use self::validate::{Member, Rules};
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
@@ -1231,7 +1231,8 @@ pub fn key_object_name(rust_ident: &str) -> String {
 }
 
 /// The `object` that reads the brand `export_name` as a map key: its value read from the text
-/// serde writes, then built and checked as the brand's own read builds and checks it.
+/// serde writes, then built and checked as the brand's own read builds and checks it. A key
+/// `validate()` refuses is refused at the path of its map, each message under the key's text.
 fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
     let (held, read) = match leaf {
         texts::KeyLeaf::Brand(inner) => (
@@ -1246,13 +1247,21 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
             ),
         ),
     };
+    let deserialize = format!(
+        "override fun deserialize(decoder: Decoder): {export_name} {{ val held = \
+         leaf.deserialize(decoder); val read = {export_name}(held); val violations = \
+         read.validate(); if (violations.isNotEmpty()) {{ val key = (decoder as? \
+         JsonDecoder)?.json?.encodeToJsonElement(leaf, held)?.jsonPrimitive?.content ?: \
+         held.toString(); kotlinSchemaAt<Unit>(decoder) {{ throw \
+         SerializationException(violations.joinToString(\"; \") {{ \"'\" + key + \"': \" + it }}) \
+         }} }}; return read }}"
+    );
     format!(
         "object {export_name}KeySerializer : KSerializer<{export_name}> {{ private val leaf: \
          KSerializer<{held}> = {read}; override val descriptor: SerialDescriptor = \
          leaf.descriptor; override fun serialize(encoder: Encoder, value: {export_name}) = \
-         leaf.serialize(encoder, value.value); override fun deserialize(decoder: Decoder): \
-         {export_name} {{ val read = {export_name}(leaf.deserialize(decoder)); val violations = \
-         read.validate(); if (violations.isNotEmpty()) throw {JUDGED}; return read }} }}"
+         leaf.serialize(encoder, value.value); {} }}",
+        read::with_decoded(&deserialize)
     )
 }
 
@@ -1641,8 +1650,9 @@ fn result_class(ok: &FieldDef, err: &FieldDef) -> String {
 }
 
 /// The declarations of the interface `named` of a `Result` whose arms hold `()` where `shape`
-/// says so: the interface, a class per arm, and its serializer. The serializer reads the object
-/// as the plugin reads a class, key by key, so a key no arm writes is refused as serde refuses it.
+/// says so: the interface, a class per arm, and its serializer. The serializer takes the object
+/// apart at the path it was read at: an arm is read under its key, and a key no arm writes is
+/// refused as serde refuses an unknown variant.
 fn result_declarations(named: &str, shape: [bool; 2]) -> String {
     let held: Vec<&str> = RESULT_ARMS
         .into_iter()
@@ -1689,14 +1699,20 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
         elements.push(format!(
             "element(\"{arm}\", {read_by}.descriptor, isOptional = true)"
         ));
+        let key = kotlin_quoted(arm);
+        let decoded = read::decoded(
+            "input.json",
+            &read_by,
+            "entry.value",
+            &key,
+            &read::keyed_step(&key),
+        );
         if unit {
             arms.push(format!("data object {named}{arm} : {implemented}"));
             writes.push(format!(
                 "is {named}{arm} -> encodeSerializableElement(descriptor, {index}, {read_by}, JsonNull)"
             ));
-            reads.push(format!(
-                "{index} -> {{ decodeSerializableElement(descriptor, {index}, {read_by}); {named}{arm} }}"
-            ));
+            reads.push(format!("{key} -> {{ {decoded}; {named}{arm} }}"));
         } else {
             arms.push(format!(
                 "data class {named}{arm}<out {arm}Value>(val value: {arm}Value) : {implemented}"
@@ -1704,9 +1720,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
             writes.push(format!(
                 "is {named}{arm} -> encodeSerializableElement(descriptor, {index}, {read_by}, value.value)"
             ));
-            reads.push(format!(
-                "{index} -> {named}{arm}(decodeSerializableElement(descriptor, {index}, {read_by}))"
-            ));
+            reads.push(format!("{key} -> {named}{arm}({decoded})"));
         }
     }
     let opened = if held.is_empty() {
@@ -1724,22 +1738,35 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
         format!("class {serializer}{invariant}({})", handed.join(", "))
     };
     let own = format!("{named}{invariant}");
+    let deserialize = result_read(&own, refusal, &reads);
     format!(
         "@Serializable(with = {serializer}::class) sealed interface {named}{covariant} {} \
          {opened} : KSerializer<{own}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{named}\") {{ {} }}; \
          override fun serialize(encoder: Encoder, value: {own}) = encoder.encodeStructure(descriptor) {{ \
-         when (value) {{ {} }} }}; \
-         override fun deserialize(decoder: Decoder): {own} = decoder.decodeStructure(descriptor) {{ \
-         var read: {own}? = null; \
-         while (true) {{ val index = decodeElementIndex(descriptor); \
-         if (index == CompositeDecoder.DECODE_DONE) break; if (read != null) {refusal}; \
-         read = when (index) {{ {}; else -> {refusal} }} }}; \
-         read ?: {refusal} }} }}",
+         when (value) {{ {} }} }}; {} }}",
         arms.join(" "),
         elements.join("; "),
         writes.join("; "),
-        reads.join("; "),
+        read::with_decoded(&deserialize),
+    )
+}
+
+/// The `deserialize` of the serializer of a `Result` typed `own`: the object of one key, read under
+/// it by the arm of `reads` that names it, `refusal` for an object of any other number of keys, and
+/// an unknown variant in serde's words for a key no arm names.
+fn result_read(own: &str, refusal: &str, reads: &[String]) -> String {
+    let read = format!(
+        "val entry = (element as? JsonObject ?: throw SerializationException(\"expected an \
+         object, found \" + element)).entries.singleOrNull() ?: {refusal}; when (entry.key) {{ \
+         {}; else -> throw SerializationException(\"unknown variant `\" + entry.key + \"`, \
+         expected `Ok` or `Err`\") }}",
+        reads.join("; ")
+    );
+    format!(
+        "override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
+         {} }}",
+        read::read_at("input", "input.decodeJsonElement()", &read)
     )
 }
 
@@ -2241,7 +2268,7 @@ fn flatten_struct_field_plan(
             }
         }
     };
-    statements.push(format!("val {prop} = {read}"));
+    statements.push(format!("val {prop} = {}", read::flattened(&read)));
     FlattenedMember {
         deserialize: statements.join("; "),
         lenient: known.is_none(),
@@ -2418,14 +2445,18 @@ fn flatten_enum_field_plan(
         };
         (
             format!(
-                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ {held} }}"
+                "val {entry_ident} = {entry_read}; val {prop} = {}",
+                read::flattened(&format!("{entry_ident}?.let {{ {held} }}"))
             ),
             format!("setOfNotNull({entry_ident}?.key)"),
         )
     } else {
         (
             format!(
-                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = input.json.decodeFromString({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())).toString())"
+                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = {}",
+                read::flattened(&format!(
+                    "input.json.decodeFromString({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())).toString())"
+                ))
             ),
             format!("{entry_ident}.key"),
         )
@@ -2494,7 +2525,10 @@ fn flatten_map_field_plan(
             entries(&payload_read_as(&corrected, JsonKind::Object))
         }
     };
-    (serialize, format!("val {prop} = {read}"))
+    (
+        serialize,
+        format!("val {prop} = {}", read::flattened(&read)),
+    )
 }
 
 /// The [`FlattenPlan`] of `fields`, read from an object that holds `beside`, a key no member

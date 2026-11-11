@@ -19,6 +19,12 @@ mod readme;
 #[path = "serde_default_tests/tests.rs"]
 mod tests;
 
+/// What the Swift emitter writes into a type whose reads read a fixed-width integer.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_fitted.rs"]
+mod swift_fitted;
+
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;

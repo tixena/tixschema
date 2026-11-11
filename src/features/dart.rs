@@ -75,12 +75,13 @@ const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
 
 /// The members an emitted class declares beside those of an enum, which a function of the same name
 /// is called through a forwarder for: the holder of a brand's value and the static helpers.
-const DART_CLASS_MEMBERS: [&str; 9] = [
+const DART_CLASS_MEMBERS: [&str; 10] = [
     "_boundLength",
     "_boundText",
     "_heldBound",
     "_number",
     "_readAt",
+    "_readFlattened",
     "_repeats",
     "_under",
     "validateBound",
@@ -113,6 +114,15 @@ const DART_RESERVED: [&str; 33] = [
 const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { try { return \
      (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
      []; } }";
+
+/// The helper a class reads a flattened member with. serde reads such a member from the keys its
+/// holder buffers and places a refusal inside it at the holder, so the path the refusal carries is
+/// dropped, but for the key a `missing field` or an unknown key names.
+const READ_FLATTENED: &str = "static Read _readFlattened<Read>(Read Function() read) { try { \
+     return read(); } on FormatException catch (refused) { final at = refused.source; if (at is! \
+     List<Object> || at.isEmpty) rethrow; final message = refused.message; throw \
+     FormatException(message, <Object>[if (message.startsWith('missing field ') || \
+     message.startsWith('Unknown key of a ')) at.last]); } }";
 
 /// The helper a type's `validate()` writes a place in front of a message with: into the place the
 /// message already names, or ahead of one that names none.
@@ -4009,10 +4019,11 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                     first_entry_decode(def, &first)
                 }
             };
+            let held = format!("_readFlattened(() => {decode})");
             if field.read_as.is_some() {
-                format!("{}({decode})", dart_typename(&field.field_def))
+                format!("{}({held})", dart_typename(&field.field_def))
             } else {
-                decode
+                held
             }
         } else {
             let read = Read::Unjudged;
@@ -4145,10 +4156,15 @@ fn tag_checked_reads(
     codec: &GenericCodec,
     corrects: &Corrects<'_>,
 ) -> String {
-    let (reads, called) = reading_at("_readAt", || {
+    let (own, called) = reading_at("_readAt", || {
         tag_checked_read_pair(class_name, fields, tag_key, own_tag, codec, corrects)
     });
-    with_read_at(reads, called)
+    let reads = with_read_at(own, called);
+    if fields.iter().any(|field| field.flatten) {
+        format!("{reads} {READ_FLATTENED}")
+    } else {
+        reads
+    }
 }
 
 /// [`tag_checked_reads`] before the helper its reads call.

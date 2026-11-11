@@ -1,12 +1,11 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the Dart and
 //! Kotlin `ws_rpc` attachments and by the Dart, Kotlin and Swift `ws_rpc` clients handed it as a
 //! reply. Each refusal answers `failed-validation` naming the field the Rust dispatcher names for
-//! the same payload, or below it where serde names the holder of a flattened member, and an
-//! attachment calls no handler for it. Each run resolves on the replies
-//! it counts, with no clock.
+//! the same payload, but for the cases a surface's table of its own records, and an attachment
+//! calls no handler for it. Each run resolves on the replies it counts, with no clock.
 
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
-use super::carillon_service::{CASES, NAMED_ABOVE, STRUCK, frame, payload, rust_fields};
+use super::carillon_service::{CASES, STRUCK, frame, payload, rust_fields};
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 use core::fmt::Write as _;
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
@@ -17,8 +16,8 @@ use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_peal_dart, carillon_swing_dart, carillon_turn_dart,
-    carillon_yoke_dart,
+    carillon_frame_dart, carillon_peal_dart, carillon_pitch_dart, carillon_swing_dart,
+    carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -29,6 +28,9 @@ use super::runtime::ran;
 /// handler; then the client handed each payload as the reply, and what it answered.
 #[cfg(feature = "dart")]
 const DART_DRIVER: &str = "
+List<String> withinScale(CarillonPitch value) =>
+    value.value <= 12 ? const <String>[] : <String>['${value.value} is outside of the scale'];
+
 Object? told(CarillonServiceStrikeResult answered) => switch (answered) {
   CarillonServiceStrikeResultOk() => 'read',
   CarillonServiceStrikeResultFault(:final fault) => <String, dynamic>{
@@ -94,6 +96,9 @@ void main() async {
 /// The attachment handed each frame, then the client handed each payload as the reply.
 #[cfg(feature = "kotlin")]
 const KOTLIN_DRIVER: &str = r#"
+fun withinScale(value: CarillonPitch): List<String> =
+    if (value.value <= 12u) emptyList() else listOf("${value.value} is outside of the scale")
+
 class ManualSocket(private val onSend: (String) -> Unit) : CarillonServiceWsSocket {
     override var onMessage: ((String) -> Unit)? = null
     override var onClose: (() -> Unit)? = null
@@ -162,6 +167,10 @@ fun main() = runBlocking {
 /// The client handed each payload as the reply.
 #[cfg(feature = "swift")]
 const SWIFT_DRIVER: &str = r#"
+func withinScale(_ value: CarillonPitch) -> [String] {
+  value.value <= 12 ? [] : ["\(value.value) is outside of the scale"]
+}
+
 final class Replying: CarillonServiceWsSocket, @unchecked Sendable {
   var onMessage: (@Sendable (String) -> Void)?
   var onClose: (@Sendable () -> Void)?
@@ -204,10 +213,29 @@ for value in payloads {
 print("[" + read.joined(separator: ",") + "]")
 "#;
 
-/// What Foundation's `JSONDecoder` refuses with no coding path: a number outside the range of the
-/// integer it reads it as, refused as data that is not valid JSON.
+/// The cases the Dart attachment and client answer apart from the Rust dispatcher, and the field
+/// each names: a key a brand's check refuses is named at its map alone, and a value an arm of a
+/// `Result` refuses at the `Result` alone.
+#[cfg(feature = "dart")]
+const DART_APART: [(&str, Option<&str>); 3] = [
+    ("a key its check refuses", Some("pitches")),
+    ("a text in an arm of a Result", Some("tally")),
+    ("a negative number in an arm of a Result", Some("tally")),
+];
+
+/// The case the Kotlin attachment and client answer apart from the Rust dispatcher, and the field
+/// it names: a value refused in a map keyed by a brand names its key as the brand's `toString()`
+/// writes it, which is the step kotlinx states.
+#[cfg(feature = "kotlin")]
+const KOTLIN_APART: [(&str, Option<&str>); 1] = [(
+    "a negative number for a map value",
+    Some("pitches.CarillonPitch(value=3)"),
+)];
+
+/// The case the Swift client answers apart from the Rust dispatcher: it reads a key a brand's check
+/// refuses, `None` for the message read.
 #[cfg(feature = "swift")]
-const SWIFT_UNPLACED: [&str; 1] = ["a negative number for a u32"];
+const SWIFT_APART: [(&str, Option<&str>); 1] = [("a key its check refuses", None)];
 
 /// Each payload of [`CASES`].
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
@@ -215,30 +243,32 @@ fn payloads() -> Vec<String> {
     CASES.into_iter().map(payload).collect()
 }
 
-/// What a client must answer for each payload handed as its reply: the payload read, and of one
-/// the Rust dispatcher refuses the fault's kind and the field it names, but where it names the
-/// holder of a flattened member ([`NAMED_ABOVE`]), the place the case changes.
+/// What a surface must answer for each payload: the payload read, and of one the Rust dispatcher
+/// refuses the fault's kind and the field it names, but for the cases `apart` names, which the
+/// surface reads where it holds `None` and refuses naming the field it holds otherwise.
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
-fn read_as_rust() -> Vec<Value> {
+fn read_as_rust(apart: &[(&str, Option<&str>)]) -> Vec<Value> {
     CASES
         .into_iter()
         .zip(rust_fields())
         .map(|(case, field)| {
-            if field.is_null() {
-                json!("read")
-            } else if NAMED_ABOVE.iter().any(|(named, _)| *named == case.0) {
-                json!({ "kind": "failed-validation", "field": case.1 })
-            } else {
-                json!({ "kind": "failed-validation", "field": field })
+            let answered = apart
+                .iter()
+                .find_map(|(named, answered)| (*named == case.0).then_some(*answered));
+            match answered {
+                Some(None) => json!("read"),
+                Some(Some(named)) => json!({ "kind": "failed-validation", "field": named }),
+                None if field.is_null() => json!("read"),
+                None => json!({ "kind": "failed-validation", "field": field }),
             }
         })
         .collect()
 }
 
-/// Holds what an attachment replied to each frame to the Rust dispatcher's answer: the message
-/// handed back with one strike reached, or the fault's kind and field with none.
+/// Holds what an attachment replied to each frame to [`read_as_rust`]: the message handed back
+/// with one strike reached, or the fault's kind and field with none.
 #[cfg(any(feature = "dart", feature = "kotlin"))]
-fn assert_attached_as_rust(attached: &Value) {
+fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
     let whole: Value = serde_json::from_str(STRUCK).unwrap();
     let told: Vec<Value> = CASES
         .into_iter()
@@ -258,7 +288,7 @@ fn assert_attached_as_rust(attached: &Value) {
         .collect();
     let expected: Vec<Value> = CASES
         .into_iter()
-        .zip(read_as_rust())
+        .zip(read_as_rust(apart))
         .map(|(case, answer)| {
             let struck = u8::from(answer == "read");
             json!({ "case": case.0, "answer": answer, "struck": struck })
@@ -267,10 +297,9 @@ fn assert_attached_as_rust(attached: &Value) {
     assert_eq!(told, expected, "{attached}");
 }
 
-/// Holds what a client answered to each payload to [`read_as_rust`], but for the cases `apart`
-/// names, where the client answers its fault with no field.
+/// Holds what a client answered to each payload to [`read_as_rust`].
 #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
-fn assert_read_as_rust(read: &Value, apart: &[&str]) {
+fn assert_read_as_rust(read: &Value, apart: &[(&str, Option<&str>)]) {
     let named = |answers: &[Value]| -> Vec<Value> {
         CASES
             .into_iter()
@@ -278,18 +307,11 @@ fn assert_read_as_rust(read: &Value, apart: &[&str]) {
             .map(|(case, answer)| json!({ "case": case.0, "answer": answer }))
             .collect()
     };
-    let expected: Vec<Value> = CASES
-        .into_iter()
-        .zip(read_as_rust())
-        .map(|(case, answer)| {
-            if apart.contains(&case.0) {
-                json!({ "kind": "failed-validation", "field": null })
-            } else {
-                answer
-            }
-        })
-        .collect();
-    assert_eq!(named(read.as_array().unwrap()), named(&expected), "{read}");
+    assert_eq!(
+        named(read.as_array().unwrap()),
+        named(&read_as_rust(apart)),
+        "{read}"
+    );
 }
 
 /// `items` as the elements of a list literal, each written by `literal`.
@@ -311,6 +333,7 @@ fn dart_source() -> String {
         "import 'dart:convert';".to_owned(),
         carillon_bell_dart::dart_definition(),
         carillon_peal_dart::dart_definition(),
+        carillon_pitch_dart::dart_definition(),
         carillon_swing_dart::dart_definition(),
         carillon_turn_dart::dart_definition(),
         carillon_beam_dart::dart_definition(),
@@ -341,8 +364,8 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &DART_APART);
+    assert_read_as_rust(&told["read"], &DART_APART);
 }
 
 #[cfg(feature = "dart")]
@@ -359,8 +382,8 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_peal_kotlin, carillon_swing_kotlin,
-        carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_error_kotlin, carillon_frame_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
+        carillon_swing_kotlin, carillon_turn_kotlin, carillon_yoke_kotlin,
     };
     use super::runtime::ran_kotlin;
 
@@ -377,6 +400,7 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
             .to_owned(),
         carillon_bell_kotlin::kotlin_definition(),
         carillon_peal_kotlin::kotlin_definition(),
+        carillon_pitch_kotlin::kotlin_definition(),
         carillon_swing_kotlin::kotlin_definition(),
         carillon_turn_kotlin::kotlin_definition(),
         carillon_beam_kotlin::kotlin_definition(),
@@ -398,8 +422,8 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &KOTLIN_APART);
+    assert_read_as_rust(&told["read"], &KOTLIN_APART);
 }
 
 #[cfg(feature = "swift")]
@@ -410,8 +434,8 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_peal_swift, carillon_swing_swift,
-        carillon_turn_swift, carillon_yoke_swift,
+        carillon_error_swift, carillon_frame_swift, carillon_peal_swift, carillon_pitch_swift,
+        carillon_swing_swift, carillon_turn_swift, carillon_yoke_swift,
     };
     use super::runtime::judged;
 
@@ -420,6 +444,7 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
         "import Foundation".to_owned(),
         carillon_bell_swift::swift_definition(),
         carillon_peal_swift::swift_definition(),
+        carillon_pitch_swift::swift_definition(),
         carillon_swing_swift::swift_definition(),
         carillon_turn_swift::swift_definition(),
         carillon_beam_swift::swift_definition(),
@@ -453,6 +478,6 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
     );
     assert_read_as_rust(
         &serde_json::from_str(run.stdout.trim()).unwrap(),
-        &SWIFT_UNPLACED,
+        &SWIFT_APART,
     );
 }

@@ -106,14 +106,14 @@ fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
     holds_each(
         &riding_dart::dart_definition(),
         &[
-            "surging: Surging.fromJsonUnjudged((switch (({...json}..remove('note'))) { final \
-             whole => whole.keys.where(const ['Berth', 'Pier', 'Calm', 'Still', 'Slack', 'Held', \
-             'Tied'].contains).length > 1 ? throw FormatException('more than one variant of enum \
-             Surging found in flattened data: ' + [for (final variant in const [['Berth', 'Pier'], \
-             ['Calm', 'Still', 'Slack'], ['Held', 'Tied']]) if (variant.any(whole.containsKey)) \
-             variant.first].join(', ')) : { for (final key in whole.keys.where(const ['Berth', \
-             'Pier', 'Calm', 'Still', 'Slack', 'Held', 'Tied'].contains).take(1)) key: whole[key] \
-             } })),"
+            "surging: _readFlattened(() => Surging.fromJsonUnjudged((switch \
+             (({...json}..remove('note'))) { final whole => whole.keys.where(const ['Berth', \
+             'Pier', 'Calm', 'Still', 'Slack', 'Held', 'Tied'].contains).length > 1 ? throw \
+             FormatException('more than one variant of enum Surging found in flattened data: ' + \
+             [for (final variant in const [['Berth', 'Pier'], ['Calm', 'Still', 'Slack'], ['Held', \
+             'Tied']]) if (variant.any(whole.containsKey)) variant.first].join(', ')) : { for \
+             (final key in whole.keys.where(const ['Berth', 'Pier', 'Calm', 'Still', 'Slack', \
+             'Held', 'Tied'].contains).take(1)) key: whole[key] } }))),"
                 .to_owned(),
             "Map<String, dynamic> toJson() => { 'note': note,...(switch ((surging).toJson()) { \
              final String name => {name: null}, final written => written as Map<String, dynamic> \
@@ -185,18 +185,18 @@ fn a_member_flattened_beside_an_alias_is_handed_the_keys_serde_hands_it() {
         &[format!(
             "factory Fairleading.fromJsonUnjudged(Map<String, dynamic> json) {{ {NAME_AS_LABEL} \
              return Fairleading(label: _readAt(named, 'label', () => named['label'] as \
-             String),tally: \
-             Pennon.fromJsonUnjudged(withItsKeys(({{...named}}..remove('label')))),); }}"
+             String),tally: _readFlattened(() => \
+             Pennon.fromJsonUnjudged(withItsKeys(({{...named}}..remove('label'))))),); }}"
         )],
     );
     holds_each(
         &fothering_dart::dart_definition(),
         &[
-            "Fothering(hawsing: Hawsing.fromJsonUnjudged((switch (json) { final whole => { for \
-           (final key in const ['label', 'name', 'title', 'note', 'remark']) if \
-           (whole.containsKey(key)) key: whole[key] } })),tally: \
+            "Fothering(hawsing: _readFlattened(() => Hawsing.fromJsonUnjudged((switch (json) { \
+           final whole => { for (final key in const ['label', 'name', 'title', 'note', 'remark']) \
+           if (whole.containsKey(key)) key: whole[key] } }))),tally: _readFlattened(() => \
            Pennon.fromJsonUnjudged(withItsKeys(({...json}..remove('label')..remove('name')\
-           ..remove('title')..remove('note')..remove('remark')))),);"
+           ..remove('title')..remove('note')..remove('remark'))))),);"
                 .to_owned(),
         ],
     );

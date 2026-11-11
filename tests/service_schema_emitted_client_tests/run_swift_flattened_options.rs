@@ -171,12 +171,7 @@ fn enum_rows() -> Vec<Row> {
     vec![
         Row::read::<Easing>("easing absent", "Easing", EASING[0]),
         Row::read::<Easing>("easing", "Easing", EASING[1]),
-        Row::decided::<Easing>(
-            "easing mistyped",
-            "Easing",
-            EASING[2],
-            "mismatch at 'Round.turns'",
-        ),
+        Row::decided::<Easing>("easing mistyped", "Easing", EASING[2], "mismatch at ''"),
         Row::decided::<Easing>(
             "easing unit mistyped",
             "Easing",
@@ -196,7 +191,7 @@ fn enum_rows() -> Vec<Row> {
             "squaring mistyped",
             "Squaring",
             SQUARING[3],
-            "mismatch at 'body.turns'",
+            "mismatch at ''",
         ),
         Row::decided::<Squaring>(
             "squaring unnamed",
@@ -223,7 +218,8 @@ fn enum_rows() -> Vec<Row> {
 /// none of its type's keys, then from one that holds a key its type does not read, and each whose
 /// model breaks its rule; then each holder of an enum.
 fn rows() -> Vec<Row> {
-    let mistyped = "mismatch at 'label'";
+    // A value inside a flattened member is refused at its holder, here the payload's root.
+    let mistyped = "mismatch at ''";
     let mut rows = vec![
         Row::read::<Lapping>("lapping", "Lapping", LAPPING),
         Row::read::<Flaking>("flaking", "Flaking", FLAKING),

@@ -10,6 +10,14 @@ pub const READ_AT: &str = "static Read _readAt<Read>(Map<String, dynamic>? objec
      FormatException) { final at = refused.source; throw FormatException(refused.message, \
      <Object>[key, if (at is List<Object>) ...at]); } rethrow; } }";
 
+/// The helper a class reads a flattened member with, which names the holder for a refusal inside
+/// it but for the key a `missing field` or an unknown key names.
+pub const READ_FLATTENED: &str = "static Read _readFlattened<Read>(Read Function() read) { try { \
+     return read(); } on FormatException catch (refused) { final at = refused.source; if (at is! \
+     List<Object> || at.isEmpty) rethrow; final message = refused.message; throw \
+     FormatException(message, <Object>[if (message.startsWith('missing field ') || \
+     message.startsWith('Unknown key of a ')) at.last]); } }";
+
 /// The statements that refuse a key of `json` that is none of `keys`, in the read of `class`.
 pub fn refusing(class: &str, keys: &[&str]) -> String {
     refusing_in("json", class, keys)

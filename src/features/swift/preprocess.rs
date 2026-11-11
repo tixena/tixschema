@@ -12,7 +12,7 @@ use core::cell::RefCell;
 use core::iter;
 use std::collections::{HashMap, HashSet};
 
-use super::read::{Locals, Source, counted, unjudged};
+use super::read::{Locals, Source, counted, flattened, unjudged};
 use super::{Shaped, lookup_swift_name, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
@@ -562,11 +562,11 @@ pub(super) fn entry(
         ))
     );
     let held = format!("let {stem}Key = {found}.first, let {stem}Held = {stem}Object[{stem}Key]");
-    let read = format!(
+    let read = flattened(&format!(
         "{}; {}",
         entry_payload(stem, entries),
         value(member, "decoder.codingPath", sink, twins)
-    );
+    ));
     if optional && is_nonstrict() {
         // The holder's Zod schema reads the enum as absent where its entry does not read, as serde
         // reads `None`.

@@ -113,19 +113,20 @@ fn the_dart_text_hands_a_flattened_object_id_its_key_alone() {
     for (written, held) in [
         (
             docketing_dart::dart_definition(),
-            format!("oid: ObjectId.fromJson({only}),"),
+            format!("oid: _readFlattened(() => ObjectId.fromJson({only})),"),
         ),
         (
             sigiled_dart::dart_definition(),
-            format!("mark: Sigil.fromJsonUnjudged({only}),"),
+            format!("mark: _readFlattened(() => Sigil.fromJsonUnjudged({only})),"),
         ),
         (
             sigillary_dart::dart_definition(),
-            format!("oid: SigillumType.fromJsonUnjudged({only}),"),
+            format!("oid: _readFlattened(() => SigillumType.fromJsonUnjudged({only})),"),
         ),
         (
             stampage_dart::dart_definition(),
-            "oid: ((switch (({...json}..remove('id'))) { final whole => { for (final key in \
+            "oid: _readFlattened(() => ((switch (({...json}..remove('id'))) { final whole => { for \
+             (final key in \
              const ['\\$oid']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const \
              ['\\$oid'].contains) ? "
                 .to_owned(),

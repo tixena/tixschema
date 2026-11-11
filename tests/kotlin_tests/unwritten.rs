@@ -152,13 +152,14 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
         flemishing.contains(written),
         "no `{written}` in: {flemishing}"
     );
-    let read = "val braiding = if (obj.keys.any { it in braidingKeys })";
+    let read = "val braiding = kotlinSchemaFlattened { if (obj.keys.any { it in braidingKeys })";
     assert!(flemishing.contains(read), "no `{read}` in: {flemishing}");
     let splaying = super::tests::renumbered(&splaying_kotlin::kotlin_definition());
     for held in [
         "data class Splaying(val braiding: Braiding, val note: String)",
-        "val braiding = input.json.decodeFromString(BraidingUnjudged, JsonObject(obj.filterKeys { \
-         it in setOf(\"label\") }).toString());",
+        "val braiding = kotlinSchemaFlattened { input.json.decodeFromString(BraidingUnjudged, \
+         JsonObject(obj.filterKeys { \
+         it in setOf(\"label\") }).toString()) };",
         written,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");
@@ -167,8 +168,9 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     for held in [
         "data class Ranging(val counts: Map<String, UByte>)",
         "output.encodeJsonElement(buildJsonObject {  })",
-        "val counts = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, \
-         k, \".\" + k) };",
+        "val counts = kotlinSchemaFlattened { obj.mapValues { (k, v) -> \
+         kotlinSchemaDecoded(input.json, KotlinNumber1, v, \
+         k, \".\" + k) } };",
     ] {
         assert!(ranging.contains(held), "no `{held}` in: {ranging}");
     }
