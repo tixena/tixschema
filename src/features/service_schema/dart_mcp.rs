@@ -16,6 +16,7 @@ use super::result::result_name;
 use crate::features::dart::{
     dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
 };
+use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_VALUE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
     answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages, read_apart,
@@ -800,7 +801,7 @@ Future<({String? text, int status})> _@P@McpRespond(
       );
   final Object? parsed;
   try {
-    parsed = jsonDecode(text);
+    parsed = jsonDecode(text, reviver: _@P@WsHeld);
   } catch (_) {
     return failed(null, 400, -32600, 'Invalid Request');
   }
@@ -1024,7 +1025,7 @@ Future<({String? text, int status})> _@P@McpRespond(
 
 Map<String, dynamic>? _@P@McpMessage(String text) {
   try {
-    final parsed = jsonDecode(text);
+    final parsed = jsonDecode(text, reviver: _@P@WsHeld);
     return parsed is Map<String, dynamic> ? parsed : null;
   } catch (_) {
     return null;
@@ -1198,7 +1199,7 @@ Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   final ctx = admitted.ctx as Ctx;
   final Object? parsed;
   try {
-    parsed = jsonDecode(utf8.decode(request.body));
+    parsed = jsonDecode(utf8.decode(request.body), reviver: _@P@WsHeld);
   } catch (_) {
     return respond(400, error(null, -32600, 'Invalid Request'));
   }
@@ -1901,17 +1902,23 @@ fn scopes_table(table: &ScopeTable) -> String {
     text
 }
 
-/// The Dart that names the path of each value a message does not read at, from the JSON schema
-/// the catalog holds for it: the first one, or with `every` all of them, a key of `passed` read
-/// past at the top.
+/// The Dart that answers the fault of a message its read refused, as the Rust dispatcher answers
+/// it from the arguments read out of a value: a key that is no number names no field, a `Result`
+/// of other than one key names the path the read refused at, and every other refusal names the
+/// path of each value the message does not read at, from the JSON schema the catalog holds for it:
+/// the first one, or with `every` all of them, a key of `passed` read past at the top.
 fn unread_helpers(named: &str, prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let issue = fault_issue_name(named);
     format!(
-        "{fields} _{prefix}McpUnreadFault(String operation, String detail, Object? schema, Object? source, \
+        "{fields} _{prefix}McpUnreadFault(String operation, Object refused, Object? schema, Object? source, \
          {{List<String> passed = const <String>[], bool every = false}}) {{\n  \
+         final detail = refused is FormatException ? refused.message : '$refused';\n  \
+         if (detail == '{EXPECTED_NUMERIC_KEY}') return _{prefix}McpFault({named}FaultKind.undeserializablePayload, operation, detail);\n  \
          final found = <(String, String)>[];\n  \
          _{prefix}McpMismatches(schema, source, null, passed, const <String>[], found);\n  \
+         final at = detail == '{EXPECTED_VALUE}' ? _{prefix}WsRefusedAt(refused) : null;\n  \
+         if (at != null) found..removeWhere((entry) => entry.$1 == at)..insert(0, (at, detail));\n  \
          if (found.isEmpty || found.first.$1.isEmpty) {{\n    \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
          }}\n  \
@@ -2274,16 +2281,14 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          }} on FormatException catch (rejected) {{\n    \
          try {{\n      \
          {unjudged};\n    \
-         }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread.message, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$unread', _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
          }}\n    \
          return _{prefix}McpFaultResult(\n      \
          _{prefix}McpFault({kind}.failedValidation, {tool}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, '$rejected', _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \
+         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, rejected, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \
          }}\n",
         op = pascal(operation),
         every = every_mismatch(operation),
@@ -2992,16 +2997,14 @@ fn resource_body(
          }} on FormatException catch (rejected) {{\n    \
          try {{\n      \
          {unjudged};\n    \
-         }} on FormatException catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread.message, {schema}));\n    \
          }} catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$unread', {schema}));\n    \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread, {schema}));\n    \
          }}\n    \
          return _{prefix}McpUnread(\n      \
          _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, '$rejected', {schema}));\n  \
+         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, rejected, {schema}));\n  \
          }}\n  \
          try {{\n    \
          final answered = await handlers.{call}(ctx, decoded);\n    \
@@ -3713,11 +3716,9 @@ fn reply_method(
     let read_failed = format!("_{prefix}McpReadFailed");
     let ws_failed = format!("_{prefix}WsFailedValidation");
     // The `ws_rpc` reads answer a refused read through their own classifier; this transport
-    // answers every one it reads as `_McpReadFailed` does.
+    // answers every one it reads as the Rust client does, naming no field.
     let ws_refused = format!("_{prefix}WsRefused({wire}, rejected)");
-    let read_refused = format!(
-        "_{prefix}McpReadFailed({wire}, '$rejected', field: _{prefix}WsRefusedAt(rejected))"
-    );
+    let read_refused = format!("_{prefix}McpReadFailed({wire}, '$rejected')");
     let unit_ok = is_unit_type(success) && shape.header_out.is_empty();
     let success_block = success_decode_block(&result, prefix, wire, success, &shape.header_out)
         .replace(&ws_refused, &read_refused)

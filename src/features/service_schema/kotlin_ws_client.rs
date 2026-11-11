@@ -1138,18 +1138,20 @@ fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String>
 }
 
 /// The function that reads the frame a text holds, refusing one that holds a number beyond a
-/// `Double`: kotlinx keeps such a number as its text, and serde reads no frame that holds one.
+/// `Double`: kotlinx keeps such a number as its text, and serde reads no frame that holds one. The
+/// `mcp` server judges each message it reads by the same `{fn_prefix}WsHeld`.
 fn frame_read_fn(fn_prefix: &str) -> String {
     format!(
-        "/// The frame `text` holds, refused where it holds a number beyond a `Double`, which serde reads no frame holding.\n\
+        "/// Whether `element` holds no number beyond a `Double`: serde reads no text that holds one.\n\
+         private fun {fn_prefix}WsHeld(element: JsonElement): Boolean = when (element) {{\n  \
+         is JsonObject -> element.values.all(::{fn_prefix}WsHeld)\n  \
+         is JsonArray -> element.all(::{fn_prefix}WsHeld)\n  \
+         is JsonPrimitive -> element.isString || element.content.toDoubleOrNull()?.isInfinite() != true\n\
+         }}\n\n\
+         /// The frame `text` holds, refused where it holds a number beyond a `Double`, which serde reads no frame holding.\n\
          private fun {fn_prefix}WsFrame(text: String): JsonObject {{\n  \
          val frame = Json.parseToJsonElement(text).jsonObject\n  \
-         fun held(element: JsonElement): Boolean = when (element) {{\n    \
-         is JsonObject -> element.values.all(::held)\n    \
-         is JsonArray -> element.all(::held)\n    \
-         is JsonPrimitive -> element.isString || element.content.toDoubleOrNull()?.isInfinite() != true\n  \
-         }}\n  \
-         if (!held(frame)) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\")\n  \
+         if (!{fn_prefix}WsHeld(frame)) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\")\n  \
          return frame\n\
          }}"
     )

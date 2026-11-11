@@ -44,7 +44,11 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let headered = declares_header_in(service);
-    let mut published = vec![heartbeat_class(&named), transport_class(&named, headered)];
+    let mut published = vec![
+        heartbeat_class(&named),
+        transport_class(&named, headered),
+        held_fn(&fn_prefix),
+    ];
     if has_one_way(service) {
         published.push(refusal_class(&named));
     }
@@ -88,6 +92,17 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
+}
+
+/// The reviver every text a frame or an `mcp` message is read from passes `jsonDecode`: it refuses
+/// the infinity `jsonDecode` reads a number beyond a `double` as, since serde reads no text that
+/// holds one.
+fn held_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// Each value as `jsonDecode` reads it, but for the infinity it reads a number beyond a `double` as: serde reads no text that holds one.\n\
+         Object? _{fn_prefix}WsHeld(Object? key, Object? value) =>\n    \
+         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;"
+    )
 }
 
 /// The function that answers the field a fault names for a value a read refused, as the Rust
@@ -252,6 +267,7 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
 
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
+    let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -263,14 +279,10 @@ fn transport_class_rest(named: &str) -> String {
          /// exposes the same shape, so an attachment for any service sharing this connection\n  \
          /// reaches it here rather than through a transport type of its own.\n  \
          {FRAMES_RECORD_TYPE} get frames => (inbound: _controller.stream, send: send);\n\n  \
-         /// Each value of a frame as `jsonDecode` reads it, but for the infinity it reads a number\n  \
-         /// beyond a `double` as: serde reads no frame that holds one, and neither does this.\n  \
-         static Object? _held(Object? key, Object? value) =>\n      \
-         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(raw as String, reviver: _held) as Map<String, dynamic>;\n    \
+         frame = jsonDecode(raw as String, reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \
