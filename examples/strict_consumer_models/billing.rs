@@ -36,3 +36,45 @@ pub struct InvoiceLookup {
     /// The number printed on the invoice.
     pub number: String,
 }
+
+/// The totals of an invoice, computed after it is read and never sent.
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[non_exhaustive]
+#[serde(default)]
+pub struct InvoiceTotals {
+    /// What the invoice bills.
+    #[serde(skip)]
+    pub billed: u32,
+    /// How many lines the invoice lists.
+    #[serde(skip, default = "one_line")]
+    pub lines: u32,
+}
+
+/// What a reader keeps beside an invoice, never sent.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct InvoiceCache<T: Default> {
+    /// What the reader keeps.
+    #[serde(skip)]
+    pub held: T,
+}
+
+/// A count of the invoices a reader keeps, which `validate()` holds to at least one.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct InvoiceTally<T: Default> {
+    /// How many invoices are counted.
+    #[model_schema_prop(minimum = 1)]
+    pub count: u32,
+    /// What the reader keeps beside the count.
+    #[serde(skip)]
+    pub held: T,
+}
+
+/// The lines an invoice lists before any is counted.
+const fn one_line() -> u32 {
+    1
+}
