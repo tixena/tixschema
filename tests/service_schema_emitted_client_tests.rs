@@ -2160,6 +2160,7 @@ mod published_structs;
 #[cfg(test)]
 mod published {
     built_and_read_back!(
+        carillon_mcp_dispatcher,
         mcp_asking_dispatcher,
         mcp_bare_dispatcher,
         mcp_depot_dispatcher,
@@ -2226,6 +2227,32 @@ use carillon_service::CarillonServiceSchema;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_carillon.rs"]
 mod run_carillon;
+
+/// `CarillonMcpService`, whose one tool takes the message of `CarillonService`, and what its Rust
+/// dispatcher and client answer to a value of the wrong kind and to what is no document.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_service.rs"]
+mod carillon_mcp_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_dispatcher.rs"]
+mod carillon_mcp_dispatcher;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_mcp_client.rs"]
+mod carillon_mcp_client;
+
+#[cfg(test)]
+use carillon_mcp_service::{
+    CarillonMcpService, CarillonMcpServiceSchema, carillon_mcp_service_schema,
+};
+
+/// The emitted TypeScript, Dart and Kotlin `mcp` servers and the TypeScript, Dart, Kotlin and
+/// Swift `mcp` clients of `CarillonMcpService`, measured against it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_carillon_mcp.rs"]
+mod run_carillon_mcp;
 
 /// Structs that hold no key on the wire, strict and `nonstrict`.
 #[cfg(test)]
