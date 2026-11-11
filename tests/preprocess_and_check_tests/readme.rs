@@ -409,6 +409,7 @@ fn chapter(name: &str) -> Option<&'static str> {
         "" => Some(readme()),
         "checks.md" => Some(include_str!("../../docs/guide/checks.md")),
         "chrono.md" => Some(include_str!("../../docs/guide/chrono.md")),
+        "client-forms.md" => Some(include_str!("../../docs/guide/client-forms.md")),
         "dart.md" => Some(include_str!("../../docs/guide/dart.md")),
         "enums.md" => Some(include_str!("../../docs/guide/enums.md")),
         "flatten.md" => Some(include_str!("../../docs/guide/flatten.md")),

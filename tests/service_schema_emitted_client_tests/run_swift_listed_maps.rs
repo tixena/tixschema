@@ -137,7 +137,7 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 const ONE_WRITTEN: &str = r#""1":"#;
 
 /// What the Swift read prints for a payload whose first number key is `x`.
-const BAD_KEY: &str = "refused\n    bad key x";
+const BAD_KEY: &str = "refused\n    invalid value: expected key to be a number in quotes";
 
 /// One payload the run reads: its name, the Swift type that reads it, the payload, and what the
 /// Swift read is held to.

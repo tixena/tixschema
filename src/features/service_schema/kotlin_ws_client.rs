@@ -12,6 +12,7 @@ use crate::features::kotlin::{
     TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
     kotlin_property_name, kotlin_quoted, kotlin_tuple_naming, kotlin_typename,
 };
+use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -59,8 +60,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.push(attach_dispatcher_fn(&named, &fn_prefix, has_header_in));
     published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
     published.extend(fault_helpers(&named, &fn_prefix, answers));
+    published.push(frame_read_fn(&fn_prefix));
     if answers {
         published.push(refused_at_fn(&fn_prefix));
+        published.push(refused_fn(&named, &fn_prefix));
     }
     published.extend(kotlin_declarations());
     published
@@ -152,7 +155,7 @@ fn transport_class(named: &str, has_headers: bool) -> String {
         header = transport_header_stmt(named),
         request = transport_request_stmt(named, has_headers),
         notify_and_send = transport_notify_and_send_stmt(named, has_headers),
-        on_frame = transport_on_frame_stmt(),
+        on_frame = transport_on_frame_stmt(&RenameRule::CamelCase.apply_to_variant(named)),
         heartbeat = transport_heartbeat_stmt(named),
         close = transport_close_stmt(named),
     )
@@ -291,32 +294,33 @@ fn transport_notify_and_send_stmt(named: &str, has_headers: bool) -> String {
 /// Reads a frame off the socket: a pong cancels the outstanding watcher under one lock, a ping
 /// draws one pong, and a reply either settles a pending deferred (removed under one lock) or,
 /// unmatched, reaches `frames.inbound` beside every frame this service does not itself correlate.
-fn transport_on_frame_stmt() -> String {
-    "private fun onFrame(text: String) {\n    \
-     val frame = try {\n      \
-     Json.parseToJsonElement(text).jsonObject\n    \
-     } catch (malformed: Throwable) {\n      \
-     return\n    \
-     }\n    \
-     when ((frame[\"kind\"] as? JsonPrimitive)?.contentOrNull) {\n      \
-     \"pong\" -> {\n        \
-     val watcher = synchronized(this) {\n          \
-     val current = pongJob\n          \
-     pongJob = null\n          \
-     current\n        \
-     }\n        \
-     watcher?.cancel()\n      \
-     }\n      \
-     \"ping\" -> send(buildJsonObject { put(\"kind\", \"pong\") })\n      \
-     \"reply\" -> {\n        \
-     val id = (frame[\"id\"] as? JsonPrimitive)?.contentOrNull\n        \
-     val deferred = id?.let { key -> synchronized(this) { pending.remove(key) } }\n        \
-     if (deferred != null) deferred.complete(frame) else uncorrelated.tryEmit(text)\n      \
-     }\n      \
-     else -> uncorrelated.tryEmit(text)\n    \
-     }\n  \
-     }\n\n  "
-        .to_owned()
+fn transport_on_frame_stmt(fn_prefix: &str) -> String {
+    format!(
+        "private fun onFrame(text: String) {{\n    \
+         val frame = try {{\n      \
+         {fn_prefix}WsFrame(text)\n    \
+         }} catch (malformed: Throwable) {{\n      \
+         return\n    \
+         }}\n    \
+         when ((frame[\"kind\"] as? JsonPrimitive)?.contentOrNull) {{\n      \
+         \"pong\" -> {{\n        \
+         val watcher = synchronized(this) {{\n          \
+         val current = pongJob\n          \
+         pongJob = null\n          \
+         current\n        \
+         }}\n        \
+         watcher?.cancel()\n      \
+         }}\n      \
+         \"ping\" -> send(buildJsonObject {{ put(\"kind\", \"pong\") }})\n      \
+         \"reply\" -> {{\n        \
+         val id = (frame[\"id\"] as? JsonPrimitive)?.contentOrNull\n        \
+         val deferred = id?.let {{ key -> synchronized(this) {{ pending.remove(key) }} }}\n        \
+         if (deferred != null) deferred.complete(frame) else uncorrelated.tryEmit(text)\n      \
+         }}\n      \
+         else -> uncorrelated.tryEmit(text)\n    \
+         }}\n  \
+         }}\n\n  "
+    )
 }
 
 /// Arms the pong watcher under one lock before sending the ping — never after, which would let a
@@ -566,12 +570,9 @@ fn success_decode_block(
     stmt
 }
 
-/// The fault a client answers for a reply its read refused, `rejected`, naming the field.
+/// The fault a client answers for a reply its read refused, `rejected`.
 fn refused_fault(fn_prefix: &str, wire: &str) -> String {
-    format!(
-        "{fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = \
-         {fn_prefix}WsRefusedAt(rejected))"
-    )
+    format!("{fn_prefix}WsRefused({wire}, rejected)")
 }
 
 fn error_decode_block(
@@ -766,7 +767,7 @@ fn attach_dispatcher_fn(named: &str, fn_prefix: &str, has_headers: bool) -> Stri
          ): {named}WsAttachment {{\n  \
          val job = frames.scope.launch(start = CoroutineStart.UNDISPATCHED) {{\n    \
          frames.inbound.collect {{ text ->\n      \
-         val frame = runCatching {{ Json.parseToJsonElement(text).jsonObject }}.getOrNull() ?: return@collect\n      \
+         val frame = runCatching {{ {fn_prefix}WsFrame(text) }}.getOrNull() ?: return@collect\n      \
          if ((frame[\"service\"] as? JsonPrimitive)?.contentOrNull != \"{named}\") return@collect\n      \
          val id = (frame[\"id\"] as? JsonPrimitive)?.contentOrNull\n      \
          val operation = (frame[\"operation\"] as? JsonPrimitive)?.contentOrNull ?: return@collect\n      \
@@ -1027,7 +1028,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          val decoded = try {{\n        \
          Json.decodeFromString({read_by}, (payload ?: JsonNull).toString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected))\n        \
+         val fault = {fn_prefix}WsRefused({wire}, rejected)\n        \
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
@@ -1134,6 +1135,43 @@ fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String>
             ),
         ),
     ]
+}
+
+/// The function that reads the frame a text holds, refusing one that holds a number beyond a
+/// `Double`: kotlinx keeps such a number as its text, and serde reads no frame that holds one.
+fn frame_read_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// The frame `text` holds, refused where it holds a number beyond a `Double`, which serde reads no frame holding.\n\
+         private fun {fn_prefix}WsFrame(text: String): JsonObject {{\n  \
+         val frame = Json.parseToJsonElement(text).jsonObject\n  \
+         fun held(element: JsonElement): Boolean = when (element) {{\n    \
+         is JsonObject -> element.values.all(::held)\n    \
+         is JsonArray -> element.all(::held)\n    \
+         is JsonPrimitive -> element.isString || element.content.toDoubleOrNull()?.isInfinite() != true\n  \
+         }}\n  \
+         if (!held(frame)) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\")\n  \
+         return frame\n\
+         }}"
+    )
+}
+
+/// The function that answers the fault a read's refusal is: `undeserializable-payload` naming no
+/// field for one in serde's words for text that is not the document, as the Rust dispatcher answers
+/// it, and `failed-validation` naming the field for any other.
+fn refused_fn(named: &str, fn_prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    let listed = NOT_A_DOCUMENT.map(|said| format!("\"{said}\"")).join(", ");
+    format!(
+        "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
+         private fun {fn_prefix}WsRefused(operation: String, rejected: Throwable): {fields} {{\n  \
+         val said = (rejected as? SerializationException)?.message?.substringBefore(\" at path: \")\n  \
+         return if (said != null && said in setOf({listed})) {{\n    \
+         {fields}(detail = said, kind = {named}FaultKind.UndeserializablePayload, operation = operation)\n  \
+         }} else {{\n    \
+         {fn_prefix}WsFailedValidation(operation, rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected))\n  \
+         }}\n\
+         }}"
+    )
 }
 
 /// The function that answers the field a fault names for a value a read refused, as the Rust

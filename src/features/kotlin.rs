@@ -49,8 +49,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    EXPECTED_VALUE, FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::{
@@ -1214,10 +1214,7 @@ pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String
         .or_else(|| texts::key_leaf(key));
     match leaf {
         Some(texts::KeyLeaf::Brand(brand)) => key_object_name(&brand),
-        Some(texts::KeyLeaf::Primitive(primitive)) => texts::as_key(primitive).map_or_else(
-            || format!("serializer<{}>()", primitive.kotlin_type()),
-            texts::number_serializer,
-        ),
+        Some(texts::KeyLeaf::Primitive(primitive)) => texts::key_serializer(primitive),
         None => kotlin_serializer_expr(key, type_parameters),
     }
 }
@@ -1258,10 +1255,7 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
         ),
         texts::KeyLeaf::Primitive(primitive) => (
             primitive.kotlin_type().to_owned(),
-            texts::as_key(*primitive).map_or_else(
-                || format!("serializer<{}>()", primitive.kotlin_type()),
-                texts::number_serializer,
-            ),
+            texts::key_serializer(*primitive),
         ),
     };
     let deserialize = format!(
@@ -1746,7 +1740,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
     let covariant = listed(&|arm| format!("out {arm}Value"));
     let invariant = listed(&|arm| format!("{arm}Value"));
     let serializer = format!("{named}Serializer");
-    let refusal = "throw SerializationException(\"Not one key, Ok or Err, of a Result\")";
+    let refusal = format!("throw SerializationException(\"{EXPECTED_VALUE}\")");
     let (mut arms, mut elements, mut writes, mut reads) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for (index, (arm, unit)) in RESULT_ARMS.into_iter().zip(shape).enumerate() {
@@ -1813,7 +1807,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
         format!("class {serializer}{invariant}({})", handed.join(", "))
     };
     let own = format!("{named}{invariant}");
-    let deserialize = result_read(&own, refusal, &reads);
+    let deserialize = result_read(&own, &refusal, &reads);
     format!(
         "@Serializable(with = {serializer}::class) sealed interface {named}{covariant} {} \
          {opened} : KSerializer<{own}> {{ \

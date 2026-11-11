@@ -5,7 +5,7 @@
 
 use crate::features::swift::{forms, swift_quoted, swift_reference_type};
 use crate::features::text_forms::TextForm;
-use crate::field_type::get_field_def;
+use crate::field_type::{NOT_A_DOCUMENT, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -329,7 +329,19 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          steps.append(String(said[said.index(after: said.startIndex)..<end]))\n  \
          }}\n  \
          return steps.isEmpty ? nil : steps.joined(separator: \".\")\n\
-         }}"
+         }}\n\
+         \n\
+         /// The fault a read's refusal answers: one in serde's words for text that is not the \
+         document names no field,\n\
+         /// as the Rust dispatcher answers it, and any other names the field.\n\
+         func {prefix}WsRefused(_ operation: String, _ refusal: Error) -> {fault} {{\n  \
+         if case DecodingError.dataCorrupted(let context) = refusal, [{listed}].contains(context.debugDescription) {{\n    \
+         return {fault}(detail: context.debugDescription, field: nil, issues: nil, kind: \
+         .undeserializablePayload, operation: operation)\n  \
+         }}\n  \
+         return {prefix}WsFailedValidation(operation, \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))\n\
+         }}",
+        listed = NOT_A_DOCUMENT.map(|said| format!("\"{said}\"")).join(", ")
     )
 }
 
@@ -483,6 +495,8 @@ fn actor_handle_message(named: &str) -> String {
     format!(
         "  private func handleMessage(_ text: String) async {{\n    \
          guard let data = text.data(using: .utf8) else {{ return }}\n    \
+         // Foundation refuses a number beyond a `Double` here, and serde reads no frame that holds one.\n    \
+         guard (try? JSONSerialization.jsonObject(with: data)) != nil else {{ return }}\n    \
          guard let probe = try? JSONDecoder().decode({named}WsFrameProbe.self, from: data) else \
          {{ return }}\n    \
          switch probe.kind {{\n    \
@@ -763,7 +777,7 @@ fn success_block(
              raw)\n          \
              return .success(({tuple_expr}))\n        \
              }} catch {{\n          \
-             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n        \
+             return .failure(.fault({prefix}WsRefused({wire}, error)))\n        \
              }}\n"
         );
         return (success_ty, block);
@@ -786,7 +800,7 @@ fn success_block(
              {named}WsValueEnvelope<{carrier}>.self, from: raw)\n          \
              return .success((decoded.value.slot0, decoded.value.slot1))\n        \
              }} catch {{\n          \
-             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n        \
+             return .failure(.fault({prefix}WsRefused({wire}, error)))\n        \
              }}\n"
         );
         return (swift_typename_of(success), block);
@@ -804,7 +818,7 @@ fn success_block(
          {named}WsValueEnvelope<{success_ty}>.self, from: raw)\n          \
          return .success(decoded.value)\n        \
          }} catch {{\n          \
-         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n        \
+         return .failure(.fault({prefix}WsRefused({wire}, error)))\n        \
          }}\n"
     );
     (success_ty, block)
@@ -835,7 +849,7 @@ fn declared_error_block(
              {named}WsDeclaredEnvelope<{error_ty}>.self, from: raw)\n      \
              return .failure(.declared(declared.error))\n    \
              }} catch {{\n      \
-             return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n    \
+             return .failure(.fault({prefix}WsRefused({wire}, error)))\n    \
              }}\n"
         );
     }
@@ -870,7 +884,7 @@ fn declared_error_block(
          raw)\n      \
          return .failure(.declared(({tuple_expr})))\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n    \
+         return .failure(.fault({prefix}WsRefused({wire}, error)))\n    \
          }}\n"
     )
 }
@@ -909,7 +923,7 @@ fn reply_method(
 {headers_build}      \
          raw = try await correlate(operation: {wire}, payload: {payload}{headers_arg})\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n    \
+         return .failure(.fault({prefix}WsRefused({wire}, error)))\n    \
          }}\n    \
          guard let raw else {{\n      \
          return .failure(.fault({prefix}WsTransportFailure({wire}, \"the socket closed \
@@ -919,7 +933,7 @@ fn reply_method(
          do {{\n      \
          ok = try JSONDecoder().decode({named}WsOkProbe.self, from: raw).ok\n    \
          }} catch {{\n      \
-         return .failure(.fault({prefix}WsFailedValidation({wire}, \"\\(error)\", field: {prefix}WsRefusedAt(error))))\n    \
+         return .failure(.fault({prefix}WsRefused({wire}, error)))\n    \
          }}\n    \
          if ok {{\n\
          {success_block}    \

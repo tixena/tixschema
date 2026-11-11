@@ -32,13 +32,19 @@ const FIXED_WIDTH: [&str; 8] = [
 /// or an exponent, at its own coding path, in serde's words. It tells such a number by the byte
 /// count of its text and its exponent mark, which `JSONDecoder`'s own decoder holds in stored
 /// properties it reads through `Mirror`; under any other decoder the number reads as Foundation
-/// reads it.
+/// reads it. A type parameter filled with a `Float` reads one beyond its range as a `Double`
+/// narrowed to an infinity of its sign, as serde reads an `f32`.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
-     value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where !(refused is \
+     value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where \
+     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) { do { value = \
+     Float(try single.decode(Double.self)) as! SwiftSchemaLeaf } catch let wider where !(wider is \
      DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-     decoder.codingPath, debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
+     decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: wider)) } } \
+     catch let refused where !(refused is DecodingError) { throw \
+     DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+     debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
      if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
      written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
@@ -408,23 +414,58 @@ fn bracketed(read_as: &str) -> Option<(Option<&str>, &str)> {
 
 /// The read `{call}{read_as}{rest}`, with each fixed-width integer and each type parameter of
 /// `parameters` that `read_as` holds read through `SwiftSchemaFit`, which refuses at the
-/// integer's own coding path, and mapped back to `read_as`. A `call` that ends in
-/// `decodeIfPresent(` answers an `Optional`, so the mapping is written behind a `?`. The
-/// expression is written after a `try`.
+/// integer's own coding path, and mapped back to `read_as`. A `Float` is read as a `Double` and
+/// narrowed, as serde reads an `f32`: Foundation refuses one beyond its range, which serde reads
+/// as an infinity of its sign. A `call` that ends in `decodeIfPresent(` answers an `Optional`, so
+/// the mapping is written behind a `?`. The expression is written after a `try`.
 pub(super) fn fitted(call: &str, read_as: &str, rest: &str, parameters: &[String]) -> String {
-    fit_held(read_as, parameters)
-        .zip(unfit(read_as, parameters))
-        .map_or_else(
-            || format!("{call}{read_as}{rest}"),
-            |(fit, unfit)| {
-                let present = if call.ends_with("decodeIfPresent(") {
-                    "?"
-                } else {
-                    ""
-                };
-                format!("{call}{fit}{rest}{present}{unfit}")
-            },
-        )
+    let present = call.ends_with("decodeIfPresent(");
+    if let Some((fit, unfit)) = fit_held(read_as, parameters).zip(unfit(read_as, parameters)) {
+        let behind = if present { "?" } else { "" };
+        return format!("{call}{fit}{rest}{behind}{unfit}");
+    }
+    let Some(wide) = widened(read_as) else {
+        return format!("{call}{read_as}{rest}");
+    };
+    let answered = if present {
+        format!("{read_as}?")
+    } else {
+        read_as.to_owned()
+    };
+    narrowed(&answered, &format!("{call}{wide}{rest}"))
+}
+
+/// `read_as` with each `Float` it holds, alone or in a list, as a map's value or under an
+/// `Optional`, held as a `Double`; `None` where it holds none there.
+fn widened(read_as: &str) -> Option<String> {
+    if read_as == "Float" {
+        return Some("Double".to_owned());
+    }
+    if let Some(held) = read_as.strip_suffix('?') {
+        return widened(held).map(|wide| format!("{wide}?"));
+    }
+    let (key, held) = bracketed(read_as)?;
+    let wide = widened(held)?;
+    Some(key.map_or_else(|| format!("[{wide}]"), |named| format!("[{named}: {wide}]")))
+}
+
+/// `wide`, read as the type [`widened`] holds `read_as` as, narrowed back to `read_as`. The
+/// closure is passed in parentheses, as [`unfit`]'s is.
+fn narrowed(read_as: &str, wide: &str) -> String {
+    if read_as == "Float" {
+        return format!("Float({wide})");
+    }
+    if widened(read_as).is_none() {
+        return wide.to_owned();
+    }
+    if let Some(held) = read_as.strip_suffix('?') {
+        return format!("({wide}).map({{ {} }})", narrowed(held, "$0"));
+    }
+    let Some((key, held)) = bracketed(read_as) else {
+        return wide.to_owned();
+    };
+    let mapping = if key.is_some() { "mapValues" } else { "map" };
+    format!("({wide}).{mapping}({{ {} }})", narrowed(held, "$0"))
 }
 
 /// `read`, the statements that read a flattened member, placing a refusal inside it at the

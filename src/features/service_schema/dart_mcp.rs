@@ -3712,8 +3712,15 @@ fn reply_method(
     let fields = fault_fields_typescript_name(named);
     let read_failed = format!("_{prefix}McpReadFailed");
     let ws_failed = format!("_{prefix}WsFailedValidation");
+    // The `ws_rpc` reads answer a refused read through their own classifier; this transport
+    // answers every one it reads as `_McpReadFailed` does.
+    let ws_refused = format!("_{prefix}WsRefused({wire}, rejected)");
+    let read_refused = format!(
+        "_{prefix}McpReadFailed({wire}, '$rejected', field: _{prefix}WsRefusedAt(rejected))"
+    );
     let unit_ok = is_unit_type(success) && shape.header_out.is_empty();
     let success_block = success_decode_block(&result, prefix, wire, success, &shape.header_out)
+        .replace(&ws_refused, &read_refused)
         .replace(&ws_failed, &read_failed);
     let reply = if unit_ok {
         String::new()
@@ -3741,6 +3748,7 @@ fn reply_method(
     };
     let error_block =
         declared_error_decode_stmts(&result, prefix, wire, error, &shape.error_header_out)
+            .replace(&ws_refused, &read_refused)
             .replace(&ws_failed, &read_failed);
     let error_source = if shape.error_header_out.is_empty() {
         "    final dynamic error = parsed;\n".to_owned()

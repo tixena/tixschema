@@ -173,8 +173,9 @@ console.log(JSON.stringify({ ran, recorded: shown(recorded) }));
 
 /// Sends a tally through the bus client to its dispatcher in a runtime without `JSON.rawJSON`, and
 /// prints the text the transport carried each way and what the client answered: a `bigint` a
-/// `number` holds exactly is written as that number, and any other is refused. Then hands each
-/// dispatcher a tally whose answer no `number` holds exactly.
+/// `number` holds exactly is written as that number, and any other is refused. Then prints the
+/// headers the HTTP client sends for a header no `number` holds exactly, which is no JSON, and
+/// hands each dispatcher a tally whose answer no `number` holds exactly.
 const FALLBACK_DRIVER: &str = r#"
 const shown = (value) => JSON.parse(JSON.stringify(value, (_, held) => (typeof held === "bigint" ? `${held}n` : held)));
 Reflect.deleteProperty(JSON, "rawJSON");
@@ -215,8 +216,17 @@ const overHttp = await handle(undefined, {
   path: "/tallies",
   query: "",
 });
+let fetchedHeaders = "refused";
+const fetching = createTallyingClientServiceHttpClient({
+  async send(request) {
+    fetchedHeaders = request.headers;
+    return { status: 200, headers: [["content-type", "application/json"]], body: new TextEncoder().encode('{"tally":1}') };
+  },
+});
+await fetching.fetch({ tally: 1n, limit: undefined }, 9007199254740993n);
 console.log(JSON.stringify({
   sent: [await run(5n), await run(9007199254740993n)],
+  headed: fetchedHeaders,
   overBus,
   overHttp: `${overHttp.status} ${new TextDecoder().decode(overHttp.body)}`,
 }));
@@ -639,7 +649,8 @@ fn an_i64_travels_as_a_number_through_each_typescript_client_and_dispatcher() {
 
 /// Without `JSON.rawJSON`, the client writes a `bigint` a `number` holds exactly as that number and
 /// refuses any other as a message that fails validation, the dispatcher rejects as a handler that
-/// throws, and the HTTP dispatcher answers the fault of a handler that panicked.
+/// throws, and the HTTP dispatcher answers the fault of a handler that panicked. A header is no
+/// JSON: the HTTP client writes one of any `bigint` as its digits.
 #[test]
 fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as_the_number() {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
@@ -685,6 +696,7 @@ fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as
                     },
                 },
             ],
+            "headed": [["x-ledger", "9007199254740993"]],
             "overBus": format!("refused: 9007199254740992 {unwritten}"),
             "overHttp": format!(
                 r#"500 {{"detail":"9007199254740992 {unwritten}","kind":"handler-panic","operation":"count"}}"#

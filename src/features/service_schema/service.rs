@@ -421,7 +421,8 @@ fn inbound_fault(service: &ServiceDef) -> Vec<String> {
          *\n \
          * The payload reaching here was already read out of the bytes, so what is wrong with it is\n \
          * what it *said* \u{2014} the same thing the Rust dispatcher answers `failed-validation` for. Bytes\n \
-         * that are no document at all never reach this, and are the other kind.\n \
+         * that are no document at all never reach this, and are the other kind, and so is a value\n \
+         * serde refuses as text that is not the document, which the Rust dispatcher answers as one.\n \
          *\n \
          * The fault names the key the failure was at, and a key no member declares by its own name,\n \
          * as the Rust dispatcher names it. A failure at no key names none: a value that is not an\n \

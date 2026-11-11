@@ -72,10 +72,17 @@ fn guarded(parsed: &str) -> String {
     } else {
         ""
     };
+    // A key serde reads as a number is refused in its words where its text opens with no digit.
+    let refusal = if parsed.starts_with("UInt32") || parsed.starts_with("Int64") {
+        "wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } == true ? \
+         \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in quotes\""
+    } else {
+        "\"bad key \\(wireKey)\""
+    };
     format!(
         "let wireKey = codingKey.stringValue; guard let key = {parsed} else {{ \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-         debugDescription: \"bad key \\(wireKey)\") }}; {repeated}result[key] = "
+         debugDescription: {refusal}) }}; {repeated}result[key] = "
     )
 }
 

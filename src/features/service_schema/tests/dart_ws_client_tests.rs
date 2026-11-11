@@ -276,19 +276,27 @@ fn a_reply_operation_answers_the_declared_error_or_a_fault_behind_is_service_fau
 }
 
 #[test]
-fn a_reply_decode_failure_is_a_failed_validation_fault_not_an_undeserializable_payload_one() {
+fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal() {
     let written = dart_ws_client_of(DART_WS_SERVICE);
     let method = body_from(&written, " listTransactions(");
     assert!(
-        method.matches("_ledgerWsFailedValidation(").count() >= 2,
-        "both a bad success value and a bad declared error decode to `failedValidation`. \
+        method
+            .matches("_ledgerWsRefused('list-transactions', rejected)")
+            .count()
+            >= 2,
+        "both a bad success value and a bad declared error are answered through one seam. \
          Got: {method}"
     );
+    let refused = body_from(
+        &written,
+        "_ledgerWsRefused(String operation, Object rejected)",
+    );
     assert!(
-        !written.contains("UndeserializablePayload")
-            && !written.contains("undeserializablePayload"),
-        "`ws_rpc` has no status ladder, so this crate's own decision names every reply decode \
-         failure `failedValidation` instead. Got: {written}"
+        refused.contains("kind: LedgerFaultKind.undeserializablePayload")
+            && refused.contains("'expected value'")
+            && refused.contains("_ledgerWsFailedValidation(operation, '$rejected', field: _ledgerWsRefusedAt(rejected))"),
+        "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
+         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
     );
 }
 

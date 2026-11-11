@@ -329,22 +329,27 @@ fn a_reply_operation_answers_the_declared_error_or_a_fault_behind_is_service_fau
 }
 
 #[test]
-fn a_reply_decode_failure_is_a_failed_validation_fault_not_an_undeserializable_payload_one() {
+fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal() {
     let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
     let method = body_from(&written, "suspend fun window(");
     assert!(
         method
-            .matches("conversationClientServiceWsFailedValidation(")
+            .matches("conversationClientServiceWsRefused(\"window\", rejected)")
             .count()
             >= 2,
-        "both a bad success value and a bad declared error decode to a failed-validation fault. \
+        "both a bad success value and a bad declared error are answered through one seam. \
          Got: {method}"
     );
+    let refused = body_from(
+        &written,
+        "private fun conversationClientServiceWsRefused(operation: String, rejected: Throwable)",
+    );
     assert!(
-        !written.contains("UndeserializablePayload")
-            && !written.contains("undeserializablePayload"),
-        "`ws_rpc` has no status ladder, so this crate's own decision names every reply decode \
-         failure a failed-validation fault instead. Got: {written}"
+        refused.contains("kind = ConversationClientServiceFaultKind.UndeserializablePayload")
+            && refused.contains("\"expected value\"")
+            && refused.contains("conversationClientServiceWsFailedValidation(operation, rejected.toString(), field = conversationClientServiceWsRefusedAt(rejected))"),
+        "a refusal in serde's words for text that is not the document is `UndeserializablePayload`, \
+         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
     );
 }
 
@@ -523,7 +528,7 @@ fn a_reply_dispatch_arm_narrows_on_the_sealed_result_for_every_outcome() {
     assert!(
         arm.contains(
             "Json.decodeFromString(serializer<WindowRequest>(), (payload ?: JsonNull).toString())"
-        ) && arm.contains("field = conversationClientServiceWsRefusedAt(rejected)")
+        ) && arm.contains("val fault = conversationClientServiceWsRefused(\"window\", rejected)")
             && arm.contains("val answered = try {")
             && arm.contains("handlers.window(decoded)")
             && arm.contains("is ConversationClientServiceWindowResult.Ok -> send(")

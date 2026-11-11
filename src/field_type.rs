@@ -77,6 +77,44 @@ const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 #[cfg(any(feature = "zod", feature = "dart"))]
 pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
 
+/// What `serde_json` says of a `Result` written as an object of other than one key: a refusal it
+/// classifies as text that is not the document.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const EXPECTED_VALUE: &str = "expected value";
+
+/// What `serde_json` says of a map key read as a number whose text opens with neither a digit nor
+/// `-`: a refusal it classifies as text that is not the document.
+#[cfg(any(
+    all(feature = "serde", feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const EXPECTED_NUMERIC_KEY: &str = "invalid value: expected key to be a number in quotes";
+
+/// What `serde_json` says of a number beyond an `f64`: a refusal it classifies as text that is not
+/// the document.
+#[cfg(any(
+    all(feature = "serde", feature = "typescript", feature = "zod"),
+    feature = "dart",
+    feature = "kotlin"
+))]
+pub const NUMBER_OUT_OF_RANGE: &str = "number out of range";
+
+/// The refusals of a read every client and dispatcher answers `undeserializable-payload` for,
+/// naming no field, as the Rust dispatchers answer what `serde_json` classifies as text that is not
+/// the document.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const NOT_A_DOCUMENT: [&str; 3] = [EXPECTED_VALUE, EXPECTED_NUMERIC_KEY, NUMBER_OUT_OF_RANGE];
+
 /// The kinds of bound `model_schema_prop` carries, named by what each is measured on: a length or
 /// a pattern on a string, a range on a number, and a pattern or a range on one value of either,
 /// which a list is not.
@@ -1926,11 +1964,20 @@ impl FieldDef {
                 let members = range_object(*kind, |member| format!("{member}: {held}"), ", ");
                 format!("z.strictObject({members})")
             }
+            // serde refuses an object of other than one key as text that is not the document: the
+            // issue says so, and a service answers it as the Rust dispatcher does.
             FieldDefType::Result(ok, err) => {
                 let arms = result_union(ok, err, |arm, held| {
                     format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
                 });
-                format!("z.union([{}])", arms.join(", "))
+                format!(
+                    "z.unknown().check((ctx) => {{ if (typeof ctx.value === \"object\" && \
+                     ctx.value !== null && !Array.isArray(ctx.value) && \
+                     Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", \
+                     message: \"{EXPECTED_VALUE}\", input: ctx.value, params: {{ \
+                     undeserializable: true }} }}); }}).pipe(z.union([{}]))",
+                    arms.join(", ")
+                )
             }
             FieldDefType::Tuple(lst) if lst.is_empty() => "z.null()".to_owned(),
             FieldDefType::Tuple(lst) => {
@@ -1981,9 +2028,12 @@ impl FieldDef {
             | FieldDefType::Usize
             | FieldDefType::Isize => self.zod_number_type("z.number().int()"),
             FieldDefType::U64 | FieldDefType::I64 => self.zod_bigint_type(),
-            FieldDefType::F32 => self.zod_number_type(&format!(
-                "z.number().gt(-{F32_READ_BOUND}).lt({F32_READ_BOUND})"
-            )),
+            // serde reads an `f32` beyond its range as an infinity of its sign.
+            FieldDefType::F32 => format!(
+                "{}.transform((read) => Math.abs(read) < {F32_READ_BOUND} ? read : read < 0 ? \
+                 -Infinity : Infinity)",
+                self.zod_number_type("z.number()")
+            ),
             FieldDefType::F64 => self.zod_number_type("z.number()"),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => object_id::get_object_id_zod_schema(),
