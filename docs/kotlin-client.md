@@ -138,10 +138,12 @@ the consumer's view; this is what a change has to keep.
   `{service}WsFrame`, which refuses one that holds a number beyond a `Double`, which kotlinx keeps
   as its text, so the frame is dropped, as the Rust transports drop it. `{service}WsHeld` is the
   judge of such a number, and the `mcp` server answers a message it refuses with `-32600`. The
-  attachment writes what a handler answers through `{service}WsWritten` (`written_fn`), a `Json`
-  that writes a `Float` or a `Double` that is not finite, each such value then written as `null`,
-  as serde writes it; the client writes a message through the plain `Json`, which refuses one
-  before it is sent.
+  server names the field of a refusal from the JSON schema of the message, and where the schema
+  admits the value, `1.0` or `-0` for an integer, from the path the read of the arguments' text
+  refuses at (`{service}WsRefusedAt`). The attachment and the `mcp` server write what a handler
+  answers through `{service}WsWritten` (`written_fn`), a `Json` that writes a `Float` or a
+  `Double` that is not finite, each such value then written as `null`, as serde writes it; the
+  client writes a message through the plain `Json`, which refuses one before it is sent.
 
 - **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by

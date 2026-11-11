@@ -151,7 +151,7 @@ pub fn reply(structured: &str) -> String {
 /// What the Rust client answers `answered` as the answer of a call that sends the message read
 /// whole: `"read"` for the message read, and the fault's kind and field otherwise; and what it
 /// handed the transport.
-fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
+pub fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
     let whole: CarillonChime = serde_json::from_str(STRUCK).unwrap();
     let client = CarillonMcpServiceClient::new(Canned {
         answer: answered,

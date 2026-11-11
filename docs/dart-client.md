@@ -160,7 +160,9 @@ consumer's view; this is what a change has to keep.
   `expected a 32-bit float, found 1e+300`. `float_sent` holds an `f32` value to the same bound on
   the write, but for one that is not finite, which `toJson` writes as the `double` it is, as it
   writes an `f64`: serde writes it as `null`, `jsonEncode` refuses it, and the `ws_rpc`
-  attachment writes it as `null` (`_{service}WsWritten`). `float_read` reads an `f32` or an
+  attachment writes it as `null` (`_{service}WsWritten`), as the `mcp` server writes it in all it
+  answers (`_{service}McpJson`, whose `jsonEncode` writes such a `double` through
+  `_{service}McpEncodable`). `float_read` reads an `f32` or an
   `f64` value as serde does: an `f32` beyond `F32_READ_BOUND` as an infinity of its sign, and the
   infinity `jsonDecode` reads a number beyond an `f64` as refused with ``number out of range``.
   `number_key_read` refuses a number key whose text opens with neither a digit nor `-` with
@@ -170,12 +172,18 @@ consumer's view; this is what a change has to keep.
   answers what serde classifies as text that is not the document, and the transport's `_onFrame`
   reads a frame through `_{service}WsHeld`, a reviver that refuses an infinity, so a frame that
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
-  after `_signedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
+  after `_{service}WsSignedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
   `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
   cast of an integer's read refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
-  reads as a `double`. A read of a value `jsonDecode` hands, `fromJson` called by hand and the
-  `http_rest` client's among them, reads `-0` as 0. The `mcp` server reads each message through
-  the same reviver, and answers one that holds such a number with `-32600`. A `DateTime<Tz>` is written
+  reads as a `double`. Every Dart read of a JSON text passes it through such a function first, one
+  declared in each text that reads JSON (`signed_zeros_call`): the `http_rest` client reads a
+  response's body and a fault's through `_{service}HttpSignedZeros` (`response_json`), the `mcp`
+  server each message through `_{service}WsSignedZeros`, and the `mcp` client each answer and the
+  text of a tool error through `_{service}McpSignedZeros`. `fromJson` called by hand on what
+  `jsonDecode` hands reads `-0` as 0. The `mcp` server reads each message through the same
+  reviver, and answers one that holds such a number with `-32600`. It names the field of a refusal
+  from the JSON schema of the message, and where the schema admits the value, `1.0` or `-0` for
+  an integer, from the path the read refused at (`_{service}WsRefusedAt`). A `DateTime<Tz>` is written
   `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
