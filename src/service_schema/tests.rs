@@ -278,6 +278,14 @@ fn expansion_over_amqp_rpc_non_exhaustive(source: &str) -> TokenStream {
     )
 }
 
+/// The expansion of a service that asked for `transport` alone, with `non_exhaustive`.
+fn expansion_non_exhaustive_over(source: &str, transport: &str) -> TokenStream {
+    exec_service_schema(
+        quote! { non_exhaustive, transports = [#transport] },
+        declared(source).to_token_stream(),
+    )
+}
+
 /// The expansion of a service that asked for `mcp` alone, with or without `non_exhaustive`.
 fn expansion_over_mcp(source: &str, non_exhaustive: bool) -> String {
     let arguments = if non_exhaustive {
@@ -435,7 +443,12 @@ fn published_functions(items: TokenStream) -> Vec<(String, String)> {
 /// The items one published macro stores: the transcriber of its one rule, with the matcher and the
 /// arrow ahead of it left behind, so a walk sees items and nothing else.
 fn macro_rules_items(source: &str, named: &str) -> TokenStream {
-    macro_rules_stream(expansion_over_amqp_rpc(source), named)
+    transcriber(expansion_over_amqp_rpc(source), named)
+}
+
+/// The transcriber of the one rule of the macro `named` in `expansion`.
+fn transcriber(expansion: TokenStream, named: &str) -> TokenStream {
+    macro_rules_stream(expansion, named)
         .into_iter()
         .find_map(|token| match token {
             TokenTree::Group(carried) if carried.delimiter() == Delimiter::Brace => {
@@ -2978,13 +2991,37 @@ fn the_dispatcher_reads_an_incoming_message_through_its_accessors() {
 #[test]
 fn every_published_function_answering_a_result_says_under_errors_what_the_failure_arm_holds() {
     let mut reached = 0_usize;
-    for half in [
-        "billing_service_amqp_rpc_dispatcher",
-        "billing_service_amqp_rpc_client",
+    for (expansion, half) in [
+        (
+            expansion_over_amqp_rpc(MIXED_SERVICE),
+            "billing_service_amqp_rpc_dispatcher",
+        ),
+        (
+            expansion_over_amqp_rpc(MIXED_SERVICE),
+            "billing_service_amqp_rpc_client",
+        ),
+        (
+            expansion_over_ws_rpc(MIXED_SERVICE),
+            "billing_service_ws_rpc_dispatcher",
+        ),
+        (
+            expansion_over_ws_rpc(MIXED_SERVICE),
+            "billing_service_ws_rpc_client",
+        ),
+        (
+            expansion_over_http_rest(MIXED_SERVICE),
+            "billing_service_http_rest_dispatcher",
+        ),
+        (
+            expansion_over_http_rest(MIXED_SERVICE),
+            "billing_service_http_rest_client",
+        ),
     ] {
-        for (docs, head) in published_functions(macro_rules_items(MIXED_SERVICE, half)) {
-            if !head.contains("- > : : core : : result : : Result <")
-                && !head.contains("Output = : : core : : result : : Result <")
+        for (docs, head) in published_functions(transcriber(expansion, half)) {
+            // A bound such as `Fut: Future<Output = Result<..>>` is a parameter's, not the answer.
+            let signature = head.split(" where ").next().unwrap_or_default();
+            if !signature.contains("- > : : core : : result : : Result <")
+                && !signature.contains("Output = : : core : : result : : Result <")
             {
                 continue;
             }
@@ -4107,13 +4144,15 @@ fn a_streamed_operations_expansion_names_no_runtime_crate() {
 }
 
 #[test]
-fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
+fn the_non_exhaustive_flag_seals_the_four_generated_types_and_the_servers_context_and_stop() {
     let emitted = expansion_over_amqp_rpc_non_exhaustive(INVOICE_SERVICE).to_string();
     for sealed in [
         "# [non_exhaustive] pub enum BillingServiceFaultKind",
         "# [non_exhaustive] pub enum CallError",
         "# [non_exhaustive] pub struct VoidInvoiceRequest",
         "# [non_exhaustive] pub struct BillingServiceSchema",
+        "# [non_exhaustive] pub struct Context",
+        "# [non_exhaustive] pub enum Stopped",
     ] {
         assert!(
             emitted.contains(sealed),
@@ -4122,8 +4161,27 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
     }
     assert_eq!(
         emitted.matches("# [non_exhaustive]").count(),
-        4,
-        "exactly the four generated types should be sealed, and nothing else. Got: {emitted}"
+        6,
+        "exactly the four generated types and the server's two should be sealed, and nothing \
+         else. Got: {emitted}"
+    );
+}
+
+#[test]
+fn a_sealed_server_context_is_built_through_new() {
+    let body = macro_rules_stream(
+        expansion_over_amqp_rpc_non_exhaustive(INVOICE_SERVICE),
+        "billing_service_amqp_rpc_server",
+    )
+    .to_string();
+    assert!(
+        body.contains(
+            "impl Context { # [doc = r\" The context of a call made outside the consumer loop, its \
+             log lines landing in\"] # [doc = r\" `logger`.\"] # [must_use = \"a context is read \
+             only by the call it is handed to\"] pub const fn new (logger : :: tracing :: Span) \
+             -> Self { Self { logger } } }"
+        ),
+        "got: {body}"
     );
 }
 
@@ -4131,6 +4189,67 @@ fn the_non_exhaustive_flag_seals_exactly_the_four_generated_types() {
 fn the_default_expansion_carries_no_non_exhaustive_anywhere() {
     let emitted = expansion_over_amqp_rpc(INVOICE_SERVICE).to_string();
     assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
+    assert!(!emitted.contains("impl Context {"), "got: {emitted}");
+}
+
+#[test]
+fn the_non_exhaustive_flag_seals_each_ws_rpc_frame_and_the_default_fault_handler_alone() {
+    for (transport, half, sealed) in [
+        (
+            "ws_rpc",
+            "billing_service_ws_rpc_dispatcher",
+            Some("# [non_exhaustive] pub enum Frame"),
+        ),
+        (
+            "ws_rpc",
+            "billing_service_ws_rpc_client",
+            Some("# [non_exhaustive] pub enum Frame"),
+        ),
+        (
+            "http_rest",
+            "billing_service_http_rest_dispatcher",
+            Some(
+                "# [derive (Default)] # [non_exhaustive] pub struct DefaultFaultHandler ; impl \
+                 DefaultFaultHandler { # [doc = r\" The handler, for a crate other than the one \
+                 that placed the dispatcher.\"] # [must_use = \"a handler decides nothing until \
+                 it is handed to `dispatch`\"] pub const fn new () -> Self { Self } }",
+            ),
+        ),
+        ("http_rest", "billing_service_http_rest_client", None),
+    ] {
+        let body = macro_rules_stream(
+            expansion_non_exhaustive_over(MIXED_SERVICE, transport),
+            half,
+        )
+        .to_string();
+        if let Some(item) = sealed {
+            assert!(body.contains(item), "missing `{item}`. Got: {body}");
+        }
+        assert_eq!(
+            body.matches("# [non_exhaustive]").count(),
+            usize::from(sealed.is_some()),
+            "`{half}` seals exactly the one type a consumer's crate exports from it. Got: {body}"
+        );
+    }
+}
+
+#[test]
+fn the_default_ws_rpc_and_http_rest_expansions_carry_no_non_exhaustive_anywhere() {
+    for expansion in [
+        expansion_over_ws_rpc(MIXED_SERVICE),
+        expansion_over_http_rest(MIXED_SERVICE),
+    ] {
+        let emitted = expansion.to_string();
+        assert!(!emitted.contains("non_exhaustive"), "got: {emitted}");
+    }
+    let emitted = expansion_over_http_rest(MIXED_SERVICE).to_string();
+    assert!(
+        emitted.contains(
+            "fixed default.\"] pub struct DefaultFaultHandler ; impl FaultHandler for \
+             DefaultFaultHandler { }"
+        ),
+        "got: {emitted}"
+    );
 }
 
 #[test]

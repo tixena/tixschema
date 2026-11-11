@@ -8,7 +8,7 @@ use super::amqp_rpc::{
     incoming_message_accessors, method, placement_doc, refusal_type, reply_trait, transport_trait,
 };
 use crate::service_schema::parse::ServiceDef;
-use crate::service_schema::support::module_ident;
+use crate::service_schema::support::{exhaustiveness, module_ident};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::Ident;
@@ -22,9 +22,9 @@ enum Side {
     Dispatcher,
 }
 
-pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
-    let dispatcher = dispatcher_macro(service, transport);
-    let client = client_macro(service, transport);
+pub fn emit(service: &ServiceDef, transport: Transport, non_exhaustive: bool) -> TokenStream {
+    let dispatcher = dispatcher_macro(service, transport, non_exhaustive);
+    let client = client_macro(service, transport, non_exhaustive);
     quote! {
         #dispatcher
         #client
@@ -33,7 +33,11 @@ pub fn emit(service: &ServiceDef, transport: Transport) -> TokenStream {
 
 /// The dispatcher half: everything that turns one inbound text frame into a call on an
 /// implementation and a reply frame to send, held as tokens for whoever answers the service.
-fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
+fn dispatcher_macro(
+    service: &ServiceDef,
+    transport: Transport,
+    non_exhaustive: bool,
+) -> TokenStream {
     let contract = &service.ident;
     let module = module_ident(service);
     let macro_name = super::dispatcher_macro_ident(service, transport);
@@ -52,7 +56,7 @@ fn dispatcher_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let claims_headers = declares_header_in(service);
     let with_send = declares_a_reply(service);
     let service_const = frame_codec_const(&contract.to_string());
-    let frame_type = frame_codec_type(Side::Dispatcher);
+    let frame_type = frame_codec_type(Side::Dispatcher, non_exhaustive);
     let reply_struct_type = frame_reply_type();
     let incoming_type = incoming_message(claims_headers);
     let reply_trait_type = reply_trait(contract, &module, with_send);
@@ -131,12 +135,14 @@ fn frame_codec_const(contract_name: &str) -> TokenStream {
 /// `Frame`, the one type a frame off the socket reads into — the dispatcher's own reads request,
 /// notify and ping; the client's own reads reply, ping and pong. Either carries `Ignored` for a
 /// frame belonging to the other side.
-fn frame_codec_type(side: Side) -> TokenStream {
+fn frame_codec_type(side: Side, non_exhaustive: bool) -> TokenStream {
+    let sealed = exhaustiveness(non_exhaustive);
     match side {
         Side::Dispatcher => quote! {
             /// One frame as read off the socket: a call this service is asked to make and must
             /// answer, a call it is told about and owes no reply, a liveness probe, or a frame
             /// this side has nothing to do with.
+            #sealed
             pub enum Frame {
                 /// A call this service is asked to make and must answer.
                 Request {
@@ -155,6 +161,7 @@ fn frame_codec_type(side: Side) -> TokenStream {
         Side::Client => quote! {
             /// One frame as read off the socket: an answer to a call this side made, a liveness
             /// probe or its answer, or a frame this side has nothing to do with.
+            #sealed
             pub enum Frame {
                 /// An answer to a call this side made.
                 Reply {
@@ -226,6 +233,10 @@ fn frame_codec_impl(side: Side) -> TokenStream {
             /// Reads one frame off the wire. Text that is not JSON, is not a JSON object, or
             /// names no `kind` this transport recognises, is refused, naming why. A frame naming
             /// a `kind` the other side reads decodes to `Frame::Ignored` instead.
+            ///
+            /// # Errors
+            ///
+            /// The text of why `text` did not read as a frame.
             pub fn decode(text: &str) -> ::core::result::Result<Frame, ::std::string::String> {
                 let parsed: ::serde_json::Value = ::serde_json::from_str(text)
                     .map_err(|refused| format!("not JSON: {refused}"))?;
@@ -457,7 +468,7 @@ fn client_macro_docs(
 /// fault mirror, the client type and one `method` per operation) plus this transport's own copy of
 /// the frame codec, `request_frame`, `notify_frame`, `FrameWriter` and `FrameSession`, held as
 /// tokens for whoever wants to make calls or push events.
-fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
+fn client_macro(service: &ServiceDef, transport: Transport, non_exhaustive: bool) -> TokenStream {
     let contract = &service.ident;
     let client = format_ident!("{contract}Client", span = contract.span());
     let published = super::client_macro_ident(service, transport);
@@ -469,7 +480,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     let (macro_doc, client_doc) = client_macro_docs(contract, transport, &published);
     let service_const = frame_codec_const(&contract.to_string());
     let seam = transport_trait(contract);
-    let frame_type = frame_codec_type(Side::Client);
+    let frame_type = frame_codec_type(Side::Client, non_exhaustive);
     let frame_impl = frame_codec_impl(Side::Client);
     let send_type = send_frame_type();
     let writer_type = frame_writer_type();
@@ -827,6 +838,10 @@ fn frame_encoders() -> TokenStream {
 
         /// The text frame one request-and-reply call sends: this call's own id, the operation and
         /// payload, and, where the operation claimed any, the outgoing `header_in` values.
+        ///
+        /// # Errors
+        ///
+        /// The text of why `payload` did not serialize to JSON.
         pub fn request_frame<T>(
             id: &str,
             operation: &str,
@@ -841,6 +856,10 @@ fn frame_encoders() -> TokenStream {
 
         /// The text frame one one-way call sends: the operation and payload, and, where the
         /// operation claimed any, the outgoing `header_in` values.
+        ///
+        /// # Errors
+        ///
+        /// The text of why `payload` did not serialize to JSON.
         pub fn notify_frame<T>(
             operation: &str,
             payload: &T,

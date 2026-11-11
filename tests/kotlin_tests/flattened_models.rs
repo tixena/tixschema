@@ -399,7 +399,7 @@ pub struct Ticketed {
 
 /// A member that names a function flattened after [`Ticketed`]: serde hands the function every
 /// key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lanyarding {
     #[serde(flatten)]
@@ -420,7 +420,7 @@ pub struct Sheeting {
 
 /// A member that names a function flattened after [`Sheeting`]: serde hands the function every
 /// key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Brailing {
     #[serde(flatten)]
@@ -432,7 +432,7 @@ pub struct Brailing {
 
 /// [`Sheeting`] optional, the one member: serde reads it wherever [`Sheeting`] reads from the
 /// object, and as `None` wherever it does not.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Scarfing {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -469,7 +469,7 @@ pub struct Ensign {
 }
 
 /// A member that names a function flattened after [`Ensign`]: serde hands the function the tag.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Dipping {
     #[serde(flatten)]
@@ -481,7 +481,7 @@ pub struct Dipping {
 
 /// [`Ensign`] optional, beside a member of its holder's own: serde reads no value where the object
 /// holds its tag and none of the keys it reads.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Striking {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -525,7 +525,7 @@ pub struct Pennant {
 }
 
 /// [`Ensign`] flattened ahead of a member of its holder's own: serde writes the struct's tag first.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Dressing {
     #[serde(flatten)]

@@ -458,7 +458,7 @@ pub struct Noted {
 
 /// Two types flattened into their holder: each one's function is handed the keys the holder's own
 /// members do not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Twinned {
     pub dock: String,
@@ -480,7 +480,7 @@ pub struct Sorted {
 }
 
 /// An enum under a tag key: a variant that flattens a type, and one whose slot names a function.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub enum Berth {
@@ -494,7 +494,7 @@ pub enum Berth {
 
 /// An enum serde writes under its variant's name: a variant that flattens a type, and a slot of
 /// several that names a function.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Quay {
     Loose {

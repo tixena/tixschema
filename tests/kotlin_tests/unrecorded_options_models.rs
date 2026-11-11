@@ -7,7 +7,8 @@
 //! wherever its type reads from the object it is handed, and as `None` wherever it does not.
 //! TypeScript and Zod read each holder of [`UNRECORDED`] where serde reads it, and refuse a payload
 //! that holds a key of that type where the type does not read, where serde reads `None`, but for
-//! [`Fiddling`], `nonstrict`, whose Zod schema strips that key as serde drops it.
+//! [`Fiddling`], [`Snagging`] and [`Slipping`], `nonstrict`, whose Zod schemas strip that key as
+//! serde drops it.
 //! [`Grommeting`] holds a struct declared below it that breaks a rule, which serde refuses.
 //! `kotlin_tests/tests.rs` pins the Kotlin text,
 //! `service_schema_emitted_client_tests/run_kotlin_flattened.rs` runs it against serde, and
@@ -61,13 +62,13 @@ pub const UNRECORDED: [Unrecorded; 14] = [
         holder: "Snagging",
         json: r#"{"kind":"Bay","note":"a"}"#,
         read_back: written_back::<Snagging>,
-        taken_by_zod: false,
+        taken_by_zod: true,
     },
     Unrecorded {
         holder: "Snagging",
         json: r#"{"label":"n","note":"a"}"#,
         read_back: written_back::<Snagging>,
-        taken_by_zod: false,
+        taken_by_zod: true,
     },
     Unrecorded {
         holder: "Bridling",
@@ -103,7 +104,7 @@ pub const UNRECORDED: [Unrecorded; 14] = [
         holder: "Slipping",
         json: r#"{"label":5,"note":"a"}"#,
         read_back: written_back::<Slipping>,
-        taken_by_zod: false,
+        taken_by_zod: true,
     },
 ];
 
@@ -206,8 +207,9 @@ pub enum Hitched {
     Bay { label: String },
 }
 
-/// [`Hitched`] optional, beside a member of its holder's own.
-#[model_schema()]
+/// [`Hitched`] optional, beside a member of its holder's own: `nonstrict`, as [`Hitched`] reads
+/// every key still left and refuses none.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Snagging {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -240,8 +242,9 @@ pub enum Slipped {
     Bay { label: String },
 }
 
-/// [`Slipped`] optional, beside a member of its holder's own.
-#[model_schema()]
+/// [`Slipped`] optional, beside a member of its holder's own: `nonstrict`, as [`Slipped`] reads
+/// every key still left and refuses none.
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Slipping {
     pub note: String,
@@ -258,7 +261,7 @@ pub enum Clapped {
 }
 
 /// [`Clapped`] optional, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Clapping {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -308,7 +311,8 @@ where
 }
 
 /// serde writes each payload back as it was exactly where TypeScript and Zod take it, and drops a
-/// key of the type held from every other, which the Zod schema of [`Fiddling`] strips and takes.
+/// key of the type held from every other, which the Zod schemas of the `nonstrict` [`Fiddling`],
+/// [`Snagging`] and [`Slipping`] strip and take.
 #[test]
 fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
     for (row, read_back) in UNRECORDED.iter().zip(READ_BACK) {
@@ -320,7 +324,7 @@ fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
             row.holder
         );
         assert_eq!(
-            read_back == row.json || row.holder == "Fiddling",
+            read_back == row.json || ["Fiddling", "Snagging", "Slipping"].contains(&row.holder),
             row.taken_by_zod,
             "serde and Zod part otherwise on `{}` as {}",
             row.json,

@@ -10,7 +10,7 @@ pub struct Stamp {
     pub at: String,
 }
 
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub enum Parcel {

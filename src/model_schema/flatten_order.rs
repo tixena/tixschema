@@ -185,6 +185,7 @@ struct Level<'item> {
     /// Each key the level declares itself, beside what declares it, as a refusal names it.
     own_keys: Vec<(String, KeySet)>,
     subject: String,
+    variant: Option<String>,
 }
 
 /// One flattened member of a holder, as a refusal names it.
@@ -1770,6 +1771,7 @@ fn struct_level<'item>(
         subject: format!("type `{named}`"),
         named,
         own_keys: own,
+        variant: None,
     })
 }
 
@@ -1801,6 +1803,7 @@ fn variant_levels<'item>(item_enum: &'item ItemEnum, args: &ModelSchemaArgs) -> 
                 subject: format!("type `{named}`, variant `{}`", variant.ident.unraw()),
                 named: named.clone(),
                 own_keys: own,
+                variant: Some(variant.ident.unraw().to_string()),
             }
         })
         .collect()
@@ -2102,12 +2105,23 @@ fn closed_refusal(
             ),
         };
     }
+    let more =
+        verdict_of_open(level, classes).and_then(|held| refusal_of(level, members, classes, held));
+    let refuses_none = !classes
+        .iter()
+        .any(|class| matches!(class, Class::Refusing(_)));
+    if refuses_none && classes[at] == Class::Open {
+        let mut refusal = reads_past_refusal(&level.named, level.variant.as_deref(), &member.name);
+        if let Some(held) = more {
+            refusal.fix.push_str(", and ");
+            refusal.fix.push_str(&held.fix);
+        }
+        return refusal;
+    }
     let mut fix = format!("mark `{}` `#[model_schema(nonstrict)]`", level.named);
-    if let Some(more) =
-        verdict_of_open(level, classes).and_then(|held| refusal_of(level, members, classes, held))
-    {
+    if let Some(held) = more {
         fix.push_str(", and ");
-        fix.push_str(&more.fix);
+        fix.push_str(&held.fix);
     }
     Refusal {
         fix,
@@ -2122,6 +2136,73 @@ fn closed_refusal(
             level.named
         ),
     }
+}
+
+/// The refusal of a strict struct `holder`, or of its `variant`, that flattens `member`, which
+/// reads every key still left and refuses none: serde cannot refuse a key no member declares
+/// beside it.
+fn reads_past_refusal(holder: &str, variant: Option<&str>, member: &str) -> Refusal {
+    let subject = variant.map_or_else(
+        || format!("type `{holder}`"),
+        |named| format!("type `{holder}` (variant `{named}`)"),
+    );
+    Refusal {
+        fix: format!(
+            "mark `{holder}` `#[model_schema(nonstrict)]`, so every surface reads past such a key \
+             as serde does"
+        ),
+        reason: format!(
+            "{subject} flattens `{member}`, which reads past a key no member declares, so serde \
+             cannot refuse such a key beside it"
+        ),
+    }
+}
+
+/// The first member `fields` flattens that reads every key still left and refuses none, with its
+/// name. A member read through a function of its author's is passed over: what the function
+/// answers may refuse such a key.
+fn open_member<'fields>(
+    fields: &'fields Fields,
+    parameters: &[String],
+) -> Option<(&'fields Field, String)> {
+    let field = fields
+        .iter()
+        .filter(|field| flattened(field) && !read_by_a_function(field))
+        .find(|field| member_reads(field, parameters).class() == Class::Open)?;
+    let member = field
+        .ident
+        .as_ref()
+        .map_or_else(String::new, |ident| ident.unraw().to_string());
+    Some((field, member))
+}
+
+/// The first member of `item_struct` [`open_member`] names, with the refusal
+/// [`reads_past_refusal`] writes of the struct.
+pub fn open_member_refusal(item_struct: &ItemStruct) -> Option<(&Field, String)> {
+    let parameters = parameter_names(&item_struct.generics);
+    let (field, member) = open_member(&item_struct.fields, &parameters)?;
+    let holder = item_struct.ident.unraw().to_string();
+    Some((field, reads_past_refusal(&holder, None, &member).message()))
+}
+
+/// The first member [`open_member`] names of a struct variant of `item_enum` serde reads, with the
+/// refusal [`reads_past_refusal`] writes of the variant.
+pub fn open_variant_refusal(item_enum: &ItemEnum) -> Option<(&Field, String)> {
+    let parameters = parameter_names(&item_enum.generics);
+    let holder = item_enum.ident.unraw().to_string();
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_on_the_wire(variant))
+        .filter(|variant| matches!(variant.fields, Fields::Named(_)))
+        .find_map(|variant| {
+            let (field, member) = open_member(&variant.fields, &parameters)?;
+            let named = variant.ident.unraw().to_string();
+            Some((
+                field,
+                reads_past_refusal(&holder, Some(&named), &member).message(),
+            ))
+        })
 }
 
 /// The refusal of the member at `at` of `level`, which `verdict` says reads every key still left
@@ -3648,15 +3729,25 @@ fn parameter_errors(item: &Item) -> Vec<TokenStream> {
         .collect()
 }
 
+/// The compile error of [`held_open_refusal`], on the member it names.
+fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenStream> {
+    held_open_refusal(item_enum, args).map_or_else(Vec::new, |(field, message)| {
+        vec![syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error()]
+    })
+}
+
 /// The refusal of `item_enum` where a variant flattens a member that reads every key still left,
 /// which keeps the macro from writing `#[serde(deny_unknown_fields)]` on the enum, while another
 /// level of it would refuse a key no member declares: the object under its tag and content key, a
 /// struct variant whose flattened members all take their own keys, or a unit variant under a tag
 /// alone. serde reads the attribute on the enum alone, for every level of it.
-fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenStream> {
+pub(super) fn held_open_refusal<'item>(
+    item_enum: &'item ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Option<(&'item Field, String)> {
     if !strict::closable_but_for_flattening(item_enum, args) || strict::closes_enum(item_enum, args)
     {
-        return Vec::new();
+        return None;
     }
     let parameters = parameter_names(&item_enum.generics);
     let on_the_wire: Vec<&Variant> = item_enum
@@ -3677,9 +3768,7 @@ fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenSt
                 class.rest().then_some((*variant, field))
             })
     });
-    let Some((held_open, field)) = opening else {
-        return Vec::new();
-    };
+    let (held_open, field) = opening?;
     let tagging = Tagging::of(item_enum);
     let where_read = if let Tagging::Adjacent { content, tag } = &tagging {
         Some(format!(
@@ -3708,9 +3797,7 @@ fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenSt
             })
             .flatten()
     });
-    let Some(refusing) = where_read else {
-        return Vec::new();
-    };
+    let refusing = where_read?;
     let enum_name = item_enum.ident.unraw();
     let variant = held_open.ident.unraw();
     let member = field
@@ -3726,7 +3813,7 @@ fn held_open_errors(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> Vec<TokenSt
          in a struct of their own and write `{variant}` as a newtype variant over it.",
         spelled(&field.ty)
     );
-    vec![syn::Error::new_spanned(field, prefixed_guard_message(&message)).to_compile_error()]
+    Some((field, message))
 }
 
 /// A warning, through a `#[deprecated]` constant the compiler names, for each generic member

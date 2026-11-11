@@ -1,0 +1,6 @@
+error: model_schema: type `Customer` flattens `contact`, which reads past a key no member declares, so serde cannot refuse such a key beside it. Mark `Customer` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does.
+  --> tests/flatten_order_refusals/a_strict_holder_flattening_a_member_that_reads_past_a_key.rs:19:5
+   |
+19 | /     #[serde(flatten)]
+20 | |     pub contact: Contact,
+   | |________________________^

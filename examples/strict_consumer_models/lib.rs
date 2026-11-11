@@ -1,13 +1,21 @@
 //! A library a strict consumer writes: models another crate reads, in a public module, and models
 //! this crate alone reads, in a private one, with both support libraries written at its root. A
-//! service asking for `mcp` is in a module of its own, its dispatcher, client and a writer in public ones.
+//! service asking for every transport is in a module of its own, each transport's dispatcher and
+//! client, the `amqp_rpc` server and a writer for the `mcp` dispatcher in public ones.
 
 pub mod billing;
 #[macro_use]
 pub mod desk;
+pub mod desk_amqp_client;
+pub mod desk_amqp_dispatcher;
+pub mod desk_amqp_server;
 pub mod desk_client;
 pub mod desk_dispatcher;
+pub mod desk_http_client;
+pub mod desk_http_dispatcher;
 pub mod desk_writer;
+pub mod desk_ws_client;
+pub mod desk_ws_dispatcher;
 mod shelving;
 
 extern crate bson2 as bson;

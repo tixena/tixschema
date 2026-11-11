@@ -87,7 +87,7 @@ pub enum Cringle {
 
 /// A flattened `Option` of [`Cringle`], which has no key to be looked for by, beside a member of
 /// its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tucking {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]

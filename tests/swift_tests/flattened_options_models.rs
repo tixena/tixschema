@@ -204,7 +204,7 @@ pub struct Tarring {
 
 /// A flattened `Option` of [`Crowning`], which reads its own flattened struct from the object
 /// without the keys taken around it.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fidding {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -266,7 +266,7 @@ pub struct Easing {
 }
 
 /// A flattened `Option` of an enum under a tag key alone, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Lowering {
     #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
@@ -286,7 +286,7 @@ pub struct Squaring {
 
 /// A flattened `Option` of an untagged enum, which has no keys, beside a member of its holder's
 /// own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Heeling {
     pub note: String,

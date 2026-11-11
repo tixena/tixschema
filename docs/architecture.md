@@ -357,7 +357,9 @@ tixschema/
 │   ├── crates_apart_tests.rs             # Types of the two crates apart, held and read from here
 │   ├── crates_apart/
 │   │   ├── stored_customers/             # A crate apart: a stored Customer, both initializers
-│   │   └── invoice_lookups/              # A crate apart that lists no bson and no mongodb: "decode_with" types alone
+│   │   ├── invoice_lookups/              # A crate apart that lists no bson and no mongodb: "decode_with" types alone
+│   │   └── sealed_parcel_desk/           # A crate apart: a non_exhaustive service, its http_rest dispatcher and amqp_rpc server
+│   ├── sealed_parcel_desk_tests.rs       # What that service's transports seal, built from here
 │   ├── mcp_declaration_tests.rs          # mcp_tools(), wrapped_{operation}(), MCP_NAMES, needs_wrapper() and the form functions
 │   ├── mcp_declaration_tests/            # The vendored official schemas of revision 2026-07-28: the protocol and the tasks extension
 │   ├── mcp_dispatch_tests.rs             # The Rust MCP dispatcher and client, every answer held to the vendored schemas

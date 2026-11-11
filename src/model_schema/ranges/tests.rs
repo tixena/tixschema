@@ -550,6 +550,10 @@ fn a_type_declared_below_its_holder_is_not_looked_into() {
         assert!(
             check.starts_with("model_schema: type `Unseen` flattens `spare` (`SpareBelow`)")
                 || check.starts_with(
+                    "model_schema: type `Unseen` flattens `spare`, which reads past a key no \
+                     member declares"
+                )
+                || check.starts_with(
                     "model_schema: type `Unseen` has flattened `marking` (`ShelfMark`) and \
                      flattened `spare` (`SpareBelow`)"
                 ),

@@ -7,7 +7,7 @@ use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
 use crate::rename_rule::RenameRule;
-use crate::service_schema::mcp_tools::{answers_key, is_content_pair, is_prompt_messages};
+use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, is_unit_type, wire_key, written,
@@ -722,12 +722,12 @@ function __p__McpAsking(
   return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
 }"#;
 
-const CONTENT: &str = r#"/** One block of `content`, which the dispatcher has already written as the specification writes it. */
+const BLOCK: &str = "/** One block of `content`, which the dispatcher has already written as the specification writes it. */
 function __p__McpBlock(block: unknown): Record<string, unknown> {
   return __p__McpObject(block) ?? {};
-}
+}";
 
-/**
+const CONTENT: &str = r#"/**
  * The blocks a content tool answers: the one image or audio block of a pair, or the blocks of a
  * list. A pair of any other content type has none, and answers as an operation with no flag does.
  */
@@ -2385,22 +2385,23 @@ fn interview_text(service: &ServiceDef, named: &str, prefix: &str) -> String {
     }
 }
 
+/// `__p__McpBlock` where a content tool or the prompt route calls it, and `__p__McpBlocks` where a
+/// content tool does.
 fn content_text(service: &ServiceDef, prefix: &str) -> String {
-    if service
+    let content = service
         .operations
         .iter()
-        .any(|operation| operation.mcp.content.is_some())
-        || prompt_messages(service)
-    {
-        filled(CONTENT, "", prefix)
-    } else {
-        String::new()
-    }
-}
-
-/// Whether a prompt answers a list of messages.
-fn prompt_messages(service: &ServiceDef) -> bool {
-    service.operations.iter().any(is_prompt_messages)
+        .any(|operation| operation.mcp.content.is_some());
+    let prompting = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    [
+        (content || prompting).then_some(BLOCK),
+        content.then_some(CONTENT),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|template| filled(template, "", prefix))
+    .collect::<Vec<_>>()
+    .join("\n\n")
 }
 
 /// The scopes `prompts/get` needs, by the name of the prompt.

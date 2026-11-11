@@ -213,7 +213,7 @@ enum LooseEither {
 
 /// The same union reached through an `Option`, so the object writes one of the members' key sets
 /// beside its own or writes its own alone: two choices, multiplied.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverOptionalUntagged {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -535,7 +535,7 @@ struct UntaggedPickedAliasHolder {
 
 /// A flattened `ObjectId`, whose `$oid` key serde writes beside the object's own.
 #[cfg(feature = "mongodb")]
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlattenedOidHolder {
     id: u32,
@@ -746,7 +746,7 @@ enum MixedEither {
     Partial(MixedPartial),
 }
 
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct FlatOverMixed {
     #[serde(flatten)]
@@ -929,7 +929,7 @@ struct NamedPlainHolder {
 
 /// The same absence over a source that is itself a union: serde writes the matched member's keys or
 /// no keys at all, so the choice the `Option` adds sits outside the choice the enum already offered.
-#[model_schema(enable = ["jsonschema"])]
+#[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct OptUnionHolder {
     #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
@@ -1187,7 +1187,7 @@ enum OptionalSourceVariant {
 }
 
 /// Two choices in one variant: the combinations are the cross product of their members.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum TwoChoiceVariant {
     Named {
@@ -1200,12 +1200,30 @@ enum TwoChoiceVariant {
 }
 
 /// An `Option` over a choice: the source's own members, and the absence beside them.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum OptionalChoiceVariant {
     Named {
         #[serde(flatten, skip_serializing_if = "Option::is_none", default)]
         choice: Option<VariantChoice>,
+        x: String,
+    },
+}
+
+/// A strict enum one variant of which flattens a choice that reads past a key it does not declare,
+/// beside a variant whose choice refuses one: serde refuses such a key in that variant, so the enum
+/// is not refused.
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+enum RefusingBesideOpenVariant {
+    Open {
+        #[serde(flatten)]
+        choice: VariantChoice,
+        x: String,
+    },
+    Refusing {
+        #[serde(flatten)]
+        choice: ThreeBranchChoice,
         x: String,
     },
 }
@@ -2165,7 +2183,7 @@ fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
     }
     assert_eq!(
         serde_json::to_string(&schema).unwrap(),
-        r#"{"type":"object","anyOf":[{"type":"object","oneOf":[{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Left"},"left":{"type":"string"}},"required":["own","kind","left"],"additionalProperties":false},{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Right"},"right":{"type":"boolean"}},"required":["own","kind","right"],"additionalProperties":false}]},{"type":"object","properties":{"own":{"type":"string"}},"required":["own"],"additionalProperties":false}]}"#
+        r#"{"type":"object","anyOf":[{"type":"object","oneOf":[{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Left"},"left":{"type":"string"}},"required":["own","kind","left"],"additionalProperties":true},{"type":"object","properties":{"own":{"type":"string"},"kind":{"type":"string","const":"Right"},"right":{"type":"boolean"}},"required":["own","kind","right"],"additionalProperties":true}]},{"type":"object","properties":{"own":{"type":"string"}},"required":["own"],"additionalProperties":true}]}"#
     );
 }
 
@@ -4201,7 +4219,7 @@ fn test_two_variant_sources_write_their_cross_product() {
 #[cfg(feature = "zod")]
 fn test_two_variant_sources_write_their_cross_product_in_zod() {
     let zod = TwoChoiceVariant::zod_schema();
-    let own = "z.strictObject({\n  x: z.string(),\n})";
+    let own = "z.object({\n  x: z.string(),\n})";
     assert!(
         zod.contains(&format!(
             "\"Named\": z.union([\n  \
@@ -4249,12 +4267,44 @@ fn test_an_optional_multi_branch_variant_source_offers_its_branches_and_the_abse
     assert!(
         zod.contains(
             "\"Named\": z.union([\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}),\n])"
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n  \
+             z.object({\n  x: z.string(),\n}),\n])"
         ),
         "Got: {zod}"
     );
+}
+
+#[test]
+fn test_a_strict_enum_beside_a_variant_that_refuses_a_stray_key_builds() {
+    for (value, written) in [
+        (
+            RefusingBesideOpenVariant::Open {
+                choice: VariantChoice::Left(ChoiceLeft {
+                    left: "l".to_owned(),
+                }),
+                x: "y".to_owned(),
+            },
+            serde_json::json!({ "Open": { "left": "l", "x": "y" } }),
+        ),
+        (
+            RefusingBesideOpenVariant::Refusing {
+                choice: ThreeBranchChoice::Middle(ChoiceMiddle { middle: true }),
+                x: "y".to_owned(),
+            },
+            serde_json::json!({ "Refusing": { "middle": true, "x": "y" } }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(&value).unwrap(), written);
+        assert_eq!(
+            serde_json::from_value::<RefusingBesideOpenVariant>(written).unwrap(),
+            value
+        );
+    }
+    serde_json::from_value::<RefusingBesideOpenVariant>(
+        serde_json::json!({ "Refusing": { "middle": true, "stray": 1_u8, "x": "y" } }),
+    )
+    .unwrap_err();
 }
 
 #[test]
