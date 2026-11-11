@@ -266,7 +266,7 @@ check-mix:
 check-msrv:
     cargo +1.91.1 check --all-features
 
-# Run the tests on the floor, as CI does. No lint: lints run on beta alone.
+# Run the tests on the floor, which no CI step does: CI lints and tests on beta. No lint here.
 test-floor:
     cargo +1.91.1 test --all-features
 

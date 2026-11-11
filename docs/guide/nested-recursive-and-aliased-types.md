@@ -3,7 +3,7 @@
 Types annotated with `#[model_schema()]` can reference each other. The TypeScript output uses the type's name (without any suffix) as the reference.
 
 ```rust
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 pub struct Address {
     pub street: String,
@@ -11,7 +11,7 @@ pub struct Address {
     pub zip_code: String,
 }
 
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize)]
 pub struct UserWithAddress {
     pub id: String,
@@ -23,7 +23,7 @@ pub struct UserWithAddress {
 
 In the JSON Schema, a named type used two or more times in one document is written once under `$defs` and referenced with `$ref` at each use, a brand over a `String` among them; a type used once is written in place. `UserWithAddress::json_schema()` writes `Address` once under `$defs`, and `address` and the items of `backup_addresses` reference it. A recursive type is always a definition. The key is the type's published name, and its fillings for a generic type; a second type published under that name, with another body, is defined under the name followed by a fingerprint of its body, such as `Revision.a38e709c45a1e062`, and a field never references a definition of another type's name. Where one of the two holds the other, the one held is finished first and keeps the name, the holder takes the fingerprint, and a holder that reaches itself references its own definition. Each tool's `inputSchema` and `outputSchema` holds its own `$defs` by the same rule, and `openapi()` holds its definitions under `components.schemas`. The form an MCP operation asks with writes every type in place at each use: an elicitation form holds a primitive under each property, which a `$ref` is not.
 
-A referenced type must be declared at item scope — in a module or at crate level, not inside a function body. Each type publishes its schema in a module beside itself, and a type that references one reaches that module through `use super::*`, which a module nested in a function body is not part of. The referencing type is unconstrained: it may sit inside a function body as long as everything it names does not. See [Function-Local Types](troubleshooting.md#function-local-types) for the error a violation produces.
+A type that lists `enable = ["jsonschema"]` reaches each type it references through that type's schema module, so there a referenced type must be declared at item scope — in a module or at crate level, not inside a function body. Each type publishes its schema in a module beside itself, and a type that references one reaches that module through `use super::*`, which a module nested in a function body is not part of. The referencing type is unconstrained: it may sit inside a function body as long as everything it names does not. See [Function-Local Types](troubleshooting.md#function-local-types) for the error a violation produces.
 
 ### Recursive Types
 
