@@ -1123,6 +1123,16 @@ const KEYED_DEPRECATED: [&str; 22] = [
 /// it is handed, the reader last.
 const DEPRECATED_READS: &str = include_str!("deprecated_reads.mjs");
 
+/// What the driver of [`wide_keyed_bundle`] prints of each payload: what the Zod schema reads, or
+/// the message of each issue.
+const WIDE_KEYS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
+
+for (const [schema, payload] of PAYLOADS) {
+  const read = lib[schema].safeParse(JSON.parse(payload));
+  console.log(read.success ? JSON.stringify(read.data) : read.error.issues.map((issue) => issue.message).join("; "));
+}
+"#;
+
 /// What the driver of [`wide_integers_bundle`] prints of each payload: what the Zod schema reads,
 /// each `bigint` written as its digits and an `n`, or the message of each issue. A payload is read
 /// by `exactJson` where its row says so, and by `JSON.parse` otherwise.
@@ -5210,6 +5220,49 @@ fn type_check_a_64_bit_integer_is_read_as_a_bigint_under_zod() {
         ]
         .join("\n"),
         "the Zod schemas do not read each payload as stated:\n{failed}"
+    );
+}
+
+/// The Zod schema under `node` reads a key of an `i64` or a `u64` beyond `2^53 - 1` in size as
+/// serde reads it, under its own digits, and refuses a key beyond its type as serde does.
+#[test]
+fn type_check_a_64_bit_key_is_read_under_its_own_digits() {
+    let wide = r#"{"3":true,"9223372036854775807":true,"-9223372036854775808":false}"#;
+    let beyond = r#"{"9223372036854775808":true}"#;
+    let refused = "invalid value: integer `9223372036854775808`, expected i64";
+    serde_json::from_str::<wide_keyed::WideKeyedSlot>(wide).unwrap();
+    serde_json::from_str::<wide_keyed::WideKeyedBrand>(wide).unwrap();
+    let told = serde_json::from_str::<wide_keyed::WideKeyedSlot>(beyond).unwrap_err();
+    assert!(told.to_string().starts_with(refused), "serde: {told}");
+    #[cfg(not(any(feature = "swift", feature = "kotlin")))]
+    let unsigned = {
+        let read = r#"{"direct":{"18446744073709551615":true,"9007199254740993":false},"listed":[],"nested":{}}"#;
+        serde_json::from_str::<wide_keyed::WideUnsignedKeyed>(read).unwrap();
+        [("WideUnsignedKeyed$Schema", read, read)]
+    };
+    #[cfg(any(feature = "swift", feature = "kotlin"))]
+    let unsigned: [(&str, &str, &str); 0] = [];
+    let rows: Vec<(&str, &str, &str)> = [
+        ("WideKeyedSlot$Schema", wide, wide),
+        ("WideKeyedBrand$Schema", wide, wide),
+        ("WideKeyedSlot$Schema", beyond, refused),
+    ]
+    .into_iter()
+    .chain(unsigned)
+    .collect();
+    let payloads: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|&(schema, payload, _)| (schema, payload))
+        .collect();
+    let expected: Vec<&str> = rows.iter().map(|&(_, _, read)| read).collect();
+    let driver = WIDE_KEYS_DRIVER.replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap());
+    let Some((printed, failed)) = loaded_from("wide-keys", &wide_keyed_bundle(), &driver) else {
+        return;
+    };
+    assert_eq!(
+        printed,
+        expected.join("\n"),
+        "the Zod schemas do not read each key as serde reads it:\n{failed}"
     );
 }
 

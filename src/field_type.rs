@@ -75,6 +75,12 @@ const BOOLEAN_KEY_ZOD: &str = "z.enum([\"true\", \"false\"])";
 #[cfg(feature = "zod")]
 pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 
+/// The key schema of a map keyed by a `u64` or an `i64`: Zod writes the record under the key's
+/// text where the key schema accepts it, so a key beyond `2^53 - 1` keeps its digits, and the key
+/// stays a `number` in `z.infer`. The check ahead of the record reads the text as serde does.
+#[cfg(feature = "zod")]
+const WIDE_KEY_ZOD: &str = "z.custom<number>((key) => typeof key === \"string\")";
+
 /// A `DateTime<Tz>` key is the RFC 3339 string chrono renders it into, offset always written.
 #[cfg(all(feature = "chrono", feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
@@ -2442,8 +2448,9 @@ impl FieldDef {
             MapKeyWire::Enumerated => {
                 format!("z.partialRecord({}, {value_schema})", self.zod_type())
             }
-            MapKeyWire::Signed64 => format!("z.record(z.number().int(), {value_schema})"),
-            MapKeyWire::Unsigned64 => format!("z.record(z.number().int().min(0), {value_schema})"),
+            MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
+                format!("z.record({WIDE_KEY_ZOD}, {value_schema})")
+            }
             #[cfg(feature = "chrono")]
             MapKeyWire::Timestamp => format!("z.record({TIMESTAMP_KEY_ZOD}, {value_schema})"),
             MapKeyWire::Named => format!("z.record({}, {value_schema})", self.zod_type()),
