@@ -198,19 +198,19 @@ fn the_payload_is_parsed_before_the_implementation_is_called() {
 }
 
 #[test]
-fn a_payload_that_parsed_and_then_failed_is_answered_under_one_kind() {
+fn a_payload_that_parsed_and_then_failed_is_answered_as_the_rust_dispatcher_answers_it() {
     let written = service_of(MIXED_SERVICE);
     assert!(
-        written.contains("kind: \"failed-validation\","),
-        "got: {written}"
+        written.contains("first.params?.undeserializable === true")
+            && written.contains(
+                "kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\","
+            ),
+        "a value serde refuses as text that is not the document is the kind the Rust dispatcher \
+         answers for it, and every other refusal is `failed-validation`. Got: {written}"
     );
     assert!(
-        !written.contains("? \"undeserializable-payload\""),
-        "a payload the dispatcher was handed had already parsed, so this kind is not one of its \
-         answers. Got: {written}"
-    );
-    assert!(
-        written.contains("field: failedAt === \"\" ? undefined : failedAt,"),
+        written
+            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
         "a failure at no key names none: a value that is not an object is not this message, and \
          there is no key to send a caller to. Got: {written}"
     );

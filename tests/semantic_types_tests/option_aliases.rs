@@ -110,8 +110,8 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         format!("paired: z.tuple([{held}, {COUNT}]),"),
         format!("relisted: z.array({held}),"),
         format!(
-            "resulted: z.union([z.strictObject({{ Ok: {held} }}), z.strictObject({{ Err: \
-             z.string() }})]),"
+            "resulted: z.unknown().check((ctx) => {{ if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", message: \"expected value\", input: ctx.value, params: {{ undeserializable: true }} }}); }}).pipe(z.union([z.strictObject({{ Ok: {held} }}), \
+             z.strictObject({{ Err: z.string() }})])),"
         ),
         format!("swung: Swung$SchemaFactory({held}),"),
         format!("swung_option: Swung$SchemaFactory({held}),"),

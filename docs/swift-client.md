@@ -102,6 +102,20 @@ to keep.
   decoder's coding path in serde's words. `Source::plain`, `keyed_read`, the value of a brand and
   of a struct of one slot, and a map's wrapper write their reads through it, and `read::both` and
   the wrapper declare `FITTED` where a read names it.
+- **A `Float` is read as a `Double` and narrowed**, as serde reads an `f32`: Foundation refuses
+  one beyond its range, `1e39`, with `The given data was not valid JSON.` under an empty coding
+  path, where serde reads an infinity of its sign. `read::fitted` writes a read whose type holds a
+  `Float`, alone, in a list, as a map's value or under an `Optional` (`widened`), as the read of
+  that type with each `Float` a `Double`, narrowed back by `Float(_:)` (`narrowed`): `1e39` reads
+  as `.infinity` and `-1e39` as `-.infinity`, and every finite `Float` as `Float(Double(text))`,
+  serde's own rounding.
+- **What serde classifies as text that is not the document is refused in its words**: a `Result`
+  of other than one key with `dataCorrupted` ``expected value``, and a number key, or a brand's
+  over one, whose text opens with neither a digit nor `-` with ``invalid value: expected key to be
+  a number in quotes`` (`wrapper_bound_key`, `numeric_key`). The `ws_rpc` client answers such a
+  refusal, one of `NOT_A_DOCUMENT`, with `undeserializable-payload` naming no field
+  (`{service}WsRefused`), and drops a frame `JSONSerialization` refuses, which refuses a number
+  beyond a `Double`, as the Rust transports drop it.
 - **A refusal inside a flattened member is placed at its holder** (`read::flattened`), as serde
   names the holder: `decode_statement` writes a flattened member's statements in
   `do { ... } catch let refused as DecodingError`, and `swiftSchemaFlattened` (`read::FLATTENED`)

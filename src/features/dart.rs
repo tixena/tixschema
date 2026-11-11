@@ -28,7 +28,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
+    EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, F32_READ_BOUND, FieldDef, FieldDefType,
+    NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
     dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
     is_sequence_wrapper,
 };
@@ -1885,8 +1886,9 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
     }
 }
 
-/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range. A float
-/// key is read only from the text serde reads, and only when finite.
+/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range. A key
+/// whose text opens with neither a digit nor `-` is refused in serde's words for text that is not
+/// the document. A float key is read only from the text serde reads, and only when finite.
 fn number_key_read(number: &FieldDefType, expr: &str) -> String {
     let read = if matches!(number, FieldDefType::F32 | FieldDefType::F64) {
         let double = dart_core("double");
@@ -1898,7 +1900,31 @@ fn number_key_read(number: &FieldDefType, expr: &str) -> String {
     } else {
         format!("{}.parse({expr})", dart_core("int"))
     };
-    forms::number_held(number, &read).unwrap_or(read)
+    let held = forms::number_held(number, &read).unwrap_or(read);
+    format!(
+        "(RegExp(r'^[0-9-]').hasMatch({expr}) ? {held} : throw const \
+         FormatException('{EXPECTED_NUMERIC_KEY}'))"
+    )
+}
+
+/// The float `taken` reads as, as serde reads an `f32` or an `f64`: an `f32` beyond its range as an
+/// infinity of its sign, and an infinity, which `jsonDecode` reads a number beyond an `f64` as, in
+/// serde's words for text that is not the document.
+fn float_read(float: &FieldDefType, taken: &str) -> String {
+    let number = declared("number");
+    let double = dart_core("double");
+    let narrowed = if matches!(float, FieldDefType::F32) {
+        format!(
+            "{number}.abs() < {F32_READ_BOUND} ? {number} : {number}.isNegative ? \
+             {double}.negativeInfinity : {double}.infinity"
+        )
+    } else {
+        number.clone()
+    };
+    format!(
+        "(switch ({taken}) {{ final {number} when {number}.isFinite => {narrowed}, _ => throw \
+         const FormatException('{NUMBER_OUT_OF_RANGE}') }})"
+    )
 }
 
 /// The number type a key written as a brand or an alias reaches, once its aliases are peeled and
@@ -2278,10 +2304,10 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             let taken = format!("{expr} as {}", dart_core("int"));
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
-        FieldDefType::F32 | FieldDefType::F64 => {
-            let taken = format!("({expr} as {}).toDouble()", dart_core("num"));
-            forms::number_held(&field.field_type, &taken).unwrap_or(taken)
-        }
+        FieldDefType::F32 | FieldDefType::F64 => float_read(
+            &field.field_type,
+            &format!("({expr} as {}).toDouble()", dart_core("num")),
+        ),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("ObjectId.fromJson({expr})"),
         FieldDefType::Char => forms::text_read(TextForm::Char, &format!("{expr} as String")),
@@ -2494,15 +2520,16 @@ fn result_arguments(ok: &FieldDef, err: &FieldDef) -> String {
 }
 
 /// The `Result` the object `expr` holds: its one key names the arm, whose value is read as that
-/// arm is. An object of any other keys is refused, as serde refuses it, and so is a value under
-/// an arm of `()` other than `null`.
+/// arm is. An object of other than one key is refused in serde's words for text that is not the
+/// document, an object of a key no arm names as not a `Result`, and a value under an arm of `()`
+/// other than `null` too.
 fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> String {
     let (class, arguments) = (result_class(ok, err), result_arguments(ok, err));
     let object = declared("result");
     let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
         let key = quoted(arm);
         let held = format!("{object}[{key}]");
-        let named = format!("{object}.length == 1 && {object}.containsKey({key})");
+        let named = format!("{object}.containsKey({key})");
         if def.is_unit() {
             format!("final {object} when {named} && {held} == null => {class}{arm}{arguments}()")
         } else {
@@ -2511,7 +2538,8 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
         }
     });
     format!(
-        "switch ({expr} as Map<String, dynamic>) {{ {}, final {object} => throw \
+        "switch ({expr} as Map<String, dynamic>) {{ final {object} when {object}.length != 1 => \
+         throw const FormatException('{EXPECTED_VALUE}'), {}, final {object} => throw \
          FormatException('Not a Result: ${{{object}.keys}}') }}",
         arms.collect::<Vec<_>>().join(", ")
     )

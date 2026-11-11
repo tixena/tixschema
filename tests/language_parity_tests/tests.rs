@@ -219,9 +219,9 @@ pub mod refusals {
         settled.pop().unwrap()
     }
 
-    /// The `kind` that constructor writes. It has to be a constant for it to be the kind of every
-    /// payload the constructor answers — a conditional leaves this reader with nothing to return
-    /// rather than a branch to pick, which is the point.
+    /// The `kind` that constructor writes for a refusal in other words than serde's for text that
+    /// is not the document, the one branch it writes apart from the kind the Rust dispatcher
+    /// answers for those: any other condition leaves this reader with nothing to return.
     pub fn ts_kind(body: &str) -> String {
         let written = body
             .split_once("kind: ")
@@ -231,7 +231,12 @@ pub mod refusals {
             .unwrap()
             .0
             .trim();
-        written
+        let (picked, apart) = written
+            .strip_prefix("unread === undefined ? ")
+            .and_then(|branches| branches.split_once(" : "))
+            .unwrap();
+        assert_eq!(apart, "\"undeserializable-payload\"");
+        picked
             .strip_prefix('"')
             .and_then(|rest| rest.strip_suffix('"'))
             .unwrap()
@@ -591,7 +596,8 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
         "the field is the path of the first issue. Got: {constructor}"
     );
     assert!(
-        constructor.contains("field: failedAt === \"\" ? undefined : failedAt,"),
+        constructor
+            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
         "got: {constructor}"
     );
     assert!(constructor.contains(".join(\"; \"),"), "got: {constructor}");

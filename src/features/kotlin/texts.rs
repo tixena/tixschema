@@ -21,7 +21,9 @@ use super::read::PATHED;
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
 use crate::features::JSON_NUMBER;
 use crate::features::text_forms::TextForm;
-use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::field_type::{
+    EXPECTED_NUMERIC_KEY, FieldDef, FieldDefType, NUMBER_OUT_OF_RANGE, is_sequence_wrapper,
+};
 use crate::utils::crate_tag;
 
 thread_local! {
@@ -34,6 +36,9 @@ thread_local! {
     static KOTLIN_TEXTS: RefCell<Vec<(TextForm, String)>> = const { RefCell::new(Vec::new()) };
     /// The same for each number type and `bool` the item reads.
     static KOTLIN_NUMBERS: RefCell<Vec<(Primitive, String)>> = const { RefCell::new(Vec::new()) };
+    /// The same for each integer type the item reads a map key of.
+    static KOTLIN_NUMBER_KEYS: RefCell<Vec<(Primitive, String)>> =
+        const { RefCell::new(Vec::new()) };
     /// How many number serializers any item has declared: the types of one file share their
     /// names, so it is not cleared.
     static KOTLIN_NUMBER_COUNTER: Cell<usize> = const { Cell::new(0) };
@@ -191,6 +196,33 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
              + \", expected {expected}\"); read }} }} }}"
         );
     }
+    // serde reads an `f32` beyond its range as an infinity of its sign, which kotlinx refuses.
+    let widened = match primitive {
+        Primitive::F32 => format!(
+            "val wide = element.content.toDoubleOrNull(); if (wide != null && wide.isInfinite()) \
+             throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); if (wide != null && \
+             wide.toFloat().isInfinite()) return@kotlinSchemaAt if (wide < 0) \
+             Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY; "
+        ),
+        Primitive::F64 => format!(
+            "if (element.content.toDoubleOrNull()?.isInfinite() == true) throw \
+             SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); "
+        ),
+        Primitive::Bool
+        | Primitive::BoolKey
+        | Primitive::F32Key
+        | Primitive::F64Key
+        | Primitive::I16
+        | Primitive::I32
+        | Primitive::I64
+        | Primitive::I8
+        | Primitive::Isize
+        | Primitive::U16
+        | Primitive::U32
+        | Primitive::U8 => String::new(),
+        #[cfg(feature = "chrono")]
+        Primitive::Millis => String::new(),
+    };
     // kotlinx names the primitive a tree decoder reads `primitive`, a step no payload holds.
     format!(
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
@@ -200,7 +232,7 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
          JsonDecoder ?: return held.deserialize(decoder); val element = json.decodeJsonElement(); \
          return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || element.isString) throw \
          SerializationException(\"invalid type: \" + (if (element is JsonPrimitive) \"string \" \
-         else \"\") + element + \", expected {expected}\"); try {{ \
+         else \"\") + element + \", expected {expected}\"); {widened}try {{ \
          json.json.decodeFromJsonElement(held, element) }} catch (refused: SerializationException) \
          {{ throw SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}"
@@ -279,6 +311,7 @@ fn object_declared(form: TextForm, named: &str) -> String {
 pub fn clear() {
     KOTLIN_TEXTS.with(|texts| texts.borrow_mut().clear());
     KOTLIN_NUMBERS.with(|numbers| numbers.borrow_mut().clear());
+    KOTLIN_NUMBER_KEYS.with(|numbers| numbers.borrow_mut().clear());
 }
 
 /// The `Regex` property `named` a serializer matches a whole text against `pattern` through.
@@ -449,6 +482,56 @@ pub const fn as_key(primitive: Primitive) -> Option<Primitive> {
         #[cfg(feature = "chrono")]
         Primitive::Millis => None,
     }
+}
+
+/// The serializer a map key of `primitive` is read through: a `bool` and a float from text, an
+/// integer through [`integer_key_serializer`], and a timestamp as the library reads it.
+pub fn key_serializer(primitive: Primitive) -> String {
+    as_key(primitive).map_or_else(
+        || {
+            if is_epoch(primitive) {
+                format!("serializer<{}>()", primitive.kotlin_type())
+            } else {
+                integer_key_serializer(primitive)
+            }
+        },
+        number_serializer,
+    )
+}
+
+/// The serializer an integer map key is read through, declared once per item: the text serde
+/// reads, which opens with a digit or `-`, read as the library reads it, and any other text refused
+/// in serde's words for text that is not the document.
+fn integer_key_serializer(primitive: Primitive) -> String {
+    KOTLIN_NUMBER_KEYS.with(|numbers| {
+        let mut written = numbers.borrow_mut();
+        if let Some((_, named)) = written.iter().find(|(declared, _)| *declared == primitive) {
+            return named.clone();
+        }
+        let index = KOTLIN_NUMBER_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        let named = format!("KotlinNumber{index}Key{}", crate_tag());
+        let kotlin = primitive.kotlin_type();
+        KOTLIN_TUPLE_AUX.with(|aux| {
+            aux.borrow_mut().push(format!(
+                "object {named} : KSerializer<{kotlin}> {{ private val held = \
+                 serializer<{kotlin}>(); override val descriptor: SerialDescriptor = \
+                 held.descriptor; override fun serialize(encoder: Encoder, value: {kotlin}) = \
+                 held.serialize(encoder, value); {PATHED}override fun deserialize(decoder: \
+                 Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: return \
+                 held.deserialize(decoder); val element = json.decodeJsonElement(); return \
+                 kotlinSchemaAt(json) {{ if ((element as? JsonPrimitive)?.content?.firstOrNull()\
+                 ?.let {{ it == '-' || it in '0'..'9' }} != true) throw \
+                 SerializationException(\"{EXPECTED_NUMERIC_KEY}\"); \
+                 json.json.decodeFromJsonElement(held, element) }} }} }}"
+            ));
+        });
+        written.push((primitive, named.clone()));
+        named
+    })
 }
 
 /// The serializer a number or a `bool` is read through, declared once per item.

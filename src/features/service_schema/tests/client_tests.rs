@@ -352,11 +352,14 @@ fn the_fault_a_client_builds_names_the_key_that_failed() {
         "got: {written}"
     );
     assert!(
-        written.contains("kind: \"failed-validation\","),
+        written.contains(
+            "kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\","
+        ),
         "the operation never ran, so this is not one of the errors it declared. Got: {written}"
     );
     assert!(
-        written.contains("field: failedAt === \"\" ? undefined : failedAt,"),
+        written
+            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
         "got: {written}"
     );
 }

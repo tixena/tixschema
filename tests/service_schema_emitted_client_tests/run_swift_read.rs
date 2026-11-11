@@ -958,7 +958,7 @@ Manifest, spareParcel a null: read {{\"firstParcel\":{GOOD},\"parcelList\":[],\"
 Towed, no content: no key held at []
 Decking, a key that is no number: mismatch at [byDeck, x]: Expected Int key but found String key instead.
 Depot, a key that is no number: refused at [byNumber, x]
-    bad key x
+    invalid value: expected key to be a number in quotes
 "
         )
     );

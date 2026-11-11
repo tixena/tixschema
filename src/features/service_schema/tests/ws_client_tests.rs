@@ -170,8 +170,12 @@ fn the_issues_fault_folds_a_failed_parse_into_a_failed_validation_fault_naming_t
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains("function billingServiceIssuesFault(")
-            && written.contains("kind: \"failed-validation\",")
-            && written.contains("field: failedAt === \"\" ? undefined : failedAt,"),
+            && written.contains(
+                "kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\","
+            )
+            && written.contains(
+                "field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"
+            ),
         "got: {written}"
     );
 }

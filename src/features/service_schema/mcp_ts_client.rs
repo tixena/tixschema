@@ -367,7 +367,12 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         format!("const {prefix}Version: string = {VERSION_MARKER};"),
         message::read_fn(&format!("{prefix}Read")),
         message::wire_fn(&format!("{prefix}Sent")),
-        message::checked_fn(&format!("{prefix}Checked"), &format!("{prefix}Sent")),
+        message::infinite_fn(&format!("{prefix}Infinite")),
+        message::checked_fn(
+            &format!("{prefix}Checked"),
+            &format!("{prefix}Sent"),
+            &format!("{prefix}Infinite"),
+        ),
         issues_fault_fn(
             &named,
             &format!("{prefix}OutboundFault"),

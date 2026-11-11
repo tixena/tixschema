@@ -337,17 +337,7 @@ fn fit_held(read_as: &str) -> Option<String> {
         .strip_prefix('[')
         .and_then(|rest| rest.strip_suffix(']'))
     {
-        let mut depth = 0_i32;
-        let colon = listed.char_indices().find_map(|(at, written)| {
-            match written {
-                '[' | '<' | '(' => depth += 1_i32,
-                ']' | '>' | ')' => depth -= 1_i32,
-                ':' if depth == 0_i32 => return Some(at),
-                _ => {}
-            }
-            None
-        });
-        return match colon {
+        return match listed_value_at(listed) {
             Some(at) => {
                 let value = fit_held(listed[at + 1..].trim())?;
                 Some(format!("[{}: {value}]", &listed[..at]))
@@ -362,18 +352,84 @@ fn fit_held(read_as: &str) -> Option<String> {
 
 /// The read `{call}{read_as}{rest}`, which Foundation refuses with no coding path where `read_as`
 /// holds a fixed-width integer that does not fit: such a read is read again through
-/// `SwiftSchemaFit`, which refuses at the integer's own coding path. The expression is written
-/// after a `try`.
+/// `SwiftSchemaFit`, which refuses at the integer's own coding path. A `Float` is read as a
+/// `Double` and narrowed, as serde reads an `f32`: Foundation refuses one beyond its range, which
+/// serde reads as an infinity of its sign. The expression is written after a `try`.
 pub(super) fn fitted(call: &str, read_as: &str, rest: &str) -> String {
-    fit_held(read_as).map_or_else(
-        || format!("{call}{read_as}{rest}"),
-        |fit| {
+    if let Some(fit) = fit_held(read_as) {
+        return format!(
+            "Self.swiftSchemaFitted({{ try {call}{read_as}{rest} }}, again: {{ _ = try \
+             {call}{fit}{rest} }})"
+        );
+    }
+    let Some(wide) = widened(read_as) else {
+        return format!("{call}{read_as}{rest}");
+    };
+    let answered = if call.contains("IfPresent(") {
+        format!("{read_as}?")
+    } else {
+        read_as.to_owned()
+    };
+    narrowed(&answered, &format!("{call}{wide}{rest}"))
+}
+
+/// `read_as` with each `Float` it holds, alone or in a list, as a map's value or under an
+/// `Optional`, held as a `Double`; `None` where it holds none there.
+fn widened(read_as: &str) -> Option<String> {
+    if read_as == "Float" {
+        return Some("Double".to_owned());
+    }
+    if let Some(held) = read_as.strip_suffix('?') {
+        return widened(held).map(|wide| format!("{wide}?"));
+    }
+    let listed = read_as.strip_prefix('[')?.strip_suffix(']')?;
+    match listed_value_at(listed) {
+        Some(at) => {
+            let value = widened(listed[at + 1..].trim())?;
+            Some(format!("[{}: {value}]", &listed[..at]))
+        }
+        None => widened(listed).map(|wide| format!("[{wide}]")),
+    }
+}
+
+/// `wide`, read as the type [`widened`] holds `read_as` as, narrowed back to `read_as`.
+fn narrowed(read_as: &str, wide: &str) -> String {
+    if read_as == "Float" {
+        return format!("Float({wide})");
+    }
+    if widened(read_as).is_none() {
+        return wide.to_owned();
+    }
+    if let Some(held) = read_as.strip_suffix('?') {
+        return format!("({wide}).map {{ {} }}", narrowed(held, "$0"));
+    }
+    let listed = read_as
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(read_as);
+    listed_value_at(listed).map_or_else(
+        || format!("({wide}).map {{ {} }}", narrowed(listed, "$0")),
+        |at| {
             format!(
-                "Self.swiftSchemaFitted({{ try {call}{read_as}{rest} }}, again: {{ _ = try \
-                 {call}{fit}{rest} }})"
+                "({wide}).mapValues {{ {} }}",
+                narrowed(listed[at + 1..].trim(), "$0")
             )
         },
     )
+}
+
+/// Where the `:` of a map's type `listed`, written between its brackets, stands at its own depth.
+fn listed_value_at(listed: &str) -> Option<usize> {
+    let mut depth = 0_i32;
+    listed.char_indices().find_map(|(at, written)| {
+        match written {
+            '[' | '<' | '(' => depth += 1_i32,
+            ']' | '>' | ')' => depth -= 1_i32,
+            ':' if depth == 0_i32 => return Some(at),
+            _ => {}
+        }
+        None
+    })
 }
 
 /// `read`, the statements that read a flattened member, placing a refusal inside it at the

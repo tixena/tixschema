@@ -5059,7 +5059,8 @@ fn a_flattened_choice_with_no_check_writes_none_into_its_holder() {
 
 /// Each value of [`wire_forms::WIRE_FORMS`] is sent by the Zod schema of its model under `node`
 /// in the form the table states, which is what the clients over every transport send, as the
-/// check's own output with each `bigint` written as the JSON number of its digits, and the schema
+/// check's own output with each `bigint` written as the JSON number of its digits and an `f32` it
+/// read as an infinity refused, as a client refuses it, and the schema
 /// reads every payload any client sends, read as a client reads it, but an integer TypeScript
 /// holds as a `number` that a `number` cannot hold, which it refuses.
 #[cfg(feature = "chrono")]
@@ -5107,9 +5108,12 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
     let driver = format!(
         "import * as lib from \"./lib/index.js\";\n\n\
          {wire}\n\
+         const infinite = (held) => held === Infinity || held === -Infinity || \
+         (typeof held === \"object\" && held !== null && Object.values(held).some(infinite));\n\
          const sent = (schema, handed) => {{\n  \
          const read = schema.safeParse(handed);\n  \
-         return read.success ? JSON.stringify(wireForm(read.data)) : \"refused\";\n\
+         return read.success && !infinite(read.data) ? JSON.stringify(wireForm(read.data)) : \
+         \"refused\";\n\
          }};\n\
          const {{ {schemas} }} = lib;\n\
          console.log(JSON.stringify([\n{handed}]));\n\

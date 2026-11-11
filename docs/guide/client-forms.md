@@ -8,7 +8,7 @@ Every client sends each value in the one form every target reads: serde, the Zod
 | Type | Sent as | TypeScript | Dart | Swift | Kotlin |
 |---|---|---|---|---|---|
 | an integer | the integer, within the type's range | the Zod check refuses `256` for a `u8`: `z.number().int().min(0).max(255)` | `toJson` throws `FormatException: expected an integer from 0 to 255, found 256` | a `UInt8` holds no `256` | a `UByte` holds no `256` |
-| `f32` | a number below `3.4028235677973366e38` in size, which serde reads as a finite `f32` | `z.number().gt(-3.4028235677973366e38).lt(3.4028235677973366e38)` refuses `1e300` | `FormatException: expected a 32-bit float, found 1e+300` | a `Float` holds no `1e300` | a `Float` holds no `1e300` |
+| `f32` | a number below `3.4028235677973366e38` in size, which serde reads as a finite `f32` | the Zod check reads `1e300` as `Infinity`, as serde reads it, and the client refuses it before it is sent: `expected a 32-bit float, found Infinity` | `FormatException: expected a 32-bit float, found 1e+300` | a `Float` holds no `1e300` | a `Float` holds no `1e300` |
 | `char` | one code point | `z.string().length(1)` refuses `"ab"` | `FormatException: expected a character, found "ab"` | `EncodingError.invalidValue`: `expected a character, found "ab"` | `SerializationException: expected a character, found "ab"` |
 | `NaiveDate` | `2024-01-05` | `z.iso.date()` refuses `"2024-1-5"` | `FormatException: expected a date, found "2024-1-5"` | `EncodingError.invalidValue`: `expected a date, found "2024-1-5"` | `SerializationException: expected a date, found "2024-1-5"` |
 | `NaiveTime` | `10:20:30`, a fraction kept, and `10:20` as `10:20:00` | the schema's preprocessor rewrites | `toJson` rewrites | `encode(to:)` rewrites | the serializer rewrites |

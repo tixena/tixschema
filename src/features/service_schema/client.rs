@@ -49,7 +49,7 @@ use super::fault;
 use super::left_to_http_rest;
 use super::message;
 use super::result::result_name;
-use crate::field_type::get_field_def;
+use crate::field_type::{EXPECTED_NUMERIC_KEY, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -125,16 +125,18 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.extend(fault_helpers(service));
     let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
     published.push(message::wire_fn(&format!("{prefix}Sent")));
+    published.push(message::infinite_fn(&format!("{prefix}Infinite")));
     published.push(message::checked_fn(
         &format!("{prefix}Checked"),
         &format!("{prefix}Sent"),
+        &format!("{prefix}Infinite"),
     ));
     published.push(message::read_fn(&format!("{prefix}Read")));
     published.push(factory(service));
     message::without_uncalled(
         published,
         &prefix,
-        &["Read", "Sent", "Checked", "OutboundFault"],
+        &["Read", "Sent", "Infinite", "Checked", "OutboundFault"],
     )
 }
 
@@ -284,8 +286,10 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
 
 /// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
 /// failing key, and a key no member declares by the path of the object that holds it and the key,
-/// as the Rust dispatcher names it. `doc` is the body of its `JSDoc`. Every TypeScript client and
-/// dispatcher folds a failed parse through it.
+/// as the Rust dispatcher names it. A first refusal in serde's words for text that is not the
+/// document, or of a key read as a number whose text opens with neither a digit nor `-`, is the
+/// `undeserializable-payload` the Rust dispatcher answers for it, naming no field. `doc` is the
+/// body of its `JSDoc`. Every TypeScript client and dispatcher folds a failed parse through it.
 pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
     format!(
         "/**\n\
@@ -295,12 +299,24 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          operation: string,\n  \
          issues: ReadonlyArray<{{\n    \
          code?: string;\n    \
+         issues?: ReadonlyArray<{{ expected?: unknown; message: string }}>;\n    \
          keys?: ReadonlyArray<string>;\n    \
+         params?: {{ undeserializable?: unknown }};\n    \
          path: ReadonlyArray<PropertyKey>;\n    \
          message: string;\n  \
          }}>,\n\
          ): {named}Fault {{\n  \
          const [first] = issues;\n  \
+         const unread =\n    \
+         first === undefined\n      \
+         ? undefined\n      \
+         : first.params?.undeserializable === true\n        \
+         ? first.message\n        \
+         : first.code === \"invalid_key\" &&\n            \
+         first.issues?.some((issue) => issue.expected === \"number\") === true &&\n            \
+         !/^[0-9-]/.test(String(first.path[first.path.length - 1]))\n          \
+         ? \"{EXPECTED_NUMERIC_KEY}\"\n          \
+         : undefined;\n  \
          const steps =\n    \
          first === undefined\n      \
          ? []\n      \
@@ -312,14 +328,16 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          }}",
         minted = fault::minted(
             named,
-            "    detail: issues\n      \
-             .map((issue) =>\n        \
+            "    detail:\n      \
+             unread ??\n      \
+             issues\n        \
+             .map((issue) =>\n          \
              issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n      \
-             )\n      \
+             ${issue.message}`,\n        \
+             )\n        \
              .join(\"; \"),\n    \
-             field: failedAt === \"\" ? undefined : failedAt,\n    \
-             kind: \"failed-validation\",\n    \
+             field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,\n    \
+             kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\",\n    \
              operation,"
         )
     )
