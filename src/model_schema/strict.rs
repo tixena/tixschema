@@ -6,13 +6,13 @@
 //! serde would refuse the very keys such a member is declared to hold. A strict struct whose serde
 //! read then refuses no such key, under a tag of its own or beside a flattened member that reads
 //! past one, is refused, so that it is marked `nonstrict`, and so is a strict enum a variant of
-//! which flattens such a member. A strict struct serde reads no member of is read through a read
-//! the macro writes, which refuses every key, and is refused where serde reads it through a
-//! conversion.
+//! which flattens such a member, each variant judged by itself. A strict struct serde reads no
+//! member of is read through a read the macro writes, which refuses every key, and is refused where
+//! serde reads it through a conversion.
 
 use super::flatten_order::{
-    Culprit, a_variant_refuses_a_stray, held_open_refusal, open_member_refusal,
-    open_variant_refusal, refused_by_a_member, takes_only,
+    Culprit, held_open_refusal, open_member_refusal, open_variant_refusal, refused_by_a_member,
+    takes_only, variant_refuses_a_stray,
 };
 use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::{
@@ -359,19 +359,34 @@ pub(super) fn unit_reads(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
 }
 
 /// Whether every surface describes `item`'s own object as reading past a key no member declares:
-/// where it is `nonstrict`, but for a struct a member of which it flattens refuses the key, and an
-/// enum a variant of which refuses it, as serde refuses it there.
+/// where it is `nonstrict`, but for a struct a member of which it flattens refuses the key, as
+/// serde refuses it there. [`refusing_variants`] judges each variant of an enum by itself.
 pub(super) fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
     if !args.nonstrict {
         return false;
     }
     if let Item::Struct(item_struct) = item {
         !refused_by_a_member(&item_struct.fields, &item_struct.generics)
-    } else if let Item::Enum(item_enum) = item {
-        !a_variant_refuses_a_stray(item_enum)
     } else {
         true
     }
+}
+
+/// The variants of a `nonstrict` enum whose own object every surface describes as refusing a key
+/// no member declares, as serde refuses it in that variant whatever the others read.
+pub(super) fn refusing_variants(item: &Item, args: &ModelSchemaArgs) -> Vec<String> {
+    let Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    if !args.nonstrict {
+        return Vec::new();
+    }
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_refuses_a_stray(item_enum, variant))
+        .map(|variant| variant.ident.to_string())
+        .collect()
 }
 
 /// Whether the author wrote `#[serde(deny_unknown_fields)]` among `attrs`.
@@ -515,16 +530,13 @@ fn reads_past_a_stray_error(
 }
 
 /// The refusal of a strict enum a struct variant of which flattens a member that reads every key
-/// still left and refuses none, where no variant refuses such a key. [`held_open_refusal`] answers
-/// instead where another level of the enum would refuse one, with the newtype fix.
+/// still left and refuses none, whatever another variant refuses. [`held_open_refusal`] answers
+/// instead where another level of the enum would refuse such a key, with the newtype fix.
 fn variant_reads_past_a_stray_error(
     item_enum: &ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
-    if !writes_deny(&item_enum.attrs, args)
-        || a_variant_refuses_a_stray(item_enum)
-        || held_open_refusal(item_enum, args).is_some()
-    {
+    if !writes_deny(&item_enum.attrs, args) || held_open_refusal(item_enum, args).is_some() {
         return None;
     }
     let (field, message) = open_variant_refusal(item_enum)?;

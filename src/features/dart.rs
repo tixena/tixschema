@@ -38,7 +38,7 @@ use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::is_unconsumed;
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict,
-    to_snake_case, type_parameters_in_scope,
+    to_snake_case, type_parameters_in_scope, within_variant,
 };
 
 #[cfg(feature = "serde")]
@@ -4799,6 +4799,24 @@ fn beside_the_content(export_name: &str, shape: &TagShape<'_>, corrects: &Correc
     }
 }
 
+/// The arm that reads the unit variant read as `from_json` of an externally tagged enum from an
+/// entry of one of its `names` over `null`, which serde reads as well as the name alone: it is
+/// what serde writes of the variant flattened.
+fn unit_entry_arm(
+    export_name: &str,
+    names: &[String],
+    from_json: &str,
+    corrects: &Corrects<'_>,
+) -> String {
+    format!(
+        "case {}: return {map}[{tag}] == null ? {from_json} : throw \
+         FormatException('{export_name}: ' + {tag} + ' takes no value');",
+        any_of(names),
+        map = corrects.map,
+        tag = corrects.tag,
+    )
+}
+
 /// The Dart tokens a tagged enum (internal, adjacent, or the default external form) earns: a
 /// `sealed` base class whose unjudged read dispatches on the tag and whose `fromJson` judges
 /// what it answers, and one subclass per variant.
@@ -4843,33 +4861,27 @@ fn tagged_enum_dart_source(
             args.check,
         );
         variant_payloads.push(variant_keys(&payload, &corrects));
-        let (class_text, from_json) = tagged_variant_tokens(
-            export_name,
-            &generic_params,
-            &codec,
-            &VariantClass {
-                aliased: names.len() > 1,
-                payload: &payload,
-                subclass_name: &subclass_name,
-                validate: &validate,
-                wire_tag: &wire_tag,
-            },
-            &shape,
-            &corrects,
-        );
+        let (class_text, from_json) = within_variant(&variant.ident, || {
+            tagged_variant_tokens(
+                export_name,
+                &generic_params,
+                &codec,
+                &VariantClass {
+                    aliased: names.len() > 1,
+                    payload: &payload,
+                    subclass_name: &subclass_name,
+                    validate: &validate,
+                    wire_tag: &wire_tag,
+                },
+                &shape,
+                &corrects,
+            )
+        });
         subclasses.push(format!("{}{class_text}", leave_core_scope()));
         let arm = format!("case {}: return {from_json};", any_of(&names));
         if is_external && matches!(payload, VariantPayload::Unit) {
             is_string_dispatch_arms.push(arm);
-            // serde reads a unit variant from an entry of its name over `null` as well, the one
-            // it writes flattened.
-            map_dispatch_arms.push(format!(
-                "case {}: return {map}[{tag}] == null ? {from_json} : throw \
-                 FormatException('{export_name}: ' + {tag} + ' takes no value');",
-                any_of(&names),
-                map = corrects.map,
-                tag = corrects.tag,
-            ));
+            map_dispatch_arms.push(unit_entry_arm(export_name, &names, &from_json, &corrects));
         } else {
             map_dispatch_arms.push(arm);
         }
@@ -4960,13 +4972,15 @@ fn untagged_enum_dart_source(
         );
         let (class_text, from_json) = match &payload {
             VariantPayload::Named(fields) => {
-                let reads = class_reads(
-                    &subclass_name,
-                    fields,
-                    None,
-                    &codec,
-                    &corrects.of_a_variant(),
-                );
+                let reads = within_variant(&variant.ident, || {
+                    class_reads(
+                        &subclass_name,
+                        fields,
+                        None,
+                        &codec,
+                        &corrects.of_a_variant(),
+                    )
+                });
                 let content =
                     class_body_content(&subclass_name, fields, &[], &codec, &reads, &validate);
                 (

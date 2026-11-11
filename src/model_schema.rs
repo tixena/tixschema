@@ -123,6 +123,7 @@ use crate::utils::{
 };
 use crate::utils::{
     TrivialPattern, is_nonstrict, record_field_validator, record_nonstrict, trivial_pattern,
+    within_variant,
 };
 
 use crate::features::serde::brand_slot;
@@ -501,6 +502,7 @@ struct DiscriminatedVariant {
     /// The variant's own `#[serde(flatten)]` sources, apart from `field_defs`: they write no key of
     /// their own.
     flattened_fields: Vec<FieldDef>,
+    ident: syn::Ident,
     kind: VariantKind,
 }
 
@@ -2403,7 +2405,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
-    record_nonstrict(reads_past_a_stray(&item, &parsed_args));
+    record_strictness(&item, &parsed_args);
     #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
@@ -6284,16 +6286,20 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     type_path.path.get_ident().cloned()
 }
 
-/// Whether serde reads past a key no member of `item` declares.
+/// Records whether serde reads past a key no member of `item` declares, and the variants of a
+/// `nonstrict` enum that refuse one all the same.
 #[cfg(feature = "serde")]
-fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
-    strict::reads_past_a_stray(item, args)
+fn record_strictness(item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(
+        strict::reads_past_a_stray(item, args),
+        strict::refusing_variants(item, args),
+    );
 }
 
 /// Without serde nothing flattens, and `nonstrict` alone says it.
 #[cfg(not(feature = "serde"))]
-const fn reads_past_a_stray(_item: &Item, args: &ModelSchemaArgs) -> bool {
-    args.nonstrict
+fn record_strictness(_item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(args.nonstrict, Vec::new());
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
@@ -12604,7 +12610,6 @@ fn collect_discriminated_variants(
         let mut flattened_fields: Vec<FieldDef> = Vec::new();
         let mut bound: Vec<BoundMember> = Vec::new();
         let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
-        let total_fields = item.fields.len();
         for (index, field) in item.fields.iter_mut().enumerate() {
             let omission = parse_serde_key_omission(&field.attrs);
             let positional = field.ident.is_none();
@@ -12644,7 +12649,7 @@ fn collect_discriminated_variants(
             push_described_field(&mut field_defs, f_def);
         }
         per_variant_checks.push((
-            variant_check_pattern(&item.ident, &declared_kind, total_fields, &bound),
+            variant_check_pattern(&item.ident, &declared_kind, item.fields.len(), &bound),
             checks,
         ));
 
@@ -12654,6 +12659,7 @@ fn collect_discriminated_variants(
                 discriminator_value: final_name,
                 field_defs,
                 flattened_fields,
+                ident: item.ident.clone(),
                 kind: wire_kind,
             });
         }
@@ -13057,7 +13063,9 @@ fn render_external_variant(
         );
     }
 
-    let (content_ts, content_zod, content_json) = render_external_content(variant, self_type_name);
+    let (content_ts, content_zod, content_json) = within_variant(&variant.ident, || {
+        render_external_content(variant, self_type_name)
+    });
 
     #[cfg(feature = "zod")]
     let zod = {
@@ -13763,7 +13771,9 @@ fn render_internal_variants(
                 .filter(|variant| variant_on_the_wire(variant)),
         )
         .map(|(variant, declared)| {
-            render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            within_variant(&declared.ident, || {
+                render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            })
         })
         .collect()
 }
@@ -14069,11 +14079,9 @@ fn render_untagged_variant(
 ) -> Result<(String, String, proc_macro2::TokenStream), syn::Error> {
     match (kind, members.field_defs.as_slice()) {
         (VariantKind::TupleSingle, [fld]) => Ok(render_untagged_tuple_single(fld, self_type_name)),
-        (VariantKind::Named, _) => Ok(render_untagged_named(
-            members,
-            self_type_name,
-            &variant.ident.to_string(),
-        )),
+        (VariantKind::Named, _) => Ok(within_variant(&variant.ident, || {
+            render_untagged_named(members, self_type_name, &variant.ident.to_string())
+        })),
         (VariantKind::Unit, _) if lone_slot_off_wire(variant) => {
             Err(collapsed_untagged_variant_error(variant))
         }
@@ -15387,9 +15395,9 @@ fn generate_variant_code(
             // Unit variant: no additional fields beyond the discriminator TypeScript: { type:
             // "Variant" } Zod: { type: z.literal("Variant") }
         }
-        VariantKind::Named => {
+        VariantKind::Named => within_variant(&variant.ident, || {
             write_adjacent_named_variant_fields(variant, content_name, self_type_name, &mut parts);
-        }
+        }),
         VariantKind::TupleSingle => {
             write_tuple_single_variant_fields(field_defs, content_name, self_type_name, &mut parts);
         }
