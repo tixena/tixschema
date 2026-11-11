@@ -64,6 +64,8 @@ Put `#[model_schema()]` on the struct, or declare the fields as the operation's 
 
 Every client fills a placeholder the way the Rust client does, through the value's own codec: a string as itself, a number or boolean as its text, and a newtype such as `MediaId("abc123")` as its wire value, `/media/abc123`, each percent-encoded. The Rust and TypeScript dispatchers read a placeholder percent-decoded, as they read a query value, so `a b/c` is written `/media/a%20b%2Fc` and read back as `a b/c`; an adapter hands `IncomingRequest::new` the path as the request carried it, `Uri::path()`, not a decoded one. That includes a field of an author's own named message, whose type the macro never sees: the Dart, Kotlin and Swift clients render it at runtime through a generated helper.
 
+A placeholder that binds a list is written as the list's items, each in the form above, percent-encoded as one text and joined by a comma: `pages: Vec<u32>` of `[1, 2, 3]` on `/listed/{pages}` is `/listed/1%2C2%2C3` on every client, whether the message is declared or generated, and both dispatchers read it back as the list. Both dispatchers percent-decode the text before they split it on `,`, so no form carries an item that holds a comma; every client refuses such a list before sending, answering the `failed-validation` fault on the placeholder's field with ``a list item holds a comma, which a path would read as two items`` (a reply operation's `Fault` result, a one-way operation's refusal). Carry such a list in the body, or as an argument the path does not bind.
+
 `GET` and `DELETE` carry no request body, so a required field the path did not bind has nowhere left to go and is refused on the field rather than silently dropped:
 
 ```text

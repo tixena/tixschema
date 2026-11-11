@@ -13,8 +13,9 @@ use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    path_reads_a_named_field, tuple_elements, type_leaf_name, vec_inner, wire_key, written,
+    OperationOutcome, PATH_ITEM_HOLDS_A_COMMA, PathSegment, ServiceDef, is_scalar_named_type,
+    is_unit_type, option_inner, path_reads_a_named_field, path_writes_a_list, tuple_elements,
+    type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::{WireScalarKind, wire_scalar_kind};
@@ -297,7 +298,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let call = dart_call(operation);
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
-    let path_build = path_build_stmt(fn_prefix, operation, &shape);
+    let path_build = path_build_stmt(named, fn_prefix, operation, &shape);
     let query_build = query_build_stmt(fn_prefix, operation, &shape);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(operation, &shape);
@@ -332,34 +333,48 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
 }
 
 /// The value one path placeholder reads off `req`: the field the placeholder names, or the whole
-/// message where that message is itself a wire scalar.
+/// message where that message is itself a wire scalar. A `String?` expression that answers `null`
+/// for a list one of whose items holds a comma, said by the flag beside it, or a `String`.
 fn placeholder_value_dart_expr(
     fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
-) -> String {
+) -> (String, bool) {
     let member = request_member(operation, placeholder);
+    let path_text = path_text_call(fn_prefix);
+    let of_type = |ty: &Type, expr: &str, promoted: bool| {
+        let base = option_inner(ty).unwrap_or(ty);
+        (
+            dart_path_text(fn_prefix, ty, expr, promoted),
+            vec_inner(base).is_some(),
+        )
+    };
     match &operation.inputs {
-        OperationInputs::Empty => format!("'${{req.{member}}}'"),
+        OperationInputs::Empty => (format!("'${{req.{member}}}'"), false),
         OperationInputs::Generated(fields) => fields
             .iter()
             .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
-                || format!("'${{req.{member}}}'"),
-                |(_, ty)| dart_wire_text(fn_prefix, ty, &format!("req.{member}"), false),
+                || (format!("'${{req.{member}}}'"), false),
+                |(_, ty)| of_type(ty, &format!("req.{member}"), false),
             ),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                dart_wire_text(fn_prefix, declared, "req", true)
+                of_type(declared, "req", true)
             } else {
-                format!("{}(req.{member})", wire_text_call(fn_prefix))
+                (format!("{path_text}(req.{member})"), true)
             }
         }
     }
 }
 
-fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
+fn path_build_stmt(
+    named: &str,
+    fn_prefix: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+) -> String {
     let mut stmt = String::from("    var path = '';\n");
     for segment in &shape.path {
         match segment {
@@ -367,12 +382,51 @@ fn path_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape)
                 let _ = writeln!(stmt, "    path += {};", quoted(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_dart_expr(fn_prefix, operation, shape, name);
-                let _ = writeln!(stmt, "    path += Uri.encodeComponent({value});");
+                let (value, refusable) =
+                    placeholder_value_dart_expr(fn_prefix, operation, shape, name);
+                if !refusable {
+                    let _ = writeln!(stmt, "    path += Uri.encodeComponent({value});");
+                    continue;
+                }
+                let fault_expr = format!(
+                    "_{fn_prefix}HttpOutboundFault({}, {}, {})",
+                    quoted(&operation.wire_name),
+                    quoted(name),
+                    quoted(PATH_ITEM_HOLDS_A_COMMA),
+                );
+                let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
+                let _ = write!(
+                    stmt,
+                    "    {{\n      final text = {value};\n      if (text == null) {{\n        \
+                     {refusal}\n      }}\n      path += Uri.encodeComponent(text);\n    }}\n"
+                );
             }
         }
     }
     stmt
+}
+
+/// The Dart expression that renders `ty`'s value at `expr` as the text a path placeholder
+/// carries, a `String?` that is `null` where a list's item holds a comma: [`dart_wire_text`], with
+/// a list's items written one by one and handed to the path-text helper to join.
+fn dart_path_text(fn_prefix: &str, ty: &Type, expr: &str, promoted: bool) -> String {
+    if let Some(inner) = option_inner(ty) {
+        let narrowed = if promoted {
+            expr.to_owned()
+        } else {
+            format!("{expr}!")
+        };
+        let rendered = dart_path_text(fn_prefix, inner, &narrowed, promoted);
+        return format!("({expr} == null ? '' : {rendered})");
+    }
+    if let Some(inner) = vec_inner(ty) {
+        let element = dart_wire_text(fn_prefix, inner, "e", true);
+        return format!(
+            "{}(({expr}).map((e) => {element}).toList())",
+            path_text_call(fn_prefix)
+        );
+    }
+    dart_wire_text(fn_prefix, ty, expr, promoted)
 }
 
 fn query_build_stmt(fn_prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
@@ -945,11 +999,17 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
-    if service.operations.iter().any(|operation| {
-        path_reads_a_named_field(operation)
-            || text_types(operation).iter().any(writes_through_its_codec)
-    }) {
+    let writes_a_list = service.operations.iter().any(path_writes_a_list);
+    if writes_a_list
+        || service.operations.iter().any(|operation| {
+            path_reads_a_named_field(operation)
+                || text_types(operation).iter().any(writes_through_its_codec)
+        })
+    {
         helpers.push(wire_text_fn(fn_prefix));
+    }
+    if writes_a_list {
+        helpers.push(path_text_fn(fn_prefix));
     }
     helpers.extend([
         transport_failure_fn(named, fn_prefix),
@@ -959,6 +1019,8 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     ]);
     if declares_header_in(service) {
         helpers.push(legal_header_value_fn(fn_prefix));
+    }
+    if declares_header_in(service) || writes_a_list {
         helpers.push(outbound_fault_fn(named, fn_prefix));
     }
     helpers
@@ -999,13 +1061,13 @@ fn legal_header_value_fn(fn_prefix: &str) -> String {
     )
 }
 
-/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check answers with,
-/// before the transport is ever reached.
+/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check, or a path list
+/// holding a comma, answers with, before the transport is ever reached.
 fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
-         /// own safety check, before the transport is ever reached.\n\
+         /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          {fields} _{fn_prefix}HttpOutboundFault(String operation, String field, String detail) \
          =>\n    \
          {fields}(\n      \
@@ -1065,6 +1127,27 @@ fn wire_text_fn(fn_prefix: &str) -> String {
          }}",
         wire_text_call(fn_prefix)
     )
+}
+
+/// The text a path placeholder carries of `value`: a list's items each through
+/// [`wire_text_fn`], joined by commas as the dispatchers split them, or `null` where an item holds
+/// a comma, which a dispatcher would split in two.
+fn path_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// The text a path placeholder carries of `value`: a list's items joined by commas, or\n\
+         /// `null` where an item holds a comma, which a dispatcher would split in two.\n\
+         String? {path}(Object? value) {{\n  \
+         if (value is! List) return {text}(value);\n  \
+         final items = value.map({text}).toList();\n  \
+         return items.any((item) => item.contains(',')) ? null : items.join(',');\n\
+         }}",
+        path = path_text_call(fn_prefix),
+        text = wire_text_call(fn_prefix),
+    )
+}
+
+fn path_text_call(fn_prefix: &str) -> String {
+    format!("_{fn_prefix}HttpPathText")
 }
 
 fn wire_text_call(fn_prefix: &str) -> String {
