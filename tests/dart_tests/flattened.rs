@@ -19,7 +19,7 @@ const HATCHING: &str = "['Bay'], ['Dock', 'Quay']";
 /// `Map<String, dynamic>`.
 fn counts_from(object: &str) -> String {
     format!(
-        "Map<String, int>.fromEntries({object}.entries.map((e) => MapEntry(e.key, {})))",
+        "Map<String, int>.fromEntries({object}.entries.map((e) => MapEntry(e.key, _readAt(null, e.key, () => {}))))",
         u8_held("e.value as int")
     )
 }
@@ -90,8 +90,8 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &clamping_dart::dart_definition(),
         &format!(
-            "Clamping(marking: Marking.fromJsonUnjudged({}),note: json['note'] as String,other: \
-             {},);",
+            "Clamping(marking: Marking.fromJsonUnjudged({}),note: _readAt(json, 'note', () => \
+             json['note'] as String),other: {},);",
             only("({...json}..remove('note'))", "'label'"),
             keyed_from("({...json}..remove('note')..remove('label'))")
         ),
@@ -99,7 +99,7 @@ fn a_function_after_a_flattened_struct_is_handed_the_object_without_the_keys_the
     assert_written(
         &fastening_dart::dart_definition(),
         &format!(
-            "Fastening(note: json['note'] as String,other: {},);",
+            "Fastening(note: _readAt(json, 'note', () => json['note'] as String),other: {},);",
             keyed_from("({...json}..remove('note'))")
         ),
     );
@@ -196,7 +196,8 @@ fn a_flattened_externally_tagged_enum_is_read_from_its_variants_entry() {
     assert_written(
         &battening_dart::dart_definition(),
         &format!(
-            "Battening(hatching: Hatching.fromJsonUnjudged({}),note: json['note'] as String,);",
+            "Battening(hatching: Hatching.fromJsonUnjudged({}),note: _readAt(json, 'note', () => \
+             json['note'] as String),);",
             first_of(
                 "({...json}..remove('note'))",
                 "Hatching",
@@ -222,7 +223,7 @@ fn an_optional_flattened_externally_tagged_enum_is_null_where_no_entry_is() {
         &format!(
             "Caulking(hatching: (switch ({}) {{ final entry => entry.isEmpty ? null : (() {{ try \
              {{ return Hatching.fromJsonUnjudged(entry); }} catch (_) {{ return null; }} }})() \
-             }}),note: json['note'] as String,);",
+             }}),note: _readAt(json, 'note', () => json['note'] as String),);",
             first_of(
                 "({...json}..remove('note'))",
                 "Hatching",

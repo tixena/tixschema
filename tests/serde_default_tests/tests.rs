@@ -502,9 +502,17 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
              }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
              json.keys) {{ if (!const <String>{{'label', 'width'}}.contains(key)) throw \
-             FormatException('Unknown key of a Gangway: $key'); }} return Gangway(label: \
-             json['label'] as String,width: {WIDTH_READ},); }} Map<String, dynamic> toJson() => {{ \
-             'label': label,'width': {WIDTH_WRITTEN}, }}; List<String> validate() => const []; }}"
+             FormatException('Unknown key of a Gangway: $key', <Object>[key]); }} return \
+             Gangway(label: _readAt(json, 'label', () => json['label'] as String),width: \
+             _readAt(json, 'width', () => {WIDTH_READ}),); }} static Read \
+             _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) {{ try \
+             {{ return read(); }} catch (refused) {{ if (object != null && \
+             !object.containsKey(key)) throw FormatException('missing field `$key`', \
+             <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
+             <Object>[key]); if (refused is FormatException) {{ final at = refused.source; throw \
+             FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); }} \
+             rethrow; }} }} Map<String, dynamic> toJson() => {{ 'label': label,'width': \
+             {WIDTH_WRITTEN}, }}; List<String> validate() => const []; }}"
         )
     );
 }
@@ -533,8 +541,8 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          serialize(encoder: Encoder, value: Gangway) = GangwayUnjudged.serialize(encoder, value); \
          override fun deserialize(decoder: Decoder): Gangway { val read = \
          GangwayUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
-         return read } }"
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read } }"
     );
 }
 
@@ -547,12 +555,13 @@ fn dart_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_dart::dart_definition();
     assert!(
         written.contains(
-            "dock: json.containsKey('dock') ? (json['dock'] as String) : (jsonDecode('\"\"') as \
-             String),gangway: json.containsKey('gangway') ? \
-             (Gangway.fromJsonUnjudged(json['gangway'])) : \
+            "dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] as String) \
+             : (jsonDecode('\"\"') as String),gangway: json.containsKey('gangway') ? \
+             _readAt(json, 'gangway', () => Gangway.fromJsonUnjudged(json['gangway'])) : \
              (Gangway.fromJsonUnjudged(jsonDecode('{\"label\":\"main\",\"width\":2}'))),gate: \
-             json.containsKey('gate') ? (json['gate'] as String) : (jsonDecode('\"north\"') as \
-             String),label: json['label'] as String,"
+             json.containsKey('gate') ? _readAt(json, 'gate', () => json['gate'] as String) : \
+             (jsonDecode('\"north\"') as String),label: _readAt(json, 'label', () => json['label'] \
+             as String),"
         ),
         "{written}"
     );

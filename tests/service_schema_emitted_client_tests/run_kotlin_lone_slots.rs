@@ -179,7 +179,8 @@ fn a_tuple_that_reaches_a_type_parameter_reads_and_writes_in_kotlin_as_serde_doe
             "an array of another length",
             "Yoked<String>",
             short,
-            "an array of another length: refused\n    invalid length 1, expected 2\n".to_owned(),
+            "an array of another length: refused\n    invalid length 1, expected 2 at path: $.pair\n"
+                .to_owned(),
         ),
     ];
     let mut main = String::from("fun main() {\n");

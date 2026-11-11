@@ -63,8 +63,8 @@ fn the_json_schema_line_of_the_table_is_what_the_json_schema_writes() {
 #[cfg(all(feature = "dart", feature = "serde"))]
 #[test]
 fn the_dart_line_of_the_table_is_what_dart_writes() {
-    let shown =
-        "json.containsKey('dock') ? (json['dock'] as String) : (jsonDecode('\"\"') as String)";
+    let shown = "json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] as String) : \
+                 (jsonDecode('\"\"') as String)";
     assert!(section().contains(&format!("`{shown}`")));
     assert!(super::models::wharf_dart::dart_definition().contains(shown));
 }

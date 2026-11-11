@@ -7,6 +7,7 @@ use core::iter::once;
 
 use syn::Attribute;
 
+use super::read::PATHED;
 use super::{KotlinField, kotlin_quoted};
 #[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
@@ -110,8 +111,9 @@ pub fn plain_enum_serializer(
         "object {export_name}Unjudged : KSerializer<{export_name}> {{ override val descriptor: \
          SerialDescriptor = {export_name}.generatedSerializer().descriptor; \
          override fun serialize(encoder: Encoder, value: {export_name}) = \
-         encoder.encodeString(when (value) {{ {written} }}); override fun deserialize(decoder: \
-         Decoder): {export_name} = when (val name = decoder.decodeString()) {{ {read}; else -> \
-         throw SerializationException(\"unknown variant \" + name) }} }}"
+         encoder.encodeString(when (value) {{ {written} }}); {PATHED}override fun \
+         deserialize(decoder: Decoder): {export_name} {{ val name = decoder.decodeString(); return \
+         kotlinSchemaAt(decoder) {{ when (name) {{ {read}; else -> throw \
+         SerializationException(\"unknown variant \" + name) }} }} }} }}"
     )
 }

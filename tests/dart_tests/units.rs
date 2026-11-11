@@ -23,21 +23,23 @@ fn unit_is_read_from_null_and_written_as_null_in_each_position() {
     let units = probe_units_dart::dart_definition();
     for read in [
         format!(
-            "listed: (json['listed'] as List<dynamic>).map((e) => {}).toList()",
-            unit_read("e")
+            "listed: _readAt(json, 'listed', () => (json['listed'] as \
+             List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => {})).toList()",
+            unit_read("e.$2")
         ),
         format!(
-            "({}, {})",
+            "(_readAt(null, 0, () => {}), _readAt(null, 1, () => {}))",
             u32_held("tuple[0] as int"),
             unit_read("tuple[1]")
         ),
         format!(
-            "unit: (json.containsKey('unit') ? {} : throw FormatException('missing field \
-             `unit`'))",
+            "unit: _readAt(json, 'unit', () => (json.containsKey('unit') ? {} : throw \
+             FormatException('missing field `unit`'))",
             unit_read("json['unit']")
         ),
-        "nothing: (json.containsKey('nothing') ? ProbeNothing.fromJsonUnjudged(json['nothing']) \
-         : throw FormatException('missing field `nothing`'))"
+        "nothing: _readAt(json, 'nothing', () => (json.containsKey('nothing') ? \
+         ProbeNothing.fromJsonUnjudged(json['nothing']) : throw FormatException('missing field \
+         `nothing`'))"
             .to_owned(),
         format!(
             "'listed': listed.map((e) => null).toList(),'nothing': (nothing).toJson(),'paired': \
@@ -71,8 +73,9 @@ fn a_brand_over_unit_reads_and_writes_null() {
 fn a_unit_under_a_content_key_is_refused_where_the_key_is_absent() {
     let adjacent = probe_unit_adjacent_dart::dart_definition();
     let read = format!(
-        "case 'Nothing': return ProbeUnitAdjacentNothing((json.containsKey('body') ? {} : throw \
-         FormatException('missing field `body`')));",
+        "case 'Nothing': return _readAt(json, 'body', () => \
+         ProbeUnitAdjacentNothing((json.containsKey('body') ? {} : throw FormatException('missing \
+         field `body`'))));",
         unit_read("json['body']")
     );
     assert!(adjacent.contains(&read), "no {read} in: {adjacent}");
@@ -83,9 +86,9 @@ fn a_unit_under_a_content_key_is_refused_where_the_key_is_absent() {
 #[test]
 fn an_untagged_enum_over_unit_is_refused_where_its_key_is_absent() {
     let holder = probe_unit_either_holder_dart::dart_definition();
-    let read = "either: (json.containsKey('either') ? \
-                ProbeUnitEither.fromJsonUnjudged(json['either']) : throw \
-                FormatException('missing field `either`'))";
+    let read = "either: _readAt(json, 'either', () => (json.containsKey('either') ? \
+                ProbeUnitEither.fromJsonUnjudged(json['either']) : throw FormatException('missing \
+                field `either`'))";
     assert!(holder.contains(read), "no {read} in: {holder}");
 }
 

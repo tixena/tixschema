@@ -24,7 +24,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"held":[],"label":"n","pair":[1,2,3]}"#,
         read_as: "Reefband",
         serde: written_back::<Reefband>,
-        thrown: Some("invalid length 3, expected 2"),
+        thrown: Some("invalid length 3, expected 2 at path: $.pair"),
     },
     Fixed {
         json: r#"{"held":["a",[1,2]]}"#,
@@ -36,7 +36,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"held":["a",[1,2,3]]}"#,
         read_as: "Buntline",
         serde: written_back::<Buntline>,
-        thrown: Some("invalid length 3, expected 2"),
+        thrown: Some("invalid length 3, expected 2 at path: $.held[1]"),
     },
     Fixed {
         json: r#"{"Paired":[1,2]}"#,
@@ -48,7 +48,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"Paired":[1]}"#,
         read_as: "Shroud",
         serde: written_back::<Shroud>,
-        thrown: Some("invalid length 1, expected 2"),
+        thrown: Some("invalid length 1, expected 2 at path: $.Paired"),
     },
     Fixed {
         json: r#"{"byDock":{"north":[1,2]}}"#,
@@ -60,7 +60,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"byDock":{"north":[1,2,3]}}"#,
         read_as: "Shrouding",
         serde: written_back::<Shrouding>,
-        thrown: Some("invalid length 3, expected 2"),
+        thrown: Some("invalid length 3, expected 2 at path: $.byDock['north']"),
     },
     Fixed {
         json: r#"{"maybe":[1,2]}"#,
@@ -78,7 +78,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"maybe":[1]}"#,
         read_as: "Fishing",
         serde: written_back::<Fishing>,
-        thrown: Some("invalid length 1, expected 2"),
+        thrown: Some("invalid length 1, expected 2 at path: $.maybe"),
     },
     Fixed {
         json: r#"{"catted":{"held":[1,2]}}"#,
@@ -90,7 +90,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"catted":{"held":[1,2,3]}}"#,
         read_as: "Sheaving",
         serde: written_back::<Sheaving>,
-        thrown: Some("invalid length 3, expected 2"),
+        thrown: Some("invalid length 3, expected 2 at path: $.catted.held"),
     },
     Fixed {
         json: r#"{"cringled":{"pair":["a","b"]}}"#,
@@ -102,7 +102,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"cringled":{"pair":["a"]}}"#,
         read_as: "Garland",
         serde: written_back::<Garland>,
-        thrown: Some("invalid length 1, expected 2"),
+        thrown: Some("invalid length 1, expected 2 at path: $.cringled.pair"),
     },
     Fixed {
         json: r#"{"pairs":[[1,2],[3,4]]}"#,
@@ -114,7 +114,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"pairs":[[1,2],[3]]}"#,
         read_as: "Earring",
         serde: written_back::<Earring>,
-        thrown: Some("invalid length 1, expected 2"),
+        thrown: Some("invalid length 1, expected 2 at path: $.pairs[1]"),
     },
     Fixed {
         json: r#"{"bitter":[1,2]}"#,
@@ -126,7 +126,7 @@ pub const FIXED: [Fixed; 20] = [
         json: r#"{"bitter":[1,2,3]}"#,
         read_as: "Becketing",
         serde: written_back::<Becketing>,
-        thrown: Some("invalid length 3, expected 2"),
+        thrown: Some("invalid length 3, expected 2 at path: $.bitter"),
     },
     Fixed {
         json: r#"{"held":[1,2,3],"label":"n"}"#,

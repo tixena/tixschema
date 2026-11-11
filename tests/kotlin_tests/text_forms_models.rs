@@ -35,7 +35,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_date":{"2024-01-05":2},"by_letter":{"ab":1},"day":"2024-01-06","#,
             r#""letter":"b"}"#
         ),
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.by_letter"#,
         read_as: "Chronometer",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 45"#,
         swift: r#"expected a character, found "ab""#,
@@ -45,7 +45,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a date, found "x""#,
         json: r#"{"by_date":{"x":2},"by_letter":{"a":1},"day":"2024-01-06","letter":"b"}"#,
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.by_date"#,
         read_as: "Chronometer",
         serde: "input contains invalid characters at line 1 column 15",
         swift: r#"expected a date, found "x""#,
@@ -58,7 +58,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"2024-01-06","#,
             r#""letter":"ab"}"#
         ),
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.letter"#,
         read_as: "Chronometer",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 80"#,
         swift: r#"expected a character, found "ab""#,
@@ -68,7 +68,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a date, found "x""#,
         json: r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"x","letter":"b"}"#,
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.day"#,
         read_as: "Chronometer",
         serde: "input contains invalid characters at line 1 column 57",
         swift: r#"expected a date, found "x""#,
@@ -88,7 +88,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"ab":1},"letter":"b","letters":["c"],"to_letter":{"k":"d"}}"#,
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.by_letter"#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 18"#,
         swift: r#"expected a character, found "ab""#,
@@ -98,7 +98,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"ab","letters":["c"],"to_letter":{"k":"d"}}"#,
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.letter"#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 34"#,
         swift: r#"expected a character, found "ab""#,
@@ -108,7 +108,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"b","letters":["ab"],"to_letter":{"k":"d"}}"#,
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.letters[0]"#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 49"#,
         swift: r#"expected a character, found "ab""#,
@@ -118,7 +118,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found "ab""#,
         json: r#"{"by_letter":{"a":1},"letter":"b","letters":["c"],"to_letter":{"k":"ab"}}"#,
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $.to_letter['k']"#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 71"#,
         swift: r#"expected a character, found "ab""#,
@@ -128,7 +128,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found """#,
         json: r#"{"by_letter":{"a":1},"letter":"","letters":["c"],"to_letter":{"k":"d"}}"#,
-        kotlin: r#"expected a character, found """#,
+        kotlin: r#"expected a character, found "" at path: $.letter"#,
         read_as: "LetterLog",
         serde: r#"invalid value: string "", expected a character at line 1 column 32"#,
         swift: r#"expected a character, found """#,
@@ -162,7 +162,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a character, found "ab""#,
         json: r#"{"ab":2}"#,
-        kotlin: r#"expected a character, found "ab""#,
+        kotlin: r#"expected a character, found "ab" at path: $"#,
         read_as: "LetterLines",
         serde: r#"invalid value: string "ab", expected a character at line 1 column 8"#,
         swift: r#"expected a character, found "ab""#,
@@ -188,7 +188,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"x":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.by_day"#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 14",
         swift: r#"expected a date, found "x""#,
@@ -201,7 +201,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"x","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.day"#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 36",
         swift: r#"expected a date, found "x""#,
@@ -214,7 +214,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["x"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.days[0]"#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 57",
         swift: r#"expected a date, found "x""#,
@@ -227,7 +227,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"x"}}"#
         ),
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $.to_day['k']"#,
         read_as: "DayLog",
         serde: "input contains invalid characters at line 1 column 85",
         swift: r#"expected a date, found "x""#,
@@ -240,7 +240,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"2024-1-6","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "2024-1-6""#,
+        kotlin: r#"expected a date, found "2024-1-6" at path: $.day"#,
         read_as: "DayLog",
         serde: concat!(
             "read, written back as ",
@@ -257,7 +257,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"2023-02-29","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "2023-02-29""#,
+        kotlin: r#"expected a date, found "2023-02-29" at path: $.day"#,
         read_as: "DayLog",
         serde: "input is out of range at line 1 column 45",
         swift: r#"expected a date, found "2023-02-29""#,
@@ -270,7 +270,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_day":{"2024-01-05":1},"day":"+12024-01-06","days":["2024-01-07"],"#,
             r#""to_day":{"k":"2024-01-08"}}"#
         ),
-        kotlin: r#"expected a date, found "+12024-01-06""#,
+        kotlin: r#"expected a date, found "+12024-01-06" at path: $.day"#,
         read_as: "DayLog",
         serde: "read",
         swift: r#"expected a date, found "+12024-01-06""#,
@@ -290,7 +290,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a date, found "x""#,
         json: r#"{"x":2}"#,
-        kotlin: r#"expected a date, found "x""#,
+        kotlin: r#"expected a date, found "x" at path: $"#,
         read_as: "DayLines",
         serde: "input contains invalid characters at line 1 column 7",
         swift: r#"expected a date, found "x""#,
@@ -316,7 +316,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_time":{"x":1},"time":"11:20:30","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
         ),
-        kotlin: r#"expected a time, found "x""#,
+        kotlin: r#"expected a time, found "x" at path: $.by_time"#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 15",
         swift: r#"expected a time, found "x""#,
@@ -329,7 +329,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_time":{"10:20:30":1},"time":"x","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
         ),
-        kotlin: r#"expected a time, found "x""#,
+        kotlin: r#"expected a time, found "x" at path: $.time"#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 36",
         swift: r#"expected a time, found "x""#,
@@ -342,7 +342,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["x"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
         ),
-        kotlin: r#"expected a time, found "x""#,
+        kotlin: r#"expected a time, found "x" at path: $.times[0]"#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 56",
         swift: r#"expected a time, found "x""#,
@@ -355,7 +355,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["12:20:30"],"#,
             r#""to_time":{"k":"x"}}"#
         ),
-        kotlin: r#"expected a time, found "x""#,
+        kotlin: r#"expected a time, found "x" at path: $.to_time['k']"#,
         read_as: "TimeLog",
         serde: "input contains invalid characters at line 1 column 83",
         swift: r#"expected a time, found "x""#,
@@ -368,7 +368,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_time":{"10:20:30":1},"time":"23:59:60","times":["12:20:30"],"#,
             r#""to_time":{"k":"13:20:30"}}"#
         ),
-        kotlin: r#"expected a time, found "23:59:60""#,
+        kotlin: r#"expected a time, found "23:59:60" at path: $.time"#,
         read_as: "TimeLog",
         serde: "read",
         swift: r#"expected a time, found "23:59:60""#,
@@ -388,7 +388,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a time, found "x""#,
         json: r#"{"x":2}"#,
-        kotlin: r#"expected a time, found "x""#,
+        kotlin: r#"expected a time, found "x" at path: $"#,
         read_as: "TimeLines",
         serde: "input contains invalid characters at line 1 column 7",
         swift: r#"expected a time, found "x""#,
@@ -414,7 +414,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_stamp":{"x":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
         ),
-        kotlin: r#"expected a date and time, found "x""#,
+        kotlin: r#"expected a date and time, found "x" at path: $.by_stamp"#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 16",
         swift: r#"expected a date and time, found "x""#,
@@ -427,7 +427,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"x","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
         ),
-        kotlin: r#"expected a date and time, found "x""#,
+        kotlin: r#"expected a date and time, found "x" at path: $.stamp"#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 49",
         swift: r#"expected a date and time, found "x""#,
@@ -440,7 +440,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["x"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
         ),
-        kotlin: r#"expected a date and time, found "x""#,
+        kotlin: r#"expected a date and time, found "x" at path: $.stamps[0]"#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 81",
         swift: r#"expected a date and time, found "x""#,
@@ -453,7 +453,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"x"}}"#
         ),
-        kotlin: r#"expected a date and time, found "x""#,
+        kotlin: r#"expected a date and time, found "x" at path: $.to_stamp['k']"#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 120",
         swift: r#"expected a date and time, found "x""#,
@@ -479,7 +479,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
             r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05 11:20:30","#,
             r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
         ),
-        kotlin: r#"expected a date and time, found "2024-01-05 11:20:30""#,
+        kotlin: r#"expected a date and time, found "2024-01-05 11:20:30" at path: $.stamp"#,
         read_as: "StampLog",
         serde: "input contains invalid characters at line 1 column 67",
         swift: r#"expected a date and time, found "2024-01-05 11:20:30""#,
@@ -525,7 +525,7 @@ pub const TEXT_FORMS: [TextFormRow; 50] = [
     TextFormRow {
         dart: r#"expected a date and time, found "x""#,
         json: r#"{"x":2}"#,
-        kotlin: r#"expected a date and time, found "x""#,
+        kotlin: r#"expected a date and time, found "x" at path: $"#,
         read_as: "StampLines",
         serde: "input contains invalid characters at line 1 column 7",
         swift: r#"expected a date and time, found "x""#,
@@ -770,8 +770,8 @@ fn serde_answers_each_text_as_the_table_states() {
 }
 
 /// Each client's read refuses a payload exactly where Zod refuses it, where serde does too and
-/// where the two part, in the one sentence of its form. A `DateTime<Utc>` apart: Kotlin reads it as
-/// any text, and Dart and Swift read a text serde reads.
+/// where the two part, in the one sentence of its form, which Kotlin follows with the path. A
+/// `DateTime<Utc>` apart: Kotlin reads it as any text, and Dart and Swift read a text serde reads.
 #[test]
 fn each_client_read_refuses_what_zod_refuses_but_a_date_and_time_with_its_zone() {
     for row in &TEXT_FORMS {
@@ -790,8 +790,9 @@ fn each_client_read_refuses_what_zod_refuses_but_a_date_and_time_with_its_zone()
                 row.read_as
             );
         }
+        let words = row.kotlin.split(" at path: ").next();
         assert!(
-            zoned || (row.dart == row.kotlin && row.swift == row.kotlin),
+            zoned || (Some(row.dart) == words && Some(row.swift) == words),
             "the clients refuse `{}` in other words",
             row.json
         );

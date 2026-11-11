@@ -128,8 +128,8 @@ the consumer's view; this is what a change has to keep.
 - **The plugin's serializer is kept where the plugin takes the annotation.** A class, a unit
   struct's `object` and a brand's value class carry `@KeepGeneratedSerializer` (`kept`,
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).
-  A class under its own tag wraps it in a `JsonTransformingSerializer` instead
-  (`read::transforming`), whose `transformSerialize` (`read::tag_first`) moves the tag the plugin
+  A class under its own tag wraps it in a `KSerializer` of its own instead
+  (`read::transforming`, over `read::transformed`), whose `transformSerialize` (`read::tag_first`) moves the tag the plugin
   writes after the members ahead of them, as serde writes it; `kept_unjudged` joins it to the
   correction of a type that names a function. The serializer the emitter writes for a struct with
   a flattened member, a tuple struct and an enum is the unjudged one, under `written_head`.
@@ -408,7 +408,7 @@ the consumer's view; this is what a change has to keep.
 - **A flattened map's key is written and read through the key's own serializer**
   (`flatten_map_field_plan`), where the key's Kotlin type (`kotlin_typename`) is no `String`: it
   is written as `output.json.encodeToJsonElement(<key>, k).jsonPrimitive.content` and read over
-  `entries.associate` through `input.json.decodeFromJsonElement(<key>, JsonPrimitive(k))`, the
+  `entries.associate` through `input.json.decodeFromString(<key>, JsonPrimitive(k).toString())`, the
   serializer `kotlin_serializer_expr` answers, so a key that serializer refuses refuses the entry
   and reads an optional map as `null`. A plain enum's key is the name serde writes, its `rename`
   and the enum's `rename_all` among them. A `String` key, a `char` and a date among them, is
@@ -428,8 +428,22 @@ the consumer's view; this is what a change has to keep.
   the serializers the emitter writes for a tuple or a plain enum declare a class and read an
   array or a text. Reads of an object the emitter builds itself, and those of a lenient
   `Json`, are handed on as they were. A member that names a `preprocess` is read by a
-  `JsonTransformingSerializer` that asks `kotlinSchemaKinded` of what the function answered.
-  `run_kotlin_wrong_kinds.rs` holds the payloads and what each read throws.
+  serializer of its own (`read::corrected_member`) that asks `kotlinSchemaKinded` of what the
+  function answered. `run_kotlin_wrong_kinds.rs` holds the payloads and what each read throws.
+- **A refusal states its path from the root of the payload** (`read::PATHED`, `read::read_at`).
+  kotlinx states a path only in a `JsonDecodingException` it builds, so each serializer the
+  emitter writes that takes a value off the decoder and reads it again, or throws itself, wraps
+  that read in `kotlinSchemaAt(decoder)`, which rebases a refusal onto the path a second
+  `decodeJsonElement()` on the decoder throws with: the path the value was read at. A part is
+  read from its text (`kotlinSchemaDecoded`, `kotlinSchemaInner`, the flattened members'
+  `decodeFromString`), so kotlinx states the part's own path, and `kotlinSchemaUnder(step)` puts
+  the part's step ahead of it (`read::keyed_step`, `read::slot_step`, `variant_step`). A read
+  that hands the decoder on, `listed.deserialize(decoder)` or a judged serializer's read through
+  its unjudged one, is not wrapped: kotlinx states that path already. A number serializer reads
+  through the tree decoder, which names the primitive it reads `primitive`, and drops that
+  step. The `ws_rpc` attachment and client read the fault's field off the path
+  (`kotlin_ws_client::refused_at_fn`); `run_carillon.rs` holds each shape to the field the Rust
+  dispatcher names.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
   `runCatching { ... }.getOrNull()`, so an entry that throws as the map's value reads the map as
@@ -540,7 +554,7 @@ the consumer's view; this is what a change has to keep.
   variant's arm under its written name and each alias, under every tagging. `aliases::keys_named`
   reads a member's alias as its wire name in the object the member is read from, and refuses two
   names of one member as serde refuses a duplicate field: in the `{Type}Unjudged` `kept_unjudged`
-  writes for a class the plugin reads, a `JsonTransformingSerializer` over the plugin's, after the
+  writes for a class the plugin reads, the `KSerializer` `read::transforming` writes over the plugin's, after the
   type's own functions and ahead of `preprocess::keyed`; in the object `flatten_merging_serializer`
   reads every member from; and in the object a tagged or an untagged enum hands a variant's class
   (`members_renamed`). A plain enum that names no function or check is read by
@@ -596,8 +610,9 @@ say so.
   on the member's own, the value, then `validate()` in the type's own serializer. Nothing is
   called on a write.
 - **A type's functions are in `{Type}Unjudged`.** Where the plugin writes the serializer,
-  `kept_unjudged` hands `read::transforming` the correction: a `JsonTransformingSerializer` over
-  `generatedSerializer()`, in place of the delegation `read::generated` writes. A serializer the
+  `kept_unjudged` hands `read::transforming` the correction: a `KSerializer` over
+  `generatedSerializer()` that reads it from the text of the corrected payload, in place of the
+  delegation `read::generated` writes. A serializer the
   emitter writes calls the functions on `input.decodeJsonElement()`: the flatten-merging one, a
   tuple struct's, a tagged enum's, and an untagged enum's ahead of the choice of a variant. A
   type that names no function is written token for token as before.
@@ -614,7 +629,7 @@ say so.
   serializer** (`read::kept_plain`). `note_plain_enum` says no holder names it: a holder reads the
   enum by its own serializer, which is that one.
 - **A member the plugin reads is read through a serializer of its own.** `Plugin::declared`
-  queues `object {Owner}{Member}Preprocess : JsonTransformingSerializer<T>(...)`
+  queues `object {Owner}{Member}Preprocess : KSerializer<T>`
   (`read::corrected_member`) and answers the annotation that names it. It reads through
   `read::read_whole`: `member_serializer`, the serializer the member has without the key, so a
   model is still judged once. A tuple is asked for its name once there. `kotlin_module_tokens`
@@ -630,8 +645,7 @@ say so.
   tuple's wrapper (`tuple_wrapper_typename`).
 - **No function is called for a key the payload does not hold.** The plugin asks a property's
   serializer only for a key that is there, and `own_field_plan` corrects inside `?.let`. A `null`
-  is handed to the function: the serializer of a nullable member is a
-  `JsonTransformingSerializer<T?>`.
+  is handed to the function: the serializer of a nullable member is a `KSerializer<T?>`.
 - **A flattened member a function reads is handed what serde hands it**, as every flattened
   member is ("The Kotlin client's read", above), and takes none of its keys
   (`preprocess::takes_no_key`). `HANDED` notes, per type the emitter wrote, whether it hands its

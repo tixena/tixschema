@@ -37,8 +37,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let has_header_in = declares_header_in(service);
-    let needs_field =
-        has_header_in || declares_header_out_or_error(service) || takes_no_argument(service);
+    let answers = !service.operations.is_empty();
     let mut published = vec![
         socket_interface(&named),
         options_class(&named),
@@ -59,7 +58,10 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.push(attachment_class(&named));
     published.push(attach_dispatcher_fn(&named, &fn_prefix, has_header_in));
     published.push(dispatch_fn(service, &named, &fn_prefix, has_header_in));
-    published.extend(fault_helpers(&named, &fn_prefix, needs_field));
+    published.extend(fault_helpers(&named, &fn_prefix, answers));
+    if answers {
+        published.push(refused_at_fn(&fn_prefix));
+    }
     published.extend(kotlin_declarations());
     published
 }
@@ -90,25 +92,6 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .operations
         .iter()
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
-}
-
-/// Whether an operation takes no argument after the context, whose message's refusal of a key the
-/// attachment names as the fault's field — another part of what earns the failed-validation helper
-/// its `field` parameter.
-fn takes_no_argument(service: &ServiceDef) -> bool {
-    service
-        .operations
-        .iter()
-        .any(|operation| matches!(operation.inputs, OperationInputs::Empty))
-}
-
-/// Whether any operation declares `header_out` or `error_header_out` — another part of what earns
-/// the failed-validation helper its `field` parameter.
-fn declares_header_out_or_error(service: &ServiceDef) -> bool {
-    service.operations.iter().any(|operation| {
-        let shape = HttpShape::of(operation);
-        !shape.header_out.is_empty() || !shape.error_header_out.is_empty()
-    })
 }
 
 fn socket_interface(named: &str) -> String {
@@ -551,13 +534,14 @@ fn success_decode_block(
     if is_unit_type(success) {
         return format!("      return {result}.Ok\n");
     }
+    let refused = refused_fault(fn_prefix, wire);
     if shape.header_out.is_empty() {
         let read_by = read_serializer(success);
         return format!(
             "      return try {{\n        \
-             {result}.Ok(Json.decodeFromJsonElement({read_by}, reply.getValue(\"value\")))\n      \
+             {result}.Ok(Json.decodeFromString({read_by}, reply.getValue(\"value\").toString()))\n      \
              }} catch (rejected: Throwable) {{\n        \
-             {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n      \
+             {result}.Fault({refused})\n      \
              }}\n"
         );
     }
@@ -566,9 +550,9 @@ fn success_decode_block(
     let mut stmt = format!(
         "      val headers = (reply[\"headers\"] as? JsonObject) ?: buildJsonObject {{}}\n      \
          val value = try {{\n        \
-         Json.decodeFromJsonElement({read_by}, reply.getValue(\"value\"))\n      \
+         Json.decodeFromString({read_by}, reply.getValue(\"value\").toString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         return {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n      \
+         return {result}.Fault({refused})\n      \
          }}\n"
     );
     let (header_stmts, idents) =
@@ -582,6 +566,14 @@ fn success_decode_block(
     stmt
 }
 
+/// The fault a client answers for a reply its read refused, `rejected`, naming the field.
+fn refused_fault(fn_prefix: &str, wire: &str) -> String {
+    format!(
+        "{fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = \
+         {fn_prefix}WsRefusedAt(rejected))"
+    )
+}
+
 fn error_decode_block(
     fn_prefix: &str,
     wire: &str,
@@ -589,13 +581,14 @@ fn error_decode_block(
     shape: &HttpShape,
     error: &Type,
 ) -> String {
+    let refused = refused_fault(fn_prefix, wire);
     if shape.error_header_out.is_empty() {
         let read_by = read_serializer(error);
         return format!(
             "    return try {{\n      \
-             {result}.Declared(Json.decodeFromJsonElement({read_by}, error ?: JsonNull))\n    \
+             {result}.Declared(Json.decodeFromString({read_by}, (error ?: JsonNull).toString()))\n    \
              }} catch (rejected: Throwable) {{\n      \
-             {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n    \
+             {result}.Fault({refused})\n    \
              }}\n"
         );
     }
@@ -604,9 +597,9 @@ fn error_decode_block(
     let mut stmt = format!(
         "    val declaredHeaders = (reply[\"headers\"] as? JsonObject) ?: buildJsonObject {{}}\n    \
          val declaredHead = try {{\n      \
-         Json.decodeFromJsonElement({read_by}, error ?: JsonNull)\n    \
+         Json.decodeFromString({read_by}, (error ?: JsonNull).toString())\n    \
          }} catch (rejected: Throwable) {{\n      \
-         return {result}.Fault({fn_prefix}WsFailedValidation({wire}, rejected.toString()))\n    \
+         return {result}.Fault({refused})\n    \
          }}\n"
     );
     let (header_stmts, idents) =
@@ -1027,17 +1020,14 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let shape = HttpShape::of(operation);
     let decode_fault = fault_reply_stmt(named, "fault");
     let (header_reads, header_idents) = header_in_read_stmt(named, fn_prefix, wire, &shape);
-    let stray = if matches!(operation.inputs, OperationInputs::Empty) {
-        ", field = (payload as? JsonObject)?.keys?.firstOrNull()"
-    } else {
-        ""
-    };
+    // Read from the text: kotlinx states the path of a value it refuses there, and states `$` for
+    // one refused below the top of an element.
     let mut arm = format!(
         "    {wire} -> {{\n      \
          val decoded = try {{\n        \
-         Json.decodeFromJsonElement({read_by}, payload ?: JsonNull)\n      \
+         Json.decodeFromString({read_by}, (payload ?: JsonNull).toString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(){stray})\n        \
+         val fault = {fn_prefix}WsFailedValidation({wire}, rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected))\n        \
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
@@ -1146,6 +1136,29 @@ fn fault_helpers(named: &str, fn_prefix: &str, needs_field: bool) -> Vec<String>
     ]
 }
 
+/// The function that answers the field a fault names for a value a read refused, as the Rust
+/// dispatcher names it: the steps of the path kotlinx states after `$`, then the key it names as
+/// unknown or missing, or the place a `validate()` message opens with where the path ends above it.
+fn refused_at_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// The field a read's refusal names: the path kotlinx states, and the place its first message opens with.\n\
+         private fun {fn_prefix}WsRefusedAt(rejected: Throwable): String? {{\n  \
+         val said = rejected.message ?: return null\n  \
+         val place = said.takeIf {{ it.startsWith(\"'\") }}?.substringAfter(\"'\")?.takeIf {{ \"'\" in it }}?.substringBefore(\"'\")\n  \
+         val path = Regex(\"\"\" at path: \\$([^\\n]*)\"\"\").find(said)?.groupValues?.get(1) ?: return place\n  \
+         val steps = Regex(\"\"\"\\.([^.\\[]+)|\\[(\\d+)]|\\['(.*?)']\"\"\").findAll(path)\n    \
+         .map {{ step -> step.groupValues.drop(1).joinToString(\"\") }}\n    \
+         .toMutableList()\n  \
+         val key = Regex(\"\"\"unknown key '(.*?)'|Field '(.*?)' is required|Fields \\[([^,\\]]*)|missing field `(.*?)`\"\"\").find(said)\n    \
+         ?.groupValues?.drop(1)?.joinToString(\"\")\n  \
+         if (key != null && steps.lastOrNull() != key) steps.add(key)\n  \
+         val field = steps.joinToString(\".\")\n  \
+         if (place != null && field != place && !field.endsWith(\".\" + place)) steps.add(place)\n  \
+         return steps.joinToString(\".\").ifEmpty {{ null }}\n\
+         }}"
+    )
+}
+
 fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -1158,8 +1171,8 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// `field` names the header a header-shaped failure is about, or the key the message of an
-/// operation of no argument refuses, and is only worth declaring where one of those uses it.
+/// `field` names the header a header-shaped failure is about, or the path of the value a message's
+/// read refuses, and is only worth declaring where the service has an operation.
 fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> String {
     let fields = fault_fields_typescript_name(named);
     let doc = format!(

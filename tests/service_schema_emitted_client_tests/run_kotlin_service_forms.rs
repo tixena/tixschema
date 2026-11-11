@@ -244,10 +244,10 @@ fn a_bare_char_or_date_message_is_read_in_its_one_form_by_the_kotlin_clients() {
         printed,
         "read 2024-01-05\n\
          fault undeserializable-payload: kotlinx.serialization.SerializationException: expected \
-         a date, found \"x\"\n\
+         a date, found \"x\" at path: $\n\
          read 2024-01-05\n\
          fault failed-validation: kotlinx.serialization.SerializationException: expected a date, \
-         found \"x\"\n\
+         found \"x\" at path: $\n\
          read na\n\
          fault failed-validation at x-initial: kotlinx.serialization.SerializationException: \
          expected a character, found \"ab\" (1 to onFault)\n\

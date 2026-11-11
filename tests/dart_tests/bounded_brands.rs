@@ -77,13 +77,18 @@ fn a_brand_over_a_list_counts_its_items() {
          Batch.fromJson(dynamic json) { final read = Batch.fromJsonUnjudged(json); final \
          violations = read.validate(); if (violations.isNotEmpty) throw \
          FormatException(violations.join('; ')); return read; } factory \
-         Batch.fromJsonUnjudged(dynamic json) => Batch((json as List<dynamic>).map((e) => e as \
-         String).toList()); dynamic toJson() => value.map((e) => e).toList(); List<String> \
-         validateBound() => [ if (value.length < 1) \"too short: minimum length is 1, got \
-         ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
-         ${value.length}\", ]; List<String> \
-         validate() => [ if (value.length < 1) \"too short: minimum length is 1, got \
-         ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
-         ${value.length}\", ]; }"
+         Batch.fromJsonUnjudged(dynamic json) => Batch((json as List<dynamic>).indexed.map((e) => \
+         _readAt(null, e.$1, () => e.$2 as String)).toList()); static Read \
+         _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try { \
+         return read(); } catch (refused) { if (object != null && !object.containsKey(key)) throw \
+         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) throw \
+         FormatException('$refused', <Object>[key]); if (refused is FormatException) { final at = \
+         refused.source; throw FormatException(refused.message, <Object>[key, if (at is \
+         List<Object>) ...at]); } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); \
+         List<String> validateBound() => [ if (value.length < 1) \"too short: minimum length is \
+         1, got ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
+         ${value.length}\", ]; List<String> validate() => [ if (value.length < 1) \"too short: \
+         minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: maximum \
+         length is 2, got ${value.length}\", ]; }"
     );
 }

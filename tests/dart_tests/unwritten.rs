@@ -11,7 +11,7 @@ use super::unwritten_models::{flemishing_dart, ranging_dart, reefing_dart, splay
 fn a_member_serde_never_writes_is_read_and_has_no_entry() {
     let furling = furling_dart::dart_definition();
     let spare = format!(
-        "spare: (json['spare'] == null ? null : {}),",
+        "spare: _readAt(json, 'spare', () => (json['spare'] == null ? null : {})),",
         u32_held("json['spare'] as int")
     );
     assert!(furling.contains(&spare), "got: {furling}");
@@ -27,7 +27,7 @@ fn a_member_serde_never_writes_is_read_and_has_no_entry() {
 fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
     let reefing = reefing_dart::dart_definition();
     let spare = format!(
-        "spare: (json['spare'] == null ? null : {}),",
+        "spare: _readAt(json, 'spare', () => (json['spare'] == null ? null : {})),",
         u32_held("json['spare'] as int")
     );
     assert!(reefing.contains(&spare), "got: {reefing}");

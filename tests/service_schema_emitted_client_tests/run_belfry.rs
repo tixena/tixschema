@@ -1,11 +1,11 @@
 //! The emitted `ws_rpc` and `http_rest` dispatchers of `BelfryService` handed the message of its
-//! operation of no argument, `{}`, and that message with a key no member declares: the TypeScript
-//! dispatchers under node, and the Dart and Kotlin `ws_rpc` attachments. Each reads `{}` and calls
-//! the handler, and answers the stray key with the Rust dispatchers' `failed-validation` naming
-//! the key, calling no handler. The TypeScript dispatchers name a key beside the members of a
-//! message of its own as well, and the TypeScript clients name such a key in the message they are
-//! handed, refusing it before it is sent, and in a reply. Each run resolves on the replies it
-//! counts, with no clock.
+//! operation of no argument, `{}`, and the message of its operation of a message of its own, each
+//! read whole, with a key no member declares, and the latter with a member left out: the
+//! TypeScript dispatchers under node, and the Dart and Kotlin `ws_rpc` attachments. Each reads the
+//! message and calls the handler, and answers the rest with the Rust dispatchers'
+//! `failed-validation` naming the field, calling no handler. The TypeScript clients name a key no
+//! member declares in the message they are handed, refusing it before it is sent, and in a reply.
+//! Each run resolves on the replies it counts, with no clock.
 
 #[cfg(any(feature = "dart", feature = "kotlin"))]
 use core::fmt::Write as _;
@@ -264,8 +264,8 @@ fn cases() -> Vec<(&'static str, &'static str)> {
 }
 
 /// What a dispatcher must answer of `payload` sent to `operation`, as the Rust `ws_rpc`
-/// dispatcher answers it: a reply that reads whole, with as many rings reached; and of a key no
-/// member declares the fault's kind and field, no ring reached.
+/// dispatcher answers it: a reply that reads whole, with as many rings reached; and of a message
+/// it refuses the fault's kind and field, no ring reached.
 fn assert_answered_as_rust(reply: &Value, rung: &Value, (operation, payload): (&str, &str)) {
     let (rust, rust_rung) = over_ws(operation, payload);
     assert_eq!(rung, &json!(rust_rung), "{operation} {payload}: {reply}");
@@ -285,21 +285,16 @@ fn assert_answered_as_rust(reply: &Value, rung: &Value, (operation, payload): (&
             fault["field"], rust_fault["field"],
             "{operation} {payload}: {reply}"
         );
-        assert!(
-            fault["field"]
-                .as_str()
-                .is_some_and(|field| field.ends_with("stray")),
-            "{operation} {payload}: {reply}"
-        );
+        assert!(fault["field"].is_string(), "{operation} {payload}: {reply}");
     }
 }
 
-/// The frames the Dart and Kotlin attachments are handed: those of the operation of no argument.
+/// The frames the Dart and Kotlin attachments are handed, one for each of [`cases`].
 #[cfg(any(feature = "dart", feature = "kotlin"))]
 fn frames() -> Vec<String> {
-    PAYLOADS
-        .iter()
-        .map(|payload| frame("ring-bell", payload))
+    cases()
+        .into_iter()
+        .map(|(operation, payload)| frame(operation, payload))
         .collect()
 }
 
@@ -346,7 +341,7 @@ fn the_typescript_text_of_the_belfry_service_type_checks() {
 }
 
 #[test]
-fn the_typescript_dispatchers_read_each_message_and_name_a_key_no_member_declares() {
+fn the_typescript_dispatchers_read_each_message_and_name_the_field_they_refuse() {
     let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
         stand_down_modules(
             REQUIRED_PACKAGES,
@@ -474,7 +469,7 @@ fn dart_source() -> String {
 
 #[cfg(feature = "dart")]
 #[test]
-fn the_dart_attachment_reads_an_empty_message_and_refuses_a_key_beside_it() {
+fn the_dart_attachment_reads_each_message_and_names_the_field_it_refuses() {
     let Some(wrote) = ran(
         "dart",
         "TIXSCHEMA_DART",
@@ -485,12 +480,8 @@ fn the_dart_attachment_reads_an_empty_message_and_refuses_a_key_beside_it() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    for (at, payload) in PAYLOADS.into_iter().enumerate() {
-        assert_answered_as_rust(
-            &told[at]["reply"],
-            &told[at]["rung"],
-            ("ring-bell", payload),
-        );
+    for (at, case) in cases().into_iter().enumerate() {
+        assert_answered_as_rust(&told[at]["reply"], &told[at]["rung"], case);
     }
 }
 
@@ -502,7 +493,7 @@ fn the_dart_text_of_the_belfry_service_passes_the_analyzer() {
 
 #[cfg(feature = "kotlin")]
 #[test]
-fn the_kotlin_attachment_reads_an_empty_message_and_refuses_a_key_beside_it() {
+fn the_kotlin_attachment_reads_each_message_and_names_the_field_it_refuses() {
     let mut given = String::from("val FRAMES = listOf(\n");
     for written in frames() {
         let _ = writeln!(given, "    \"\"\"{written}\"\"\",");
@@ -534,11 +525,7 @@ fn the_kotlin_attachment_reads_an_empty_message_and_refuses_a_key_beside_it() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    for (at, payload) in PAYLOADS.into_iter().enumerate() {
-        assert_answered_as_rust(
-            &told[at]["reply"],
-            &told[at]["rung"],
-            ("ring-bell", payload),
-        );
+    for (at, case) in cases().into_iter().enumerate() {
+        assert_answered_as_rust(&told[at]["reply"], &told[at]["rung"], case);
     }
 }

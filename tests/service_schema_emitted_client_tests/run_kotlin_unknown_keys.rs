@@ -60,7 +60,7 @@ fun <T> unknown(at: String, serializer: KSerializer<T>, payload: String) {
 /// What the Kotlin read answers of a flattened enum's entries under two variants' names, under
 /// either `Json`, as TypeScript and Zod refuse them.
 const TWO_VARIANTS: &str =
-    "refused: more than one variant of enum Tacking found in flattened data: Bay, Dock";
+    "refused: more than one variant of enum Tacking found in flattened data: Bay, Dock at path: $";
 
 /// Every payload, beside what serde, Zod and the Kotlin read answer of it: a key no member reads
 /// in a struct, in a variant under each tagging and beside a flattened struct, where the struct
@@ -74,7 +74,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Furling",
         serde: written_back::<Furling>,
         zod: "refused",
@@ -82,7 +82,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"Furled\":{\"label\":\"north\"}}",
         json: r#"{"Furled":{"label":"north","other":1}}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.Furled",
         named: "Dousing",
         serde: written_back::<Dousing>,
         zod: "refused",
@@ -90,7 +90,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Furled\",\"label\":\"north\"}",
         json: r#"{"kind":"Furled","label":"north","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Wearing",
         serde: written_back::<Wearing>,
         zod: "refused",
@@ -98,7 +98,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Furled\",\"load\":{\"label\":\"north\"}}",
         json: r#"{"kind":"Furled","load":{"label":"north","other":1}}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.load",
         named: "Shackling",
         serde: written_back::<Shackling>,
         zod: "refused",
@@ -106,7 +106,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","other":1}"#,
-        kotlin: "refused: No variant of Ratcheting matched",
+        kotlin: "refused: No variant of Ratcheting matched at path: $",
         named: "Ratcheting",
         serde: written_back::<Ratcheting>,
         zod: "refused",
@@ -114,7 +114,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\"}",
         json: r#"{"label":"north","spare":3,"other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Reefing",
         serde: written_back::<Reefing>,
         zod: "refused",
@@ -154,7 +154,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"note\":\"a\",\"Bay\":{\"label\":\"n\"}}",
         json: STOWING[2],
-        kotlin: "refused: Encountered an unknown key 'north'",
+        kotlin: "refused: Encountered an unknown key 'north' at path: $",
         named: "Stowing",
         serde: written_back::<Stowing>,
         zod: "refused",
@@ -170,7 +170,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"note\":\"a\"}",
         json: BELTING[1],
-        kotlin: "refused: Encountered an unknown key 'Other'",
+        kotlin: "refused: Encountered an unknown key 'Other' at path: $",
         named: "Belting",
         serde: written_back::<Belting>,
         zod: "refused",
@@ -186,7 +186,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Hoisted\",\"label\":\"n\"}",
         json: WHELPING[3],
-        kotlin: "refused: Encountered an unknown key 'north'",
+        kotlin: "refused: Encountered an unknown key 'north' at path: $",
         named: "Whelping",
         serde: written_back::<Whelping>,
         zod: "refused",
@@ -210,7 +210,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"label\":\"north\",\"note\":\"a\"}",
         json: r#"{"label":"north","note":"a","other":1}"#,
-        kotlin: "refused: Encountered an unknown key 'other'",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Parcelling",
         serde: written_back::<Parcelling>,
         zod: "refused",
@@ -237,7 +237,7 @@ const ROWS: [Row; 33] = [
             r#"{"note":"a","held":{"label":"x","other":1},"label":"n","#,
             r#""rail":{"ringbolt":{"label":"y"}}}"#
         ),
-        kotlin: UNKNOWN_AT,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.held",
         named: "Bittering",
         serde: written_back::<Bittering>,
         zod: "refused",
@@ -248,7 +248,7 @@ const ROWS: [Row; 33] = [
             r#"{"note":"a","held":{"label":"x"},"label":"n","#,
             r#""rail":{"ringbolt":{"label":"y","other":1}}}"#
         ),
-        kotlin: UNKNOWN_AT,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.rail.ringbolt",
         named: "Bittering",
         serde: written_back::<Bittering>,
         zod: "refused",
@@ -264,7 +264,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"note\":\"a\",\"Fast\":{\"label\":\"n\"}}",
         json: r#"{"note":"a","Fast":{"label":"n","other":1}}"#,
-        kotlin: UNKNOWN_AT,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.Fast",
         named: "Snatching",
         serde: written_back::<Snatching>,
         zod: "refused",
@@ -272,7 +272,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"north\":{\"label\":\"n\"}}",
         json: r#"{"north":{"label":"n","other":1}}"#,
-        kotlin: UNKNOWN_AT,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $.north",
         named: "Halyarding",
         serde: written_back::<Halyarding>,
         zod: "refused",
@@ -280,7 +280,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Lull\"}",
         json: r#"{"kind":"Lull","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Downhaul",
         serde: written_back::<Downhaul>,
         zod: "refused",
@@ -296,7 +296,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Reefed\",\"note\":\"a\",\"label\":\"n\"}",
         json: r#"{"kind":"Reefed","label":"n","note":"a","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Downhaul",
         serde: written_back::<Downhaul>,
         zod: "refused",
@@ -320,7 +320,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Lull\"}",
         json: r#"{"kind":"Lull","other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Downhauling",
         serde: written_back::<Downhauling>,
         zod: "refused",
@@ -328,7 +328,7 @@ const ROWS: [Row; 33] = [
     Row {
         ignoring: "read {\"kind\":\"Gust\",\"load\":{\"speed\":1}}",
         json: r#"{"kind":"Gust","load":{"speed":1},"other":1}"#,
-        kotlin: UNKNOWN,
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         named: "Downhauling",
         serde: written_back::<Downhauling>,
         zod: "refused",
@@ -347,9 +347,6 @@ const ROWS: [Row; 33] = [
 /// that holds no key no member reads.
 const BITTERED: &str = "read {\"note\":\"a\",\"held\":{\"label\":\"x\"},\"label\":\"n\",\
      \"rail\":{\"ringbolt\":{\"label\":\"y\"}}}";
-
-/// What the default `Json` throws for the key `other`, in the words of the plugin's serializer.
-const UNKNOWN: &str = "refused: Encountered an unknown key 'other'";
 
 /// What the plugin's serializer throws for the key `other`, with the path it was read at.
 const UNKNOWN_AT: &str = "refused: Encountered an unknown key 'other' at path: $";
@@ -714,12 +711,13 @@ fn zod_refuses_a_key_no_member_reads() {
     );
 }
 
-/// The README's sentence on a key no member reads shows the payload and the message of the first
-/// row the run above measures.
+/// The README's sentence on a key no member reads shows the payload and the words of the message
+/// of the first row the run above measures.
 #[test]
 fn the_readme_shows_the_refusal_the_run_measures() {
     let readme = include_str!("../../docs/guide/kotlin.md");
-    let thrown = ROWS[0].kotlin.strip_prefix("refused: ").unwrap();
+    let refused = ROWS[0].kotlin.strip_prefix("refused: ").unwrap();
+    let thrown = refused.split(" at path: ").next().unwrap_or(refused);
     let shown = format!(
         "`{}` is refused with `SerializationException: {thrown}`",
         ROWS[0].json

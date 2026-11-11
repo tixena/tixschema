@@ -337,8 +337,9 @@ fn the_fault_helpers_carry_a_ws_infix_so_a_bundle_with_both_clients_declares_eac
     assert!(
         written.contains(
             "func conversationClientServiceWsFailedValidation(_ operation: String, _ detail: \
-             String) -> ConversationClientServiceFault {"
-        ),
+             String, field: String? = nil) -> ConversationClientServiceFault {"
+        ) && written
+            .contains("func conversationClientServiceWsRefusedAt(_ refusal: Error) -> String? {"),
         "got: {written}"
     );
 }

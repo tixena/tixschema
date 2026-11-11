@@ -42,11 +42,11 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 const REFUSED: [(&str, &str); 2] = [
     (
         r#"{"back\\slash":"b","cost$usd":"c","say \"hi\"":"s"}"#,
-        "refused: missing field `ki$nd`",
+        "refused: missing field `ki$nd` at path: $",
     ),
     (
         r#"{"ki$nd":"Other","back\\slash":"b","cost$usd":"c","say \"hi\"":"s"}"#,
-        r#"refused: expected tag "Price's$Tag\", found "Other""#,
+        r#"refused: expected tag "Price's$Tag\", found "Other" at path: $"#,
     ),
 ];
 

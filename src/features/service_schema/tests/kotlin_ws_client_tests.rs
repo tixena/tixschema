@@ -39,7 +39,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     let written = kotlin_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "suspend fun getOpenBalance(");
     assert!(
-        body.contains("Json.decodeFromJsonElement(serializer<OpenBalanceResponse>(),"),
+        body.contains("Json.decodeFromString(serializer<OpenBalanceResponse>(),"),
         "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          decoded as one first. Got: {body}"
     );
@@ -50,7 +50,7 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
     let written = kotlin_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "suspend fun getOpenBalance(");
     assert!(
-        body.contains("Json.decodeFromJsonElement(serializer<BalanceError>(),"),
+        body.contains("Json.decodeFromString(serializer<BalanceError>(),"),
         "a failure the transport handed back is answered as a `BalanceError`, so it is decoded \
          as one first. Got: {body}"
     );
@@ -285,7 +285,8 @@ fn a_reply_operation_answers_the_sealed_result_and_decodes_through_the_generated
     assert!(
         method.contains("if (ok) {")
             && method.contains(
-                "ConversationClientServiceWindowResult.Ok(Json.decodeFromJsonElement(serializer<WindowPage>(), reply.getValue(\"value\")))"
+                "ConversationClientServiceWindowResult.Ok(Json.decodeFromString(serializer<WindowPage>(), \
+                 reply.getValue(\"value\").toString()))"
             ),
         "a successful reply decodes through the generated codec into the sealed result's own \
          `Ok` member. Got: {method}"
@@ -320,7 +321,8 @@ fn a_reply_operation_answers_the_declared_error_or_a_fault_behind_is_service_fau
     );
     assert!(
         method.contains(
-            "ConversationClientServiceWindowResult.Declared(Json.decodeFromJsonElement(serializer<WindowError>(), error ?: JsonNull))"
+            "ConversationClientServiceWindowResult.Declared(Json.decodeFromString(serializer<WindowError>(), \
+             (error ?: JsonNull).toString()))"
         ),
         "otherwise the wire's `error` is the operation's own declared error. Got: {method}"
     );
@@ -520,8 +522,9 @@ fn a_reply_dispatch_arm_narrows_on_the_sealed_result_for_every_outcome() {
     let arm = body_from(&written, "\"window\" -> {");
     assert!(
         arm.contains(
-            "Json.decodeFromJsonElement(serializer<WindowRequest>(), payload ?: JsonNull)"
-        ) && arm.contains("val answered = try {")
+            "Json.decodeFromString(serializer<WindowRequest>(), (payload ?: JsonNull).toString())"
+        ) && arm.contains("field = conversationClientServiceWsRefusedAt(rejected)")
+            && arm.contains("val answered = try {")
             && arm.contains("handlers.window(decoded)")
             && arm.contains("is ConversationClientServiceWindowResult.Ok -> send(")
             && arm.contains("is ConversationClientServiceWindowResult.Declared -> send(")
@@ -575,10 +578,6 @@ fn the_fault_helpers_reuse_the_generated_fault_fields_and_kind() {
             "ConversationClientServiceFaultKind.TransportFailure",
         ),
         (
-            "conversationClientServiceWsFailedValidation",
-            "ConversationClientServiceFaultKind.FailedValidation",
-        ),
-        (
             "conversationClientServiceWsUnknownOperation",
             "ConversationClientServiceFaultKind.UnknownOperation",
         ),
@@ -594,6 +593,15 @@ fn the_fault_helpers_reuse_the_generated_fault_fields_and_kind() {
             "helper `{helper}` should report `{kind}`. Got: {written}"
         );
     }
+    assert!(
+        written.contains(
+            "private fun conversationClientServiceWsFailedValidation(\n  operation: String,\n  \
+             detail: String,\n  field: String? = null,\n): ConversationClientServiceFaultFields = \
+             ConversationClientServiceFaultFields(\n  detail = detail,\n  field = field,\n  \
+             kind = ConversationClientServiceFaultKind.FailedValidation,"
+        ),
+        "the failed-validation helper names the field of a message its read refuses. Got: {written}"
+    );
 }
 
 #[test]
@@ -642,8 +650,8 @@ fn a_bare_char_or_date_is_written_and_read_through_the_serializer_of_its_form() 
     let written = kotlin_ws_client_of(DATED_WS_SERVICE);
     for held in [
         "put(\"x-initial\", Json.encodeToJsonElement(KotlinText1, initial))",
-        "DatingServiceStampResult.Ok(Json.decodeFromJsonElement(KotlinText2, \
-         reply.getValue(\"value\")))",
+        "DatingServiceStampResult.Ok(Json.decodeFromString(KotlinText2, \
+         reply.getValue(\"value\").toString()))",
         "Json.decodeFromJsonElement(KotlinText1, initialRaw)",
         "object KotlinText1 : KSerializer<String> {",
         "object KotlinText2 : KSerializer<String> {",

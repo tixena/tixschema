@@ -7,6 +7,7 @@ use super::aliased_models::{
     careening_kotlin, fairleading_kotlin, fothering_kotlin, gybing_kotlin, hawsing_kotlin,
     lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin,
 };
+use super::kotlin_pathed::PATHED;
 
 /// What reads a payload's key `name` as `label`, and refuses the two together.
 const NAME_AS_LABEL: &str = "let { whole: JsonElement -> if (whole is JsonObject) \
@@ -28,14 +29,15 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let surging = surging_kotlin::kotlin_definition();
     for held in [
         format!(
-            "\"Berth\", \"Pier\" -> input.json.decodeFromJsonElement(serializer<SurgingBerth>(), \
-             data.{NAME_AS_LABEL});"
+            "\"Berth\", \"Pier\" -> kotlinSchemaInner(input.json, \".\" + tag, \
+             serializer<SurgingBerth>(), data.{NAME_AS_LABEL});"
         ),
-        "\"Calm\", \"Still\", \"Slack\" -> if (data is JsonNull) SurgingCalm else throw \
-         SerializationException(\"Surging: \" + tag + \" takes no value\");"
-            .to_owned(),
-        "\"Held\", \"Tied\" -> SurgingHeld(kotlinSchemaDecoded(input.json, serializer<String>(), \
-         data, \"Held\"))"
+        "\"Calm\", \"Still\", \"Slack\" -> kotlinSchemaUnder(\".\" + tag) { if (data is JsonNull) \
+         SurgingCalm else throw SerializationException(\"Surging: \" + tag + \" takes no value\") \
+         };"
+        .to_owned(),
+        "\"Held\", \"Tied\" -> kotlinSchemaUnder(\".\" + tag) { \
+         SurgingHeld(kotlinSchemaDecoded(input.json, serializer<String>(), data, \"Held\", \"\"))"
             .to_owned(),
         "is SurgingBerth -> buildJsonObject { put(\"Berth\", \
          output.json.encodeToJsonElement(serializer<SurgingBerth>(), value)) }; is SurgingCalm -> \
@@ -47,9 +49,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let careening = careening_kotlin::kotlin_definition();
     for held in [
         format!(
-            "\"Berth\", \"Pier\" -> \
-             input.json.decodeFromJsonElement(serializer<CareeningBerth>(), JsonObject(obj - \
-             \"kind\").{NAME_AS_LABEL});"
+            "\"Berth\", \"Pier\" -> kotlinSchemaInner(input.json, \"\", \
+             serializer<CareeningBerth>(), \
+             JsonObject(obj - \"kind\").{NAME_AS_LABEL});"
         ),
         "\"Calm\", \"Still\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
          \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
@@ -62,14 +64,14 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let scending = scending_kotlin::kotlin_definition();
     for held in [
         format!(
-            "\"Berth\", \"Pier\" -> \
-             input.json.decodeFromJsonElement(serializer<ScendingBerth>(), (data ?: throw \
-             SerializationException(\"missing field `data`\")).{NAME_AS_LABEL});"
+            "\"Berth\", \"Pier\" -> kotlinSchemaInner(input.json, \".data\", \
+             serializer<ScendingBerth>(), (data ?: throw SerializationException(\"missing field \
+             `data`\")).{NAME_AS_LABEL});"
         ),
-        "\"Calm\", \"Still\" -> if (data == null) ScendingCalm else throw \
-         SerializationException(\"Scending: \" + tag + \" takes no value\");"
+        "\"Calm\", \"Still\" -> kotlinSchemaUnder(\".data\") { if (data == null) ScendingCalm else \
+         throw SerializationException(\"Scending: \" + tag + \" takes no value\") };"
             .to_owned(),
-        "\"Held\", \"Tied\" -> ScendingHeld(".to_owned(),
+        "\"Held\", \"Tied\" -> kotlinSchemaUnder(\".data\") { ScendingHeld(".to_owned(),
         "is ScendingHeld -> buildJsonObject { put(\"kind\", \"Held\");".to_owned(),
     ] {
         assert!(scending.contains(&held), "no `{held}` in: {scending}");
@@ -83,26 +85,39 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_kotlin::kotlin_definition(),
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-         SwellUnjudged::class) @KeepGeneratedSerializer enum class Swell { Ebb, Flood; fun \
-         validate(): List<String> = emptyList() } object SwellUnjudged : KSerializer<Swell> { \
-         override val descriptor: SerialDescriptor = Swell.generatedSerializer().descriptor; \
-         override fun serialize(encoder: Encoder, value: Swell) = \
-         encoder.encodeString(when (value) { Swell.Ebb -> \"Ebb\"; Swell.Flood -> \"Flood\" }); \
-         override fun deserialize(decoder: Decoder): Swell = when (val name = \
-         decoder.decodeString()) { \"Ebb\", \"Low\", \"Neap\" -> Swell.Ebb; \"Flood\" -> \
-         Swell.Flood; else -> throw SerializationException(\"unknown variant \" + name) } }"
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             SwellUnjudged::class) @KeepGeneratedSerializer enum class Swell {{ Ebb, Flood; \
+             fun validate(): List<String> = emptyList() }} object SwellUnjudged : \
+             KSerializer<Swell> {{ override val descriptor: SerialDescriptor = \
+             Swell.generatedSerializer().descriptor; override fun serialize(encoder: Encoder, \
+             value: Swell) = encoder.encodeString(when (value) {{ Swell.Ebb -> \"Ebb\"; \
+             Swell.Flood -> \"Flood\" }}); {PATHED}override fun deserialize(decoder: \
+             Decoder): Swell {{ val name = decoder.decodeString(); return \
+             kotlinSchemaAt(decoder) {{ when (name) {{ \"Ebb\", \"Low\", \"Neap\" -> \
+             Swell.Ebb; \"Flood\" -> Swell.Flood; else -> throw \
+             SerializationException(\"unknown variant \" + name) }} }} }} }}"
+        )
     );
     assert_eq!(
         lulling_kotlin::kotlin_definition(),
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-         LullingUnjudged::class) @KeepGeneratedSerializer enum class Lulling { Ebb, Flood; fun \
-         validate(): List<String> = emptyList() } @OptIn(ExperimentalSerializationApi::class) \
-         object LullingUnjudged : JsonTransformingSerializer<Lulling>(Lulling.\
-         generatedSerializer()) { override fun transformDeserialize(element: JsonElement): \
-         JsonElement = unpadded(element).let { whole: JsonElement -> if (whole is JsonPrimitive \
-         && whole.isString) when (whole.content) { \"Low\" -> JsonPrimitive(\"Ebb\"); else -> \
-         whole } else whole } }"
+        format!(
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             LullingUnjudged::class) @KeepGeneratedSerializer enum class Lulling {{ Ebb, \
+             Flood; fun validate(): List<String> = emptyList() }} \
+             @OptIn(ExperimentalSerializationApi::class) object LullingUnjudged : \
+             KSerializer<Lulling> {{ private val held = Lulling.generatedSerializer(); \
+             override val descriptor: SerialDescriptor = held.descriptor; override fun \
+             serialize(encoder: Encoder, value: Lulling) = held.serialize(encoder, value); \
+             {PATHED}override fun deserialize(decoder: Decoder): Lulling {{ val input = \
+             decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+             kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
+             transformDeserialize(element).toString()) }} }}; private fun \
+             transformDeserialize(element: JsonElement): JsonElement = unpadded(element).let \
+             {{ whole: JsonElement -> if (whole is JsonPrimitive && whole.isString) when \
+             (whole.content) {{ \"Low\" -> JsonPrimitive(\"Ebb\"); else -> whole }} else \
+             whole }} }}"
+        )
     );
 }
 
@@ -126,8 +141,13 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
     let hawsing = hawsing_kotlin::kotlin_definition();
     let hawsing_read = format!(
         "@OptIn(ExperimentalSerializationApi::class) object HawsingUnjudged : \
-         JsonTransformingSerializer<Hawsing>(Hawsing.generatedSerializer()) {{ override fun \
-         transformDeserialize(element: JsonElement): JsonElement = {HAWSING_NAMES} }}"
+         KSerializer<Hawsing> {{ private val held = Hawsing.generatedSerializer(); override val \
+         descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
+         value: Hawsing) = held.serialize(encoder, value); {PATHED}override fun \
+         deserialize(decoder: Decoder): Hawsing {{ val input = decoder as JsonDecoder; val \
+         element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
+         input.json.decodeFromString(held, transformDeserialize(element).toString()) }} }}; \
+         private fun transformDeserialize(element: JsonElement): JsonElement = {HAWSING_NAMES} }}"
     );
     assert!(
         hawsing.contains(&hawsing_read),
@@ -137,9 +157,14 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
     let gybing_read = format!(
         "@OptIn(ExperimentalSerializationApi::class) class \
          GybingUnjudged<LabelType>(labelTypeSerializer: KSerializer<LabelType>) : \
-         JsonTransformingSerializer<Gybing<LabelType>>(Gybing.generatedSerializer(\
-         labelTypeSerializer)) {{ override fun transformDeserialize(element: JsonElement): \
-         JsonElement = {HAWSING_NAMES} }}"
+         KSerializer<Gybing<LabelType>> {{ private val held = \
+         Gybing.generatedSerializer(labelTypeSerializer); override val descriptor: \
+         SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, value: \
+         Gybing<LabelType>) = held.serialize(encoder, value); {PATHED}override fun \
+         deserialize(decoder: Decoder): Gybing<LabelType> {{ val input = decoder as JsonDecoder; \
+         val element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
+         input.json.decodeFromString(held, transformDeserialize(element).toString()) }} }}; \
+         private fun transformDeserialize(element: JsonElement): JsonElement = {HAWSING_NAMES} }}"
     );
     assert!(
         gybing.contains(&gybing_read),
@@ -154,13 +179,13 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
 fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
     let fairleading = fairleading_kotlin::kotlin_definition();
     let held = format!(
-        "val obj = input.decodeJsonElement().{NAME_AS_LABEL}.let {{ it as? JsonObject ?: throw \
+        "val element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj = \
+         element.{NAME_AS_LABEL}.let {{ it as? JsonObject ?: throw \
          SerializationException(\"expected an object, found \" + it) }}; val label = \
          kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"label\"] ?: throw \
-         SerializationException(\"missing field `label`\")), \"label\"); \
-         val tallyKeys = setOf(\"keys\"); val tally = \
-         input.json.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
-         setOf(\"label\"))));"
+         SerializationException(\"missing field `label`\")), \"label\", \".label\"); val \
+         tallyKeys = setOf(\"keys\"); val tally = input.json.decodeFromString(PennonUnjudged, \
+         withItsKeys(JsonObject(obj - setOf(\"label\"))).toString());"
     );
     assert!(fairleading.contains(&held), "no `{held}` in: {fairleading}");
 }
@@ -171,8 +196,8 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
 fn a_flattened_struct_takes_each_alias_of_its_members() {
     let fothering = fothering_kotlin::kotlin_definition();
     let held = "val hawsingKeys = setOf(\"label\", \"name\", \"title\", \"note\", \"remark\"); \
-                val hawsing = input.json.decodeFromJsonElement(HawsingUnjudged, \
+                val hawsing = input.json.decodeFromString(HawsingUnjudged, \
                 JsonObject(obj.filterKeys { it in setOf(\"label\", \"name\", \"title\", \"note\", \
-                \"remark\") }));";
+                \"remark\") }).toString());";
     assert!(fothering.contains(held), "no `{held}` in: {fothering}");
 }

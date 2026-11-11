@@ -10,6 +10,12 @@ mod raw_identifiers;
 #[path = "serde_tests/tagged_struct.rs"]
 mod tagged_struct;
 
+/// The private functions the Kotlin emitter writes into a serializer that refuses a value it read.
+#[cfg(test)]
+#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[path = "support/kotlin_pathed.rs"]
+mod kotlin_pathed;
+
 #[cfg(test)]
 #[cfg(feature = "serde")]
 #[path = "serde_tests/tests.rs"]

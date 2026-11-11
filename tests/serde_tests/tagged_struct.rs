@@ -137,6 +137,8 @@ mod on_a_schema_surface {
     any(feature = "dart", feature = "swift", feature = "kotlin")
 ))]
 mod on_a_mobile_surface {
+    #[cfg(feature = "kotlin")]
+    use super::super::kotlin_pathed::PATHED;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
@@ -175,7 +177,7 @@ mod on_a_mobile_surface {
                  (!json.containsKey('kind')) throw FormatException('missing field `kind`'); if \
                  (json['kind'] != 'TaggedMobile') throw FormatException('expected tag \
                  \"TaggedMobile\", found ' + jsonEncode(json['kind'])); return \
-                 TaggedMobile(name: json['name'] as String,); }"
+                 TaggedMobile(name: _readAt(json, 'name', () => json['name'] as String),); }"
             ),
             "got: {definition}"
         );
@@ -214,31 +216,40 @@ mod on_a_mobile_surface {
     fn kotlin_reads_the_tag_at_the_structs_name_and_encodes_it_ahead_of_the_fields() {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             TaggedMobileSerializer::class) @KeepGeneratedSerializer @JsonIgnoreUnknownKeys data class \
-             TaggedMobile(val name: String) { @SerialName(\"kind\") @EncodeDefault val \
-             kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
-             emptyList() } @OptIn(ExperimentalSerializationApi::class) object \
-             TaggedMobileUnjudged : \
-             JsonTransformingSerializer<TaggedMobile>(TaggedMobile.generatedSerializer()) { \
-             override fun transformDeserialize(element: JsonElement): JsonElement = \
-             element.also { whole: JsonElement -> if (whole is JsonObject) when \
-             (whole[\"kind\"]) { JsonPrimitive(\"TaggedMobile\") -> {}; null -> throw \
-             SerializationException(\"missing field `kind`\"); else -> throw \
-             SerializationException(\"expected tag \\\"TaggedMobile\\\", found \" + \
-             whole[\"kind\"]) } }; \
-             override fun transformSerialize(element: JsonElement): JsonElement = \
-             JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
-             element.jsonObject) } object TaggedMobileSerializer : \
-             KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> { override fun invoke(): \
-             KSerializer<TaggedMobile> = TaggedMobileUnjudged; override val descriptor: \
-             SerialDescriptor = \
-             TaggedMobileUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
-             TaggedMobile) = TaggedMobileUnjudged.serialize(encoder, value); override fun \
-             deserialize(decoder: Decoder): TaggedMobile { val read = \
-             TaggedMobileUnjudged.deserialize(decoder); val violations = read.validate(); if \
-             (violations.isNotEmpty()) throw \
-             SerializationException(violations.joinToString(\"; \")); return read } }"
+            format!(
+                "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+                 TaggedMobileSerializer::class) @KeepGeneratedSerializer @JsonIgnoreUnknownKeys \
+                 data class TaggedMobile(val name: String) {{ @SerialName(\"kind\") @EncodeDefault \
+                 val kotlinSchemaTag: String = \"TaggedMobile\"; fun validate(): List<String> = \
+                 emptyList() }} @OptIn(ExperimentalSerializationApi::class) object \
+                 TaggedMobileUnjudged : KSerializer<TaggedMobile> {{ private val held = \
+                 TaggedMobile.generatedSerializer(); override val descriptor: SerialDescriptor = \
+                 held.descriptor; override fun serialize(encoder: Encoder, value: TaggedMobile) {{ \
+                 val output = encoder as JsonEncoder; \
+                 output.encodeJsonElement(transformSerialize(output.json.encodeToJsonElement(held, \
+                 value))) }}; {PATHED}override fun deserialize(decoder: Decoder): TaggedMobile \
+                 {{ val input = decoder as JsonDecoder; val element = input.decodeJsonElement(); \
+                 return kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
+                 transformDeserialize(element).toString()) }} }}; private fun \
+                 transformDeserialize(element: JsonElement): JsonElement = element.also {{ whole: \
+                 JsonElement -> if (whole is JsonObject) when (whole[\"kind\"]) {{ \
+                 JsonPrimitive(\"TaggedMobile\") -> {{}}; null -> throw \
+                 SerializationException(\"missing field `kind`\"); else -> throw \
+                 SerializationException(\"expected tag \\\"TaggedMobile\\\", found \" + \
+                 whole[\"kind\"]) }} }}; private fun transformSerialize(element: JsonElement): \
+                 JsonElement = JsonObject(mapOf(\"kind\" to \
+                 element.jsonObject.getValue(\"kind\")) + element.jsonObject) }} object \
+                 TaggedMobileSerializer : KSerializer<TaggedMobile>, () -> \
+                 KSerializer<TaggedMobile> {{ override fun invoke(): KSerializer<TaggedMobile> = \
+                 TaggedMobileUnjudged; override val descriptor: SerialDescriptor = \
+                 TaggedMobileUnjudged.descriptor; override fun serialize(encoder: Encoder, value: \
+                 TaggedMobile) = TaggedMobileUnjudged.serialize(encoder, value); override fun \
+                 deserialize(decoder: Decoder): TaggedMobile {{ val read = \
+                 TaggedMobileUnjudged.deserialize(decoder); val violations = read.validate(); if \
+                 (violations.isNotEmpty()) throw \
+                 SerializationException(violations.joinToString(\"; \"), \
+                 IllegalArgumentException(\"validate()\")); return read }} }}"
+            )
         );
     }
 }

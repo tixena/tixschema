@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::held_numbers::{u8_held, u32_held};
-use super::unknown_keys::refusing;
+use super::unknown_keys::{READ_AT, refusing};
 use super::validate::{
     closed_dock_dart, code_dart, consignment_dart, crate_dart, depot_dart, freight_dart,
     gauge_dart, grade_dart, haul_dart, lift_dart, manifest_dart, pair_dart, parcel_dart,
@@ -167,10 +167,12 @@ fn a_class_reads_unjudged_then_refuses_what_validate_answers() {
     assert_written(
         &parcel,
         &format!(
-            "{}{{ {}return Parcel(fragile_item_codes: (json['fragileItemCodes'] as \
-             List<dynamic>).map((e) => e as String).toList(),item_code_list: (json['itemCodeList'] \
-             as List<dynamic>).map((e) => e as String).toList(),label: json['label'] as String,); \
-             }} Map<String, dynamic> toJson() =>",
+            "{}{{ {}return Parcel(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
+             (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
+             () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
+             (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+             e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
+             String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
             pair("Parcel", "Map<String, dynamic> json", "json"),
             refusing("Parcel", &["fragileItemCodes", "itemCodeList", "label"])
         ),
@@ -178,7 +180,7 @@ fn a_class_reads_unjudged_then_refuses_what_validate_answers() {
     assert_written(
         &depot_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Depot(name: json['name'] as String,); }}",
+            "{}{{ {}return Depot(name: _readAt(json, 'name', () => json['name'] as String),); }}",
             pair("Depot", "Map<String, dynamic> json", "json"),
             refusing("Depot", &["name"])
         ),
@@ -200,13 +202,16 @@ fn a_holder_reads_what_it_names_unjudged() {
     assert_written(
         &manifest_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Manifest(first_parcel: Parcel.fromJsonUnjudged(json['firstParcel']),parcel_list: \
-             (json['parcelList'] as List<dynamic>).map((e) => \
-             Parcel.fromJsonUnjudged(e)).toList(),parcels_by_dock: Map<String, \
+            "{}{{ {}return Manifest(first_parcel: _readAt(json, 'firstParcel', () => \
+             Parcel.fromJsonUnjudged(json['firstParcel'])),parcel_list: _readAt(json, \
+             'parcelList', () => (json['parcelList'] as List<dynamic>).indexed.map((e) => \
+             _readAt(null, e.$1, () => Parcel.fromJsonUnjudged(e.$2))).toList()),parcels_by_dock: \
+             _readAt(json, 'parcelsByDock', () => Map<String, \
              Parcel>.fromEntries((json['parcelsByDock'] as Map<String, dynamic>).entries.map((e) \
-             => MapEntry(e.key, Parcel.fromJsonUnjudged(e.value)))),spare_parcel: \
-             (json['spareParcel'] == null ? null : \
-             Parcel.fromJsonUnjudged(json['spareParcel'])),); }}",
+             => MapEntry(e.key, _readAt(null, e.key, () => \
+             Parcel.fromJsonUnjudged(e.value)))))),spare_parcel: _readAt(json, 'spareParcel', () \
+             => (json['spareParcel'] == null ? null : \
+             Parcel.fromJsonUnjudged(json['spareParcel']))),); }}",
             pair("Manifest", "Map<String, dynamic> json", "json"),
             refusing(
                 "Manifest",
@@ -224,8 +229,10 @@ fn a_value_validate_does_not_reach_judges_itself() {
     assert_written(
         &crate_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Crate(codes: (json['codes'] as List<dynamic>).map((e) => \
-             codeTypeFromJson(e)).toList(),label: json['label'] as String,); }}",
+            "{}{{ {}return Crate(codes: _readAt(json, 'codes', () => (json['codes'] as \
+             List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+             codeTypeFromJson(e.$2))).toList()),label: _readAt(json, 'label', () => json['label'] \
+             as String),); }}",
             pair("Crate", converters, "json, codeTypeFromJson"),
             refusing("Crate", &["codes", "label"])
         ),
@@ -233,11 +240,12 @@ fn a_value_validate_does_not_reach_judges_itself() {
     let hold = hold_dart::dart_definition();
     assert_written(
         &hold,
-        "filled: Bin.fromJsonUnjudged(json['filled'], (e) => Item.fromJson(e)),",
+        "filled: _readAt(json, 'filled', () => Bin.fromJsonUnjudged(json['filled'], (e) => \
+         Item.fromJson(e))),",
     );
     assert_written(
         &hold,
-        "MapEntry(Dock.fromJson(e.key), Item.fromJsonUnjudged(e.value))",
+        "MapEntry(Dock.fromJson(e.key), _readAt(null, e.key, () => Item.fromJsonUnjudged(e.value))",
     );
 }
 
@@ -247,7 +255,8 @@ fn a_value_validate_does_not_reach_judges_itself() {
 fn a_bounded_member_reads_the_type_it_holds_unjudged() {
     assert_written(
         &gauge_dart::dart_definition(),
-        "sort_code: (json['sortCode'] == null ? null : Code.fromJsonUnjudged(json['sortCode'])),",
+        "sort_code: _readAt(json, 'sortCode', () => (json['sortCode'] == null ? null : \
+         Code.fromJsonUnjudged(json['sortCode']))),",
     );
 }
 
@@ -279,7 +288,8 @@ fn a_wrapper_reads_unjudged_what_its_validate_runs() {
     assert_written(
         &load_dart::dart_definition(),
         &format!(
-            "{}=> LoadType((json as List<dynamic>).map((e) => Item.fromJson(e)).toList());",
+            "{}=> LoadType((json as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+             Item.fromJson(e.$2))).toList());",
             pair("LoadType", "dynamic json", "json")
         ),
     );
@@ -289,22 +299,23 @@ fn a_wrapper_reads_unjudged_what_its_validate_runs() {
 /// value and written as it, as serde writes it.
 #[test]
 fn a_tuple_struct_reads_each_slot_as_a_member() {
+    let second = format!("_readAt(null, 1, () => {})", u32_held("tuple[1] as int"));
     assert_written(
         &pair_dart::dart_definition(),
         &format!(
             "{}=> Pair(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
-             (tuple[0] as String, {second}), final tuple => throw FormatException('invalid \
-             length ${{tuple.length}}, expected 2') }});",
+             (_readAt(null, 0, () => tuple[0] as String), {second}), final tuple => throw \
+             FormatException('invalid length ${{tuple.length}}, expected 2') }});",
             pair("Pair", "dynamic json", "json"),
-            second = u32_held("tuple[1] as int")
         ),
     );
     assert_written(
         &lot_dart::dart_definition(),
         &format!(
             "{}=> Lot(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
-             (tuple[0] as String, Item.fromJsonUnjudged(tuple[1])), final tuple => throw \
-             FormatException('invalid length ${{tuple.length}}, expected 2') }});",
+             (_readAt(null, 0, () => tuple[0] as String), _readAt(null, 1, () => \
+             Item.fromJsonUnjudged(tuple[1]))), final tuple => throw FormatException('invalid \
+             length ${{tuple.length}}, expected 2') }});",
             pair("Lot", "dynamic json", "json")
         ),
     );
@@ -322,6 +333,7 @@ fn a_tuple_struct_reads_each_slot_as_a_member() {
 #[test]
 fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     let freight = freight_dart::dart_definition();
+    let second = format!("_readAt(null, 1, () => {})", u32_held("tuple[1] as int"));
     assert_written(
         &freight,
         &format!(
@@ -330,23 +342,25 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
              Map<String, dynamic>; if (map.isEmpty) {{ throw FormatException('empty object for \
              Freight'); }} if (map.length > 1) {{ throw FormatException('more than one key for \
              Freight'); }} final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
-             return FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed'])); case 'Held': return \
-             map[tag] == null ? FreightHeld() : throw FormatException('Freight: ' + tag + ' takes \
-             no value'); case 'Loose': return \
-             FreightLoose.fromJsonUnjudged(map['Loose']); case 'Split': return \
-             FreightSplit(switch (map['Split'] as List<dynamic>) {{ final tuple when tuple.length \
-             == 2 => (tuple[0] as String, {second}), final tuple => throw \
-             FormatException('invalid length ${{tuple.length}}, expected 2') }}); default: throw \
-             FormatException('Unknown Freight: ' + tag); }} }} dynamic toJson();",
+             return _readAt(null, tag, () => \
+             FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed']))); case 'Held': return \
+             _readAt(null, tag, () => map[tag] == null ? FreightHeld() : throw \
+             FormatException('Freight: ' + tag + ' takes no value')); case 'Loose': return \
+             _readAt(null, tag, () => FreightLoose.fromJsonUnjudged(map['Loose'])); case 'Split': \
+             return _readAt(null, tag, () => FreightSplit(switch (map['Split'] as List<dynamic>) \
+             {{ final tuple when tuple.length == 2 => (_readAt(null, 0, () => tuple[0] as \
+             String), {second}), final tuple => throw FormatException('invalid length \
+             ${{tuple.length}}, expected 2') }})); default: throw FormatException('Unknown \
+             Freight: ' + tag); }} }} {READ_AT} dynamic toJson();",
             pair("Freight", "dynamic json", "json"),
-            second = u32_held("tuple[1] as int")
         ),
     );
     assert_written(
         &freight,
         &format!(
-            "{}{{ {}return FreightLoose(freight_label: json['freightLabel'] as String,); }} \
-             @override dynamic toJson() =>",
+            "{}{{ {}return FreightLoose(freight_label: _readAt(json, 'freightLabel', () => \
+             json['freightLabel'] as String),); }} {READ_AT} @override \
+             dynamic toJson() =>",
             pair("FreightLoose", "Map<String, dynamic> json", "json"),
             refusing("FreightLoose", &["freightLabel"])
         ),
@@ -355,9 +369,10 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     assert_written(
         &haul,
         &format!(
-            "{}{{ {}final tag = json['kind'] as String; switch (tag) {{ case 'Boxed': return \
-             HaulBoxed(json['held'] as String); case 'Loose': return \
-             HaulLoose.fromJsonUnjudged(json['held']);",
+            "{}{{ {}final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) \
+             {{ case 'Boxed': return _readAt(json, 'held', () => HaulBoxed(json['held'] as \
+             String)); case 'Loose': return _readAt(json, 'held', () => \
+             HaulLoose.fromJsonUnjudged(json['held']));",
             pair("Haul", "Map<String, dynamic> json", "json"),
             refusing("Haul", &["kind", "held"])
         ),
@@ -366,7 +381,8 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     assert_written(
         &lift,
         &format!(
-            "{}{{ final tag = json['kind'] as String; switch (tag) {{ case 'Boxed': return \
+            "{}{{ final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) \
+             {{ case 'Boxed': return \
              LiftBoxed(Parcel.fromJsonUnjudged(({{...json}}..remove('kind')))); case 'Loose': \
              return LiftLoose.fromJsonUnjudged(json); default:",
             pair("Lift", "Map<String, dynamic> json", "json")
@@ -375,8 +391,8 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     assert_written(
         &lift,
         &format!(
-            "{}{{ {}return LiftLoose(lift_label: json['liftLabel'] as String,); }} \
-             Map<String, dynamic> toJson() =>",
+            "{}{{ {}return LiftLoose(lift_label: _readAt(json, 'liftLabel', () => \
+             json['liftLabel'] as String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
             pair("LiftLoose", "Map<String, dynamic> json", "json"),
             refusing("LiftLoose", &["kind", "liftLabel"])
         ),
@@ -425,9 +441,9 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
         &shelfmark,
         "try { final read = ShelfmarkCoded(Slip.fromJsonUnjudged(json)); if \
          (read._bounds().isEmpty) return read; } catch (_) {} try { final read = \
-         ShelfmarkListed((json as List<dynamic>).map((e) => \
-         Slip.fromJsonUnjudged(e)).toList()); if (read._bounds().isEmpty) return read; } catch \
-         (_) {} try { return ShelfmarkShelved(json as bool); } catch (_) {} throw",
+         ShelfmarkListed((json as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+         Slip.fromJsonUnjudged(e.$2))).toList()); if (read._bounds().isEmpty) return read; } \
+         catch (_) {} try { return ShelfmarkShelved(json as bool); } catch (_) {} throw",
     );
     assert_written(
         &shelfmark,
@@ -492,30 +508,31 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
 #[test]
 fn a_fixed_array_is_read_from_an_array_of_its_length() {
     let vise = vise_dart::dart_definition();
-    let item = u8_held("e as int");
+    let item = format!("_readAt(null, e.$1, () => {})", u8_held("e.$2 as int"));
     assert_written(
         &vise,
         &format!(
-            "grid: switch (json['grid'] as List<dynamic>) {{ final array when array.length == 3 \
-             => array.map((e) => switch (e as List<dynamic>) {{ final array when array.length == \
-             2 => array.map((e) => {item}).toList(), final array => throw \
-             FormatException('invalid length ${{array.length}}, expected 2') }}).toList(), final \
-             array => throw FormatException('invalid length ${{array.length}}, expected 3') }},"
+            "grid: _readAt(json, 'grid', () => switch (json['grid'] as List<dynamic>) {{ final \
+             array when array.length == 3 => array.indexed.map((e) => _readAt(null, e.$1, () => \
+             switch (e.$2 as List<dynamic>) {{ final array when array.length == 2 => \
+             array.indexed.map((e) => {item}).toList(), final array => throw \
+             FormatException('invalid length ${{array.length}}, expected 2') }})).toList(), final \
+             array => throw FormatException('invalid length ${{array.length}}, expected 3') }}),"
         ),
     );
     assert_written(
         &vise,
         &format!(
-            "listed: Uint8List.fromList((json['listed'] as List<dynamic>).map((e) => \
-             {item}).toList()),"
+            "listed: _readAt(json, 'listed', () => Uint8List.fromList((json['listed'] as \
+             List<dynamic>).indexed.map((e) => {item}).toList())),"
         ),
     );
     assert_written(
         &vise,
         &format!(
-            "pair: switch (json['pair'] as List<dynamic>) {{ final array when array.length == 2 \
-             => array.map((e) => {item}).toList(), final array => throw \
-             FormatException('invalid length ${{array.length}}, expected 2') }},"
+            "pair: _readAt(json, 'pair', () => switch (json['pair'] as List<dynamic>) {{ final \
+             array when array.length == 2 => array.indexed.map((e) => {item}).toList(), final \
+             array => throw FormatException('invalid length ${{array.length}}, expected 2') }}),"
         ),
     );
 }

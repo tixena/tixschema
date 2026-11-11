@@ -34,26 +34,27 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 }
 "#;
 
-/// What the Kotlin read answers of each payload of [`REFUSED`], in its order. An absent key is
-/// refused by the plugin's serializer.
+/// What the Kotlin read answers of each payload of [`REFUSED`], in its order, each refusal of a
+/// serializer tixschema writes at the path of the value refused. An absent key is refused by the
+/// plugin's serializer.
 const KOTLIN_REFUSED: [&str; 14] = [
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: {}, expected unit",
-    "SerializationException: invalid type: \"x\", expected unit",
+    "SerializationException: invalid type: [], expected unit at path: $.listed[0]",
+    "SerializationException: invalid type: [], expected unit at path: $.nothing",
+    "SerializationException: invalid type: [], expected unit at path: $.paired[1]",
+    "SerializationException: invalid type: [], expected unit at path: $.unit",
+    "SerializationException: invalid type: {}, expected unit at path: $.unit",
+    "SerializationException: invalid type: \"x\", expected unit at path: $.unit",
     "MissingFieldException: Field 'unit' is required for type with serial name 'ProbeUnits', but \
      it was missing at path: $",
     "MissingFieldException: Field 'nothing' is required for type with serial name 'ProbeUnits', \
      but it was missing at path: $",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: invalid type: [], expected unit",
-    "SerializationException: missing field `body`",
+    "SerializationException: invalid type: [], expected unit at path: $",
+    "SerializationException: invalid type: [], expected unit at path: $.maybe",
+    "SerializationException: invalid type: [], expected unit at path: $.Nothing",
+    "SerializationException: missing field `body` at path: $.body",
     "MissingFieldException: Field 'either' is required for type with serial name \
      'ProbeUnitEitherHolder', but it was missing at path: $",
-    "SerializationException: expected an array, found null",
+    "SerializationException: expected an array, found null at path: $",
 ];
 
 /// Each payload serde writes is read and written back as serde writes it back, and each payload

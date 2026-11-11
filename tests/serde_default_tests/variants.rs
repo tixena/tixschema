@@ -317,13 +317,14 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
 fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
     for read in [
-        "BerthingDocked(dock: json.containsKey('dock') ? (json['dock'] as String) : \
-         (jsonDecode('\"\"') as String),pier: (switch (json['pier'] as int) { final number when \
-         number >= 0 && number <= 4294967295 => number, final number => throw \
-         FormatException('expected an integer from 0 to 4294967295, found $number') }),)",
-        "BerthingMoored(dock: json.containsKey('dock') ? (json['dock'] as String) : \
-         (jsonDecode('\"north\"') as String),line: json.containsKey('line') ? (json['line'] as \
-         String) : (jsonDecode('\"\"') as String),)",
+        "BerthingDocked(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
+         as String) : (jsonDecode('\"\"') as String),pier: _readAt(json, 'pier', () => (switch \
+         (json['pier'] as int) { final number when number >= 0 && number <= 4294967295 => number, \
+         final number => throw FormatException('expected an integer from 0 to 4294967295, found \
+         $number') })),)",
+        "BerthingMoored(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
+         as String) : (jsonDecode('\"north\"') as String),line: json.containsKey('line') ? \
+         _readAt(json, 'line', () => json['line'] as String) : (jsonDecode('\"\"') as String),)",
     ] {
         assert!(written.contains(read), "{read}\n{written}");
     }
@@ -566,28 +567,39 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
         "sealed class Tide { const Tide(); factory Tide.fromJson(Map<String, dynamic> json) { \
          final read = Tide.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Tide.fromJsonUnjudged(Map<String, dynamic> json) { final tag = json['kind'] as \
-         String; switch (tag) { case 'Ebbing': return TideEbbing.fromJsonUnjudged(json); case \
-         'Slack': return (() { for (final key in json.keys) { if (!const <String>{'kind'}.contains(key)) \
-         throw FormatException('Unknown key of a Tide: $key'); } return TideSlack(); })(); default: \
-         throw FormatException('Unknown Tide: ' + tag); } } \
-         dynamic toJson(); List<String> validate(); } class TideEbbing extends Tide { const \
-         TideEbbing({required this.height,}); final int height; factory \
-         TideEbbing.fromJson(Map<String, dynamic> json) { final read = \
+         factory Tide.fromJsonUnjudged(Map<String, dynamic> json) { final tag = _readAt(json, \
+         'kind', () => json['kind'] as String); switch (tag) { case 'Ebbing': return \
+         TideEbbing.fromJsonUnjudged(json); case 'Slack': return (() { for (final key in \
+         json.keys) { if (!const <String>{'kind'}.contains(key)) throw FormatException('Unknown \
+         key of a Tide: $key', <Object>[key]); } return TideSlack(); })(); default: throw \
+         FormatException('Unknown Tide: ' + tag); } } static Read _readAt<Read>(Map<String, \
+         dynamic>? object, Object key, Read Function() read) { try { return read(); } catch \
+         (refused) { if (object != null && !object.containsKey(key)) throw \
+         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) throw \
+         FormatException('$refused', <Object>[key]); if (refused is FormatException) { final at = \
+         refused.source; throw FormatException(refused.message, <Object>[key, if (at is \
+         List<Object>) ...at]); } rethrow; } } dynamic toJson(); List<String> validate(); } class \
+         TideEbbing extends Tide { const TideEbbing({required this.height,}); final int height; \
+         factory TideEbbing.fromJson(Map<String, dynamic> json) { final read = \
          TideEbbing.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory TideEbbing.fromJsonUnjudged(Map<String, dynamic> json) { for (final key in \
          json.keys) { if (!const <String>{'kind', 'height'}.contains(key)) throw \
-         FormatException('Unknown key of a TideEbbing: $key'); } return TideEbbing(height: \
-         (switch (json['height'] as int) { final number when number >= 0 && number <= \
-         4294967295 => number, final number => throw FormatException('expected an integer from \
-         0 to 4294967295, found $number') }),); } Map<String, dynamic> toJson() => { 'kind': \
-         'Ebbing','height': (switch (height) { final number when number >= 0 && number <= \
-         4294967295 => number, final number => throw FormatException('expected an integer from \
-         0 to 4294967295, found $number') }), }; @override List<String> validate() => const []; \
-         } class TideSlack extends \
-         Tide { const TideSlack(); @override dynamic toJson() => { 'kind': 'Slack' }; @override \
-         List<String> validate() => const []; }"
+         FormatException('Unknown key of a TideEbbing: $key', <Object>[key]); } return \
+         TideEbbing(height: _readAt(json, 'height', () => (switch (json['height'] as int) { final \
+         number when number >= 0 && number <= 4294967295 => number, final number => throw \
+         FormatException('expected an integer from 0 to 4294967295, found $number') })),); } \
+         static Read _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() \
+         read) { try { return read(); } catch (refused) { if (object != null && \
+         !object.containsKey(key)) throw FormatException('missing field `$key`', <Object>[key]); \
+         if (refused is TypeError) throw FormatException('$refused', <Object>[key]); if (refused \
+         is FormatException) { final at = refused.source; throw FormatException(refused.message, \
+         <Object>[key, if (at is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> \
+         toJson() => { 'kind': 'Ebbing','height': (switch (height) { final number when number >= \
+         0 && number <= 4294967295 => number, final number => throw FormatException('expected an \
+         integer from 0 to 4294967295, found $number') }), }; @override List<String> validate() \
+         => const []; } class TideSlack extends Tide { const TideSlack(); @override dynamic \
+         toJson() => { 'kind': 'Slack' }; @override List<String> validate() => const []; }"
     );
 }
 
@@ -615,22 +627,39 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          JsonEncoder; output.encodeJsonElement(when (value) { is TideEbbing -> buildJsonObject { \
          put(\"kind\", \"Ebbing\"); output.json.encodeToJsonElement(serializer<TideEbbing>(), \
          value).jsonObject.forEach { (k, v) -> put(k, v) } }; is TideSlack -> buildJsonObject { \
-         put(\"kind\", \"Slack\") } }) }; override fun deserialize(decoder: Decoder): Tide { val \
-         input = decoder as JsonDecoder; val obj = input.decodeJsonElement().let { it as? \
-         JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; val \
-         tag = (obj[\"kind\"] as? JsonPrimitive)?.content; return when (tag) { \"Ebbing\" -> \
-         input.json.decodeFromJsonElement(serializer<TideEbbing>(), JsonObject(obj - \"kind\")); \
-         \"Slack\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
-         \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
-         unknown key '\" + it + \"'\") }; TideSlack } else -> throw \
-         SerializationException(\"unknown tag \" + tag) } } } object TideSerializer : \
-         KSerializer<Tide>, () -> KSerializer<Tide> { \
-         override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
-         SerialDescriptor = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, \
-         value: Tide) = \
-         TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
-         Tide { val read = TideUnjudged.deserialize(decoder); val violations = read.validate(); \
-         if (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \
-         \")); return read } }"
+         put(\"kind\", \"Slack\") } }) }; private fun kotlinSchemaRebased(refused: \
+         SerializationException, at: String): SerializationException { if (refused.cause?.message \
+         == \"validate()\") return refused; val said = \
+         refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token at offset \\\\d+: \
+         \"), \"\"); return SerializationException(if (\" at path: \\$\" in said) \
+         said.replaceFirst(\" at path: \\$\", \" at path: \" + at) else said + \" at path: \" + \
+         at, refused) }; @OptIn(ExperimentalSerializationApi::class) private inline fun \
+         <KotlinSchemaRead> kotlinSchemaAt(input: Decoder, read: () -> KotlinSchemaRead): \
+         KotlinSchemaRead = try { read() } catch (refused: SerializationException) { val at = try \
+         { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: \
+         JsonDecodingException) { probe.path } ?: throw refused; throw \
+         kotlinSchemaRebased(refused, at) }; private inline fun <KotlinSchemaRead> \
+         kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { \
+         read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, \
+         \"\\$\" + step) }; private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: \
+         String, serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement): \
+         KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
+         element.toString()) }; override fun deserialize(decoder: Decoder): Tide { val input = \
+         decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+         kotlinSchemaAt(input) { val obj = element.let { it as? JsonObject ?: throw \
+         SerializationException(\"expected an object, found \" + it) }; val tag = ((obj[\"kind\"] \
+         ?: throw SerializationException(\"missing field `kind`\")) as? JsonPrimitive)?.content; \
+         when (tag) { \"Ebbing\" -> kotlinSchemaInner(input.json, \"\", serializer<TideEbbing>(), \
+         JsonObject(obj - \"kind\")); \"Slack\" -> { if \
+         (!input.json.configuration.ignoreUnknownKeys) (obj - \"kind\").keys.firstOrNull()?.let { \
+         throw SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; TideSlack \
+         } else -> throw SerializationException(\"unknown tag \" + tag) } } } } object \
+         TideSerializer : KSerializer<Tide>, () -> KSerializer<Tide> { override fun invoke(): \
+         KSerializer<Tide> = TideUnjudged; override val descriptor: SerialDescriptor = \
+         TideUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Tide) = \
+         TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: Decoder): Tide \
+         { val read = TideUnjudged.deserialize(decoder); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read } }"
     );
 }

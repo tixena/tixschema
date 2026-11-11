@@ -17,7 +17,8 @@ use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 use crate::utils::is_nonstrict;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
-/// itself.
+/// itself: a part is read from its text, where kotlinx states the path of what it refuses, and the
+/// refusal is rebased onto the part's step.
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
      while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
@@ -26,9 +27,40 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      SerializationException(\"'\" + at + \"': \" + kind + \" cannot be read from \" + when (element) { \
      is JsonArray -> \"an array\"; is JsonObject -> \"an object\"; else -> \"a primitive\" }); \
      return element }; private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: \
-     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String): \
-     KotlinSchemaRead = json.decodeFromJsonElement(serializer, kotlinSchemaKinded(serializer, \
-     element, at)); ";
+     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String, step: String): \
+     KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
+     kotlinSchemaKinded(serializer, element, at).toString()) }; ";
+
+/// What a serializer throws for the violations `validate()` answers: its cause marks a message that
+/// names each place from the value judged, which [`PATHED`] leaves as it is.
+pub const JUDGED: &str = "SerializationException(violations.joinToString(\"; \"), \
+     IllegalArgumentException(\"validate()\"))";
+
+/// The private functions a serializer holds where it refuses a value it took off the decoder: kotlinx
+/// states its path only in an exception, so the refusal is rebased onto the path a second read of
+/// the decoder throws with, and the refusal of a part read apart onto that part's step.
+pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: SerializationException, at: \
+     String): SerializationException { if (refused.cause?.message == \"validate()\") return \
+     refused; val said = \
+     refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token at offset \\\\d+: \"), \
+     \"\"); return \
+     SerializationException(if (\" at path: \\$\" in said) said.replaceFirst(\" at path: \\$\", \" at \
+     path: \" + at) else said + \" at path: \" + at, refused) }; @OptIn(ExperimentalSerializationApi::class) \
+     private inline fun <KotlinSchemaRead> kotlinSchemaAt(input: Decoder, read: () -> \
+     KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) \
+     { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: \
+     JsonDecodingException) { probe.path } ?: throw refused; throw kotlinSchemaRebased(refused, \
+     at) }; private inline fun \
+     <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): \
+     KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw \
+     kotlinSchemaRebased(refused, \"\\$\" + step) }; ";
+
+/// What a serializer reads a part of the element it took apart with: from its text, where
+/// kotlinx states the path of a value it refuses, rebased onto `step`.
+pub const INNER: &str = "private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: String, \
+     serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement): \
+     KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
+     element.toString()) }; ";
 
 /// The private function a serializer holds where a flattened member's type is not one the emitter
 /// wrote above it. A plain enum has no members to read from an object: serde writes its variant as
@@ -223,8 +255,8 @@ pub fn corrected_member(
 ) -> String {
     let kinded = kinded(read_by, correction, &kotlin_quoted(key));
     format!(
-        "object {named} : JsonTransformingSerializer<{ty}>({read_by}) {{ {} }}",
-        with_decoded(&transform(&kinded))
+        "object {named} : KSerializer<{ty}> {{ {} }}",
+        transformed(ty, read_by, &transform(&kinded))
     )
 }
 
@@ -393,8 +425,7 @@ pub fn judged_counting(
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
          {{ val read = {unjudged}.deserialize(decoder); val violations = {validated}; if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
-         return read }} }}"
+         (violations.isNotEmpty()) throw {JUDGED}; return read }} }}"
     )
 }
 
@@ -575,9 +606,30 @@ pub fn read_whole(field: &FieldDef, type_parameters: &[String]) -> (String, Stri
 
 /// The read of `element` by `serializer` under `json`, which refuses an element of another kind
 /// than the serializer reads with a `SerializationException` naming `at`, a Kotlin expression of
-/// the member's key or position. Needs [`with_decoded`] or [`helpers_for`] on the serializer that holds it.
-pub fn decoded(json: &str, serializer: &str, element: &str, at: &str) -> String {
-    format!("kotlinSchemaDecoded({json}, {serializer}, {element}, {at})")
+/// the member's key or position, and places a refusal under `step`, the Kotlin expression of the
+/// path from the element the serializer took apart. Needs [`with_decoded`] or [`helpers_for`] on
+/// the serializer that holds it.
+pub fn decoded(json: &str, serializer: &str, element: &str, at: &str, step: &str) -> String {
+    format!("kotlinSchemaDecoded({json}, {serializer}, {element}, {at}, {step})")
+}
+
+/// The Kotlin expression of the step to the entry under `key`, the Kotlin expression of a key, as
+/// kotlinx writes a path.
+pub fn keyed_step(key: &str) -> String {
+    key.strip_prefix('"')
+        .map_or_else(|| format!("\".\" + {key}"), |quoted| format!("\".{quoted}"))
+}
+
+/// The Kotlin expression of the step to the position `slot` of an array, as kotlinx writes a path.
+pub fn slot_step(slot: usize) -> String {
+    format!("\"[{slot}]\"")
+}
+
+/// The statements of a `deserialize` that reads `element`, a Kotlin expression of what it takes off
+/// `decoder`, and answers `read`, statements over `element` that end in what is read: a refusal is
+/// placed at the path where `decoder` read the element.
+pub fn read_at(decoder: &str, element: &str, read: &str) -> String {
+    format!("val element = {element}; return kotlinSchemaAt({decoder}) {{ {read} }}")
 }
 
 /// `element`, the Kotlin expression of a payload, refused as [`decoded`] refuses it when it is of
@@ -591,10 +643,17 @@ pub fn helpers_for(declarations: &str) -> String {
     let decoded = declarations.contains("kotlinSchemaDecoded(")
         || declarations.contains("kotlinSchemaKinded(");
     let flat = declarations.contains("kotlinSchemaFlat(");
+    let inner = declarations.contains("kotlinSchemaInner(");
+    let pathed = inner
+        || declarations.contains("kotlinSchemaDecoded(")
+        || declarations.contains("kotlinSchemaAt(")
+        || declarations.contains("kotlinSchemaUnder(");
     format!(
-        "{}{}",
+        "{}{}{}{}",
         if decoded { DECODED } else { "" },
-        if flat { FLATTENED_NAME } else { "" }
+        if flat { FLATTENED_NAME } else { "" },
+        if pathed { PATHED } else { "" },
+        if inner { INNER } else { "" }
     )
 }
 
@@ -610,44 +669,79 @@ pub fn flat(serializer: &str, element: &str) -> String {
 }
 
 /// What a serializer that corrects its payload, or refuses a struct's own tag of another value,
-/// overrides: `correction` is the Kotlin expression of `element` corrected and checked.
+/// reads its element through: `correction` is the Kotlin expression of `element` corrected and
+/// checked.
 pub fn transform(correction: &str) -> String {
-    format!("override fun transformDeserialize(element: JsonElement): JsonElement = {correction}")
+    format!("private fun transformDeserialize(element: JsonElement): JsonElement = {correction}")
 }
 
 /// What a serializer that writes a struct's own tag, under `key`, ahead of the struct's members
-/// overrides: the plugin writes the property that holds the tag after the constructor's.
+/// writes its element through: the plugin writes the property that holds the tag after the
+/// constructor's.
 pub fn tag_first(key: &str) -> String {
     let written = kotlin_quoted(key);
     format!(
-        "override fun transformSerialize(element: JsonElement): JsonElement = \
+        "private fun transformSerialize(element: JsonElement): JsonElement = \
          JsonObject(mapOf({written} to element.jsonObject.getValue({written})) + \
          element.jsonObject)"
     )
 }
 
+/// The members of a serializer of `ty` that reads and writes through `held`, behind `body`, a
+/// [`transform`] and maybe a [`tag_first`]: it reads `held` from the text of the element
+/// `transformDeserialize` answers, so a refusal is placed at the path of the element it took.
+fn transformed(ty: &str, held: &str, body: &str) -> String {
+    let serialize = if body.contains("fun transformSerialize(") {
+        format!(
+            "override fun serialize(encoder: Encoder, value: {ty}) {{ val output = encoder as \
+             JsonEncoder; output.encodeJsonElement(transformSerialize(output.json.\
+             encodeToJsonElement(held, value))) }}"
+        )
+    } else {
+        format!(
+            "override fun serialize(encoder: Encoder, value: {ty}) = held.serialize(encoder, value)"
+        )
+    };
+    let read = read_at(
+        "input",
+        "input.decodeJsonElement()",
+        "input.json.decodeFromString(held, transformDeserialize(element).toString())",
+    );
+    let members = format!(
+        "override fun deserialize(decoder: Decoder): {ty} {{ val input = decoder as JsonDecoder; \
+         {read} }}; {body}"
+    );
+    format!(
+        "private val held = {held}; override val descriptor: SerialDescriptor = held.descriptor; \
+         {serialize}; {}{members}",
+        helpers_for(&members)
+    )
+}
+
 /// [`generated`] for a type that corrects its payload or holds its own tag: the plugin's serializer
-/// behind `body`, the [`transform`] and the [`tag_first`] it overrides.
+/// behind `body`, the [`transform`] and the [`tag_first`] it reads and writes through.
 pub fn transforming(
     export_name: &str,
     generic_params: &str,
     type_parameters: &[String],
     body: &str,
 ) -> String {
+    let own = format!("{export_name}{generic_params}");
+    let held = format!(
+        "{export_name}.generatedSerializer({})",
+        arguments(type_parameters)
+    );
     if type_parameters.is_empty() {
         format!(
-            "{OPTED_IN} object {export_name}Unjudged : \
-             JsonTransformingSerializer<{export_name}>({export_name}.generatedSerializer()) {{ \
-             {body} }}"
+            "{OPTED_IN} object {export_name}Unjudged : KSerializer<{own}> {{ {} }}",
+            transformed(&own, &held, body)
         )
     } else {
         format!(
-            "{OPTED_IN} class {export_name}Unjudged{}({}) : \
-             JsonTransformingSerializer<{export_name}{generic_params}>({export_name}.\
-             generatedSerializer({})) {{ {body} }}",
+            "{OPTED_IN} class {export_name}Unjudged{}({}) : KSerializer<{own}> {{ {} }}",
             parameter_list(type_parameters, ""),
             handed(type_parameters, ""),
-            arguments(type_parameters)
+            transformed(&own, &held, body)
         )
     }
 }
@@ -666,19 +760,21 @@ pub fn transforming_inline(
         "{export_name}.generatedSerializer({})",
         arguments(type_parameters)
     );
-    let decoded = decoded(
-        "input.json",
-        &read_by,
+    let read = read_at(
+        "input",
         correction,
-        &kotlin_quoted(export_name),
+        &format!(
+            "input.json.decodeFromString({read_by}, {}.toString())",
+            kinded(&read_by, "element", &kotlin_quoted(export_name))
+        ),
     );
     format!(
         "{OPTED_IN} class {export_name}Unjudged{}({}) : KSerializer<{own}> by {read_by} {{ \
          {}override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
-         return {decoded} }} }}",
+         {read} }} }}",
         parameter_list(type_parameters, ""),
         handed(type_parameters, "private val "),
-        helpers_for(&decoded),
+        helpers_for(&read),
     )
 }
 

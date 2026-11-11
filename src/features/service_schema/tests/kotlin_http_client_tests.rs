@@ -415,7 +415,7 @@ fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
         assert!(written.contains(held), "no `{held}` in: {written}");
     }
     assert!(
-        written.ends_with(" return text } }"),
+        written.ends_with(" text } } }"),
         "the serializers are declared last. Got: {written}"
     );
 }

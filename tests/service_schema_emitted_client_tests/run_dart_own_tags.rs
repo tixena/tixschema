@@ -129,7 +129,7 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             flag_dart::dart_definition(),
             format!(
                 "factory Flag.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Flag(label: json['label'] as String,); }}",
+                 Flag(label: _readAt(json, 'label', () => json['label'] as String),); }}",
                 tag_held("json", "Flag")
             ),
         ),
@@ -137,7 +137,8 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             gonfalon_dart::dart_definition(),
             format!(
                 "factory Gonfalon.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-                 heldFromJson) {{ {} return Gonfalon(label: heldFromJson(json['label']),); }}",
+                 heldFromJson) {{ {} return Gonfalon(label: _readAt(json, 'label', () => \
+                 heldFromJson(json['label'])),); }}",
                 tag_held("json", "Gonfalon")
             ),
         ),
@@ -145,7 +146,8 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             semaphore_dart::dart_definition(),
             format!(
                 "throw FormatException('duplicate field `$key`'); named[key] = entry.value; }} {} \
-                 return Semaphore(label: named['label'] as String,); }}",
+                 return Semaphore(label: _readAt(named, 'label', () => named['label'] as \
+                 String),); }}",
                 tag_held("named", "Semaphore")
             ),
         ),
@@ -156,23 +158,23 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
                  Pennant(labelling: Labelling.fromJsonUnjudged((switch (({{...json}}..remove('note'))) \
                  {{ final whole => \
                  {{ for (final key in const ['label']) if (whole.containsKey(key)) key: \
-                 whole[key] }} }})),note: json['note'] as String,); }}",
+                 whole[key] }} }})),note: _readAt(json, 'note', () => json['note'] as String),); }}",
                 tag_held("json", "Pennant")
             ),
         ),
         (
             dressing_dart::dart_definition(),
             "Dressing(ensign: Ensign.fromJsonUnjudged(({...json}..remove('north'))),north: \
-             (switch (json['north'] as \
+             _readAt(json, 'north', () => (switch (json['north'] as \
              int) { final number when number >= 0 && number <= 255 => number, final number => \
-             throw FormatException('expected an integer from 0 to 255, found $number') }),)"
+             throw FormatException('expected an integer from 0 to 255, found $number') })),)"
                 .to_owned(),
         ),
         (
             ensign_dart::dart_definition(),
             format!(
                 "factory Ensign.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Ensign(label: json['label'] as String,); }}",
+                 Ensign(label: _readAt(json, 'label', () => json['label'] as String),); }}",
                 tag_held("json", "Ensign")
             ),
         ),

@@ -30,16 +30,17 @@ void told(String at, Object? Function() read) {
 ";
 
 /// What the Dart read answers of each payload of [`REFUSED`], in its order: `jsonDecode` reads a
-/// number beyond an `int` as a `double`, which the read's cast refuses.
+/// number beyond an `int` as a `double`, which the read's cast refuses, and a member's read turns
+/// the cast's `TypeError` into a `FormatException` with the same words.
 const DART_REFUSED: [&str; 8] = [
     "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
     "_TypeError: type 'String' is not a subtype of type 'int' in type cast",
-    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
-    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
+    "FormatException: type 'double' is not a subtype of type 'int' in type cast",
+    "FormatException: type 'double' is not a subtype of type 'int' in type cast",
     "FormatException: 'level': too large: maximum is 5, got 6",
-    "_TypeError: type 'double' is not a subtype of type 'int' in type cast",
+    "FormatException: type 'double' is not a subtype of type 'int' in type cast",
     "FormatException: 'fixed': not the literal 214, got 215",
-    "_TypeError: type 'String' is not a subtype of type 'int' in type cast",
+    "FormatException: type 'String' is not a subtype of type 'int' in type cast",
 ];
 
 /// The emitted types every row reads.

@@ -67,37 +67,37 @@ const ROWS: [Row; 18] = [
         json: r#"{"kind":"Counted"}"#,
         read_as: "Bowlining",
         serde: serde_told::<Bowlining>,
-        thrown: "missing field `held`",
+        thrown: "missing field `held` at path: $",
     },
     Row {
         json: r#"{"kind":"Counted","held":null}"#,
         read_as: "Bowlining",
         serde: serde_told::<Bowlining>,
-        thrown: "expected an object, found null",
+        thrown: "expected an object, found null at path: $.held",
     },
     Row {
         json: r#"{"held":{}}"#,
         read_as: "Bowlining",
         serde: serde_told::<Bowlining>,
-        thrown: "missing field `kind`",
+        thrown: "missing field `kind` at path: $",
     },
     Row {
         json: r#"{"kind":"Gale","held":{}}"#,
         read_as: "Bowlining",
         serde: serde_told::<Bowlining>,
-        thrown: "unknown tag Gale",
+        thrown: "unknown tag Gale at path: $",
     },
     Row {
         json: r#"{"kind":[],"held":{}}"#,
         read_as: "Bowlining",
         serde: serde_told::<Bowlining>,
-        thrown: "expected a string, found []",
+        thrown: "expected a string, found [] at path: $",
     },
     Row {
         json: "{}",
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: "expected an object of one key, found {}",
+        thrown: "expected an object of one key, found {} at path: $",
     },
     Row {
         json: r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
@@ -105,74 +105,75 @@ const ROWS: [Row; 18] = [
         serde: serde_told::<Tacking>,
         thrown: concat!(
             "expected an object of one key, found ",
-            r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#
+            r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
+            " at path: $"
         ),
     },
     Row {
         json: "[1]",
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: "expected an object, found [1]",
+        thrown: "expected an object, found [1] at path: $",
     },
     Row {
         json: r#"{"Gale":{}}"#,
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: "unknown tag Gale",
+        thrown: "unknown tag Gale at path: $",
     },
     Row {
         json: "[]",
         read_as: "Stowing",
         serde: serde_told::<Stowing>,
-        thrown: "expected an object, found []",
+        thrown: "expected an object, found [] at path: $",
     },
     Row {
         json: "{}",
         read_as: "Stowing",
         serde: serde_told::<Stowing>,
-        thrown: "missing field `note`",
+        thrown: "missing field `note` at path: $",
     },
     Row {
         json: "[1]",
         read_as: "Palleting",
         serde: serde_told::<Palleting>,
-        thrown: "invalid length 1, expected 2",
+        thrown: "invalid length 1, expected 2 at path: $",
     },
     Row {
         json: "[[1,2]]",
         read_as: "Palleting",
         serde: serde_told::<Palleting>,
-        thrown: "invalid length 1, expected 2",
+        thrown: "invalid length 1, expected 2 at path: $",
     },
     Row {
         json: "{}",
         read_as: "Palleting",
         serde: serde_told::<Palleting>,
-        thrown: "expected an array, found {}",
+        thrown: "expected an array, found {} at path: $",
     },
     Row {
         json: "[[1],2]",
         read_as: "Palleting",
         serde: serde_told::<Palleting>,
-        thrown: "invalid length 1, expected 2",
+        thrown: "invalid length 1, expected 2 at path: $[0]",
     },
     Row {
         json: "[[1,2],3,4]",
         read_as: "Palleting",
         serde: serde_told::<Palleting>,
-        thrown: "invalid length 3, expected 2",
+        thrown: "invalid length 3, expected 2 at path: $",
     },
     Row {
         json: "[]",
         read_as: "Whelping",
         serde: serde_told::<Whelping>,
-        thrown: "expected an object, found []",
+        thrown: "expected an object, found [] at path: $",
     },
     Row {
         json: "[1]",
         read_as: "Swaying",
         serde: serde_told::<Swaying>,
-        thrown: "No variant of Swaying matched",
+        thrown: "No variant of Swaying matched at path: $",
     },
 ];
 
@@ -200,22 +201,22 @@ const CLENCHED: [(&str, &str, Option<&str>); 9] = [
     (
         "Clenching",
         r#"{"pair":[1,2,3]}"#,
-        Some("invalid length 3, expected 2"),
+        Some("invalid length 3, expected 2 at path: $.pair"),
     ),
     (
         "Clenching",
         r#"{"pair":[1]}"#,
-        Some("invalid length 1, expected 2"),
+        Some("invalid length 1, expected 2 at path: $.pair"),
     ),
     (
         "Clasping",
         r#"{"grid":[[1,2],[3,4,5],[6,7]]}"#,
-        Some("invalid length 3, expected 2"),
+        Some("invalid length 3, expected 2 at path: $.grid[1]"),
     ),
     (
         "Clasping",
         r#"{"grid":[[1,2],[3,4]]}"#,
-        Some("invalid length 2, expected 3"),
+        Some("invalid length 2, expected 3 at path: $.grid"),
     ),
     ("Clenching", r#"{"pair":[1,2]}"#, None),
     ("Clasping", r#"{"grid":[[1,2],[3,4],[5,6]]}"#, None),
@@ -231,12 +232,14 @@ const UNIT_ROWS: [(&str, &str, &str); 3] = [
     (
         r#"{"kind":"Lull","held":null}"#,
         "read",
-        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value",
+        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value at path: \
+         $.held",
     ),
     (
         r#"{"kind":"Lull","held":5}"#,
         "invalid type: integer `5`, expected unit variant Becalming::Lull at line 1 column 23",
-        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value",
+        "kotlinx.serialization.SerializationException: Becalming: Lull takes no value at path: \
+         $.held",
     ),
 ];
 
@@ -247,28 +250,28 @@ const PLACES: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"
 const OUTCOME_ERR: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"keys":{"3":"x"},"maybe":null,"outcome":{"Err":"7"},"pair":[1,2],"span":{"start":1,"end":2}}"#;
 
 /// Each place a read reaches a number or a `bool`, with the path to it in the payload, the text a
-/// quoted value there is, and the type serde names in its refusal.
-const QUOTED: [(&str, &str, &str, &str); 20] = [
-    ("QuotedNumbers", "/arch", "7", "isize"),
-    ("QuotedNumbers", "/double", "7", "f64"),
-    ("QuotedNumbers", "/flag", "true", "a boolean"),
-    ("QuotedNumbers", "/large", "7", "i64"),
-    ("QuotedNumbers", "/medium", "7", "i32"),
-    ("QuotedNumbers", "/single", "7", "f32"),
-    ("QuotedNumbers", "/small", "7", "i16"),
-    ("QuotedNumbers", "/tiny", "7", "i8"),
-    ("QuotedNumbers", "/umedium", "7", "u32"),
-    ("QuotedNumbers", "/usmall", "7", "u16"),
-    ("QuotedNumbers", "/utiny", "7", "u8"),
-    ("QuotedPlaces", "/held/value", "7", "u8"),
-    ("QuotedPlaces", "/id", "7", "i64"),
-    ("QuotedPlaces", "/items/0", "7", "u8"),
-    ("QuotedPlaces", "/keyed/k", "7", "i32"),
-    ("QuotedPlaces", "/maybe", "7", "u32"),
-    ("QuotedPlaces", "/outcome/Ok", "7", "i32"),
-    ("QuotedPlaces", "/pair/1", "7", "i32"),
-    ("QuotedPlaces", "/span/start", "7", "i16"),
-    ("QuotedPlaces", "/pair/0", "7", "u8"),
+/// quoted value there is, the type serde names in its refusal, and the path the Kotlin read states.
+const QUOTED: [(&str, &str, &str, &str, &str); 20] = [
+    ("QuotedNumbers", "/arch", "7", "isize", "$.arch"),
+    ("QuotedNumbers", "/double", "7", "f64", "$.double"),
+    ("QuotedNumbers", "/flag", "true", "a boolean", "$.flag"),
+    ("QuotedNumbers", "/large", "7", "i64", "$.large"),
+    ("QuotedNumbers", "/medium", "7", "i32", "$.medium"),
+    ("QuotedNumbers", "/single", "7", "f32", "$.single"),
+    ("QuotedNumbers", "/small", "7", "i16", "$.small"),
+    ("QuotedNumbers", "/tiny", "7", "i8", "$.tiny"),
+    ("QuotedNumbers", "/umedium", "7", "u32", "$.umedium"),
+    ("QuotedNumbers", "/usmall", "7", "u16", "$.usmall"),
+    ("QuotedNumbers", "/utiny", "7", "u8", "$.utiny"),
+    ("QuotedPlaces", "/held/value", "7", "u8", "$.held.value"),
+    ("QuotedPlaces", "/id", "7", "i64", "$.id"),
+    ("QuotedPlaces", "/items/0", "7", "u8", "$.items[0]"),
+    ("QuotedPlaces", "/keyed/k", "7", "i32", "$.keyed['k']"),
+    ("QuotedPlaces", "/maybe", "7", "u32", "$.maybe"),
+    ("QuotedPlaces", "/outcome/Ok", "7", "i32", "$.outcome.Ok"),
+    ("QuotedPlaces", "/pair/1", "7", "i32", "$.pair[1]"),
+    ("QuotedPlaces", "/span/start", "7", "i16", "$.span.start"),
+    ("QuotedPlaces", "/pair/0", "7", "u8", "$.pair[0]"),
 ];
 
 /// A unit variant under a tag and a content key, beside a variant that holds a value.
@@ -434,7 +437,7 @@ fn quoted_at(base: &str, path: &str, quoted: &str) -> String {
 
 /// The row of a date under `as_number` written between quotes, held to serde's refusal.
 #[cfg(feature = "chrono")]
-fn millis_row() -> (String, &'static str, String) {
+fn millis_row() -> (String, &'static str, String, &'static str) {
     let json = r#"{"at":"7"}"#;
     let said = "invalid type: string \"7\", expected a unix timestamp in milliseconds";
     let serde = serde_told::<QuotedMillis>(json);
@@ -442,7 +445,7 @@ fn millis_row() -> (String, &'static str, String) {
         serde.starts_with(said),
         "serde no longer refuses {json} as `{said}`: {serde}"
     );
-    (json.to_owned(), "QuotedMillis", said.to_owned())
+    (json.to_owned(), "QuotedMillis", said.to_owned(), "$.at")
 }
 
 /// A number or a `bool` written between quotes is refused in each place a read reaches one, with
@@ -450,9 +453,9 @@ fn millis_row() -> (String, &'static str, String) {
 /// a map's number key included, which JSON writes between quotes.
 #[test]
 fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
-    let mut rows: Vec<(String, &str, String)> = QUOTED
+    let mut rows: Vec<(String, &str, String, &str)> = QUOTED
         .into_iter()
-        .map(|(read_as, path, quoted, expected)| {
+        .map(|(read_as, path, quoted, expected, at)| {
             let base = if read_as == "QuotedNumbers" {
                 NUMBERS
             } else {
@@ -462,6 +465,7 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
                 quoted_at(base, path, quoted),
                 read_as,
                 format!("invalid type: string \"{quoted}\", expected {expected}"),
+                at,
             )
         })
         .collect();
@@ -469,8 +473,9 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
         OUTCOME_ERR.to_owned(),
         "QuotedPlaces",
         "invalid type: string \"7\", expected u8".to_owned(),
+        "$.outcome.Err",
     ));
-    for (json, read_as, said) in &rows {
+    for (json, read_as, said, _) in &rows {
         let serde = if *read_as == "QuotedNumbers" {
             serde_told::<QuotedNumbers>(json)
         } else {
@@ -486,10 +491,10 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
     let mut expected = String::new();
     let mut main = String::from(THROWN);
     main.push_str("fun main() {\n");
-    for (at, (json, read_as, said)) in rows.iter().enumerate() {
+    for (at, (json, read_as, said, path)) in rows.iter().enumerate() {
         let _ = writeln!(
             expected,
-            "{at}: kotlinx.serialization.SerializationException: {said}"
+            "{at}: kotlinx.serialization.SerializationException: {said} at path: {path}"
         );
         let _ = writeln!(
             main,
@@ -696,7 +701,7 @@ fn a_fixed_array_is_read_from_an_array_of_its_length_alone_at_each_level() {
 }
 
 /// The README's sentences on the refusals of the Kotlin read show payloads and messages the runs
-/// above measure.
+/// above measure, a message's words ahead of the path it states.
 #[test]
 fn the_readme_shows_refusals_the_run_measures() {
     let readme = include_str!("../../docs/guide/kotlin.md");
@@ -709,7 +714,8 @@ fn the_readme_shows_refusals_the_run_measures() {
     ] {
         let message = shown.trim_matches('`').trim();
         assert!(
-            ROWS.iter().any(|row| row.thrown == message),
+            ROWS.iter()
+                .any(|row| row.thrown.split(" at path: ").next() == Some(message)),
             "no row throws `{message}`"
         );
         assert!(readme.contains(shown), "not in the README: {shown}");
@@ -717,7 +723,11 @@ fn the_readme_shows_refusals_the_run_measures() {
     for &(json, _, kotlin) in &UNIT_ROWS {
         let shown = format!("`{json}`");
         assert!(readme.contains(&shown), "not in the README: {shown}");
-        let refusal = kotlin.trim_start_matches("kotlinx.serialization.");
+        let refusal = kotlin
+            .trim_start_matches("kotlinx.serialization.")
+            .split(" at path: ")
+            .next()
+            .unwrap_or(kotlin);
         assert!(
             kotlin == "read" || readme.contains(&format!("`{refusal}`")),
             "not in the README: {refusal}"

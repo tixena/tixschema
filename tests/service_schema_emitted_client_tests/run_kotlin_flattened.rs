@@ -619,10 +619,11 @@ fn a_struct_under_its_own_tag_refuses_in_kotlin_every_tag_zod_refuses() {
         let _ = write!(
             expected,
             "{name}, {}: {}\n\
-             {name}, {}: refused: SerializationException: missing field `kind`\n\
+             {name}, {}: refused: SerializationException: missing field `kind` at path: $\n\
              {name}, {}: refused: SerializationException: expected tag \"{named}\", found \
-             \"Other\"\n\
-             {name}, {}: refused: SerializationException: expected tag \"{named}\", found 5\n",
+             \"Other\" at path: $\n\
+             {name}, {}: refused: SerializationException: expected tag \"{named}\", found 5 at \
+             path: $\n",
             TAGS[0], rows.back, TAGS[1], TAGS[2], TAGS[3]
         );
     }
@@ -936,7 +937,18 @@ fn a_flattened_enum_with_entries_under_two_names_is_refused_in_kotlin() {
     let Some(printed) = ran_kotlin(&entry_source(main)) else {
         return;
     };
-    assert_eq!(printed, expected);
+    // The Kotlin read follows serde's words with the path of the holder it refuses.
+    let placed: String = expected
+        .lines()
+        .map(|row| {
+            if row.contains(": refused: ") {
+                format!("{row} at path: $\n")
+            } else {
+                format!("{row}\n")
+            }
+        })
+        .collect();
+    assert_eq!(printed, placed);
 }
 
 /// An enum under a tag and a content key flattened into its holder takes both keys, as serde reads
@@ -952,7 +964,7 @@ fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_kotlin() {
         "serde reads past a key no member reads"
     );
     let expected = format!(
-        "0: {} {}\n1: {} {}\n2: refused: Encountered an unknown key 'north'\n",
+        "0: {} {}\n1: {} {}\n2: refused: Encountered an unknown key 'north' at path: $\n",
         serde_json::to_string(&chafing.tally).unwrap(),
         serde_json::to_string(&chafing).unwrap(),
         serde_json::to_string(&fraying.labelling).unwrap(),
@@ -962,7 +974,7 @@ fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_kotlin() {
         expected,
         "0: {\"keys\":[\"north\"]} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"keys\":[\"north\"]}\n\
          1: {\"label\":\"m\"} {\"kind\":\"Rope\",\"held\":{\"label\":\"n\"},\"label\":\"m\"}\n\
-         2: refused: Encountered an unknown key 'north'\n"
+         2: refused: Encountered an unknown key 'north' at path: $\n"
     );
     let main = format!(
         "{TAG_AND_CONTENT_READ}\nfun main() {{\n    held(0, Chafing.serializer(), \"\"\"{CHAFING}\"\"\") \
@@ -1121,7 +1133,7 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
     assert_eq!(
         printed,
         format!(
-            "{}\nexpected an object of one key, found {}\n",
+            "{}\nexpected an object of one key, found {} at path: $\n",
             serde_read[0], r#"{"Bay":{"label":"n"},"north":2}"#
         )
     );
@@ -1462,11 +1474,14 @@ fn an_optional_type_of_no_recorded_key_reads_and_writes_in_kotlin_as_serde_does(
     // `Nippering` reads held as a number. The tag of `Hitched` beside no member reads `null` beside
     // the `nonstrict` `Snagging`, as serde and Zod read it.
     for (at, refused) in [
-        (10, "refused: SerializationException: missing field `held`"),
+        (
+            10,
+            "refused: SerializationException: missing field `held` at path: $",
+        ),
         (
             16,
-            "refused: JsonDecodingException: String literal for value of key 'label' should be \
-             quoted at path: $.label",
+            "refused: SerializationException: Expected quotation mark '\"', but had '5' instead at \
+             path: $.label",
         ),
     ] {
         in_kotlin[at] = refused;
@@ -1821,13 +1836,13 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kot
     looked_for(
         &lowering_kotlin::kotlin_definition(),
         "grommet",
-        "runCatching { lenient.decodeFromJsonElement(GrommetUnjudged, obj) }.getOrNull()",
+        "runCatching { lenient.decodeFromString(GrommetUnjudged, obj.toString()) }.getOrNull()",
         "\"kind\"",
     );
     looked_for(
         &squaring_kotlin::kotlin_definition(),
         "becket",
-        "lenient.decodeFromJsonElement(BecketUnjudged, obj)",
+        "lenient.decodeFromString(BecketUnjudged, obj.toString())",
         "\"kind\", \"body\"",
     );
 }
@@ -1871,11 +1886,15 @@ fn a_flattened_option_of_an_enum_reads_in_kotlin_as_zod_does_where_its_keys_are_
         "serde no longer reads each payload as it did"
     );
     let mut in_kotlin: Vec<String> = rows.iter().map(|row| row.serde.clone()).collect();
-    let mistyped = "SerializationException: invalid type: string \"x\", expected u32";
+    let mistyped = "SerializationException: invalid type: string \"x\", expected u32 at path:";
+    let unnamed = "SerializationException: unknown tag Gale at path: $";
     for (at, refused) in [
-        (9, mistyped),
-        (10, "SerializationException: unknown tag Gale"),
-        (11, "SerializationException: missing field `kind`"),
+        (9, format!("{mistyped} $.body.turns")),
+        (10, unnamed.to_owned()),
+        (
+            11,
+            "SerializationException: missing field `kind` at path: $".to_owned(),
+        ),
     ] {
         in_kotlin[at] = format!("refused: {refused}");
     }
@@ -1944,7 +1963,7 @@ fn a_unit_variants_entry_reads_in_kotlin_over_null_alone() {
         "invalid type: integer `1`, expected unit at line 1 column 9",
         "serde no longer refuses a unit variant's entry over a number as it did"
     );
-    let refused = "refused: SerializationException: Thimble: Calm takes no value";
+    let refused = "refused: SerializationException: Thimble: Calm takes no value at path: $.Calm";
     let mut in_kotlin = serde_told;
     in_kotlin[0] = refused.to_owned();
     in_kotlin[4] = refused.to_owned();
