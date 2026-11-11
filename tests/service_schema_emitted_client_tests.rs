@@ -2222,8 +2222,9 @@ use carillon_service::CarillonServiceSchema;
 #[path = "service_schema_emitted_client_tests/run_carillon.rs"]
 mod run_carillon;
 
-/// `CarillonMcpService`, whose one tool takes the message of `CarillonService`, and what its Rust
-/// dispatcher and client answer to a value of the wrong kind and to what is no document.
+/// `CarillonMcpService`, whose first tool takes the message of `CarillonService` and whose second
+/// answers a bell beside a header, and what its Rust dispatcher and client answer to a value of
+/// the wrong kind, to what is no document and to a header that holds no number.
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_emitted_client_tests/carillon_mcp_service.rs"]
@@ -2247,6 +2248,30 @@ use carillon_mcp_service::{
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_carillon_mcp.rs"]
 mod run_carillon_mcp;
+
+/// `CarillonLedgerMcpService`, whose one tool takes a ledger that holds a `u64`, which a build
+/// with `swift` or `kotlin` refuses, and what the emitted TypeScript `mcp` server writes of it.
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_ledger_mcp_service.rs"]
+mod carillon_ledger_mcp_service;
+
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+#[path = "service_schema_emitted_client_tests/carillon_ledger_mcp_dispatcher.rs"]
+mod carillon_ledger_mcp_dispatcher;
+
+#[cfg(all(test, not(any(feature = "swift", feature = "kotlin"))))]
+use carillon_ledger_mcp_service::{
+    CarillonLedgerMcpService, CarillonLedgerMcpServiceSchema, carillon_ledger_mcp_service_schema,
+};
+
+#[cfg(test)]
+#[cfg(not(any(feature = "swift", feature = "kotlin")))]
+mod published_ledger {
+    built_and_read_back!(carillon_ledger_mcp_dispatcher);
+}
 
 /// Structs that hold no key on the wire, strict and `nonstrict`.
 #[cfg(test)]

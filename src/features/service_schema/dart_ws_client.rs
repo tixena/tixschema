@@ -548,6 +548,14 @@ fn refused_fault(fn_prefix: &str, wire: &str) -> String {
     format!("_{fn_prefix}WsRefused({wire}, rejected)")
 }
 
+/// The fault a client answers for the value of `header` its read refused, naming the header.
+pub(super) fn header_refused_fault(fn_prefix: &str, wire: &str, header: &str) -> String {
+    format!(
+        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {})",
+        quoted(header)
+    )
+}
+
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
 /// `margin` is the leading whitespace, since the two call sites nest at different depths.
 fn header_value_decode_stmts(
@@ -570,6 +578,7 @@ fn header_value_decode_stmts(
         let local = format!("{local_prefix}{index}");
         let dart_ty = dart_type_of(ty);
         let decode = dart_json_decode(ty, &format!("{headers_expr}?[{name}]"));
+        let refused = header_refused_fault(fn_prefix, wire, header);
         let _ = write!(
             stmt,
             "{margin}late final {dart_ty} {local};\n\
@@ -577,7 +586,7 @@ fn header_value_decode_stmts(
              {margin}  {local} = {decode};\n\
              {margin}}} catch (rejected) {{\n\
              {margin}  return {result}Fault(\n\
-             {margin}    _{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {name}),\n\
+             {margin}    {refused},\n\
              {margin}  );\n\
              {margin}}}\n"
         );

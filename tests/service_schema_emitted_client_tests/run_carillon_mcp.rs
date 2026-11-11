@@ -1,11 +1,13 @@
 //! `CarillonMcpService` called by the TypeScript, Dart and Kotlin `mcp` servers with each case of
 //! [`MCP_CASES`] as the arguments of `strike`, and the TypeScript, Dart, Kotlin and Swift `mcp`
-//! clients answered each as the success of the call. Each server answers what the Rust dispatcher
-//! answers and calls no handler for a call it refuses, and each client answers what the Rust
-//! client answers. Nothing here waits on a clock.
+//! clients answered each as the success of the call and each case of [`TOLL_CASES`] as the answer
+//! of `toll`. Each server answers what the Rust dispatcher answers, writing the message read whole
+//! as it writes it, and calls no handler for a call it refuses, and each client answers what the
+//! Rust client answers. Nothing here waits on a clock.
 
 use super::carillon_mcp_service::{
-    MCP_CASES, call, mcp_payload, reply, rust_client_answers, rust_server_answers, told,
+    MCP_CASES, TOLL_CASES, call, mcp_payload, over_mcp, reply, rust_client_answers,
+    rust_server_answers, rust_toll_answers, told, toll_replies,
 };
 use super::carillon_service::STRUCK;
 use core::fmt::Write as _;
@@ -37,6 +39,9 @@ async function main() {
       struck += 1;
       return { ok: true, value: req };
     },
+    async toll(ctx, req) {
+      return { ok: true, value: [req, req.weight] };
+    },
   };
   const served = [];
   const strikes = [];
@@ -59,7 +64,47 @@ async function main() {
           : "declared",
     );
   }
-  console.log(JSON.stringify({ served, struck: strikes, read }));
+  const tolled = [];
+  for (const text of TOLLS) {
+    const client = createCarillonMcpServiceMcpClient({ async send() { return text; } });
+    const answered = await client.toll({ weight: 3 });
+    tolled.push(
+      answered.ok
+        ? { rung: answered.value[1] }
+        : "isServiceFault" in answered.error
+          ? { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null }
+          : { crackedAt: answered.error[1] },
+    );
+  }
+  console.log(JSON.stringify({ served, struck: strikes, read, tolled }));
+  process.exit(0);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+"#;
+
+/// The server handed each request in a runtime without `JSON.rawJSON`.
+const NODE_FALLBACK_DRIVER: &str = r#"
+Reflect.deleteProperty(JSON, "rawJSON");
+
+function withinScale(value, ctx) {
+  if (value > 12) ctx.issues.push({ code: "custom", message: `${value} is outside of the scale`, input: value });
+}
+
+async function main() {
+  const impl = {
+    async strike(ctx, req) {
+      return { ok: true, value: req };
+    },
+    async toll(ctx, req) {
+      return { ok: true, value: [req, req.weight] };
+    },
+  };
+  const served = [];
+  for (const text of REQUESTS) {
+    const dispatch = createCarillonMcpServiceMcpDispatcher(impl);
+    served.push(await dispatch(text, () => ({}), async () => {}, new CarillonMcpServiceMcpInFlight()));
+  }
+  console.log(JSON.stringify(served));
   process.exit(0);
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -87,6 +132,15 @@ Object? told(CarillonMcpServiceStrikeResult answered) => switch (answered) {
   _ => 'declared',
 };
 
+Object? tolled(CarillonMcpServiceTollResult answered) => switch (answered) {
+  CarillonMcpServiceTollResultOk(:final value) => <String, dynamic>{'rung': value.$2},
+  CarillonMcpServiceTollResultOperation(:final error) => <String, dynamic>{'crackedAt': error.$2},
+  CarillonMcpServiceTollResultFault(:final fault) => <String, dynamic>{
+    'kind': fault.kind.toJson(),
+    'field': fault.field,
+  },
+};
+
 void main() async {
   var struck = 0;
   final handlers = CarillonMcpServiceHandlers<void>(
@@ -94,6 +148,7 @@ void main() async {
       struck += 1;
       return req;
     },
+    toll: (ctx, req) async => (req, req.weight),
   );
   final served = <Object?>[];
   final strikes = <int>[];
@@ -108,7 +163,11 @@ void main() async {
   for (final text in replies) {
     read.add(told(await CarillonMcpServiceMcpClient(Canned(text)).strike(whole)));
   }
-  print(jsonEncode(<String, dynamic>{'served': served, 'struck': strikes, 'read': read}));
+  final rung = <Object?>[];
+  for (final text in tolls) {
+    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBell(weight: 3))));
+  }
+  print(jsonEncode(<String, dynamic>{'served': served, 'struck': strikes, 'read': read, 'tolled': rung}));
 }
 ";
 
@@ -124,6 +183,8 @@ object Handlers : CarillonMcpServiceHandlers {
         struck.incrementAndGet()
         return CarillonMcpServiceStrikeResult.Ok(req)
     }
+    override suspend fun toll(req: CarillonBell): CarillonMcpServiceTollResult =
+        CarillonMcpServiceTollResult.Ok(CarillonMcpServiceTollResultValue(req, req.weight))
 }
 
 class Canned(private val answer: String) : CarillonMcpServiceMcpTransport {
@@ -139,6 +200,15 @@ fun told(answered: CarillonMcpServiceStrikeResult): JsonElement = when (answered
     else -> JsonPrimitive("declared")
 }
 
+fun tolled(answered: CarillonMcpServiceTollResult): JsonElement = when (answered) {
+    is CarillonMcpServiceTollResult.Ok -> buildJsonObject { put("rung", answered.value.headerOut0.toLong()) }
+    is CarillonMcpServiceTollResult.Declared -> buildJsonObject { put("crackedAt", answered.error.errorHeaderOut0.toLong()) }
+    is CarillonMcpServiceTollResult.Fault -> buildJsonObject {
+        put("kind", Json.encodeToJsonElement(serializer<CarillonMcpServiceFaultKind>(), answered.fault.kind))
+        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+    }
+}
+
 fun main() = runBlocking {
     val nowhere: CarillonMcpServiceMcpWriter = { }
     val served = mutableListOf<JsonElement>()
@@ -152,10 +222,12 @@ fun main() = runBlocking {
     }
     val whole = Json.decodeFromString(serializer<CarillonChime>(), WHOLE)
     val read = REPLIES.map { told(CarillonMcpServiceMcpClient(Canned(it)).strike(whole)) }
+    val rung = TOLLS.map { tolled(CarillonMcpServiceMcpClient(Canned(it)).toll(CarillonBell(3u))) }
     println(buildJsonObject {
         put("served", JsonArray(served))
         put("struck", JsonArray(strikes))
         put("read", JsonArray(read))
+        put("tolled", JsonArray(rung))
     }.toString())
 }
 "#;
@@ -184,12 +256,28 @@ func told(_ answered: Result<CarillonChime, CarillonMcpServiceStrikeFailure>) ->
   }
 }
 
+func tolled(_ answered: Result<(CarillonBell, UInt32), CarillonMcpServiceTollFailure>) -> String {
+  switch answered {
+  case .success(let value):
+    return "{\"rung\":\(value.1)}"
+  case .failure(.declared(let declared)):
+    return "{\"crackedAt\":\(declared.1)}"
+  case .failure(.fault(let fault)):
+    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
+  }
+}
+
 let whole = try! JSONDecoder().decode(CarillonChime.self, from: Data(wholeText.utf8))
 var read: [String] = []
 for text in replies {
   read.append(told(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).strike(whole)))
 }
-print("[" + read.joined(separator: ",") + "]")
+var rung: [String] = []
+for text in tolls {
+  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(CarillonBell(weight: 3))))
+}
+print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.joined(separator: ",") + "]}")
 "#;
 
 /// Each request a server is handed, in the order of [`MCP_CASES`].
@@ -217,8 +305,18 @@ fn listed(items: &[String], literal: fn(&str) -> String) -> String {
 }
 
 /// Holds what a server answered to each request, and how many strikes reached its handler, to
-/// what the Rust dispatcher answers.
+/// what the Rust dispatcher answers, and the text of its answer to the message read whole, whose
+/// `i64` is beyond what a JavaScript `number` holds, to the text the Rust dispatcher writes.
 fn assert_served_as_rust(report: &Value) {
+    let whole = MCP_CASES
+        .into_iter()
+        .position(|name| name == "read whole")
+        .unwrap();
+    assert_eq!(
+        report["served"][whole].as_str(),
+        over_mcp(&call(1, &mcp_payload("read whole"))).0.as_deref(),
+        "{report}"
+    );
     let answered: Vec<Value> = MCP_CASES
         .into_iter()
         .zip(report["served"].as_array().unwrap())
@@ -239,19 +337,27 @@ fn assert_served_as_rust(report: &Value) {
     assert_eq!(answered, expected, "{report}");
 }
 
-/// Holds what a client answered to each reply to what the Rust client answers.
-fn assert_read_as_rust(read: &Value) {
-    let named = |answers: &[Value]| -> Vec<Value> {
-        MCP_CASES
-            .into_iter()
-            .zip(answers)
-            .map(|(name, answer)| json!({ "case": name, "answer": answer }))
-            .collect()
-    };
+/// Each answer beside the case of `cases` it answers.
+fn named(cases: &[&str], answers: &[Value]) -> Vec<Value> {
+    cases
+        .iter()
+        .zip(answers)
+        .map(|(name, answer)| json!({ "case": name, "answer": answer }))
+        .collect()
+}
+
+/// Holds what a client answered to each reply to what the Rust client answers, and to each answer
+/// of `toll` to what the Rust client answers it.
+fn assert_read_as_rust(read: &Value, tolled: &Value) {
     assert_eq!(
-        named(read.as_array().unwrap()),
-        named(&rust_client_answers()),
+        named(&MCP_CASES, read.as_array().unwrap()),
+        named(&MCP_CASES, &rust_client_answers()),
         "{read}"
+    );
+    assert_eq!(
+        named(&TOLL_CASES, tolled.as_array().unwrap()),
+        named(&TOLL_CASES, &rust_toll_answers()),
+        "{tolled}"
     );
 }
 
@@ -337,6 +443,7 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
         node_bundle(),
         format!("const REQUESTS = [\n{}];", listed(&requests(), raw)),
         format!("const REPLIES = [\n{}];", listed(&replies(), raw)),
+        format!("const TOLLS = [\n{}];", listed(&toll_replies(), raw)),
         format!("const WHOLE = {};", raw(STRUCK)),
         NODE_DRIVER.to_owned(),
     ]
@@ -353,7 +460,62 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_served_as_rust(&report);
-    assert_read_as_rust(&report["read"]);
+    assert_read_as_rust(&report["read"], &report["tolled"]);
+}
+
+/// Without `JSON.rawJSON`, the TypeScript server writes an `i64` a `number` holds exactly as the
+/// Rust dispatcher writes it, and answers one no `number` holds exactly as a handler that
+/// panicked, as every TypeScript dispatcher answers it.
+#[test]
+fn without_raw_json_the_typescript_server_writes_an_i64_a_number_holds_and_refuses_any_other() {
+    use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
+
+    const REQUIRED_PACKAGES: &[&str] = &["zod"];
+    let Some(modules) = node_modules(REQUIRED_PACKAGES) else {
+        stand_down_modules(
+            REQUIRED_PACKAGES,
+            "the emitted TypeScript carillon mcp service without JSON.rawJSON",
+        );
+        return;
+    };
+    let within = STRUCK.replace(r#""depth":-9223372036854775808"#, r#""depth":-5"#);
+    let requests = [call(1, STRUCK), call(1, &within)];
+    let raw = |text: &str| format!("String.raw`{text}`");
+    let source = [
+        node_bundle(),
+        format!("const REQUESTS = [\n{}];", listed(&requests, raw)),
+        NODE_FALLBACK_DRIVER.to_owned(),
+    ]
+    .join("\n\n");
+    let Some(wrote) = ran_with_modules(
+        "carillon-mcp-fallback",
+        "TIXSCHEMA_NODE",
+        "node",
+        "carillon_mcp_fallback.mts",
+        &source,
+        &modules,
+    ) else {
+        return;
+    };
+    let served: Vec<String> = serde_json::from_str(wrote.trim()).unwrap();
+    assert_eq!(Some(&served[1]), over_mcp(&requests[1]).0.as_ref());
+    let detail = "-9223372036854775808 is written exactly only through JSON.rawJSON, which this \
+                  runtime has not";
+    assert_eq!(
+        serde_json::from_str::<Value>(&served[0]).unwrap(),
+        json!({
+            "error": {
+                "code": -32_603_i32,
+                "data": {
+                    "fault": { "detail": detail, "kind": "handler-panic", "operation": "strike" },
+                    "isServiceFault": true,
+                },
+                "message": format!("strike: {detail}"),
+            },
+            "id": 1_u32,
+            "jsonrpc": "2.0",
+        })
+    );
 }
 
 /// The Dart module the server and the client run in.
@@ -379,6 +541,10 @@ fn dart_source() -> String {
         CarillonMcpServiceSchema::dart_mcp_client(),
         format!("final requests = <String>[\n{}];", listed(&requests(), raw)),
         format!("final replies = <String>[\n{}];", listed(&replies(), raw)),
+        format!(
+            "final tolls = <String>[\n{}];",
+            listed(&toll_replies(), raw)
+        ),
         format!("final wholeText = {};", raw(STRUCK)),
         DART_DRIVER.to_owned(),
     ]
@@ -399,7 +565,7 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_served_as_rust(&report);
-    assert_read_as_rust(&report["read"]);
+    assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
 #[cfg(feature = "dart")]
@@ -449,6 +615,7 @@ fn kotlin_source() -> String {
         CarillonMcpServiceSchema::kotlin_mcp_client(),
         format!("val REQUESTS = listOf(\n{})", listed(&requests(), raw)),
         format!("val REPLIES = listOf(\n{})", listed(&replies(), raw)),
+        format!("val TOLLS = listOf(\n{})", listed(&toll_replies(), raw)),
         format!("val WHOLE = {}", raw(STRUCK)),
         KOTLIN_DRIVER.to_owned(),
     ]
@@ -463,7 +630,7 @@ fn the_kotlin_server_and_client_answer_what_the_rust_dispatcher_and_client_answe
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_served_as_rust(&report);
-    assert_read_as_rust(&report["read"]);
+    assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
 /// The Swift program the client runs in.
@@ -497,6 +664,7 @@ fn swift_source() -> String {
         CarillonMcpServiceSchema::swift_http_client(),
         CarillonMcpServiceSchema::swift_mcp_client(),
         format!("let replies: [String] = [\n{}]", listed(&replies(), raw)),
+        format!("let tolls: [String] = [\n{}]", listed(&toll_replies(), raw)),
         format!("let wholeText = {}", raw(STRUCK)),
         SWIFT_DRIVER.to_owned(),
     ]
@@ -522,6 +690,6 @@ fn the_swift_client_answers_what_the_rust_client_answers() {
         "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
         run.stdout, run.stderr
     );
-    let read: Value = serde_json::from_str(run.stdout.trim()).unwrap();
-    assert_read_as_rust(&read);
+    let report: Value = serde_json::from_str(run.stdout.trim()).unwrap();
+    assert_read_as_rust(&report["read"], &report["tolled"]);
 }
