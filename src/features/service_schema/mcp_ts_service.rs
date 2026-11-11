@@ -6,7 +6,7 @@ use super::fault;
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
-use crate::field_type::EXPECTED_NUMERIC_KEY;
+use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
@@ -103,11 +103,14 @@ class __N__McpRaw {
 
 /**
  * `value` as JSON text with the keys of every object in order, as serde_json writes them: a
- * `bigint` as its digits, a `Uint8Array` as the array of its bytes and a raw text as it stands.
+ * `bigint` and a `JSON.rawJSON` holder as its digits, a `Uint8Array` as the array of its bytes
+ * and a raw text as it stands.
  */
 function __p__McpText(value: unknown): string {
   if (value instanceof __N__McpRaw) return value.text;
   if (typeof value === "bigint") return value.toString();
+  const isRaw: unknown = Reflect.get(JSON, "isRawJSON");
+  if (typeof isRaw === "function" && isRaw(value) === true) return JSON.stringify(value);
   if (value instanceof Uint8Array) return __p__McpText(Array.from(value));
   if (Array.isArray(value)) {
     return `[${value.map((held: unknown) => (held === undefined ? "null" : __p__McpText(held))).join(",")}]`;
@@ -768,25 +771,26 @@ const __p__McpUnreadable: ReadonlySet<string> = new Set([
 
 type __p__McpIssue = {
   readonly code: string;
+  readonly message: string;
   readonly path: ReadonlyArray<PropertyKey>;
   readonly keys?: ReadonlyArray<string>;
   readonly errors?: ReadonlyArray<ReadonlyArray<__p__McpIssue>>;
-  readonly issues?: ReadonlyArray<{ readonly expected?: unknown; readonly message: string }>;
-  readonly params?: { readonly undeserializable?: unknown };
+  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown };
 };
 
 /** Whether `issue` keeps the arguments from reading. serde reads them out of a value, where a `Result` of other than one key is a value of the wrong kind. */
 function __p__McpUnreadableIssue(issue: __p__McpIssue): boolean {
-  return __p__McpUnreadable.has(issue.code) || issue.params?.undeserializable === true;
+  return (
+    __p__McpUnreadable.has(issue.code) ||
+    issue.params?.undeserializable === true ||
+    issue.params?.numberKey === true
+  );
 }
 
-/** Whether `issue` refuses a key of a map keyed by a number whose text opens with neither a digit nor `-`, which serde reads as text that is not the document. */
-function __p__McpNoNumber(issue: __p__McpIssue): boolean {
-  return (
-    issue.code === "invalid_key" &&
-    issue.issues?.some((inner) => inner.expected === "number") === true &&
-    !/^[0-9-]/.test(String(issue.path[issue.path.length - 1]))
-  );
+/** The words serde refuses a key of a map keyed by a number in where it reads it as text that is not the document, out of a value, which reads the text after the number as no number; none for any other issue. */
+function __p__McpNoNumber(issue: __p__McpIssue): string | undefined {
+  if (issue.params?.numberKey !== true || issue.params.undeserializable !== true) return undefined;
+  return issue.message === "__EXPECTED_QUOTE__" ? "__EXPECTED_NUMERIC_KEY__" : issue.message;
 }
 
 /** The path of an issue: below an `invalid_union`, the deepest path any of its alternatives reached; below `unrecognized_keys`, the first key. */
@@ -836,7 +840,8 @@ function __p__McpUnread(
   const unreadable = issues.filter(__p__McpUnreadableIssue);
   const unread = unreadable[0];
   if (unread === undefined) return undefined;
-  if (__p__McpNoNumber(unread)) return __FAULT__("undeserializable-payload", operation, "__EXPECTED_NUMERIC_KEY__");
+  const noNumber = __p__McpNoNumber(unread);
+  if (noNumber !== undefined) return __FAULT__("undeserializable-payload", operation, noNumber);
   const steps = __p__McpSteps(unread);
   const detail = unreadable
     .flatMap((issue) =>
@@ -2665,6 +2670,7 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .replace("__DRIVEN__", &driven)
         .replace("__FAULT__", &fault)
         .replace("__EXPECTED_NUMERIC_KEY__", EXPECTED_NUMERIC_KEY)
+        .replace("__EXPECTED_QUOTE__", &EXPECTED_QUOTE.replace('"', "\\\""))
         .replace("__N__", named)
         .replace("__p__", prefix)
 }

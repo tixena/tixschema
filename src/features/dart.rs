@@ -13,7 +13,6 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Lit, Variant};
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
-use crate::features::JSON_NUMBER;
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{
@@ -28,10 +27,10 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, F32_READ_BOUND, FieldDef, FieldDefType,
-    NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, VariantKind, dart_from_json_argument,
-    dart_lower_camel, dart_to_json_argument, format_number_literal, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, EXPECTED_VALUE, F32_READ_BOUND, FieldDef, FieldDefType,
+    INVALID_NUMBER, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, VariantKind,
+    dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
+    get_field_def, is_plain_enum, is_sequence_wrapper,
 };
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -1886,24 +1885,67 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
     }
 }
 
-/// The number `expr`, a `String`, reads as for a key of `number`'s type, held to its range. A key
-/// whose text opens with neither a digit nor `-` is refused in serde's words for text that is not
-/// the document. A float key is read only from the text serde reads, and only when finite.
+/// The number `expr`, a `String`, reads as for a key of `number`'s type, read as serde reads the
+/// text between a key's quotes: the number, then the type's refusal of it, then the text after it.
+/// A refusal serde classifies as text that is not the document is in its words; a float for an
+/// integer key is refused at the map, and an integer beyond the type under the number. An `f32`
+/// key is held to its range.
 fn number_key_read(number: &FieldDefType, expr: &str) -> String {
-    let read = if matches!(number, FieldDefType::F32 | FieldDefType::F64) {
-        let double = dart_core("double");
-        format!(
-            "(switch (RegExp(r'{JSON_NUMBER}').hasMatch({expr}) ? {double}.parse({expr}) : \
-             {double}.nan) {{ final key when key.isFinite => key, _ => throw \
-             FormatException('invalid float key') }})"
-        )
-    } else {
-        format!("{}.parse({expr})", dart_core("int"))
+    let Some(key) = number.number_key() else {
+        return expr.to_owned();
     };
-    let held = forms::number_held(number, &read).unwrap_or(read);
+    let (int, double, bool) = (dart_core("int"), dart_core("double"), dart_core("bool"));
+    let expected = key.expected;
+    let (beyond, refused, read) = key.range.map_or_else(
+        || {
+            (
+                String::new(),
+                String::new(),
+                format!("{double}.parse(numeral)"),
+            )
+        },
+        |(least, written)| {
+            // A Dart `int` holds no integer above an `i64`.
+            let most = if written.len() > 19 {
+                "9223372036854775807"
+            } else {
+                written
+            };
+            (
+                format!(
+                    "throw FormatException('invalid type: floating point `$numeral`, expected \
+                     {expected}');"
+                ),
+                format!(
+                    "if (whole < BigInt.parse('{least}') || whole > BigInt.parse('{most}')) throw \
+                     FormatException('invalid value: integer `$numeral`, expected {expected}', \
+                     <Object>[numeral]); "
+                ),
+                "whole.toInt()".to_owned(),
+            )
+        },
+    );
+    let returned = if matches!(number, FieldDefType::F32) {
+        forms::number_held(number, &read).unwrap_or(read)
+    } else {
+        read
+    };
     format!(
-        "(RegExp(r'^[0-9-]').hasMatch({expr}) ? {held} : throw const \
-         FormatException('{EXPECTED_NUMERIC_KEY}'))"
+        "((String text) {{ {bool} digit({int} at) => at < text.length && \
+         '0123456789'.contains(text[at]); {int} digits({int} from) {{ if (!digit(from)) throw const \
+         FormatException('{INVALID_NUMBER}'); var at = from; while (digit(at)) {{ at += 1; }} return \
+         at; }} if (!RegExp(r'^[0-9-]').hasMatch(text)) throw const \
+         FormatException('{EXPECTED_NUMERIC_KEY}'); final sign = text.startsWith('-') ? 1 : 0; final \
+         zero = text.startsWith('0', sign); var at = zero ? sign + 1 : digits(sign); if (zero && \
+         digit(at)) throw const FormatException('{INVALID_NUMBER}'); var float = false; if \
+         (text.startsWith('.', at)) {{ at = digits(at + 1); float = true; }} if \
+         (text.startsWith('e', at) || text.startsWith('E', at)) {{ at = digits(text.startsWith('+', \
+         at + 1) || text.startsWith('-', at + 1) ? at + 2 : at + 1); float = true; }} final numeral = \
+         text.substring(0, at); final whole = float ? null : BigInt.parse(numeral); if (whole == null \
+         || (sign == 1 ? whole == BigInt.zero || whole < BigInt.parse('-9223372036854775808') : whole \
+         > BigInt.parse('18446744073709551615'))) {{ if ({double}.parse(numeral).isInfinite) throw \
+         const FormatException('{NUMBER_OUT_OF_RANGE}'); {beyond} }} {refused}if (at < text.length) \
+         throw const FormatException('{EXPECTED_QUOTE}'); return {returned}; }})({expr})"
     )
 }
 
@@ -2550,12 +2592,13 @@ fn result_arguments(ok: &FieldDef, err: &FieldDef) -> String {
 }
 
 /// The `Result` the object `expr` holds: its one key names the arm, whose value is read under that
-/// key as that arm is. An object of other than one key is refused in serde's words for text that
-/// is not the document, an object of a key no arm names as not a `Result`, and a value under an arm
-/// of `()` other than `null` too.
+/// key as that arm is. A value that is neither a string nor an object of one key is refused in
+/// serde's words for text that is not the document, an object of a key no arm names as not a
+/// `Result`, and a value under an arm of `()` other than `null` too.
 fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> String {
     let (class, arguments) = (result_class(ok, err), result_arguments(ok, err));
     let object = declared("result");
+    let written = declared("written");
     let arms = RESULT_ARMS.into_iter().zip([ok, err]).map(|(arm, def)| {
         let key = quoted(arm);
         let held = format!("{object}[{key}]");
@@ -2568,9 +2611,10 @@ fn result_decode(ok: &FieldDef, err: &FieldDef, expr: &str, read: Read) -> Strin
         }
     });
     format!(
-        "switch ({expr} as Map<String, dynamic>) {{ final {object} when {object}.length != 1 => \
-         throw const FormatException('{EXPECTED_VALUE}'), {}, final {object} => throw \
-         FormatException('Not a Result: ${{{object}.keys}}') }}",
+        "switch ({expr}) {{ final {written} when {written} is! String && ({written} is! Map || \
+         {written}.length != 1) => throw const FormatException('{EXPECTED_VALUE}'), final \
+         {written} => switch ({written} as Map<String, dynamic>) {{ {}, final {object} => throw \
+         FormatException('Not a Result: ${{{object}.keys}}') }} }}",
         arms.collect::<Vec<_>>().join(", ")
     )
 }
@@ -4967,9 +5011,8 @@ fn external_dispatch(
     format!(
         "if ({json} is String) {{ switch ({json}) \
          {{ {} default: throw FormatException('Unknown {export_name}: ' + {json}); }} }} \
-         final {map} = {json} as Map<String, dynamic>; if ({map}.isEmpty) {{ throw \
-         FormatException('empty object for {export_name}'); }} if ({map}.length > 1) {{ \
-         throw FormatException('more than one key for {export_name}'); }} \
+         final {map} = {json} is Map<String, dynamic> && {json}.length == 1 ? {json} : throw \
+         const FormatException('{EXPECTED_VALUE}'); \
          final {tag} = {map}.keys.first; switch ({tag}) \
          {{ {} default: throw FormatException('Unknown {export_name}: ' + {tag}); }}",
         string_arms.join(" "),

@@ -97,23 +97,19 @@ const ROWS: [Row; 18] = [
         json: "{}",
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: "expected an object of one key, found {} at path: $",
+        thrown: "expected value at path: $",
     },
     Row {
         json: r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: concat!(
-            "expected an object of one key, found ",
-            r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
-            " at path: $"
-        ),
+        thrown: "expected value at path: $",
     },
     Row {
         json: "[1]",
         read_as: "Tacking",
         serde: serde_told::<Tacking>,
-        thrown: "expected an object, found [1] at path: $",
+        thrown: "expected value at path: $",
     },
     Row {
         json: r#"{"Gale":{}}"#,
@@ -707,8 +703,8 @@ fn the_readme_shows_refusals_the_run_measures() {
     let readme = include_str!("../../docs/guide/kotlin.md");
     for shown in [
         "``missing field `held` ``",
-        "`expected an object, found [1]`",
-        "`expected an object of one key, found {}`",
+        "`expected an object, found []`",
+        "`expected value`",
         "`unknown tag Gale`",
         "`invalid length 3, expected 2`",
     ] {

@@ -403,7 +403,7 @@ fn typescript_holds_a_bigint() {
 }
 
 /// Zod reads a `u64` and an `i64` from a `bigint` or a `number` it holds exactly, as a `bigint`
-/// held to the type's range, and a map's key as a `number`.
+/// held to the type's range, and a map's key as its text, typed `number`.
 #[cfg(feature = "zod")]
 #[test]
 fn zod_reads_a_bigint_or_an_exact_number() {
@@ -416,7 +416,11 @@ fn zod_reads_a_bigint_or_an_exact_number() {
         "missing the codec in: {schema}"
     );
     assert!(
-        WideKept::zod_schema().contains("keyed: z.record(z.number().int(), z.string()),"),
+        WideKept::zod_schema().contains("keyed: z.unknown().check(")
+            && WideKept::zod_schema().contains(
+                ".pipe(z.record(z.custom<number>((key) => typeof key === \"string\"), \
+                 z.string())),"
+            ),
         "a map's key: {}",
         WideKept::zod_schema()
     );

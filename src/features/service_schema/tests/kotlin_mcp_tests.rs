@@ -109,3 +109,30 @@ fn a_one_way_method_throws_the_refusal_the_client_declares() {
         "got: {written}"
     );
 }
+
+#[test]
+fn a_handler_cancelled_while_a_reply_waits_on_it_lets_the_cancellation_through() {
+    let written = kotlin_mcp_service_of(MCP_SHADOWED_SERVICE);
+    let arm = from_marker(&written, "\"shadow\" ->");
+    assert!(
+        arm.contains(
+            "val answered = try {\n        handlers.shadow(decoded, arguments_, outcome_, carried, \
+             trace)\n      } catch (unexpected: Throwable) {\n        if (unexpected is \
+             CancellationException) throw unexpected\n"
+        ),
+        "a cancelled call ends cancelled rather than answering an internal error. Got: {arm}"
+    );
+}
+
+#[test]
+fn a_client_call_cancelled_while_send_waits_lets_the_cancellation_through() {
+    let written = kotlin_mcp_client_of(MCP_SHADOWED_SERVICE);
+    assert!(
+        written.contains(
+            "} catch (uncarried: Exception) {\n    if (uncarried is CancellationException) throw \
+             uncarried\n    return "
+        ),
+        "a cancelled caller ends cancelled rather than answering `transport-failure`. \
+         Got: {written}"
+    );
+}

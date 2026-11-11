@@ -389,7 +389,8 @@ fn on_close_stmt() -> String {
 }
 
 /// The transport itself: `notify` writes a one-way frame, `request` writes a request frame and
-/// waits on the correlation map, `close` tears down the wiring and fails everything still waiting.
+/// waits on the correlation map (a `send` that throws takes its entry back out), `close` tears
+/// down the wiring and fails everything still waiting.
 /// Both frames carry the seam's headers under `headers`, left off where there are none.
 fn returned_transport_stmt(prefix: &str) -> String {
     format!(
@@ -413,10 +414,15 @@ fn returned_transport_stmt(prefix: &str) -> String {
          settle: (answered, replied) => resolve({{ answered: answered as Answered, headers: \
          replied }}),\n        \
          }});\n        \
-         socket.send(\n          \
+         try {{\n          \
+         socket.send(\n            \
          JSON.stringify({prefix}WsSent({{ kind: \"request\", id, service, operation, payload, \
-         ...{prefix}WsHeaderTable(headers) }})),\n        \
-         );\n      \
+         ...{prefix}WsHeaderTable(headers) }})),\n          \
+         );\n        \
+         }} catch (refused) {{\n          \
+         pending.delete(id);\n          \
+         throw refused;\n        \
+         }}\n      \
          }});\n    \
          }},\n    \
          close() {{\n      \

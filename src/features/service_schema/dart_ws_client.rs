@@ -19,7 +19,7 @@ use core::fmt::Write as _;
 use syn::Type;
 
 /// A JSON string, or a `-0` that is neither an exponent's nor followed by more of its number.
-pub(super) const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
+const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
 
 /// The seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher` takes, spelled
 /// identically for every service so one service's attachment composes over another's transport.
@@ -51,6 +51,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         heartbeat_class(&named),
         transport_class(&named, headered),
         held_fn(&fn_prefix),
+        signed_zeros_fn(&signed_zeros_call(&fn_prefix, "Ws")),
     ];
     if has_one_way(service) {
         published.push(refusal_class(&named));
@@ -106,16 +107,12 @@ fn declares_header_in(service: &ServiceDef) -> bool {
 
 /// The reviver every text a frame or an `mcp` message is read from passes `jsonDecode`: it refuses
 /// the infinity `jsonDecode` reads a number beyond a `double` as, since serde reads no text that
-/// holds one; and the function that writes each `-0` of such a text as the float serde reads.
+/// holds one.
 fn held_fn(fn_prefix: &str) -> String {
     format!(
         "/// Each value as `jsonDecode` reads it, but for the infinity it reads a number beyond a `double` as: serde reads no text that holds one.\n\
          Object? _{fn_prefix}WsHeld(Object? key, Object? value) =>\n    \
-         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n\
-         /// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as, where `jsonDecode` reads the `int` 0.\n\
-         String _{fn_prefix}WsSigned(String text) => !text.contains('-0')\n    \
-         ? text\n    \
-         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
+         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;"
     )
 }
 
@@ -235,17 +232,23 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
         return format!(
             "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
              /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+             /// Throws what `send` throws, and then waits on nothing.\n  \
              Future<Map<String, dynamic>?> request(String operation, Object? payload) {{\n    \
              final id = '${{_nextId++}}';\n    \
              final completer = Completer<Map<String, dynamic>?>();\n    \
              _pending[id] = completer;\n    \
-             send({{\n      \
-             'kind': 'request',\n      \
-             'id': id,\n      \
-             'service': '{named}',\n      \
-             'operation': operation,\n      \
-             'payload': payload,\n    \
+             try {{\n      \
+             send({{\n        \
+             'kind': 'request',\n        \
+             'id': id,\n        \
+             'service': '{named}',\n        \
+             'operation': operation,\n        \
+             'payload': payload,\n      \
              }});\n    \
+             }} catch (_) {{\n      \
+             _pending.remove(id);\n      \
+             rethrow;\n    \
+             }}\n    \
              return completer.future;\n  \
              }}\n\n  \
              /// Sends `operation` with `payload` as a `notify` frame. No reply is expected.\n  \
@@ -258,6 +261,7 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     format!(
         "/// Sends `operation`, `payload` and `headers` as a `request` frame (`headers` written only\n  \
          /// when non-empty) and answers with the matching `reply` frame, or `null` once closed.\n  \
+         /// Throws what `send` throws, and then waits on nothing.\n  \
          Future<Map<String, dynamic>?> request(\n    \
          String operation,\n    \
          Object? payload,\n    \
@@ -266,14 +270,19 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
          final id = '${{_nextId++}}';\n    \
          final completer = Completer<Map<String, dynamic>?>();\n    \
          _pending[id] = completer;\n    \
-         send({{\n      \
-         'kind': 'request',\n      \
-         'id': id,\n      \
-         'service': '{named}',\n      \
-         'operation': operation,\n      \
-         'payload': payload,\n      \
-         if (headers.isNotEmpty) 'headers': headers,\n    \
+         try {{\n      \
+         send({{\n        \
+         'kind': 'request',\n        \
+         'id': id,\n        \
+         'service': '{named}',\n        \
+         'operation': operation,\n        \
+         'payload': payload,\n        \
+         if (headers.isNotEmpty) 'headers': headers,\n      \
          }});\n    \
+         }} catch (_) {{\n      \
+         _pending.remove(id);\n      \
+         rethrow;\n    \
+         }}\n    \
          return completer.future;\n  \
          }}\n\n  \
          /// Sends `operation`, `payload` and `headers` as a `notify` frame. No reply is expected.\n  \
@@ -294,9 +303,28 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     )
 }
 
+/// The name of the function [`signed_zeros_fn`] declares for the text `side` names (`Ws`, `Http`
+/// or `Mcp`), each text that reads JSON declaring its own.
+pub(super) fn signed_zeros_call(fn_prefix: &str, side: &str) -> String {
+    format!("_{fn_prefix}{side}SignedZeros")
+}
+
+/// The function, named `name`, every Dart read of a JSON text passes the text through ahead of
+/// `jsonDecode`: it answers the text with each `-0` outside a string written `-0.0`, since serde
+/// reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
+pub(super) fn signed_zeros_fn(name: &str) -> String {
+    format!(
+        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n\
+         String {name}(String text) => !text.contains('-0')\n    \
+         ? text\n    \
+         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
+    )
+}
+
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
+    let signed_zeros = signed_zeros_call(&fn_prefix, "Ws");
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -311,7 +339,7 @@ fn transport_class_rest(named: &str) -> String {
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(_{fn_prefix}WsSigned(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
+         frame = jsonDecode({signed_zeros}(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \
@@ -577,6 +605,14 @@ fn refused_fault(fn_prefix: &str, wire: &str) -> String {
     format!("_{fn_prefix}WsRefused({wire}, rejected)")
 }
 
+/// The fault a client answers for the value of `header` its read refused, naming the header.
+pub(super) fn header_refused_fault(fn_prefix: &str, wire: &str, header: &str) -> String {
+    format!(
+        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {})",
+        quoted(header)
+    )
+}
+
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
 /// `margin` is the leading whitespace, since the two call sites nest at different depths.
 fn header_value_decode_stmts(
@@ -599,6 +635,7 @@ fn header_value_decode_stmts(
         let local = format!("{local_prefix}{index}");
         let dart_ty = dart_type_of(ty);
         let decode = dart_json_decode(ty, &format!("{headers_expr}?[{name}]"));
+        let refused = header_refused_fault(fn_prefix, wire, header);
         let _ = write!(
             stmt,
             "{margin}late final {dart_ty} {local};\n\
@@ -606,7 +643,7 @@ fn header_value_decode_stmts(
              {margin}  {local} = {decode};\n\
              {margin}}} catch (rejected) {{\n\
              {margin}  return {result}Fault(\n\
-             {margin}    _{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {name}),\n\
+             {margin}    {refused},\n\
              {margin}  );\n\
              {margin}}}\n"
         );

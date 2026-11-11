@@ -2130,7 +2130,7 @@ fn test_chrono_brand_keyed_maps_constructible() {
 /// The keys of a map keyed by an integer, as the JSON Schema names them: the text serde writes.
 #[cfg(feature = "serde")]
 fn integer_keys() -> Value {
-    serde_json::json!({ "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" })
+    serde_json::json!({ "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" })
 }
 
 /// The keys of a map keyed by a `bool`, as the JSON Schema names them.
@@ -2182,11 +2182,11 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
     let zod_schema = ScalarBrandKeyedMaps::zod_schema();
     for expected in [
         "by_enabled: z.partialRecord(z.enum([\"true\", \"false\"]), z.number().int())",
-        "by_tick: z.record(Tick$Schema, z.number().int())",
-        "chained: z.record(TickRef$Schema, z.number().int())",
-        "nested: z.record(Tick$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
-         z.number().int()))",
-        "samples: z.record(Tick$Schema, MetricSample$Schema)",
+        ".pipe(z.record(Tick$Schema, z.number().int()))",
+        ".pipe(z.record(TickRef$Schema, z.number().int()))",
+        ".pipe(z.record(Tick$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
+         z.number().int())))",
+        ".pipe(z.record(Tick$Schema, MetricSample$Schema))",
     ] {
         assert!(
             zod_schema.contains(expected),
@@ -2384,13 +2384,13 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
 
     let zod_schema = ScalarAliasKeyedMaps::zod_schema();
     for expected in [
-        "branded: z.record(TickBrandKeyType$Schema, z.number().int())",
+        ".pipe(z.record(TickBrandKeyType$Schema, z.number().int()))",
         "by_enabled: z.partialRecord(z.enum([\"true\", \"false\"]), z.number().int())",
-        "by_tick: z.record(TickKeyType$Schema, z.number().int())",
-        "chained: z.record(TickKeyRefType$Schema, z.number().int())",
-        "nested: z.record(TickKeyType$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
-         z.number().int()))",
-        "samples: z.record(TickKeyType$Schema, MetricSample$Schema)",
+        ".pipe(z.record(TickKeyType$Schema, z.number().int()))",
+        ".pipe(z.record(TickKeyRefType$Schema, z.number().int()))",
+        ".pipe(z.record(TickKeyType$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
+         z.number().int())))",
+        ".pipe(z.record(TickKeyType$Schema, MetricSample$Schema))",
     ] {
         assert!(
             zod_schema.contains(expected),
@@ -3020,7 +3020,7 @@ fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
         "dates: z.record(z.iso.date(), z.number().int())",
         "datetimes: z.record(z.preprocess((arg) => { if (typeof arg !== \"string\") return arg;",
         "z.iso.datetime({ local: true })), z.number().int())",
-        "numbers: z.record(z.number().int().min(0).max(4294967295), z.number().int())",
+        ".pipe(z.record(z.number().int().min(0).max(4294967295), z.number().int()))",
         "slots: z.partialRecord(MetricSlot$Schema, z.number().int())",
         "strings: z.record(z.string(), z.number().int())",
         "times: z.record(z.preprocess((arg) => {",

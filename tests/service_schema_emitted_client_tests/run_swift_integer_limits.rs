@@ -8,7 +8,7 @@ use core::fmt::Write as _;
 
 use super::integer_limit_models::{
     REPORT, ROWS, limit_ceiling_swift, limit_ends_swift, limit_floor_swift, limit_forms_swift,
-    limit_mixed_swift,
+    limit_mixed_swift, limit_wide_swift,
 };
 use super::runtime::judged;
 
@@ -33,6 +33,7 @@ extension LimitFloor: ReadUnjudged {}
 extension LimitForms: ReadUnjudged {}
 extension LimitMixed: ReadUnjudged {}
 extension LimitEnds: ReadUnjudged {}
+extension LimitWide: ReadUnjudged {}
 
 func report<Read: ReadUnjudged>(_ name: String, _ type: Read.Type, _ payload: String) throws {
   let data = Data(payload.utf8)
@@ -67,6 +68,7 @@ fn each_limit_holds_in_swift_as_it_is_written() {
         limit_forms_swift::swift_definition(),
         limit_mixed_swift::swift_definition(),
         limit_ends_swift::swift_definition(),
+        limit_wide_swift::swift_definition(),
         REPORTER.to_owned(),
         main,
     ]

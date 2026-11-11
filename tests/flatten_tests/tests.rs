@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
 
+/// The check an externally tagged enum's union refuses an object of one key through.
+#[cfg(feature = "zod")]
+const NAMED_ARM: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })";
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BasePart {
@@ -1416,6 +1420,20 @@ fn closes_on(zod: &str, expression: &str) -> bool {
     zod.contains(&closed)
 }
 
+/// `union`, the union of an externally tagged enum, behind the check that refuses a value that is
+/// neither a string nor an object of one key and before [`NAMED_ARM`], as the enum's own schema
+/// writes it.
+#[cfg(feature = "zod")]
+fn one_key(union: &str) -> String {
+    format!(
+        "z.unknown().check((ctx) => {{ if (ctx.value !== undefined && typeof ctx.value !== \
+         \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
+         Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({{ \
+         code: \"custom\", message: \"expected value\", input: ctx.value, params: {{ \
+         undeserializable: true }} }}); }}).pipe({union}{NAMED_ARM})"
+    )
+}
+
 #[test]
 #[cfg(feature = "zod")]
 fn test_flatten_zod_intersection() {
@@ -2686,20 +2704,30 @@ fn test_an_all_object_tagged_enum_member_keeps_its_merged_document() {
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_tagged_enums_are_byte_identical_standing_alone() {
+    let bare = one_key(
+        "z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})])",
+    );
+    let objects = one_key(
+        "z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})])",
+    );
     #[cfg(feature = "typescript")]
-    const EXPECTED: [&str; 2] = [
-        "const MemberExtBare$RawSchema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true });\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({\n  examples: []\n});",
-        "const MemberExtObjects$RawSchema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true });\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({\n  examples: []\n});",
+    let expected = [
+        format!(
+            "const MemberExtBare$RawSchema = {bare};\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({{\n  examples: []\n}});"
+        ),
+        format!(
+            "const MemberExtObjects$RawSchema = {objects};\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({{\n  examples: []\n}});"
+        ),
     ];
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: [&str; 2] = [
-        "export const MemberExtBare$Schema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true }).meta({\n  examples: []\n});",
-        "export const MemberExtObjects$Schema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true }).meta({\n  examples: []\n});",
+    let expected = [
+        format!("export const MemberExtBare$Schema = {bare}.meta({{\n  examples: []\n}});"),
+        format!("export const MemberExtObjects$Schema = {objects}.meta({{\n  examples: []\n}});"),
     ];
 
     assert_eq!(
         [MemberExtBare::zod_schema(), MemberExtObjects::zod_schema(),],
-        EXPECTED.map(str::to_owned)
+        expected
     );
 }
 
@@ -4522,13 +4550,19 @@ fn test_the_multiplied_variant_type_is_the_intersection_typescript_distributes()
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
-    for (schema, expression) in [
-        (
-            ExternalFlatVariant::zod_schema(),
-            "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n}), z.strictObject({\n  \
-             \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })",
+    let external = ExternalFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &external,
+            &one_key(
+                "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
+                 .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n}), z.strictObject({\n  \
+                 \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])"
+            )
         ),
+        "Got: {external}"
+    );
+    for (schema, expression) in [
         (
             InternalFlatVariant::zod_schema(),
             "z.union([z.strictObject({\n  kind: z.literal(\"Named\"),\n  x: z.string(),\n})\
@@ -4555,22 +4589,28 @@ fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
 #[test]
 #[cfg(feature = "zod")]
 fn test_two_single_key_set_variant_sources_are_byte_identical() {
-    for (schema, expression) in [
-        (
-            TwiceFlatVariant::zod_schema(),
-            "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))\
-             .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })",
+    let external = TwiceFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &external,
+            &one_key(
+                "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
+                 .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))\
+                 .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n})])"
+            )
         ),
-        (
-            TwiceUntaggedFlatVariant::zod_schema(),
+        "Got: {external}"
+    );
+    let untagged = TwiceUntaggedFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &untagged,
             "z.union([z.strictObject({ x: z.string(), })\
              .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))\
-             .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))])",
+             .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))])"
         ),
-    ] {
-        assert!(closes_on(&schema, expression), "Got: {schema}");
-    }
+        "Got: {untagged}"
+    );
 }
 
 #[test]
@@ -4582,7 +4622,7 @@ fn test_a_variant_flattening_nothing_is_byte_identical() {
         plain.starts_with("\"Plain\": z.object({\n  y: z.string(),\n}),\n})])")
             && closes_on(
                 plain,
-                "\"Plain\": z.object({\n  y: z.string(),\n}),\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })"
+                "\"Plain\": z.object({\n  y: z.string(),\n}),\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true }))"
             ),
         "Got: {plain}"
     );

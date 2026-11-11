@@ -27,8 +27,10 @@ the Swift client" section is the consumer's view; this is what a change to the e
   pins this client's own text.
 - **A range is written where a value can break it.** `Number::least` and `Number::most` answer no
   literal for a bound outside the range of the field's integer type: `x < 0` on an unsigned
-  integer is a warning in Swift. A float is quoted back through `swiftSchemaPlain`, which drops
-  the `.0` Rust does not write.
+  integer is a warning in Swift. A float field's limit is a float literal (`float_literal`),
+  `3000000000.0`: an integer literal a `Float` or a `Double` does not hold exactly, `1e30`'s
+  digits, is a warning too. A float is quoted back through `swiftSchemaPlain`, which drops the
+  `.0` Rust does not write.
 - **A pattern is respelled for Foundation.** `swift_pattern` writes `$` as `\z` and `\v` as
   `\u000B`, which is what makes the engine read the portable pattern as the `regex` crate does. The
   message quotes the pattern as written.
@@ -165,10 +167,17 @@ to keep.
   as `.infinity` and `-1e39` as `-.infinity`, and every finite `Float` as `Float(Double(text))`,
   serde's own rounding. A type parameter filled with a `Float` is read through `SwiftSchemaFit`,
   which reads one Foundation refuses as a `Double` narrowed the same way.
-- **What serde classifies as text that is not the document is refused in its words**: a `Result`
-  of other than one key with `dataCorrupted` ``expected value``, and a number key, or a brand's
-  over one, whose text opens with neither a digit nor `-` with ``invalid value: expected key to be
-  a number in quotes`` (`wrapper_bound_key`, `numeric_key`). The `ws_rpc` client answers such a
+- **What serde classifies as text that is not the document is refused in its words**: an
+  externally tagged enum and a `Result` written as neither a string nor an object of one key with
+  `dataCorrupted` ``expected value`` (`one_key_container`), a string as Foundation refuses it.
+  A number key, or a brand's over one, is read as serde reads the text between its quotes
+  (`number_bound_key`, and `swiftSchemaKeyNumber`, which `key_number_read` writes into the map's
+  wrapper): a text that opens with neither a digit nor `-` is refused with ``invalid value:
+  expected key to be a number in quotes``, one that breaks the number past its first character,
+  `01` or `-`, with ``invalid number``, a float beyond a `Double` with ``number out of range`` and
+  one that goes on after the number, `1x`, with ``expected `"` ``. A float for an integer key,
+  `1e3` or `-0`, is refused at the map's coding path, and an integer beyond the type under the
+  number. The `ws_rpc` client answers such a
   refusal, one of `NOT_A_DOCUMENT`, with `undeserializable-payload` naming no field
   (`{service}WsRefused`), and drops a frame `JSONSerialization` refuses, which refuses a number
   beyond a `Double`, as the Rust transports drop it.
@@ -377,9 +386,10 @@ to keep.
   `Yawing` against serde, and reads serde's write back.
 - **An externally tagged enum is read from an object of one key.** The read
   `external_tagged_enum_swift_source` writes takes a unit variant from a bare string, then guards
-  `container.allKeys.count == 1` beside the first key, as the read of a `Result` does, and refuses
-  an object of no key with ``empty object for {Enum}`` and one of several with ``more than one key
-  for {Enum}``, as serde and Zod refuse each: `allKeys` keeps no order, so no first key is known.
+  `container.allKeys.count == 1` beside the first key (`one_key_container`), as the read of a
+  `Result` does, and refuses an object of no key or of several, and a value that is neither a
+  string nor an object, with ``expected value``, as serde and Zod refuse each: `allKeys` keeps no
+  order, so no first key is known.
   `tests/swift_tests/read.rs` pins the guard, and `run_swift_flattened_enums.rs` reads `Tacking`
   alone and `Luffing`, which flattens an enum declared below it beside another key, against
   serde, three times.

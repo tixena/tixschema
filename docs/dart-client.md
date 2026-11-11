@@ -103,11 +103,11 @@ consumer's view; this is what a change has to keep.
   text, with no declaration shared between two types. In `src/features/dart.rs`,
   `tagged_enum_dart_source` writes `Unknown {Enum}: {tag}` for a tag no variant has, under every
   tagging, `{Enum}: {tag} takes no value` for a unit variant's entry over a value, and
-  `empty object for {Enum}` and `more than one key for {Enum}` for an externally tagged object
-  of no key and of several, as serde and Zod refuse each; `tagged_variant_tokens` the same words
+  ``expected value`` for an externally tagged enum written as neither a string nor an object of
+  one key, serde's words for text that is not the document; `tagged_variant_tokens` the same words
   for its content under a content key; `untagged_enum_dart_source` `No variant of {Enum}
   matched`; `plain_enum_dart_source` `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a
-  {kind}: {keys}`; `result_decode` ``expected value`` for an object of other than one key, serde's words for text that is not the document, and `Not a Result: {keys}` for a key no arm names; `tuple_decode`, the read of every
+  {kind}: {keys}`; `result_decode` ``expected value`` for a value that is neither a string nor an object of one key, serde's words for text that is not the document, and `Not a Result: {keys}` for a key no arm names; `tuple_decode`, the read of every
   tuple (a member's, a tuple struct's, a variant's slots), `invalid length {n}, expected {m}`
   for an array of another length, a longer one among them, as serde and Zod refuse it;
   `dart_decode_at` the same words for a level written as `[T; N]` (`FieldDef::fixed_length_at`),
@@ -160,24 +160,35 @@ consumer's view; this is what a change has to keep.
   `expected a 32-bit float, found 1e+300`. `float_sent` holds an `f32` value to the same bound on
   the write, but for one that is not finite, which `toJson` writes as the `double` it is, as it
   writes an `f64`: serde writes it as `null`, `jsonEncode` refuses it, and the `ws_rpc`
-  attachment writes it as `null` (`_{service}WsWritten`). `float_read` reads an `f32` or an
+  attachment writes it as `null` (`_{service}WsWritten`), as the `mcp` server writes it in all it
+  answers (`_{service}McpJson`, whose `jsonEncode` writes such a `double` through
+  `_{service}McpEncodable`). `float_read` reads an `f32` or an
   `f64` value as serde does: an `f32` beyond `F32_READ_BOUND` as an infinity of its sign, and the
   infinity `jsonDecode` reads a number beyond an `f64` as refused with ``number out of range``.
-  `number_key_read` refuses a number key whose text opens with neither a digit nor `-` with
-  ``invalid value: expected key to be a number in quotes``. These three messages are
-  `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  `number_key_read` reads a number key, alone or under a brand, as serde reads the text between
+  its quotes: the number, then the type's refusal of it, then the text after it. A text that opens
+  with neither a digit nor `-` is refused with ``invalid value: expected key to be a number in
+  quotes``, one that breaks the number past its first character, `01` or `-`, with ``invalid
+  number``, a float beyond an `f64` with ``number out of range`` and one that goes on after the
+  number, `1x`, with ``expected `"` ``. A float for an integer key, `1e3` or `-0`, is refused at
+  the map, and an integer beyond the type under the number, the `source` of its
+  `FormatException`. These messages are `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
   `undeserializable-payload` naming no field (`_{service}WsRefused`), as the Rust dispatcher
   answers what serde classifies as text that is not the document, and the transport's `_onFrame`
   reads a frame through `_{service}WsHeld`, a reviver that refuses an infinity, so a frame that
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
-  after `_{service}WsSigned` writes each `-0` outside a string as `-0.0` (`held_fn`,
+  after `_{service}WsSignedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
   `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
   cast of an integer's read refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
-  reads as a `double`. A read of a value `jsonDecode` hands, `fromJson` called by hand and the
-  `http_rest` client's among them, reads `-0` as 0. The `mcp` server reads each message through
-  `_{service}WsSigned` and the same reviver, and answers one that holds a number beyond an `f64` with
-  `-32600`; a refusal whose `FormatException` carries a path names it as the fault's field
-  (`_{service}WsRefusedAt`), so `1.0` for a `u32` names its member. A `DateTime<Tz>` is written
+  reads as a `double`. Every Dart read of a JSON text passes it through such a function first, one
+  declared in each text that reads JSON (`signed_zeros_call`): the `http_rest` client reads a
+  response's body and a fault's through `_{service}HttpSignedZeros` (`response_json`), the `mcp`
+  server each message through `_{service}WsSignedZeros`, and the `mcp` client each answer and the
+  text of a tool error through `_{service}McpSignedZeros`. `fromJson` called by hand on what
+  `jsonDecode` hands reads `-0` as 0. The `mcp` server reads each message through the same
+  reviver, and answers one that holds such a number with `-32600`. It names the field of a refusal
+  from the JSON schema of the message, and where the schema admits the value, `1.0` or `-0` for
+  an integer, from the path the read refused at (`_{service}WsRefusedAt`). A `DateTime<Tz>` is written
   `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
@@ -494,7 +505,7 @@ resort; this is what a change has to keep.
 `src/features/service_schema/dart_mcp.rs` writes `dart_mcp_service()` and `dart_mcp_client()` on the registry of a service that asks for `mcp`.
 
 - **Two halves of the text.** The emitted text holds markers for what only a compiled type knows: the tool list (`mcp_tools()`, one Dart string literal per tool with `$` written `\$`), the names (`MCP_NAMES`), the instructions, the crate version (`env!("CARGO_PKG_VERSION")`) and `wrapped_{operation}()`. The accessor writes them over the markers when it runs in the consuming program, as `ts_http_service()` writes `openapi()`. An operation whose wrapping depends on the type it names reads a `const` table of its answers; one whose message is generated, or which binds a `header_in`, has it fixed at expansion.
-- **The server reuses the WebSocket attachment's seams.** Each tool is a private function that reads the message with `message_decode`, the read of `dart_ws_client.rs` (the generated type's `fromJson`, which judges), then the `header_in` arguments, calls the handler, and renders the outcome with `split_reply_record` as the attachment does. The read's refusal is handed whole to `_McpUnreadFault`, which answers it as the Rust dispatcher answers a refusal of the arguments it reads out of a `Value`: ``invalid value: expected key to be a number in quotes`` is `undeserializable-payload` naming no field, ``expected value`` (a `Result` of other than one key) names the path its `FormatException` carries (`_WsRefusedAt`) ahead of the walk's (`run_carillon_mcp.rs` holds each to the Rust dispatcher), and any other answers `failed-validation`: `_McpMismatches` walks the tool's JSON schema from the catalog (`_McpMessageSchema`) beside the arguments, past the `header_in` keys and the form's answers, and collects every value that does not match in the order met: the dotted path of the first (`drafts.1.title`) is the field, and the detail opens with that path in single quotes before the decoder's words. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field. Where the walk finds two or more, `_McpUnreadFault(..., every: true)` joins the others to the detail in the walk's words and lists each in `issues`, as the Rust dispatcher does, for a tool, a prompt (`_McpPromptSchema`) and a resource template (`_McpReadSchema`, over the `mcp_read_inputs()` the text embeds); a completion names the first alone. Where the walk finds none, the fault names no field. A wrapped message missing its `value` key answers `failed-validation` with the field `value`. The client's methods write the attachment's `_WsRefused` and `_WsFailedValidation` as `_McpReadFailed`, so a success or a declared error its read refuses answers `undeserializable-payload` naming no field, as the Rust client answers it.
+- **The server reuses the WebSocket attachment's seams.** Each tool is a private function that reads the message with `message_decode`, the read of `dart_ws_client.rs` (the generated type's `fromJson`, which judges), then the `header_in` arguments, calls the handler, and renders the outcome with `split_reply_record` as the attachment does. The read's refusal is handed whole to `_McpUnreadFault`, which answers it as the Rust dispatcher answers a refusal of the arguments it reads out of a `Value`: ``invalid value: expected key to be a number in quotes`` is `undeserializable-payload` naming no field, ``expected value`` (a `Result` of other than one key) names the path its `FormatException` carries (`_WsRefusedAt`) ahead of the walk's (`run_carillon_mcp.rs` holds each to the Rust dispatcher), and any other answers `failed-validation`: `_McpMismatches` walks the tool's JSON schema from the catalog (`_McpMessageSchema`) beside the arguments, past the `header_in` keys and the form's answers, and collects every value that does not match in the order met: the dotted path of the first (`drafts.1.title`) is the field, and the detail opens with that path in single quotes before the decoder's words. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field. Where the walk finds two or more, `_McpUnreadFault(..., every: true)` joins the others to the detail in the walk's words and lists each in `issues`, as the Rust dispatcher does, for a tool, a prompt (`_McpPromptSchema`) and a resource template (`_McpReadSchema`, over the `mcp_read_inputs()` the text embeds); a completion names the first alone. Where the walk finds none, the fault names no field. A wrapped message missing its `value` key answers `failed-validation` with the field `value`. The client's methods write the attachment's `_WsRefused`, and the `_WsFailedValidation` that names a header (`header_refused_fault`), as `_McpReadFailed`, so a success, a declared error, and a `header_out` or `error_header_out` value beside either that its read refuses answer `undeserializable-payload` naming no field, as the Rust client answers them.
 - **Keys are sorted.** `_McpJson` writes every object with its keys in order, the bytes a `serde_json` build without `preserve_order` writes. Tool, resource and prompt texts are embedded as they were handed in, so a schema keeps the digits Rust wrote; `mcp_tools()`, `mcp_resources()` and `mcp_resource_templates()` return their members in key order for that reason.
 - **Resources.** `resource_functions` writes one private function for each resource, template, listing and completion, built as a tool's is (`message_decode`, the handler, the outcome rendered by `dart_json_encode`) and answering a `-32602` where a tool answers a tool error: `_McpUnread` for a fault, `_McpRefused` for a declared error. `_McpRead` tries a fixed URI ahead of the templates, `_McpCaptured` matches a template as the Rust dispatcher does, and a `(Vec<u8>, String)` success is `base64Encode` of the record's bytes. `{Service}McpResource` and `{Service}McpResourcePage` are written once per service that lists, named after it.
 - **`serve` is the whole of the protocol around a route**: `-32600`, a notification, the `_meta` keys (`-32602`), the version (`-32022`), `server/discover`, the four list methods, `resources/list` with its `"<service>:<cursor>"` cursor (asking each service from the one the cursor names until one lists), and the routed methods, which ask each service's route in order; a routed request names nothing to answer with `-32602`, as the Rust `serve` does. `serveHttp` adds the rules of the Streamable HTTP transport in front, and answers the status each rule names: the metadata document first, then the method and `Origin` rules, then `admit`, then the rest. A denial is a `DocumentServiceMcpNoValidCredentials`, `DocumentServiceMcpInsufficientScope` or `DocumentServiceMcpForbidden`, written as the Rust dispatcher writes it.

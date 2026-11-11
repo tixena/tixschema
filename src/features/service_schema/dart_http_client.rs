@@ -2,6 +2,7 @@
 //! that builds a plain-terms request from the operation's own message and decodes the answer by
 //! status.
 
+use super::dart_ws_client::{signed_zeros_call, signed_zeros_fn};
 use super::result::result_name;
 use super::{on_one_line, text_types};
 use crate::features::dart::{
@@ -95,7 +96,13 @@ const RESPONSE_RECORD_FIELDS: &str =
 const REQUEST_RECORD_FIELDS: &str = "{String method, String path, String query, \
      List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}";
 
-const RESPONSE_JSON: &str = "jsonDecode(utf8.decode(response.body))";
+/// What a method reads the response's body as, its text passed through [`signed_zeros_fn`].
+fn response_json(fn_prefix: &str) -> String {
+    format!(
+        "jsonDecode({}(utf8.decode(response.body)))",
+        signed_zeros_call(fn_prefix, "Http")
+    )
+}
 
 pub fn emit(service: &ServiceDef) -> Vec<String> {
     let named = service.ident.to_string();
@@ -792,7 +799,7 @@ fn error_decode_block(
 ) -> String {
     if shape.error_header_out.is_empty() {
         let error_ty = dart_type_of(error);
-        let decoded = dart_json_decode(error, RESPONSE_JSON);
+        let decoded = dart_json_decode(error, &response_json(fn_prefix));
         return format!(
             "      late final {error_ty} declared;\n      \
              try {{\n        \
@@ -808,7 +815,7 @@ fn error_decode_block(
     let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
     let head = elements.first().copied().unwrap_or(error);
     let head_ty = dart_type_of(head);
-    let decoded = dart_json_decode(head, RESPONSE_JSON);
+    let decoded = dart_json_decode(head, &response_json(fn_prefix));
     let mut stmt = format!(
         "      late final {head_ty} declaredHead;\n      \
          try {{\n        \
@@ -860,7 +867,7 @@ fn success_decode_block(
             return format!("      return {result}Ok();\n");
         }
         let success_ty = dart_type_of(success);
-        let decoded = dart_json_decode(success, RESPONSE_JSON);
+        let decoded = dart_json_decode(success, &response_json(fn_prefix));
         return format!(
             "      late final {success_ty} value;\n      \
              try {{\n        \
@@ -878,7 +885,7 @@ fn success_decode_block(
     let elements: Vec<&Type> = tuple_elements(success).into_iter().flatten().collect();
     let body = elements.first().copied().unwrap_or(success);
     let body_ty = dart_type_of(body);
-    let decoded = dart_json_decode(body, RESPONSE_JSON);
+    let decoded = dart_json_decode(body, &response_json(fn_prefix));
     let mut stmt = format!(
         "      late final {body_ty} value;\n      \
          try {{\n        \
@@ -948,6 +955,7 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
         fault_from_body_fn(named, fn_prefix),
+        signed_zeros_fn(&signed_zeros_call(fn_prefix, "Http")),
     ]);
     if declares_header_in(service) {
         helpers.push(legal_header_value_fn(fn_prefix));
@@ -1094,13 +1102,14 @@ fn undeserializable_payload_fn(named: &str, fn_prefix: &str) -> String {
 
 fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
+    let signed_zeros = signed_zeros_call(fn_prefix, "Http");
     format!(
         "/// Reads a fixed fault status's own body back into a `{fields}`, through the same\n\
          /// `fromJson` every other surface reads it with. A body that does not read as the fixed\n\
          /// fault shape is itself a defect, answered as one.\n\
          {fields} _{fn_prefix}HttpFaultFromBody(String operation, List<int> body) {{\n  \
          try {{\n    \
-         return {fields}.fromJson(jsonDecode(utf8.decode(body)));\n  \
+         return {fields}.fromJson(jsonDecode({signed_zeros}(utf8.decode(body))));\n  \
          }} catch (_) {{\n    \
          return _{fn_prefix}HttpUndeserializablePayload(\n      \
          operation,\n      \

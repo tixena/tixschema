@@ -110,13 +110,13 @@ const ROWS: [Row; 22] = [
         json: r#"{"Boxed":"a","Split":["b",1]}"#,
         read_as: "Fogging",
         serde: serde_told::<Fogging>,
-        thrown: "more than one key for Fogging",
+        thrown: "expected value",
     },
     Row {
         json: "{}",
         read_as: "Fogging",
         serde: serde_told::<Fogging>,
-        thrown: "empty object for Fogging",
+        thrown: "expected value",
     },
     Row {
         json: r#"{"Split":["b",1,2]}"#,
@@ -569,8 +569,6 @@ fn the_readme_shows_refusals_the_run_measures() {
         "`No variant of Misting matched`",
         "`Unknown key of a Range: (start, end, step)`",
         "`expected value`",
-        "`more than one key for Fogging`",
-        "`empty object for Fogging`",
         "`invalid length 3, expected 2`",
         "`invalid length 1, expected 2`",
     ] {

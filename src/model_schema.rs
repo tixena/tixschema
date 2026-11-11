@@ -52,7 +52,7 @@ use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(all(feature = "serde", feature = "zod"))]
 use crate::field_type::{ZOD_NAMED_ARM, zod_check_wrap_handing};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
+use crate::field_type::{zod_check_wrap, zod_one_key_union, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
@@ -113,6 +113,8 @@ use crate::utils::{
 
 #[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
+#[cfg(feature = "zod")]
+use crate::utils::record_number_key;
 
 #[cfg(feature = "serde")]
 use crate::utils::{
@@ -154,6 +156,8 @@ use crate::features::serde::{
     tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
     variant_steps, written_and_read_by_the_author,
 };
+#[cfg(feature = "serde")]
+use crate::service_schema::parse::path_text_form;
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
@@ -343,12 +347,12 @@ const INTEGER_RANGES: [(&str, i128, i128, &str); 10] = [
     ),
 ];
 
-/// The text an integer map key is read from, as Zod's record reads it: digits under an optional
-/// sign, then a fraction of zeros at most, which Zod reads as that integer.
-const INTEGER_KEY_PATTERN: &str = "^-?[0-9]+(\\.0+)?$";
+/// The text an integer map key is read from, as serde reads it: a whole number of no leading zero,
+/// `-0` read as a float.
+const INTEGER_KEY_PATTERN: &str = "^(0|-?[1-9][0-9]*)$";
 
-/// The text a floating-point map key is read from, as Zod's record reads it.
-const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
+/// The text a floating-point map key is read from, as serde reads it: a JSON number.
+const NUMBER_KEY_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
 
 /// The text a `bool` map key is read from.
 const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
@@ -2757,6 +2761,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
+    #[cfg(feature = "zod")]
+    record_number_key(&rust_ident_str, alias_field_def.zod_number_key());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
@@ -3124,7 +3130,7 @@ fn enum_delegate_items(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    build_struct_delegate_items(
+    let mut items = build_struct_delegate_items(
         module_ident,
         item_name,
         &item_enum.ident.to_string(),
@@ -3138,7 +3144,9 @@ fn enum_delegate_items(
         .as_ref(),
         false,
         args,
-    )
+    );
+    items.push(no_wire_keys_item());
+    items
 }
 
 /// The delegates on the type of a plain enum, which match the branded ones, with the
@@ -3163,6 +3171,7 @@ fn plain_enum_delegate_items(
         .into_iter()
         .chain(examples)
         .chain(validate)
+        .chain([no_wire_keys_item()])
         .collect();
     (items, test)
 }
@@ -8731,21 +8740,46 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 }
 
 /// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
-/// reads the member's key on the wire from.
+/// reads the member's key on the wire from, and the form its text is read in.
 #[cfg(feature = "serde")]
 fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
-    let (names, keys): (Vec<String>, Vec<String>) =
-        read_member_keys(item_struct).into_iter().unzip();
+    wire_keys_const(
+        read_member_keys(item_struct)
+            .into_iter()
+            .map(|(name, key, ty)| (name, key, path_text_form(ty)))
+            .collect(),
+    )
+}
+
+/// The constant [`wire_keys_item`] writes, listing no member: an enum and a struct of slots hold
+/// none a path placeholder binds.
+#[cfg(feature = "serde")]
+fn no_wire_keys_item() -> TokenStream {
+    wire_keys_const(Vec::new())
+}
+
+#[cfg(feature = "serde")]
+fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
+    let listed = members
+        .into_iter()
+        .map(|(name, key, form)| quote! { (#name, #key, #form) });
     quote! {
-        #[doc = " Each member serde reads under a key of its own, as its name in Rust and that key."]
-        pub const WIRE_KEYS: ::core::option::Option<&'static [(&'static str, &'static str)]> =
-            ::core::option::Option::Some(&[#((#names, #keys)),*]);
+        #[doc = " Each member serde reads under a key of its own, as its name in Rust, that key and"]
+        #[doc = " the form a path placeholder's text is read in for it."]
+        pub const WIRE_KEYS: ::core::option::Option<
+            &'static [(&'static str, &'static str, &'static str)],
+        > = ::core::option::Option::Some(&[#(#listed),*]);
     }
 }
 
 /// Nothing, where no `serde` feature reads the attributes a key is written from.
 #[cfg(not(feature = "serde"))]
 fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(not(feature = "serde"))]
+fn no_wire_keys_item() -> TokenStream {
     TokenStream::new()
 }
 
@@ -9830,13 +9864,14 @@ fn process_tuple_struct(
 
     let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
-    let delegate_impl_items = struct_delegate_items(
+    let mut delegate_impl_items = struct_delegate_items(
         &module_ident,
         &item_name,
         &item_struct,
         tuple_struct_shows_sibling_examples(&slots.shape),
         args,
     );
+    delegate_impl_items.push(no_wire_keys_item());
 
     // Read after every slot carries the serde attributes generation hangs on it.
     let decode_with = struct_decode_with(&item_struct, args);
@@ -11388,6 +11423,11 @@ fn register_branded_newtype(
     // A brand adds a name to its inner's wire and nothing else, so a key written under it renders
     // in whatever form the inner writes.
     record_key_wire(rust_ident, branded_key_wire(inner_field));
+    #[cfg(feature = "zod")]
+    record_number_key(
+        rust_ident,
+        get_field_def("", &inner_field.ty, "").zod_number_key(),
+    );
     record_inexact_key(
         rust_ident,
         get_field_def("", &inner_field.ty, "").writes_an_inexact_key(),
@@ -11492,8 +11532,9 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         args,
     );
 
-    let delegate_impl_items =
+    let mut delegate_impl_items =
         build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty(), args);
+    delegate_impl_items.push(no_wire_keys_item());
 
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
@@ -13327,15 +13368,17 @@ fn join_external_union(
     #[cfg(not(feature = "typescript"))]
     let type_code = String::new();
 
+    // serde reads the enum from a string or an object of one key, and refuses any other value as
+    // text that is not the document.
     #[cfg(feature = "zod")]
-    let schema_code = format!(
+    let schema_code = zod_one_key_union(&format!(
         "z.union([{}]){ZOD_NAMED_ARM}",
         members
             .iter()
             .map(|(_, zod, _)| zod.as_str())
             .collect::<Vec<_>>()
             .join(", ")
-    );
+    ));
     #[cfg(not(feature = "zod"))]
     let schema_code = String::new();
 
@@ -18507,6 +18550,19 @@ fn generate_string_validation_code(
     }
 }
 
+/// The limit `written` as the validator compares a `rust_type_str` with: a literal of a float's own
+/// type, since a cast to a float leaves an integer literal an `i32`, and a cast to an integer,
+/// which drops a float's fraction.
+fn compared_limit(written: &str, rust_type_str: &str) -> proc_macro2::TokenStream {
+    if matches!(rust_type_str, "f32" | "f64") {
+        format!("{written}_{rust_type_str}")
+    } else {
+        format!("{written} as {rust_type_str}")
+    }
+    .parse()
+    .unwrap()
+}
+
 /// Generates the static validator for a numeric field with constraints, plus the serde deserializer
 /// — see `generate_string_validation_code` for how the two spellings differ.
 fn generate_numeric_validation_code(
@@ -18529,11 +18585,10 @@ fn generate_numeric_validation_code(
 
     if let Some(minimum) = &meta.minimum {
         let written = limit_text(minimum);
-        let min_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Minimum(&written), named, &measured);
         checks.push(quote! {
-            if *value < #min_cast {
+            if *value < #compared {
                 errors.push(#reported);
             }
         });
@@ -18541,11 +18596,10 @@ fn generate_numeric_validation_code(
 
     if let Some(maximum) = &meta.maximum {
         let written = limit_text(maximum);
-        let max_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Maximum(&written), named, &measured);
         checks.push(quote! {
-            if *value > #max_cast {
+            if *value > #compared {
                 errors.push(#reported);
             }
         });
