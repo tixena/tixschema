@@ -12,11 +12,13 @@ use super::belfry_service::ring_bell_request_kotlin;
 use super::belfry_service::ring_bell_request_swift;
 use super::empty_struct_models::{expected, rows, ts_definitions};
 #[cfg(feature = "dart")]
-use super::empty_struct_models::{knell_dart, open_knell_dart, open_unheld_dart};
+use super::empty_struct_models::{knell_dart, open_knell_dart, open_unheld_dart, unheld_dart};
 #[cfg(feature = "kotlin")]
-use super::empty_struct_models::{knell_kotlin, open_knell_kotlin, open_unheld_kotlin};
+use super::empty_struct_models::{
+    knell_kotlin, open_knell_kotlin, open_unheld_kotlin, unheld_kotlin,
+};
 #[cfg(feature = "swift")]
-use super::empty_struct_models::{knell_swift, open_knell_swift, open_unheld_swift};
+use super::empty_struct_models::{knell_swift, open_knell_swift, open_unheld_swift, unheld_swift};
 #[cfg(feature = "dart")]
 use super::run_dart_validate::{dart, module};
 #[cfg(feature = "swift")]
@@ -87,6 +89,7 @@ fn the_dart_read_reads_each_empty_struct_as_serde_reads_it() {
             ring_bell_request_dart::dart_definition(),
             knell_dart::dart_definition(),
             open_knell_dart::dart_definition(),
+            unheld_dart::dart_definition(),
             open_unheld_dart::dart_definition(),
         ],
         &[],
@@ -122,6 +125,7 @@ fn the_kotlin_read_reads_each_empty_struct_as_serde_reads_it() {
         ring_bell_request_kotlin::kotlin_definition(),
         knell_kotlin::kotlin_definition(),
         open_knell_kotlin::kotlin_definition(),
+        unheld_kotlin::kotlin_definition(),
         open_unheld_kotlin::kotlin_definition(),
         main,
     ];
@@ -148,6 +152,7 @@ fn the_swift_read_reads_each_empty_struct_as_serde_reads_it() {
         ring_bell_request_swift::swift_definition(),
         knell_swift::swift_definition(),
         open_knell_swift::swift_definition(),
+        unheld_swift::swift_definition(),
         open_unheld_swift::swift_definition(),
         main,
     ]

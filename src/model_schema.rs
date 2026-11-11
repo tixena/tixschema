@@ -176,8 +176,14 @@ use crate::features::serde::defaults::SerdeDefaults;
     )
 ))]
 use crate::features::serde::defaults::default_refusals;
+#[cfg(feature = "serde")]
+use crate::features::serde::defaults::unread_members_built;
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
+#[cfg(feature = "serde")]
+use crate::features::serde::read_bounds;
+#[cfg(feature = "serde")]
+use crate::utils::written_names;
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -3741,6 +3747,7 @@ fn struct_schema_impl_items(
             &bodies.2,
             &flatten_merged_sources(flattened_fields),
             item_name,
+            rust_ident,
             &schema_parameters(generics, args),
             docs.json_examples.as_ref(),
         ));
@@ -8649,14 +8656,16 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     #[cfg(all(feature = "serde", feature = "zod"))]
     record_object_model(&rust_ident, &item_struct, &collected, args);
 
-    // A unit struct holds no member, so it publishes `validate()` for its own checks alone.
+    let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
+
     #[cfg(feature = "serde")]
     let unit_struct_impls = unit_struct_impls_for(
         &mut item_struct,
         UnitRead {
-            publishes_validate: !args.check.is_empty(),
+            publishes_validate: validate_method.is_some(),
             strict: !args.nonstrict,
         },
+        args,
     );
     #[cfg(not(feature = "serde"))]
     let unit_struct_impls = unit_struct_impls_for(&item_struct);
@@ -8676,8 +8685,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         args,
         &docs,
     );
-
-    let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
     let mut delegate_impl_items =
         struct_delegate_items(&module_ident, &item_name, &item_struct, false, args);
@@ -8749,6 +8756,10 @@ fn struct_output_with_unit_impls(
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
+    // The serde attributes go where no derive is left to read them, after every surface above has.
+    if matches!(read.fields, syn::Fields::Named(_)) && !unit_struct_impls.is_empty() {
+        judged_read::leave_the_read_to_the_macro(&mut read.attrs, read.fields.iter_mut());
+    }
     let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of(parts.item);
@@ -8920,22 +8931,22 @@ fn enum_output_with_decode(
 fn unit_struct_impls_for(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
+    args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
         record_unit_struct(&item_struct.ident.to_string());
         return unit_struct_serde_impls(item_struct, read);
     }
-    if read.strict
-        && matches!(&item_struct.fields, syn::Fields::Named(named) if named.named.is_empty())
-    {
+    if strict::read_by_the_macro(item_struct, args) {
         return empty_struct_read(item_struct, read);
     }
     quote! {}
 }
 
-/// Takes `Deserialize` off the derive of a braced struct of no member and answers with a read that
-/// refuses every key: serde's derive would declare an enum of no variant for the keys, which
-/// `clippy::empty_enums` refuses in the consumer's crate.
+/// Takes `Deserialize` off the derive of a braced struct serde reads no member of and answers with
+/// a read that refuses every key and builds each member as serde's derive builds it, under the
+/// bounds that derive asks: under `deny_unknown_fields` it would declare an enum of no variant for
+/// the keys, which `clippy::empty_enums` refuses in the consumer's crate.
 #[cfg(feature = "serde")]
 fn empty_struct_read(
     item_struct: &mut syn::ItemStruct,
@@ -8944,6 +8955,20 @@ fn empty_struct_read(
     if !derives_deserialize(&item_struct.attrs) {
         return quote! {};
     }
+    let input = syn::DeriveInput::from(item_struct.clone());
+    let written = written_names(quote::ToTokens::to_token_stream(&input));
+    let built = unread_members_built(
+        item_struct,
+        &judged_read::unclaimed_parameter("container_default", &written),
+    );
+    let mut generics = item_struct.generics.clone();
+    generics
+        .make_where_clause()
+        .predicates
+        .extend(read_bounds::undeclared_bounds(
+            &item_struct.generics,
+            judged_read::authored_read_bounds(&input).predicates,
+        ));
     let mut kept_attrs = Vec::with_capacity(item_struct.attrs.len());
     for attr in item_struct.attrs.drain(..) {
         let listed = attr
@@ -8967,13 +8992,7 @@ fn empty_struct_read(
         }
     }
     item_struct.attrs = kept_attrs;
-    if !derives_serialize(&item_struct.attrs) {
-        item_struct
-            .attrs
-            .retain(|attr| !attr.path().is_ident("serde"));
-    }
-    let name = &item_struct.ident;
-    unit_struct_read(name, read, &quote! { #name {} })
+    unit_struct_read(&item_struct.ident, &generics, read, &built)
 }
 
 /// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
@@ -9040,7 +9059,14 @@ fn unit_struct_serde_impls(
         }
     });
 
-    let deserialize_impl = reads.then(|| unit_struct_read(name, read, &quote! { #name }));
+    let deserialize_impl = reads.then(|| {
+        unit_struct_read(
+            name,
+            &item_struct.generics,
+            read,
+            &quote! { ::core::result::Result::Ok(#name) },
+        )
+    });
 
     quote! {
         #serialize_impl
@@ -9048,12 +9074,14 @@ fn unit_struct_serde_impls(
     }
 }
 
-/// The `Deserialize` of the struct `name` of no member, which reads `{}` as `built`: alone, or
+/// The `Deserialize` of the struct `name` of no member serde reads, written on `generics`, which
+/// reads `{}` and answers with `built`, the statements that answer `Ok` of the value: alone, or
 /// after `model_schema_read_unjudged` where the struct publishes `validate()` or names a
 /// `preprocess`.
 #[cfg(feature = "serde")]
 fn unit_struct_read(
     name: &syn::Ident,
+    generics: &syn::Generics,
     how: UnitRead,
     built: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
@@ -9061,6 +9089,77 @@ fn unit_struct_read(
         publishes_validate,
         strict,
     } = how;
+    let reader = judged_read::unclaimed_parameter(
+        "D",
+        &written_names(quote::ToTokens::to_token_stream(generics)),
+    );
+    let read = unit_struct_body(name, strict, built);
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let mut read_at = generics.clone();
+    read_at.params.insert(0, syn::parse_quote! { 'de });
+    let (read_impl_generics, _, _) = read_at.split_for_impl();
+    let corrected = judged_read::unit_struct_correction(name);
+    if !publishes_validate && corrected.is_none() {
+        return quote! {
+            impl #read_impl_generics ::serde::Deserialize<'de> for #name #type_generics #where_clause {
+                fn deserialize<#reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        };
+    }
+    let unjudged = corrected.map_or_else(
+        || {
+            quote! {
+                /// The read alone, for a holder that judges the whole value once.
+                pub fn model_schema_read_unjudged<'de, #reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        },
+        |(correction, of_corrected)| {
+            quote! {
+                #correction
+
+                /// The read of a payload the functions `preprocess` names on the type have
+                /// corrected.
+                pub fn #of_corrected<'de, #reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                    #read
+                }
+            }
+        },
+    );
+    let judged = if publishes_validate {
+        let refusal = refusal_from_violations();
+        quote! {
+            let read = Self::model_schema_read_unjudged(deserializer)?;
+            read.validate().map_err(#refusal)?;
+            ::core::result::Result::Ok(read)
+        }
+    } else {
+        quote! { Self::model_schema_read_unjudged(deserializer) }
+    };
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #unjudged
+        }
+
+        impl #read_impl_generics ::serde::Deserialize<'de> for #name #type_generics #where_clause {
+            fn deserialize<#reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<Self, #reader::Error> {
+                #judged
+            }
+        }
+    }
+}
+
+/// The body of the read of the struct `name` of no member serde reads: `{}` read, a key refused
+/// where `strict` and read past where not, and then `built`.
+#[cfg(feature = "serde")]
+fn unit_struct_body(
+    name: &syn::Ident,
+    strict: bool,
+    built: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let type_name = name.to_string();
     let expecting = format!("an empty object for `{type_name}`");
     let entries = if strict {
@@ -9083,19 +9182,19 @@ fn unit_struct_read(
             }
             match map.next_key::<UnknownKey>()? {
                 ::core::option::Option::Some(unknown) => match unknown.0 {},
-                ::core::option::Option::None => ::core::result::Result::Ok(#built),
+                ::core::option::Option::None => ::core::result::Result::Ok(()),
             }
         }
     } else {
         quote! {
             while map.next_entry::<::serde::de::IgnoredAny, ::serde::de::IgnoredAny>()?.is_some() {}
-            ::core::result::Result::Ok(#built)
+            ::core::result::Result::Ok(())
         }
     };
-    let read = quote! {
+    quote! {
         struct UnitStructVisitor;
         impl<'de> ::serde::de::Visitor<'de> for UnitStructVisitor {
-            type Value = #name;
+            type Value = ();
             fn expecting(&self, formatter: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                 formatter.write_str(#expecting)
             }
@@ -9106,59 +9205,8 @@ fn unit_struct_read(
                 #entries
             }
         }
-        deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)
-    };
-    let corrected = judged_read::unit_struct_correction(name);
-    if !publishes_validate && corrected.is_none() {
-        return quote! {
-            impl<'de> ::serde::Deserialize<'de> for #name {
-                fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        };
-    }
-    let unjudged = corrected.map_or_else(
-        || {
-            quote! {
-                /// The read alone, for a holder that judges the whole value once.
-                pub fn model_schema_read_unjudged<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        },
-        |(correction, of_corrected)| {
-            quote! {
-                #correction
-
-                /// The read of a payload the functions `preprocess` names on the type have
-                /// corrected.
-                pub fn #of_corrected<'de, D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                    #read
-                }
-            }
-        },
-    );
-    let judged = if publishes_validate {
-        let refusal = refusal_from_violations();
-        quote! {
-            let read = Self::model_schema_read_unjudged(deserializer)?;
-            read.validate().map_err(#refusal)?;
-            ::core::result::Result::Ok(read)
-        }
-    } else {
-        quote! { Self::model_schema_read_unjudged(deserializer) }
-    };
-    quote! {
-        impl #name {
-            #unjudged
-        }
-
-        impl<'de> ::serde::Deserialize<'de> for #name {
-            fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> ::core::result::Result<Self, D::Error> {
-                #judged
-            }
-        }
+        deserializer.deserialize_struct(#type_name, &[], UnitStructVisitor)?;
+        #built
     }
 }
 
@@ -9556,6 +9604,7 @@ fn tuple_struct_json_schema_items(
     [
         json_schema_methods(
             item_name,
+            &item_struct.ident.to_string(),
             &tuple_struct_json_body(item_name, shape),
             &schema_parameters(&item_struct.generics, args),
             struct_json_examples(item_struct, shape).as_ref(),
@@ -10587,6 +10636,7 @@ fn build_branded_json_schema_method(
     args: &ModelSchemaArgs,
     json_inner: &BrandedJsonInner,
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -10600,7 +10650,7 @@ fn build_branded_json_schema_method(
         }
         BrandedJsonInner::Slot(inner) => branded_slot_json_schema(args, inner, def_name),
     };
-    json_schema_methods(def_name, &body, parameters, examples)
+    json_schema_methods(def_name, rust_ident, &body, parameters, examples)
 }
 
 /// The `FieldDef` every surface renders from: the written one with each name that is one of the
@@ -11400,6 +11450,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
             args,
             &branded_json_inner(&value_inner),
             &item_name,
+            &rust_ident,
             &schema_parameters(&item_struct.generics, args),
             json_schema_examples(&item_struct.attrs).as_ref(),
         ));
@@ -12265,7 +12316,7 @@ fn process_plain_enum(
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
         // No slot to fill: Rust refuses an all-unit enum that leaves a type parameter unused, so a
         // plain enum reaches here declaring none — whatever consts and lifetimes it also binds.
-        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum.attrs, args),
+        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -21469,6 +21520,7 @@ fn generate_json_schema_method(
     json_schema_fields: &[proc_macro2::TokenStream],
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -21476,6 +21528,7 @@ fn generate_json_schema_method(
         json_schema_fields,
         flatten_json_schemas,
         def_name,
+        rust_ident,
         parameters,
         examples,
     )
@@ -22749,7 +22802,7 @@ fn bind_item_jsdoc_local(docs: &str) -> proc_macro2::TokenStream {
 fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
-    attrs: &[syn::Attribute],
+    item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if !args.enable.jsonschema {
@@ -22758,8 +22811,9 @@ fn generate_plain_enum_json_schema_method(
     generate_plain_enum_json_schema_method_impl(
         enumerated,
         def_name,
+        &item_enum.ident.to_string(),
         &[],
-        json_schema_examples(attrs).as_ref(),
+        json_schema_examples(&item_enum.attrs).as_ref(),
     )
 }
 
@@ -22862,6 +22916,7 @@ fn enum_json_schema_methods(
     }
     json_schema_methods(
         def_name,
+        &item_enum.ident.to_string(),
         &quote::quote! { { #main_schema_code } },
         &schema_parameters(&item_enum.generics, args),
         json_schema_examples(&item_enum.attrs).as_ref(),
@@ -23074,6 +23129,7 @@ fn generate_alias_json_schema_method(
         own.or_else(|| republished_json_examples(&surface_field_def(&alias.generics, field_def)));
     json_schema_methods(
         export_name,
+        &alias.ident.to_string(),
         &body,
         &schema_parameters(&alias.generics, args),
         values.as_ref(),

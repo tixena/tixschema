@@ -1619,6 +1619,46 @@ fn unused_locals_bundle() -> String {
     written.join("\n\n")
 }
 
+/// The MCP server and client of each service of `mcp_note_services`, one bundle per service,
+/// beside the real `zod`.
+#[cfg(feature = "zod")]
+fn mcp_alone_bundles() -> [(&'static str, String); 5] {
+    use crate::mcp_note_services::{
+        NoteBlocksServiceSchema, NoteCount, NoteCountServiceSchema, NoteGreetingServiceSchema,
+        NoteMissing, NotePreviewServiceSchema, NoteReviewServiceSchema,
+    };
+    macro_rules! alone {
+        ($service:ident $(, $content:ident)?) => {
+            [
+                "import { z, type ZodType } from \"zod\";".to_owned(),
+                NoteCount::ts_definition(),
+                NoteCount::zod_schema(),
+                NoteMissing::ts_definition(),
+                NoteMissing::zod_schema(),
+                $service::ts_definition(),
+                $($service::$content(),)?
+                $service::ts_service(),
+                $service::ts_mcp_service(),
+                $service::ts_mcp_client(),
+            ]
+            .join("\n\n")
+        };
+    }
+    [
+        (
+            "unused-mcp-messages",
+            alone!(NoteReviewServiceSchema, ts_mcp_content),
+        ),
+        ("unused-mcp-text", alone!(NoteGreetingServiceSchema)),
+        ("unused-mcp-pair", alone!(NotePreviewServiceSchema)),
+        (
+            "unused-mcp-list",
+            alone!(NoteBlocksServiceSchema, ts_mcp_content),
+        ),
+        ("unused-mcp-plain", alone!(NoteCountServiceSchema)),
+    ]
+}
+
 /// A module-private helper is declared only where its surface calls it, so no service of the
 /// group leaves a local unread.
 #[cfg(feature = "zod")]
@@ -1630,7 +1670,10 @@ fn no_service_surface_declares_a_helper_nothing_calls() {
         ("unused-http-alone", http_alone_bundle()),
         ("unused-keyed", keyed_probe_bundle()),
         ("unused-bytes", bytes_probe_bundle()),
-    ] {
+    ]
+    .into_iter()
+    .chain(mcp_alone_bundles())
+    {
         let files = [
             ("bundle.ts", written),
             ("caller.ts", "export {};\n".to_owned()),

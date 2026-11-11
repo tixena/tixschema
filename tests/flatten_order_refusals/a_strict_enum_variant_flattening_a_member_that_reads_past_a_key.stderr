@@ -1,0 +1,6 @@
+error: model_schema: type `Event` (variant `Signed`) flattens `contact`, which reads past a key no member declares, so serde cannot refuse such a key beside it. Mark `Event` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does.
+  --> tests/flatten_order_refusals/a_strict_enum_variant_flattening_a_member_that_reads_past_a_key.rs:19:9
+   |
+19 | /         #[serde(flatten)]
+20 | |         contact: Contact,
+   | |________________________^

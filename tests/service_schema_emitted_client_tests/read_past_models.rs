@@ -1,8 +1,8 @@
-//! Two holders of a flattened untagged enum beside a member of their own: `Customer`, marked
-//! `nonstrict`, over an enum that reads every key still left and refuses none, and `Supplier`,
-//! strict, over a strict enum that refuses a key it does not declare. `run_read_past.rs` reads a
-//! key no member declares past on every surface for the first, and refuses it on every surface for
-//! the second.
+//! Three holders of a flattened untagged enum beside a member of their own: `Customer` and the
+//! variant of `Event`, marked `nonstrict`, over an enum that reads every key still left and refuses
+//! none, and `Supplier`, strict, over a strict enum that refuses a key it does not declare.
+//! `run_read_past.rs` reads a key no member declares past on every surface for the first two, and
+//! refuses it on every surface for the third.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -23,6 +23,17 @@ pub struct Customer {
     #[serde(flatten)]
     pub contact: Contact,
     pub name: String,
+}
+
+/// An enum whose variant holds [`Contact`], which serde cannot close, so it is marked `nonstrict`.
+#[model_schema(enable = ["jsonschema"], nonstrict)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Event {
+    Signed {
+        #[serde(flatten)]
+        contact: Contact,
+        name: String,
+    },
 }
 
 /// An untagged enum that reads every key still left and refuses one it does not declare.

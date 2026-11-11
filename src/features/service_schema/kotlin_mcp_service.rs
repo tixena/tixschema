@@ -40,13 +40,14 @@ val @P@McpCatalog: Map<String, List<String>> = mapOf<String, List<String>>(
   "prompts" to listOf<String>(@MCP_PROMPTS@),
   "skills" to listOf<String>(@MCP_SKILLS@),
   "capabilities" to listOf<String>(@MCP_CAPABILITIES@),
-)
-
-private val @P@McpSkillFiles: Map<String, String> = mapOf<String, String>(@MCP_SKILL_FILES@)
-
-private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
-  @WRAPPED_MAP@
 )"#;
+
+const SKILL_FILES: &str =
+    "private val @P@McpSkillFiles: Map<String, String> = mapOf<String, String>(@MCP_SKILL_FILES@)";
+
+const WRAPPED: &str = "private val @P@McpWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
+  @WRAPPED_MAP@
+)";
 
 const ENDPOINT: &str = r#"class @N@McpEndpoint(vararg catalogs: Map<String, List<String>>) {
   val catalogs: List<Map<String, List<String>>> = catalogs.toList()
@@ -169,13 +170,13 @@ private fun @P@McpInternal(tool: String, detail: String): JsonObject =
       )
       put("message", "$tool: $detail")
     },
-  )
+  )"#;
 
-private fun @P@McpPut(members: MutableMap<String, JsonElement>, name: String, value: JsonElement) {
+const PUT: &str = "private fun @P@McpPut(members: MutableMap<String, JsonElement>, name: String, value: JsonElement) {
   if (value !is JsonNull) members[name] = value
-}
+}";
 
-private fun @P@McpErrorObject(code: Int, message: String, data: JsonElement?): JsonObject =
+const PROTOCOL_TAIL: &str = r#"private fun @P@McpErrorObject(code: Int, message: String, data: JsonElement?): JsonObject =
   buildJsonObject {
     put("code", code)
     if (data != null) put("data", data)
@@ -760,12 +761,12 @@ suspend fun @P@McpServe(
   }
 }"#;
 
-const RECEIVING: &str = r#"private class @P@McpRefused(val answer: JsonObject) : Exception()
+const RECEIVING: &str = "private class @P@McpRefused(val answer: JsonObject) : Exception()
 
 private fun @P@McpRefuse(kind: String, tool: String, detail: String, field: String? = null): Nothing =
-  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field)))
+  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field)))";
 
-private fun @P@McpArguments(tool: String, params: JsonObject): MutableMap<String, JsonElement> {
+const ARGUMENTS: &str = r#"private fun @P@McpArguments(tool: String, params: JsonObject): MutableMap<String, JsonElement> {
   val given = params["arguments"]
   return when (given) {
     is JsonObject -> given.toMutableMap()
@@ -779,9 +780,9 @@ private fun @P@McpSource(tool: String, arguments: MutableMap<String, JsonElement
     arguments.remove("value") ?: @P@McpRefuse("failed-validation", tool, "'value': missing field `value`", "value")
   } else {
     JsonObject(arguments)
-  }
+  }"#;
 
-private fun @P@McpNamedField(detail: String): String? {
+const RECEIVE: &str = r#"private fun @P@McpNamedField(detail: String): String? {
   if (!detail.startsWith("'")) return null
   val closing = detail.indexOf('\'', 1)
   return if (closing < 0) null else detail.substring(1, closing)
@@ -860,9 +861,9 @@ private fun @P@McpMismatch(
     "boolean" -> if (value is JsonPrimitive && !value.isString && (value.content == "true" || value.content == "false")) null else emptyList()
     else -> null
   }
-}
+}"#;
 
-private fun @P@McpToolSchema(tool: String, wrapped: Boolean): JsonElement? {
+const TOOL_SCHEMA: &str = r#"private fun @P@McpToolSchema(tool: String, wrapped: Boolean): JsonElement? {
   for (text in @P@McpCatalog["tools"].orEmpty()) {
     val parsed = Json.parseToJsonElement(text) as? JsonObject ?: continue
     if ((parsed["name"] as? JsonPrimitive)?.content == tool) {
@@ -874,9 +875,9 @@ private fun @P@McpToolSchema(tool: String, wrapped: Boolean): JsonElement? {
     }
   }
   return null
-}
+}"#;
 
-private fun @P@McpPromptSchema(prompt: String): JsonElement? {
+const PROMPT_SCHEMA: &str = r#"private fun @P@McpPromptSchema(prompt: String): JsonElement? {
   for (text in @P@McpCatalog["prompts"].orEmpty()) {
     val parsed = Json.parseToJsonElement(text) as? JsonObject ?: continue
     val arguments = parsed["arguments"] as? JsonArray ?: continue
@@ -891,21 +892,21 @@ private fun @P@McpPromptSchema(prompt: String): JsonElement? {
     }
   }
   return null
-}
+}"#;
 
-private fun <T> @P@McpHeader(tool: String, name: String, serializer: DeserializationStrategy<T>, raw: JsonElement?): T =
+const HEADER: &str = r#"private fun <T> @P@McpHeader(tool: String, name: String, serializer: DeserializationStrategy<T>, raw: JsonElement?): T =
   try {
     Json.decodeFromJsonElement(serializer, raw ?: JsonNull)
   } catch (rejected: IllegalArgumentException) {
     @P@McpRefuse("failed-validation", tool, rejected.message ?: rejected.toString(), name)
-  }
+  }"#;
 
-private fun <T : Any> @P@McpOptionalHeader(
+const OPTIONAL_HEADER: &str = "private fun <T : Any> @P@McpOptionalHeader(
   tool: String,
   name: String,
   serializer: DeserializationStrategy<T>,
   raw: JsonElement?,
-): T? = if (raw == null || raw is JsonNull) null else @P@McpHeader(tool, name, serializer, raw)"#;
+): T? = if (raw == null || raw is JsonNull) null else @P@McpHeader(tool, name, serializer, raw)";
 
 const INTERVIEW: &str = r#"/** Whether the client declared the elicitation [mode]: an empty `elicitation` is a form. */
 private fun @P@McpElicits(params: JsonObject, mode: String): Boolean {
@@ -1015,7 +1016,7 @@ const TOOL_TAIL: &str = "    else -> null
   }
 }";
 
-const RESOURCE_SUPPORT: &str = r#"
+const CAPTURED: &str = "
 
 private fun @P@McpCaptured(segments: List<Pair<String, Boolean>>, uri: String): List<String>? {
   var rest = uri
@@ -1033,7 +1034,9 @@ private fun @P@McpCaptured(segments: List<Pair<String, Boolean>>, uri: String): 
     }
   }
   return if (rest.isEmpty()) captured else null
-}
+}";
+
+const RESOURCE_SUPPORT: &str = r#"
 
 private fun @P@McpUnread(operation: String, kind: String, detail: String, field: String?): Nothing =
   throw @P@McpRefused(
@@ -1050,7 +1053,9 @@ private fun @P@McpUnread(operation: String, kind: String, detail: String, field:
   )
 
 private fun @P@McpDeclined(error: JsonElement, refusal: String): JsonObject =
-  @P@McpErrorOf(@P@McpErrorObject(-32602, refusal, error))
+  @P@McpErrorOf(@P@McpErrorObject(-32602, refusal, error))"#;
+
+const ANSWER_OF: &str = r#"
 
 private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElement): JsonObject =
   @P@McpResultOf(
@@ -1060,7 +1065,9 @@ private fun @P@McpAnswerOf(scope: String, ttl: Int, key: String, items: JsonElem
       put("resultType", "complete")
       put("ttlMs", ttl)
     },
-  )
+  )"#;
+
+const FAULTED_REQUEST: &str = r#"
 
 private fun @P@McpFaultedRequest(fault: JsonElement): JsonObject =
   @P@McpErrorOf(
@@ -1724,6 +1731,47 @@ impl<'text> Message<'text> {
             source,
         }
     }
+}
+
+/// The helpers that read a request's message, each where an arm or a prompt calls it.
+fn receiving_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
+    let tools = service.operations.iter().any(OperationDef::is_mcp_tool);
+    let prompts = service.operations.iter().any(OperationDef::is_mcp_prompt);
+    let headers: Vec<_> = service
+        .operations
+        .iter()
+        .filter(|operation| operation.is_mcp_tool())
+        .flat_map(|operation| HttpShape::of(operation).header_in)
+        .collect();
+    [
+        (true, RECEIVING),
+        (tools, ARGUMENTS),
+        (true, RECEIVE),
+        (tools, TOOL_SCHEMA),
+        (prompts, PROMPT_SCHEMA),
+        (!headers.is_empty(), HEADER),
+        (
+            headers
+                .iter()
+                .any(|header| option_inner(&header.ty).is_some()),
+            OPTIONAL_HEADER,
+        ),
+    ]
+    .into_iter()
+    .filter(|(written, _)| *written)
+    .map(|(_, template)| fill(template, prefix, named, fields))
+    .collect::<Vec<_>>()
+    .join("\n\n")
+}
+
+/// Whether the arm of `operation` writes a header beside the value it answers.
+fn puts_headers(operation: &OperationDef) -> bool {
+    let shape = HttpShape::of(operation);
+    !matches!(operation.outcome, OperationOutcome::OneWay)
+        && ((operation.mcp.task.is_none()
+            && operation.mcp.content.is_none()
+            && !shape.header_out.is_empty())
+            || (operation.mcp.interview.is_none() && !shape.error_header_out.is_empty()))
 }
 
 fn asking_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str) -> String {
@@ -2485,14 +2533,23 @@ fn resource_functions(
     if !held.any() && prompts.is_empty() && !skilled(service) && !tasked {
         return String::new();
     }
-    let mut text = fill(RESOURCE_SUPPORT, prefix, named, fields);
+    let reads = held.reads().next().is_some();
+    let mut text = String::new();
+    if reads {
+        text.push_str(&fill(CAPTURED, prefix, named, fields));
+    }
+    text.push_str(&fill(RESOURCE_SUPPORT, prefix, named, fields));
+    if reads || skilled(service) {
+        text.push_str(&fill(ANSWER_OF, prefix, named, fields));
+    }
+    text.push_str(&fill(FAULTED_REQUEST, prefix, named, fields));
     if !prompts.is_empty() {
         text.push_str(&prompt_dispatch(&prompts, prefix, named));
         for operation in &prompts {
             text.push_str(&prompt_function(operation, prefix, named, fields));
         }
     }
-    if held.reads().next().is_some() || skilled(service) {
+    if reads || skilled(service) {
         text.push_str(&read_dispatch(service, held, prefix, named));
         for operation in held.reads() {
             text.push_str(&resource_read(operation, prefix, named, fields));
@@ -2660,18 +2717,34 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let prefix = RenameRule::CamelCase.apply_to_variant(&named);
     let fields = fault_fields_typescript_name(&named);
     let held = Resourced::of(service);
+    let filled_when = |written: bool, template: &str| {
+        if written {
+            fill(template, &prefix, &named, &fields)
+        } else {
+            String::new()
+        }
+    };
+    let tools = service.operations.iter().any(OperationDef::is_mcp_tool);
     let mut published = vec![
-        fill(CATALOG, &prefix, &named, &fields)
-            .replace("@WRAPPED_MAP@", &tool_entries(service))
-            .replace(
-                CAPABILITIES_MARKER,
-                &capabilities_literal(service, &held, skilled(service)),
-            ),
+        fill(CATALOG, &prefix, &named, &fields).replace(
+            CAPABILITIES_MARKER,
+            &capabilities_literal(service, &held, skilled(service)),
+        ),
+        filled_when(service.skills.is_some(), SKILL_FILES),
+        filled_when(tools, WRAPPED).replace("@WRAPPED_MAP@", &tool_entries(service)),
         fill(ENDPOINT, &prefix, &named, &fields),
         fill(PROTOCOL, &prefix, &named, &fields),
+        filled_when(
+            service
+                .operations
+                .iter()
+                .any(|operation| operation.is_mcp_tool() && puts_headers(operation)),
+            PUT,
+        ),
+        fill(PROTOCOL_TAIL, &prefix, &named, &fields),
         fill(WRITER, &prefix, &named, &fields),
         fill(SERVING, &prefix, &named, &fields),
-        fill(RECEIVING, &prefix, &named, &fields),
+        receiving_text(service, &prefix, &named, &fields),
         asking_text(service, &prefix, &named, &fields),
         blocks_text(service, &prefix, &named, &fields),
         route(service, &held, &prefix, &named, &fields),

@@ -24,7 +24,7 @@ A crate also lists `serde_json = "1.0"` where the generated code names it:
 - a type's doc comment holds a `rust example` block, in a build with `zod` on;
 - a member is written as a bare `Value` or `Map<K, V>`.
 
-A crate that invokes a service's dispatcher, client or server macro also lists `serde_path_to_error = "0.1"`, which the generated readers use to name the path of a value serde refuses.
+A crate that invokes a service's dispatcher, client or server macro also lists `serde_path_to_error = "0.1"`, which the generated readers use to name the path of a value serde refuses. A crate that invokes a dispatcher or server macro lists `tracing = "0.1"` beside it, and one that invokes the `amqp_rpc` server macro lists `lapin`, `tokio` and `futures` as well: each macro's doc names the crates its expansion calls.
 
 A crate that declares any `pattern` also names `regex`, because the generated check calls it directly.
 

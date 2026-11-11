@@ -1,6 +1,6 @@
 //! Structs that hold no key on the wire: the message the macro declares for an operation of no
-//! argument, a unit struct strict and `nonstrict`, and a `nonstrict` struct whose every member
-//! serde skips. Each is read from `{}`, and a strict one refuses a key beside it where a
+//! argument, and a unit struct and a struct whose every member serde skips, each strict and
+//! `nonstrict`. Each is read from `{}`, and a strict one refuses a key beside it where a
 //! `nonstrict` one reads past it, on every surface.
 
 use serde::{Deserialize, Serialize};
@@ -12,10 +12,11 @@ use super::belfry_service::RingBellRequest;
 pub const PAYLOADS: [&str; 2] = ["{}", r#"{"stray":1}"#];
 
 /// Each type's name, and whether it is strict.
-pub const TYPES: [(&str, bool); 4] = [
+pub const TYPES: [(&str, bool); 5] = [
     ("RingBellRequest", true),
     ("Knell", true),
     ("OpenKnell", false),
+    ("Unheld", true),
     ("OpenUnheld", false),
 ];
 
@@ -28,6 +29,14 @@ pub struct Knell;
 #[model_schema(enable = ["jsonschema"], nonstrict)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenKnell;
+
+/// A struct whose one member serde neither writes nor reads, which crosses the wire as `{}`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct Unheld {
+    #[serde(skip)]
+    pub held: u32,
+}
 
 /// A struct whose one member serde neither writes nor reads, reading past a key beside it.
 #[model_schema(enable = ["jsonschema"], nonstrict)]
@@ -79,6 +88,7 @@ pub fn json_schema_of(name: &str) -> serde_json::Value {
         "RingBellRequest" => RingBellRequest::json_schema(),
         "Knell" => Knell::json_schema(),
         "OpenKnell" => OpenKnell::json_schema(),
+        "Unheld" => Unheld::json_schema(),
         _ => OpenUnheld::json_schema(),
     }
 }
@@ -92,6 +102,8 @@ pub fn ts_definitions() -> Vec<String> {
         Knell::zod_schema(),
         OpenKnell::ts_definition(),
         OpenKnell::zod_schema(),
+        Unheld::ts_definition(),
+        Unheld::zod_schema(),
         OpenUnheld::ts_definition(),
         OpenUnheld::zod_schema(),
     ]
@@ -105,12 +117,15 @@ fn serde_reads_each_empty_struct_from_an_empty_object_and_a_strict_one_refuses_a
             "RingBellRequest" => serde_told::<RingBellRequest>(json),
             "Knell" => serde_told::<Knell>(json),
             "OpenKnell" => serde_told::<OpenKnell>(json),
+            "Unheld" => serde_told::<Unheld>(json),
             _ => serde_told::<OpenUnheld>(json),
         })
         .collect();
     assert_eq!(told, expected());
     let read_past: OpenUnheld = serde_json::from_str(PAYLOADS[1]).unwrap();
     assert_eq!(read_past.held, 0);
+    let read: Unheld = serde_json::from_str(PAYLOADS[0]).unwrap();
+    assert_eq!(read.held, 0);
 }
 
 #[test]

@@ -458,6 +458,48 @@ fn held_default(ty: &syn::Type, written: Written) -> TokenStream {
     }
 }
 
+/// The statements that answer `Ok` of the value serde's derive builds for a braced struct none of
+/// whose members it reads: each member from its own `default`, else from the container's, held
+/// under `container`, else from `Default`.
+#[cfg(feature = "serde")]
+pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> TokenStream {
+    let whole = written_default(&item.attrs);
+    let mut reads_the_whole = false;
+    let members: Vec<TokenStream> = item
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let member = field.ident.as_ref()?;
+            let value = match (written_default(&field.attrs), &whole) {
+                (Some(Written::Function(path)), _) => quote! { #path() },
+                (None, Some(_)) => {
+                    reads_the_whole = true;
+                    quote! { #container.#member }
+                }
+                (Some(Written::Bare), _) | (None, None) => {
+                    quote! { ::core::default::Default::default() }
+                }
+            };
+            let built_in = field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"));
+            Some(quote! { #(#built_in)* #member: #value })
+        })
+        .collect();
+    let held = whole.filter(|_| reads_the_whole).map(|written| {
+        let built = match written {
+            Written::Bare => quote! { ::core::default::Default::default() },
+            Written::Function(path) => quote! { #path() },
+        };
+        quote! { let #container: Self = #built; }
+    });
+    quote! {
+        #held
+        ::core::result::Result::Ok(Self { #(#members),* })
+    }
+}
+
 /// Whether `text` holds the placeholder of a default.
 #[cfg(feature = "zod")]
 pub fn holds_a_placeholder(text: &str) -> bool {
