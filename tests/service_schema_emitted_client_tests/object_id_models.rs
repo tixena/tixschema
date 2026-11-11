@@ -233,13 +233,13 @@ const ROWS: [Row; 32] = [
         swift: Told::Serde,
     },
     Row {
-        dart: Told::Refused,
+        dart: Told::Serde,
         json: r#"{"id":1,"$oid":"507f1f77bcf86cd79943901z"}"#,
-        kotlin: Told::Refused,
+        kotlin: Told::Serde,
         read_as: "Stampage",
         schema: true,
         serde: true,
-        swift: Told::Refused,
+        swift: Told::Serde,
     },
     Row {
         dart: Told::Serde,

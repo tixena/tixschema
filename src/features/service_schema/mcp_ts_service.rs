@@ -772,7 +772,20 @@ function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
   return deepest;
 }
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read; none where it reads or only the validator refuses it. */
+/** Each issue at its dotted path, one per key of an `unrecognized_keys` issue. */
+function __p__McpListed(
+  issues: ReadonlyArray<__p__McpIssue & { readonly message: string }>,
+): Array<{ detail: string; field: string | undefined }> {
+  return issues.flatMap((issue) => {
+    if (issue.code === "unrecognized_keys" && issue.keys !== undefined) {
+      return issue.keys.map((key) => ({ detail: `Unrecognized key: "${key}"`, field: [...issue.path, key].join(".") }));
+    }
+    const steps = __p__McpSteps(issue);
+    return [{ detail: issue.message, field: steps.length === 0 ? undefined : steps.join(".") }];
+  });
+}
+
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -789,13 +802,20 @@ function __p__McpUnread(
       .join("; ");
     return __FAULT__("failed-validation", operation, detail, answers);
   }
-  const unread = issues.find((issue) => __p__McpUnreadable.has(issue.code));
+  const unreadable = issues.filter((issue) => __p__McpUnreadable.has(issue.code));
+  const unread = unreadable[0];
   if (unread === undefined) return undefined;
   const steps = __p__McpSteps(unread);
-  const detail = issues
-    .map((issue) => (issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
+  const detail = unreadable
+    .flatMap((issue) =>
+      issue.code === "unrecognized_keys" && issue.keys !== undefined
+        ? issue.keys.map((key) => `'${[...issue.path, key].join(".")}': Unrecognized key: "${key}"`)
+        : [issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`],
+    )
     .join("; ");
-  return __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
+  const fault = __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
+  const listed = __p__McpListed(unreadable);
+  return listed.length < 2 ? fault : { ...fault, issues: listed };
 }
 
 /** The `-32603` answer of a handler that came apart. */

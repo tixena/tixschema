@@ -123,6 +123,7 @@ use crate::utils::{
 };
 use crate::utils::{
     TrivialPattern, is_nonstrict, record_field_validator, record_nonstrict, trivial_pattern,
+    within_variant,
 };
 
 use crate::features::serde::brand_slot;
@@ -501,6 +502,7 @@ struct DiscriminatedVariant {
     /// The variant's own `#[serde(flatten)]` sources, apart from `field_defs`: they write no key of
     /// their own.
     flattened_fields: Vec<FieldDef>,
+    ident: syn::Ident,
     kind: VariantKind,
 }
 
@@ -1154,10 +1156,18 @@ struct UnitRead {
 #[cfg(any(feature = "typescript", feature = "zod"))]
 struct MergedOperand {
     absence: SourceAbsence,
+    /// What reads the source as absent where serde reads it as `None` only where its functions
+    /// answer `null` (see [`zod_absent_where_answered_null`]).
+    #[cfg(feature = "zod")]
+    answered_null: Option<String>,
     /// What the source contributes per branch when it names a registered choice — one operand per
     /// branch, empty otherwise (falls back to `spelling`).
     #[cfg(feature = "zod")]
     branches: Vec<String>,
+    /// Whether a branch that holds the source joins the holder's own object closed (see
+    /// [`zod_closes_beside_holder`]).
+    #[cfg(feature = "zod")]
+    closes: bool,
     /// Whether serde reads the source as the entries of a map, which its absence leaves in the
     /// object (see [`flattened_as_entries`]).
     #[cfg(feature = "zod")]
@@ -2395,7 +2405,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // field written at the item's own name reads that answer back the way any other reference does.
     record_item(&item);
     record_item_functions(&item, &parsed_args);
-    record_nonstrict(reads_past_a_stray(&item, &parsed_args));
+    record_strictness(&item, &parsed_args);
     #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
     #[cfg(feature = "serde")]
@@ -3500,7 +3510,11 @@ fn compute_flatten_outputs(
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
             #[cfg(feature = "zod")]
+            answered_null: None,
+            #[cfg(feature = "zod")]
             branches: Vec::new(),
+            #[cfg(feature = "zod")]
+            closes: false,
             #[cfg(feature = "zod")]
             entries: false,
             spelling: flattened_ts_spelling(fld),
@@ -3514,10 +3528,13 @@ fn compute_flatten_outputs(
         .iter()
         .map(|fld| MergedOperand {
             absence: SourceAbsence::written(fld),
+            answered_null: zod_absent_where_answered_null(fld)
+                .map(|absent| zod_beside_holder(fld, own_keys, &absent)),
             branches: flattened_zod_branches(fld)
                 .iter()
                 .map(|branch| zod_beside_holder(fld, own_keys, branch))
                 .collect(),
+            closes: zod_closes_beside_holder(fld),
             entries: flattened_as_entries(fld),
             spelling: zod_beside_holder(fld, own_keys, &fld.zod_merged_schema()),
         })
@@ -3532,12 +3549,12 @@ fn compute_flatten_outputs(
 }
 
 /// `schema`, the Zod spelling of the flattened source `fld`, handed the keys the holder's own
-/// members `own_keys` do not take where the type names a `preprocess`, as serde hands its function
-/// them: an intersection hands both sides the whole object. A payload that is no object is handed
-/// on as it is.
+/// members `own_keys` do not take where the type or the member names a `preprocess`, as serde hands
+/// its function them: an intersection hands both sides the whole object. A payload that is no
+/// object is handed on as it is.
 #[cfg(feature = "zod")]
 fn zod_beside_holder(fld: &FieldDef, own_keys: &[String], schema: &str) -> String {
-    if own_keys.is_empty() || !fld.zod_names_a_preprocess() {
+    if own_keys.is_empty() || !(fld.zod_names_a_preprocess() || member_names_a_preprocess(fld)) {
         return schema.to_owned();
     }
     let taken = own_keys
@@ -3550,6 +3567,38 @@ fn zod_beside_holder(fld: &FieldDef, own_keys: &[String], schema: &str) -> Strin
          !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
          ![{taken}].includes(key))) : held, {schema})"
     )
+}
+
+/// Whether the flattened member `fld` names a `preprocess` of its own.
+#[cfg(feature = "zod")]
+fn member_names_a_preprocess(fld: &FieldDef) -> bool {
+    fld.model_schema_prop_meta
+        .as_ref()
+        .is_some_and(|meta| !meta.preprocess.is_empty())
+}
+
+/// Whether a branch that holds the flattened member `fld` joins a `nonstrict` holder's own object
+/// closed: serde reads the member from what its functions answer, as its type reads it, so a key
+/// that type refuses is refused beside every member. The intersection reports such a key only
+/// where the holder's own object refuses it too.
+#[cfg(feature = "zod")]
+fn zod_closes_beside_holder(fld: &FieldDef) -> bool {
+    is_nonstrict() && member_names_a_preprocess(fld)
+}
+
+/// The operand a `nonstrict` holder's object joins where the flattened `Option` `fld`, which names
+/// a `preprocess` and holds no map, is absent: taken only where its functions answer `null`, as
+/// serde reads `None` from no other answer, and holding no key, so the holder reads past the
+/// member's keys. `None` for every other source.
+#[cfg(feature = "zod")]
+fn zod_absent_where_answered_null(fld: &FieldDef) -> Option<String> {
+    let functions = &fld.model_schema_prop_meta.as_ref()?.preprocess;
+    (zod_closes_beside_holder(fld) && fld.is_optional() && !flattened_as_entries(fld)).then(|| {
+        format!(
+            "{}.transform(() => ({{}}))",
+            zod_preprocess_wrap("z.null()".to_owned(), functions)
+        )
+    })
 }
 
 /// Whether the registration a flattened source names offers its own absence, which is the second
@@ -6238,16 +6287,20 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
     type_path.path.get_ident().cloned()
 }
 
-/// Whether serde reads past a key no member of `item` declares.
+/// Records whether serde reads past a key no member of `item` declares, and the variants of a
+/// `nonstrict` enum that refuse one all the same.
 #[cfg(feature = "serde")]
-fn reads_past_a_stray(item: &Item, args: &ModelSchemaArgs) -> bool {
-    strict::reads_past_a_stray(item, args)
+fn record_strictness(item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(
+        strict::reads_past_a_stray(item, args),
+        strict::refusing_variants(item, args),
+    );
 }
 
 /// Without serde nothing flattens, and `nonstrict` alone says it.
 #[cfg(not(feature = "serde"))]
-const fn reads_past_a_stray(_item: &Item, args: &ModelSchemaArgs) -> bool {
-    args.nonstrict
+fn record_strictness(_item: &Item, args: &ModelSchemaArgs) {
+    record_nonstrict(args.nonstrict, Vec::new());
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
@@ -12560,7 +12613,6 @@ fn collect_discriminated_variants(
         let mut flattened_fields: Vec<FieldDef> = Vec::new();
         let mut bound: Vec<BoundMember> = Vec::new();
         let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
-        let total_fields = item.fields.len();
         for (index, field) in item.fields.iter_mut().enumerate() {
             let omission = parse_serde_key_omission(&field.attrs);
             let positional = field.ident.is_none();
@@ -12600,7 +12652,7 @@ fn collect_discriminated_variants(
             push_described_field(&mut field_defs, f_def);
         }
         per_variant_checks.push((
-            variant_check_pattern(&item.ident, &declared_kind, total_fields, &bound),
+            variant_check_pattern(&item.ident, &declared_kind, item.fields.len(), &bound),
             checks,
         ));
 
@@ -12610,6 +12662,7 @@ fn collect_discriminated_variants(
                 discriminator_value: final_name,
                 field_defs,
                 flattened_fields,
+                ident: item.ident.clone(),
                 kind: wire_kind,
             });
         }
@@ -13013,7 +13066,9 @@ fn render_external_variant(
         );
     }
 
-    let (content_ts, content_zod, content_json) = render_external_content(variant, self_type_name);
+    let (content_ts, content_zod, content_json) = within_variant(&variant.ident, || {
+        render_external_content(variant, self_type_name)
+    });
 
     #[cfg(feature = "zod")]
     let zod = {
@@ -13719,7 +13774,9 @@ fn render_internal_variants(
                 .filter(|variant| variant_on_the_wire(variant)),
         )
         .map(|(variant, declared)| {
-            render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            within_variant(&declared.ident, || {
+                render_internal_variant(variant, &declared.ident, tag_name, &enum_name)
+            })
         })
         .collect()
 }
@@ -14025,11 +14082,9 @@ fn render_untagged_variant(
 ) -> Result<(String, String, proc_macro2::TokenStream), syn::Error> {
     match (kind, members.field_defs.as_slice()) {
         (VariantKind::TupleSingle, [fld]) => Ok(render_untagged_tuple_single(fld, self_type_name)),
-        (VariantKind::Named, _) => Ok(render_untagged_named(
-            members,
-            self_type_name,
-            &variant.ident.to_string(),
-        )),
+        (VariantKind::Named, _) => Ok(within_variant(&variant.ident, || {
+            render_untagged_named(members, self_type_name, &variant.ident.to_string())
+        })),
         (VariantKind::Unit, _) if lone_slot_off_wire(variant) => {
             Err(collapsed_untagged_variant_error(variant))
         }
@@ -15343,9 +15398,9 @@ fn generate_variant_code(
             // Unit variant: no additional fields beyond the discriminator TypeScript: { type:
             // "Variant" } Zod: { type: z.literal("Variant") }
         }
-        VariantKind::Named => {
+        VariantKind::Named => within_variant(&variant.ident, || {
             write_adjacent_named_variant_fields(variant, content_name, self_type_name, &mut parts);
-        }
+        }),
         VariantKind::TupleSingle => {
             write_tuple_single_variant_fields(field_defs, content_name, self_type_name, &mut parts);
         }
@@ -22573,29 +22628,46 @@ fn zod_operand_contributions(operand: &MergedOperand) -> Vec<&str> {
 /// source naming a choice, one more without the source wherever it offers its own absence, and the
 /// cross product of those across the sources. Always at least one, the empty chain a source-less
 /// object closes with. The absence of a source read as entries holds the keys serde drops with it.
+/// Each chain is told with whether it holds a source that closes the holder's own object.
 #[cfg(feature = "zod")]
-fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<String> {
-    let mut joins = vec![String::new()];
+fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<(String, bool)> {
+    let mut joins = vec![(String::new(), false)];
     for operand in operands {
         joins = joins
             .iter()
-            .flat_map(|join| {
-                let mut grown: Vec<String> = zod_operand_contributions(operand)
+            .flat_map(|(join, closed)| {
+                let mut grown: Vec<(String, bool)> = zod_operand_contributions(operand)
                     .into_iter()
-                    .map(|schema| format!("{join}.and({})", deferred_zod_operand(schema)))
+                    .map(|schema| {
+                        (
+                            format!("{join}.and({})", deferred_zod_operand(schema)),
+                            *closed || operand.closes,
+                        )
+                    })
                     .collect();
                 if operand.absence.offered() {
-                    grown.push(if operand.entries {
+                    let absent = if operand.entries {
                         format!("{join}.and({ZOD_DROPPED_ENTRIES})")
+                    } else if let Some(answered) = &operand.answered_null {
+                        format!("{join}.and({answered})")
                     } else {
                         join.clone()
-                    });
+                    };
+                    grown.push((absent, *closed));
                 }
                 grown
             })
             .collect();
     }
     joins
+}
+
+/// `own`, the Zod object of a holder's own members, closed to a key none of them declares: a
+/// `nonstrict` holder's is written `z.object`, and a strict holder's is closed already.
+#[cfg(feature = "zod")]
+fn zod_closed_own(own: &str) -> String {
+    own.strip_prefix("z.object(")
+        .map_or_else(|| own.to_owned(), |rest| format!("z.strictObject({rest}"))
 }
 
 /// What the object's schema is written as: the statements bound ahead of it, and the expression
@@ -22609,19 +22681,30 @@ fn zod_merged_statements(
     // The root is decided once every combination is counted: one combination writes the object's
     // own keys where they stood, and more bind them to a name.
     let joins = zod_merged_joins(operands);
-    if let [only] = joins.as_slice() {
-        return (String::new(), format!("{own}{only}"));
+    if let [(only, closed)] = joins.as_slice() {
+        let root = if *closed {
+            zod_closed_own(own)
+        } else {
+            own.to_owned()
+        };
+        return (String::new(), format!("{root}{only}"));
     }
 
     let own_name = format!("{item_name}$OwnSchema");
-    let written = joins.iter().fold(String::new(), |mut acc, join| {
-        let _ = writeln!(acc, "  {own_name}{join},");
+    let closed_name = format!("{item_name}$ClosedSchema");
+    let written = joins.iter().fold(String::new(), |mut acc, (join, closed)| {
+        let root = if *closed { &closed_name } else { &own_name };
+        let _ = writeln!(acc, "  {root}{join},");
         acc
     });
-    (
-        format!("const {own_name} = {own};\n\n"),
-        format!("z.union([\n{written}])"),
-    )
+    let mut bound = String::new();
+    if joins.iter().any(|(_, closed)| !closed) {
+        let _ = write!(bound, "const {own_name} = {own};\n\n");
+    }
+    if joins.iter().any(|(_, closed)| *closed) {
+        let _ = write!(bound, "const {closed_name} = {};\n\n", zod_closed_own(own));
+    }
+    (bound, format!("z.union([\n{written}])"))
 }
 
 /// The same multiplication [`zod_merged_statements`] performs, written where the object stands
@@ -22629,12 +22712,14 @@ fn zod_merged_statements(
 /// once there is more than one.
 #[cfg(feature = "zod")]
 fn zod_merged_object(own: &str, operands: &[MergedOperand]) -> String {
+    let closed_own = zod_closed_own(own);
+    let root = |closed: bool| if closed { closed_own.as_str() } else { own };
     let joins = zod_merged_joins(operands);
-    if let [only] = joins.as_slice() {
-        return format!("{own}{only}");
+    if let [(only, closed)] = joins.as_slice() {
+        return format!("{}{only}", root(*closed));
     }
-    let written = joins.iter().fold(String::new(), |mut acc, join| {
-        let _ = writeln!(acc, "  {own}{join},");
+    let written = joins.iter().fold(String::new(), |mut acc, (join, closed)| {
+        let _ = writeln!(acc, "  {}{join},", root(*closed));
         acc
     });
     format!("z.union([\n{written}])")

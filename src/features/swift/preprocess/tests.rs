@@ -7,12 +7,13 @@ use proc_macro2::Span;
 
 use super::{
     Entry, Member, Plain, beside, called, entries_of, entry_payload, keys_standing_for, member,
-    naming_its_owner, note, note_entries, note_keys, note_tag_keys, optional, struct_keys,
-    taken_with, takes,
+    naming_its_owner, note, note_entries, note_keys, note_tag_keys, optional, payload_for,
+    struct_keys, taken_with, takes,
 };
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::swift::read::{Presence, Source};
 use crate::field_type::get_field_def;
+use crate::utils::record_nonstrict;
 
 fn named(names: &[&str]) -> Vec<FunctionName> {
     names
@@ -45,6 +46,7 @@ fn text_read(functions: &[FunctionName], source: &Source) -> (String, Vec<String
             keys: "CodingKeys",
             plain: Plain::Declared,
             real_type: "String",
+            refusing: false,
             stem: "label",
             units: &[],
             walked: false,
@@ -171,6 +173,7 @@ fn a_walked_member_is_read_through_a_type_written_for_it() {
             keys: "CodingKeys",
             plain: Plain::Declared,
             real_type: "[HeldLater]?",
+            refusing: false,
             stem: "heldList",
             units: &[],
             walked: true,
@@ -218,6 +221,7 @@ fn a_member_read_as_another_type_is_turned_into_its_own_from_the_local() {
                 wire: "HintKeyedMap",
             },
             real_type: "[UInt32: String]",
+            refusing: false,
             stem: "held",
             units: &[],
             walked: false,
@@ -417,6 +421,7 @@ fn an_optional_member_that_names_a_function_is_nil_where_the_object_holds_none_o
                 keys: "CodingKeys",
                 plain: Plain::Declared,
                 real_type: "PreprocessOptionalHere",
+                refusing: false,
                 stem: "held",
                 units: &[],
                 walked: false,
@@ -447,4 +452,58 @@ fn an_optional_member_that_names_a_function_is_nil_where_the_object_holds_none_o
         )
     );
     note_tag_keys("PreprocessOptionalTag", Vec::new());
+}
+
+/// Beside a `nonstrict` holder, a flattened `Option` that names a function is `nil` exactly where
+/// its functions answer `null`, as serde reads it, and is read from any other answer as a payload
+/// of its own, refusing a key its type does not declare; each function is called once, on the
+/// object the member is handed.
+#[test]
+fn an_optional_member_that_names_a_function_beside_a_nonstrict_holder_is_nil_where_it_answers_null()
+{
+    let functions = named(&["asNull"]);
+    let def = get_field_def("held", &syn::parse_quote!(PreprocessOptionalHere), "");
+    record_nonstrict(true, Vec::new());
+    let read = optional(
+        &Member {
+            def: &def,
+            flat: false,
+            functions: &functions,
+            hint: "Hint",
+            keys: "CodingKeys",
+            plain: Plain::Declared,
+            real_type: "PreprocessOptionalHere",
+            refusing: true,
+            stem: "held",
+            units: &[],
+            walked: false,
+        },
+        &Source::Beside("taken + [\"note\"]".to_owned()),
+        &["label".to_owned()],
+        &|held| format!("self.held = {held}"),
+        &mut Vec::new(),
+    );
+    record_nonstrict(false, Vec::new());
+    assert_eq!(
+        read,
+        "let heldHandedPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
+         [\"note\"]).value; let heldPayload: Any = asNull(heldHandedPayload); if heldPayload is \
+         NSNull { self.held = nil } else { self.held = try \
+         SwiftSchemaPayload.readRefusing(PreprocessOptionalHere.self, from: heldPayload, at: \
+         decoder.codingPath) }"
+    );
+}
+
+/// The payload helper declares the read that refuses a key only where a read calls it, and keeps
+/// the read every other type calls.
+#[test]
+fn the_payload_helper_declares_the_refusing_read_only_where_it_is_called() {
+    let refusing =
+        payload_for("try SwiftSchemaPayload.readRefusing(Held.self, from: payload, at: path)");
+    assert!(refusing.contains("static func readRefusing<Read: Decodable>"));
+    assert!(refusing.contains("static func read<Read: Decodable>"));
+    assert!(
+        !payload_for("try SwiftSchemaPayload.read(Held.self, from: payload, at: path)")
+            .contains("readRefusing")
+    );
 }

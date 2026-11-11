@@ -14,11 +14,11 @@ use crate::features::kotlin::{
 };
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
-    answers_key, is_content_list, is_content_pair, is_prompt_messages, wrapped_ident,
+    answers_key, is_content_list, is_content_pair, is_prompt_messages, read_apart, wrapped_ident,
 };
 use crate::service_schema::parse::{
-    HttpShape, McpCompletesKind, OperationDef, OperationInputs, OperationOutcome, PathSegment,
-    ServiceDef, is_unit_type, option_inner, wire_key, written,
+    HttpShape, McpCompletesKind, McpResourceUri, OperationDef, OperationInputs, OperationOutcome,
+    PathSegment, ServiceDef, is_unit_type, option_inner, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
 use crate::service_schema::support::fault_fields_typescript_name;
@@ -128,10 +128,21 @@ private fun @P@McpServeQuote(text: String, into: StringBuilder) {
   into.append('"')
 }
 
-private fun @P@McpFaultObject(kind: String, operation: String, detail: String, field: String? = null): JsonObject =
+private fun @P@McpFaultObject(
+  kind: String,
+  operation: String,
+  detail: String,
+  field: String? = null,
+  issues: List<Pair<String?, String>> = emptyList(),
+): JsonObject =
   buildJsonObject {
     put("detail", detail)
     if (field != null) put("field", field)
+    if (issues.isNotEmpty()) {
+      putJsonArray("issues") {
+        for ((at, said) in issues) add(buildJsonObject { put("detail", said); if (at != null) put("field", at) })
+      }
+    }
     put("kind", kind)
     put("operation", operation)
   }
@@ -763,8 +774,14 @@ suspend fun @P@McpServe(
 
 const RECEIVING: &str = "private class @P@McpRefused(val answer: JsonObject) : Exception()
 
-private fun @P@McpRefuse(kind: String, tool: String, detail: String, field: String? = null): Nothing =
-  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field)))";
+private fun @P@McpRefuse(
+  kind: String,
+  tool: String,
+  detail: String,
+  field: String? = null,
+  issues: List<Pair<String?, String>> = emptyList(),
+): Nothing =
+  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field, issues)))";
 
 const ARGUMENTS: &str = r#"private fun @P@McpArguments(tool: String, params: JsonObject): MutableMap<String, JsonElement> {
   val given = params["arguments"]
@@ -794,9 +811,10 @@ private fun <T> @P@McpReceive(
   unjudged: DeserializationStrategy<*>,
   source: JsonElement,
   schema: JsonElement? = null,
-  refuse: (kind: String, detail: String, field: String?) -> Nothing = { kind, detail, field ->
-    @P@McpRefuse(kind, tool, detail, field)
-  },
+  passed: Set<String> = emptySet(),
+  every: Boolean = false,
+  refuse: (kind: String, detail: String, field: String?, issues: List<Pair<String?, String>>) -> Nothing =
+    { kind, detail, field, issues -> @P@McpRefuse(kind, tool, detail, field, issues) },
 ): T {
   try {
     return Json.decodeFromJsonElement(serializer, source)
@@ -804,62 +822,97 @@ private fun <T> @P@McpReceive(
     val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
     val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
-    if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail))
-    val path = @P@McpMismatch(schema, source)?.joinToString(".").orEmpty()
-    if (path.isEmpty()) refuse("failed-validation", detail, null)
-    refuse("failed-validation", "'$path': $detail", path)
+    if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
+    val found = mutableListOf<Pair<String, String>>()
+    @P@McpMismatches(schema, source, null, passed, emptyList(), found)
+    val path = found.firstOrNull()?.first.orEmpty()
+    if (path.isEmpty()) refuse("failed-validation", detail, null, emptyList())
+    if (!every || found.size < 2) refuse("failed-validation", "'$path': $detail", path, emptyList())
+    val further = found.drop(1)
+    val lines = listOf("'$path': $detail") + further.map { (at, said) -> if (at.isEmpty()) said else "'$at': $said" }
+    val issues = listOf<Pair<String?, String>>(path to detail) + further.map { (at, said) -> at.ifEmpty { null } to said }
+    refuse("failed-validation", lines.joinToString("; "), path, issues)
   }
 }
 
-private fun @P@McpMismatch(
+private fun @P@McpMismatches(
   schema: JsonElement?,
   value: JsonElement?,
-  defs: JsonObject? = (schema as? JsonObject)?.get("\$defs") as? JsonObject,
-): List<String>? {
-  if (schema !is JsonObject) return null
+  defs: JsonObject?,
+  passed: Set<String>,
+  at: List<String>,
+  found: MutableList<Pair<String, String>>,
+) {
+  if (schema !is JsonObject) return
+  val held = defs ?: schema["\$defs"] as? JsonObject
+  fun refuse(steps: List<String>, said: String) {
+    found.add(steps.joinToString(".") to said)
+  }
   val reference = (schema["\$ref"] as? JsonPrimitive)?.content
-  if (reference != null) return @P@McpMismatch(defs?.get(reference.substringAfterLast('/')), value, defs)
+  if (reference != null) {
+    @P@McpMismatches(held?.get(reference.substringAfterLast('/')), value, held, passed, at, found)
+    return
+  }
   val alternatives = schema["anyOf"] as? JsonArray
   if (alternatives != null) {
-    if (value == null || value is JsonNull) return null
+    if (value == null || value is JsonNull) return
+    var named: List<Pair<String, String>>? = null
     for (alternative in alternatives) {
       if (((alternative as? JsonObject)?.get("type") as? JsonPrimitive)?.content == "null") continue
-      return @P@McpMismatch(alternative, value, defs)
+      val own = mutableListOf<Pair<String, String>>()
+      @P@McpMismatches(alternative, value, held, passed, at, own)
+      if (own.isEmpty()) return
+      if (named == null) named = own
     }
-    return null
+    named?.let { found.addAll(it) }
+    return
   }
   val allowed = schema["enum"] as? JsonArray
-  if (allowed != null && value !in allowed) return emptyList()
-  return when ((schema["type"] as? JsonPrimitive)?.content) {
+  if (allowed != null && value !in allowed) {
+    refuse(at, "invalid value, expected one of the listed values")
+    return
+  }
+  when ((schema["type"] as? JsonPrimitive)?.content) {
     "object" -> {
-      if (value !is JsonObject) return emptyList()
+      if (value !is JsonObject) {
+        refuse(at, "invalid type, expected an object")
+        return
+      }
       val properties = schema["properties"] as? JsonObject
       val others = schema["additionalProperties"]
-      for ((key, held) in value) {
+      for ((key, entry) in value) {
+        if (key in passed) continue
         val declared = properties?.get(key)
-        if (declared == null && (others as? JsonPrimitive)?.content == "false") return listOf(key)
-        val found = @P@McpMismatch(declared ?: others, held, defs)
-        if (found != null) return listOf(key) + found
+        if (declared == null && (others as? JsonPrimitive)?.content == "false") {
+          refuse(at + key, "unknown field `$key`")
+          continue
+        }
+        @P@McpMismatches(declared ?: others, entry, held, emptySet(), at + key, found)
       }
       for (key in schema["required"] as? JsonArray ?: JsonArray(emptyList())) {
         val name = (key as JsonPrimitive).content
-        if (name !in value) return listOf(name)
+        if (name !in value && name !in passed) refuse(at + name, "missing field `$name`")
       }
-      null
     }
     "array" -> {
-      if (value !is JsonArray) return emptyList()
-      for ((at, element) in value.withIndex()) {
-        val found = @P@McpMismatch(schema["items"], element, defs)
-        if (found != null) return listOf(at.toString()) + found
+      if (value !is JsonArray) {
+        refuse(at, "invalid type, expected an array")
+        return
       }
-      null
+      for ((index, element) in value.withIndex()) {
+        @P@McpMismatches(schema["items"], element, held, emptySet(), at + index.toString(), found)
+      }
     }
-    "string" -> if (value is JsonPrimitive && value.isString) null else emptyList()
-    "integer" -> if (value is JsonPrimitive && !value.isString && value.content.toDoubleOrNull()?.let { it == Math.floor(it) } == true) null else emptyList()
-    "number" -> if (value is JsonPrimitive && !value.isString && value.content.toDoubleOrNull() != null) null else emptyList()
-    "boolean" -> if (value is JsonPrimitive && !value.isString && (value.content == "true" || value.content == "false")) null else emptyList()
-    else -> null
+    "string" -> if (!(value is JsonPrimitive && value.isString)) refuse(at, "invalid type, expected a string")
+    "integer" -> if (!(value is JsonPrimitive && !value.isString && value.content.toDoubleOrNull()?.let { it == Math.floor(it) } == true)) {
+      refuse(at, "invalid type, expected an integer")
+    }
+    "number" -> if (!(value is JsonPrimitive && !value.isString && value.content.toDoubleOrNull() != null)) {
+      refuse(at, "invalid type, expected a number")
+    }
+    "boolean" -> if (!(value is JsonPrimitive && !value.isString && (value.content == "true" || value.content == "false"))) {
+      refuse(at, "invalid type, expected a boolean")
+    }
   }
 }"#;
 
@@ -873,6 +926,17 @@ const TOOL_SCHEMA: &str = r#"private fun @P@McpToolSchema(tool: String, wrapped:
       val defs = schema["\$defs"] ?: return held
       return JsonObject(held + ("\$defs" to defs))
     }
+  }
+  return null
+}"#;
+
+const READ_SCHEMA: &str = r#"/** The schema of the message each resource template reads, as the JSON text Rust wrote. */
+private val @P@McpReadInputs: List<String> = listOf<String>(@MCP_READS@)
+
+private fun @P@McpReadSchema(operation: String): JsonElement? {
+  for (text in @P@McpReadInputs) {
+    val parsed = Json.parseToJsonElement(text) as? JsonObject ?: continue
+    if ((parsed["name"] as? JsonPrimitive)?.content == operation) return parsed["input"]
   }
   return null
 }"#;
@@ -1038,14 +1102,20 @@ private fun @P@McpCaptured(segments: List<Pair<String, Boolean>>, uri: String): 
 
 const RESOURCE_SUPPORT: &str = r#"
 
-private fun @P@McpUnread(operation: String, kind: String, detail: String, field: String?): Nothing =
+private fun @P@McpUnread(
+  operation: String,
+  kind: String,
+  detail: String,
+  field: String?,
+  issues: List<Pair<String?, String>> = emptyList(),
+): Nothing =
   throw @P@McpRefused(
     @P@McpErrorOf(
       @P@McpErrorObject(
         -32602,
         "Invalid params",
         buildJsonObject {
-          put("fault", @P@McpFaultObject(kind, operation, detail, field))
+          put("fault", @P@McpFaultObject(kind, operation, detail, field, issues))
           put("isServiceFault", true)
         },
       ),
@@ -1704,6 +1774,10 @@ pub const TEMPLATES_MARKER: &str = "@MCP_TEMPLATES@";
 /// Where the accessor writes the prompts, as the comma-joined Kotlin literals of their JSON text.
 pub const PROMPTS_MARKER: &str = "@MCP_PROMPTS@";
 
+/// Where the accessor writes each resource template's message schema, as Kotlin literals of
+/// their JSON text.
+pub const READS_MARKER: &str = "@MCP_READS@";
+
 /// The text the accessor replaces with the skills' JSON texts, each a Kotlin literal.
 pub const SKILLS_MARKER: &str = "@MCP_SKILLS@";
 
@@ -1720,6 +1794,8 @@ type TaskCase = (String, String);
 /// JSON schema its members are located by when the message does not read.
 #[derive(Clone, Copy)]
 struct Message<'text> {
+    /// A refused read lists every mismatch the walk finds, not the first alone.
+    every: bool,
     schema: &'text str,
     source: &'text str,
 }
@@ -1727,6 +1803,7 @@ struct Message<'text> {
 impl<'text> Message<'text> {
     const fn unschemed(source: &'text str) -> Self {
         Self {
+            every: false,
             schema: "null",
             source,
         }
@@ -1749,6 +1826,16 @@ fn receiving_text(service: &ServiceDef, prefix: &str, named: &str, fields: &str)
         (true, RECEIVE),
         (tools, TOOL_SCHEMA),
         (prompts, PROMPT_SCHEMA),
+        (
+            service.operations.iter().any(|operation| {
+                operation
+                    .mcp
+                    .resource
+                    .as_ref()
+                    .is_some_and(McpResourceUri::is_template)
+            }),
+            READ_SCHEMA,
+        ),
         (!headers.is_empty(), HEADER),
         (
             headers
@@ -2130,6 +2217,15 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .map(|skill| literal(&::std::string::ToString::to_string(skill)))
                 .collect::<::std::vec::Vec<_>>()
                 .join(", ");
+            let reads = Self::mcp_read_inputs()
+                .into_iter()
+                .map(|(name, input)| {
+                    literal(&::std::string::ToString::to_string(
+                        &::serde_json::json!({ "input": input, "name": name }),
+                    ))
+                })
+                .collect::<::std::vec::Vec<_>>()
+                .join(", ");
             let skill_files = Self::mcp_skill_files()
                 .iter()
                 .map(|file| {
@@ -2147,6 +2243,7 @@ pub fn accessor(service: &ServiceDef) -> TokenStream {
                 .replace(#RESOURCES_MARKER, &resources)
                 .replace(#TEMPLATES_MARKER, &templates)
                 .replace(#PROMPTS_MARKER, &prompts)
+                .replace(#READS_MARKER, &reads)
                 .replace(#SKILLS_MARKER, &skills)
                 .replace(#SKILL_FILES_MARKER, &skill_files)
                 .replace(#NAMES_MARKER, &names)
@@ -2770,7 +2867,12 @@ fn resource_body(
     refusal: &str,
     success: &str,
 ) -> String {
-    let Message { schema, source } = message;
+    let Message {
+        every: lists,
+        schema,
+        source,
+    } = message;
+    let every = if lists { ", every = true" } else { "" };
     let OperationOutcome::Reply { error, success: ty } = &operation.outcome else {
         return String::new();
     };
@@ -2790,8 +2892,8 @@ fn resource_body(
     };
     format!(
         "  val mcpSource: JsonElement = {source}\n  \
-         val decoded = {prefix}McpReceive({wire}, {read_by}, {unjudged_by}, mcpSource, {schema}) {{ kind, detail, field ->\n    \
-         {prefix}McpUnread({wire}, kind, detail, field)\n  }}\n  \
+         val decoded = {prefix}McpReceive({wire}, {read_by}, {unjudged_by}, mcpSource, {schema}{every}) {{ kind, detail, field, issues ->\n    \
+         {prefix}McpUnread({wire}, kind, detail, field, issues)\n  }}\n  \
          val answered = try {{\n    {call}\n  }} catch (unexpected: Throwable) {{\n    \
          if (unexpected is CancellationException) throw unexpected\n    \
          throw {prefix}McpRefused({prefix}McpInternal({wire}, unexpected.message ?: unexpected.toString()))\n  }}\n  \
@@ -2860,6 +2962,14 @@ fn resource_read(operation: &OperationDef, prefix: &str, named: &str, fields: &s
     } else {
         ""
     };
+    let read_schema = if resource.is_template() {
+        format!(
+            "{prefix}McpReadSchema({})",
+            kotlin_quoted(&operation.wire_name)
+        )
+    } else {
+        "null".to_owned()
+    };
     let head = format!(
         "\n\nprivate suspend fun {prefix}McpRead{op}(handlers: {named}Handlers, mcpUri: String{captured}): JsonObject {{\n",
         op = pascal(operation),
@@ -2871,7 +2981,11 @@ fn resource_read(operation: &OperationDef, prefix: &str, named: &str, fields: &s
             prefix,
             named,
             fields,
-            Message::unschemed(&source),
+            Message {
+                every: resource.is_template(),
+                schema: &read_schema,
+                source: &source,
+            },
             "\"Resource not found\"",
             &success,
         )
@@ -2951,6 +3065,7 @@ fn resource_completion(
             named,
             fields,
             Message {
+                every: false,
                 schema: &completion_schema,
                 source: &source,
             },
@@ -3071,6 +3186,7 @@ fn prompt_function(operation: &OperationDef, prefix: &str, named: &str, fields: 
             named,
             fields,
             Message {
+                every: true,
                 schema: &format!(
                     "{prefix}McpPromptSchema({})",
                     kotlin_quoted(operation.mcp_tool_name())
@@ -3136,12 +3252,18 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
             "      val mcpHeaders = listOf({header_names}).associateWith {{ mcpArguments.remove(it) }}"
         );
     }
+    let passed: Vec<String> = read_apart(operation)
+        .iter()
+        .map(|key| kotlin_quoted(key))
+        .collect();
     let _ = write!(
         text,
         "      val mcpSource = {prefix}McpSource({tool}, mcpArguments, \
          {prefix}McpWrapped.getValue({tool}))\n      \
          val decoded = {prefix}McpReceive({tool}, {read_by}, {unjudged_by}, mcpSource, \
-         {prefix}McpToolSchema({tool}, {prefix}McpWrapped.getValue({tool})))\n"
+         {prefix}McpToolSchema({tool}, {prefix}McpWrapped.getValue({tool})), \
+         passed = setOf({}), every = true)\n",
+        passed.join(", ")
     );
     let mut call_arguments = vec!["decoded".to_owned()];
     for header in &shape.header_in {

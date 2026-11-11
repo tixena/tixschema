@@ -56,9 +56,20 @@ fn entries_read(property: &str, value_type: &str, value: &str) -> String {
 
 /// The read of the member `property` that names `withItsKeys`, from the payload without `taken`.
 fn handed(property: &str, taken: &str) -> String {
+    handed_by(property, taken, "read")
+}
+
+/// [`handed`] beside a `nonstrict` holder, where the type read from the function's answer refuses
+/// a key it does not declare, as serde reads it.
+fn handed_refusing(property: &str, taken: &str) -> String {
+    handed_by(property, taken, "readRefusing")
+}
+
+/// [`handed`], the answer read through `SwiftSchemaPayload.{reader}`.
+fn handed_by(property: &str, taken: &str, reader: &str) -> String {
     format!(
         "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
-         self.{property} = try SwiftSchemaPayload.read(Counting.self, \
+         self.{property} = try SwiftSchemaPayload.{reader}(Counting.self, \
          from: withItsKeys({property}Payload), at: decoder.codingPath)"
     )
 }
@@ -243,12 +254,15 @@ fn a_function_is_handed_every_key_but_its_holders_own_where_no_member_ahead_took
         "try self.extra.encode(to: encoder); try container.encode(self.note, forKey: .note); \
          try self.pennant.encode(to: encoder)",
     );
+    assert_written(
+        &mousing_swift::swift_definition(),
+        &handed("tally", "taken + [\"note\"]"),
+    );
     for definition in [
         marling_swift::swift_definition(),
-        mousing_swift::swift_definition(),
         bowsing_swift::swift_definition(),
     ] {
-        assert_written(&definition, &handed("tally", "taken + [\"note\"]"));
+        assert_written(&definition, &handed_refusing("tally", "taken + [\"note\"]"));
     }
 }
 
