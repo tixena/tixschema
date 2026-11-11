@@ -19,10 +19,12 @@ pub const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodab
      top = values.last, let number = child(top, \"number\") else { return nil }; let parts = \
      Mirror(reflecting: number).children.map(\\.value); guard parts.count == 2, let count = \
      child(parts[0], \"count\") as? Int, let exponent = parts[1] as? Bool else { return nil }; \
-     return (count, exponent) }; private static var expected: String { [\"Int\": \
+     return (count, exponent) }; private static var expected: String { let named = \
+     String(describing: SwiftSchemaLeaf.self); var leaf = Substring(named); while \
+     leaf.hasPrefix(\"Optional<\"), leaf.hasSuffix(\">\") { leaf = leaf.dropFirst(9).dropLast() \
+     }; return [\"Int\": \
      \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
-     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(describing: \
-     SwiftSchemaLeaf.self)] ?? String(describing: SwiftSchemaLeaf.self) }; \
+     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(leaf)] ?? named }; \
      private static func floating(_ number: Double) -> String { var spelled = \
      number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
      spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
