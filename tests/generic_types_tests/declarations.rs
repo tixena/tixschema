@@ -1174,6 +1174,9 @@ const WIRE_FORM: &str = "function exactJson(text) {
 }
 function wireForm(value) {
   if (typeof value === \"bigint\") return JSON.rawJSON(value.toString());
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");
+  }
   if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => wireForm(held));
   if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {

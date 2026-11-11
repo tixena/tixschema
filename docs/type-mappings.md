@@ -593,7 +593,7 @@ change has to keep.
   `src/features/service_schema.rs` lists the types an operation writes as text, which each client
   writes the helpers of its forms for. TypeScript writes a header through its own Zod schema
   (`header_in_build_stmt`, the HTTP client's `header_issues`) and every text through
-  `{prefix}HttpWireText`, a `Date` by `toISOString()`. Dart writes a value that is no `String` or
+  `{prefix}HttpWireText`, a `Date` by `toISOString()` with `.000Z` written as `Z`. Dart writes a value that is no `String` or
   `bool` through its codec (`dart_wire_text`), Swift through the form helpers or
   `{prefix}WireText` over `{prefix}DatedEncoder` (`swift_wire_text`, `bound_text`), and Kotlin
   through the serializer it reads the value with (`kotlin_wire_text`, `{prefix}HttpSentText`).
