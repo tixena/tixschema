@@ -264,6 +264,8 @@ enum LaterEither {
 /// The same shape with one member serde writes as a string rather than an object. Standing on its
 /// own it is an ordinary union — an untagged enum may hold a scalar — and every surface describes
 /// it.
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -275,6 +277,8 @@ enum FlatScalarEither {
 /// The same shape with one member reached through an `Option`. Standing on its own it is an
 /// ordinary union — a member may be written as its value or as a bare `null`, and every surface
 /// describes the choice.
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -286,16 +290,22 @@ enum FlatNullableEither {
 /// Three members that name another item rather than spelling a type out: a brand over a string, a
 /// brand over a `bool`, and a plain unit enum. What serde writes each as lives on the named item,
 /// so the merge asks the registry rather than the spelling.
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct MemberSlug(String);
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(transparent)]
 struct MemberSwitch(bool);
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 enum MemberHue {
@@ -303,6 +313,8 @@ enum MemberHue {
     Red,
 }
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -311,6 +323,8 @@ enum MemberSlugEither {
     Slug(MemberSlug),
 }
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -319,6 +333,8 @@ enum MemberSwitchEither {
     Switch(MemberSwitch),
 }
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -377,6 +393,8 @@ struct LaterFieldsBelow {
 /// Three members naming another item rather than spelling a type out, each a different wire
 /// shape: one is a JSON array, one is the object a map writes, one has a nullable published
 /// surface. serde flattens only the map and refuses the other two.
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberBag(Vec<String>);
@@ -385,10 +403,14 @@ struct MemberBag(Vec<String>);
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberBucket(HashMap<String, String>);
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct MemberMaybeSecond(Option<FlatSecond>);
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -405,6 +427,8 @@ enum MemberBucketEither {
     Bucket(MemberBucket),
 }
 
+#[cfg(feature = "zod")]
+#[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -4636,6 +4660,11 @@ fn the_schema_of_a_nonstrict_holder_refuses_a_stray_key_its_strict_member_refuse
         GuestLetter::json_schema()["additionalProperties"],
         serde_json::json!(false)
     );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_of_a_nonstrict_holder_closes_the_object_of_its_strict_member() {
     assert!(GuestLetter::zod_schema().contains("z.strictObject({\n  title: z.string(),"));
 }
 
@@ -4644,16 +4673,21 @@ fn the_schema_of_a_nonstrict_enum_refuses_a_stray_key_in_the_variant_that_refuse
     serde_json::from_str::<Docket>(r#"{"depth":2,"ink":"red","kind":"Stamped","stray":1}"#)
         .unwrap_err();
     serde_json::from_str::<Docket>(r#"{"kind":"Noted","note":"n","stray":1}"#).unwrap();
-    let zod = Docket::zod_schema();
-    assert!(
-        zod.contains("z.object({\n  kind: z.literal(\"Noted\"),")
-            && zod.contains("z.strictObject({\n  kind: z.literal(\"Stamped\"),\n})"),
-        "{zod}"
-    );
     let written = serde_json::to_string(&Docket::json_schema()).unwrap();
     assert_eq!(
         written.matches(r#""additionalProperties":true"#).count(),
         1,
         "{written}"
+    );
+}
+
+#[cfg(feature = "zod")]
+#[test]
+fn the_zod_of_a_nonstrict_enum_closes_the_variant_that_refuses_a_stray_key() {
+    let zod = Docket::zod_schema();
+    assert!(
+        zod.contains("z.object({\n  kind: z.literal(\"Noted\"),")
+            && zod.contains("z.strictObject({\n  kind: z.literal(\"Stamped\"),\n})"),
+        "{zod}"
     );
 }
