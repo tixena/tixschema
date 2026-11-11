@@ -724,8 +724,7 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "unwrapped(",
                 ")",
                 "let container = try decoder.singleValueContainer(); \
-                 self.value = try Self.swiftSchemaFitted({ try container.decode(IdType.self) }, \
-                 again: { _ = try container.decode(SwiftSchemaFit<IdType>.self) })",
+                 self.value = try container.decode(SwiftSchemaFit<IdType>.self).value",
             ),
         ),
         (
@@ -770,8 +769,7 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "let slot1Payload = try SwiftSchemaPayload(from: slot1Decoder).value; ",
                 "slot1 = try SwiftSchemaPayload.read(SwiftSchemaReadSlot1.self, ",
                 "from: unwrapped(slot1Payload), at: slot1Decoder.codingPath).value; ",
-                "slot2 = try Self.swiftSchemaFitted({ try container.decode(UInt32.self) }, again: \
-                 { _ = try container.decode(SwiftSchemaFit<UInt32>.self) });  }; ",
+                "slot2 = try container.decode(SwiftSchemaFit<UInt32>.self).value;  }; ",
             ),
             concat!(
                 "private struct SwiftSchemaReadSlot1: Decodable { let value: Carton; ",

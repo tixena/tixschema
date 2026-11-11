@@ -393,9 +393,7 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else {{ \
              throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
              debugDescription: \"bad key \\(wireKey)\") }}; \
-             result[key] = try Self.swiftSchemaFitted({{ try container.decode(Stowed.self, \
-             forKey: codingKey) }}, again: {{ _ = try container.decode(SwiftSchemaFit<Stowed>.self, \
-             forKey: codingKey) }}) }}; \
+             result[key] = try container.decode(SwiftSchemaFit<Stowed>.self, forKey: codingKey).value }}; \
              storage = result }}; \
              public func encode(to encoder: Encoder) throws {{ \
              var container = encoder.container(keyedBy: DynamicCodingKey.self); \
@@ -461,9 +459,7 @@ fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
                  else {{ \
                  throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
                  debugDescription: \"bad key \\(wireKey)\") }}; \
-                 result[key] = try Self.swiftSchemaFitted({{ try container.decode(UInt8.self, \
-                 forKey: codingKey) }}, again: {{ _ = try \
-                 container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey) }}) }}; \
+                 result[key] = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey).value }}; \
                  storage = result }}; \
                  public func encode(to encoder: Encoder) throws {{ \
                  var container = encoder.container(keyedBy: DynamicCodingKey.self); \

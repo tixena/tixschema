@@ -93,23 +93,40 @@ to keep.
 - **An integer that does not fit is refused at its coding path.** Foundation's `JSONDecoder`
   refuses a number outside the range of a fixed-width integer, or one with a fraction, with an
   error of its own no coding path reaches, which `decode(_:from:)` answers as
-  `The given data was not valid JSON.` under an empty coding path. `read::fitted` writes each
-  Foundation read whose type holds such an integer, alone, in a list, as a map's value or under an
-  `Optional` (`fit_held`), as `Self.swiftSchemaFitted({ read }, again: { read through
-  SwiftSchemaFit })`: the first read is the one Foundation makes, and only where it throws an
-  error that is no `DecodingError` is the value read again with each such integer read as
-  `SwiftSchemaFit` of that integer, which reads it from its own decoder and throws `dataCorrupted` at that
-  decoder's coding path in serde's words. `Source::plain`, `keyed_read`, the value of a brand and
-  of a struct of one slot, and a map's wrapper write their reads through it, and `read::both` and
-  the wrapper declare `FITTED` where a read names it.
+  `The given data was not valid JSON.` under an empty coding path, and it reads a number written
+  with a fraction of zero or an exponent, `1.0`, `1e2`, `0.0`, `-0.0` and `-0`, into the integer,
+  which serde refuses. `read::fitted` writes each Foundation read whose type holds such an
+  integer, alone, in a list, as a map's value or under an `Optional` (`fit_held`), as one read
+  with each such integer read as `SwiftSchemaFit` of that integer, mapped back to the declared
+  type (`unfit`):
+  `container.decode([SwiftSchemaFit<Int64>].self, forKey: .items).map({ $0.value })`, the closure
+  in parentheses as a read may stand in the condition of an `if`, and
+  `decodeIfPresent(SwiftSchemaFit<Int64>.self, forKey: .maybe)?.value`. `SwiftSchemaFit`
+  reads the integer from its own decoder and holds it in `value`; it throws `dataCorrupted` at
+  that decoder's coding path in serde's words where Foundation refused the integer with an error
+  that is no `DecodingError`, and where the number was written with a fraction or an exponent:
+  ``invalid type: floating point `1.0`, expected u32``, the number spelled from its `Double`. It
+  tells such a number from the decoder `JSONDecoder` hands `init(from:)`, the private
+  `FoundationEssentials.JSONDecoderImpl`, read through `Mirror`: the last of its stored `values` is
+  the number being read, `number(Region, containsExponent: Bool)`, and `Region.count` is the byte
+  count of its text, which differs from that of the integer written plainly where it holds a
+  fraction (`-0` included). These are not public API: where `Mirror` finds none of them, under
+  `PropertyListDecoder` say, the integer reads as Foundation reads it. Only Linux is measured;
+  macOS is not. `Source::plain` (from the decoder the initializer was handed too,
+  `SwiftSchemaFit<UInt32>(from: decoder).value`), `keyed_read`, the value of a brand and of a
+  struct of one slot, and a map's wrapper write their reads through it, and `read::both` and the
+  wrapper declare `FITTED` where a read names `SwiftSchemaFit<`. A value read through
+  `SwiftSchemaPayload` (a `preprocess`, a flattened read) is held as an `Int64` and written back by
+  `JSONSerialization`, which writes `1.0` as `1`, so such a read takes the number.
 - **A type parameter is read through the fitting read too.** What fills it may be such an integer,
   which the type's text cannot know, so `fit_held` takes the type parameters in scope and reads each
   it finds, in the places it finds an integer, as `SwiftSchemaFit<Held>`. Each caller hands them:
   `keyed_read`, `Shaped::read_whole` and the payload of a variant (`VariantPayload::parameters`) the
   parameters the value's own `FieldDef` reaches (`parameters_reached`), `held_argument` its
-  wrapper's, and `value_wrapper_tokens` the item's. A value Foundation reads, or refuses with a
-  `DecodingError`, is read once, as it was, and a type that declares no parameter writes the text it
-  wrote.
+  wrapper's, and `value_wrapper_tokens` the item's. A value is judged as written with a fraction
+  only where it is a `FixedWidthInteger`, an `Optional` of one included, so a parameter filled with
+  a `Double`, a `String` or a model reads what Foundation reads, and a type that declares no
+  parameter writes the text it wrote.
 - **A refusal inside a flattened member is placed at its holder** (`read::flattened`), as serde
   names the holder: `decode_statement` writes a flattened member's statements in
   `do { ... } catch let refused as DecodingError`, and `swiftSchemaFlattened` (`read::FLATTENED`)

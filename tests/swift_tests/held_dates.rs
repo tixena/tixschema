@@ -289,10 +289,7 @@ fn a_tuple_reads_and_writes_the_date_of_a_slot_as_its_text() {
         declared(&plain, "PlainChartPairTuple"),
         &[
             "let slot0: Date; let slot1: UInt8; ".to_owned(),
-            format!(
-                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(UInt8.self) \
-                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<UInt8>.self) }}); "
-            ),
+            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value; "),
             format!("{SLOT_WRITTEN}try container.encode(slot1); "),
         ],
     );
@@ -324,10 +321,7 @@ fn a_tuple_reads_and_writes_the_date_of_a_slot_as_its_text() {
             "public struct StowedChartPairTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Date; let slot1: Stowed; "
                 .to_owned(),
-            format!(
-                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(Stowed.self) \
-                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<Stowed>.self) }}); "
-            ),
+            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<Stowed>.self).value; "),
             format!("{SLOT_WRITTEN}try container.encode(slot1); "),
         ],
     );
@@ -340,10 +334,7 @@ fn a_tuple_struct_reads_and_writes_the_date_of_a_slot_as_its_text() {
     holds(
         declared(&plain, "TockTuple"),
         &[
-            format!(
-                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(UInt8.self) \
-                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<UInt8>.self) }}); "
-            ),
+            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value; "),
             SLOT_WRITTEN.to_owned(),
         ],
     );
@@ -352,10 +343,7 @@ fn a_tuple_struct_reads_and_writes_the_date_of_a_slot_as_its_text() {
     holds(
         declared(&stowed, "WaypointTuple"),
         &[
-            format!(
-                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(Stowed.self) \
-                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<Stowed>.self) }}); "
-            ),
+            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<Stowed>.self).value; "),
             SLOT_WRITTEN.to_owned(),
         ],
     );
@@ -632,8 +620,7 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
             &[
                 "case counted(Int64); case maybe(Int64?); ".to_owned(),
                 format!("{named}SpannedTuple: Codable, Sendable {{ let slot0: Int64; "),
-                "slot0 = try Self.swiftSchemaFitted({ try container.decode(Int64.self) }, again: { \
-                 _ = try container.decode(SwiftSchemaFit<Int64>.self) }); ".to_owned(),
+                "slot0 = try container.decode(SwiftSchemaFit<Int64>.self).value; ".to_owned(),
                 "try container.encode(slot0); ".to_owned(),
             ],
         );
@@ -642,10 +629,8 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
     holds(
         &counted_tide_swift::swift_definition(),
         &[
-            "case \"Counted\": self = .counted(try Self.swiftSchemaFitted({ try \
-             container.decode(Int64.self, forKey: key) }, again: { _ = try container.decode(SwiftSchemaFit<Int64>.self, forKey: key) })); \
-             case \"Maybe\": self = .maybe(try Self.swiftSchemaFitted({ try \
-             container.decode(Int64?.self, forKey: key) }, again: { _ = try container.decode(SwiftSchemaFit<Int64>?.self, forKey: key) })); "
+            "case \"Counted\": self = .counted(try container.decode(SwiftSchemaFit<Int64>.self, forKey: key).value); \
+             case \"Maybe\": self = .maybe(try container.decode(SwiftSchemaFit<Int64>?.self, forKey: key)?.value); "
                 .to_owned(),
             "case .counted(let payload): var container = encoder.container(keyedBy: \
              SwiftSchemaExternalCodingKey.self); try container.encode(payload, \
@@ -656,7 +641,8 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
     holds(
         &untagged_counted_tide_swift::swift_definition(),
         &[
-            "if let value = try? Int64(from: decoder) { self = .counted(value); return }; "
+            "if let value = try? SwiftSchemaFit<Int64>(from: decoder).value { self = .counted(value); \
+             return }; "
                 .to_owned(),
             "case .counted(let value): try value.encode(to: encoder); ".to_owned(),
         ],
@@ -669,8 +655,7 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
             &swift,
             &[
                 "let slot0: Int64; ".to_owned(),
-                "slot0 = try Self.swiftSchemaFitted({ try container.decode(Int64.self) }, again: { \
-                 _ = try container.decode(SwiftSchemaFit<Int64>.self) }); ".to_owned(),
+                "slot0 = try container.decode(SwiftSchemaFit<Int64>.self).value; ".to_owned(),
                 "try container.encode(slot0); ".to_owned(),
             ],
         );
