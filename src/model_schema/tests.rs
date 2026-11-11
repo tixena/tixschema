@@ -10106,8 +10106,14 @@ fn a_parameter_with_no_declared_default_falls_back_to_string() {
 fn branded_json_schema_method_carries_no_cfg_attribute() {
     let args = super::ModelSchemaArgs::default();
     for inner in branded_json_inners() {
-        let tokens =
-            super::build_branded_json_schema_method(&args, &inner, "DocumentId", &[], None);
+        let tokens = super::build_branded_json_schema_method(
+            &args,
+            &inner,
+            "DocumentId",
+            "DocumentId",
+            &[],
+            None,
+        );
         assert_no_cfg_attribute(&tokens, "build_branded_json_schema_method");
     }
 }
@@ -18054,6 +18060,7 @@ fn brand_json_schema_over(inner_ty: &syn::Type) -> String {
     super::build_branded_json_schema_method(
         &super::ModelSchemaArgs::default(),
         &super::branded_json_inner(&super::get_field_def("_inner", inner_ty, "")),
+        "Wrapped",
         "Wrapped",
         &[],
         None,

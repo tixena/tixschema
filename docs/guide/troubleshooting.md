@@ -98,7 +98,7 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 
 #### JSON Schema Method Missing
 
-**Error:** `no function or associated item named 'json_schema' found`
+**Error:** ``error[E0599]: no associated function or constant named `json_schema` found for struct `Address` in the current scope``, for `Address::json_schema()`.
 
 **Cause:** Calling `.json_schema()` on a type that does not list `"jsonschema"` in its `enable` list. JSON Schema is asked for per type, not by a feature.
 
@@ -107,7 +107,7 @@ error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin targ
 #[model_schema(enable = ["jsonschema"])]
 ```
 
-Every model type the type holds lists the entry too: the type's document calls each held type's `json_schema_within`, and a held type without the entry stops the build at the holder with `E0599`.
+Every model type the type holds lists the entry too: the type's document calls each held type's `json_schema_within`, and a held type without the entry stops the build at the holder: ``error[E0599]: no associated function or constant named `json_schema_within` found for struct `address_schema::Schema` in the current scope``.
 
 #### Zod Schema Missing
 
@@ -122,9 +122,9 @@ tixschema = { version = "0.4", features = ["zod"] }
 
 #### Serde Attributes Ignored
 
-**Symptom:** Field names not transformed (e.g., `user_id` instead of `userId`).
+**Symptom:** TypeScript and Zod write a member in camelCase where a `#[serde(rename = "...")]` or a `#[serde(rename_all = "...")]` names another key: `#[serde(rename = "mail")] pub email_address: String` is `emailAddress`, where serde writes `mail`.
 
-**Cause:** `serde` feature is disabled.
+**Cause:** tixschema's `serde` feature is off, so no `#[serde(...)]` attribute is read, and TypeScript and Zod write each member in camelCase.
 
 **Solution:**
 ```toml
@@ -262,37 +262,39 @@ An `Option` in the map's *value* is untouched: a map entry cannot be dropped the
 
 **Error:** `cannot find module or crate <type>_schema in this scope` (`E0433`), reported at the field's type.
 
-A referenced type must be declared at item scope. A type declared inside a function body publishes its schema module inside that same body, where the `use super::*` of the referencing type's own module never reaches it:
+A type that lists `enable = ["jsonschema"]` reaches each type it holds through that type's schema module, so a held type must be declared at item scope. A type declared inside a function body publishes its schema module inside that same body, where the `use super::*` of the referencing type's own module never reaches it:
 
 ```rust
 // Wrong: `Inner` is declared inside the function body
 #[test]
 fn builds_the_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub struct Inner {
         pub id: String,
     }
 
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub struct Outer {
         pub inner: Inner, // E0433: cannot find module or crate `inner_schema` in this scope
     }
 }
 
 // Correct: `Inner` is declared at item scope; `Outer` may stay in the function body
-#[model_schema()]
+#[model_schema(enable = ["jsonschema"])]
 pub struct Inner {
     pub id: String,
 }
 
 #[test]
 fn builds_the_schema() {
-    #[model_schema()]
+    #[model_schema(enable = ["jsonschema"])]
     pub struct Outer {
         pub inner: Inner,
     }
 }
 ```
+
+With `#[model_schema()]` on both, and no `enable` list, the wrong form builds, under the default features, `mobile` and `mongo` alike.
 
 #### Missing Derives
 
