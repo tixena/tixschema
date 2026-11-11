@@ -1259,8 +1259,17 @@ pub(super) fn fault_wire_types() -> TokenStream {
         struct FaultOnTheWire {
             detail: ::std::string::String,
             field: ::core::option::Option<::std::string::String>,
+            #[serde(default)]
+            issues: ::std::vec::Vec<IssueOnTheWire>,
             kind: FaultKindOnTheWire,
             operation: ::std::string::String,
+        }
+
+        /// One problem a fault lists, as it arrives.
+        #[derive(::serde::Deserialize)]
+        struct IssueOnTheWire {
+            detail: ::std::string::String,
+            field: ::core::option::Option<::std::string::String>,
         }
 
         /// The kinds, spelled as the wire spells them.
@@ -1294,8 +1303,9 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
     let Generated {
         fault,
         call_error: _call_error,
-        module: _module,
+        module,
     } = generated;
+    let issue = quote! { $crate::#module::ServiceFaultIssue };
     quote! {
         impl FaultOnTheWire {
             /// The fault itself, minted through the constructors the service's own module
@@ -1307,6 +1317,12 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
                         &self.operation,
                         self.field.as_deref(),
                         &self.detail,
+                    )
+                    .with_issues(
+                        self.issues
+                            .iter()
+                            .map(|issue| #issue::new(issue.field.as_deref(), &issue.detail))
+                            .collect(),
                     ),
                     FaultKindOnTheWire::HandlerPanic => {
                         #fault::handler_panic(&self.operation, &self.detail)

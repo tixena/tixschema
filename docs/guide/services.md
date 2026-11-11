@@ -391,6 +391,7 @@ export type BillingServiceGetOpenBalanceOutcome =
 export type BillingServiceFaultFields = {
   detail: string;
   field: string | undefined;
+  issues?: Array<BillingServiceFaultIssue>;
   kind: BillingServiceFaultKind;
   operation: string;
 };
@@ -402,7 +403,7 @@ export type BillingServiceFault = BillingServiceFaultFields & {
 };
 ```
 
-The fields still come from the Rust declaration, so nothing about the wire moved and nothing a caller reads changed -- narrow on `isServiceFault`, then read `kind`, `detail`, `field` and `operation`, or switch over `kind` exhaustively. The brand is a type and never a value: `declare const` emits nothing, and a fault carries no extra key.
+The fields still come from the Rust declaration, so nothing about the wire moved and nothing a caller reads changed -- narrow on `isServiceFault`, then read `kind`, `detail`, `field`, `issues` and `operation`, or switch over `kind` exhaustively. `issues` is written only where a fault names more than one problem, which an `mcp` server does for the arguments of a tool, a prompt or a resource template that do not read ([mcp.md](mcp.md)): each `BillingServiceFaultIssue` is `{ detail: string; field: string | undefined }`, the first being the problem `field` names. The brand is a type and never a value: `declare const` emits nothing, and a fault carries no extra key.
 
 What stops compiling is writing one. An object literal under a `BillingServiceFault` annotation cannot carry the branded property, and neither can a structurally-equal value assigned into a `BillingServiceFault` position -- a module outside the bundle cannot name the symbol, and a module inside has no value to write. What it does **not** stop is a deliberate type assertion: `built as BillingServiceFault` compiles, as does anything laundered through `any` or `unknown`, and TypeScript has no construct that refuses those. The generated constructors mint through exactly that assertion, from the fields type, which is the one direction an assertion is unambiguously sound in. So the seal makes fabricating a fault a deliberate, greppable act rather than something an annotated literal does silently -- it is not the `E0451` Rust gives, because TypeScript has none to give.
 
@@ -419,6 +420,7 @@ The field is named wherever the refusal named one: a validator's report names it
 On the Rust side, beside the trait, in a module named for the service (`billing_service_schema`):
 
 - `ServiceFault` and `ServiceFaultKind` -- readable by anyone, constructible by nothing outside the module. `ServiceFault` is the alias; the struct is declared as `<Service>FaultFields`, which is the name its *fields* publish under in TypeScript, `<Service>Fault` there being the sealed type written over them.
+- `ServiceFaultIssue` -- one problem a fault lists, declared as `<Service>FaultIssue` and published under that name on every surface, its Swift and Kotlin inside the definitions of the fault's fields. `ServiceFault::issues()` answers the list, empty for a fault of one problem, `with_issues` attaches one, and `ServiceFaultIssue::new(field, detail)` builds an entry.
 - `CallError<E>` -- `Operation(E)` or `Fault(ServiceFault)`.
 - `<Operation>Message`, `unjudged_<operation>` and `validated_<operation>` -- the name each operation's message is republished under, the read of that message alone, which a dispatcher reads a request with, and the validator that message runs. Which of the two answers a check gives depends on the message's concrete type, so both halves of a service ask this one function rather than answering for themselves, from wherever they were expanded.
 - `Answered<T, E>` -- the envelope a request-and-reply operation answers in, written by a dispatcher and read back by a client.

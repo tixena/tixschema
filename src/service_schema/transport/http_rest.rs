@@ -1893,7 +1893,7 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
     let Generated {
         fault,
         call_error: _call_error,
-        module: _module,
+        module,
     } = generated;
     quote! {
         #[derive(::serde::Deserialize)]
@@ -1901,8 +1901,16 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
         struct FaultOnTheWire {
             detail: ::std::string::String,
             field: ::core::option::Option<::std::string::String>,
+            #[serde(default)]
+            issues: ::std::vec::Vec<IssueOnTheWire>,
             kind: FaultKindOnTheWire,
             operation: ::std::string::String,
+        }
+
+        #[derive(::serde::Deserialize)]
+        struct IssueOnTheWire {
+            detail: ::std::string::String,
+            field: ::core::option::Option<::std::string::String>,
         }
 
         #[derive(::serde::Deserialize)]
@@ -1922,6 +1930,14 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
                         &self.operation,
                         self.field.as_deref(),
                         &self.detail,
+                    )
+                    .with_issues(
+                        self.issues
+                            .iter()
+                            .map(|issue| {
+                                $crate::#module::ServiceFaultIssue::new(issue.field.as_deref(), &issue.detail)
+                            })
+                            .collect(),
                     ),
                     FaultKindOnTheWire::HandlerPanic => {
                         #fault::handler_panic(&self.operation, &self.detail)
