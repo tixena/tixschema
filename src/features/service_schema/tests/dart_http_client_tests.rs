@@ -836,8 +836,8 @@ fn a_header_vec_element_that_will_not_parse_faults_the_whole_element() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = dart_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written
-            .contains("path += Uri.encodeComponent(_mediaClientServiceHttpWireText(req.sha256));")
+        written.contains("final text = _mediaClientServiceHttpPathText(req.sha256);")
+            && written.contains("String? _mediaClientServiceHttpPathText(Object? value) {")
             && written.contains("String _mediaClientServiceHttpWireText(Object? value) {"),
         "got: {written}"
     );
@@ -866,7 +866,7 @@ fn a_reserved_word_is_moved_in_the_method_the_parameter_and_the_requests_member(
         "'${req.in_}'",
         "if (default_ != null) {",
         " object(Thing req) async {",
-        "HttpWireText(req.class_)",
+        "HttpPathText(req.class_)",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }
@@ -877,7 +877,7 @@ fn a_declared_messages_member_is_read_past_a_field_already_named_as_it_would_be_
     record_dart_fields("Thing", vec!["class".to_owned(), "class_".to_owned()]);
     let written = dart_http_client_of(RESERVED_WORD_SERVICE);
     assert!(
-        written.contains("HttpWireText(req.class__)"),
+        written.contains("HttpPathText(req.class__)"),
         "`class_` is a field of the message's own, so `class` is declared `class__`. Got: {written}"
     );
 }

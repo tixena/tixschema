@@ -1,0 +1,5 @@
+error: model_schema: field `most`: `maximum = -1.5` holds a fraction, and `i64` holds whole numbers only. Write `maximum = -2`.
+  --> tests/bound_representable_refusals/maximum_fraction_on_an_integer.rs:10:5
+   |
+10 |     pub most: i64,
+   |     ^^^^^^^^^^^^^

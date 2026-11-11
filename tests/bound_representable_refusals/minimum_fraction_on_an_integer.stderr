@@ -1,0 +1,5 @@
+error: model_schema: field `least`: `minimum = 1.5` holds a fraction, and `i32` holds whole numbers only. Write `minimum = 2`.
+  --> tests/bound_representable_refusals/minimum_fraction_on_an_integer.rs:10:5
+   |
+10 |     pub least: i32,
+   |     ^^^^^^^^^^^^^^
