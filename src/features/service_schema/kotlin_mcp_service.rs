@@ -824,6 +824,11 @@ private fun <T> @P@McpReceive(
     val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
     val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
+    if (detail.startsWith("invalid type: floating point")) {
+      // Read from its text, the refusal states the path of the number, which the element states none of.
+      val at = runCatching { Json.decodeFromString(serializer, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
+      if (at != null) refuse("failed-validation", detail, at, emptyList())
+    }
     if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
     val said = detail.substringBefore(" at path: ")
     if (said == "@EXPECTED_NUMERIC_KEY@") refuse("undeserializable-payload", said, null, emptyList())

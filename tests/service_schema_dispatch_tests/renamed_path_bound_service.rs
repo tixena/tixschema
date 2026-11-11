@@ -17,7 +17,7 @@ use crate::renamed_path_bound_http_rest_client::{
 use crate::renamed_path_bound_http_rest_transport::{
     DefaultFaultHandler, FaultHandler, IncomingRequest, OutgoingResponse, ROUTES, Route, dispatch,
 };
-use crate::renamed_path_bound_service_schema::ServiceFault;
+use crate::renamed_path_bound_service_schema::{CallError, ServiceFault};
 
 /// An alias of a renamed message, which reads the keys of the type it names.
 pub type BoundAliased = BoundRenamed;
@@ -120,6 +120,14 @@ pub struct BoundTyped {
     pub tally: i64,
 }
 
+/// A message whose member a path reads as a list of texts.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BoundLabelled {
+    pub labels: Vec<String>,
+    pub title: String,
+}
+
 /// The id an implementation was handed.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -150,6 +158,22 @@ pub trait RenamedPathBoundService<Ctx> {
         req: BoundBesideFlatten,
     ) -> Result<BoundAnswer, BoundRefused>;
 
+    #[service_schema_op(http(method = "PUT", path = "/genlabelled/{labels}"))]
+    async fn gen_labelled(
+        &self,
+        ctx: &Ctx,
+        labels: Vec<String>,
+        title: String,
+    ) -> Result<BoundAnswer, BoundRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/genlist/{pages}"))]
+    async fn gen_list(
+        &self,
+        ctx: &Ctx,
+        pages: Vec<u32>,
+        title: String,
+    ) -> Result<BoundAnswer, BoundRefused>;
+
     #[service_schema_op(http(method = "PUT", path = "/generated/{document_id}"))]
     async fn generated(
         &self,
@@ -167,6 +191,12 @@ pub trait RenamedPathBoundService<Ctx> {
 
     #[service_schema_op(http(method = "PUT", path = "/keyword/{type}"))]
     async fn keyword(&self, ctx: &Ctx, req: BoundKeyword) -> Result<BoundAnswer, BoundRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/labelled/{labels}"))]
+    async fn labelled(&self, ctx: &Ctx, req: BoundLabelled) -> Result<BoundAnswer, BoundRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/listed/{pages}"))]
+    async fn listed(&self, ctx: &Ctx, req: BoundTyped) -> Result<BoundAnswer, BoundRefused>;
 
     #[service_schema_op(http(method = "PUT", path = "/own/{document_id}"))]
     async fn own_key(&self, ctx: &Ctx, req: BoundOwnKey) -> Result<BoundAnswer, BoundRefused>;
@@ -223,6 +253,26 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         answered(req.document_id)
     }
 
+    async fn gen_labelled(
+        &self,
+        _ctx: &(),
+        labels: Vec<String>,
+        _title: String,
+    ) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        answered(labels.join("|"))
+    }
+
+    async fn gen_list(
+        &self,
+        _ctx: &(),
+        pages: Vec<u32>,
+        _title: String,
+    ) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        answered(format!("{pages:?}"))
+    }
+
     async fn generated(
         &self,
         _ctx: &(),
@@ -245,6 +295,16 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
     async fn keyword(&self, _ctx: &(), req: BoundKeyword) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
         answered(req.r#type)
+    }
+
+    async fn labelled(&self, _ctx: &(), req: BoundLabelled) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        answered(req.labels.join("|"))
+    }
+
+    async fn listed(&self, _ctx: &(), req: BoundTyped) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        answered(format!("{:?}", req.pages))
     }
 
     async fn own_key(&self, _ctx: &(), req: BoundOwnKey) -> Result<BoundAnswer, BoundRefused> {
@@ -619,6 +679,84 @@ fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
         *client.transport().carried.lock().unwrap(),
         ["/typed/7/true/-9123456789012345/12"]
     );
+}
+
+fn typed_with_pages(pages: Vec<u16>) -> BoundTyped {
+    BoundTyped {
+        berth: None,
+        label: "l".to_owned(),
+        page_size: 7,
+        pages,
+        pinned: true,
+        tally: 1,
+    }
+}
+
+#[test]
+fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
+    let client = RenamedPathBoundServiceClient::new(Dispatched::default());
+    let listed = poll_once(client.listed(typed_with_pages(vec![1, 2, 3]))).unwrap();
+    assert_eq!(
+        listed.ok(),
+        Some(BoundAnswer {
+            id: "[1, 2, 3]".to_owned()
+        })
+    );
+    let generated = poll_once(client.gen_list(vec![1, 2, 3], "t".to_owned())).unwrap();
+    assert_eq!(
+        generated.ok(),
+        Some(BoundAnswer {
+            id: "[1, 2, 3]".to_owned()
+        })
+    );
+    let labelled = poll_once(client.labelled(BoundLabelled {
+        labels: vec!["a b".to_owned(), "c/d".to_owned()],
+        title: "t".to_owned(),
+    }))
+    .unwrap();
+    assert_eq!(
+        labelled.ok(),
+        Some(BoundAnswer {
+            id: "a b|c/d".to_owned()
+        })
+    );
+    assert_eq!(
+        *client.transport().carried.lock().unwrap(),
+        [
+            "/listed/1%2C2%2C3",
+            "/genlist/1%2C2%2C3",
+            "/labelled/a%20b%2Cc%2Fd"
+        ]
+    );
+}
+
+#[test]
+fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
+    let client = RenamedPathBoundServiceClient::new(Dispatched::default());
+    let declared = poll_once(client.labelled(BoundLabelled {
+        labels: vec!["a,b".to_owned(), "c".to_owned()],
+        title: "t".to_owned(),
+    }))
+    .unwrap();
+    let generated =
+        poll_once(client.gen_labelled(vec!["a,b".to_owned(), "c".to_owned()], "t".to_owned()))
+            .unwrap();
+    for answer in [declared, generated] {
+        let refusal = match answer {
+            Err(CallError::Fault(fault)) => {
+                Some((fault.field().map(str::to_owned), fault.detail().to_owned()))
+            }
+            Ok(_) | Err(CallError::Operation(_)) => None,
+        };
+        assert_eq!(
+            refusal,
+            Some((
+                Some("labels".to_owned()),
+                "a list item holds a comma, which a path would read as two items".to_owned()
+            ))
+        );
+    }
+    assert!(client.transport().carried.lock().unwrap().is_empty());
 }
 
 #[test]

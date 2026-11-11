@@ -12,10 +12,11 @@ use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     BIGINT_FORM, BOOLEAN_FORM, BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape,
     LIST_FORM, MultipartPart, NUMBER_FORM, OperationDef, OperationInputs, OperationOutcome,
-    PathSegment, ScalarKind, ServiceDef, argument_local, error_declared_type, field_ident,
-    is_scalar_named_type, is_unit_type, option_inner, path_reads_a_named_field, scalar_kind,
-    service_declares_a_placeholder, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    PATH_ITEM_HOLDS_A_COMMA, PathSegment, ScalarKind, ServiceDef, argument_local,
+    error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
+    path_reads_a_named_field, scalar_kind, service_declares_a_placeholder,
+    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    written,
 };
 use crate::service_schema::support::{
     exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
@@ -1645,6 +1646,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
     } else {
         TokenStream::new()
     };
+    let path_text_fn = path_text_client_helper(service);
     // A `header_in` value is checked before it ever reaches the transport; a service with none
     // never reaches for the checker, `dead_code` being an error in plenty of consumers' builds.
     let needs_header_in_safety_check = service
@@ -1696,6 +1698,7 @@ fn client_macro(service: &ServiceDef, transport: Transport) -> TokenStream {
 
                 #fault_mirror_fn
                 #percent_encode_fn
+                #path_text_fn
                 #legal_header_value_fn_tokens
             };
         }
@@ -2031,6 +2034,40 @@ fn percent_encode_helper() -> TokenStream {
     }
 }
 
+/// The text a path placeholder carries of a value: a list's items each as `encode_expr` writes
+/// one, joined by commas as [`decode_expr`] splits them, and `None` where an item holds a comma,
+/// which the dispatcher would split in two.
+fn path_text_client_helper(service: &ServiceDef) -> TokenStream {
+    let binds_a_placeholder = service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).placeholder_names().is_empty());
+    if !binds_a_placeholder {
+        return TokenStream::new();
+    }
+    let item = encode_expr(&quote! { item });
+    let whole = encode_expr(&quote! { held });
+    quote! {
+        fn path_text<Held>(held: &Held) -> ::core::option::Option<::std::string::String>
+        where
+            Held: ::serde::Serialize,
+        {
+            match ::serde_json::to_value(held) {
+                ::core::result::Result::Ok(::serde_json::Value::Array(items)) => {
+                    let texts: ::std::vec::Vec<::std::string::String> =
+                        items.iter().map(|item| #item).collect();
+                    if texts.iter().any(|text| text.contains(',')) {
+                        ::core::option::Option::None
+                    } else {
+                        ::core::option::Option::Some(texts.join(","))
+                    }
+                }
+                _ => ::core::option::Option::Some(#whole),
+            }
+        }
+    }
+}
+
 fn client_method(
     operation: &OperationDef,
     generated: &Generated,
@@ -2060,7 +2097,7 @@ fn client_method(
     }));
     let refusal = outbound_refusal(operation, generated);
 
-    let path_build = path_build_stmts(operation, &shape);
+    let path_build = path_build_stmts(operation, generated, &shape);
     let query_build = query_build_stmts(operation, &shape);
     let headers_build = header_in_build_stmts(operation, generated, &shape);
     let is_multipart = matches!(shape.body_kind, BodyKind::Multipart);
@@ -2157,7 +2194,11 @@ fn client_placeholder_value(operation: &OperationDef, placeholder: &str) -> Toke
     }
 }
 
-fn path_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream {
+fn path_build_stmts(
+    operation: &OperationDef,
+    generated: &Generated,
+    shape: &HttpShape,
+) -> TokenStream {
     let pushes: TokenStream = shape
         .path
         .iter()
@@ -2165,8 +2206,17 @@ fn path_build_stmts(operation: &OperationDef, shape: &HttpShape) -> TokenStream 
             PathSegment::Literal(text) => quote! { path.push_str(#text); },
             PathSegment::Placeholder(name) => {
                 let value = client_placeholder_value(operation, name);
-                let rendered = encode_expr(&quote! { #value });
-                quote! { path.push_str(&percent_encoded(&(#rendered))); }
+                let refusal = value_refusal(operation, generated, name, PATH_ITEM_HOLDS_A_COMMA);
+                quote! {
+                    match path_text(&(#value)) {
+                        ::core::option::Option::Some(rendered) => {
+                            path.push_str(&percent_encoded(&rendered));
+                        }
+                        ::core::option::Option::None => {
+                            #refusal
+                        }
+                    }
+                }
             }
         })
         .collect();
@@ -2250,7 +2300,12 @@ fn header_in_build_stmts(
         .map(|header| {
             let name = &header.name;
             let held = argument_local(&header.parameter);
-            let refusal = header_value_refusal(operation, generated, name);
+            let refusal = value_refusal(
+                operation,
+                generated,
+                name,
+                "a header value contains a character illegal in an HTTP header",
+            );
             let checked = quote! {
                 if !legal_header_value(&rendered) {
                     #refusal
@@ -2280,12 +2335,14 @@ fn header_in_build_stmts(
     }
 }
 
-/// What a `header_in` value that fails the header-safety check answers, before the transport is
-/// ever reached - mirrors [`outbound_refusal`]'s own `OneWay`/`Reply` split.
-fn header_value_refusal(
+/// What a value that fails a check made before sending answers (a `header_in` value that fails
+/// the header-safety check, a path list holding a comma), before the transport is ever reached - mirrors
+/// [`outbound_refusal`]'s own `OneWay`/`Reply` split.
+fn value_refusal(
     operation: &OperationDef,
     generated: &Generated,
     name: &str,
+    detail: &str,
 ) -> TokenStream {
     let Generated {
         call_error,
@@ -2297,7 +2354,7 @@ fn header_value_refusal(
         #fault::failed_validation(
             #wire,
             ::core::option::Option::Some(#name),
-            "a header value contains a character illegal in an HTTP header",
+            #detail,
         )
     };
     match &operation.outcome {

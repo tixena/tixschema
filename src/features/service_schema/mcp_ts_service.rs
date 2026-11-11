@@ -276,7 +276,21 @@ function __p__McpParse(
   if (message === undefined) {
     return { ok: false, refused: __p__McpRefused(null, 400, -32600, "Invalid Request") };
   }
-  return { ok: true, message };
+  return { ok: true, message: __p__McpToolArguments(message, text) };
+}
+
+/** `message`, where it is a `tools/call` request, with its arguments read from `text` again through the reader of a message, so that an integer member refuses a number written as a float. The envelope's own numbers stay as they were read. */
+function __p__McpToolArguments(message: Record<string, unknown>, text: string): Record<string, unknown> {
+  const params = __p__McpObject(message.params);
+  if (message.method !== "tools/call" || params === undefined || params.arguments === undefined) return message;
+  let again: unknown;
+  try {
+    again = __p__McpValueRead(text);
+  } catch {
+    return message;
+  }
+  const reread = __p__McpObject(__p__McpObject(again)?.params);
+  return reread === undefined ? message : { ...message, params: { ...params, arguments: reread.arguments } };
 }
 
 function __p__McpJoined(into: Record<string, unknown>, from: Record<string, unknown>): void {
@@ -1803,6 +1817,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         part(service, &named, &prefix),
         operations(service, &named, &prefix),
         message::envelope_read_fn(&format!("{prefix}McpRead")),
+        message::read_fn(&format!("{prefix}McpValueRead")),
         fill(TEXT),
         fault_fn(&named, &prefix),
         fill(WRITER),

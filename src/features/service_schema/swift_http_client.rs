@@ -9,9 +9,10 @@ use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    OperationOutcome, PATH_ITEM_HOLDS_A_COMMA, PathSegment, ServiceDef, is_scalar_named_type,
+    is_unit_type, option_inner, path_reads_a_named_field, path_writes_a_list,
+    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::{WireScalarKind, wire_scalar_kind};
@@ -393,7 +394,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     let params = method_params(operation, &shape);
     let returns = return_type(named, operation);
     let recover = encode_failure_recovery(named, fn_prefix, wire, &operation.outcome);
-    let path_build = path_build_stmt(fn_prefix, &recover, operation, &shape);
+    let path_build = path_build_stmt(named, fn_prefix, &recover, operation, &shape);
     let query_build = query_build_stmt(fn_prefix, &recover, operation, &shape);
     let headers_build = header_in_build_stmt(named, fn_prefix, &recover, operation, &shape);
     let body_build = body_build_stmt(named, fn_prefix, wire, operation, &shape);
@@ -434,17 +435,31 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
 
 /// The Swift expression that renders one path placeholder's value: the field it names (a message
 /// the macro declared, or an author's own struct), or the whole message where that message
-/// already is a wire scalar — mirrors the Dart client's own `placeholder_value_dart_expr`.
+/// already is a wire scalar — mirrors the Dart client's own `placeholder_value_dart_expr`. The
+/// flag beside it says the expression is a `String?`, `nil` for a list one of whose items holds a
+/// comma.
 fn placeholder_value_swift_expr(
     fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
-) -> SwiftText {
+) -> (SwiftText, bool) {
     let accessor = swift_field_member(placeholder);
-    let interpolated = || SwiftText {
-        expr: format!("\"\\(req.{accessor})\""),
-        throws: false,
+    let interpolated = || {
+        (
+            SwiftText {
+                expr: format!("\"\\(req.{accessor})\""),
+                throws: false,
+            },
+            false,
+        )
+    };
+    let of_type = |ty: &Type, expr: &str| {
+        let base = option_inner(ty).unwrap_or(ty);
+        (
+            swift_path_text(fn_prefix, ty, expr),
+            vec_inner(base).is_some(),
+        )
     };
     match &operation.inputs {
         OperationInputs::Empty => interpolated(),
@@ -452,19 +467,50 @@ fn placeholder_value_swift_expr(
             .iter()
             .find(|(field, _)| written(field) == placeholder)
             .map_or_else(interpolated, |(_, ty)| {
-                swift_wire_text(fn_prefix, ty, &format!("req.{accessor}"))
+                of_type(ty, &format!("req.{accessor}"))
             }),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                swift_wire_text(fn_prefix, declared, "req")
+                of_type(declared, "req")
             } else {
-                SwiftText {
-                    expr: format!("try {fn_prefix}WireText(req.{accessor})"),
-                    throws: true,
-                }
+                (
+                    SwiftText {
+                        expr: format!("try {fn_prefix}PathText(req.{accessor})"),
+                        throws: true,
+                    },
+                    true,
+                )
             }
         }
     }
+}
+
+/// [`swift_wire_text`], with a list's items written one by one and handed to the path-items helper
+/// to join, so the expression is a `String?`, `nil` where an item holds a comma.
+fn swift_path_text(fn_prefix: &str, ty: &Type, expr: &str) -> SwiftText {
+    if let Some(inner) = option_inner(ty) {
+        let rendered = swift_path_text(fn_prefix, inner, "unwrapped");
+        let tried = if rendered.throws { "try " } else { "" };
+        return SwiftText {
+            expr: format!(
+                "({tried}({expr}).map {{ unwrapped in {} }} ?? \"\")",
+                rendered.expr
+            ),
+            throws: rendered.throws,
+        };
+    }
+    if let Some(inner) = vec_inner(ty) {
+        let element = swift_wire_text(fn_prefix, inner, "element");
+        let tried = if element.throws { "try " } else { "" };
+        return SwiftText {
+            expr: format!(
+                "{fn_prefix}PathItems({tried}({expr}).map {{ element in {} }})",
+                element.expr
+            ),
+            throws: element.throws,
+        };
+    }
+    swift_wire_text(fn_prefix, ty, expr)
 }
 
 /// The statements at `margin` that bind `rendered` to `text`, answering `recover` where its
@@ -484,7 +530,24 @@ fn bound_text(text: &SwiftText, recover: &str, margin: &str) -> String {
     )
 }
 
+/// [`bound_text`] for an expression that answers a `String?`.
+fn bound_optional_text(text: &SwiftText, recover: &str, margin: &str) -> String {
+    if !text.throws {
+        return format!("{margin}let rendered: String? = {}\n", text.expr);
+    }
+    format!(
+        "{margin}let rendered: String?\n\
+         {margin}do {{\n\
+         {margin}  rendered = {}\n\
+         {margin}}} catch {{\n\
+         {margin}  {recover}\n\
+         {margin}}}\n",
+        text.expr
+    )
+}
+
 fn path_build_stmt(
+    named: &str,
     fn_prefix: &str,
     recover: &str,
     operation: &OperationDef,
@@ -497,8 +560,23 @@ fn path_build_stmt(
                 let _ = writeln!(stmt, "    path += {}", swift_quoted(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_swift_expr(fn_prefix, operation, shape, name);
-                if value.throws {
+                let (value, refusable) =
+                    placeholder_value_swift_expr(fn_prefix, operation, shape, name);
+                if refusable {
+                    let fault_expr = format!(
+                        "{fn_prefix}HttpOutboundFault({}, {}, {})",
+                        swift_quoted(&operation.wire_name),
+                        swift_quoted(name),
+                        swift_quoted(PATH_ITEM_HOLDS_A_COMMA),
+                    );
+                    let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
+                    let _ = write!(
+                        stmt,
+                        "    do {{\n{}      guard let text = rendered else {{\n        {refusal}\n      \
+                         }}\n      path += {fn_prefix}PercentEncode(text)\n    }}\n",
+                        bound_optional_text(&value, recover, "      ")
+                    );
+                } else if value.throws {
                     let _ = write!(
                         stmt,
                         "    do {{\n{}      path += {fn_prefix}PercentEncode(rendered)\n    }}\n",
@@ -1275,6 +1353,13 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if writes_text {
         helpers.push(wire_text_fn(fn_prefix));
     }
+    let writes_a_list = service.operations.iter().any(path_writes_a_list);
+    if writes_a_list {
+        helpers.push(path_items_fn(fn_prefix));
+    }
+    if service.operations.iter().any(path_reads_a_named_field) {
+        helpers.push(path_text_fn(fn_prefix));
+    }
     if writes_text
         || service
             .operations
@@ -1297,6 +1382,8 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     ]);
     if declares_header_in(service) {
         helpers.push(legal_header_value_fn(fn_prefix));
+    }
+    if declares_header_in(service) || writes_a_list {
         helpers.push(outbound_fault_fn(named, fn_prefix));
     }
     helpers
@@ -1338,14 +1425,14 @@ fn legal_header_value_fn(fn_prefix: &str) -> String {
     )
 }
 
-/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check answers with,
-/// before the transport is ever reached.
+/// The fault a `header_in` value that fails [`legal_header_value_fn`]'s own check, or a path list
+/// holding a comma, answers with, before the transport is ever reached.
 fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let kind = format!("{named}FaultKind");
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
-         /// own safety check, before the transport is ever reached.\n\
+         /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          func {fn_prefix}HttpOutboundFault(_ operation: String, _ field: String, _ detail: \
          String) -> {fields} {{\n  \
          {fields}(detail: detail, field: field, issues: nil, kind: {kind}.failedValidation, operation: \
@@ -1390,6 +1477,29 @@ fn wire_text_fn(fn_prefix: &str) -> String {
          return text\n  \
          }}\n  \
          return String(decoding: data, as: UTF8.self)\n\
+         }}"
+    )
+}
+
+/// Joins a path list's items with commas as the dispatchers split them, or answers `nil` where an
+/// item holds a comma, which a dispatcher would split in two.
+fn path_items_fn(fn_prefix: &str) -> String {
+    format!(
+        "func {fn_prefix}PathItems(_ items: [String]) -> String? {{\n  \
+         items.contains {{ $0.contains(\",\") }} ? nil : items.joined(separator: \",\")\n\
+         }}"
+    )
+}
+
+/// An author's own field as the text a path segment carries: a list's items each as
+/// [`wire_text_fn`] writes one and joined, anything else as it writes it.
+fn path_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "func {fn_prefix}PathText<Value: Encodable>(_ value: Value) throws -> String? {{\n  \
+         if let items = value as? [any Encodable] {{\n    \
+         return {fn_prefix}PathItems(try items.map {{ try {fn_prefix}WireText($0) }})\n  \
+         }}\n  \
+         return try {fn_prefix}WireText(value)\n\
          }}"
     )
 }
