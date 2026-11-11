@@ -20,6 +20,11 @@ const UNDER: &str = "private fun kotlinSchemaUnder(place: String, violation: Str
      \"'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}\" \
      } else { \"'$place': $violation\" } }";
 
+/// The read of an entry's value in the serializer of a map keyed by a brand: from its text under
+/// the key's text.
+const MAPPED_VALUE: &str =
+    "kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + entry.key)";
+
 /// The Kotlin source the tokens of an item publish: the first string literal they hold.
 fn definition(tokens: TokenStream) -> String {
     fn first_literal(tokens: TokenStream) -> Option<String> {
@@ -73,9 +78,8 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
     )
 }
 
-/// The serializer of a map keyed by the brand `named`: each key read from its text at the map's
-/// path, and each value from its text under the key's text.
-fn mapped(named: &str) -> String {
+/// The serializer of a map keyed by the brand `named`, which reads each entry as `entry` says.
+fn mapped_reading(named: &str, entry: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
          KSerializer<{named}>, private val valueSerializer: KSerializer<KotlinSchemaValue>) : \
@@ -86,11 +90,34 @@ fn mapped(named: &str) -> String {
          deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
          as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
          {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
-         \" + element)).entries.associate {{ entry -> kotlinSchemaDecoded(input.json, \
-         keySerializer, JsonPrimitive(entry.key), entry.key, \"\") to \
-         kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + \
-         entry.key) }} }} }} }}",
+         \" + element)).entries.associate {{ entry -> {entry} }} }} }} }}",
         PATHED = read::PATHED
+    )
+}
+
+/// The serializer of a map keyed by the brand `named`, which has a key serializer of its own: each
+/// key read by it from its text at the map's path, which judges it.
+fn mapped(named: &str) -> String {
+    mapped_reading(
+        named,
+        &format!(
+            "kotlinSchemaDecoded(input.json, keySerializer, JsonPrimitive(entry.key), entry.key, \
+             \"\") to {MAPPED_VALUE}"
+        ),
+    )
+}
+
+/// The serializer of a map keyed by the brand `named`, which has no key serializer: each key read
+/// unjudged from its text at the map's path, then judged, each message under the key's text.
+fn mapped_judging(named: &str) -> String {
+    mapped_reading(
+        named,
+        &format!(
+            "val key = kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
+             entry.key, \"\"); val violations = key.validate(); if (violations.isNotEmpty()) \
+             throw SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \
+             \"': \" + it }}); key to {MAPPED_VALUE}"
+        ),
     )
 }
 
@@ -321,7 +348,8 @@ fn a_key_of_a_declared_type_is_written_as_its_serializer_writes_it() {
 
 /// A brand that keys a map writes the serializer of a map keyed by it, and a member of such a map
 /// names it on the map: a value is refused under the key's text, which kotlinx would state as the
-/// brand's `toString()`. The key keeps the serializer it is read through.
+/// brand's `toString()`. The key keeps the serializer it is read through. A brand over a text has
+/// no key serializer, so the map's serializer judges its key under the key's text.
 #[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
@@ -337,10 +365,10 @@ fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
         #[serde(transparent)]
         struct Held(Vec<String>);
     };
-    for (brand, named) in [(&pitch, "Pitch"), (&tone, "Tone")] {
-        let kotlin = plain(brand);
-        assert!(kotlin.ends_with(&mapped(named)), "got: {kotlin}");
-    }
+    let pitched = plain(&pitch);
+    assert!(pitched.ends_with(&mapped("Pitch")), "got: {pitched}");
+    let toned = plain(&tone);
+    assert!(toned.ends_with(&mapped_judging("Tone")), "got: {toned}");
     assert!(
         !plain(&held).contains("MapSerializer"),
         "a list keys no map"
@@ -617,7 +645,8 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
 }
 
 /// A brand's value class keeps the plugin's serializer, and answers what its bounds alone hold
-/// the value to beside `validate()`, which calls its checks as well.
+/// the value to beside `validate()`, which calls its checks as well. A map keyed by it judges each
+/// key by `validate()` under the key's text.
 #[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
@@ -648,7 +677,7 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
              mutableListOf<String>(); {bound}; return violations }} }} {} {} {}",
             generated("Code"),
             judged("Code"),
-            mapped("Code")
+            mapped_judging("Code")
         )
     );
     let unbounded = plain(&item);
