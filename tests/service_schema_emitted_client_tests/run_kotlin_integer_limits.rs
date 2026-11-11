@@ -7,7 +7,7 @@ use core::fmt::Write as _;
 
 use super::integer_limit_models::{
     REPORT, ROWS, limit_ceiling_kotlin, limit_ends_kotlin, limit_floor_kotlin, limit_forms_kotlin,
-    limit_mixed_kotlin,
+    limit_mixed_kotlin, limit_wide_kotlin,
 };
 use super::runtime::ran_kotlin;
 
@@ -53,6 +53,7 @@ fn each_limit_holds_in_kotlin_as_it_is_written() {
         limit_forms_kotlin::kotlin_definition(),
         limit_mixed_kotlin::kotlin_definition(),
         limit_ends_kotlin::kotlin_definition(),
+        limit_wide_kotlin::kotlin_definition(),
         REPORTER.to_owned(),
         main,
     ];

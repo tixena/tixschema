@@ -18491,6 +18491,19 @@ fn generate_string_validation_code(
     }
 }
 
+/// The limit `written` as the validator compares a `rust_type_str` with: a literal of a float's own
+/// type, since a cast to a float leaves an integer literal an `i32`, and a cast to an integer,
+/// which drops a float's fraction.
+fn compared_limit(written: &str, rust_type_str: &str) -> proc_macro2::TokenStream {
+    if matches!(rust_type_str, "f32" | "f64") {
+        format!("{written}_{rust_type_str}")
+    } else {
+        format!("{written} as {rust_type_str}")
+    }
+    .parse()
+    .unwrap()
+}
+
 /// Generates the static validator for a numeric field with constraints, plus the serde deserializer
 /// — see `generate_string_validation_code` for how the two spellings differ.
 fn generate_numeric_validation_code(
@@ -18513,11 +18526,10 @@ fn generate_numeric_validation_code(
 
     if let Some(minimum) = &meta.minimum {
         let written = limit_text(minimum);
-        let min_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Minimum(&written), named, &measured);
         checks.push(quote! {
-            if *value < #min_cast {
+            if *value < #compared {
                 errors.push(#reported);
             }
         });
@@ -18525,11 +18537,10 @@ fn generate_numeric_validation_code(
 
     if let Some(maximum) = &meta.maximum {
         let written = limit_text(maximum);
-        let max_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Maximum(&written), named, &measured);
         checks.push(quote! {
-            if *value > #max_cast {
+            if *value > #compared {
                 errors.push(#reported);
             }
         });
