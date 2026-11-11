@@ -564,9 +564,9 @@ fn without_raw_json_the_typescript_server_writes_an_i64_a_number_holds_and_refus
     );
 }
 
-/// The Dart module the server and the client run in.
+/// The Dart module the server is handed `requests` and the client answered `replies` in.
 #[cfg(feature = "dart")]
-fn dart_source() -> String {
+pub fn dart_source(requests: &[String], replies: &[String]) -> String {
     let raw = |text: &str| format!("r'''{text}'''");
     [
         "import 'dart:async';".to_owned(),
@@ -588,8 +588,8 @@ fn dart_source() -> String {
         CarillonMcpServiceSchema::dart_ws_client(),
         CarillonMcpServiceSchema::dart_mcp_service(),
         CarillonMcpServiceSchema::dart_mcp_client(),
-        format!("final requests = <String>[\n{}];", listed(&requests(), raw)),
-        format!("final replies = <String>[\n{}];", listed(&replies(), raw)),
+        format!("final requests = <String>[\n{}];", listed(requests, raw)),
+        format!("final replies = <String>[\n{}];", listed(replies, raw)),
         format!(
             "final tolls = <String>[\n{}];",
             listed(&toll_replies(), raw)
@@ -608,7 +608,7 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
         "TIXSCHEMA_DART",
         "dart",
         "carillon_mcp.dart",
-        &dart_source(),
+        &dart_source(&requests(), &replies()),
     ) else {
         return;
     };
@@ -620,12 +620,15 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
 #[cfg(feature = "dart")]
 #[test]
 fn the_dart_text_of_the_carillon_mcp_service_passes_the_analyzer() {
-    analyzed("carillon-mcp-analyze", &dart_source());
+    analyzed(
+        "carillon-mcp-analyze",
+        &dart_source(&requests(), &replies()),
+    );
 }
 
-/// The Kotlin file the server and the client run in.
+/// The Kotlin file the server is handed `requests` and the client answered `replies` in.
 #[cfg(feature = "kotlin")]
-fn kotlin_source() -> String {
+pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
     use super::carillon_mcp_service::CarillonMcpServiceSchema;
     use super::carillon_mcp_service::carillon_mcp_service_schema::{
         carillon_mcp_service_fault_fields_kotlin, carillon_mcp_service_fault_kind_kotlin,
@@ -666,8 +669,8 @@ fn kotlin_source() -> String {
         CarillonMcpServiceSchema::kotlin_ws_client(),
         CarillonMcpServiceSchema::kotlin_mcp_service(),
         CarillonMcpServiceSchema::kotlin_mcp_client(),
-        format!("val REQUESTS = listOf(\n{})", listed(&requests(), raw)),
-        format!("val REPLIES = listOf(\n{})", listed(&replies(), raw)),
+        format!("val REQUESTS = listOf(\n{})", listed(requests, raw)),
+        format!("val REPLIES = listOf(\n{})", listed(replies, raw)),
         format!("val TOLLS = listOf(\n{})", listed(&toll_replies(), raw)),
         format!("val WHOLE = {}", raw(STRUCK)),
         KOTLIN_DRIVER.to_owned(),
@@ -678,7 +681,7 @@ fn kotlin_source() -> String {
 #[cfg(feature = "kotlin")]
 #[test]
 fn the_kotlin_server_and_client_answer_what_the_rust_dispatcher_and_client_answer() {
-    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source()) else {
+    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source(&requests(), &replies())) else {
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
@@ -686,9 +689,9 @@ fn the_kotlin_server_and_client_answer_what_the_rust_dispatcher_and_client_answe
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
-/// The Swift program the client runs in.
+/// The Swift program the client is answered `replies` in.
 #[cfg(feature = "swift")]
-fn swift_source() -> String {
+pub fn swift_source(replies: &[String]) -> String {
     use super::carillon_mcp_service::CarillonMcpServiceSchema;
     use super::carillon_mcp_service::carillon_mcp_service_schema::{
         carillon_mcp_service_fault_fields_swift, carillon_mcp_service_fault_kind_swift,
@@ -720,7 +723,7 @@ fn swift_source() -> String {
         carillon_mcp_service_fault_kind_swift::swift_definition(),
         CarillonMcpServiceSchema::swift_http_client(),
         CarillonMcpServiceSchema::swift_mcp_client(),
-        format!("let replies: [String] = [\n{}]", listed(&replies(), raw)),
+        format!("let replies: [String] = [\n{}]", listed(replies, raw)),
         format!("let tolls: [String] = [\n{}]", listed(&toll_replies(), raw)),
         format!("let wholeText = {}", raw(STRUCK)),
         SWIFT_DRIVER.to_owned(),
@@ -731,7 +734,7 @@ fn swift_source() -> String {
 #[cfg(feature = "swift")]
 #[test]
 fn the_swift_client_answers_what_the_rust_client_answers() {
-    let source = swift_source();
+    let source = swift_source(&replies());
     let Some(run) = super::runtime::judged(
         "swift-carillon-mcp",
         "TIXSCHEMA_SWIFT",

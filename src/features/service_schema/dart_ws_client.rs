@@ -51,6 +51,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         heartbeat_class(&named),
         transport_class(&named, headered),
         held_fn(&fn_prefix),
+        signed_zeros_fn(&signed_zeros_call(&fn_prefix, "Ws")),
     ];
     if has_one_way(service) {
         published.push(refusal_class(&named));
@@ -302,13 +303,20 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     )
 }
 
-/// The transport's `_signedZeros`, which answers a JSON text with each `-0` outside a string
-/// written `-0.0`: serde reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
-fn signed_zeros_fn() -> String {
+/// The name of the function [`signed_zeros_fn`] declares for the text `side` names (`Ws`, `Http`
+/// or `Mcp`), each text that reads JSON declaring its own.
+pub(super) fn signed_zeros_call(fn_prefix: &str, side: &str) -> String {
+    format!("_{fn_prefix}{side}SignedZeros")
+}
+
+/// The function, named `name`, every Dart read of a JSON text passes the text through ahead of
+/// `jsonDecode`: it answers the text with each `-0` outside a string written `-0.0`, since serde
+/// reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
+pub(super) fn signed_zeros_fn(name: &str) -> String {
     format!(
-        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n  \
-         static String _signedZeros(String text) => !text.contains('-0')\n      \
-         ? text\n      \
+        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n\
+         String {name}(String text) => !text.contains('-0')\n    \
+         ? text\n    \
          : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
     )
 }
@@ -316,7 +324,7 @@ fn signed_zeros_fn() -> String {
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
-    let signed_zeros = signed_zeros_fn();
+    let signed_zeros = signed_zeros_call(&fn_prefix, "Ws");
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -328,11 +336,10 @@ fn transport_class_rest(named: &str) -> String {
          /// exposes the same shape, so an attachment for any service sharing this connection\n  \
          /// reaches it here rather than through a transport type of its own.\n  \
          {FRAMES_RECORD_TYPE} get frames => (inbound: _controller.stream, send: send);\n\n  \
-         {signed_zeros}\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(_signedZeros(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
+         frame = jsonDecode({signed_zeros}(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \

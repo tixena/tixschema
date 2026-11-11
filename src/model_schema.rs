@@ -23,6 +23,7 @@ use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(feature = "serde")]
 use core::iter;
+use core::mem;
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use core::ops::Range;
 use core::ptr;
@@ -165,6 +166,8 @@ use crate::features::serde::{
     tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
     variant_steps, written_and_read_by_the_author,
 };
+#[cfg(feature = "serde")]
+use crate::service_schema::parse::path_text_form;
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
@@ -3123,7 +3126,7 @@ fn enum_delegate_items(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    build_struct_delegate_items(
+    let mut items = build_struct_delegate_items(
         module_ident,
         item_name,
         &item_enum.ident.to_string(),
@@ -3137,7 +3140,9 @@ fn enum_delegate_items(
         .as_ref(),
         false,
         args,
-    )
+    );
+    items.push(no_wire_keys_item());
+    items
 }
 
 /// The delegates on the type of a plain enum, which match the branded ones, with the
@@ -3162,6 +3167,7 @@ fn plain_enum_delegate_items(
         .into_iter()
         .chain(examples)
         .chain(validate)
+        .chain([no_wire_keys_item()])
         .collect();
     (items, test)
 }
@@ -8730,21 +8736,46 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 }
 
 /// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
-/// reads the member's key on the wire from.
+/// reads the member's key on the wire from, and the form its text is read in.
 #[cfg(feature = "serde")]
 fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
-    let (names, keys): (Vec<String>, Vec<String>) =
-        read_member_keys(item_struct).into_iter().unzip();
+    wire_keys_const(
+        read_member_keys(item_struct)
+            .into_iter()
+            .map(|(name, key, ty)| (name, key, path_text_form(ty)))
+            .collect(),
+    )
+}
+
+/// The constant [`wire_keys_item`] writes, listing no member: an enum and a struct of slots hold
+/// none a path placeholder binds.
+#[cfg(feature = "serde")]
+fn no_wire_keys_item() -> TokenStream {
+    wire_keys_const(Vec::new())
+}
+
+#[cfg(feature = "serde")]
+fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
+    let listed = members
+        .into_iter()
+        .map(|(name, key, form)| quote! { (#name, #key, #form) });
     quote! {
-        #[doc = " Each member serde reads under a key of its own, as its name in Rust and that key."]
-        pub const WIRE_KEYS: ::core::option::Option<&'static [(&'static str, &'static str)]> =
-            ::core::option::Option::Some(&[#((#names, #keys)),*]);
+        #[doc = " Each member serde reads under a key of its own, as its name in Rust, that key and"]
+        #[doc = " the form a path placeholder's text is read in for it."]
+        pub const WIRE_KEYS: ::core::option::Option<
+            &'static [(&'static str, &'static str, &'static str)],
+        > = ::core::option::Option::Some(&[#(#listed),*]);
     }
 }
 
 /// Nothing, where no `serde` feature reads the attributes a key is written from.
 #[cfg(not(feature = "serde"))]
 fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(not(feature = "serde"))]
+fn no_wire_keys_item() -> TokenStream {
     TokenStream::new()
 }
 
@@ -9829,13 +9860,14 @@ fn process_tuple_struct(
 
     let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
-    let delegate_impl_items = struct_delegate_items(
+    let mut delegate_impl_items = struct_delegate_items(
         &module_ident,
         &item_name,
         &item_struct,
         tuple_struct_shows_sibling_examples(&slots.shape),
         args,
     );
+    delegate_impl_items.push(no_wire_keys_item());
 
     // Read after every slot carries the serde attributes generation hangs on it.
     let decode_with = struct_decode_with(&item_struct, args);
@@ -11496,8 +11528,9 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         args,
     );
 
-    let delegate_impl_items =
+    let mut delegate_impl_items =
         build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty(), args);
+    delegate_impl_items.push(no_wire_keys_item());
 
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
@@ -18548,6 +18581,19 @@ fn generate_string_validation_code(
     }
 }
 
+/// The limit `written` as the validator compares a `rust_type_str` with: a literal of a float's own
+/// type, since a cast to a float leaves an integer literal an `i32`, and a cast to an integer,
+/// which drops a float's fraction.
+fn compared_limit(written: &str, rust_type_str: &str) -> proc_macro2::TokenStream {
+    if matches!(rust_type_str, "f32" | "f64") {
+        format!("{written}_{rust_type_str}")
+    } else {
+        format!("{written} as {rust_type_str}")
+    }
+    .parse()
+    .unwrap()
+}
+
 /// Generates the static validator for a numeric field with constraints, plus the serde deserializer
 /// — see `generate_string_validation_code` for how the two spellings differ.
 fn generate_numeric_validation_code(
@@ -18570,11 +18616,10 @@ fn generate_numeric_validation_code(
 
     if let Some(minimum) = &meta.minimum {
         let written = limit_text(minimum);
-        let min_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Minimum(&written), named, &measured);
         checks.push(quote! {
-            if *value < #min_cast {
+            if *value < #compared {
                 errors.push(#reported);
             }
         });
@@ -18582,11 +18627,10 @@ fn generate_numeric_validation_code(
 
     if let Some(maximum) = &meta.maximum {
         let written = limit_text(maximum);
-        let max_cast: proc_macro2::TokenStream =
-            format!("{written} as {rust_type_str}").parse().unwrap();
+        let compared = compared_limit(&written, rust_type_str);
         let reported = rust_violation(Bound::Maximum(&written), named, &measured);
         checks.push(quote! {
-            if *value > #max_cast {
+            if *value > #compared {
                 errors.push(#reported);
             }
         });
@@ -19911,6 +19955,103 @@ fn check_bound_in_range(
     Err(first)
 }
 
+/// The digits a numeric limit was written with, apart from any separator, suffix or sign.
+fn limit_digits(limit: &Lit) -> Option<String> {
+    if let Lit::Int(int) = limit {
+        Some(int.base10_digits().to_owned())
+    } else if let Lit::Float(float) = limit {
+        Some(float.base10_digits().to_owned())
+    } else {
+        None
+    }
+}
+
+/// Rejects a `minimum` or `maximum` no surface compares alike: a fraction on an integer field,
+/// which Rust and Swift compare with the fraction dropped and Zod, Dart and Kotlin compare as
+/// written, and a number on a float field that is infinite as the field's type, which Rust and
+/// Kotlin build as infinity and Swift warns about:
+///
+/// ```text
+/// error: model_schema: field `least`: `minimum = 1.5` holds a fraction, and `i32` holds whole numbers only. Write `minimum = 2`.
+/// error: model_schema: field `single`: `maximum = 1e39` is beyond what an `f32` holds (3.4028235e38 in size). Write a bound inside that range, or take it off.
+/// ```
+fn check_bound_representable(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(type_name) = field_def.field_type.number_name() else {
+        return Ok(());
+    };
+    let mut refusals = [
+        ("minimum", prop_meta.minimum.as_ref()),
+        ("maximum", prop_meta.maximum.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(key, written)| {
+        let limit = written?;
+        let number = limit_number(limit);
+        let shown = limit_digits(limit)?;
+        let message = match type_name {
+            "f32" | "f64" => {
+                let beyond = if type_name == "f32" {
+                    shown.parse::<f32>().is_ok_and(f32::is_infinite)
+                } else {
+                    shown.parse::<f64>().is_ok_and(f64::is_infinite)
+                };
+                let largest = if type_name == "f32" {
+                    "3.4028235e38"
+                } else {
+                    "1.7976931348623157e308"
+                };
+                beyond.then(|| {
+                    format!(
+                        "model_schema: {label}: `{key} = {shown}` is beyond what an `{type_name}` \
+                         holds ({largest} in size). Write a bound inside that range, or take it \
+                         off."
+                    )
+                })?
+            }
+            _ => {
+                if !number.is_finite() || number.fract() == 0.0_f64 {
+                    return None;
+                }
+                let whole = if key == "minimum" {
+                    number.ceil()
+                } else {
+                    number.floor()
+                };
+                let to_write = format_number_literal(whole);
+                format!(
+                    "model_schema: {label}: `{key} = {shown}` holds a fraction, and `{type_name}` \
+                     holds whole numbers only. Write `{key} = {}`.",
+                    if to_write == "-0" { "0" } else { &to_write }
+                )
+            }
+        };
+        Some(syn::Error::new_spanned(field, message))
+    });
+    let Some(mut first) = refusals.next() else {
+        return Ok(());
+    };
+    for next in refusals {
+        first.combine(next);
+    }
+    Err(first)
+}
+
+/// Rejects a `minimum` or `maximum` the field's number type cannot hold or no surface compares alike.
+fn check_bound_values(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    check_bound_in_range(field, field_def, prop_meta, label)?;
+    check_bound_representable(field, field_def, prop_meta, label)
+}
+
 /// What a fixed array's outermost level always holds: the spelling of its type and its length.
 fn fixed_outer_length(field_def: &FieldDef, ty: &syn::Type) -> Option<(String, usize)> {
     let outermost = field_def.array_depth.checked_sub(1)?;
@@ -20036,7 +20177,7 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     check_bound_kind(field, field_def, prop_meta, label)?;
-    check_bound_in_range(field, field_def, prop_meta, label)?;
+    check_bound_values(field, field_def, prop_meta, label)?;
     check_bound_meetable(field, field_def, prop_meta, label)?;
     // What is left on a list counts its items, whatever they are.
     if field_def.is_list() {
@@ -21512,7 +21653,10 @@ fn apply_model_schema_prop_meta(
         && !matches!(field_def.field_type, FieldDefType::I64 | FieldDefType::U64)
         && let Some(collapsed) = literal_field_type(literal, &field_def.field_type)
     {
-        field_def.field_type = collapsed;
+        let declared = mem::replace(&mut field_def.field_type, collapsed);
+        if let Some(held) = &mut field_def.model_schema_prop_meta {
+            held.collapsed_from = Some(declared);
+        }
     }
 
     apply_constraint_docs(field_def, final_name);

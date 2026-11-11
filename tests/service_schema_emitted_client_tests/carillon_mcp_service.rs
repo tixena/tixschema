@@ -13,20 +13,35 @@ use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
 use crate::mcp_streams::through;
 use core::future::{Future, ready};
+use core::iter::repeat_n;
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use tixschema::service_schema;
 
 /// The cases of [`CASES`] each `mcp` server is called with and each `mcp` client is answered: the
-/// message read whole, a value of the wrong kind, and the three refusals `serde_json` classifies as
-/// text that is not the document when it reads text.
-pub const MCP_CASES: [&str; 6] = [
+/// message read whole, a value of the wrong kind, the three refusals `serde_json` classifies as
+/// text that is not the document when it reads text, and an integer written as a float in the
+/// arguments and in the result.
+pub const MCP_CASES: [&str; 19] = [
     "read whole",
     "a text for a number",
     "a Result of two arms",
     "a Result of no arm",
     "a key that is no number",
     "an f64 beyond its range",
+    "an integral fraction for a u32",
+    "an exponent for a u32",
+    "a capital exponent for a u32",
+    "a fraction of zero for a u32",
+    "a fraction of zero below zero for a u32",
+    "a zero below zero for a u32",
+    "an integral fraction for an i64",
+    "an exponent for an i64",
+    "a capital exponent for an i64",
+    "a fraction of zero for an i64",
+    "a fraction of zero below zero for an i64",
+    "a zero below zero for an i64",
+    "a one for a u32",
 ];
 
 /// The answers each `mcp` client is handed as the answer of `toll`: a success and a declared
@@ -196,7 +211,7 @@ pub fn reply(structured: &str) -> String {
 /// What the Rust client answers `answered` as the answer of a call that sends the message read
 /// whole: `"read"` for the message read, and the fault's kind and field otherwise; and what it
 /// handed the transport.
-fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
+pub fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
     let whole: CarillonChime = serde_json::from_str(STRUCK).unwrap();
     let client = CarillonMcpServiceClient::new(Canned {
         answer: answered,
@@ -317,17 +332,23 @@ fn over_http(
 
 /// What the Rust dispatcher answers each case of [`MCP_CASES`], measured: `serde_json` reads the
 /// message as a `Value` and the arguments out of it, so a number beyond an `f64` refuses the
-/// message, a key that is no number is text that is not the document, and a `Result` of other than
-/// one key is a value of the wrong kind.
-fn measured() -> [Value; 6] {
-    [
+/// message, a key that is no number is text that is not the document, a `Result` of other than
+/// one key is a value of the wrong kind, and an integer written with a fraction or an exponent, or
+/// as `-0`, is a float that no integer member reads.
+fn measured() -> Vec<Value> {
+    let refused = |field: &str| json!({ "kind": "failed-validation", "field": field });
+    let mut answers = vec![
         json!("read"),
-        json!({ "kind": "failed-validation", "field": "strokes" }),
-        json!({ "kind": "failed-validation", "field": "tally" }),
-        json!({ "kind": "failed-validation", "field": "tally" }),
+        refused("strokes"),
+        refused("tally"),
+        refused("tally"),
         json!({ "kind": "undeserializable-payload", "field": null }),
-        json!({ "code": -32600 }),
-    ]
+        json!({ "code": -32_600_i32 }),
+    ];
+    answers.extend(repeat_n(refused("strokes"), 6));
+    answers.extend(repeat_n(refused("depth"), 6));
+    answers.push(json!("read"));
+    answers
 }
 
 #[test]
@@ -335,7 +356,11 @@ fn the_rust_dispatcher_answers_what_is_no_document_as_serde_reads_it_from_a_valu
     assert_eq!(rust_server_answers(), measured());
     for name in MCP_CASES {
         let (_, struck) = over_mcp(&call(1, &mcp_payload(name)));
-        assert_eq!(struck, u32::from(name == "read whole"), "{name}");
+        assert_eq!(
+            struck,
+            u32::from(matches!(name, "read whole" | "a one for a u32")),
+            "{name}"
+        );
     }
     let detail = |name: &str| {
         let answer: Value =
@@ -407,10 +432,11 @@ fn an_admit_that_denies_stops_a_strike_before_its_arguments_are_read() {
 fn the_rust_client_answers_every_success_it_cannot_read_with_no_field() {
     let mut expected = vec![json!("read")];
     expected.extend(
-        [None; 5].map(
+        [None; 18].map(
             |field: Option<&str>| json!({ "kind": "undeserializable-payload", "field": field }),
         ),
     );
+    expected[18] = json!("read");
     assert_eq!(rust_client_answers(), expected);
     let (_, sent) = rust_client_answer(reply(STRUCK));
     assert_eq!(sent.len(), 1, "{sent:?}");

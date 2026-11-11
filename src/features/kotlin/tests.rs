@@ -268,7 +268,7 @@ fn a_range_is_compared_in_the_numbers_own_type() {
             count: u8,
             #[model_schema_prop(minimum = -5)]
             depth: i64,
-            #[model_schema_prop(minimum = 0.5)]
+            #[model_schema_prop(minimum = 1)]
             half: u32,
             #[model_schema_prop(maximum = 120)]
             ratio: f64,
@@ -280,7 +280,7 @@ fn a_range_is_compared_in_the_numbers_own_type() {
     for compared in [
         "if (count < 1u) violations.add(\"'count': too small: minimum is 1, got ${count}\")",
         "if (depth < -5) violations.add(\"'depth': too small: minimum is -5, got ${depth}\")",
-        "if (half.toDouble() < 0.5) violations.add(",
+        "if (half < 1u) violations.add(",
         "if (ratio > 120.0) violations.add(\"'ratio': too large: maximum is 120, got \
          ${kotlinSchemaShown(ratio.toString())}\")",
         "if (tilt > 1.5f) violations.add(",

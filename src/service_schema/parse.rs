@@ -75,6 +75,19 @@ const RESOURCE_URI: (&str, &str) = ("`mcp(resource = ...)`'s URI", "URI");
 /// so declared no `error_status` table to read a code from.
 pub const DEFAULT_BINDING_ERROR_STATUS: u16 = 422;
 
+/// The words a declared message publishes a member's form in, beside its key.
+pub const BIGINT_FORM: &str = "bigint";
+pub const BOOLEAN_FORM: &str = "boolean";
+pub const NUMBER_FORM: &str = "number";
+pub const TEXT_FORM: &str = "text";
+/// Written ahead of the form of a list's item: the text is split on `,`.
+pub const LIST_FORM: &str = "list of ";
+
+/// What every client answers, before sending, for a list whose item holds the comma a path divides
+/// its items with.
+pub const PATH_ITEM_HOLDS_A_COMMA: &str =
+    "a list item holds a comma, which a path would read as two items";
+
 /// One service, read once.
 #[derive(Clone)]
 pub struct ServiceDef {
@@ -756,6 +769,22 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
     }
 }
 
+/// The form the text of a path placeholder that binds a member of `ty` is read in: the judgement
+/// [`scalar_kind`] makes, with a `u64` and an `i64` apart as the `bigint` TypeScript holds them as.
+pub fn path_text_form(ty: &Type) -> String {
+    let base = option_inner(ty).unwrap_or(ty);
+    if let Some(item) = vec_inner(base) {
+        return format!("{LIST_FORM}{}", path_text_form(item));
+    }
+    match wire_scalar_kind(base) {
+        WireScalarKind::Bool => BOOLEAN_FORM,
+        WireScalarKind::Float | WireScalarKind::Integer => NUMBER_FORM,
+        WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => BIGINT_FORM,
+        WireScalarKind::Text => TEXT_FORM,
+    }
+    .to_owned()
+}
+
 /// Whether `ty` is a `u64` or an `i64`, or a brand, a struct of one slot or an alias over one
 /// declared above, which TypeScript holds as a `bigint`: the text of a path, a query, a header or
 /// a text part is read as one from its digits.
@@ -803,6 +832,27 @@ pub fn path_reads_a_named_field(operation: &OperationDef) -> bool {
     };
     let placeholders = HttpShape::of(operation).placeholder_names();
     !placeholders.is_empty() && (placeholders.len() != 1 || !is_scalar_named_type(declared))
+}
+
+/// Whether a path placeholder of the operation may bind a list: a `Vec` the macro sees, or a field
+/// of a `Named` message whose type it never sees. A client writes such a placeholder through the
+/// join of a list's items, which refuses an item that holds a comma.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn path_writes_a_list(operation: &OperationDef) -> bool {
+    let placeholders = HttpShape::of(operation).placeholder_names();
+    if placeholders.is_empty() {
+        return false;
+    }
+    let is_list = |ty: &Type| vec_inner(option_inner(ty).unwrap_or(ty)).is_some();
+    match &operation.inputs {
+        OperationInputs::Empty => false,
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .any(|(field, ty)| placeholders.contains(&written(field)) && is_list(ty)),
+        OperationInputs::Named(declared) => {
+            placeholders.len() != 1 || !is_scalar_named_type(declared) || is_list(declared)
+        }
+    }
 }
 
 /// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.

@@ -54,6 +54,9 @@ block: no tag: refused
 block: a rule: read {"t":"rule"}
 block: a quote of a quote: read {"blocks":[{"li":["a"],"t":"paragraph"},{"blocks":[{"t":"rule"}],"t":"quote"}],"t":"quote"}
 block: a quote of a refused block: refused
+tethered: a key only the later member names: read {"harbour":"h"}
+tethered: a bound takes the first member out, and a stray key is refused: refused
+tethered: the first member held: read {"dock":"north","line":"x"}
 "#;
 
 pub const ROWS: &[Row] = &[
@@ -236,6 +239,24 @@ pub const ROWS: &[Row] = &[
         name: "block: a quote of a refused block",
         schema: "Block",
         payload: r#"{"t":"quote","blocks":[{"t":"paragraph","li":[],"x":1}]}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tethered: a key only the later member names",
+        schema: "Tethered",
+        payload: r#"{"harbour":"h"}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tethered: a bound takes the first member out, and a stray key is refused",
+        schema: "Tethered",
+        payload: r#"{"harbour":"h","line":""}"#,
+    },
+    Row {
+        zod_refuses: false,
+        name: "tethered: the first member held",
+        schema: "Tethered",
+        payload: r#"{"line":"x"}"#,
     },
 ];
 
@@ -605,6 +626,7 @@ fn report_of(as_zod: bool) -> String {
             "Pause" => read_as::<Pause>(row.payload),
             "Slip" => read_as::<Slip>(row.payload),
             "Tally" => read_as::<Tally>(row.payload),
+            "Tethered" => read_as::<Tethered>(row.payload),
             "Wharf" => read_as::<Wharf>(row.payload),
             "Wharfage" => read_as::<Wharfage>(row.payload),
             other => format!("no model named {other}"),

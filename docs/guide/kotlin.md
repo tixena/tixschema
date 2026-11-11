@@ -88,7 +88,7 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 
 - **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. The Rust validator counts the bytes of the UTF-8 text (`len()`) and the Zod schema counts UTF-16 code units (`length`), so the three agree on ASCII text and can differ on any other.
 - **A nullable member is measured only where it holds a value**: `spareLabel?.let { held -> ... }`.
-- **A number is compared in its own type.** An unsigned one is compared with an unsigned literal (`1u`), a `Float` with a `Float` (`0.5f`), a `Double` with a `Double`. A bound that is no value of the type, `minimum = 0.5` on a `u32`, is compared as a `Double`.
+- **A number is compared in its own type.** An unsigned one is compared with an unsigned literal (`1u`), a `Float` with a `Float` (`0.5f`), a `Double` with a `Double`.
 - **A float is quoted back as Rust writes it.** Kotlin prints `150.0` and `2.5E8` where Rust prints `150` and `250000000`, so a type that bounds a float carries `kotlinSchemaShown`, which writes a whole float without `.0` and any float without an exponent.
 - **A pattern is written for the JVM, and stated as you wrote it.** The JVM reads `$` as the end of the text or the place before a last line break, `\v` as any vertical space, and refuses a named group whose name holds `_`. The emitted regex writes `$` as `\z`, `\v` as `\x0B` and a named group as a plain one, which is what the `regex` crate reads in the three. The message still states the pattern of the declaration: `does not match pattern '^[a-z]+$'`.
 

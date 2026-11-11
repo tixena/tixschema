@@ -1111,7 +1111,8 @@ mod run_swift_units;
 #[path = "service_schema_emitted_client_tests/run_kotlin_units.rs"]
 mod run_kotlin_units;
 
-/// A limit past what an `f64` holds, and in each written form, for each emitted surface.
+/// A limit past what an `f64` holds, in each written form, and past what an `i32` holds on a
+/// float, for each emitted surface.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/integer_limit_models.rs"]
 mod integer_limit_models;
@@ -2269,6 +2270,30 @@ use carillon_mcp_service::{
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_carillon_mcp.rs"]
 mod run_carillon_mcp;
+
+/// `CarillonHttpService`, whose one operation takes the message of `CarillonService`, and what the
+/// Rust `http_rest` client and the Rust `mcp` dispatcher and client answer to `-0` and the numbers
+/// beside it.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_numbers.rs"]
+mod carillon_numbers;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_http_rest_client.rs"]
+mod carillon_http_rest_client;
+
+#[cfg(test)]
+use carillon_numbers::{CarillonHttpService, carillon_http_service_schema};
+
+#[cfg(all(test, any(feature = "dart", feature = "kotlin", feature = "swift")))]
+use carillon_numbers::CarillonHttpServiceSchema;
+
+/// The emitted Dart, Kotlin and Swift `http_rest` clients, `mcp` servers and `mcp` clients read
+/// `-0` and the numbers beside it, measured against them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_carillon_numbers.rs"]
+mod run_carillon_numbers;
 
 /// `CarillonLedgerMcpService`, whose one tool takes a ledger that holds a `u64`, which a build
 /// with `swift` or `kotlin` refuses, and what the emitted TypeScript `mcp` server writes of it.

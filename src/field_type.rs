@@ -135,15 +135,30 @@ const ZOD_NAMED_KEY: &str = ".superRefine((_read, ctx) => { const held = ctx.val
 #[cfg(feature = "zod")]
 const ZOD_FLOATED: &str = "(held) => (held instanceof Number ? held.valueOf() : held)";
 
-/// What a value is handed to a `preprocess` function through: each `Number` object the service
-/// code reads a number written with a fraction or an exponent as, at any depth of a list or a plain
-/// object, read back to its number, so the function is handed what `JSON.parse` reads.
+/// The first stage of a `preprocess` chain: the value paired with a copy in which each `Number`
+/// object the service code reads a number written with a fraction or an exponent as, at any depth
+/// of a list or a plain object, is read back to its number, so a function is handed what
+/// `JSON.parse` reads.
 #[cfg(feature = "zod")]
-pub const ZOD_UNBOXED: &str = "function unboxed(held) { if (held instanceof Number) return \
-     held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && \
-     Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = \
+const ZOD_PAIRED: &str = "function paired(held) { if (held instanceof Number) return [held, \
+     held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && \
+     Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = \
      Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of \
-     Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }";
+     Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }";
+
+/// The last stage of a `preprocess` chain: each number the functions answered at the path of a
+/// `Number` object the service code read, with that number as its value, is that `Number` object
+/// again, so the schema after the chain reads a number written as a float as it would have
+/// without the chain. A value a function answered in another shape or at another path stays.
+#[cfg(feature = "zod")]
+const ZOD_REBOXED: &str = "function reboxed(pair) { if (!Array.isArray(pair)) return pair; const \
+     original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, \
+     original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof \
+     original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) \
+     || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; \
+     const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of \
+     Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), \
+     item])); return copied; }";
 
 /// What `serde_json` says of an externally tagged enum, a `Result` among them, written as neither a
 /// string nor an object of one key: a refusal it classifies as text that is not the document.
@@ -446,6 +461,12 @@ impl FieldDefType {
             #[cfg(feature = "chrono")]
             Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
         }
+    }
+
+    /// Whether this is one of the integer primitives.
+    #[cfg(feature = "zod")]
+    pub const fn is_integer(&self) -> bool {
+        self.is_numeric() && !matches!(self, Self::F32 | Self::F64)
     }
 
     /// Whether this is one of the numeric primitives — every integer and float kind a
@@ -2742,15 +2763,25 @@ impl FieldDef {
         self.field_type.number_key()
     }
 
-    /// [`Self::zod_literal`] of the number `value`, ending on [`zod_boxed_literal`].
+    /// [`Self::zod_literal`] of the number `value`, ending on [`zod_boxed_literal`] unless an
+    /// integer member held to it, which serde does not read written as a float.
     #[cfg(feature = "zod")]
     fn zod_number_literal(&self, value: f64) -> String {
         let written = format_number_literal(value);
-        format!(
-            "{}{}",
-            self.zod_literal(&written),
-            zod_boxed_literal(&written)
-        )
+        let whole = self
+            .model_schema_prop_meta
+            .as_ref()
+            .and_then(|meta| meta.collapsed_from.as_ref())
+            .is_some_and(FieldDefType::is_integer);
+        if whole {
+            self.zod_literal(&written)
+        } else {
+            format!(
+                "{}{}",
+                self.zod_literal(&written),
+                zod_boxed_literal(&written)
+            )
+        }
     }
 
     /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
@@ -3200,6 +3231,18 @@ fn range_object(kind: RangeKind, member: impl Fn(&str) -> String, separator: &st
     format!("{{ {} }}", members.join(separator))
 }
 
+/// The stage that hands `function` the plain value of the pair [`ZOD_PAIRED`] made, as
+/// `z.preprocess` hands it, and keeps the original beside the answer. An answer a promise holds is
+/// awaited.
+#[cfg(feature = "zod")]
+fn zod_preprocess_stage(function: &str) -> String {
+    format!(
+        "function (pair, ctx) {{ if (!Array.isArray(pair)) return pair; const answered = \
+         Reflect.apply({function}, undefined, [pair[1], ctx]); return answered instanceof Promise ? \
+         answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }}"
+    )
+}
+
 /// The check a numeric literal reads the `Number` object the service code reads a number written
 /// with a fraction or an exponent as: a literal whose value it holds reads as the literal, as serde
 /// reads `2.0` for an `f64` held to `2`. The literal stays a `z.literal`, which a
@@ -3214,18 +3257,24 @@ fn zod_boxed_literal(written: &str) -> String {
     )
 }
 
-/// `schema` inside one `z.preprocess(fn, …)` per function named, the first one written outermost,
-/// so each is handed the answer of the one before it, and the first handed the value through
-/// [`ZOD_UNBOXED`]. A field's schema and a type's own expression are both wrapped here.
+/// `schema` inside one `z.preprocess(…)` per function named, the first one written outermost, so
+/// each is handed the answer of the one before it and the first the value as `JSON.parse` reads it
+/// ([`ZOD_PAIRED`]). The schema is handed what the last answered, a number written as a float
+/// being the `Number` object again where it stayed the same ([`ZOD_REBOXED`]). A field's schema
+/// and a type's own expression are both wrapped here.
 #[cfg(feature = "zod")]
 pub fn zod_preprocess_wrap(schema: String, functions: &[FunctionName]) -> String {
     if functions.is_empty() {
         return schema;
     }
-    let wrapped = functions.iter().rev().fold(schema, |wrapped, function| {
-        format!("z.preprocess({}, {wrapped})", function.name)
+    let reboxed = format!("z.preprocess({ZOD_REBOXED}, {schema})");
+    let wrapped = functions.iter().rev().fold(reboxed, |wrapped, function| {
+        format!(
+            "z.preprocess({}, {wrapped})",
+            zod_preprocess_stage(&function.name)
+        )
     });
-    format!("z.preprocess({ZOD_UNBOXED}, {wrapped})")
+    format!("z.preprocess({ZOD_PAIRED}, {wrapped})")
 }
 
 /// `schema` with one `.check(…)` per function named, in the order written. Each hands its

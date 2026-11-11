@@ -649,10 +649,10 @@ fn placed(field: &Field, _rename_all: Option<&str>) -> Placed {
     }
 }
 
-/// Each named member of `item_struct` serde reads under a key of its own, as its name in Rust and
-/// that key. A flattened member is read from the keys of the type it holds.
+/// Each named member of `item_struct` serde reads under a key of its own, as its name in Rust,
+/// that key and its type. A flattened member is read from the keys of the type it holds.
 #[cfg(feature = "serde")]
-pub fn read_member_keys(item_struct: &ItemStruct) -> Vec<(String, String)> {
+pub fn read_member_keys(item_struct: &ItemStruct) -> Vec<(String, String, &Type)> {
     let rule = resolve_rename_rule(parse_read_renames(&item_struct.attrs).rename_all.as_deref());
     item_struct
         .fields
@@ -666,7 +666,7 @@ pub fn read_member_keys(item_struct: &ItemStruct) -> Vec<(String, String)> {
             let key = parse_read_renames(&field.attrs)
                 .rename
                 .unwrap_or_else(|| rule.apply_to_field(&name));
-            Some((name, key))
+            Some((name, key, &field.ty))
         })
         .collect()
 }

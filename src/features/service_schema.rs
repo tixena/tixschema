@@ -61,12 +61,12 @@ use crate::service_schema::parse::ServiceDef;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use crate::service_schema::parse::{HttpShape, path_reads_a_named_field};
 use crate::service_schema::support::exhaustiveness;
-#[cfg(all(feature = "typescript", feature = "zod"))]
-use crate::service_schema::support::message_wire_key_ident;
 #[cfg(any(feature = "typescript", feature = "dart"))]
 use crate::service_schema::support::{
     fault_fields_typescript_name, fault_issue_name, module_ident,
 };
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use crate::service_schema::support::{message_wire_form_ident, message_wire_key_ident};
 use crate::service_schema::transport::OpenApiArguments;
 use crate::service_schema::transport::http_rest::openapi::openapi_method;
 use proc_macro2::TokenStream;
@@ -246,7 +246,7 @@ fn seam(service: &ServiceDef, openapi: Option<&OpenApiArguments>) -> TokenStream
         service,
         &http_service,
         "ts_quoted",
-        document.into_iter().collect(),
+        document.into_iter().chain(wire_forms(service)).collect(),
     );
     let service_side = service::emit(service).join("\n\n");
     let ws_client = ws_client::emit(service).join("\n\n");
@@ -335,6 +335,34 @@ fn with_wire_keys(
     } else {
         quote! { #text #(#more)* }
     }
+}
+
+/// The form each placeholder that binds a member of a declared message is read in, written as a
+/// string literal over its [`message::wire_form_marker`].
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn wire_forms(service: &ServiceDef) -> Vec<TokenStream> {
+    let module = module_ident(service);
+    service
+        .operations
+        .iter()
+        .filter(|operation| path_reads_a_named_field(operation))
+        .flat_map(|operation| {
+            let form_of = message_wire_form_ident(operation);
+            let schema = &module;
+            HttpShape::of(operation)
+                .placeholder_names()
+                .into_iter()
+                .map(move |placeholder| {
+                    let marker = message::wire_form_marker(operation, &placeholder);
+                    quote! {
+                        .replace(
+                            #marker,
+                            &#schema::message_wire_keys::ts_quoted(#schema::#form_of(#placeholder)),
+                        )
+                    }
+                })
+        })
+        .collect()
 }
 
 #[cfg(all(feature = "typescript", not(feature = "zod")))]

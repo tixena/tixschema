@@ -675,7 +675,10 @@ fn a_unit_success_answers_void() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = swift_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written.contains("rendered = try mediaClientServiceWireText(req.sha256)")
+        written.contains("rendered = try mediaClientServicePathText(req.sha256)")
+            && written.contains(
+                "func mediaClientServicePathText<Value: Encodable>(_ value: Value) throws -> String? {"
+            )
             && written.contains(
                 "func mediaClientServiceWireText<Value: Encodable>(_ value: Value) throws -> String {"
             )
@@ -709,7 +712,7 @@ fn a_reserved_word_is_written_between_backticks_in_the_method_the_parameter_and_
         "req.`in`",
         "if let `default` = `default` {",
         "public func object(_ req: Thing) async",
-        "WireText(req.`class`)",
+        "PathText(req.`class`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
     }

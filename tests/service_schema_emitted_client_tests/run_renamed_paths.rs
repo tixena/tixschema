@@ -1,7 +1,8 @@
-//! A service whose paths bind a field of a declared message that serde names apart from Rust,
-//! called through each emitted `http_rest` client: each path holds the field's value and each body
-//! carries it under the key serde writes, the Rust dispatcher reads each request, and the
-//! TypeScript dispatcher hands an implementation the path's value whatever the body carries.
+//! A service whose paths bind a field of a declared message that serde names apart from Rust, or
+//! that holds a number, a `bool`, an `i64` or a list, called through each emitted `http_rest`
+//! client: each path holds the field's value and each body carries it under the key serde writes,
+//! the Rust dispatcher reads each request, and the TypeScript dispatcher hands an implementation
+//! the path's value, in the form its member publishes, whatever the body carries.
 
 use core::future::{Future, ready};
 use core::pin::pin;
@@ -28,16 +29,55 @@ use super::runtime::ran_kotlin;
 const QUOTED_KEY: &str = "doc\"it's$\\";
 
 /// One call of each operation, in the order each driver makes them, and what the Rust dispatcher
-/// answers its request: the path it writes, the key its body holds the field under, and the id.
-const CARRIED: [(&str, Option<&str>, &str); 7] = [
-    ("/beside/d1", Some("docId"), "d1"),
+/// answers its request.
+const CARRIED: [Carried; 14] = [
+    ("/beside/d1", Some(("docId", r#""d1""#)), "d1"),
     ("/generated/d1", None, "d1"),
-    ("/own/d1", Some("doc-id"), "d1"),
-    ("/plain/d1", Some("document_id"), "d1"),
-    ("/quoted/d1", Some(QUOTED_KEY), "d1"),
-    ("/renamed/d1", Some("documentId"), "d1"),
-    ("/two/d1/t", Some("documentId"), "d1|t"),
+    (
+        "/genlabelled/x%2Cy",
+        Some(("labels", r#"["x","y"]"#)),
+        "x|y",
+    ),
+    (
+        "/genlist/1%2C2%2C3",
+        Some(("pages", "[1,2,3]")),
+        "[1, 2, 3]",
+    ),
+    (
+        "/labelled/a%20b%2Cc%2Fd",
+        Some(("labels", r#"["a b","c/d"]"#)),
+        "a b|c/d",
+    ),
+    ("/listed/1%2C2%2C3", Some(("pages", "[1,2,3]")), "[1, 2, 3]"),
+    ("/own/d1", Some(("doc-id", r#""d1""#)), "d1"),
+    ("/pages/7", Some(("page_size", "7")), "7"),
+    ("/pinned/true", Some(("pinned", "true")), "true"),
+    ("/plain/d1", Some(("document_id", r#""d1""#)), "d1"),
+    ("/quoted/d1", Some((QUOTED_KEY, r#""d1""#)), "d1"),
+    ("/renamed/d1", Some(("documentId", r#""d1""#)), "d1"),
+    (
+        "/tallied/-9007199254740993",
+        Some(("tally", "-9007199254740993")),
+        "-9007199254740993",
+    ),
+    ("/two/d1/t", Some(("documentId", r#""d1""#)), "d1|t"),
 ];
+
+/// Bodies that carry another value under the key of a member a path reads that is no text: `path`,
+/// `body`, then the id the implementation is handed.
+const TYPED: [(&str, &str, &str); 4] = [
+    ("/listed/1,2,3", r#"{"pages":[9],"title":"t"}"#, "[1, 2, 3]"),
+    ("/pages/7", r#"{"page_size":9,"title":"t"}"#, "7"),
+    ("/pinned/true", r#"{"pinned":false,"title":"t"}"#, "true"),
+    (
+        "/tallied/-9007199254740993",
+        r#"{"tally":1,"title":"t"}"#,
+        "-9007199254740993",
+    ),
+];
+
+/// A path whose text the form of its member does not read, and its body.
+const UNREAD: (&str, &str) = ("/pages/abc", r#"{"title":"t"}"#);
 
 /// Bodies that carry another value under the key each operation reads its field from, and bodies
 /// that carry none: `path`, then `body`.
@@ -84,11 +124,20 @@ void main() async {
   final client = KeyedPathClientServiceHttpClient(recorder);
   await client.besideFlatten(KeyedBeside(document_id: 'd1', extra: KeyedExtra(title: 't')));
   await client.keyedGenerated(KeyedGeneratedRequest(document_id: 'd1', title: 't'));
+  await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['x', 'y'], title: 't'));
+  await client.keyedGenList(KeyedGenListRequest(pages: [1, 2, 3], title: 't'));
+  await client.labelled(KeyedLabelled(labels: ['a b', 'c/d'], title: 't'));
+  await client.listed(KeyedListed(pages: [1, 2, 3], title: 't'));
   await client.ownKey(KeyedOwn(document_id: 'd1', title: 't'));
+  await client.paged(KeyedPaged(page_size: 7, title: 't'));
+  await client.pinned(KeyedPinned(pinned: true, title: 't'));
   await client.plain(KeyedPlain(document_id: 'd1', title: 't'));
   await client.quotedKey(KeyedQuoted(document_id: 'd1', title: 't'));
   await client.renamed(KeyedRenamed(document_id: 'd1', title: 't'));
+  await client.tallied(KeyedTally(tally: -9007199254740993, title: 't'));
   await client.twoPlaceholders(KeyedRenamed(document_id: 'd1', title: 't'));
+  await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['a,b', 'c'], title: 't'));
+  await client.labelled(KeyedLabelled(labels: ['a,b', 'c'], title: 't'));
   print(jsonEncode(recorder.sent));
 }
 ";
@@ -109,11 +158,20 @@ fun main() = runBlocking {
     val client = KeyedPathClientServiceHttpClient(transport)
     client.besideFlatten(KeyedBeside(documentId = "d1", extra = KeyedExtra(title = "t")))
     client.keyedGenerated(KeyedGeneratedRequest(documentId = "d1", title = "t"))
+    client.keyedGenLabelled(KeyedGenLabelledRequest(labels = listOf("x", "y"), title = "t"))
+    client.keyedGenList(KeyedGenListRequest(pages = listOf(1u, 2u, 3u), title = "t"))
+    client.labelled(KeyedLabelled(labels = listOf("a b", "c/d"), title = "t"))
+    client.listed(KeyedListed(pages = listOf(1u, 2u, 3u), title = "t"))
     client.ownKey(KeyedOwn(documentId = "d1", title = "t"))
+    client.paged(KeyedPaged(pageSize = 7u, title = "t"))
+    client.pinned(KeyedPinned(pinned = true, title = "t"))
     client.plain(KeyedPlain(documentId = "d1", title = "t"))
     client.quotedKey(KeyedQuoted(documentId = "d1", title = "t"))
     client.renamed(KeyedRenamed(documentId = "d1", title = "t"))
+    client.tallied(KeyedTally(tally = -9007199254740993L, title = "t"))
     client.twoPlaceholders(KeyedRenamed(documentId = "d1", title = "t"))
+    client.keyedGenLabelled(KeyedGenLabelledRequest(labels = listOf("a,b", "c"), title = "t"))
+    client.labelled(KeyedLabelled(labels = listOf("a,b", "c"), title = "t"))
     val report = buildJsonArray {
         for (request in transport.sent) {
             add(buildJsonObject {
@@ -166,28 +224,56 @@ let recorder = KeyedRecorder()
 let client = KeyedPathClientServiceHttpClient(transport: recorder)
 _ = await client.besideFlatten(KeyedBeside(documentId: "d1", extra: KeyedExtra(title: "t")))
 _ = await client.keyedGenerated(KeyedGeneratedRequest(documentId: "d1", title: "t"))
+_ = await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ["x", "y"], title: "t"))
+_ = await client.keyedGenList(KeyedGenListRequest(pages: [1, 2, 3], title: "t"))
+_ = await client.labelled(KeyedLabelled(labels: ["a b", "c/d"], title: "t"))
+_ = await client.listed(KeyedListed(pages: [1, 2, 3], title: "t"))
 _ = await client.ownKey(KeyedOwn(documentId: "d1", title: "t"))
+_ = await client.paged(KeyedPaged(pageSize: 7, title: "t"))
+_ = await client.pinned(KeyedPinned(pinned: true, title: "t"))
 _ = await client.plain(KeyedPlain(documentId: "d1", title: "t"))
 _ = await client.quotedKey(KeyedQuoted(documentId: "d1", title: "t"))
 _ = await client.renamed(KeyedRenamed(documentId: "d1", title: "t"))
+_ = await client.tallied(KeyedTally(tally: -9007199254740993, title: "t"))
 _ = await client.twoPlaceholders(KeyedRenamed(documentId: "d1", title: "t"))
+_ = await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ["a,b", "c"], title: "t"))
+_ = await client.labelled(KeyedLabelled(labels: ["a,b", "c"], title: "t"))
 print(String(data: try! JSONEncoder().encode(await recorder.sent), encoding: .utf8)!)
 "##;
 
 /// One call of each operation through the TypeScript client bound to the TypeScript dispatcher,
-/// then each body of `ELSEWHERE` handed to the dispatcher. `ELSEWHERE` and `QUOTED_KEY` are written
-/// above this by the Rust side.
+/// then each body of `ELSEWHERE`, `TYPED` and `UNREAD` handed to the dispatcher. Those and
+/// `QUOTED_KEY` are written above this by the Rust side. A member that is no text answers its id
+/// only where it reached the implementation as the type its member holds.
 const NODE_DRIVER: &str = r#"
 const impl = {
   async besideFlatten(ctx, req) { return { ok: true, value: { id: req.docId } }; },
   async keyedGenerated(ctx, req) { return { ok: true, value: { id: req.documentId } }; },
+  async keyedGenLabelled(ctx, req) { return { ok: true, value: { id: req.labels.join("|") } }; },
+  async keyedGenList(ctx, req) {
+    return { ok: true, value: { id: `[${req.pages.join(", ")}]` } };
+  },
+  async labelled(ctx, req) { return { ok: true, value: { id: req.labels.join("|") } }; },
+  async listed(ctx, req) {
+    const numbers = req.pages.every((page) => typeof page === "number");
+    return { ok: true, value: { id: numbers ? `[${req.pages.join(", ")}]` : "text" } };
+  },
   async ownKey(ctx, req) { return { ok: true, value: { id: req["doc-id"] } }; },
+  async paged(ctx, req) {
+    return { ok: true, value: { id: typeof req.page_size === "number" ? String(req.page_size) : "text" } };
+  },
+  async pinned(ctx, req) {
+    return { ok: true, value: { id: typeof req.pinned === "boolean" ? String(req.pinned) : "text" } };
+  },
   async plain(ctx, req) { return { ok: true, value: { id: req.document_id } }; },
   async quotedKey(ctx, req) { return { ok: true, value: { id: req[QUOTED_KEY] } }; },
   async renamed(ctx, req) {
     return req.documentId === "refused"
       ? { ok: false, error: { errorCode: "Nope" } }
       : { ok: true, value: { id: req.documentId } };
+  },
+  async tallied(ctx, req) {
+    return { ok: true, value: { id: typeof req.tally === "bigint" ? String(req.tally) : "text" } };
   },
   async twoPlaceholders(ctx, req) { return { ok: true, value: { id: `${req.documentId}|${req.title}` } }; },
 };
@@ -216,16 +302,27 @@ const client = createKeyedPathClientServiceHttpClient({
 const answers = [
   await client.besideFlatten({ docId: "d1", title: "t" }),
   await client.keyedGenerated({ documentId: "d1", title: "t" }),
+  await client.keyedGenLabelled({ labels: ["x", "y"], title: "t" }),
+  await client.keyedGenList({ pages: [1, 2, 3], title: "t" }),
+  await client.labelled({ labels: ["a b", "c/d"], title: "t" }),
+  await client.listed({ pages: [1, 2, 3], title: "t" }),
   await client.ownKey({ "doc-id": "d1", title: "t" }),
+  await client.paged({ page_size: 7, title: "t" }),
+  await client.pinned({ pinned: true, title: "t" }),
   await client.plain({ document_id: "d1", title: "t" }),
   await client.quotedKey({ [QUOTED_KEY]: "d1", title: "t" }),
   await client.renamed({ documentId: "d1", title: "t" }),
+  await client.tallied({ tally: -9007199254740993n, title: "t" }),
   await client.twoPlaceholders({ documentId: "d1", title: "t" }),
 ];
 const declaredError = await client.renamed({ documentId: "refused", title: "t" });
+const sentBefore = sent.length;
+const commaRefusals = [
+  await client.keyedGenLabelled({ labels: ["a,b", "c"], title: "t" }),
+  await client.labelled({ labels: ["a,b", "c"], title: "t" }),
+];
 
-const elsewhere = [];
-for (const [path, body] of ELSEWHERE) {
+async function put([path, body]) {
   const response = await dispatch({}, {
     method: "PUT",
     path,
@@ -233,9 +330,24 @@ for (const [path, body] of ELSEWHERE) {
     headers: [],
     body: new TextEncoder().encode(body),
   });
-  elsewhere.push({ status: response.status, body: new TextDecoder().decode(response.body) });
+  return { status: response.status, body: new TextDecoder().decode(response.body) };
 }
-console.log(JSON.stringify({ sent: sent.slice(0, 7), answers, declaredError, elsewhere }));
+
+const elsewhere = [];
+for (const row of ELSEWHERE) elsewhere.push(await put(row));
+const typed = [];
+for (const row of TYPED) typed.push(await put(row));
+const unread = await put(UNREAD);
+console.log(JSON.stringify({
+  sent: sent.slice(0, CARRIED_COUNT),
+  answers,
+  declaredError,
+  commaRefusals,
+  refusedSent: sent.length - sentBefore,
+  elsewhere,
+  typed,
+  unread,
+}));
 "#;
 
 /// The package the emitted schemas import.
@@ -243,6 +355,14 @@ const REQUIRED_PACKAGES: &[&str] = &["zod"];
 
 /// The runtime the TypeScript driver runs under, named for a machine with one elsewhere.
 const RUNTIME_VAR: &str = "TIXSCHEMA_NODE";
+
+/// The path a client writes, the key its body holds the field under beside the field's JSON, and
+/// the id the Rust dispatcher answers.
+type Carried = (
+    &'static str,
+    Option<(&'static str, &'static str)>,
+    &'static str,
+);
 
 /// The id an implementation was handed.
 #[model_schema()]
@@ -311,8 +431,50 @@ pub struct KeyedQuoted {
     pub title: String,
 }
 
+/// A message whose member a path reads as a number.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyedPaged {
+    pub page_size: u32,
+    pub title: String,
+}
+
+/// A message whose member a path reads as a `bool`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyedPinned {
+    pub pinned: bool,
+    pub title: String,
+}
+
+/// A message whose member a path reads as an `i64`, which TypeScript holds as a `bigint`.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyedTally {
+    pub tally: i64,
+    pub title: String,
+}
+
+/// A message whose member a path reads as a list of numbers, which the dispatchers are handed by
+/// hand.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyedListed {
+    pub pages: Vec<u32>,
+    pub title: String,
+}
+
+/// A message whose member a path reads as a list of texts.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyedLabelled {
+    pub labels: Vec<String>,
+    pub title: String,
+}
+
 /// One operation for each way serde names a field, one beside a flattened field, one whose path
-/// binds two fields, and one whose message the macro generates.
+/// binds two fields, one whose message the macro generates, and one for each form a path reads a
+/// member that is no text in.
 #[service_schema(transports = ["http_rest"])]
 pub trait KeyedPathClientService<Ctx> {
     #[service_schema_op(http(method = "PUT", path = "/beside/{document_id}"))]
@@ -320,6 +482,22 @@ pub trait KeyedPathClientService<Ctx> {
         &self,
         ctx: &Ctx,
         req: KeyedBeside,
+    ) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/genlabelled/{labels}"))]
+    async fn keyed_gen_labelled(
+        &self,
+        ctx: &Ctx,
+        labels: Vec<String>,
+        title: String,
+    ) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/genlist/{pages}"))]
+    async fn keyed_gen_list(
+        &self,
+        ctx: &Ctx,
+        pages: Vec<u32>,
+        title: String,
     ) -> Result<KeyedAnswer, KeyedRefused>;
 
     #[service_schema_op(http(method = "PUT", path = "/generated/{document_id}"))]
@@ -330,8 +508,20 @@ pub trait KeyedPathClientService<Ctx> {
         title: String,
     ) -> Result<KeyedAnswer, KeyedRefused>;
 
+    #[service_schema_op(http(method = "PUT", path = "/labelled/{labels}"))]
+    async fn labelled(&self, ctx: &Ctx, req: KeyedLabelled) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/listed/{pages}"))]
+    async fn listed(&self, ctx: &Ctx, req: KeyedListed) -> Result<KeyedAnswer, KeyedRefused>;
+
     #[service_schema_op(http(method = "PUT", path = "/own/{document_id}"))]
     async fn own_key(&self, ctx: &Ctx, req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/pages/{page_size}"))]
+    async fn paged(&self, ctx: &Ctx, req: KeyedPaged) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/pinned/{pinned}"))]
+    async fn pinned(&self, ctx: &Ctx, req: KeyedPinned) -> Result<KeyedAnswer, KeyedRefused>;
 
     #[service_schema_op(http(method = "PUT", path = "/plain/{document_id}"))]
     async fn plain(&self, ctx: &Ctx, req: KeyedPlain) -> Result<KeyedAnswer, KeyedRefused>;
@@ -345,6 +535,9 @@ pub trait KeyedPathClientService<Ctx> {
         error_status(Nope = 409),
     ))]
     async fn renamed(&self, ctx: &Ctx, req: KeyedRenamed) -> Result<KeyedAnswer, KeyedRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/tallied/{tally}"))]
+    async fn tallied(&self, ctx: &Ctx, req: KeyedTally) -> Result<KeyedAnswer, KeyedRefused>;
 
     #[service_schema_op(http(method = "PUT", path = "/two/{document_id}/{title}"))]
     async fn two_placeholders(
@@ -369,6 +562,30 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         })
     }
 
+    async fn keyed_gen_labelled(
+        &self,
+        _ctx: &(),
+        labels: Vec<String>,
+        _title: String,
+    ) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: labels.join("|"),
+        })
+    }
+
+    async fn keyed_gen_list(
+        &self,
+        _ctx: &(),
+        pages: Vec<u32>,
+        _title: String,
+    ) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: format!("{pages:?}"),
+        })
+    }
+
     async fn keyed_generated(
         &self,
         _ctx: &(),
@@ -379,10 +596,38 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswer { id: document_id })
     }
 
+    async fn labelled(&self, _ctx: &(), req: KeyedLabelled) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: req.labels.join("|"),
+        })
+    }
+
+    async fn listed(&self, _ctx: &(), req: KeyedListed) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: format!("{:?}", req.pages),
+        })
+    }
+
     async fn own_key(&self, _ctx: &(), req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         Ok(KeyedAnswer {
             id: req.document_id,
+        })
+    }
+
+    async fn paged(&self, _ctx: &(), req: KeyedPaged) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: req.page_size.to_string(),
+        })
+    }
+
+    async fn pinned(&self, _ctx: &(), req: KeyedPinned) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: req.pinned.to_string(),
         })
     }
 
@@ -407,6 +652,13 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         }
         Ok(KeyedAnswer {
             id: req.document_id,
+        })
+    }
+
+    async fn tallied(&self, _ctx: &(), req: KeyedTally) -> Result<KeyedAnswer, KeyedRefused> {
+        ready(()).await;
+        Ok(KeyedAnswer {
+            id: req.tally.to_string(),
         })
     }
 
@@ -478,13 +730,14 @@ fn rust_answered(method: &str, path: &str, query: &str, body: &str) -> (u16, Val
 /// Holds the requests a client wrote to [`CARRIED`], each read by the Rust dispatcher.
 fn assert_carried(sent: &[Value]) {
     assert_eq!(sent.len(), CARRIED.len(), "{sent:#?}");
-    for (request, (path, key, id)) in sent.iter().zip(CARRIED) {
+    for (request, (path, held, id)) in sent.iter().zip(CARRIED) {
         let text = |named: &str| request[named].as_str().unwrap();
         assert_eq!(text("path"), path, "{request}");
-        if let Some(held_under) = key {
+        if let Some((held_under, value)) = held {
             let body: Value = serde_json::from_str(text("body")).unwrap();
             assert_eq!(
-                body[held_under], "d1",
+                body[held_under],
+                serde_json::from_str::<Value>(value).unwrap(),
                 "the body holds it under another key: {request}"
             );
         }
@@ -511,6 +764,23 @@ fn the_rust_dispatcher_hands_the_implementation_the_paths_value() {
             "PUT {path} {body}"
         );
     }
+}
+
+#[test]
+fn the_rust_dispatcher_reads_each_member_in_the_form_it_publishes() {
+    for (path, body, id) in TYPED {
+        assert_eq!(
+            rust_answered("PUT", path, "", body),
+            (200, json!({ "id": id })),
+            "PUT {path} {body}"
+        );
+    }
+    let (status, refused) = rust_answered("PUT", UNREAD.0, "", UNREAD.1);
+    assert_eq!((status, &refused["field"]), (400, &json!("page_size")));
+    assert_eq!(
+        refused["detail"],
+        r#"'page_size': invalid type: string "abc", expected u32"#
+    );
 }
 
 #[test]
@@ -569,14 +839,28 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
         KeyedExtra::zod_schema(),
         KeyedBeside::ts_definition(),
         KeyedBeside::zod_schema(),
+        KeyedPaged::ts_definition(),
+        KeyedPaged::zod_schema(),
+        KeyedPinned::ts_definition(),
+        KeyedPinned::zod_schema(),
+        KeyedTally::ts_definition(),
+        KeyedTally::zod_schema(),
+        KeyedListed::ts_definition(),
+        KeyedListed::zod_schema(),
+        KeyedLabelled::ts_definition(),
+        KeyedLabelled::zod_schema(),
         KeyedPathClientServiceSchema::ts_definition(),
         KeyedPathClientServiceSchema::ts_service(),
         KeyedPathClientServiceSchema::ts_http_client(),
         KeyedPathClientServiceSchema::ts_http_service(),
         format!(
-            "const ELSEWHERE = {};\nconst QUOTED_KEY = {};",
+            "const ELSEWHERE = {};\nconst TYPED = {};\nconst UNREAD = {};\n\
+             const QUOTED_KEY = {};\nconst CARRIED_COUNT = {};",
             json!(ELSEWHERE),
-            json!(QUOTED_KEY)
+            json!(TYPED.map(|(path, body, _)| (path, body))),
+            json!(UNREAD),
+            json!(QUOTED_KEY),
+            CARRIED.len()
         ),
         NODE_DRIVER.to_owned(),
     ]
@@ -593,6 +877,20 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
     };
     let ran: Value = serde_json::from_str(printed.trim()).unwrap();
     assert_carried(ran["sent"].as_array().unwrap());
+    assert_eq!(
+        ran["refusedSent"], 0_u8,
+        "a refused list was sent: {printed}"
+    );
+    for refusal in ran["commaRefusals"].as_array().unwrap() {
+        assert_eq!(refusal["ok"], false, "{printed}");
+        let fault = &refusal["error"]["fault"];
+        assert_eq!(fault["field"], "labels", "{printed}");
+        assert_eq!(
+            fault["detail"],
+            "'labels': a list item holds a comma, which a path would read as two items",
+            "{printed}"
+        );
+    }
     let answered: Vec<Value> = CARRIED
         .iter()
         .map(|(_, _, id)| json!({ "ok": true, "value": { "id": id } }))
@@ -608,6 +906,14 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
         .map(|_| json!({ "status": 200_u16, "body": r#"{"id":"d1"}"# }))
         .collect();
     assert_eq!(ran["elsewhere"], Value::Array(elsewhere), "{printed}");
+    let typed: Vec<Value> = TYPED
+        .iter()
+        .map(|(_, _, id)| json!({ "status": 200_u16, "body": json!({ "id": id }).to_string() }))
+        .collect();
+    assert_eq!(ran["typed"], Value::Array(typed), "{printed}");
+    assert_eq!(ran["unread"]["status"], 400_u16, "{printed}");
+    let refused: Value = serde_json::from_str(ran["unread"]["body"].as_str().unwrap()).unwrap();
+    assert_eq!(refused["field"], "page_size", "{printed}");
 }
 
 #[cfg(feature = "dart")]
@@ -624,6 +930,11 @@ fn the_dart_client_carries_the_field_under_its_key() {
         keyed_quoted_dart::dart_definition(),
         keyed_extra_dart::dart_definition(),
         keyed_beside_dart::dart_definition(),
+        keyed_paged_dart::dart_definition(),
+        keyed_pinned_dart::dart_definition(),
+        keyed_tally_dart::dart_definition(),
+        keyed_listed_dart::dart_definition(),
+        keyed_labelled_dart::dart_definition(),
         KeyedPathClientServiceSchema::dart_definition(),
         KeyedPathClientServiceSchema::dart_http_client(),
         DART_DRIVER.to_owned(),
@@ -656,7 +967,14 @@ fn the_swift_client_carries_the_field_under_its_key() {
         keyed_quoted_swift::swift_definition(),
         keyed_extra_swift::swift_definition(),
         keyed_beside_swift::swift_definition(),
+        keyed_paged_swift::swift_definition(),
+        keyed_pinned_swift::swift_definition(),
+        keyed_tally_swift::swift_definition(),
+        keyed_listed_swift::swift_definition(),
+        keyed_labelled_swift::swift_definition(),
         keyed_generated_request_swift::swift_definition(),
+        keyed_gen_labelled_request_swift::swift_definition(),
+        keyed_gen_list_request_swift::swift_definition(),
         keyed_path_client_service_fault_fields_swift::swift_definition(),
         keyed_path_client_service_fault_kind_swift::swift_definition(),
         KeyedPathClientServiceSchema::swift_http_client(),
@@ -698,7 +1016,14 @@ fn the_kotlin_client_carries_the_field_under_its_key() {
         keyed_quoted_kotlin::kotlin_definition(),
         keyed_extra_kotlin::kotlin_definition(),
         keyed_beside_kotlin::kotlin_definition(),
+        keyed_paged_kotlin::kotlin_definition(),
+        keyed_pinned_kotlin::kotlin_definition(),
+        keyed_tally_kotlin::kotlin_definition(),
+        keyed_listed_kotlin::kotlin_definition(),
+        keyed_labelled_kotlin::kotlin_definition(),
         keyed_generated_request_kotlin::kotlin_definition(),
+        keyed_gen_labelled_request_kotlin::kotlin_definition(),
+        keyed_gen_list_request_kotlin::kotlin_definition(),
         keyed_path_client_service_fault_fields_kotlin::kotlin_definition(),
         keyed_path_client_service_fault_kind_kotlin::kotlin_definition(),
         KeyedPathClientServiceSchema::kotlin_http_client(),

@@ -1,6 +1,6 @@
 //! A `minimum` or a `maximum` keeps the digits it was written with, past what an `f64` holds, in
-//! `validate()`, in the read, in the JSON Schema and in the text of each other surface, and a float
-//! limit writes what it always wrote.
+//! `validate()`, in the read, in the JSON Schema and in the text of each other surface, a float
+//! limit writes what it always wrote, and a limit on a float is compared as a float of its type.
 
 #![cfg(feature = "serde")]
 
@@ -67,11 +67,11 @@ mod the_zod_text {
     }
 
     #[test]
-    fn a_float_limit_on_a_bigint_is_compared_whole_and_stated_as_written() {
+    fn a_whole_float_limit_on_a_bigint_is_compared_whole_and_stated_as_written() {
         let schema = ScaleMixed::zod_schema();
         assert!(
             schema.contains(
-                ".max(1n, { error: (issue) => `too large: maximum is 1.5, got \
+                ".max(1n, { error: (issue) => `too large: maximum is 1, got \
                  ${String(issue.input)}` })"
             ),
             "{schema}"
@@ -147,11 +147,11 @@ pub struct ScaleSpelling {
     pub suffixed: i64,
 }
 
-/// A float limit on an integer, an integer limit on a float, and a whole float limit on a float.
+/// A whole float limit on an integer, an integer limit on a float, and a whole float limit on a float.
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScaleMixed {
-    #[model_schema_prop(maximum = 1.5)]
+    #[model_schema_prop(maximum = 1.0)]
     pub count: i64,
     #[model_schema_prop(maximum = 120)]
     pub weight: f64,
@@ -165,6 +165,26 @@ pub struct ScaleMixed {
 pub struct ScaleVast {
     #[model_schema_prop(maximum = 1e30)]
     pub vast: f64,
+}
+
+/// Limits past what an `i32` holds on a float: an integer, a float written whole, one from below,
+/// an `f32` under an integer and under a float, and one under an `Option`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScaleWide {
+    #[model_schema_prop(maximum = 3000000000)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<f64>,
+    #[model_schema_prop(maximum = 3000000000)]
+    pub single: f32,
+    #[model_schema_prop(maximum = 3e9)]
+    pub spelled: f64,
+    #[model_schema_prop(minimum = -3000000000)]
+    pub sunk: f64,
+    #[model_schema_prop(maximum = 1e30)]
+    pub vast: f32,
+    #[model_schema_prop(maximum = 3000000000)]
+    pub whole: f64,
 }
 
 /// A limit at the top of a `u64`, which `swift` and `kotlin` refuse.
@@ -185,6 +205,18 @@ const fn mixed(count: i64, weight: f64) -> ScaleMixed {
         count,
         weight,
         whole_float: 1.0,
+    }
+}
+
+/// A [`ScaleWide`] with `held`, `spelled` and `whole` at `value`, and `vast` at 2e9.
+const fn wide(value: f64, sunk: f64, single: f32) -> ScaleWide {
+    ScaleWide {
+        held: Some(value),
+        single,
+        spelled: value,
+        sunk,
+        vast: 2e9,
+        whole: value,
     }
 }
 
@@ -251,7 +283,7 @@ fn the_json_schema_writes_an_integer_limit_as_the_integer_and_a_float_limit_as_w
     assert_eq!(written(&reading_schema, "weight", "minimum"), "1.5");
 
     let mixed_schema = ScaleMixed::json_schema();
-    assert_eq!(written(&mixed_schema, "count", "maximum"), "1.5");
+    assert_eq!(written(&mixed_schema, "count", "maximum"), "1.0");
     assert_eq!(written(&mixed_schema, "whole_float", "maximum"), "10.0");
     assert_eq!(written(&mixed_schema, "weight", "maximum"), "120");
     assert_eq!(
@@ -272,11 +304,11 @@ fn an_integer_limit_on_a_float_is_compared_as_that_float() {
 }
 
 #[test]
-fn a_float_limit_on_an_integer_is_compared_with_its_fraction_dropped_and_stated_as_written() {
+fn a_whole_float_limit_on_an_integer_is_compared_whole_and_stated_as_written() {
     assert_eq!(mixed(1, 1.0).validate(), Ok(()));
     assert_eq!(
         mixed(2, 1.0).validate(),
-        Err(vec!["'count': too large: maximum is 1.5, got 2".to_owned()])
+        Err(vec!["'count': too large: maximum is 1, got 2".to_owned()])
     );
 }
 
@@ -292,6 +324,92 @@ fn a_float_limit_states_what_it_always_stated() {
             "'weight': too small: minimum is 1.5, got 1.25".to_owned()
         ])
     );
+}
+
+#[test]
+fn a_limit_past_what_an_i32_holds_on_a_float_is_compared_as_that_float() {
+    assert_eq!(wide(1.0, 1.0, 1.0).validate(), Ok(()));
+    assert_eq!(wide(3e9, -3e9, 3e9).validate(), Ok(()));
+    assert_eq!(
+        wide(4e9, -4e9, 4e9).validate(),
+        Err(vec![
+            "'held': too large: maximum is 3000000000, got 4000000000".to_owned(),
+            "'single': too large: maximum is 3000000000, got 4000000000".to_owned(),
+            "'spelled': too large: maximum is 3000000000, got 4000000000".to_owned(),
+            "'sunk': too small: minimum is -3000000000, got -4000000000".to_owned(),
+            "'whole': too large: maximum is 3000000000, got 4000000000".to_owned(),
+        ])
+    );
+}
+
+#[test]
+fn a_float_limit_past_what_an_i64_holds_on_an_f32_is_compared_as_an_f32() {
+    let vast = |vast: f32| {
+        ScaleWide {
+            vast,
+            ..wide(1.0, 1.0, 1.0)
+        }
+        .validate()
+    };
+    assert_eq!(vast(2e9), Ok(()));
+    assert_eq!(vast(1e30), Ok(()));
+    assert_eq!(
+        vast(2e30),
+        Err(vec![
+            "'vast': too large: maximum is 1000000000000000000000000000000, got \
+             2000000000000000000000000000000"
+                .to_owned()
+        ])
+    );
+}
+
+#[test]
+fn the_read_of_a_float_refuses_what_validate_refuses_and_no_more() {
+    let read = |member: &str, value: &str| {
+        let mut payload: Value = serde_json::from_str(
+            r#"{"held":1.0,"single":1.0,"spelled":1.0,"sunk":1.0,"vast":2e9,"whole":1.0}"#,
+        )
+        .unwrap();
+        payload[member] = serde_json::from_str(value).unwrap();
+        serde_json::from_str::<ScaleWide>(&payload.to_string())
+            .map(|_| ())
+            .map_err(|refused| refused.to_string())
+    };
+    for member in ["held", "single", "spelled", "whole"] {
+        assert_eq!(read(member, "1.0"), Ok(()), "{member}");
+        assert_eq!(read(member, "3000000000"), Ok(()), "{member}");
+        assert_eq!(
+            read(member, "4e9"),
+            Err(format!(
+                "'{member}': too large: maximum is 3000000000, got 4000000000"
+            )),
+            "{member}"
+        );
+    }
+    assert_eq!(read("sunk", "-3000000000"), Ok(()));
+    assert_eq!(
+        read("sunk", "-4e9"),
+        Err("'sunk': too small: minimum is -3000000000, got -4000000000".to_owned())
+    );
+    assert_eq!(read("vast", "1e30"), Ok(()));
+    assert_eq!(
+        read("vast", "2e30"),
+        Err(
+            "'vast': too large: maximum is 1000000000000000000000000000000, got \
+             2000000000000000000000000000000"
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn the_json_schema_writes_a_limit_past_what_an_i32_holds_as_written() {
+    let schema = ScaleWide::json_schema();
+    assert_eq!(written(&schema, "single", "maximum"), "3000000000");
+    assert_eq!(written(&schema, "spelled", "maximum"), "3000000000.0");
+    assert_eq!(written(&schema, "sunk", "minimum"), "-3000000000");
+    assert_eq!(written(&schema, "vast", "maximum"), "1e+30");
+    assert_eq!(written(&schema, "whole", "maximum"), "3000000000");
 }
 
 #[test]
@@ -336,7 +454,7 @@ fn the_dart_check_and_sentence_write_the_digits() {
     assert!(spelled.contains("if (spaced > 1000)"), "{spelled}");
     assert!(spelled.contains("if (suffixed > 1000)"), "{spelled}");
     let held = scale_mixed_dart::dart_definition();
-    assert!(held.contains("if (count > 1.5)"), "{held}");
+    assert!(held.contains("if (count > 1)"), "{held}");
     assert!(held.contains("if (weight > 120)"), "{held}");
     let vast = scale_vast_dart::dart_definition();
     assert!(
@@ -363,12 +481,15 @@ fn the_swift_check_and_sentence_write_the_digits() {
     assert!(spelled.contains("if suffixed > 1000"), "{spelled}");
     let held = scale_mixed_swift::swift_definition();
     assert!(held.contains("if count > 1 {"), "{held}");
-    assert!(held.contains("if weight > 120 {"), "{held}");
+    assert!(held.contains("if weight > 120.0 {"), "{held}");
     let vast = scale_vast_swift::swift_definition();
     assert!(
-        vast.contains("if vast > 1000000000000000000000000000000 {"),
+        vast.contains("if vast > 1000000000000000000000000000000.0 {"),
         "{vast}"
     );
+    let wide = scale_wide_swift::swift_definition();
+    assert!(wide.contains("if spelled > 3000000000.0 {"), "{wide}");
+    assert!(wide.contains("if sunk < -3000000000.0 {"), "{wide}");
 }
 
 #[cfg(feature = "kotlin")]
@@ -388,7 +509,7 @@ fn the_kotlin_check_and_sentence_write_the_digits() {
     assert!(spelled.contains("if (spaced > 1000)"), "{spelled}");
     assert!(spelled.contains("if (suffixed > 1000)"), "{spelled}");
     let held = scale_mixed_kotlin::kotlin_definition();
-    assert!(held.contains("if (count.toDouble() > 1.5)"), "{held}");
+    assert!(held.contains("if (count > 1)"), "{held}");
     assert!(held.contains("if (weight > 120.0)"), "{held}");
     let vast = scale_vast_kotlin::kotlin_definition();
     assert!(
