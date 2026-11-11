@@ -1,6 +1,6 @@
-//! What the Swift backend writes for a type parameter: each read of one is read again through
-//! `SwiftSchemaFit` where Foundation refuses it with no coding path, as a read of a fixed-width
-//! integer is, and a type that declares no parameter reads what fills one as it did.
+//! What the Swift backend writes for a type parameter: each read of one is read through
+//! `SwiftSchemaFit` and mapped back, as a read of a fixed-width integer is, and a type that
+//! declares no parameter reads what fills one as it did.
 //! `service_schema_emitted_client_tests/run_swift_fitted_parameters.rs` compiles the models of
 //! `fitted_parameters_models.rs` under a Swift toolchain and reads a payload of each.
 
@@ -23,9 +23,7 @@ fn a_member_of_a_type_parameter_is_read_through_the_fitting_read() {
         &tether_swift::swift_definition(),
         &[
             FITTED,
-            "self.held = try Self.swiftSchemaFitted({ try container.decode(Held.self, forKey: \
-             .held) }, again: { _ = try container.decode(SwiftSchemaFit<Held>.self, forKey: \
-             .held) }) }; ",
+            "self.held = try container.decode(SwiftSchemaFit<Held>.self, forKey: .held).value }; ",
         ],
     );
 }
@@ -36,15 +34,12 @@ fn a_type_parameter_in_a_list_as_a_map_value_and_under_an_option_is_read_through
         &hawser_swift::swift_definition(),
         &[
             FITTED,
-            "self.keyed = try Self.swiftSchemaFitted({ try container.decode([String: Held].self, \
-             forKey: .keyed) }, again: { _ = try container.decode([String: \
-             SwiftSchemaFit<Held>].self, forKey: .keyed) }); ",
-            "self.listed = try Self.swiftSchemaFitted({ try container.decode([Held].self, forKey: \
-             .listed) }, again: { _ = try container.decode([SwiftSchemaFit<Held>].self, forKey: \
-             .listed) }); ",
-            "self.maybe = try Self.swiftSchemaFitted({ try container.decodeIfPresent(Held.self, \
-             forKey: .maybe) }, again: { _ = try \
-             container.decodeIfPresent(SwiftSchemaFit<Held>.self, forKey: .maybe) }) }; ",
+            "self.keyed = try container.decode([String: SwiftSchemaFit<Held>].self, forKey: \
+             .keyed).mapValues({ $0.value }); ",
+            "self.listed = try container.decode([SwiftSchemaFit<Held>].self, forKey: \
+             .listed).map({ $0.value }); ",
+            "self.maybe = try container.decodeIfPresent(SwiftSchemaFit<Held>.self, forKey: \
+             .maybe)?.value }; ",
         ],
     );
 }
@@ -55,11 +50,9 @@ fn a_type_parameter_in_a_variant_and_in_a_tuple_struct_is_read_through_it() {
         &cleat_swift::swift_definition(),
         &[
             FITTED,
-            "case \"Bare\": self = .bare(try Self.swiftSchemaFitted({ try container.decode(\
-             Held.self, forKey: key) }, again: { _ = try \
-             container.decode(SwiftSchemaFit<Held>.self, forKey: key) })); ",
-            "slot0 = try Self.swiftSchemaFitted({ try container.decode(Held.self) }, again: { _ = \
-             try container.decode(SwiftSchemaFit<Held>.self) }); slot1 = try \
+            "case \"Bare\": self = .bare(try container.decode(SwiftSchemaFit<Held>.self, forKey: \
+             key).value); ",
+            "slot0 = try container.decode(SwiftSchemaFit<Held>.self).value; slot1 = try \
              container.decode(String.self); ",
         ],
     );
@@ -67,8 +60,7 @@ fn a_type_parameter_in_a_variant_and_in_a_tuple_struct_is_read_through_it() {
         &fender_swift::swift_definition(),
         &[
             FITTED,
-            "self.value = try Self.swiftSchemaFitted({ try container.decode(Held.self) }, again: \
-             { _ = try container.decode(SwiftSchemaFit<Held>.self) }) }; ",
+            "self.value = try container.decode(SwiftSchemaFit<Held>.self).value }; ",
         ],
     );
 }

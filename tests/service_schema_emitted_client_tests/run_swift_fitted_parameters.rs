@@ -54,7 +54,7 @@ struct Row {
 
 /// What serde answers of `payload` read as `Read`: the value written back, or the dotted path of
 /// the value it refused, as the Rust dispatcher names it, and its words.
-fn serde_answer<Read>(name: &str, payload: &str) -> String
+pub fn serde_answer<Read>(name: &str, payload: &str) -> String
 where
     Read: DeserializeOwned + Serialize,
 {

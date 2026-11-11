@@ -304,16 +304,16 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
 }
 
 /// The reproduction: a number, read from the decoder itself and written through its own
-/// `encode(to:)`, with no tuple written for it. An integer, and a type parameter, is read again
-/// through the type named where Foundation refuses it with no coding path.
+/// `encode(to:)`, with no tuple written for it. An integer, and a type parameter, is read through
+/// the type named and mapped back to its own.
 #[test]
 fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
-    for (swift, opened, read_as, again) in [
+    for (swift, opened, read_as, fitted) in [
         (
             count_swift::swift_definition(),
             "public struct Count: Codable, Sendable { public let value: UInt32; ",
             "UInt32",
-            Some("SwiftSchemaFit<UInt32>"),
+            Some("SwiftSchemaFit<UInt32>.self).value"),
         ),
         (
             moniker_swift::swift_definition(),
@@ -332,38 +332,33 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
             "public struct Single<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let value: Stowed; ",
             "Stowed",
-            Some("SwiftSchemaFit<Stowed>"),
+            Some("SwiftSchemaFit<Stowed>.self).value"),
         ),
         (
             stowed_list_swift::swift_definition(),
             "public struct StowedList<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let value: [Stowed]; ",
             "[Stowed]",
-            Some("[SwiftSchemaFit<Stowed>]"),
+            Some("[SwiftSchemaFit<Stowed>].self).map({ $0.value })"),
         ),
         (
             stowed_maybe_swift::swift_definition(),
             "public struct StowedMaybe<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let value: Stowed?; ",
             "Stowed?",
-            Some("SwiftSchemaFit<Stowed>?"),
+            Some("SwiftSchemaFit<Stowed>?.self)?.value"),
         ),
         (
             stowed_by_name_swift::swift_definition(),
             "public struct StowedByName<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let value: [String: Stowed]; ",
             "[String: Stowed]",
-            Some("[String: SwiftSchemaFit<Stowed>]"),
+            Some("[String: SwiftSchemaFit<Stowed>].self).mapValues({ $0.value })"),
         ),
     ] {
-        let decode = again.map_or_else(
+        let decode = fitted.map_or_else(
             || format!("container.decode({read_as}.self)"),
-            |fit| {
-                format!(
-                    "Self.swiftSchemaFitted({{ try container.decode({read_as}.self) }}, again: {{ \
-                     _ = try container.decode({fit}.self) }})"
-                )
-            },
+            |fit| format!("container.decode({fit}"),
         );
         let read = format!(
             "{UNJUDGED}let container = try decoder.singleValueContainer(); \
@@ -484,8 +479,7 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
         &[
             "public let value: Int64; ",
             "let container = try decoder.singleValueContainer(); \
-             self.value = try Self.swiftSchemaFitted({ try container.decode(Int64.self) }, again: \
-             { _ = try container.decode(SwiftSchemaFit<Int64>.self) }) }; ",
+             self.value = try container.decode(SwiftSchemaFit<Int64>.self).value }; ",
             WRITTEN,
         ],
     );

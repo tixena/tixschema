@@ -96,9 +96,8 @@ fn a_struct_reads_a_member_under_each_alias() {
         assert!(hawsing.contains(held), "no `{held}` in: {hawsing}");
     }
     let gybing = gybing_swift::swift_definition();
-    let held = "self.label = try Self.swiftSchemaFitted({ try aliased.decode(LabelType.self, \
-                forKey: labelKey) }, again: { _ = try aliased.decode(SwiftSchemaFit<LabelType>.self, \
-                forKey: labelKey) });";
+    let held =
+        "self.label = try aliased.decode(SwiftSchemaFit<LabelType>.self, forKey: labelKey).value;";
     assert!(gybing.contains(held), "no `{held}` in: {gybing}");
 }
 
@@ -158,10 +157,7 @@ fn each_read_of_a_member_under_its_key_takes_the_key_found() {
     for held in [
         "let byTideKey = byTideNames.first ?? SwiftSchemaAnyKey(stringValue: \"by_tide\")!; let \
          wireByTide = try aliased.decode(TholingByTideKeyedMap.self, forKey: byTideKey);",
-        "if aliased.contains(countKey) { self.count = try Self.swiftSchemaFitted({ try \
-         aliased.decode(UInt32.self, forKey: \
-         countKey) }, again: { _ = try aliased.decode(SwiftSchemaFit<UInt32>.self, forKey: \
-         countKey) }) } else { let countDefaultPayload = try JSONSerialization.jsonObject(with: \
+        "if aliased.contains(countKey) { self.count = try aliased.decode(SwiftSchemaFit<UInt32>.self, forKey: countKey).value } else { let countDefaultPayload = try JSONSerialization.jsonObject(with: \
          Data(\"0\".utf8), options: [.fragmentsAllowed]); self.count = try \
          SwiftSchemaPayload.read(UInt32.self, from: countDefaultPayload, at: aliased.codingPath + \
          [countKey]) };",
