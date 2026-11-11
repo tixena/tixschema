@@ -2933,10 +2933,10 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         | FieldDefType::I32
         | FieldDefType::I64
         | FieldDefType::Usize
-        | FieldDefType::Isize
-        | FieldDefType::F32 => {
+        | FieldDefType::Isize => {
             forms::number_held(&field.field_type, expr).unwrap_or_else(|| expr.to_owned())
         }
+        FieldDefType::F32 => forms::float_sent(expr),
         FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("({expr}).toJson()"),

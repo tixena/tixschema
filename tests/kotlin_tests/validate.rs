@@ -11,7 +11,7 @@ use super::kotlin_flattened::FLATTENED;
 use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
 use super::read::{DECODED, judged, kept_inline};
-use super::read::{judged_over, kept, mapped, serializers};
+use super::read::{judged_over, kept, mapped, mapped_over_a_brand, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -353,7 +353,8 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
 }
 
 /// A brand over a string answers its text with a member, and a brand over a brand through the
-/// brand it holds.
+/// brand it holds; a map keyed by the brand over a brand throws the refusal of the brand it holds
+/// under the key's text.
 #[cfg(feature = "serde")]
 #[test]
 fn a_brand_answers_its_text() {
@@ -376,7 +377,7 @@ fn a_brand_answers_its_text() {
              value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT} }} {} {}",
             kept_inline("Badge"),
             serializers("Badge"),
-            mapped("Badge")
+            mapped_over_a_brand("Badge")
         )
     );
 }

@@ -3,7 +3,8 @@
 //! member, a list's item, a map's value and under an `Option`: each is refused at its coding path
 //! in serde's words, as serde refuses it. Every integer serde reads there is read, each refusal
 //! Foundation made before is made as it was, and a type parameter filled with a float, a text or
-//! an optional integer reads what it read.
+//! an optional integer reads what it read. A type parameter filled with an optional integer is
+//! refused in words that name the integer, as serde names it.
 
 #![cfg(all(feature = "swift", feature = "serde"))]
 
@@ -86,7 +87,7 @@ struct Row {
 
 /// `value` with the keys of every object it holds sorted, as the Swift encoder of the run writes
 /// them.
-fn sorted(value: Value) -> Value {
+pub fn sorted(value: Value) -> Value {
     match value {
         Value::Object(entries) => {
             let keyed: BTreeMap<String, Value> = entries
@@ -303,6 +304,29 @@ fn read_parameters() -> Vec<Row> {
     .collect()
 }
 
+/// A type parameter filled with an optional integer refuses a number written with a fraction and
+/// one outside the integer's range in words that name the integer, as serde names it.
+fn refused_parameters() -> Vec<Row> {
+    ["1.0", "-1"]
+        .into_iter()
+        .map(|number| {
+            let name = format!("{number} in mark");
+            let payload = format!(
+                r#"{{"light":{{"held":1.5}},"mark":{{"held":{number}}},"name":{{"held":"a"}}}}"#
+            );
+            let expected = serde_answer::<Lighthouse>(&name, &payload);
+            assert!(expected.contains(": refused at '"), "serde reads {payload}");
+            Row {
+                compared: Compared::Exactly,
+                expected,
+                name,
+                payload,
+                read_as: "Lighthouse",
+            }
+        })
+        .collect()
+}
+
 /// The text of every model compiles with warnings as errors, and the Swift read of every payload
 /// answers what serde answers of it, but for the refusals Foundation words in its own.
 #[test]
@@ -311,6 +335,7 @@ fn a_number_written_as_a_float_is_refused_for_an_integer_where_serde_refuses_it_
     rows.extend(read_integers());
     rows.extend(refused_as_before());
     rows.extend(read_parameters());
+    rows.extend(refused_parameters());
     let calls: Vec<String> = rows
         .iter()
         .map(|row| {

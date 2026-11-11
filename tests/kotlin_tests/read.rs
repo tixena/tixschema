@@ -160,6 +160,32 @@ pub fn serializers(named: &str) -> String {
 /// unjudged from its text at the map's path, then judged, each message under the key's text, and
 /// each value from its text under the key's text.
 pub fn mapped(named: &str) -> String {
+    mapped_reading(
+        named,
+        &format!(
+            "kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
+             entry.key, \"\")"
+        ),
+    )
+}
+
+/// [`mapped`] of a brand over a brand over a text, which throws the refusal of the brand it holds
+/// under the key's text as well.
+pub fn mapped_over_a_brand(named: &str) -> String {
+    mapped_reading(
+        named,
+        &format!(
+            "try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
+             entry.key, \"\") }} catch (refused: SerializationException) {{ if \
+             (refused.cause?.message != \"validate()\") throw refused; throw \
+             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}"
+        ),
+    )
+}
+
+/// The serializer of a map keyed by the brand `named`, which reads each key with `key` and then
+/// judges it.
+fn mapped_reading(named: &str, key: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
          KSerializer<{named}>, private val valueSerializer: KSerializer<KotlinSchemaValue>) : \
@@ -170,8 +196,7 @@ pub fn mapped(named: &str) -> String {
          deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
          as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
          {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
-         \" + element)).entries.associate {{ entry -> val key = kotlinSchemaDecoded(input.json, \
-         {named}Unjudged, JsonPrimitive(entry.key), entry.key, \"\"); val violations = \
+         \" + element)).entries.associate {{ entry -> val key = {key}; val violations = \
          key.validate(); if (violations.isNotEmpty()) throw \
          SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \"': \" + \
          it }}); key to kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \

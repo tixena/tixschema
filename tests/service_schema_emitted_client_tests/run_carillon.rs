@@ -2,10 +2,11 @@
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
 //! same payload: the message read, a frame dropped, or the fault's kind and the field it names,
-//! and an attachment calls no handler for a frame it refuses or drops. Each run resolves on the
-//! replies it counts, with no clock.
+//! and an attachment calls no handler for a frame it refuses or drops and replies to a message it
+//! reads as the Rust dispatcher does. Each client then refuses to send an `f32` read as an
+//! infinity. Each run resolves on the replies it counts, with no clock.
 
-use super::carillon_service::{CASES, STRUCK, frame, payload, rust_answers};
+use super::carillon_service::{CASES, STRUCK, frame, over_ws, payload, rust_answers};
 use core::fmt::Write as _;
 use serde_json::{Value, json};
 
@@ -14,8 +15,8 @@ use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_peal_dart, carillon_pitch_dart, carillon_swing_dart,
-    carillon_turn_dart, carillon_yoke_dart,
+    carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart,
+    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -23,14 +24,21 @@ use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 
 /// The attachment handed each frame through a transport, and what it replied and how many strikes
-/// reached the handler; then the client handed each payload as the reply. A frame the transport
-/// hands no attachment is told by the one sent after it, which names another service, reaching the
-/// attachments first; a reply the client drops, by the declared error sent after it settling the
-/// call.
+/// reached the handler; then the client handed each payload as the reply; then the client handed an
+/// `f32` it reads as an infinity to send, over a socket that counts what it is sent. A frame the
+/// transport hands no attachment is told by the one sent after it, which names another service,
+/// reaching the attachments first; a reply the client drops, and a message it sends, by the
+/// declared error sent after it settling the call.
 #[cfg(feature = "dart")]
 const DART_DRIVER: &str = r#"
 List<String> withinScale(CarillonPitch value) =>
     value.value <= 12 ? const <String>[] : <String>['${value.value} is outside of the scale'];
+
+List<String> audible(CarillonTone value) =>
+    value.value == 'mute' ? const <String>['mute is silent'] : const <String>[];
+
+List<String> loud(CarillonOuterTone value) =>
+    value.value.value == 'soft' ? const <String>['soft is quiet'] : const <String>[];
 
 Object? told(CarillonServiceStrikeResult answered) => switch (answered) {
   CarillonServiceStrikeResultOk() => 'read',
@@ -104,16 +112,49 @@ void main() async {
     await outbound.close();
     await inbound.close();
   }
-  print(jsonEncode(<String, dynamic>{'attached': attached, 'read': read}));
+  var sent = 0;
+  final counted = StreamController<dynamic>(sync: true);
+  final answering = StreamController<dynamic>();
+  counted.stream.listen((text) {
+    sent += 1;
+    final id = jsonEncode((jsonDecode(text as String) as Map<String, dynamic>)['id']);
+    answering.add('{"kind":"reply","id":$id,"service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}');
+  });
+  final refusing = CarillonServiceWsTransport(
+    sink: counted.sink,
+    stream: answering.stream,
+    heartbeat: CarillonServiceWsHeartbeat.off(),
+  );
+  final infinite = CarillonChime.fromJson(jsonDecode(whole.replaceFirst('"ring":1.5', '"ring":1e39')) as Map<String, dynamic>);
+  final unsent = await CarillonServiceWsClient(refusing).strike(infinite);
+  refusing.close();
+  await counted.close();
+  await answering.close();
+  final refused = switch (unsent) {
+    CarillonServiceStrikeResultFault(:final fault) => <String, dynamic>{
+      'kind': fault.kind.toJson(),
+      'detail': fault.detail,
+      'sent': sent,
+    },
+    _ => told(unsent),
+  };
+  print(jsonEncode(<String, dynamic>{'attached': attached, 'read': read, 'refused': refused}));
 }
 "#;
 
-/// The attachment handed each frame, then the client handed each payload as the reply, each told
-/// apart from a frame dropped as the Dart driver tells them.
+/// The attachment handed each frame, then the client handed each payload as the reply, then the
+/// client handed an `f32` it reads as an infinity to send, each told apart as the Dart driver tells
+/// them.
 #[cfg(feature = "kotlin")]
 const KOTLIN_DRIVER: &str = r#"
 fun withinScale(value: CarillonPitch): List<String> =
     if (value.value <= 12u) emptyList() else listOf("${value.value} is outside of the scale")
+
+fun audible(value: CarillonTone): List<String> =
+    if (value.value == "mute") listOf("mute is silent") else emptyList()
+
+fun loud(value: CarillonOuterTone): List<String> =
+    if (value.value.value == "soft") listOf("soft is quiet") else emptyList()
 
 class ManualSocket(private val onSend: (String) -> Unit) : CarillonServiceWsSocket {
     override var onMessage: ((String) -> Unit)? = null
@@ -129,6 +170,18 @@ class Replying(private val value: String) : CarillonServiceWsSocket {
     override fun send(text: String) {
         val id = Json.parseToJsonElement(text).jsonObject.getValue("id").jsonPrimitive.content
         onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":true,"value":$value}""")
+        onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
+    }
+    override fun close() { onClose?.invoke() }
+}
+
+class Counted : CarillonServiceWsSocket {
+    override var onMessage: ((String) -> Unit)? = null
+    override var onClose: (() -> Unit)? = null
+    var sent = 0
+    override fun send(text: String) {
+        sent += 1
+        val id = Json.parseToJsonElement(text).jsonObject.getValue("id").jsonPrimitive.content
         onMessage?.invoke("""{"kind":"reply","id":"$id","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
     }
     override fun close() { onClose?.invoke() }
@@ -180,9 +233,20 @@ fun main() = runBlocking {
         read.add(told(CarillonServiceWsClient(transport).strike(whole)))
         transport.close()
     }
+    val counted = Counted()
+    val refusing = CarillonServiceWsTransport(counted, CarillonServiceWsOptions(heartbeat = null))
+    val infinite = Json.decodeFromString(serializer<CarillonChime>(), WHOLE.replace("\"ring\":1.5", "\"ring\":1e39"))
+    val unsent = CarillonServiceWsClient(refusing).strike(infinite)
+    refusing.close()
+    val refused = if (unsent is CarillonServiceStrikeResult.Fault) buildJsonObject {
+        put("kind", Json.encodeToJsonElement(serializer<CarillonServiceFaultKind>(), unsent.fault.kind))
+        put("detail", unsent.fault.detail)
+        put("sent", counted.sent)
+    } else told(unsent)
     println(buildJsonObject {
         put("attached", JsonArray(attached))
         put("read", JsonArray(read))
+        put("refused", refused)
     }.toString())
 }
 "#;
@@ -193,6 +257,14 @@ fun main() = runBlocking {
 const SWIFT_DRIVER: &str = r#"
 func withinScale(_ value: CarillonPitch) -> [String] {
   value.value <= 12 ? [] : ["\(value.value) is outside of the scale"]
+}
+
+func audible(_ value: CarillonTone) -> [String] {
+  value.value == "mute" ? ["mute is silent"] : []
+}
+
+func loud(_ value: CarillonOuterTone) -> [String] {
+  value.value.value == "soft" ? ["soft is quiet"] : []
 }
 
 final class Replying: CarillonServiceWsSocket, @unchecked Sendable {
@@ -245,6 +317,14 @@ print("[" + read.joined(separator: ",") + "]")
 const NODE_DRIVER: &str = r#"
 function withinScale(value, ctx) {
   if (value > 12) ctx.issues.push({ code: "custom", message: `${value} is outside of the scale`, input: value });
+}
+
+function audible(value, ctx) {
+  if (value === "mute") ctx.issues.push({ code: "custom", message: "mute is silent", input: value });
+}
+
+function loud(value, ctx) {
+  if (value === "soft") ctx.issues.push({ code: "custom", message: "soft is quiet", input: value });
 }
 
 async function main() {
@@ -350,19 +430,14 @@ fn elsewhere() -> String {
 }
 
 /// Holds what an attachment replied to each frame to [`read_as_rust`]: the message handed to the
-/// handler, the frame dropped, or the fault's kind and field with no strike reached; and the
-/// message read whole to the reply that hands it back. What a reply writes of an `f32` read as an
-/// infinity is the surface's own: serde writes it as `null`.
+/// handler, the frame dropped, or the fault's kind and field with no strike reached; and the reply
+/// to each message the Rust dispatcher reads to the one it writes, an `f32` read as an infinity
+/// written as `null`, as serde writes it.
 fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
-    let replied = attached.as_array().unwrap();
-    assert_eq!(
-        replied[0]["reply"]["value"],
-        serde_json::from_str::<Value>(STRUCK).unwrap(),
-        "{attached}"
-    );
+    let is_apart = |named: &str| apart.iter().any(|(case, _)| *case == named);
     let told: Vec<Value> = CASES
         .into_iter()
-        .zip(replied)
+        .zip(attached.as_array().unwrap())
         .map(|(case, told)| {
             let reply = &told["reply"];
             let answer = if reply == "dropped" {
@@ -375,7 +450,12 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
                     "field": reply["error"]["fault"]["field"],
                 })
             };
-            json!({ "case": case.0, "answer": answer, "struck": told["struck"] })
+            let value = if is_apart(case.0) {
+                &Value::Null
+            } else {
+                &reply["value"]
+            };
+            json!({ "case": case.0, "answer": answer, "struck": told["struck"], "value": value })
         })
         .collect();
     let expected: Vec<Value> = CASES
@@ -383,7 +463,11 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
         .zip(read_as_rust(apart))
         .map(|(case, answer)| {
             let struck = u8::from(answer == "read");
-            json!({ "case": case.0, "answer": answer, "struck": struck })
+            let value = over_ws(&payload(case))
+                .0
+                .filter(|_| !is_apart(case.0))
+                .map_or(Value::Null, |reply| reply["value"].clone());
+            json!({ "case": case.0, "answer": answer, "struck": struck, "value": value })
         })
         .collect();
     assert_eq!(told, expected, "{attached}");
@@ -432,6 +516,8 @@ fn dart_source() -> String {
         carillon_beam_dart::dart_definition(),
         carillon_frame_dart::dart_definition(),
         carillon_yoke_dart::dart_definition(),
+        carillon_tone_dart::dart_definition(),
+        carillon_outer_tone_dart::dart_definition(),
         carillon_chime_dart::dart_definition(),
         carillon_error_dart::dart_definition(),
         CarillonServiceSchema::dart_definition(),
@@ -460,6 +546,14 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
+    assert_eq!(
+        told["refused"],
+        json!({
+            "kind": "transport-failure",
+            "detail": "Converting object to an encodable object failed: Infinity",
+            "sent": 0_i32,
+        })
+    );
 }
 
 #[cfg(feature = "dart")]
@@ -476,8 +570,9 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
-        carillon_swing_kotlin, carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_error_kotlin, carillon_frame_kotlin, carillon_outer_tone_kotlin,
+        carillon_peal_kotlin, carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin,
+        carillon_turn_kotlin, carillon_yoke_kotlin,
     };
 
     let frames: Vec<String> = payloads()
@@ -503,6 +598,8 @@ fn kotlin_source() -> String {
         carillon_beam_kotlin::kotlin_definition(),
         carillon_frame_kotlin::kotlin_definition(),
         carillon_yoke_kotlin::kotlin_definition(),
+        carillon_tone_kotlin::kotlin_definition(),
+        carillon_outer_tone_kotlin::kotlin_definition(),
         carillon_chime_kotlin::kotlin_definition(),
         carillon_error_kotlin::kotlin_definition(),
         carillon_service_fault_fields_kotlin::kotlin_definition(),
@@ -527,6 +624,21 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
+    let refused = &told["refused"];
+    assert_eq!(
+        (&refused["kind"], &refused["sent"]),
+        (&json!("transport-failure"), &json!(0_i32)),
+        "{refused}"
+    );
+    assert!(
+        refused["detail"].as_str().is_some_and(|detail| {
+            detail.starts_with(
+            "kotlinx.serialization.json.JsonEncodingException: Unexpected special floating-point \
+             value Infinity"
+        )
+        }),
+        "{refused}"
+    );
 }
 
 /// The Swift program the client runs in.
@@ -537,8 +649,9 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_peal_swift, carillon_pitch_swift,
-        carillon_swing_swift, carillon_turn_swift, carillon_yoke_swift,
+        carillon_error_swift, carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift,
+        carillon_pitch_swift, carillon_swing_swift, carillon_tone_swift, carillon_turn_swift,
+        carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
@@ -552,6 +665,8 @@ fn swift_source() -> String {
         carillon_beam_swift::swift_definition(),
         carillon_frame_swift::swift_definition(),
         carillon_yoke_swift::swift_definition(),
+        carillon_tone_swift::swift_definition(),
+        carillon_outer_tone_swift::swift_definition(),
         carillon_chime_swift::swift_definition(),
         carillon_error_swift::swift_definition(),
         carillon_service_fault_fields_swift::swift_definition(),
@@ -590,8 +705,9 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 /// The TypeScript module the attachment and the client run in.
 fn node_bundle() -> String {
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonPeal,
-        CarillonPitch, CarillonServiceSchema, CarillonSwing, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonOuterTone,
+        CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSwing, CarillonTone,
+        CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -611,6 +727,10 @@ fn node_bundle() -> String {
         CarillonFrame::zod_schema(),
         CarillonYoke::ts_definition(),
         CarillonYoke::zod_schema(),
+        CarillonTone::ts_definition(),
+        CarillonTone::zod_schema(),
+        CarillonOuterTone::ts_definition(),
+        CarillonOuterTone::zod_schema(),
         CarillonChime::ts_definition(),
         CarillonChime::zod_schema(),
         CarillonError::ts_definition(),
@@ -638,7 +758,9 @@ fn the_typescript_text_of_the_carillon_service_type_checks() {
     };
     let source = format!(
         "{}\n\nexport function withinScale(value: number, ctx: {{ issues: unknown[] }}): void {{\n  \
-         void value;\n  void ctx;\n}}\n",
+         void value;\n  void ctx;\n}}\n\nexport function audible(value: string, ctx: {{ issues: \
+         unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n\nexport function loud(value: \
+         string, ctx: {{ issues: unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n",
         node_bundle()
     );
     let Some((succeeded, said)) = compiled_with_modules(

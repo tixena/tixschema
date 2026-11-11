@@ -12,6 +12,7 @@ use super::result::result_name;
 use crate::features::kotlin::{
     TupleNaming, kotlin_declarations, kotlin_name, kotlin_quoted, kotlin_tuple_naming,
 };
+use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, NUMBER_OUT_OF_RANGE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
     answers_key, is_content_list, is_content_pair, is_prompt_messages, read_apart, wrapped_ident,
@@ -213,6 +214,7 @@ private fun @P@McpReadRequest(text: String): Pair<JsonObject?, JsonObject?> {
   } catch (rejected: Exception) {
     return null to @P@McpInvalid(rejected.message ?: rejected.toString())
   }
+  if (!@P@WsHeld(parsed)) return null to @P@McpInvalid("@NUMBER_OUT_OF_RANGE@")
   if (parsed !is JsonObject) return null to @P@McpInvalid("not a JSON object")
   val version = parsed["jsonrpc"]
   if (version !is JsonPrimitive || !version.isString || version.content != "2.0") {
@@ -823,8 +825,18 @@ private fun <T> @P@McpReceive(
     val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
     if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
+    val said = detail.substringBefore(" at path: ")
+    if (said == "@EXPECTED_NUMERIC_KEY@") refuse("undeserializable-payload", said, null, emptyList())
     val found = mutableListOf<Pair<String, String>>()
     @P@McpMismatches(schema, source, null, passed, emptyList(), found)
+    if (said == "@EXPECTED_VALUE@") {
+      // Read from its text, the refusal states the path of the `Result`, which no schema walk finds.
+      val at = runCatching { Json.decodeFromString(twin, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
+      if (at != null) {
+        found.removeAll { it.first == at }
+        found.add(0, at to said)
+      }
+    }
     val path = found.firstOrNull()?.first.orEmpty()
     if (path.isEmpty()) refuse("failed-validation", detail, null, emptyList())
     if (!every || found.size < 2) refuse("failed-validation", "'$path': $detail", path, emptyList())
@@ -2115,12 +2127,16 @@ pub fn wrapped_marker(at: usize) -> String {
     format!("@MCP_WRAPPED_{at}@")
 }
 
-/// `template` with the service's names written over their placeholders.
+/// `template` with the service's names, and serde's words for what is no document, written over
+/// their placeholders.
 fn fill(template: &str, prefix: &str, named: &str, fields: &str) -> String {
     template
         .replace("@P@", prefix)
         .replace("@N@", named)
         .replace("@F@", fields)
+        .replace("@EXPECTED_NUMERIC_KEY@", EXPECTED_NUMERIC_KEY)
+        .replace("@EXPECTED_VALUE@", EXPECTED_VALUE)
+        .replace("@NUMBER_OUT_OF_RANGE@", NUMBER_OUT_OF_RANGE)
 }
 
 /// One statement per interview whose answers are a form, writing its form over its marker.
