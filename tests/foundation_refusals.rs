@@ -10,8 +10,9 @@
 //! names a type that does not list `"jsonschema"`, as does one that asks for `mcp`, or whose
 //! `<Service>Schema` the crate root does not re-export, and, in a build with no feature, a type that lists `"jsonschema"` handing a
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
-//! which is no brand without the `serde` feature, and a path placeholder that names no member a
-//! declared message reads under a key of its own, and two services that share a prompt name.
+//! which is no brand without the `serde` feature, a path placeholder that names no member a
+//! declared message reads under a key of its own, an enum message among them, or binds a member of
+//! a message no `#[model_schema]` wrote, and two services that share a prompt name.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.
@@ -119,10 +120,17 @@ mod tests {
             format!(
                 "evaluation panicked: service_schema: operation `{operation}`'s path names \
                  `{{{placeholder}}}`, and its message has no field named `{placeholder}` that \
-                 serde reads under a key of its own. A path placeholder names the field as Rust \
-                 writes it, whatever key serde writes it under."
+                 serde reads under a key of its own. A path placeholder names a field of a struct \
+                 as Rust writes it, whatever key serde writes it under. An enum holds no field a \
+                 placeholder binds: bind a struct, or declare the field as an argument of the \
+                 operation."
             )
         };
+        let unpublished = "evaluation panicked: service_schema: operation `unlisted`'s path names \
+             `{document_id}`, and its message `Unlisted` publishes no key of its fields, so no \
+             dispatcher can write the path's value over the key serde reads the field from. Put \
+             `#[model_schema()]` on `Unlisted`."
+            .to_owned();
         let reported: Vec<(&str, &str)> = errors
             .iter()
             .map(|error| {
@@ -134,8 +142,10 @@ mod tests {
             .collect();
         let expected = [
             refused("by_wire_name", "documentId"),
+            unpublished,
             refused("flattened_member", "title"),
             refused("skipped_member", "cached_at"),
+            refused("tagged", "document_id"),
         ];
         assert_eq!(
             reported.len(),
@@ -148,16 +158,13 @@ mod tests {
                 "not reported: {message}\nin: {reported:#?}"
             );
         }
-        assert!(
-            concat!(
-                include_str!("../docs/guide/http-rest.md"),
-                include_str!("../docs/guide/recovering-decode.md"),
-                include_str!("../docs/guide/mongodb-operations.md")
-            )
-            .contains(&format!("error[E0080]: {}", expected[0])),
-            "the README no longer quotes: {}",
-            expected[0]
-        );
+        for quoted in &expected[..2] {
+            assert!(
+                include_str!("../docs/guide/http-rest.md")
+                    .contains(&format!("error[E0080]: {quoted}")),
+                "the guide no longer quotes: {quoted}"
+            );
+        }
     }
 
     /// Asserts that the errors rustc reports for `case`, built as a crate whose manifest lists

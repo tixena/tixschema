@@ -67,7 +67,7 @@ mod solo_path_bound_service;
 mod solo_path_bound_http_rest_transport;
 
 /// `RenamedPathBoundService`, whose paths bind a declared message's member under each way serde
-/// names one, and the tests driving it.
+/// names one and in each form a path reads one in, and the tests driving it.
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_dispatch_tests/renamed_path_bound_service.rs"]

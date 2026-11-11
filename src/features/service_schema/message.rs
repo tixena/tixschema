@@ -384,6 +384,16 @@ pub fn wire_key_marker(operation: &OperationDef, placeholder: &str) -> String {
     )
 }
 
+/// Stands in the text of a dispatcher for the form a path placeholder's text is read in, for the
+/// member `placeholder` binds of `operation`'s declared message, which `ts_http_service()` replaces
+/// at run time as it replaces [`wire_key_marker`].
+pub fn wire_form_marker(operation: &OperationDef, placeholder: &str) -> String {
+    format!(
+        "/*__TIXSCHEMA_WIRE_FORM:{}:{placeholder}__*/",
+        written(&operation.ident)
+    )
+}
+
 /// The TypeScript name of an operation's own argument: its Rust name camel-cased. An argument is
 /// taken by position, so moving its name changes nothing for a caller.
 pub fn parameter_name(parameter: &Ident) -> String {

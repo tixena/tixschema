@@ -5,7 +5,7 @@
 use core::fmt::Write as _;
 
 use super::integer_limit_models::{
-    LimitCeiling, LimitEnds, LimitFloor, LimitForms, LimitMixed, REPORT, ROWS,
+    LimitCeiling, LimitEnds, LimitFloor, LimitForms, LimitMixed, LimitWide, REPORT, ROWS,
 };
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 
@@ -52,6 +52,8 @@ fn each_limit_holds_in_zod_as_it_is_written() {
         LimitMixed::zod_schema(),
         LimitEnds::ts_definition(),
         LimitEnds::zod_schema(),
+        LimitWide::ts_definition(),
+        LimitWide::zod_schema(),
     ] {
         let _ = write!(module, "\n\n{declared}");
     }
