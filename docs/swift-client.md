@@ -75,7 +75,9 @@ to keep.
   question: `held_walk` ends on a value whose `validate()` it runs (`reaches`). `read::unjudged` then takes the member apart as `held_walk` does: an `Option`,
   each level of a list, a map's values, the struct written for a tuple, a named type. A step added
   to one is added to the other: a value the read leaves unjudged and the walk does not reach is
-  judged by nothing.
+  judged by nothing. A map's key is walked under its entry's step as its value is
+  (`Walk::Reported` and `Walk::Bound`), and never by `reaches` (`Walk::Rules`): every read builds
+  a key unjudged, whichever way it reads the map, so a key changes no read.
 - **Any other value is read through `Decodable` and judges itself**: one behind a type parameter,
   one in a field with a bound of its own, and the value a brand wraps, a brand's `validate()`
   running no `validate()` of what it holds.

@@ -4,26 +4,27 @@
 use syn::Item;
 
 use super::{property_read, swift_pattern};
-use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::swift::{SwiftTypeArgs, swift_schema_dispatch};
+
+/// The arguments of an item that writes none: each member's own `model_schema_prop`, as written.
+fn args() -> SwiftTypeArgs<'static> {
+    SwiftTypeArgs {
+        check: &[],
+        default_types: &[],
+        max_length: None,
+        member_meta: &|member| parse_model_schema_prop_attributes(&member.attrs),
+        min_length: None,
+        name_override: None,
+        pattern: None,
+        preprocess: &[],
+        type_name: "Probe",
+    }
+}
 
 /// The tokens the Swift emitter answers for `item`, written with no argument of `model_schema`.
 fn emitted(item: &Item) -> String {
-    swift_schema_dispatch(
-        item,
-        &SwiftTypeArgs {
-            check: &[],
-            default_types: &[],
-            max_length: None,
-            member_meta: &|member| parse_model_schema_prop_attributes(&member.attrs),
-            min_length: None,
-            name_override: None,
-            pattern: None,
-            preprocess: &[],
-            type_name: "Probe",
-        },
-    )
-    .to_string()
+    swift_schema_dispatch(item, &args()).to_string()
 }
 
 #[test]
@@ -137,4 +138,39 @@ fn a_length_on_a_named_type_is_measured_through_the_member_or_as_the_string() {
     ] {
         assert!(tokens.contains(written), "{written} is not in: {tokens}");
     }
+}
+
+/// A map keyed by a brand with a check judges each key under the step of its entry, as Rust's
+/// `validate()` names it, and binds no value it does not walk. A map whose key has no rule walks
+/// nothing of it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_keyed_by_a_brand_with_a_check_judges_each_key_under_its_step() {
+    let pitch: Item = syn::parse_quote! {
+        #[serde(transparent)]
+        pub struct ScalePitch(pub u32);
+    };
+    let checks = [FunctionName {
+        name: "withinScale".to_owned(),
+        written_at: proc_macro2::Span::call_site(),
+    }];
+    let brand = swift_schema_dispatch(
+        &pitch,
+        &SwiftTypeArgs {
+            check: &checks,
+            ..args()
+        },
+    )
+    .to_string();
+    assert!(brand.contains("withinScale"), "got: {brand}");
+    let holder: Item = syn::parse_quote! {
+        pub struct ScalePeal {
+            pub pitches: BTreeMap<ScalePitch, u32>,
+            pub towers: BTreeMap<String, u32>,
+        }
+    };
+    let tokens = emitted(&holder);
+    let walked = r#"for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { ScalePeal.swiftSchemaUnder(\"pitches.\\(key.value)\", $0) } }"#;
+    assert!(tokens.contains(walked), "{walked} is not in: {tokens}");
+    assert!(!tokens.contains("in towers.sorted"), "got: {tokens}");
 }

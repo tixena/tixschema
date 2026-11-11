@@ -4,6 +4,7 @@ use proc_macro2::TokenTree;
 
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+use crate::utils::{AliasKind, register_alias_info};
 
 /// The class of a struct whose one field is named after the unjudged read, which
 /// `tests/service_schema_emitted_client_tests/run_dart_read.rs` runs under the Dart SDK.
@@ -148,6 +149,59 @@ fn a_field_named_after_the_unjudged_read_keeps_its_name_and_its_key() {
         definition(struct_dart_tokens(&item, &plain_args())),
         LEDGER.trim_end()
     );
+}
+
+/// A brand that keys a map is judged under the key's text, its value read from the text with no
+/// step of its own, and a `Result`'s arm is read under its key, so a brand's check that refuses a
+/// key names the key, a key that does not read names its map, and a value an arm refuses names
+/// the arm, as the Rust dispatcher names each.
+#[cfg(feature = "serde")]
+#[test]
+fn a_brand_key_and_a_result_arm_are_judged_under_their_own_step() {
+    let pitch: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Pitch(u32);
+    };
+    let tone: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Tone(String);
+    };
+    let checks = [FunctionName {
+        name: "withinScale".to_owned(),
+        written_at: proc_macro2::Span::call_site(),
+    }];
+    let brand = definition(struct_dart_tokens(
+        &pitch,
+        &DartTypeArgs {
+            check: &checks,
+            ..plain_args()
+        },
+    ));
+    assert!(brand.contains("withinScale(this)"), "{brand}");
+    definition(struct_dart_tokens(&tone, &plain_args()));
+    for named in ["Pitch", "Tone"] {
+        register_alias_info(named, named, "probe_schema", AliasKind::Stringified);
+    }
+    let item: ItemStruct = syn::parse_quote! {
+        struct Peal {
+            names: BTreeMap<String, u32>,
+            pitches: BTreeMap<Pitch, u32>,
+            tally: Result<u32, String>,
+            tones: BTreeMap<Tone, u32>,
+        }
+    };
+    let dart = definition(struct_dart_tokens(&item, &plain_args()));
+    for expected in [
+        "MapEntry(e.key, _readAt(null, e.key, () => ",
+        "MapEntry((switch ((switch (int.parse(e.key)) {",
+        "{ final held => _readAt(null, e.key, () => Pitch.fromJson(held)) }), _readAt(null, \
+         e.key, () => (switch (e.value as int) {",
+        "MapEntry(_readAt(null, e.key, () => Tone.fromJson(e.key)), ",
+        "Ok<int, String>(_readAt(null, 'Ok', () => (switch (result['Ok'] as int) {",
+        "Err<int, String>(_readAt(null, 'Err', () => result['Err'] as String))",
+    ] {
+        assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
+    }
 }
 
 /// A struct under its own tag refuses an object without the tag, or with another value under it,

@@ -671,6 +671,12 @@ mod run_dart_number_keys;
 #[path = "service_schema_emitted_client_tests/run_kotlin_number_keys.rs"]
 mod run_kotlin_number_keys;
 
+/// A value refused in a map keyed by a brand over a text, a number or a date, refused by the
+/// emitted Kotlin types at the path serde names.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_brand_key_paths.rs"]
+mod run_kotlin_brand_key_paths;
+
 /// The same, read and written back by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_number_keys.rs"]

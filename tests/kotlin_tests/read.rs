@@ -12,12 +12,10 @@ use super::fixed_arrays_models::{
     bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
 };
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself, each part from its text, placed under its step.
-#[cfg(feature = "serde")]
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
      while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
@@ -158,6 +156,26 @@ pub fn serializers(named: &str) -> String {
     format!("{} {}", generated(named), judged(named))
 }
 
+/// The serializer of a map keyed by the brand `named`: each key read from its text at the map's
+/// path, and each value from its text under the key's text.
+pub fn mapped(named: &str) -> String {
+    format!(
+        "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
+         KSerializer<{named}>, private val valueSerializer: KSerializer<KotlinSchemaValue>) : \
+         KSerializer<Map<{named}, KotlinSchemaValue>> {{ private val whole = \
+         MapSerializer(keySerializer, valueSerializer); override val descriptor: SerialDescriptor \
+         = whole.descriptor; override fun serialize(encoder: Encoder, value: Map<{named}, \
+         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}override fun \
+         deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
+         as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
+         {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
+         \" + element)).entries.associate {{ entry -> kotlinSchemaDecoded(input.json, \
+         keySerializer, JsonPrimitive(entry.key), entry.key, \"\") to \
+         kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + \
+         entry.key) }} }} }} }}"
+    )
+}
+
 fn pallet(label: &str) -> Pallet {
     Pallet {
         label: label.to_owned(),
@@ -281,9 +299,10 @@ fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
         format!(
             "{} value class Seal(val value: String) {{ fun kotlinSchemaText(): String = value; \
              fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
-             {NO_RULE} }} {}",
+             {NO_RULE} }} {} {}",
             kept_inline("Seal"),
-            serializers("Seal")
+            serializers("Seal"),
+            mapped("Seal")
         )
     );
 }
