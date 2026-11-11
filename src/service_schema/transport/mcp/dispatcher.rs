@@ -31,8 +31,9 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
          `route`, `McpEndpoint`, `serve`, `answer`, `McpHttpRequest`, `McpHttpResponse`, \
          `serve_http`, `answer_http`, `serve_listening`, `answer_listening`, `serve_http_listening`, \
          `answer_http_listening`, `McpChange`, `McpServer`, `McpCall`, `McpInFlight`, `McpEventWriter` and `McpHttpStream` - so the caller supplies the module they land in and two \
-         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json` \
-         and `tracing` in its own manifest, because the items below call them. The service's \
+         transports in one crate cannot collide. The invoking crate names `serde`, `serde_json`, \
+         `serde_path_to_error` and `tracing` in its own manifest, because the items below call \
+         them. The service's \
          `{schema}` is reached as `$crate::{schema}`, so a service declared in a submodule \
          re-exports it at the crate root.\n\n\
          {placement}",

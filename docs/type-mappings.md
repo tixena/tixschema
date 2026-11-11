@@ -411,6 +411,15 @@ struct or of a variant in camelCase: `ts_member_name` turns `user_name` into `us
 `ts_member_key` spells it. Rust, `validate()`'s messages, Dart, Swift, Kotlin and JSON Schema keep
 the Rust name.
 
+In that build `process_discriminated_enum` in `src/model_schema.rs` describes an enum with data
+under the tag `type` and the content key `value`: each variant is an object of its name under
+`type` and its data under `value`, a unit variant with no `value`, and Zod reads the enum with
+`z.discriminatedUnion("type", [...])`. `pub enum Shape { Square { side_length: u32 }, Circle(f64),
+Point }` is `{ type: "Square"; value: { sideLength: number; }; } | { type: "Circle"; value:
+number; } | { type: "Point"; }`. serde writes the same enum externally tagged:
+`{"Square":{"side_length":3}}`, `{"Circle":1.5}` and `"Point"`. A plain enum is the union of its
+variants' names, as serde writes it.
+
 A text the TypeScript surfaces write into a comment goes through `ts_commented` in `src/utils.rs`,
 which spells `*/` as `*\/`, so the comment runs on: each line `item_jsdoc_body` writes (an item's
 doc, a member's, a variant's, an alias's, and the name serde writes for a member or a variant with
