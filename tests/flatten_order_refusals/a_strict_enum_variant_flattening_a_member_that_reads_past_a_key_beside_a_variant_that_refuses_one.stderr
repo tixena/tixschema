@@ -1,0 +1,6 @@
+error: model_schema: type `Order` (variant `Signed`) flattens `contact`, which reads past a key no member declares, so serde cannot refuse such a key beside it. Mark `Order` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does.
+  --> tests/flatten_order_refusals/a_strict_enum_variant_flattening_a_member_that_reads_past_a_key_beside_a_variant_that_refuses_one.rs:33:9
+   |
+33 | /         #[serde(flatten)]
+34 | |         contact: Contact,
+   | |________________________^

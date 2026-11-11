@@ -954,6 +954,16 @@ struct NamedChecks {
     own: HashMap<String, Vec<FunctionName>>,
 }
 
+/// How the item being expanded reads a key no member declares.
+#[derive(Default)]
+struct Strictness {
+    nonstrict: bool,
+    /// The variants of a `nonstrict` enum whose own object refuses such a key all the same.
+    refusing: Vec<String>,
+    /// What the variant whose object is being written answers, while one is.
+    within: Option<bool>,
+}
+
 thread_local! {
     /// The checks of the item being expanded, read by the recovering decode of that same item,
     /// and by each bound of it: where the item names a check, a bound imports the schema module
@@ -975,8 +985,7 @@ thread_local! {
 }
 
 thread_local! {
-    /// Whether the item being expanded is written `nonstrict`.
-    static NONSTRICT: RefCell<bool> = const { RefCell::new(false) };
+    static NONSTRICT: RefCell<Strictness> = RefCell::new(Strictness::default());
 }
 
 /// Whether serde leaves the keys of `rust_ident` in the object it reads a holder from when the type is
@@ -1010,15 +1019,42 @@ pub fn crate_tag() -> String {
 }
 
 /// Whether the item being expanded is written `nonstrict`: every surface leaves its own object
-/// open to a key no member declares.
+/// open to a key no member declares. Inside [`within_variant`], whether that variant's object is.
 pub fn is_nonstrict() -> bool {
-    NONSTRICT.with(|held| *held.borrow())
+    NONSTRICT.with(|held| {
+        let strictness = held.borrow();
+        strictness.within.unwrap_or(strictness.nonstrict)
+    })
 }
 
-/// Records whether the item about to be expanded is written `nonstrict`, and forgets the members
-/// whose keys the item expanded before named by a placeholder.
-pub fn record_nonstrict(nonstrict: bool) {
-    NONSTRICT.with(|held| *held.borrow_mut() = nonstrict);
+/// Runs `emit`, which writes the own object of the variant `variant` of the enum being expanded,
+/// with [`is_nonstrict`] answering for that variant: serde judges each variant by itself.
+pub fn within_variant<T, F>(variant: &syn::Ident, emit: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    let named = variant.to_string();
+    let outer = NONSTRICT.with(|held| {
+        let mut strictness = held.borrow_mut();
+        let open = strictness.nonstrict && !strictness.refusing.contains(&named);
+        strictness.within.replace(open)
+    });
+    let emitted = emit();
+    NONSTRICT.with(|held| held.borrow_mut().within = outer);
+    emitted
+}
+
+/// Records whether the item about to be expanded is written `nonstrict`, with the variants of such
+/// an enum that refuse a key no member declares all the same, and forgets the members whose keys
+/// the item expanded before named by a placeholder.
+pub fn record_nonstrict(nonstrict: bool, refusing: Vec<String>) {
+    NONSTRICT.with(|held| {
+        *held.borrow_mut() = Strictness {
+            nonstrict,
+            refusing,
+            within: None,
+        };
+    });
     #[cfg(all(
         feature = "serde",
         any(feature = "dart", feature = "swift", feature = "kotlin")

@@ -1508,24 +1508,16 @@ pub fn refused_by_a_member(fields: &Fields, generics: &Generics) -> bool {
         .any(|field| matches!(member_reads(field, &parameters).class(), Class::Refusing(_)))
 }
 
-/// Whether a variant of `item_enum` refuses a key no member declares whatever the enum's own
-/// strictness: one that flattens a member that refuses it, and, under a tag alone or untagged, a
+/// Whether `variant` of `item_enum` refuses a key no member declares whatever the enum's own
+/// strictness: it flattens a member that refuses it, or, under a tag alone or untagged, it is a
 /// newtype variant over a type that refuses a key it does not declare, which serde hands the keys.
-pub fn a_variant_refuses_a_stray(item_enum: &ItemEnum) -> bool {
+pub fn variant_refuses_a_stray(item_enum: &ItemEnum, variant: &Variant) -> bool {
     let parameters = parameter_names(&item_enum.generics);
-    let whole = reads_every_key(item_enum);
-    item_enum
-        .variants
-        .iter()
-        .filter(|variant| variant_on_the_wire(variant))
-        .any(|variant| {
-            refused_by_a_member(&variant.fields, &item_enum.generics)
-                || (whole
-                    && newtype_slot(variant).is_some_and(|slot| {
-                        !read_by_a_function(slot)
-                            && refuses_read_whole(&def_of(&slot.ty, &parameters), 0)
-                    }))
-        })
+    refused_by_a_member(&variant.fields, &item_enum.generics)
+        || (reads_every_key(item_enum)
+            && newtype_slot(variant).is_some_and(|slot| {
+                !read_by_a_function(slot) && refuses_read_whole(&def_of(&slot.ty, &parameters), 0)
+            }))
 }
 
 /// Whether a value `def` describes, read from every key of an object, refuses one it does not
@@ -2185,10 +2177,21 @@ pub fn open_member_refusal(item_struct: &ItemStruct) -> Option<(&Field, String)>
     Some((field, reads_past_refusal(&holder, None, &member).message()))
 }
 
-/// The first member [`open_member`] names of a struct variant of `item_enum` serde reads, with the
-/// refusal [`reads_past_refusal`] writes of the variant.
+/// The member [`open_member`] names of `fields`, where no member they flatten refuses a key no
+/// member declares: serde then reads past such a key beside it, whatever the holder's strictness.
+fn reads_past_beside<'fields>(
+    fields: &'fields Fields,
+    generics: &Generics,
+) -> Option<(&'fields Field, String)> {
+    if refused_by_a_member(fields, generics) {
+        return None;
+    }
+    open_member(fields, &parameter_names(generics))
+}
+
+/// The first member [`reads_past_beside`] names of a struct variant of `item_enum` serde reads,
+/// each variant judged by itself, with the refusal [`reads_past_refusal`] writes of the variant.
 pub fn open_variant_refusal(item_enum: &ItemEnum) -> Option<(&Field, String)> {
-    let parameters = parameter_names(&item_enum.generics);
     let holder = item_enum.ident.unraw().to_string();
     item_enum
         .variants
@@ -2196,7 +2199,7 @@ pub fn open_variant_refusal(item_enum: &ItemEnum) -> Option<(&Field, String)> {
         .filter(|variant| variant_on_the_wire(variant))
         .filter(|variant| matches!(variant.fields, Fields::Named(_)))
         .find_map(|variant| {
-            let (field, member) = open_member(&variant.fields, &parameters)?;
+            let (field, member) = reads_past_beside(&variant.fields, &item_enum.generics)?;
             let named = variant.ident.unraw().to_string();
             Some((
                 field,
@@ -3804,13 +3807,22 @@ pub(super) fn held_open_refusal<'item>(
         .ident
         .as_ref()
         .map_or_else(String::new, |ident| ident.unraw().to_string());
+    // A struct holding those members would itself be refused unless it is `nonstrict`.
+    let held_apart = if reads_past_beside(&held_open.fields, &item_enum.generics).is_some() {
+        format!(
+            "in a struct of its own marked `#[model_schema(nonstrict)]`, and write `{variant}` as \
+             a newtype variant over it"
+        )
+    } else {
+        format!("in a struct of their own and write `{variant}` as a newtype variant over it")
+    };
     let message = format!(
         "type `{enum_name}`: variant `{variant}` flattens `{member}` (`{}`), which reads every key \
          still left, so tixschema cannot write `#[serde(deny_unknown_fields)]` on `{enum_name}` \
          without refusing the keys of `{member}` there, and serde reads that attribute for every \
          variant of an enum at once: it then reads past a key no member declares {refusing} as \
          well. Mark `{enum_name}` `#[model_schema(nonstrict)]`, or hold the members of `{variant}` \
-         in a struct of their own and write `{variant}` as a newtype variant over it.",
+         {held_apart}.",
         spelled(&field.ty)
     );
     Some((field, message))
