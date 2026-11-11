@@ -226,6 +226,16 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
                  },\n          \
                  };\n        \
                  }\n        \
+                 const unheld = documentClientServiceHttpInfinite(held.data, [\"range\"]);\n        \
+                 if (unheld !== undefined) {\n          \
+                 return {\n            \
+                 ok: false,\n            \
+                 error: {\n              \
+                 isServiceFault: true,\n              \
+                 fault: documentClientServiceHttpOutboundFault(\"get-version\", [unheld]),\n            \
+                 },\n          \
+                 };\n        \
+                 }\n        \
                  if (held.data !== undefined) {\n          \
                  const rendered = documentClientServiceHttpWireText(held.data);\n          \
                  if (!documentClientServiceHttpLegalHeaderValue(rendered)) {\n            \
@@ -243,8 +253,9 @@ fn a_header_in_binding_becomes_an_extra_argument_and_a_built_header() {
                  }"
             ),
         "the header is built from the extra argument, never from the message, parsed by its \
-         type's schema and refused as the message is, and its rendered value is checked before it \
-         is pushed. Got: {method}"
+         type's schema and refused as the message is, an infinity among them, never written \
+         through the JSON writer, and its rendered value is checked before it is pushed. \
+         Got: {method}"
     );
 }
 

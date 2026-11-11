@@ -30,9 +30,11 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
     published.extend(fault_helpers(service));
     let prefix = RenameRule::CamelCase.apply_to_variant(&service.ident.to_string());
     published.push(message::wire_fn(&format!("{prefix}HttpSent")));
+    published.push(message::infinite_fn(&format!("{prefix}HttpInfinite")));
     published.push(message::checked_fn(
         &format!("{prefix}HttpChecked"),
         &format!("{prefix}HttpSent"),
+        &format!("{prefix}HttpInfinite"),
     ));
     published.push(message::read_fn(&format!("{prefix}HttpRead")));
     published.push(factory(service));
@@ -376,9 +378,10 @@ fn query_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -
 }
 
 /// Builds the outgoing header array, one entry per `header_in` binding: each value is parsed by
-/// its type's Zod schema first, as the message is, and refused as the message is; an optional
-/// binding holding `undefined` is pushed nowhere, and every rendered value is checked before it is
-/// pushed.
+/// its type's Zod schema first, as the message is, and refused as the message is, an `f32` the
+/// schema read as an infinity among them; an optional binding holding `undefined` is pushed
+/// nowhere, and every rendered value is checked before it is pushed. A header is text, never
+/// written through the JSON writer.
 fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      const headers: Array<[string, string]> = [];\n");
     let wire = ts_quoted(&operation.wire_name);
@@ -399,6 +402,11 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
              value contains a character illegal in an HTTP header\" }}])",
         );
         let refusal = message::deeper(&outbound_fault_stmt(prefix, operation, &fault_expr), 2);
+        let infinite = outbound_fault_stmt(
+            prefix,
+            operation,
+            &format!("{prefix}HttpOutboundFault({wire}, [unheld])"),
+        );
         let inner = option_inner(&header.ty);
         let rendered = wire_text_expr(prefix, inner.unwrap_or(&header.ty), "held.data");
         let checked = format!(
@@ -420,9 +428,13 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShap
             "      {{\n        \
              const held = {schema}.safeParse({parameter});\n        \
              if (!held.success) {{\n{}        \
+             }}\n        \
+             const unheld = {prefix}HttpInfinite(held.data, [{name}]);\n        \
+             if (unheld !== undefined) {{\n{}        \
              }}\n\
              {pushed}      }}\n",
-            message::deeper(&unparsed, 2)
+            message::deeper(&unparsed, 2),
+            message::deeper(&infinite, 2)
         );
     }
     stmt

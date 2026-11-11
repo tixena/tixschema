@@ -104,7 +104,7 @@ const ROWS: [Row; 22] = [
         json: r#"{"outcome":{"Ok":7,"Err":"x"},"stored":{"Ok":null}}"#,
         read_as: "Reply",
         serde: serde_told::<Reply>,
-        thrown: "Not a Result: (Ok, Err)",
+        thrown: "expected value",
     },
     Row {
         json: r#"{"Boxed":"a","Split":["b",1]}"#,
@@ -568,7 +568,7 @@ fn the_readme_shows_refusals_the_run_measures() {
         "`Drizzling: Calm takes no value`",
         "`No variant of Misting matched`",
         "`Unknown key of a Range: (start, end, step)`",
-        "`Not a Result: (Ok, Err)`",
+        "`expected value`",
         "`more than one key for Fogging`",
         "`empty object for Fogging`",
         "`invalid length 3, expected 2`",

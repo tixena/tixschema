@@ -408,6 +408,11 @@ mod fitted_parameters;
 #[path = "service_schema_emitted_client_tests/run_swift_fitted_parameters.rs"]
 mod run_swift_fitted_parameters;
 
+/// An `f32` beyond its range read by the emitted Swift types as an infinity, as serde reads it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_float_reads.rs"]
+mod run_swift_float_reads;
+
 /// The models a number written with a fraction or an exponent is read on for an integer.
 #[cfg(all(test, feature = "swift"))]
 #[path = "service_schema_emitted_client_tests/integral_float_models.rs"]

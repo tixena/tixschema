@@ -8,7 +8,7 @@ use super::{left_to_http_rest, on_one_line};
 use crate::features::dart::{
     dart_json_decode, dart_json_encode, dart_typename, quoted, read_at_function, reading_at,
 };
-use crate::field_type::get_field_def;
+use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
@@ -61,6 +61,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     published.extend(fault_helpers(&named, &fn_prefix, answers));
     if answers {
         published.push(refused_at_fn(&fn_prefix));
+        published.push(refused_fn(&named, &fn_prefix));
     }
     if helper_called {
         published.push(read_at_function(&helper));
@@ -100,6 +101,22 @@ fn refused_at_fn(fn_prefix: &str) -> String {
          FormatException(:final String message) when message.startsWith(\"'\") && message.indexOf(\"'\", 1) > 0 =>\n    \
          message.substring(1, message.indexOf(\"'\", 1)),\n  \
          _ => null,\n\
+         }};"
+    )
+}
+
+/// The function that answers the fault a read's refusal is: `undeserializable-payload` naming no
+/// field for one in serde's words for text that is not the document, as the Rust dispatcher answers
+/// it, and `failed-validation` naming the field for any other.
+fn refused_fn(named: &str, fn_prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    let listed = NOT_A_DOCUMENT.map(|said| format!("'{said}'")).join(", ");
+    format!(
+        "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
+         {fields} _{fn_prefix}WsRefused(String operation, Object rejected) => switch (rejected) {{\n  \
+         FormatException(:final String message) when const <String>{{{listed}}}.contains(message) =>\n    \
+         {fields}(detail: message, kind: {named}FaultKind.undeserializablePayload, operation: operation),\n  \
+         _ => _{fn_prefix}WsFailedValidation(operation, '$rejected', field: _{fn_prefix}WsRefusedAt(rejected)),\n\
          }};"
     )
 }
@@ -246,10 +263,14 @@ fn transport_class_rest(named: &str) -> String {
          /// exposes the same shape, so an attachment for any service sharing this connection\n  \
          /// reaches it here rather than through a transport type of its own.\n  \
          {FRAMES_RECORD_TYPE} get frames => (inbound: _controller.stream, send: send);\n\n  \
+         /// Each value of a frame as `jsonDecode` reads it, but for the infinity it reads a number\n  \
+         /// beyond a `double` as: serde reads no frame that holds one, and neither does this.\n  \
+         static Object? _held(Object? key, Object? value) =>\n      \
+         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(raw as String) as Map<String, dynamic>;\n    \
+         frame = jsonDecode(raw as String, reviver: _held) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \
@@ -510,11 +531,9 @@ fn reply_decode_stmt(
     )
 }
 
-/// The fault a client answers for a reply its read refused, `rejected`, naming the field.
+/// The fault a client answers for a reply its read refused, `rejected`.
 fn refused_fault(fn_prefix: &str, wire: &str) -> String {
-    format!(
-        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: _{fn_prefix}WsRefusedAt(rejected))"
-    )
+    format!("_{fn_prefix}WsRefused({wire}, rejected)")
 }
 
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
@@ -946,11 +965,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          try {{\n            \
          decoded = {received};\n          \
          }} catch (rejected) {{\n            \
-         final fault = _{fn_prefix}WsFailedValidation(\n              \
-         {wire},\n              \
-         '$rejected',\n              \
-         field: _{fn_prefix}WsRefusedAt(rejected),\n            \
-         );\n            \
+         final fault = _{fn_prefix}WsRefused({wire}, rejected);\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(

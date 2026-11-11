@@ -17,11 +17,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4}}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 36] = [
+pub const CASES: [(&str, &str, Option<&str>); 45] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -114,6 +114,19 @@ pub const CASES: [(&str, &str, Option<&str>); 36] = [
         "tally",
         Some(r#"{"Maybe":1}"#),
     ),
+    (
+        "a Result of two arms",
+        "tally",
+        Some(r#"{"Ok":4,"Err":"x"}"#),
+    ),
+    ("a Result of no arm", "tally", Some("{}")),
+    ("a key that is no number", "pitches.x", Some("1")),
+    ("an f32 beyond its range", "ring", Some("1e39")),
+    ("an f32 just beyond its range", "ring", Some("3.5e38")),
+    ("an f32 beyond its range below zero", "ring", Some("-1e39")),
+    ("an f32 beyond an f64", "ring", Some("1e400")),
+    ("an f64 beyond an f32", "sway", Some("1e39")),
+    ("an f64 beyond its range", "sway", Some("1e400")),
 ];
 
 /// The cases where the Rust dispatcher names a place above the one the case changes: serde reads a
@@ -121,6 +134,27 @@ pub const CASES: [(&str, &str, Option<&str>); 36] = [
 /// it refuses. Every emitted read names the place the Rust dispatcher names.
 pub const NAMED_AT_THE_HOLDER: [(&str, &str); 1] =
     [("a text for a number in a flattened member", "frame")];
+
+/// The cases the Rust dispatcher reads: serde reads an `f32` beyond its range as an infinity of the
+/// sign written.
+pub const READ_BY_RUST: [&str; 4] = [
+    "an f32 beyond its range",
+    "an f32 just beyond its range",
+    "an f32 beyond its range below zero",
+    "an f64 beyond an f32",
+];
+
+/// The cases the Rust dispatcher answers `undeserializable-payload` for, naming no field: `serde_json`
+/// refuses each as text that is not the document, not as a value of the wrong kind.
+pub const NOT_A_DOCUMENT: [&str; 3] = [
+    "a Result of two arms",
+    "a Result of no arm",
+    "a key that is no number",
+];
+
+/// The cases whose frame the Rust dispatcher reads as no frame, and answers nothing: a number
+/// beyond an `f64` is no JSON `serde_json` reads.
+pub const NOT_A_FRAME: [&str; 2] = ["an f32 beyond an f64", "an f64 beyond its range"];
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -178,7 +212,7 @@ pub struct CarillonYoke {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CarillonChime {
     pub bells: Vec<CarillonBell>,
     pub depth: i64,
@@ -187,8 +221,10 @@ pub struct CarillonChime {
     pub label: String,
     pub peal: CarillonPeal,
     pub pitches: BTreeMap<CarillonPitch, u32>,
+    pub ring: f32,
     pub rounds: Vec<u32>,
     pub strokes: u32,
+    pub sway: f64,
     pub swing: CarillonSwing,
     pub tally: Result<u32, String>,
     pub towers: BTreeMap<String, CarillonBell>,
@@ -243,8 +279,10 @@ fn within_scale(value: &CarillonPitch) -> Result<(), Vec<String>> {
     }
 }
 
-/// [`STRUCK`] with the change `case` names.
+/// [`STRUCK`] with the change `case` names. A value no `Value` holds, a number beyond an `f64`, is
+/// written into the text as it is.
 pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
+    const UNHELD: &str = "the value no Value holds";
     let mut changed: Value = serde_json::from_str(STRUCK).unwrap();
     if place.is_empty() {
         return changed.to_string();
@@ -258,81 +296,91 @@ pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
             _ => &mut at[*step],
         };
     }
-    match (value, last.parse::<usize>()) {
-        (Some(written), Ok(index)) if at.is_array() => {
-            at[index] = serde_json::from_str(written).unwrap();
-        }
-        (Some(written), _) => at[*last] = serde_json::from_str(written).unwrap(),
+    let replaced = value.map(|text| serde_json::from_str(text).unwrap_or_else(|_| json!(UNHELD)));
+    match (replaced, last.parse::<usize>()) {
+        (Some(written), Ok(index)) if at.is_array() => at[index] = written,
+        (Some(written), _) => at[*last] = written,
         (None, _) => {
             at.as_object_mut().unwrap().remove(*last);
         }
     }
-    changed.to_string()
+    let text = changed.to_string();
+    match value {
+        Some(unheld) if text.contains(UNHELD) => text.replace(&format!("\"{UNHELD}\""), unheld),
+        _ => text,
+    }
 }
 
-/// The request frame that carries `payload` to `strike`.
-pub fn frame(payload: &str) -> String {
-    json!({
-        "kind": "request",
-        "id": "ID",
-        "service": "CarillonService",
-        "operation": "strike",
-        "payload": serde_json::from_str::<Value>(payload).unwrap(),
-    })
-    .to_string()
+/// The request frame `id` that carries `payload` to `strike`.
+pub fn frame(id: &str, payload: &str) -> String {
+    format!(
+        r#"{{"kind":"request","id":"{id}","service":"CarillonService","operation":"strike","payload":{payload}}}"#
+    )
 }
 
-/// The reply the Rust `ws_rpc` dispatcher writes to `payload`, and how many strikes reached the
-/// handler.
-pub fn over_ws(payload: &str) -> (Value, u32) {
+/// The reply the Rust `ws_rpc` dispatcher writes to `payload`, `None` for a frame it answers
+/// nothing, and how many strikes reached the handler.
+pub fn over_ws(payload: &str) -> (Option<Value>, u32) {
     let carillon = Carillon::default();
-    let framed = frame(payload);
+    let framed = frame("ID", payload);
     let mut answering = pin!(carillon_ws_rpc_transport::answer(&framed, &carillon, &()));
     let polled = answering
         .as_mut()
         .poll(&mut Context::from_waker(Waker::noop()));
     // The dispatcher answers on its first poll: the handler never suspends.
+    assert!(polled.is_ready(), "the dispatcher suspended on {payload}");
     let reply = match polled {
         Poll::Ready(answered) => answered,
         Poll::Pending => None,
     };
     (
-        serde_json::from_str(&reply.unwrap()).unwrap(),
+        reply.map(|text| serde_json::from_str(&text).unwrap()),
         carillon.struck(),
     )
 }
 
-/// The field the Rust dispatcher names for each case, `null` for the message it reads.
-pub fn rust_fields() -> Vec<Value> {
+/// What the Rust dispatcher answers each case: `"read"` for a message its handler is handed,
+/// `"dropped"` for a frame it answers nothing, and the fault's kind and field otherwise.
+pub fn rust_answers() -> Vec<Value> {
     CASES
         .into_iter()
-        .map(|case| {
-            let (reply, _) = over_ws(&payload(case));
-            reply["error"]["fault"]["field"].clone()
+        .map(|case| match over_ws(&payload(case)).0 {
+            None => json!("dropped"),
+            Some(reply) if reply["ok"] == true => json!("read"),
+            Some(reply) => json!({
+                "kind": reply["error"]["fault"]["kind"],
+                "field": reply["error"]["fault"]["field"],
+            }),
         })
         .collect()
 }
 
 #[test]
 fn the_rust_dispatcher_names_the_place_of_each_case() {
-    let (read, struck) = over_ws(STRUCK);
+    let (answered, struck) = over_ws(STRUCK);
+    let read = answered.unwrap();
     assert_eq!(read["ok"], true, "{read}");
     assert_eq!(
         read["value"],
         serde_json::from_str::<Value>(STRUCK).unwrap()
     );
     assert_eq!(struck, 1);
-    for (case, field) in CASES.into_iter().zip(rust_fields()).skip(1) {
-        let (refused, strikes) = over_ws(&payload(case));
-        assert_eq!(
-            refused["error"]["fault"]["kind"], "failed-validation",
-            "{refused}"
-        );
-        assert_eq!(strikes, 0, "{}", case.0);
-        let place = NAMED_AT_THE_HOLDER
-            .into_iter()
-            .find_map(|(named, above)| (named == case.0).then_some(above))
-            .unwrap_or(case.1);
-        assert_eq!(field, place, "{}", case.0);
+    for (case, answer) in CASES.into_iter().zip(rust_answers()).skip(1) {
+        let (_, strikes) = over_ws(&payload(case));
+        let expected = if READ_BY_RUST.contains(&case.0) {
+            json!("read")
+        } else if NOT_A_FRAME.contains(&case.0) {
+            json!("dropped")
+        } else if NOT_A_DOCUMENT.contains(&case.0) {
+            json!({ "kind": "undeserializable-payload", "field": null })
+        } else {
+            let place = NAMED_AT_THE_HOLDER
+                .into_iter()
+                .find_map(|(named, above)| (named == case.0).then_some(above))
+                .unwrap_or(case.1);
+            json!({ "kind": "failed-validation", "field": place })
+        };
+        assert_eq!(answer, expected, "{}", case.0);
+        assert_eq!(strikes, u32::from(answer == "read"), "{}", case.0);
     }
 }

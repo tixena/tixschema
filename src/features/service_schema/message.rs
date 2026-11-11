@@ -1,6 +1,6 @@
 //! How the client and the service name the one message an operation receives.
 
-use crate::field_type::get_field_def;
+use crate::field_type::{NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationInputs, ScalarKind, held_as_a_bigint, option_inner,
@@ -213,31 +213,58 @@ pub fn reads_local(text: &str, name: &str) -> bool {
 
 /// The function named `function` that reads a JSON text: each integer a `number` does not hold
 /// exactly rebuilt from its source text as a `bigint`, as a `u64` and an `i64` beyond `2^53 - 1`
-/// are written. A runtime that hands a reviver no source text keeps the `number`.
+/// are written. A runtime that hands a reviver no source text keeps the `number`. A number beyond
+/// an `f64`, which `JSON.parse` reads as an infinity, is refused in serde's words: serde reads no
+/// text that holds one.
 pub fn read_fn(function: &str) -> String {
     format!(
         "/**\n \
          * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its \
          source text\n \
-         * as a `bigint`.\n \
+         * as a `bigint`, and a number beyond an `f64` refused.\n \
          */\n\
          function {function}(text: string): unknown {{\n  \
-         return JSON.parse(text, (_key, value: unknown, context?: {{ source?: string }}) =>\n    \
-         typeof value === \"number\" &&\n    \
-         !Number.isSafeInteger(value) &&\n    \
-         context?.source !== undefined &&\n    \
+         return JSON.parse(text, (_key, value: unknown, context?: {{ source?: string }}) => {{\n    \
+         if (value === Infinity || value === -Infinity) throw new SyntaxError(\"{NUMBER_OUT_OF_RANGE}\");\n    \
+         return typeof value === \"number\" &&\n      \
+         !Number.isSafeInteger(value) &&\n      \
+         context?.source !== undefined &&\n      \
          /^-?(0|[1-9][0-9]*)$/.test(context.source)\n      \
          ? BigInt(context.source)\n      \
-         : value,\n  \
-         );\n\
+         : value;\n  \
+         }});\n\
+         }}"
+    )
+}
+
+/// The function named `function` that answers the first infinity a value holds, under `path`, as
+/// the issue a client refuses it with before it is sent: an `f32` its schema read as one, which no
+/// form serde reads holds. `undefined` where the value holds none.
+pub fn infinite_fn(function: &str) -> String {
+    format!(
+        "/** The first infinity `held` holds, under `path`: no form serde reads holds one. */\n\
+         function {function}(\n  \
+         held: unknown,\n  \
+         path: ReadonlyArray<PropertyKey>,\n\
+         ): {{ path: ReadonlyArray<PropertyKey>; message: string }} | undefined {{\n  \
+         if (held === Infinity || held === -Infinity) {{\n    \
+         return {{ path, message: `expected a 32-bit float, found ${{String(held)}}` }};\n  \
+         }}\n  \
+         if (typeof held !== \"object\" || held === null) return undefined;\n  \
+         for (const [key, item] of Object.entries(held)) {{\n    \
+         const found = {function}(item, [...path, Array.isArray(held) ? Number(key) : key]);\n    \
+         if (found !== undefined) return found;\n  \
+         }}\n  \
+         return undefined;\n\
          }}"
     )
 }
 
 /// The function named `function` that parses `value` with `schema` and writes what it answers
-/// through `writer`, the function [`wire_fn`] writes: a value the schema refuses, or one the wire
-/// cannot hold, answers its issues.
-pub fn checked_fn(function: &str, writer: &str) -> String {
+/// through `writer`, the function [`wire_fn`] writes: a value the schema refuses, one the wire
+/// cannot hold, or one that holds an infinity `infinite` ([`infinite_fn`]) finds answers its
+/// issues.
+pub fn checked_fn(function: &str, writer: &str, infinite: &str) -> String {
     format!(
         "/**\n \
          * `value` parsed by `schema` and written as it goes on the wire: the issues of a value \
@@ -254,6 +281,10 @@ pub fn checked_fn(function: &str, writer: &str) -> String {
          const parsed = schema.safeParse(value);\n  \
          if (!parsed.success) return {{ success: false, error: {{ issues: parsed.error.issues }} \
          }};\n  \
+         const unheld = {infinite}(parsed.data, []);\n  \
+         if (unheld !== undefined) {{\n    \
+         return {{ success: false, error: {{ issues: [unheld] }} }};\n  \
+         }}\n  \
          try {{\n    \
          return {{ success: true, data: parsed.data, sent: {writer}(parsed.data) }};\n  \
          }} catch (unsent) {{\n    \

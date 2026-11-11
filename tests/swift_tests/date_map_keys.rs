@@ -360,7 +360,9 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys { \
              let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else { \
              throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: \"bad key \\(wireKey)\") }; \
+             debugDescription: wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } \
+             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
+             quotes\") }; \
              result[key] = try Sailing(swiftSchemaUnjudged: \
              container.superDecoder(forKey: codingKey)) }; \
              storage = result }; \
@@ -369,7 +371,9 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys { \
              let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else { \
              throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: \"bad key \\(wireKey)\") }; \
+             debugDescription: wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } \
+             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
+             quotes\") }; \
              result[key] = try container.decode(Sailing.self, forKey: codingKey) }; \
              storage = result }; \
              public func encode(to encoder: Encoder) throws { \
@@ -392,7 +396,9 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
              let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else {{ \
              throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: \"bad key \\(wireKey)\") }}; \
+             debugDescription: wireKey.first.map {{ $0 == \"-\" || (\"0\"...\"9\").contains($0) }} \
+             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
+             quotes\") }}; \
              result[key] = try container.decode(SwiftSchemaFit<Stowed>.self, forKey: codingKey).value }}; \
              storage = result }}; \
              public func encode(to encoder: Encoder) throws {{ \

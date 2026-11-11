@@ -107,7 +107,7 @@ consumer's view; this is what a change has to keep.
   of no key and of several, as serde and Zod refuse each; `tagged_variant_tokens` the same words
   for its content under a content key; `untagged_enum_dart_source` `No variant of {Enum}
   matched`; `plain_enum_dart_source` `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a
-  {kind}: {keys}`; `result_decode` `Not a Result: {keys}`; `tuple_decode`, the read of every
+  {kind}: {keys}`; `result_decode` ``expected value`` for an object of other than one key, serde's words for text that is not the document, and `Not a Result: {keys}` for a key no arm names; `tuple_decode`, the read of every
   tuple (a member's, a tuple struct's, a variant's slots), `invalid length {n}, expected {m}`
   for an array of another length, a longer one among them, as serde and Zod refuse it;
   `dart_decode_at` the same words for a level written as `[T; N]` (`FieldDef::fixed_length_at`),
@@ -153,9 +153,18 @@ consumer's view; this is what a change has to keep.
   answers. `run_dart_text_keys.rs` reads and writes back a `String` key held itself, under an
   `Option`, in a list and as a map's value, against serde, and analyzes the type, and
   `run_dart_text_forms.rs` analyzes the types keyed by a `char` and a date or time. `number_held`
-  holds an integer to `FieldDefType::integer_range` and an `f32` below `F32_READ_BOUND` in size,
-  on the read and on the write, a map's key included: `expected an integer from 0 to 255, found
-  256`, `expected a 32-bit float, found 1e+300`. A `DateTime<Tz>` is written
+  holds an integer to `FieldDefType::integer_range` on the read and on the write, and an `f32`
+  below `F32_READ_BOUND` in size on the write and on a map's key: `expected an integer from 0 to
+  255, found 256`, `expected a 32-bit float, found 1e+300`. `float_read` reads an `f32` or an
+  `f64` value as serde does: an `f32` beyond `F32_READ_BOUND` as an infinity of its sign, and the
+  infinity `jsonDecode` reads a number beyond an `f64` as refused with ``number out of range``.
+  `number_key_read` refuses a number key whose text opens with neither a digit nor `-` with
+  ``invalid value: expected key to be a number in quotes``. These three messages are
+  `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  `undeserializable-payload` naming no field (`_{service}WsRefused`), as the Rust dispatcher
+  answers what serde classifies as text that is not the document, and the transport's `_onFrame`
+  reads a frame through a reviver that refuses an infinity, so a frame that holds a number beyond
+  an `f64` is dropped, as the Rust transports drop it. A `DateTime<Tz>` is written
   `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.

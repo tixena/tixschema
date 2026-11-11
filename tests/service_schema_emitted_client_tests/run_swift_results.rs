@@ -41,7 +41,15 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 #[test]
 fn each_result_reads_and_writes_in_swift_as_serde_does() {
     let rows = rows();
-    let expected = expected(&rows);
+    // Swift refuses a `Result` of other than one key in serde's words, which the run prints.
+    let expected = ["both keys", "neither key"]
+        .into_iter()
+        .fold(expected(&rows), |held, name| {
+            held.replace(
+                &format!("{name}: refused\n"),
+                &format!("{name}: refused\n    expected value\n"),
+            )
+        });
     assert!(
         expected.contains("    'frontmatter.Ok.title': too short: minimum length is 1, got 0"),
         "{expected}"
