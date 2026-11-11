@@ -7,6 +7,18 @@ extern crate alloc;
 #[path = "kotlin_tests/tests.rs"]
 mod tests;
 
+/// The private functions the emitter writes into a serializer that refuses a value it read.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_pathed.rs"]
+mod kotlin_pathed;
+
+/// The private function the emitter writes into a serializer that reads a part of a value apart.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "support/kotlin_inner.rs"]
+mod kotlin_inner;
+
 #[cfg(test)]
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/validate.rs"]

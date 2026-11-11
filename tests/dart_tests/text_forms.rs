@@ -66,11 +66,11 @@ fn a_char_and_a_date_are_read_and_written_in_their_form() {
         &chronometer_dart::dart_definition(),
         &[
             format!(
-                "day: {},",
+                "day: _readAt(json, 'day', () => {}),",
                 read("json['day'] as String", &matching(DATE, "text"), "a date")
             ),
             format!(
-                "letter: {},",
+                "letter: _readAt(json, 'letter', () => {}),",
                 read("json['letter'] as String", letter, "a character")
             ),
             format!("MapEntry({}, ", read("e.key", letter, "a character")),
@@ -116,7 +116,7 @@ fn a_time_and_a_date_and_time_are_written_with_their_seconds() {
         &stamp,
         &[
             format!(
-                "stamp: {},",
+                "stamp: _readAt(json, 'stamp', () => {}),",
                 read(
                     "json['stamp'] as String",
                     &matching(&format!("{DATE}T{TIME}Z?"), "text"),
@@ -146,7 +146,8 @@ fn a_date_and_time_with_its_zone_is_written_in_utc() {
     holds(
         &instant_log_dart::dart_definition(),
         &[
-            "instant: DateTime.parse(json['instant'] as String),".to_owned(),
+            "instant: _readAt(json, 'instant', () => DateTime.parse(json['instant'] as String)),"
+                .to_owned(),
             "'instant': (instant).toUtc().toIso8601String().replaceFirst('.000Z', 'Z'),".to_owned(),
             "MapEntry(e.key.toUtc().toIso8601String().replaceFirst('.000Z', 'Z'), ".to_owned(),
             "'instants': instants.map((e) => (e).toUtc().toIso8601String().replaceFirst('.000Z', 'Z')).toList(),".to_owned(),

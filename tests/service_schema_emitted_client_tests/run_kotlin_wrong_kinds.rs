@@ -42,32 +42,32 @@ fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
 /// text is, are the library's own refusals.
 const ANSWERS: &str = "\
 flat, right kinds: read {\"dock\":\"d\",\"count\":1,\"label\":\"A\",\"tags\":[\"t\"]}
-flat, a list for a text: SerializationException: 'label': STRING cannot be read from an array
-flat, an object for a text: SerializationException: 'label': STRING cannot be read from an object
-flat, a list for a number: SerializationException: 'count': INT cannot be read from an array
-flat, an object for a number: SerializationException: 'count': INT cannot be read from an object
-flat, a text for a list: SerializationException: 'tags': LIST cannot be read from a primitive
-flat, a number for a text: JsonDecodingException: String literal for value of key 'primitive' should be quoted at path: $.primitive
+flat, a list for a text: SerializationException: 'label': STRING cannot be read from an array at path: $.label
+flat, an object for a text: SerializationException: 'label': STRING cannot be read from an object at path: $.label
+flat, a list for a number: SerializationException: 'count': INT cannot be read from an array at path: $.count
+flat, an object for a number: SerializationException: 'count': INT cannot be read from an object at path: $.count
+flat, a text for a list: SerializationException: 'tags': LIST cannot be read from a primitive at path: $.tags
+flat, a number for a text: SerializationException: Expected quotation mark '\"', but had 'EOF' instead at path: $.label
 tally, right kinds: read [\"a\",1]
-tally, a list for a text: SerializationException: '0': STRING cannot be read from an array
-tally, an object for a number: SerializationException: '1': INT cannot be read from an object
+tally, a list for a text: SerializationException: '0': STRING cannot be read from an array at path: $[0]
+tally, an object for a number: SerializationException: '1': INT cannot be read from an object at path: $[1]
 haul, right kinds: read {\"kind\":\"Split\",\"held\":[\"a\",1]}
-haul, a list for a text: SerializationException: '0': STRING cannot be read from an array
-haul, an object for a number: SerializationException: '1': INT cannot be read from an object
-haul, a list for the one slot: SerializationException: 'held': STRING cannot be read from an array
+haul, a list for a text: SerializationException: '0': STRING cannot be read from an array at path: $.held[0]
+haul, an object for a number: SerializationException: '1': INT cannot be read from an object at path: $.held[1]
+haul, a list for the one slot: SerializationException: 'held': STRING cannot be read from an array at path: $.held
 freight, right kinds: read {\"Split\":[\"a\",1]}
-freight, a list for a text: SerializationException: '0': STRING cannot be read from an array
-freight, an object for a number: SerializationException: '1': INT cannot be read from an object
-freight, a list for the one slot: SerializationException: 'Sealed': STRING cannot be read from an array
+freight, a list for a text: SerializationException: '0': STRING cannot be read from an array at path: $.Split[0]
+freight, an object for a number: SerializationException: '1': INT cannot be read from an object at path: $.Split[1]
+freight, a list for the one slot: SerializationException: 'Sealed': STRING cannot be read from an array at path: $.Sealed
 pinned, right kinds: read {\"count\":1,\"label\":\"A\",\"tags\":[\"t\"]}
-pinned, a list for a text: SerializationException: 'label': STRING cannot be read from an array
-pinned, an object for a text: SerializationException: 'label': STRING cannot be read from an object
-pinned, a list for a number: SerializationException: 'count': INT cannot be read from an array
-pinned, a text for a list: SerializationException: 'tags': LIST cannot be read from a primitive
-pinned, a number for a text: JsonDecodingException: String literal for value of key 'primitive' should be quoted at path: $.primitive
+pinned, a list for a text: SerializationException: 'label': STRING cannot be read from an array at path: $.label
+pinned, an object for a text: SerializationException: 'label': STRING cannot be read from an object at path: $.label
+pinned, a list for a number: SerializationException: 'count': INT cannot be read from an array at path: $.count
+pinned, a text for a list: SerializationException: 'tags': LIST cannot be read from a primitive at path: $.tags
+pinned, a number for a text: SerializationException: Expected quotation mark '\"', but had 'EOF' instead at path: $.label
 held, right kinds: read {\"pair\":[\"a\",1]}
-held, a list for a text: SerializationException: '0': STRING cannot be read from an array
-held, an object for a number: SerializationException: '1': INT cannot be read from an object
+held, a list for a text: SerializationException: '0': STRING cannot be read from an array at path: $.pair[0]
+held, an object for a number: SerializationException: '1': INT cannot be read from an object at path: $.pair[1]
 berth, a list for a text: JsonDecodingException: Unexpected JSON token at offset 8: Expected beginning of the string, but got [ at path: $.dock
 ";
 

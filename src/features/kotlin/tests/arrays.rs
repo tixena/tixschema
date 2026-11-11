@@ -10,10 +10,10 @@ fn array(named: &str, length: usize) -> String {
         "class {named}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>> {{ private val \
          listed = ListSerializer(item); override val descriptor: SerialDescriptor = \
          listed.descriptor; override fun serialize(encoder: Encoder, value: List<Item>) = \
-         listed.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
-         List<Item> {{ val read = listed.deserialize(decoder); if (read.size != {length}) throw \
-         SerializationException(\"invalid length \" + read.size + \", expected {length}\"); \
-         return read }} }}"
+         listed.serialize(encoder, value); {PATHED}override fun deserialize(decoder: Decoder): \
+         List<Item> {{ val read = listed.deserialize(decoder); return kotlinSchemaAt(decoder) {{ \
+         if (read.size != {length}) throw SerializationException(\"invalid length \" + read.size \
+         + \", expected {length}\"); read }} }} }}"
     )
 }
 
@@ -64,10 +64,9 @@ fn where_the_emitter_writes_the_read_it_composes_the_class_of_the_length() {
     );
     for held in [
         "data class Slots(val slot0: List<UByte>, val slot1: List<List<UByte>>) {",
-        "return Slots(kotlinSchemaDecoded(input.json, KotlinArray1(KotlinNumber1), \
-         array[0], \"0\"), \
-         kotlinSchemaDecoded(input.json, ListSerializer(KotlinArray1(KotlinNumber1)), \
-         array[1], \"1\"))",
+        "Slots(kotlinSchemaDecoded(input.json, KotlinArray1(KotlinNumber1), array[0], \
+         \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, \
+         ListSerializer(KotlinArray1(KotlinNumber1)), array[1], \"1\", \"[1]\"))",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -106,9 +105,9 @@ fn a_list_of_no_length_keeps_the_read_it_had() {
     assert!(
         !kotlin.contains("KotlinArray")
             && kotlin.contains(
-                "kotlinSchemaDecoded(input.json, ListSerializer(KotlinNumber1), array[0], \
-                 \"0\"), kotlinSchemaDecoded(input.json, \
-                 ListSerializer(ListSerializer(KotlinNumber1)), array[1], \"1\")"
+                "kotlinSchemaDecoded(input.json, ListSerializer(KotlinNumber1), array[0], \"0\", \
+                 \"[0]\"), kotlinSchemaDecoded(input.json, \
+                 ListSerializer(ListSerializer(KotlinNumber1)), array[1], \"1\", \"[1]\")"
             ),
         "got: {kotlin}"
     );

@@ -252,8 +252,7 @@ fn rows() -> Vec<Row> {
         sennit("sennit mistyped", SENNIT_MISTYPED).in_dart(MISTYPED),
         kinking("kinking mistyped", FLAKING_MISTYPED).in_dart(MISTYPED),
         tarring("tarring mistyped", LAPPING_MISTYPED).in_dart(MISTYPED),
-        painter("painter partial", FLAKING)
-            .in_dart("refused: type 'Null' is not a subtype of type 'int' in type cast"),
+        painter("painter partial", FLAKING).in_dart("refused: missing field `turns`"),
         kinking("kinking refused", KINKING_SHORT),
         tarring("tarring refused", TARRING_SHORT),
         // Refused by serde, which hands the function none of the struct's keys: `null`, as Zod
@@ -314,8 +313,7 @@ fn enum_rows() -> Vec<Row> {
         squaring("squaring unit", SQUARING[2]),
         squaring("squaring mistyped", SQUARING[3]).in_dart(turns),
         squaring("squaring unnamed", SQUARING[4]).in_dart("refused: Unknown Becket: Gale"),
-        squaring("squaring untagged", SQUARING[5])
-            .in_dart("refused: type 'Null' is not a subtype of type 'String' in type cast"),
+        squaring("squaring untagged", SQUARING[5]).in_dart("refused: missing field `kind`"),
         heeling("heeling absent", HEELING[0]),
         heeling("heeling", HEELING[1]),
         heeling("heeling mistyped", HEELING[2]),
@@ -380,7 +378,12 @@ fn assert_written(definition: &str, fragment: &str) {
 fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     assert_written(
         &lapping_dart::dart_definition(),
-        "Lapping(note: json['note'] as String,tabling: ((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['label'].contains) ? Tabling.fromJsonUnjudged((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })) : null),);",
+        "Lapping(note: _readAt(json, 'note', () => json['note'] as String),tabling: ((switch \
+         (({...json}..remove('note'))) { final whole => { for (final key in const ['label']) if \
+         (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['label'].contains) ? \
+         Tabling.fromJsonUnjudged((switch (({...json}..remove('note'))) { final whole => { for \
+         (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })) : \
+         null),);",
     );
     assert_written(
         &flaking_dart::dart_definition(),
@@ -388,7 +391,7 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     );
     assert_written(
         &sennit_dart::dart_definition(),
-        "SennitLaid(tabling: ((switch (({...json}..remove('kind')..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['label'].contains) ? Tabling.fromJsonUnjudged((switch (({...json}..remove('kind')..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })) : null),note: json['note'] as String,);",
+        "SennitLaid(tabling: ((switch (({...json}..remove('kind')..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['label'].contains) ? Tabling.fromJsonUnjudged((switch (({...json}..remove('kind')..remove('note'))) { final whole => { for (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })) : null),note: _readAt(json, 'note', () => json['note'] as String),);",
     );
     assert_written(
         &painter_dart::dart_definition(),
@@ -423,31 +426,32 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
         &lowering_dart::dart_definition(),
         &format!(
             "Lowering(grommet: ({handed}.keys.any(const ['kind'].contains) ? \
-             Grommet.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
+             Grommet.fromJsonUnjudged({handed}) : null),note: _readAt(json, 'note', () => \
+             json['note'] as String),);"
         ),
     );
     assert_written(
         &squaring_dart::dart_definition(),
-        "Squaring(becket: ((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['kind', 'body']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['kind', 'body'].contains) ? Becket.fromJsonUnjudged((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['kind', 'body']) if (whole.containsKey(key)) key: whole[key] } })) : null),note: json['note'] as String,);",
+        "Squaring(becket: ((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['kind', 'body']) if (whole.containsKey(key)) key: whole[key] } }).keys.any(const ['kind', 'body'].contains) ? Becket.fromJsonUnjudged((switch (({...json}..remove('note'))) { final whole => { for (final key in const ['kind', 'body']) if (whole.containsKey(key)) key: whole[key] } })) : null),note: _readAt(json, 'note', () => json['note'] as String),);",
     );
     assert_written(
         &heeling_dart::dart_definition(),
         &format!(
-            "Heeling(note: json['note'] as String,toggle: {},);",
+            "Heeling(note: _readAt(json, 'note', () => json['note'] as String),toggle: {},);",
             closed(&format!("Toggle.fromJsonUnjudged({handed})"))
         ),
     );
     assert_written(
         &pitching_dart::dart_definition(),
         &format!(
-            "Pitching(note: json['note'] as String,shackle: {},);",
+            "Pitching(note: _readAt(json, 'note', () => json['note'] as String),shackle: {},);",
             closed(&format!("Shackle.fromJsonUnjudged({handed})"))
         ),
     );
     assert_written(
         &tucking_dart::dart_definition(),
         &format!(
-            "Tucking(cringle: {},note: json['note'] as String,);",
+            "Tucking(cringle: {},note: _readAt(json, 'note', () => json['note'] as String),);",
             closed(&format!("Cringle.fromJsonUnjudged({handed})"))
         ),
     );
@@ -459,9 +463,9 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
 fn a_flattened_struct_is_read_from_the_whole_object() {
     assert_written(
         &crowning_dart::dart_definition(),
-        "Crowning(note: json['note'] as String,tabling: Tabling.fromJsonUnjudged((switch \
-         (({...json}..remove('note'))) { final whole => { for (final key in const ['label']) if \
-         (whole.containsKey(key)) key: whole[key] } })),);",
+        "Crowning(note: _readAt(json, 'note', () => json['note'] as String),tabling: \
+         Tabling.fromJsonUnjudged((switch (({...json}..remove('note'))) { final whole => { for \
+         (final key in const ['label']) if (whole.containsKey(key)) key: whole[key] } })),);",
     );
 }
 
@@ -482,28 +486,28 @@ fn a_flattened_option_that_names_a_function_is_tried_on_what_the_function_answer
     assert_written(
         &veering_dart::dart_definition(),
         &format!(
-            "Veering(note: json['note'] as String,tabling: {},);",
+            "Veering(note: _readAt(json, 'note', () => json['note'] as String),tabling: {},);",
             tried("asGiven", "Tabling.fromJsonUnjudged(corrected)", by_label)
         ),
     );
     assert_written(
         &reeved_dart::dart_definition(),
         &format!(
-            "Reeved(note: json['note'] as String,tholepin: {},);",
+            "Reeved(note: _readAt(json, 'note', () => json['note'] as String),tholepin: {},);",
             tried("asGiven", "Tholepin.fromJsonUnjudged(corrected)", by_label)
         ),
     );
     assert_written(
         &wormed_dart::dart_definition(),
         &format!(
-            "Wormed(note: json['note'] as String,tholepin: {},);",
+            "Wormed(note: _readAt(json, 'note', () => json['note'] as String),tholepin: {},);",
             tried("asNull", "Tholepin.fromJsonUnjudged(corrected)", by_label)
         ),
     );
     assert_written(
         &moused_dart::dart_definition(),
         &format!(
-            "Moused(frapped: {},note: json['note'] as String,);",
+            "Moused(frapped: {},note: _readAt(json, 'note', () => json['note'] as String),);",
             tried(
                 "asGiven",
                 "Frapped.fromJsonUnjudged(corrected)",

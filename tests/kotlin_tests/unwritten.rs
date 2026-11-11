@@ -34,8 +34,8 @@ fn a_member_serde_never_writes_is_read_and_has_no_put() {
     );
     assert!(
         furling.contains(
-            "val spare = obj[\"spare\"]?.let { \
-             kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }"
+            "val spare = obj[\"spare\"]?.let { kotlinSchemaDecoded(input.json, \
+             KotlinNumber1.nullable, it, \"spare\", \".spare\") }"
         ),
         "got: {furling}"
     );
@@ -56,8 +56,8 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
     );
     assert!(
         reefing.contains(
-            "val spare = obj[\"spare\"]?.let { \
-             kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }"
+            "val spare = obj[\"spare\"]?.let { kotlinSchemaDecoded(input.json, \
+             KotlinNumber1.nullable, it, \"spare\", \".spare\") }"
         ),
         "got: {reefing}"
     );
@@ -111,12 +111,12 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
         let tag = if name == "Wearing" { ", \"kind\"" } else { "" };
         assert!(
             kotlin.contains(&format!(
-                "val spare = obj[\"spare\"]?.let {{ \
-                 kotlinSchemaDecoded(input.json, KotlinNumber1.nullable, it, \"spare\") }}; if \
+                "val spare = obj[\"spare\"]?.let {{ kotlinSchemaDecoded(input.json, \
+                 KotlinNumber1.nullable, it, \"spare\", \".spare\") }}; if \
                  (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"label\", \
                  \"spare\"{tag})).keys.firstOrNull()?.let {{ throw \
-                 SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}; return \
-                 {name}Furled(label = label, spare = spare) }} }}"
+                 SerializationException(\"Encountered an unknown key '\" + it + \"'\") }}; \
+                 {name}Furled(label = label, spare = spare) }} }} }}"
             )),
             "got: {kotlin}"
         );
@@ -157,8 +157,8 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     let splaying = super::tests::renumbered(&splaying_kotlin::kotlin_definition());
     for held in [
         "data class Splaying(val braiding: Braiding, val note: String)",
-        "val braiding = input.json.decodeFromJsonElement(BraidingUnjudged, \
-         JsonObject(obj.filterKeys { it in setOf(\"label\") }));",
+        "val braiding = input.json.decodeFromString(BraidingUnjudged, JsonObject(obj.filterKeys { \
+         it in setOf(\"label\") }).toString());",
         written,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");
@@ -167,8 +167,8 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     for held in [
         "data class Ranging(val counts: Map<String, UByte>)",
         "output.encodeJsonElement(buildJsonObject {  })",
-        "val counts = obj.mapValues { (k, v) -> \
-         kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) };",
+        "val counts = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, \
+         k, \".\" + k) };",
     ] {
         assert!(ranging.contains(held), "no `{held}` in: {ranging}");
     }

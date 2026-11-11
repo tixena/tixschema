@@ -33,21 +33,21 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What the Kotlin read answers of each payload of [`REFUSED`], in its order. The read refuses the
-/// string of an `i64`'s digits in serde's words, and reads a number through the tree of the
-/// payload, so the path of an out-of-range number starts at the number.
+/// string of an `i64`'s digits in serde's words, and an out-of-range number in kotlinx's, each at
+/// the path of the number.
 const KOTLIN_REFUSED: [&str; 8] = [
-    "JsonDecodingException: Failed to parse literal '9223372036854775808' as a long value at \
-     path: $.primitive\nJSON input: 9223372036854775808",
-    "SerializationException: invalid type: string \"7\", expected i64",
-    "JsonDecodingException: Failed to parse literal '-9223372036854775809' as a long value at \
-     path: $.primitive\nJSON input: -9223372036854775809",
-    "JsonDecodingException: Failed to parse literal '1.5' as a long value at path: \
-     $.primitive\nJSON input: 1.5",
+    "SerializationException: Failed to parse literal '9223372036854775808' as a long value at \
+     path: $\nJSON input: 9223372036854775808",
+    "SerializationException: invalid type: string \"7\", expected i64 at path: $",
+    "SerializationException: Failed to parse literal '-9223372036854775809' as a long value at \
+     path: $.listed[1]\nJSON input: -9223372036854775809",
+    "SerializationException: Failed to parse literal '1.5' as a long value at path: \
+     $.Moved.from\nJSON input: 1.5",
     "SerializationException: 'level': too large: maximum is 5, got 6",
-    "JsonDecodingException: Failed to parse literal '9223372036854775808' as a long value at \
-     path: $.primitive\nJSON input: 9223372036854775808",
+    "SerializationException: Failed to parse literal '9223372036854775808' as a long value at \
+     path: $.ranged.end\nJSON input: 9223372036854775808",
     "SerializationException: 'fixed': not the literal 214, got 215",
-    "SerializationException: invalid type: string \"x\", expected i64",
+    "SerializationException: invalid type: string \"x\", expected i64 at path: $.keyed['4']",
 ];
 
 /// Each payload serde writes is read and written back as serde writes it back, and each payload

@@ -358,7 +358,8 @@ fn test_option_bare_is_nullable_and_optional_and_conditionally_omitted() {
     );
     assert!(
         dart.contains(
-            "bin_location: (json['binLocation'] == null ? null : json['binLocation'] as String),"
+            "bin_location: _readAt(json, 'binLocation', () => (json['binLocation'] == null ? null \
+             : json['binLocation'] as String)),"
         ),
         "fromJson should read the wire key back, null or a value alike. Got: {dart}"
     );
@@ -419,14 +420,16 @@ fn test_struct_fromjson_and_tojson_round_trip_shape() {
     assert!(dart.contains("factory StockItem.fromJson(Map<String, dynamic> json)"));
     assert!(dart.contains("Map<String, dynamic> toJson()"));
     assert!(dart.contains("'sku': sku,"));
-    assert!(dart.contains("sku: json['sku'] as String,"));
+    assert!(dart.contains("sku: _readAt(json, 'sku', () => json['sku'] as String),"));
 }
 
 #[test]
 fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
     let dart = warehouse_dart::dart_definition();
     assert!(
-        dart.contains("address: Address.fromJsonUnjudged(json['address']),"),
+        dart.contains(
+            "address: _readAt(json, 'address', () => Address.fromJsonUnjudged(json['address'])),"
+        ),
         "a nested type reference should decode via its own fromJsonUnjudged. Got: {dart}"
     );
     assert!(
@@ -672,7 +675,7 @@ fn test_generic_struct_codec_threads_converter_functions() {
         "toJson should take the matching encode converter. Got: {dart}"
     );
     assert!(
-        dart.contains("itemTypeFromJson(e)"),
+        dart.contains("itemTypeFromJson(e.$2)"),
         "decoding a List<ItemType> should call the converter per element. Got: {dart}"
     );
     assert!(
@@ -702,7 +705,7 @@ fn test_object_id_maps_to_a_bare_objectid_reference() {
         dart.contains("final ObjectId id;"),
         "ObjectId should be a bare reference, like TypeScript's. Got: {dart}"
     );
-    assert!(dart.contains("id: ObjectId.fromJson(json['id']),"));
+    assert!(dart.contains("id: _readAt(json, 'id', () => ObjectId.fromJson(json['id'])),"));
     assert!(dart.contains("'id': (id).toJson(),"));
 }
 
@@ -714,7 +717,10 @@ fn test_datetime_maps_to_dart_datetime_by_default() {
         dart.contains("final DateTime created_at;"),
         "DateTime<Tz> should map to Dart's own DateTime. Got: {dart}"
     );
-    assert!(dart.contains("created_at: DateTime.parse(json['created_at'] as String),"));
+    assert!(dart.contains(
+        "created_at: _readAt(json, 'created_at', () => DateTime.parse(json['created_at'] as \
+         String)),"
+    ));
     assert!(dart.contains(
         "'created_at': (created_at).toUtc().toIso8601String().replaceFirst('.000Z', 'Z'),"
     ));
@@ -764,7 +770,9 @@ fn test_a_reference_to_a_renamed_type_uses_its_published_name() {
         dart.contains("final Customer customer;"),
         "a field referencing a renamed type should use the published name. Got: {dart}"
     );
-    assert!(dart.contains("customer: Customer.fromJsonUnjudged(json['customer']),"));
+    assert!(dart.contains(
+        "customer: _readAt(json, 'customer', () => Customer.fromJsonUnjudged(json['customer'])),"
+    ));
 }
 
 #[test]
@@ -891,12 +899,19 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
          ReservedMembers.fromJsonUnjudged(json); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) { for (final key \
-         in json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
-         FormatException('Unknown key of a ReservedMembers: $key'); } return \
-         ReservedMembers(class_: json['class'] as String,in_: json['in'] as String,type: \
-         json['type'] as String,); } Map<String, dynamic> toJson() => { 'class': class_,'in': \
-         in_,'type': type, }; List<String> validate() => const []; }"
+         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) { for (final key in \
+         json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
+         FormatException('Unknown key of a ReservedMembers: $key', <Object>[key]); } return \
+         ReservedMembers(class_: _readAt(json, 'class', () => json['class'] as String),in_: \
+         _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, 'type', () => \
+         json['type'] as String),); } static Read _readAt<Read>(Map<String, dynamic>? object, \
+         Object key, Read Function() read) { try { return read(); } catch (refused) { if (object \
+         != null && !object.containsKey(key)) throw FormatException('missing field `$key`', \
+         <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
+         <Object>[key]); if (refused is FormatException) { final at = refused.source; throw \
+         FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); } \
+         rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, \
+         }; List<String> validate() => const []; }"
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),

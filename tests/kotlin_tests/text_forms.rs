@@ -3,6 +3,7 @@
 //! it where the plugin reads, and the read the emitter writes of a flattened map's key, over the
 //! models of `text_forms_models.rs`.
 
+use super::kotlin_pathed::PATHED;
 use super::text_forms_models::{
     chronometer_kotlin, instant_log_kotlin, letter_lines_kotlin, stamp_log_kotlin, time_log_kotlin,
 };
@@ -72,8 +73,9 @@ fn declared(
         "object {named} : KSerializer<String> {{ {members}override val descriptor: \
          SerialDescriptor = PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); \
          override fun serialize(encoder: Encoder, value: String) {{ {steps}{check}{}; \
-         encoder.encodeString({sent}) }} override fun deserialize(decoder: Decoder): String {{ \
-         val text = decoder.decodeString(); {checked}return text }} }}",
+         encoder.encodeString({sent}) }} {PATHED}override fun deserialize(decoder: Decoder): \
+         String {{ val text = decoder.decodeString(); return kotlinSchemaAt(decoder) {{ \
+         {checked}text }} }} }}",
         refused(expected, "value")
     )
 }
@@ -84,7 +86,7 @@ fn named_for(kotlin: &str, expected: &str) -> String {
         .match_indices("object KotlinText")
         .find(|&(at, _)| {
             kotlin[at..]
-                .split(" return text } }")
+                .split(" text } } }")
                 .next()
                 .is_some_and(|body| body.contains(&format!("\"expected {expected}, found \"")))
         })
@@ -233,9 +235,9 @@ fn a_flattened_maps_key_is_read_through_the_serializer_of_its_form() {
     );
     assert!(
         kotlin.contains(&format!(
-            "val lines = obj.entries.associate {{ (k, v) -> \
-             input.json.decodeFromJsonElement({letter}, JsonPrimitive(k)) to \
-             kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }}"
+            "val lines = obj.entries.associate {{ (k, v) -> input.json.decodeFromString({letter}, \
+             JsonPrimitive(k).toString()) to kotlinSchemaDecoded(input.json, KotlinNumber1, v, k, \
+             \".\" + k) }}"
         )),
         "got: {kotlin}"
     );

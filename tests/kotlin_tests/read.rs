@@ -12,9 +12,11 @@ use super::fixed_arrays_models::{
     bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
 };
+#[cfg(feature = "serde")]
+use super::kotlin_pathed::PATHED;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
-/// itself.
+/// itself, each part from its text, placed under its step.
 #[cfg(feature = "serde")]
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
@@ -24,9 +26,9 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      SerializationException(\"'\" + at + \"': \" + kind + \" cannot be read from \" + when (element) { \
      is JsonArray -> \"an array\"; is JsonObject -> \"an object\"; else -> \"a primitive\" }); \
      return element }; private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: \
-     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String): \
-     KotlinSchemaRead = json.decodeFromJsonElement(serializer, kotlinSchemaKinded(serializer, \
-     element, at)); ";
+     DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String, step: String): \
+     KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
+     kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
 /// What a type with no rule answers.
 const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
@@ -106,31 +108,31 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 pub fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ override \
-         fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
-         SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
-         value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
-         deserialize(decoder: Decoder): {named} {{ val read = \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ \
+         override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
+         descriptor: SerialDescriptor = {named}Unjudged.descriptor; override fun \
+         serialize(encoder: Encoder, value: {named}) = {named}Unjudged.serialize(encoder, \
+         value); override fun deserialize(decoder: Decoder): {named} {{ val read = \
          {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
-         return read }} }}"
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read }} }}"
     )
 }
 
 /// The serializer of `named`, a type with the one parameter `parameter`, which `bound` follows.
 pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
     format!(
-        "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
-         KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
-         val kotlinSchemaUnjudged = {named}Unjudged({handed}); override fun invoke(): \
+        "class {named}Serializer<{parameter}{bound}>({handed}: \
+         KSerializer<{parameter}>) : KSerializer<{named}<{parameter}>>, () -> \
+         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
+         {named}Unjudged({handed}); override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
-         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
-         override fun \
-         deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
-         kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \")); \
-         return read }} }}"
+         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, \
+         value); override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read \
+         = kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read }} }}"
     )
 }
 
@@ -303,7 +305,8 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
         "is LoadBoxed -> buildJsonObject { put(\"Boxed\", \
          output.json.encodeToJsonElement(PalletUnjudged, value.value)) }"
             .to_owned(),
-        "\"Boxed\" -> LoadBoxed(kotlinSchemaDecoded(input.json, PalletUnjudged, data, \"Boxed\"))"
+        "\"Boxed\" -> kotlinSchemaUnder(\".\" + tag) { LoadBoxed(kotlinSchemaDecoded(input.json, \
+         PalletUnjudged, data, \"Boxed\", \"\"))"
             .to_owned(),
     ] {
         assert!(load.contains(&held), "no `{held}` in: {load}");
@@ -319,10 +322,11 @@ fn array_class(kotlin: &str, length: usize) -> String {
             "class {named}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>> {{ private \
              val listed = ListSerializer(item); override val descriptor: SerialDescriptor = \
              listed.descriptor; override fun serialize(encoder: Encoder, value: List<Item>) = \
-             listed.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
-             List<Item> {{ val read = listed.deserialize(decoder); if (read.size != {length}) \
-             throw SerializationException(\"invalid length \" + read.size + \", expected \
-             {length}\"); return read }} }}"
+             listed.serialize(encoder, value); {PATHED}override fun deserialize(decoder: \
+             Decoder): List<Item> {{ val read = listed.deserialize(decoder); return \
+             kotlinSchemaAt(decoder) {{ if (read.size != {length}) throw \
+             SerializationException(\"invalid length \" + read.size + \", expected {length}\"); \
+             read }} }} }}"
         )
     };
     let named = kotlin
@@ -380,14 +384,14 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
             &reefband,
             format!(
                 "val pair = kotlinSchemaDecoded(input.json, {}, (obj[\"pair\"] ?: throw \
-                 SerializationException(\"missing field `pair`\")), \"pair\");",
+                 SerializationException(\"missing field `pair`\")), \"pair\", \".pair\");",
                 composed(&reefband)
             ),
         ),
         (
             &buntline,
             format!(
-                "kotlinSchemaDecoded(input.json, {}, array[1], \"1\")",
+                "kotlinSchemaDecoded(input.json, {}, array[1], \"1\", \"[1]\")",
                 composed(&buntline)
             ),
         ),
@@ -401,7 +405,8 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &shroud,
             format!(
-                "\"Paired\" -> ShroudPaired(kotlinSchemaDecoded(input.json, {}, data, \"Paired\"));",
+                "\"Paired\" -> kotlinSchemaUnder(\".\" + tag) {{ \
+                 ShroudPaired(kotlinSchemaDecoded(input.json, {}, data, \"Paired\", \"\")) }}",
                 composed(&shroud)
             ),
         ),

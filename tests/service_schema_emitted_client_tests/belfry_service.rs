@@ -1,8 +1,8 @@
 //! `BelfryService` on `ws_rpc` and `http_rest`, one operation of which takes no argument and one a
 //! message of its own, and what the Rust dispatchers answer to each message: the message reaches
-//! the handler, and a key no member declares answers `failed-validation` naming the key and
-//! reaches no handler. The emitted dispatchers of every language are measured against these
-//! answers. Nothing here waits on a clock.
+//! the handler, and a key no member declares and a member left out answer `failed-validation`
+//! naming the field and reach no handler. The emitted dispatchers of every language are measured
+//! against these answers. Nothing here waits on a clock.
 
 use core::future::{Future, ready};
 use core::pin::pin;
@@ -18,12 +18,14 @@ use super::{belfry_http_rest_transport, belfry_ws_rpc_transport};
 /// with a key no member declares.
 pub const PAYLOADS: [&str; 2] = ["{}", r#"{"stray":1}"#];
 
-/// The payloads the TypeScript dispatchers are handed for `toll-bell`: the message, and a key no
-/// member declares beside its members and beside the members of the struct it holds.
-pub const TOLLS: [&str; 3] = [
+/// The payloads every dispatcher is handed for `toll-bell`: the message, a key no member declares
+/// beside its members and beside the members of the struct it holds, and the message without one
+/// of its members.
+pub const TOLLS: [&str; 4] = [
     r#"{"rope":{"length":3},"strokes":2}"#,
     r#"{"rope":{"length":3},"strokes":2,"stray":1}"#,
     r#"{"rope":{"length":3,"stray":1},"strokes":2}"#,
+    r#"{"rope":{"length":3}}"#,
 ];
 
 #[model_schema(enable = ["jsonschema"])]
@@ -227,12 +229,16 @@ fn the_rust_dispatchers_read_an_empty_message_and_refuse_a_key_beside_it() {
 }
 
 #[test]
-fn the_rust_dispatchers_name_a_key_no_member_of_a_message_declares() {
+fn the_rust_dispatchers_name_a_key_no_member_of_a_message_declares_and_a_member_left_out() {
     assert_eq!(
         over_http("toll-bell", TOLLS[0]),
         (200, json!({ "strokes": 6_u8 }), 1)
     );
-    for (payload, field) in [(TOLLS[1], "stray"), (TOLLS[2], "rope.stray")] {
+    for (payload, field) in [
+        (TOLLS[1], "stray"),
+        (TOLLS[2], "rope.stray"),
+        (TOLLS[3], "strokes"),
+    ] {
         let (status, fault, rung) = over_http("toll-bell", payload);
         assert_eq!((status, rung), (400, 0), "{fault}");
         assert_eq!(fault["field"], field, "{fault}");

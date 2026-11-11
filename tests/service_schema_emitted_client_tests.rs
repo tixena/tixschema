@@ -2152,6 +2152,29 @@ use belfry_service::{BelfryService, BelfryServiceSchema, belfry_service_schema};
 #[path = "service_schema_emitted_client_tests/run_belfry.rs"]
 mod run_belfry;
 
+/// `CarillonService`, whose message holds a struct in a list, a map and an enum under each
+/// tagging, and the field its Rust dispatcher names for each payload it refuses.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/carillon_service.rs"]
+mod carillon_service;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/carillon_ws_rpc_transport.rs"]
+mod carillon_ws_rpc_transport;
+
+#[cfg(test)]
+use carillon_service::{CarillonService, carillon_service_schema};
+
+#[cfg(all(test, feature = "dart"))]
+use carillon_service::CarillonServiceSchema;
+
+/// The emitted Dart and Kotlin attachments and the Dart, Kotlin and Swift clients of
+/// `CarillonService`, measured against it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_carillon.rs"]
+mod run_carillon;
+
 /// Structs that hold no key on the wire, strict and `nonstrict`.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/empty_struct_models.rs"]

@@ -8,6 +8,7 @@
 
 use core::cell::RefCell;
 
+use super::read::PATHED;
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, texts};
 use crate::field_type::FieldDef;
 use crate::utils::crate_tag;
@@ -29,10 +30,10 @@ fn declaration(named: &str, length: usize) -> String {
         "class {named}<Item>(item: KSerializer<Item>) : KSerializer<List<Item>> {{ private val \
          listed = ListSerializer(item); override val descriptor: SerialDescriptor = \
          listed.descriptor; override fun serialize(encoder: Encoder, value: List<Item>) = \
-         listed.serialize(encoder, value); override fun deserialize(decoder: Decoder): \
-         List<Item> {{ val read = listed.deserialize(decoder); if (read.size != {length}) throw \
-         SerializationException(\"invalid length \" + read.size + \", expected {length}\"); \
-         return read }} }}"
+         listed.serialize(encoder, value); {PATHED}override fun deserialize(decoder: Decoder): \
+         List<Item> {{ val read = listed.deserialize(decoder); return kotlinSchemaAt(decoder) {{ \
+         if (read.size != {length}) throw SerializationException(\"invalid length \" + read.size + \
+         \", expected {length}\"); read }} }} }}"
     )
 }
 

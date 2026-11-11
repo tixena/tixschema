@@ -82,7 +82,7 @@ fn each_text_of_one_form_reads_in_kotlin_where_the_table_states() {
 }
 
 /// The README's sentences on the read of a `char` and a date show payloads and messages the run
-/// above measures.
+/// above measures, a message's words ahead of the path it states.
 #[test]
 fn the_readme_shows_texts_the_run_measures() {
     let readme = include_str!("../../docs/guide/kotlin.md");
@@ -112,7 +112,7 @@ fn the_readme_shows_texts_the_run_measures() {
         assert!(
             TEXT_FORMS.iter().any(|row| row.read_as == read_as
                 && row.json.contains(shown)
-                && row.kotlin == kotlin),
+                && row.kotlin.split(" at path: ").next() == Some(kotlin)),
             "no row of {read_as} holds {shown} where the Kotlin read answers {kotlin}"
         );
         assert!(

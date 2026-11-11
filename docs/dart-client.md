@@ -10,8 +10,8 @@ consumer's view; this is what a change has to keep.
 
 - **A class refuses a key no member reads**, as TypeScript, Zod and serde refuse it
   (`closed_keys`, `unknown_keys_refused`): `tag_checked_reads` opens the unjudged read of a struct
-  and of a variant's class with a loop that throws `Unknown key of a {Class}: {key}` for a key of
-  the object that is none of its members' names and aliases, its own tag, the tag of the enum it is
+  and of a variant's class with a loop that throws `Unknown key of a {Class}: {key}`, the key its
+  `source`, for a key of the object that is none of its members' names and aliases, its own tag, the tag of the enum it is
   a variant of and the keys of each member it flattens. A `nonstrict` type, a type that names a
   `preprocess`, which can rewrite the keys it reads, a struct under its own tag, which serde reads
   past a key beside, and a type that flattens a member whose keys are not known, such as a map or
@@ -113,11 +113,24 @@ consumer's view; this is what a change has to keep.
   `dart_decode_at` the same words for a level written as `[T; N]` (`FieldDef::fixed_length_at`),
   at each level, before it maps the items, where a level of no recorded length is read as it
   was; `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
-  cast's `TypeError`, and every other error a Dart operation throws on its own, are the
-  language's. So an enum declared below its holder, handed the object without the holder's own
+  cast's `TypeError` below the payload is refused with a `FormatException` of its words (`_readAt`
+  below), and every other error a Dart operation throws on its own is the language's. So an enum
+  declared below its holder, handed the object without the holder's own
   keys, is refused where that object holds another key beside its entry, which serde reads.
   `run_dart_refusals.rs` reads each refusal under the Dart SDK, beside serde's refusal of the same
   payload.
+- **Each value read under a step is read through `_readAt`** (`READ_AT_BODY`): a member under
+  its key (`constructor_arguments`), an item under its index and a map's value under its key
+  (`dart_decode_at`, `map_decode`), a variant's content under its entry or the content key, the
+  tag under its key, and a tuple's position. Each class whose read calls it declares it
+  (`reading_at`, `with_read_at`); a text with no helper, a service's, names its own
+  (`read_at_function`), and the read writes no step where none is declared. A refusal carries the
+  path of the value refused as its `FormatException`'s `source`, a list of steps the helper puts
+  its own ahead of, and keeps the `message`. A read that fails where the object does not hold the
+  key is refused with ``missing field `{key}` ``, as serde words it; a cast's `TypeError` becomes a
+  `FormatException` of its words, and a Dart parser's refusal one with the path. The `ws_rpc`
+  attachment and client name the joined path as the fault's `field`, or the place a `validate()`
+  message opens with (`refused_at_fn` in `dart_ws_client.rs`).
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever

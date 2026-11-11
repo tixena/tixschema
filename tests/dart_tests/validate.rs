@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::unknown_keys::READ_AT;
+
 /// The codec of each type below but `Audit`: its two reads, and `toJson` as it was written before
 /// any type had `validate()`, but `Sleeve`'s, which reads and writes the value of its one slot.
 const CODEC: &str = include_str!("codec_before_validate.txt");
@@ -433,7 +435,21 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
         format!(
             "class Parcel {{ const Parcel({{required this.fragile_item_codes,required \
              this.item_code_list,required this.label,}}); final List<String> \
-             fragile_item_codes;final List<String> item_code_list;final String label; factory Parcel.fromJson(Map<String, dynamic> json) {{ final read = Parcel.fromJsonUnjudged(json); final violations = read.validate(); if (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; }} factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in json.keys) {{ if (!const <String>{{'fragileItemCodes', 'itemCodeList', 'label'}}.contains(key)) throw FormatException('Unknown key of a Parcel: $key'); }} return Parcel(fragile_item_codes: (json['fragileItemCodes'] as List<dynamic>).map((e) => e as String).toList(),item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) => e as String).toList(),label: json['label'] as String,); }} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': fragile_item_codes.map((e) => e).toList(),'itemCodeList': \
+             fragile_item_codes;final List<String> item_code_list;final String label; factory \
+             Parcel.fromJson(Map<String, dynamic> json) {{ final read = \
+             Parcel.fromJsonUnjudged(json); final violations = read.validate(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
+             }} factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
+             json.keys) {{ if (!const <String>{{'fragileItemCodes', 'itemCodeList', \
+             'label'}}.contains(key)) throw FormatException('Unknown key of a Parcel: $key', \
+             <Object>[key]); }} return Parcel(fragile_item_codes: _readAt(json, \
+             'fragileItemCodes', () => (json['fragileItemCodes'] as \
+             List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as \
+             String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
+             (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+             e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
+             String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ \
+             'fragileItemCodes': fragile_item_codes.map((e) => e).toList(),'itemCodeList': \
              item_code_list.map((e) => e).toList(),'label': label, }}; List<String> validate() => \
              [ for (final violation in withoutDuplicates(item_code_list)) _under('itemCodeList', \
              violation), if (label.runes.length < 1) \"'label': too short: minimum length is 1, \
@@ -657,15 +673,18 @@ fn an_enums_string_check_reaches_the_fields_written_as_text() {
 fn a_field_named_validate_moves_and_keeps_its_key() {
     assert_eq!(
         audit_dart::dart_definition(),
-        "class Audit { const Audit({required this.validate_,}); final bool validate_; factory \
-         Audit.fromJson(Map<String, dynamic> json) { final read = Audit.fromJsonUnjudged(json); \
-         final violations = read.validate(); if (violations.isNotEmpty) throw \
-         FormatException(violations.join('; ')); return read; } factory \
-         Audit.fromJsonUnjudged(Map<String, dynamic> json) { for (final key in json.keys) { if \
-         (!const <String>{'validate'}.contains(key)) throw FormatException('Unknown key of a \
-         Audit: $key'); } return Audit(validate_: json['validate'] as bool,); } \
-         Map<String, dynamic> toJson() => { 'validate': validate_, }; List<String> \
-         validate() => const []; }"
+        format!(
+            "class Audit {{ const Audit({{required this.validate_,}}); final bool validate_; \
+             factory Audit.fromJson(Map<String, dynamic> json) {{ final read = \
+             Audit.fromJsonUnjudged(json); final violations = read.validate(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
+             }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
+             json.keys) {{ if (!const <String>{{'validate'}}.contains(key)) throw \
+             FormatException('Unknown key of a Audit: $key', <Object>[key]); }} return \
+             Audit(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); }} \
+             {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
+             List<String> validate() => const []; }}"
+        )
     );
     assert_eq!(
         serde_json::to_string(&Audit { validate: true }).unwrap(),

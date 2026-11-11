@@ -5,7 +5,9 @@
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
-use crate::features::dart::{dart_json_decode, dart_json_encode, dart_typename, quoted};
+use crate::features::dart::{
+    dart_json_decode, dart_json_encode, dart_typename, quoted, read_at_function, reading_at,
+};
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -46,17 +48,22 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     if has_one_way(service) {
         published.push(refusal_class(&named));
     }
-    published.push(client_class(service, headered, methods_apart.as_deref()));
-    published.push(handlers_class(service, handlers_apart.as_deref()));
-    published.push(attach_dispatcher_fn(service));
-    published.extend(fault_helpers(
-        &named,
-        &fn_prefix,
-        declares_any_header(service) || takes_no_argument(service),
-        !service.operations.is_empty(),
-    ));
-    if takes_no_argument(service) {
-        published.push(stray_key_fn(&fn_prefix));
+    let helper = format!("_{fn_prefix}WsReadAt");
+    let (sides, helper_called) = reading_at(&helper, || {
+        [
+            client_class(service, headered, methods_apart.as_deref()),
+            handlers_class(service, handlers_apart.as_deref()),
+            attach_dispatcher_fn(service),
+        ]
+    });
+    published.extend(sides);
+    let answers = !service.operations.is_empty();
+    published.extend(fault_helpers(&named, &fn_prefix, answers));
+    if answers {
+        published.push(refused_at_fn(&fn_prefix));
+    }
+    if helper_called {
+        published.push(read_at_function(&helper));
     }
     published
 }
@@ -82,34 +89,19 @@ fn declares_header_in(service: &ServiceDef) -> bool {
         .any(|operation| !HttpShape::of(operation).header_in.is_empty())
 }
 
-/// Whether an operation takes no argument after the context, whose message's refusal of a key the
-/// attachment names as the fault's field.
-fn takes_no_argument(service: &ServiceDef) -> bool {
-    service
-        .operations
-        .iter()
-        .any(|operation| matches!(operation.inputs, OperationInputs::Empty))
-}
-
-/// The function that answers the first key of a payload, which the message of an operation of no
-/// argument refuses: the field its fault names, as the Rust dispatcher names it.
-fn stray_key_fn(fn_prefix: &str) -> String {
+/// The function that answers the field a fault names for a value a read refused, as the Rust
+/// dispatcher names it: the path a generated read's `FormatException` carries as its `source`, or
+/// the place a `validate()` message opens with.
+fn refused_at_fn(fn_prefix: &str) -> String {
     format!(
-        "/// The first key of `payload`, which the message of an operation of no argument refuses.\n\
-         String? _{fn_prefix}WsStrayKey(Object? payload) =>\n    \
-         payload is Map && payload.isNotEmpty ? '${{payload.keys.first}}' : null;"
+        "/// The field a read's refusal names: the path it carries, or the place its first message opens with.\n\
+         String? _{fn_prefix}WsRefusedAt(Object rejected) => switch (rejected) {{\n  \
+         FormatException(source: final List<Object> at) when at.isNotEmpty => at.join('.'),\n  \
+         FormatException(:final String message) when message.startsWith(\"'\") && message.indexOf(\"'\", 1) > 0 =>\n    \
+         message.substring(1, message.indexOf(\"'\", 1)),\n  \
+         _ => null,\n\
+         }};"
     )
-}
-
-/// [`declares_header_in`]'s own widening to `header_out`/`error_header_out`, for gating the fault
-/// helper's own `field` parameter.
-fn declares_any_header(service: &ServiceDef) -> bool {
-    service.operations.iter().any(|operation| {
-        let shape = HttpShape::of(operation);
-        !shape.header_in.is_empty()
-            || !shape.header_out.is_empty()
-            || !shape.error_header_out.is_empty()
-    })
 }
 
 fn heartbeat_class(named: &str) -> String {
@@ -518,6 +510,13 @@ fn reply_decode_stmt(
     )
 }
 
+/// The fault a client answers for a reply its read refused, `rejected`, naming the field.
+fn refused_fault(fn_prefix: &str, wire: &str) -> String {
+    format!(
+        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: _{fn_prefix}WsRefusedAt(rejected))"
+    )
+}
+
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
 /// `margin` is the leading whitespace, since the two call sites nest at different depths.
 fn header_value_decode_stmts(
@@ -570,11 +569,12 @@ pub(super) fn success_decode_block(
             return format!("      return {result}Ok();\n");
         }
         let decoded = dart_json_decode(success, "reply['value']");
+        let refused = refused_fault(fn_prefix, wire);
         return format!(
             "      try {{\n        \
              return {result}Ok({decoded});\n      \
              }} catch (rejected) {{\n        \
-             return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
+             return {result}Fault({refused});\n      \
              }}\n"
         );
     }
@@ -584,13 +584,14 @@ pub(super) fn success_decode_block(
     let body = elements.first().copied().unwrap_or(success);
     let body_ty = dart_type_of(body);
     let decoded = dart_json_decode(body, "reply['value']");
+    let refused = refused_fault(fn_prefix, wire);
     let mut stmt = format!(
         "      final replyHeaders = reply['headers'] as Map<String, dynamic>?;\n      \
          late final {body_ty} value;\n      \
          try {{\n        \
          value = {decoded};\n      \
          }} catch (rejected) {{\n        \
-         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
+         return {result}Fault({refused});\n      \
          }}\n"
     );
     let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
@@ -627,12 +628,13 @@ pub(super) fn declared_error_decode_stmts(
     if error_header_out.is_empty() {
         let error_ty = dart_type_of(error);
         let decoded = dart_json_decode(error, "error");
+        let refused = refused_fault(fn_prefix, wire);
         return format!(
             "    late final {error_ty} declared;\n    \
              try {{\n      \
              declared = {decoded};\n    \
              }} catch (rejected) {{\n      \
-             return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n    \
+             return {result}Fault({refused});\n    \
              }}\n    \
              return {result}Operation(declared);\n"
         );
@@ -641,13 +643,14 @@ pub(super) fn declared_error_decode_stmts(
     let head = elements.first().copied().unwrap_or(error);
     let head_ty = dart_type_of(head);
     let decoded = dart_json_decode(head, "error");
+    let refused = refused_fault(fn_prefix, wire);
     let mut stmt = format!(
         "    final replyHeaders = reply['headers'] as Map<String, dynamic>?;\n    \
          late final {head_ty} declaredHead;\n    \
          try {{\n      \
          declaredHead = {decoded};\n    \
          }} catch (rejected) {{\n      \
-         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n    \
+         return {result}Fault({refused});\n    \
          }}\n"
     );
     let element_types: Vec<&Type> = elements.iter().skip(1).copied().collect();
@@ -936,11 +939,6 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let received = message_decode(operation, "frame['payload']");
-    let stray = if matches!(operation.inputs, OperationInputs::Empty) {
-        format!(", field: _{fn_prefix}WsStrayKey(frame['payload'])")
-    } else {
-        String::new()
-    };
     let mut arm = format!(
         "      case {wire}:\n        \
          {{\n          \
@@ -948,7 +946,11 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          try {{\n            \
          decoded = {received};\n          \
          }} catch (rejected) {{\n            \
-         final fault = _{fn_prefix}WsFailedValidation({wire}, '$rejected'{stray});\n            \
+         final fault = _{fn_prefix}WsFailedValidation(\n              \
+         {wire},\n              \
+         '$rejected',\n              \
+         field: _{fn_prefix}WsRefusedAt(rejected),\n            \
+         );\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(
@@ -1100,7 +1102,7 @@ fn reply_dispatch_arm(
 
 /// The faults the client and the attachment build. Of a service `ws_rpc` carries no operation of,
 /// the attachment answers every frame as an unknown operation, and nothing builds the others.
-fn fault_helpers(named: &str, fn_prefix: &str, names_a_field: bool, answers: bool) -> Vec<String> {
+fn fault_helpers(named: &str, fn_prefix: &str, answers: bool) -> Vec<String> {
     let unknown_operation = fault_helper(
         named,
         fn_prefix,
@@ -1114,10 +1116,6 @@ fn fault_helpers(named: &str, fn_prefix: &str, names_a_field: bool, answers: boo
     if !answers {
         return vec![unknown_operation];
     }
-    let failed_validation_doc = format!(
-        "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
-         operation's own declared type through that type's own codec."
-    );
     vec![
         fault_helper(
             named,
@@ -1129,17 +1127,7 @@ fn fault_helpers(named: &str, fn_prefix: &str, names_a_field: bool, answers: boo
                  carry a call: the frame never went out, or the reply never came back."
             ),
         ),
-        if names_a_field {
-            failed_validation_fault_helper(named, fn_prefix)
-        } else {
-            fault_helper(
-                named,
-                fn_prefix,
-                "WsFailedValidation",
-                "failedValidation",
-                &failed_validation_doc,
-            )
-        },
+        failed_validation_fault_helper(named, fn_prefix),
         unknown_operation,
         fault_helper(
             named,
@@ -1166,9 +1154,8 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// [`fault_helper`]'s own twin, emitted only where the service declares a header or an operation of
-/// no argument: `field` names a failed header element's own decode, or the key the message of an
-/// operation of no argument refuses, `null` everywhere else.
+/// [`fault_helper`]'s own twin: `field` names a failed header element's own decode, or the path of
+/// the value a message's read refused, `null` everywhere else.
 fn failed_validation_fault_helper(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(

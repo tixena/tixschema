@@ -2,6 +2,7 @@
 //! serializer that writes it as the `null` serde writes for `()` and reads that `null` alone. A
 //! tuple struct of no slot, which is no `()`, is a plain class read from and written as `[]`.
 
+use super::kotlin_pathed::PATHED;
 use super::unit_models::{probe_nothing_kotlin, probe_slotless_kotlin, probe_units_kotlin};
 
 /// The name `definition` declares the object of `()` under, `KotlinUnit` numbered.
@@ -21,11 +22,11 @@ fn unit_declared(named: &str) -> String {
         "@Serializable(with = {named}Serializer::class) object {named} object {named}Serializer : \
          KSerializer<{named}> {{ override val descriptor: SerialDescriptor = \
          buildClassSerialDescriptor(\"{named}\"); override fun serialize(encoder: Encoder, value: \
-         {named}) {{ (encoder as JsonEncoder).encodeJsonElement(JsonNull) }}; override fun \
-         deserialize(decoder: Decoder): {named} {{ val payload = (decoder as \
-         JsonDecoder).decodeJsonElement(); if (payload !is JsonNull) throw \
-         SerializationException(\"invalid type: \" + payload + \", expected unit\"); return \
-         {named} }} }}"
+         {named}) {{ (encoder as JsonEncoder).encodeJsonElement(JsonNull) }}; {PATHED}override \
+         fun deserialize(decoder: Decoder): {named} {{ val input = decoder as JsonDecoder; val \
+         element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ if (element !is \
+         JsonNull) throw SerializationException(\"invalid type: \" + element + \", expected \
+         unit\"); {named} }} }} }}"
     )
 }
 
@@ -80,7 +81,7 @@ fn a_tuple_struct_of_no_slot_is_a_class_read_from_an_empty_array() {
         "@Serializable(with = ProbeSlotlessSerializer::class) class ProbeSlotless() {",
         "output.encodeJsonElement(buildJsonArray {  })",
         "if (array.size != 0) throw SerializationException(\"invalid length \" + array.size + \", \
-         expected 0\"); return ProbeSlotless()",
+         expected 0\"); ProbeSlotless()",
     ] {
         assert!(slotless.contains(piece), "no {piece} in: {slotless}");
     }

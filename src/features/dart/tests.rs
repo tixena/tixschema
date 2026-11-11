@@ -101,7 +101,7 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
          ({bollard_from}.keys.any(const ['kind', 'body'].contains) ? \
          Bollard.fromJsonUnjudged({bollard_from}) : null),bitt: (() {{ try {{ return \
          Bitt.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} }})(),note: \
-         json['note'] as String,);"
+         _readAt(json, 'note', () => json['note'] as String),);"
     );
     let dart = definition(struct_dart_tokens(&item, &plain_args()));
     assert!(dart.contains(&expected), "missing `{expected}` in: {dart}");
@@ -124,7 +124,7 @@ fn a_u64_and_an_i64_are_ints_read_and_written_as_numbers() {
     for expected in [
         "final int big;",
         "final int signed;",
-        "signed: json['signed'] as int,",
+        "signed: _readAt(json, 'signed', () => json['signed'] as int),",
         "'signed': signed,",
     ] {
         assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
@@ -182,7 +182,7 @@ fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
                     FormatException('duplicate field `$key`'); named[key] = entry.value; } if \
                     (!named.containsKey('kind')) throw FormatException('missing field `kind`'); if \
                     (named['kind'] != 'Halyard') throw FormatException('expected tag \"Halyard\", \
-                    found ' + jsonEncode(named['kind'])); return Halyard(label: named['label'] as \
-                    String,); }";
+                    found ' + jsonEncode(named['kind'])); return Halyard(label: _readAt(named, \
+                    'label', () => named['label'] as String),); }";
     assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
 }

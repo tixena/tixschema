@@ -75,11 +75,12 @@ const DART_ENUM_NAMES_TAKEN: [&str; 11] = [
 
 /// The members an emitted class declares beside those of an enum, which a function of the same name
 /// is called through a forwarder for: the holder of a brand's value and the static helpers.
-const DART_CLASS_MEMBERS: [&str; 8] = [
+const DART_CLASS_MEMBERS: [&str; 9] = [
     "_boundLength",
     "_boundText",
     "_heldBound",
     "_number",
+    "_readAt",
     "_repeats",
     "_under",
     "validateBound",
@@ -463,6 +464,10 @@ struct Unjudged {
 }
 
 thread_local! {
+    /// The helper the read being written reads a value under a key or an index with, where the
+    /// text it lands in declares one, and whether the read called it.
+    static DART_READ_AT: RefCell<(Option<String>, bool)> = const { RefCell::new((None, false)) };
+
     /// The class being written, with the core types its members hide and those it named.
     static DART_CORE_SCOPE: RefCell<Option<CoreScope>> = const { RefCell::new(None) };
 
@@ -557,6 +562,66 @@ thread_local! {
     /// How many classes of a `Result` have been named, never reset: every one lands in the same
     /// consuming file, where no two may share a name.
     static DART_RESULT_COUNTER: Cell<u32> = const { Cell::new(0) };
+}
+
+/// The helper, named `name`, a read reads a value under a key or an index with. A refusal carries
+/// the path of the value refused as its `FormatException`'s `source`, a list of steps a holder puts
+/// its own step ahead of. One of a key `object` does not hold is `missing field`, as serde words
+/// it, and a cast's `TypeError` and a Dart parser's refusal become a `FormatException` with the
+/// path.
+pub fn read_at_function(name: &str) -> String {
+    format!(
+        "Read {name}<Read>(Map<String, dynamic>? object, Object key, Read Function() read) {{ try \
+         {{ return read(); }} catch (refused) {{ if (object != null && !object.containsKey(key)) \
+         throw FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
+         throw FormatException('$refused', <Object>[key]); if (refused is FormatException) {{ \
+         final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
+         is List<Object>) ...at]); }} rethrow; }} }}"
+    )
+}
+
+/// The helper a class reads its values with, under the name [`read_at`] answers in a class.
+fn read_at_helper() -> String {
+    format!("static {}", read_at_function("_readAt"))
+}
+
+/// The name of the helper the read being written reads a value under a key or an index with, and
+/// that it calls it; none where the text it lands in declares no such helper.
+fn read_at() -> Option<String> {
+    DART_READ_AT.with(|held| {
+        let (name, called) = &mut *held.borrow_mut();
+        *called |= name.is_some();
+        name.clone()
+    })
+}
+
+/// What `read` writes with `helper` as [`read_at`]'s name, and whether it called the helper.
+pub fn reading_at<Written, Reading>(helper: &str, read: Reading) -> (Written, bool)
+where
+    Reading: FnOnce() -> Written,
+{
+    let outer = begin_read_at(helper);
+    let written = read();
+    (written, end_read_at(outer))
+}
+
+/// Makes `helper` [`read_at`]'s name until [`end_read_at`], answering what it was.
+fn begin_read_at(helper: &str) -> (Option<String>, bool) {
+    DART_READ_AT.with(|held| held.replace((Some(helper.to_owned()), false)))
+}
+
+/// Puts back `outer`, what [`begin_read_at`] answered, and answers whether the helper was called.
+fn end_read_at(outer: (Option<String>, bool)) -> bool {
+    DART_READ_AT.with(|held| held.replace(outer)).1
+}
+
+/// `reads` and the class's helper, where `called` says they call it.
+fn with_read_at(reads: String, called: bool) -> String {
+    if called {
+        format!("{reads} {}", read_at_helper())
+    } else {
+        reads
+    }
 }
 
 /// The Dart tokens `item` earns, given what `args` reads of its `#[model_schema(...)]`, handed
@@ -1280,11 +1345,12 @@ fn closed_union(
     Some(keys)
 }
 
-/// The statements that refuse a key of the object `object` that is none of `keys`.
+/// The statements that refuse a key of the object `object` that is none of `keys`, the key its
+/// refusal's path.
 fn unknown_keys_refused(class: &str, object: &str, keys: &[String]) -> String {
     format!(
         "for (final key in {object}.keys) {{ if (!const <String>{{{}}}.contains(key)) throw \
-         FormatException('Unknown key of a {}: $key'); }} ",
+         FormatException('Unknown key of a {}: $key', <Object>[key]); }} ",
         listed_names(keys),
         dart_escaped(class, '\'')
     )
@@ -2109,33 +2175,49 @@ fn dart_decode_expr(field: &FieldDef, expr: &str, read: Read) -> String {
     }
 }
 
+/// The read of `expr` as the list `field` holds at `level`, above its items: each item read under
+/// its index where the text declares the helper that names it.
+fn list_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String {
+    let inner_level = level - 1;
+    let indexed = read_at().is_some();
+    let item = if indexed { "e.$2" } else { "e" };
+    let inner = dart_decode_at(field, inner_level, item, read);
+    let held = if field.is_nullable_at(inner_level) {
+        format!("({item} == null ? null : {inner})")
+    } else {
+        inner
+    };
+    let (items, mapper) = if indexed {
+        (
+            ".indexed",
+            format!("(e) => {}", read_under("null", "e.$1", &held)),
+        )
+    } else {
+        ("", format!("(e) => {held}"))
+    };
+    let Some(length) = field.fixed_length_at(inner_level) else {
+        let listed = format!("({expr} as List<dynamic>){items}.map({mapper}).toList()");
+        return if field.writes_bytes() && inner_level == 0 {
+            format!("Uint8List.fromList({listed})")
+        } else {
+            listed
+        };
+    };
+    let array = declared("array");
+    format!(
+        "switch ({expr} as List<dynamic>) {{ final {array} when {array}.length == {length} => \
+         {array}{items}.map({mapper}).toList(), final {array} => throw FormatException('invalid \
+         length ${{{array}.length}}, expected {length}') }}"
+    )
+}
+
 /// [`dart_decode_expr`] before the outer optionality: peels `level` `List<dynamic>` levels off
 /// `expr`, an inner level's own nullability read off [`FieldDef::is_nullable_at`], then dispatches
 /// on [`FieldDef::field_type`] at level `0`. A level written as `[T; N]` binds its array once,
 /// under a name the read declares, and refuses one of another length, as serde and Zod refuse it.
 fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String {
     if level > 0 {
-        let inner_level = level - 1;
-        let inner = dart_decode_at(field, inner_level, "e", read);
-        let mapper = if field.is_nullable_at(inner_level) {
-            format!("(e) => (e == null ? null : {inner})")
-        } else {
-            format!("(e) => {inner}")
-        };
-        let Some(length) = field.fixed_length_at(inner_level) else {
-            let listed = format!("({expr} as List<dynamic>).map({mapper}).toList()");
-            return if field.writes_bytes() && inner_level == 0 {
-                format!("Uint8List.fromList({listed})")
-            } else {
-                listed
-            };
-        };
-        let array = declared("array");
-        return format!(
-            "switch ({expr} as List<dynamic>) {{ final {array} when {array}.length == {length} => \
-             {array}.map({mapper}).toList(), final {array} => throw FormatException('invalid \
-             length ${{{array}.length}}, expected {length}') }}"
-        );
+        return list_decode_at(field, level, expr, read);
     }
     match &field.field_type {
         // An opaque type parameter (`FieldDef::opaque_parameters`), and a type written as no path.
@@ -2217,7 +2299,7 @@ fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> Str
     let key_ty = dart_map_key_typename(key);
     let value_ty = dart_typename(value);
     let key_decode = dart_map_key_decode(key, "e.key");
-    let value_decode = dart_decode_expr(value, "e.value", read);
+    let value_decode = read_under("null", "e.key", &dart_decode_expr(value, "e.value", read));
     #[cfg(feature = "chrono")]
     if matches!(key.map_key_wire(), MapKeyWire::Timestamp) {
         let source = declared("source");
@@ -2244,7 +2326,10 @@ fn tuple_decode(elements: &[FieldDef], expr: &str, read: Read) -> String {
     let rendered = elements
         .iter()
         .enumerate()
-        .map(|(index, element)| member_decode(element, &format!("{array}[{index}]"), None, read))
+        .map(|(index, element)| {
+            let decode = member_decode(element, &format!("{array}[{index}]"), None, read);
+            read_under("null", &index.to_string(), &decode)
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let record = if elements.len() == 1 {
@@ -3912,19 +3997,33 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
                 Some(at) => {
                     let absent =
                         dart_decode_expr(&field.field_def, &format!("jsonDecode('{at}')"), read);
-                    format!("{held} ? ({present}) : ({absent})")
+                    format!("{held} ? {} : ({absent})", read_under(json, &key, &present))
                 }
-                None => keyed_decode(
-                    &field.field_def,
-                    present,
-                    Some(&held),
-                    Some(&field.wire_name),
+                None => read_under(
+                    json,
+                    &key,
+                    &keyed_decode(
+                        &field.field_def,
+                        present,
+                        Some(&held),
+                        Some(&field.wire_name),
+                    ),
                 ),
             }
         };
         write!(acc, "{}: {decode},", field.member).unwrap();
         acc
     })
+}
+
+/// `read`, the read of the value `object` holds under `key`, through the helper that puts `key`
+/// ahead of the path of its refusal: `object` is `null` for an item of a list or a map, which is
+/// never absent. `read` as it is where the text declares no helper.
+fn read_under(object: &str, key: &str, read: &str) -> String {
+    read_at().map_or_else(
+        || read.to_owned(),
+        |helper| format!("{helper}({object}, {key}, () => {read})"),
+    )
 }
 
 /// The constructor, field declarations, and `toJson` body for a set of [`DartField`]s — shared
@@ -4007,6 +4106,21 @@ fn class_reads(
 /// [`class_reads`], which, handed `own_tag`, a struct's own tag key and the struct's name, refuses
 /// an object that holds any other value under the key, or none, ahead of the members.
 fn tag_checked_reads(
+    class_name: &str,
+    fields: &[DartField],
+    tag_key: Option<&str>,
+    own_tag: Option<&(String, String)>,
+    codec: &GenericCodec,
+    corrects: &Corrects<'_>,
+) -> String {
+    let (reads, called) = reading_at("_readAt", || {
+        tag_checked_read_pair(class_name, fields, tag_key, own_tag, codec, corrects)
+    });
+    with_read_at(reads, called)
+}
+
+/// [`tag_checked_reads`] before the helper its reads call.
+fn tag_checked_read_pair(
     class_name: &str,
     fields: &[DartField],
     tag_key: Option<&str>,
@@ -4291,7 +4405,7 @@ fn value_wrapper_tokens(
     let generic_params = dart_generic_params(generics);
     let parameters = type_parameters_in_scope(generics);
     let codec = generic_codec(&parameters);
-    let (value_ty, decode, encode) = match held {
+    let ((value_ty, decode, encode), called) = reading_at("_readAt", || match held {
         Held::Slots(slots) => (
             tuple_typename(slots),
             tuple_decode(slots, &corrects.json, read),
@@ -4302,14 +4416,17 @@ fn value_wrapper_tokens(
             member_decode(value_field, &corrects.json, None, read),
             dart_encode_expr(value_field, "value", false),
         ),
-    };
+    });
     let unjudged = unjudged_read(
         corrects,
         "",
         decode.contains(corrects.json.as_str()),
         &Answer::Value(format!("{export_name}({decode})")),
     );
-    let reads = read_pair(&export_name, "dynamic", &codec, &unjudged);
+    let reads = with_read_at(
+        read_pair(&export_name, "dynamic", &codec, &unjudged),
+        called,
+    );
     let body = format!(
         "class {export_name}{generic_params} {{ const {export_name}(this.value); final {value_ty} value; \
          {reads} dynamic toJson({tp}) => {encode}; {validate} }}",
@@ -4767,6 +4884,63 @@ fn beside_the_content(export_name: &str, shape: &TagShape<'_>, corrects: &Correc
     }
 }
 
+/// The read of a variant from what its enum hands it, `from_json`, under the variant's step: serde
+/// names the variant's entry, or the content key, ahead of what it refuses below.
+fn variant_read(
+    is_external: bool,
+    shape: &TagShape<'_>,
+    payload: &VariantPayload,
+    corrects: &Corrects<'_>,
+    from_json: &str,
+) -> String {
+    match shape.content_key {
+        _ if is_external => read_under("null", &corrects.tag, from_json),
+        Some(content) if !matches!(payload, VariantPayload::Unit) => {
+            read_under(&corrects.json, &quoted(content), from_json)
+        }
+        _ => from_json.to_owned(),
+    }
+}
+
+/// The arm of an externally tagged enum's object read for a unit variant read under `names`:
+/// serde reads it from an entry of its name over `null` as well, the one it writes flattened.
+fn unit_entry_arm(
+    export_name: &str,
+    corrects: &Corrects<'_>,
+    names: &[String],
+    from_json: &str,
+) -> String {
+    let held = format!(
+        "{map}[{tag}] == null ? {from_json} : throw FormatException('{export_name}: ' + {tag} + \
+         ' takes no value')",
+        map = corrects.map,
+        tag = corrects.tag,
+    );
+    format!(
+        "case {}: return {};",
+        any_of(names),
+        read_under("null", &corrects.tag, &held)
+    )
+}
+
+/// What an enum under a tag key reads the variant with: the tag, then the variant `arms` names.
+fn keyed_dispatch(
+    export_name: &str,
+    shape: &TagShape<'_>,
+    corrects: &Corrects<'_>,
+    arms: &[String],
+) -> String {
+    let (json, tag) = (&corrects.json, &corrects.tag);
+    let key = quoted(shape.tag_key);
+    format!(
+        "{}final {tag} = {}; switch ({tag}) {{ {} default: throw FormatException('Unknown \
+         {export_name}: ' + {tag}); }}",
+        beside_the_content(export_name, shape, corrects),
+        read_under(json, &key, &format!("{json}[{key}] as String")),
+        arms.join(" "),
+    )
+}
+
 /// The Dart tokens a tagged enum (internal, adjacent, or the default external form) earns: a
 /// `sealed` base class whose unjudged read dispatches on the tag and whose `fromJson` judges
 /// what it answers, and one subclass per variant.
@@ -4797,6 +4971,7 @@ fn tagged_enum_dart_source(
     // Internal and adjacent tagging read the tag off a named key of the object; external tagging
     // reads it off the object's one key, and answers a bare string for a `Unit` variant.
     let is_external = shape.content_key.is_none() && !shape.merge_tag_into_object;
+    let outer = begin_read_at("_readAt");
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let wire_tag = rename_override(&variant.attrs)
@@ -4826,27 +5001,18 @@ fn tagged_enum_dart_source(
             &corrects,
         );
         subclasses.push(format!("{}{class_text}", leave_core_scope()));
-        let arm = format!("case {}: return {from_json};", any_of(&names));
         if is_external && matches!(payload, VariantPayload::Unit) {
-            is_string_dispatch_arms.push(arm);
-            // serde reads a unit variant from an entry of its name over `null` as well, the one
-            // it writes flattened.
-            map_dispatch_arms.push(format!(
-                "case {}: return {map}[{tag}] == null ? {from_json} : throw \
-                 FormatException('{export_name}: ' + {tag} + ' takes no value');",
-                any_of(&names),
-                map = corrects.map,
-                tag = corrects.tag,
-            ));
+            is_string_dispatch_arms.push(format!("case {}: return {from_json};", any_of(&names)));
+            map_dispatch_arms.push(unit_entry_arm(export_name, &corrects, &names, &from_json));
         } else {
-            map_dispatch_arms.push(arm);
+            let read = variant_read(is_external, &shape, &payload, &corrects, &from_json);
+            map_dispatch_arms.push(format!("case {}: return {read};", any_of(&names)));
         }
     }
     if is_external && !is_string_dispatch_arms.is_empty() {
         record_writes_a_name(rust_ident);
     }
 
-    let (json, tag) = (&corrects.json, &corrects.tag);
     let (payload_ty, held_as, dispatch) = if is_external {
         // serde and Zod read the variant from an object of one key, and refuse any other.
         (
@@ -4863,13 +5029,7 @@ fn tagged_enum_dart_source(
         (
             payload_kind(&corrects, "Map<String, dynamic>"),
             " as Map<String, dynamic>",
-            format!(
-                "{}final {tag} = {json}[{}] as String; switch ({tag}) {{ {} default: \
-                 throw FormatException('Unknown {export_name}: ' + {tag}); }}",
-                beside_the_content(export_name, &shape, &corrects),
-                quoted(tag_key),
-                map_dispatch_arms.join(" "),
-            ),
+            keyed_dispatch(export_name, &shape, &corrects, &map_dispatch_arms),
         )
     };
     record_closed_keys(
@@ -4877,7 +5037,11 @@ fn tagged_enum_dart_source(
         closed_by_tagging(&shape, &variant_payloads, &corrects),
     );
     let unjudged = unjudged_read(&corrects, held_as, true, &Answer::Statements(dispatch));
-    let reads = read_pair(export_name, payload_ty, &codec, &unjudged);
+    let called = end_read_at(outer);
+    let reads = with_read_at(
+        read_pair(export_name, payload_ty, &codec, &unjudged),
+        called,
+    );
 
     let base = format!(
         "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads} \
@@ -4912,6 +5076,7 @@ fn untagged_enum_dart_source(
     let mut attempts = Vec::new();
     let mut variant_payloads = Vec::new();
     let mut reads_unit = false;
+    let outer = begin_read_at("_readAt");
     for variant in &item_enum.variants {
         let variant_rust_name = variant.ident.to_string();
         let subclass_name = format!("{export_name}{variant_rust_name}");
@@ -4993,7 +5158,8 @@ fn untagged_enum_dart_source(
             attempts.join(" ")
         )),
     );
-    let reads = read_pair(export_name, "dynamic", &codec, &unjudged);
+    let called = end_read_at(outer);
+    let reads = with_read_at(read_pair(export_name, "dynamic", &codec, &unjudged), called);
     let base = format!(
         "sealed class {export_name}{generic_params} {{ const {export_name}(); {reads} \
          dynamic toJson({tp}); {VALIDATE_DECLARED} }}",

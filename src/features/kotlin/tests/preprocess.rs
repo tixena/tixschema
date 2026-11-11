@@ -36,10 +36,22 @@ fn choice_corrected_by(item: &ItemEnum, functions: &[&str]) -> String {
     definition(enum_kotlin_tokens(item, &naming(&named(functions))))
 }
 
-/// The body of a serializer that hands `correction` on in place of the payload it was handed.
-fn transform(correction: &str) -> String {
+/// The body of a serializer of `ty` that reads through `held` what `correction` answers in place
+/// of the payload it was handed, from its text.
+fn transform(ty: &str, held: &str, correction: &str) -> String {
+    let decoded = if correction.contains("kotlinSchemaKinded(") {
+        DECODED
+    } else {
+        ""
+    };
     format!(
-        "{{ override fun transformDeserialize(element: JsonElement): JsonElement = {correction} }}"
+        "{{ private val held = {held}; override val descriptor: SerialDescriptor = \
+         held.descriptor; override fun serialize(encoder: Encoder, value: {ty}) = \
+         held.serialize(encoder, value); {decoded}{PATHED}override fun deserialize(decoder: \
+         Decoder): {ty} {{ val input = decoder as JsonDecoder; val element = \
+         input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
+         input.json.decodeFromString(held, transformDeserialize(element).toString()) }} }}; \
+         private fun transformDeserialize(element: JsonElement): JsonElement = {correction} }}"
     )
 }
 
@@ -47,8 +59,8 @@ fn transform(correction: &str) -> String {
 fn member(named: &str, ty: &str, read_by: &str, correction: &str, key: &str) -> String {
     let kinded = format!("kotlinSchemaKinded({read_by}, {correction}, \"{key}\")");
     format!(
-        "object {named} : JsonTransformingSerializer<{ty}>({read_by}) {}",
-        transform(&kinded).replacen("{ ", &format!("{{ {DECODED}"), 1)
+        "object {named} : KSerializer<{ty}> {}",
+        transform(ty, read_by, &kinded)
     )
 }
 
@@ -109,9 +121,13 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
         format!(
             "{} data class Parcel(val label: String) {{ {NO_RULE} }} \
              @OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : \
-             JsonTransformingSerializer<Parcel>(Parcel.generatedSerializer()) {} {}",
+             KSerializer<Parcel> {} {}",
             kept("Parcel"),
-            transform("withoutFragile(unwrapped(element))"),
+            transform(
+                "Parcel",
+                "Parcel.generatedSerializer()",
+                "withoutFragile(unwrapped(element))"
+            ),
             judged("Parcel")
         )
     );
@@ -122,10 +138,13 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
         corrected_by(&closed, &["unwrapped"]),
         format!(
             "{} object ClosedDock {{ {NO_RULE} }} @OptIn(ExperimentalSerializationApi::class) \
-             object ClosedDockUnjudged : \
-             JsonTransformingSerializer<ClosedDock>(ClosedDock.generatedSerializer()) {} {}",
+             object ClosedDockUnjudged : KSerializer<ClosedDock> {} {}",
             kept("ClosedDock"),
-            transform("unwrapped(element)"),
+            transform(
+                "ClosedDock",
+                "ClosedDock.generatedSerializer()",
+                "unwrapped(element)"
+            ),
             judged("ClosedDock")
         )
     );
@@ -138,10 +157,13 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
             "{} data class Crate<CodeType>(val codes: List<CodeType>) {{ {NO_RULE} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              CrateUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
-             JsonTransformingSerializer<Crate<CodeType>>(Crate.\
-             generatedSerializer(codeTypeSerializer)) {} {}",
+             KSerializer<Crate<CodeType>> {} {}",
             kept("Crate"),
-            transform("unwrapped(element)"),
+            transform(
+                "Crate<CodeType>",
+                "Crate.generatedSerializer(codeTypeSerializer)",
+                "unwrapped(element)"
+            ),
             judged_over("Crate", "CodeType", "", "codeTypeSerializer")
         )
     );
@@ -178,9 +200,12 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
     assert!(
         branded.contains(&format!(
             "}} @OptIn(ExperimentalSerializationApi::class) object CodeUnjudged : \
-             JsonTransformingSerializer<Code>(Code.generatedSerializer()) {} object \
-             CodeSerializer : ",
-            transform("trimmed(unwrapped(element))")
+             KSerializer<Code> {} object CodeSerializer : ",
+            transform(
+                "Code",
+                "Code.generatedSerializer()",
+                "trimmed(unwrapped(element))"
+            )
         )),
         "got: {branded}"
     );
@@ -194,10 +219,12 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
             "}} @OptIn(ExperimentalSerializationApi::class) class \
              UserIdUnjudged<IdType>(private val idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {{ \
-             {DECODED}override fun deserialize(decoder: Decoder): UserId<IdType> {{ val input = \
-             decoder as JsonDecoder; return kotlinSchemaDecoded(input.json, \
-             UserId.generatedSerializer(idTypeSerializer), trimmed(input.decodeJsonElement()), \
-             \"UserId\") }} }} class UserIdSerializer<IdType>("
+             {DECODED}{PATHED}override fun deserialize(decoder: Decoder): UserId<IdType> {{ val \
+             input = decoder as JsonDecoder; val element = trimmed(input.decodeJsonElement()); \
+             return kotlinSchemaAt(input) {{ \
+             input.json.decodeFromString(UserId.generatedSerializer(idTypeSerializer), \
+             kotlinSchemaKinded(UserId.generatedSerializer(idTypeSerializer), element, \
+             \"UserId\").toString()) }} }} }} class UserIdSerializer<IdType>("
         )),
         "got: {filled}"
     );
@@ -226,8 +253,8 @@ fn a_plain_enum_that_names_a_function_is_read_by_its_unjudged_serializer() {
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              GradeUnjudged::class) @KeepGeneratedSerializer {members} \
              @OptIn(ExperimentalSerializationApi::class) object GradeUnjudged : \
-             JsonTransformingSerializer<Grade>(Grade.generatedSerializer()) {}",
-            transform("unwrapped(element)")
+             KSerializer<Grade> {}",
+            transform("Grade", "Grade.generatedSerializer()", "unwrapped(element)")
         )
     );
     assert_eq!(
@@ -256,15 +283,17 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
     for (written, read) in [
         (
             corrected_by(&yard, &["unwrapped"]),
-            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
-             SerializationException(\"expected an object, found \" + it) }; val baseKeys = ",
+            "val element = unwrapped(input.decodeJsonElement()); return kotlinSchemaAt(input) { \
+             val obj = element.let { it as? JsonObject ?: throw SerializationException(\"expected \
+             an object, found \" + it) }; val baseKeys = ",
         ),
         (
             corrected_by(&pile, &["unwrapped", "listed"]),
-            "val array = listed(unwrapped(input.decodeJsonElement())).let { it as? JsonArray ?: \
-             throw SerializationException(\"expected an array, found \" + it) }; if (array.size \
-             != 2) throw SerializationException(\"invalid length \" + array.size + \", expected \
-             2\"); return Pile(",
+            "val element = listed(unwrapped(input.decodeJsonElement())); return \
+             kotlinSchemaAt(input) { val array = element.let { it as? JsonArray ?: throw \
+             SerializationException(\"expected an array, found \" + it) }; if (array.size != 2) \
+             throw SerializationException(\"invalid length \" + array.size + \", expected 2\"); \
+             Pile(",
         ),
     ] {
         assert!(
@@ -290,7 +319,8 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
     for (item, read) in [
         (
             &beside,
-            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
+            "val element = unwrapped(input.decodeJsonElement()); return kotlinSchemaAt(input) { \
+             val obj = element.let { it as? JsonObject ?: throw \
              SerializationException(\"expected an object, found \" + it) }; val tag = \
              (obj[\"kind\"] ?: throw SerializationException(\"missing field `kind`\")).let { it \
              as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
@@ -298,17 +328,21 @@ fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
         ),
         (
             &under_its_name,
-            "val element = unwrapped(input.decodeJsonElement()); val (tag, data) = ",
+            "val element = unwrapped(input.decodeJsonElement()); return kotlinSchemaAt(input) { \
+             val (tag, data) = ",
         ),
         (
             &under_a_tag,
-            "val obj = unwrapped(input.decodeJsonElement()).let { it as? JsonObject ?: throw \
+            "val element = unwrapped(input.decodeJsonElement()); return kotlinSchemaAt(input) { \
+             val obj = element.let { it as? JsonObject ?: throw \
              SerializationException(\"expected an object, found \" + it) }; val tag = \
-             (obj[\"kind\"] as? JsonPrimitive)?.content; ",
+             ((obj[\"kind\"] ?: throw SerializationException(\"missing field `kind`\")) as? \
+             JsonPrimitive)?.content; ",
         ),
         (
             &untagged,
-            "val element = unwrapped(input.decodeJsonElement()); return runCatching { ",
+            "val element = unwrapped(input.decodeJsonElement()); return kotlinSchemaAt(input) { \
+             runCatching { ",
         ),
     ] {
         let written = choice_corrected_by(item, &["unwrapped"]);
@@ -400,8 +434,8 @@ fn a_tuple_member_that_names_a_function_names_one_wrapper() {
     for held in [
         "data class Paired(@Serializable(with = PairedPairPreprocess::class) val pair: \
          KotlinTuple1) {",
-        "object PairedPairPreprocess : \
-         JsonTransformingSerializer<KotlinTuple1>(serializer<KotlinTuple1>()) {",
+        "object PairedPairPreprocess : KSerializer<KotlinTuple1> { private val held = \
+         serializer<KotlinTuple1>();",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -435,10 +469,13 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
                  @Serializable(with = HamperLabelPreprocess::class) val label: String) {{ \
                  {NO_RULE} }} @OptIn(ExperimentalSerializationApi::class) class \
                  HamperUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
-                 JsonTransformingSerializer<Hamper<CodeType>>(Hamper.\
-                 generatedSerializer(codeTypeSerializer)) {} {} {}",
+                 KSerializer<Hamper<CodeType>> {} {} {}",
                 kept("Hamper"),
-                transform(&keyed(whole, arms)),
+                transform(
+                    "Hamper<CodeType>",
+                    "Hamper.generatedSerializer(codeTypeSerializer)",
+                    &keyed(whole, arms)
+                ),
                 judged_over("Hamper", "CodeType", "", "codeTypeSerializer"),
                 member(
                     "HamperLabelPreprocess",
@@ -473,13 +510,12 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     let kotlin = plain(&bonded);
     for held in [
         "data class Bonded(val dock: String, val note: String? = null, val parcel: Parcel) {",
-        "val dock = kotlinSchemaDecoded(input.json, serializer<String>(), \
-         trimmed((obj[\"dock\"] ?: throw SerializationException(\"missing field `dock`\"))), \
-         \"dock\");",
+        "val dock = kotlinSchemaDecoded(input.json, serializer<String>(), trimmed((obj[\"dock\"] \
+         ?: throw SerializationException(\"missing field `dock`\"))), \"dock\", \".dock\");",
         "val note = obj[\"note\"]?.let { kotlinSchemaDecoded(input.json, serializer<String?>(), \
-         lowered(trimmed(it)), \"note\") };",
-        "val parcel = input.json.decodeFromJsonElement(ParcelUnjudged, JsonObject(obj.filterKeys \
-         { it in setOf(\"label\") }));",
+         lowered(trimmed(it)), \"note\", \".note\") };",
+        "val parcel = input.json.decodeFromString(ParcelUnjudged, JsonObject(obj.filterKeys { it \
+         in setOf(\"label\") }).toString());",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
     }
@@ -490,9 +526,9 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
     let slots = plain(&stretch);
     assert!(
         slots.contains(
-            "return Stretch(kotlinSchemaDecoded(input.json, serializer<String>(), \
-             trimmed(array[0]), \"0\"), kotlinSchemaDecoded(input.json, KotlinNumber1, \
-             array[1], \"1\"))"
+            "Stretch(kotlinSchemaDecoded(input.json, serializer<String>(), \
+             trimmed(array[0]), \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, KotlinNumber1, \
+             array[1], \"1\", \"[1]\"))"
         ),
         "got: {slots}"
     );
@@ -530,14 +566,14 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     };
     let kotlin = plain(&fastened);
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
-    let whole = "val base = input.json.decodeFromJsonElement(BaseUnjudged, \
-                 JsonObject(obj.filterKeys { it in setOf(\"name\") }));";
+    let whole = "val base = input.json.decodeFromString(BaseUnjudged, JsonObject(obj.filterKeys { \
+                 it in setOf(\"name\") }).toString());";
     for held in [
         whole.to_owned(),
-        format!("val keyed = lenient.decodeFromJsonElement(KeyedUnjudged, {rest});"),
+        format!("val keyed = lenient.decodeFromString(KeyedUnjudged, {rest}.toString());"),
         format!(
-            "val later = lenient.decodeFromJsonElement(serializer<Later>(), \
-             kotlinSchemaFlat(serializer<Later>(), {rest}));"
+            "val later = lenient.decodeFromString(serializer<Later>(), \
+             kotlinSchemaFlat(serializer<Later>(), {rest}).toString());"
         ),
         whole.replace("val base", "val again"),
     ] {
@@ -554,8 +590,8 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let around = plain(&outer);
     assert!(
         around.contains(
-            "val fastened = lenient.decodeFromJsonElement(FastenedUnjudged, JsonObject(obj - \
-             setOf(\"yard\")));"
+            "val fastened = lenient.decodeFromString(FastenedUnjudged, JsonObject(obj - \
+             setOf(\"yard\")).toString());"
         ),
         "got: {around}"
     );
@@ -570,8 +606,8 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_member = plain(&girdled);
     assert!(
         named_by_the_member.contains(
-            "val base = lenient.decodeFromJsonElement(BaseUnjudged, withItsKeys(JsonObject(obj - \
-             setOf(\"dock\"))));"
+            "val base = lenient.decodeFromString(BaseUnjudged, withItsKeys(JsonObject(obj - \
+             setOf(\"dock\"))).toString());"
         ),
         "got: {named_by_the_member}"
     );
@@ -587,7 +623,7 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
         named_by_the_map.contains(
             "val rest = withItsKeys(obj).let { it as? JsonObject ?: throw \
              SerializationException(\"expected an object, found \" + it) }.mapValues { (k, v) -> \
-             kotlinSchemaDecoded(input.json, serializer<String>(), v, k) }"
+             kotlinSchemaDecoded(input.json, serializer<String>(), v, k, \".\" + k) }"
         ),
         "got: {named_by_the_map}"
     );
@@ -625,13 +661,13 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
         "@Serializable data class PortageBoxed(@Serializable(with = \
          PortageBoxedLabelPreprocess::class) val label: String) : Portage {",
         "@Serializable data class PortageLone(val value: String) : Portage {",
-        "\"Boxed\" -> input.json.decodeFromJsonElement(serializer<PortageBoxed>(), (data ?: \
-         throw SerializationException(\"missing field `detail`\"))); ",
-        "\"Lone\" -> PortageLone(kotlinSchemaDecoded(input.json, serializer<String>(), \
-         trimmed((data ?: throw SerializationException(\"missing field `detail`\"))), \
-         \"detail\")); ",
-        "(kotlinSchemaDecoded(input.json, serializer<String>(), trimmed(array[0]), \"0\"), \
-         kotlinSchemaDecoded(input.json, KotlinNumber1, array[1], \"1\")) } }",
+        "\"Boxed\" -> kotlinSchemaInner(input.json, \".detail\", serializer<PortageBoxed>(), \
+         (data ?: throw SerializationException(\"missing field `detail`\"))); ",
+        "\"Lone\" -> kotlinSchemaUnder(\".detail\") { PortageLone(kotlinSchemaDecoded(input.json, \
+         serializer<String>(), trimmed((data ?: throw SerializationException(\"missing field \
+         `detail`\"))), \"detail\", \"\")) }; ",
+        "(kotlinSchemaDecoded(input.json, serializer<String>(), trimmed(array[0]), \"0\", \
+         \"[0]\"), kotlinSchemaDecoded(input.json, KotlinNumber1, array[1], \"1\", \"[1]\")) } }",
     ] {
         assert!(portage.contains(held), "no `{held}` in: {portage}");
     }
@@ -649,10 +685,10 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
     let lift = definition(enum_kotlin_tokens(&under_a_tag, &plain_args()));
     for held in [
         "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, \
-         unwrapped(JsonObject(obj - \"kind\")), \"Boxed\")); "
+         unwrapped(JsonObject(obj - \"kind\")), \"Boxed\", \"\")); "
             .to_owned(),
-        "\"Loose\" -> input.json.decodeFromJsonElement(serializer<LiftLoose>(), JsonObject(obj - \
-         \"kind\")) else -> "
+        "\"Loose\" -> kotlinSchemaInner(input.json, \"\", serializer<LiftLoose>(), JsonObject(obj \
+         - \"kind\")) else -> "
             .to_owned(),
         "data class LiftLoose(@Serializable(with = LiftLooseLabelPreprocess::class) val label: \
          String) : Lift {"
@@ -716,16 +752,16 @@ fn a_variant_member_that_reaches_a_parameter_is_corrected_by_the_enums_serialize
          Pick<CodeType> {"
             .to_owned(),
         format!(
-            "\"Many\" -> input.json.decodeFromJsonElement(PickMany.serializer(codeTypeSerializer), \
-             {}); ",
+            "\"Many\" -> kotlinSchemaInner(input.json, \".detail\", \
+             PickMany.serializer(codeTypeSerializer), {}); ",
             keyed(
                 "(data ?: throw SerializationException(\"missing field `detail`\"))",
                 "\"codes\" -> unwrapped(held)"
             )
         ),
-        "\"One\" -> PickOne(kotlinSchemaDecoded(input.json, codeTypeSerializer, \
-         unwrapped((data ?: throw SerializationException(\"missing field `detail`\"))), \
-         \"detail\")) else -> "
+        "\"One\" -> kotlinSchemaUnder(\".detail\") { PickOne(kotlinSchemaDecoded(input.json, \
+         codeTypeSerializer, unwrapped((data ?: throw SerializationException(\"missing field \
+         `detail`\"))), \"detail\", \"\")) } else -> "
             .to_owned(),
     ] {
         assert!(pick.contains(&held), "no `{held}` in: {pick}");

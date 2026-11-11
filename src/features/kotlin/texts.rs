@@ -17,6 +17,7 @@ use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use std::collections::{HashMap, HashSet};
 
+use super::read::PATHED;
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
 use crate::features::JSON_NUMBER;
 use crate::features::text_forms::TextForm;
@@ -168,11 +169,12 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
             "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
              override val descriptor: SerialDescriptor = held.descriptor; override fun \
              serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
-             override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
+             {PATHED}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
              JsonDecoder ?: return held.deserialize(decoder); val element = \
-             json.decodeJsonElement(); return when ((element as? JsonPrimitive)?.takeIf {{ \
-             it.isString }}?.content) {{ \"true\" -> true; \"false\" -> false; else -> throw \
-             SerializationException(\"invalid type: \" + element + \", expected {expected}\") }} }} }}"
+             json.decodeJsonElement(); return kotlinSchemaAt(json) {{ when ((element as? \
+             JsonPrimitive)?.takeIf {{ it.isString }}?.content) {{ \"true\" -> true; \"false\" -> \
+             false; else -> throw SerializationException(\"invalid type: \" + element + \", \
+             expected {expected}\") }} }} }} }}"
         );
     }
     if matches!(primitive, Primitive::F32Key | Primitive::F64Key) {
@@ -180,24 +182,28 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
             "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
              private val grammar = Regex(\"{JSON_NUMBER}\"); override val descriptor: \
              SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, value: \
-             {kotlin}) = held.serialize(encoder, value); override fun deserialize(decoder: \
+             {kotlin}) = held.serialize(encoder, value); {PATHED}override fun deserialize(decoder: \
              Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: return \
-             held.deserialize(decoder); val element = json.decodeJsonElement(); val text = \
-             (element as? JsonPrimitive)?.takeIf {{ it.isString }}?.content; val read = \
-             text?.takeIf {{ grammar.matches(it) }}?.to{kotlin}(); if (read == null || \
-             !read.isFinite()) throw SerializationException(\"invalid type: \" + element + \", \
-             expected {expected}\"); return read }} }}"
+             held.deserialize(decoder); val element = json.decodeJsonElement(); return \
+             kotlinSchemaAt(json) {{ val text = (element as? JsonPrimitive)?.takeIf {{ it.isString \
+             }}?.content; val read = text?.takeIf {{ grammar.matches(it) }}?.to{kotlin}(); if (read \
+             == null || !read.isFinite()) throw SerializationException(\"invalid type: \" + element \
+             + \", expected {expected}\"); read }} }} }}"
         );
     }
+    // kotlinx names the primitive a tree decoder reads `primitive`, a step no payload holds.
     format!(
         "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
          override val descriptor: SerialDescriptor = held.descriptor; override fun \
-         serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); override \
-         fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: \
-         return held.deserialize(decoder); val element = json.decodeJsonElement(); if (element is \
-         JsonPrimitive && element.isString) throw SerializationException(\"invalid type: string \" \
-         + element + \", expected {expected}\"); return json.json.decodeFromJsonElement(held, \
-         element) }} }}"
+         serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
+         {PATHED}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder as? \
+         JsonDecoder ?: return held.deserialize(decoder); val element = json.decodeJsonElement(); \
+         return kotlinSchemaAt(json) {{ if (element !is JsonPrimitive || element.isString) throw \
+         SerializationException(\"invalid type: \" + (if (element is JsonPrimitive) \"string \" \
+         else \"\") + element + \", expected {expected}\"); try {{ \
+         json.json.decodeFromJsonElement(held, element) }} catch (refused: SerializationException) \
+         {{ throw SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
+         \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}"
     )
 }
 
@@ -262,8 +268,9 @@ fn object_declared(form: TextForm, named: &str) -> String {
         "object {named} : KSerializer<String> {{ {members}override val descriptor: \
          SerialDescriptor = PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); \
          override fun serialize(encoder: Encoder, value: String) {{ {steps}if ({held}) {}; \
-         encoder.encodeString({current}) }} override fun deserialize(decoder: Decoder): String {{ \
-         val text = decoder.decodeString(); {checked_read}return text }} }}",
+         encoder.encodeString({current}) }} {PATHED}override fun deserialize(decoder: Decoder): \
+         String {{ val text = decoder.decodeString(); return kotlinSchemaAt(decoder) {{ \
+         {checked_read}text }} }} }}",
         refused("value")
     )
 }

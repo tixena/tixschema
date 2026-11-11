@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
+use super::kotlin_pathed::PATHED;
 use super::read::{DECODED, judged};
 use super::read::{judged_over, kept};
 
@@ -44,10 +45,17 @@ pub struct Hamper<CodeType> {
     pub codes: Vec<CodeType>,
 }
 
-/// What a serializer that corrects its payload overrides, handing `correction` on.
-fn transform(correction: &str) -> String {
+/// The body of a serializer of `ty` that corrects its payload, reading through `held` what
+/// `correction` answers, from its text.
+fn transform(ty: &str, held: &str, correction: &str) -> String {
     format!(
-        "{{ override fun transformDeserialize(element: JsonElement): JsonElement = {correction} }}"
+        "{{ private val held = {held}; override val descriptor: SerialDescriptor = \
+         held.descriptor; override fun serialize(encoder: Encoder, value: {ty}) = \
+         held.serialize(encoder, value); {PATHED}override fun deserialize(decoder: Decoder): {ty} \
+         {{ val input = decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+         kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
+         transformDeserialize(element).toString()) }} }}; private fun \
+         transformDeserialize(element: JsonElement): JsonElement = {correction} }}"
     )
 }
 
@@ -116,12 +124,22 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
              (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
              minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); return \
              violations }} }} @OptIn(ExperimentalSerializationApi::class) object PacketUnjudged : \
-             JsonTransformingSerializer<Packet>(Packet.generatedSerializer()) {} {} object \
-             PacketLabelPreprocess : JsonTransformingSerializer<String>(serializer<String>()) {{ \
-             {DECODED}override fun transformDeserialize(element: JsonElement): JsonElement = \
+             KSerializer<Packet> {} {} object \
+             PacketLabelPreprocess : KSerializer<String> {{ private val held = \
+             serializer<String>(); override val descriptor: SerialDescriptor = held.descriptor; \
+             override fun serialize(encoder: Encoder, value: String) = held.serialize(encoder, \
+             value); {DECODED}{PATHED}override fun deserialize(decoder: Decoder): String {{ val \
+             input = decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+             kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
+             transformDeserialize(element).toString()) }} }}; private fun \
+             transformDeserialize(element: JsonElement): JsonElement = \
              kotlinSchemaKinded(serializer<String>(), trimmed(element), \"label\") }}",
             kept("Packet"),
-            transform("withoutFragile(element)"),
+            transform(
+                "Packet",
+                "Packet.generatedSerializer()",
+                "withoutFragile(element)"
+            ),
             judged("Packet")
         )
     );
@@ -151,8 +169,8 @@ fn a_plain_enum_that_names_a_function_has_one_serializer_that_calls_it() {
              TierUnjudged::class) @KeepGeneratedSerializer enum class Tier {{ Express, Standard; \
              fun validate(): List<String> = emptyList() }} \
              @OptIn(ExperimentalSerializationApi::class) object TierUnjudged : \
-             JsonTransformingSerializer<Tier>(Tier.generatedSerializer()) {}",
-            transform("unwrapped(element)")
+             KSerializer<Tier> {}",
+            transform("Tier", "Tier.generatedSerializer()", "unwrapped(element)")
         )
     );
 }
@@ -170,10 +188,13 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
             "{} data class Hamper<CodeType>(val codes: List<CodeType>) {{ fun validate(): \
              List<String> = emptyList() }} @OptIn(ExperimentalSerializationApi::class) class \
              HamperUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
-             JsonTransformingSerializer<Hamper<CodeType>>(Hamper.\
-             generatedSerializer(codeTypeSerializer)) {} {}",
+             KSerializer<Hamper<CodeType>> {} {}",
             kept("Hamper"),
-            transform(corrected),
+            transform(
+                "Hamper<CodeType>",
+                "Hamper.generatedSerializer(codeTypeSerializer)",
+                corrected
+            ),
             judged_over("Hamper", "CodeType", "", "codeTypeSerializer")
         )
     );

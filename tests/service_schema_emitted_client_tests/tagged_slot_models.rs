@@ -61,20 +61,20 @@ pub const ENTRIES_REFUSED: [Refused; 3] = [
     Refused {
         dart: "FormatException: empty object for Palleted",
         json: r#"{"kind":"External"}"#,
-        kotlin: "refused: expected an object of one key, found {}",
+        kotlin: "refused: expected an object of one key, found {} at path: $",
         swift: "empty object for Palleted",
     },
     Refused {
         dart: "FormatException: more than one key for Palleted",
         json: r#"{"kind":"External","Stacked":{"layers":5},"Loose":null}"#,
         kotlin: "refused: expected an object of one key, found \
-                 {\"Stacked\":{\"layers\":5},\"Loose\":null}",
+                 {\"Stacked\":{\"layers\":5},\"Loose\":null} at path: $",
         swift: "more than one key for Palleted",
     },
     Refused {
         dart: "FormatException: Palleted: Loose takes no value",
         json: r#"{"kind":"External","Loose":1}"#,
-        kotlin: "refused: Palleted: Loose takes no value",
+        kotlin: "refused: Palleted: Loose takes no value at path: $.Loose",
         swift: "unknown tag Loose",
     },
 ];

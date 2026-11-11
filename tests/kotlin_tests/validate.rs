@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
+use super::kotlin_inner::INNER;
+use super::kotlin_pathed::PATHED;
 use super::read::{DECODED, judged, kept_inline};
 use super::read::{judged_over, kept, serializers};
 #[cfg(feature = "serde")]
@@ -585,21 +587,22 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
             "object AuditUnjudged : KSerializer<Audit> { override val descriptor: \
              SerialDescriptor = buildClassSerialDescriptor(\"Audit\"); override fun \
              serialize(encoder: Encoder, value: Audit) { val output = encoder as JsonEncoder; \
-             output.encodeJsonElement(buildJsonObject { \
-             put(\"id\", output.json.encodeToJsonElement(serializer<String>(), value.id)); \
+             output.encodeJsonElement(buildJsonObject { put(\"id\", \
+             output.json.encodeToJsonElement(serializer<String>(), value.id)); \
              output.json.encodeToJsonElement(StampUnjudged, value.stamp).jsonObject.forEach { (k, \
              v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): Audit { val \
-             input = decoder as JsonDecoder; val obj = input.decodeJsonElement().let { it as? \
-             JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; \
-             val id = kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"id\"] ?: \
-             throw SerializationException(\"missing field `id`\")), \"id\"); \
-             val stampKeys = setOf(\"created_at\", \"updated_at\"); val stamp = \
-             input.json.decodeFromJsonElement(StampUnjudged, JsonObject(obj.filterKeys { it in \
-             setOf(\"created_at\", \"updated_at\") })); \
-             if (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
+             input = decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+             kotlinSchemaAt(input) { val obj = element.let { it as? JsonObject ?: throw \
+             SerializationException(\"expected an object, found \" + it) }; val id = \
+             kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"id\"] ?: throw \
+             SerializationException(\"missing field `id`\")), \"id\", \".id\"); val stampKeys = \
+             setOf(\"created_at\", \"updated_at\"); val stamp = \
+             input.json.decodeFromString(StampUnjudged, JsonObject(obj.filterKeys { it in \
+             setOf(\"created_at\", \"updated_at\") }).toString()); if \
+             (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
              setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
-             SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; return \
-             Audit(id = id, stamp = stamp) } }",
+             SerializationException(\"Encountered an unknown key '\" + it + \"'\") }; Audit(id = \
+             id, stamp = stamp) } } }",
             judged("Audit"),
         ),
         (
@@ -610,30 +613,44 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              Encoder, value: GenericPair<T>) { val output = encoder as JsonEncoder; \
              output.encodeJsonElement(buildJsonArray { \
              add(output.json.encodeToJsonElement(tSerializer, value.slot0)); \
-             add(output.json.encodeToJsonElement(KotlinNumber1, value.slot1)) }) }; override \
-             fun deserialize(decoder: Decoder): GenericPair<T> { val input = decoder as \
-             JsonDecoder; val array = input.decodeJsonElement().let { it as? JsonArray ?: throw \
-             SerializationException(\"expected an array, found \" + it) }; if (array.size != 2) \
-             throw SerializationException(\"invalid length \" + array.size + \", expected 2\"); \
-             return GenericPair(kotlinSchemaDecoded(input.json, tSerializer, array[0], \"0\"), \
-             kotlinSchemaDecoded(input.json, KotlinNumber1, array[1], \"1\")) } }",
+             add(output.json.encodeToJsonElement(KotlinNumber1, value.slot1)) }) }; override fun \
+             deserialize(decoder: Decoder): GenericPair<T> { val input = decoder as JsonDecoder; \
+             val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { val array = \
+             element.let { it as? JsonArray ?: throw SerializationException(\"expected an array, \
+             found \" + it) }; if (array.size != 2) throw SerializationException(\"invalid length \
+             \" + array.size + \", expected 2\"); GenericPair(kotlinSchemaDecoded(input.json, \
+             tSerializer, array[0], \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, \
+             KotlinNumber1, array[1], \"1\", \"[1]\")) } } }",
             judged_over("GenericPair", "T", ": Any", "tSerializer"),
         ),
     ] {
-        let unjudged = if written.contains("kotlinSchemaDecoded(") {
-            written.replacen(
-                "override fun deserialize",
-                &format!("{DECODED}override fun deserialize"),
-                1,
-            )
-        } else {
-            written.to_owned()
-        };
+        let unjudged = with_helpers(written);
         assert!(
             definition.ends_with(&format!("{unjudged} {own}")),
             "the serializers moved in: {definition}"
         );
     }
+}
+
+/// `written`, a serializer the emitter writes, behind the private functions its read calls.
+fn with_helpers(written: &str) -> String {
+    let pathed = written.contains("kotlinSchemaAt(")
+        || written.contains("kotlinSchemaInner(")
+        || written.contains("kotlinSchemaDecoded(");
+    let helpers = [
+        (written.contains("kotlinSchemaDecoded("), DECODED),
+        (pathed, PATHED),
+        (written.contains("kotlinSchemaInner("), INNER),
+    ]
+    .iter()
+    .filter(|(used, _)| *used)
+    .map(|(_, helper)| *helper)
+    .collect::<String>();
+    written.replacen(
+        "override fun deserialize",
+        &format!("{helpers}override fun deserialize"),
+        1,
+    )
 }
 
 /// The serializer the emitter writes for an enum under each tagging is its unjudged one, and the
@@ -644,53 +661,54 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
     for (definition, written, own) in [
         (
             super::tests::renumbered(&simple_choice_kotlin::kotlin_definition()),
-            "object SimpleChoiceUnjudged : KSerializer<SimpleChoice> { override val \
-             descriptor: SerialDescriptor = buildClassSerialDescriptor(\"SimpleChoice\"); \
-             override fun serialize(encoder: Encoder, value: SimpleChoice) { val output = encoder \
-             as JsonEncoder; output.encodeJsonElement(when (value) { is SimpleChoiceNone -> \
+            "object SimpleChoiceUnjudged : KSerializer<SimpleChoice> { override val descriptor: \
+             SerialDescriptor = buildClassSerialDescriptor(\"SimpleChoice\"); override fun \
+             serialize(encoder: Encoder, value: SimpleChoice) { val output = encoder as \
+             JsonEncoder; output.encodeJsonElement(when (value) { is SimpleChoiceNone -> \
              JsonPrimitive(\"None\"); is SimpleChoiceValue -> buildJsonObject { put(\"Value\", \
              output.json.encodeToJsonElement(serializer<String>(), value.value)) } }) }; override \
              fun deserialize(decoder: Decoder): SimpleChoice { val input = decoder as \
-             JsonDecoder; val element = input.decodeJsonElement(); val (tag, data) = if (element \
-             is JsonPrimitive) element.content to JsonNull else (element as? JsonObject ?: throw \
-             SerializationException(\"expected an object, found \" + \
-             element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
-             SerializationException(\"expected an object of one key, found \" + element); return \
-             when (tag) { \
-             \"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
-             SerializationException(\"SimpleChoice: \" + tag + \" takes no value\"); \"Value\" -> \
+             JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { \
+             val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull else \
+             (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
+             \" + element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
+             SerializationException(\"expected an object of one key, found \" + element); when \
+             (tag) { \"None\" -> kotlinSchemaUnder(\".\" + tag) { if (data is JsonNull) \
+             SimpleChoiceNone else throw SerializationException(\"SimpleChoice: \" + tag + \" \
+             takes no value\") }; \"Value\" -> kotlinSchemaUnder(\".\" + tag) { \
              SimpleChoiceValue(kotlinSchemaDecoded(input.json, serializer<String>(), data, \
-             \"Value\")) else -> throw SerializationException(\"unknown tag \" + tag) } } }",
+             \"Value\", \"\")) } else -> throw SerializationException(\"unknown tag \" + tag) } } \
+             } }",
             judged("SimpleChoice"),
         ),
         (
             super::tests::renumbered(&dynamic_value_kotlin::kotlin_definition()),
-            "object DynamicValueUnjudged : KSerializer<DynamicValue> { override val \
-             descriptor: SerialDescriptor = buildClassSerialDescriptor(\"DynamicValue\"); \
-             override fun serialize(encoder: Encoder, value: DynamicValue) { val output = encoder \
-             as JsonEncoder; output.encodeJsonElement(when (value) { is DynamicValueFlag -> \
+            "object DynamicValueUnjudged : KSerializer<DynamicValue> { override val descriptor: \
+             SerialDescriptor = buildClassSerialDescriptor(\"DynamicValue\"); override fun \
+             serialize(encoder: Encoder, value: DynamicValue) { val output = encoder as \
+             JsonEncoder; output.encodeJsonElement(when (value) { is DynamicValueFlag -> \
              buildJsonObject { put(\"type\", \"Flag\"); put(\"value\", \
              output.json.encodeToJsonElement(KotlinNumber1, value.value)) }; is \
              DynamicValueNothing -> buildJsonObject { put(\"type\", \"Nothing\") }; is \
              DynamicValueNumber -> buildJsonObject { put(\"type\", \"Number\"); put(\"value\", \
-             output.json.encodeToJsonElement(KotlinNumber2, value.value)) } }) }; override \
-             fun deserialize(decoder: Decoder): DynamicValue { val input = decoder as \
-             JsonDecoder; val obj = input.decodeJsonElement().let { it as? JsonObject ?: throw \
-             SerializationException(\"expected an object, found \" + it) }; val tag = \
-             (obj[\"type\"] ?: throw SerializationException(\"missing field `type`\")).let { it \
-             as? JsonPrimitive ?: throw SerializationException(\"expected a string, found \" + \
-             it) }.content; val data = obj[\"value\"]; if \
-             (!input.json.configuration.ignoreUnknownKeys) (obj - \"type\" - \
+             output.json.encodeToJsonElement(KotlinNumber2, value.value)) } }) }; override fun \
+             deserialize(decoder: Decoder): DynamicValue { val input = decoder as JsonDecoder; \
+             val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { val obj = \
+             element.let { it as? JsonObject ?: throw SerializationException(\"expected an \
+             object, found \" + it) }; val tag = (obj[\"type\"] ?: throw \
+             SerializationException(\"missing field `type`\")).let { it as? JsonPrimitive ?: \
+             throw SerializationException(\"expected a string, found \" + it) }.content; val data \
+             = obj[\"value\"]; if (!input.json.configuration.ignoreUnknownKeys) (obj - \"type\" - \
              \"value\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
-             unknown key '\" + it + \"'\") }; return when (tag) { \"Flag\" -> \
-             DynamicValueFlag(kotlinSchemaDecoded(input.json, KotlinNumber1, (data ?: \
-             throw SerializationException(\"missing field `value`\")), \"value\")); \"Nothing\" -> if \
-             (data == null) DynamicValueNothing else throw \
-             SerializationException(\"DynamicValue: \" + tag + \" takes no value\"); \"Number\" \
-             -> \
-             DynamicValueNumber(kotlinSchemaDecoded(input.json, KotlinNumber2, (data ?: \
-             throw SerializationException(\"missing field `value`\")), \"value\")) else -> throw \
-             SerializationException(\"unknown tag \" + tag) } } }",
+             unknown key '\" + it + \"'\") }; when (tag) { \"Flag\" -> \
+             kotlinSchemaUnder(\".value\") { DynamicValueFlag(kotlinSchemaDecoded(input.json, \
+             KotlinNumber1, (data ?: throw SerializationException(\"missing field `value`\")), \
+             \"value\", \"\")) }; \"Nothing\" -> kotlinSchemaUnder(\".value\") { if (data == \
+             null) DynamicValueNothing else throw SerializationException(\"DynamicValue: \" + tag \
+             + \" takes no value\") }; \"Number\" -> kotlinSchemaUnder(\".value\") { \
+             DynamicValueNumber(kotlinSchemaDecoded(input.json, KotlinNumber2, (data ?: throw \
+             SerializationException(\"missing field `value`\")), \"value\", \"\")) } else -> \
+             throw SerializationException(\"unknown tag \" + tag) } } } }",
             judged("DynamicValue"),
         ),
         (
@@ -702,24 +720,16 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              output.json.encodeToJsonElement(serializer<DateValueEpoch>(), value); is \
              DateValueIso -> output.json.encodeToJsonElement(serializer<DateValueIso>(), value) \
              }) }; override fun deserialize(decoder: Decoder): DateValue { val input = decoder as \
-             JsonDecoder; val element = input.decodeJsonElement(); return runCatching { \
-             error(\"unreachable\") as Nothing }.recoverCatching { \
+             JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { \
+             runCatching { error(\"unreachable\") as Nothing }.recoverCatching { \
              input.json.decodeFromJsonElement(serializer<DateValueEpoch>(), element) as DateValue \
              }.recoverCatching { input.json.decodeFromJsonElement(serializer<DateValueIso>(), \
              element) as DateValue }.getOrElse { throw SerializationException(\"No variant of \
-             DateValue matched\") } } }",
+             DateValue matched\") } } } }",
             judged("DateValue"),
         ),
     ] {
-        let unjudged = if written.contains("kotlinSchemaDecoded(") {
-            written.replacen(
-                "override fun deserialize",
-                &format!("{DECODED}override fun deserialize"),
-                1,
-            )
-        } else {
-            written.to_owned()
-        };
+        let unjudged = with_helpers(written);
         assert!(
             definition.ends_with(&format!("{unjudged} {own}")),
             "the serializers moved in: {definition}"

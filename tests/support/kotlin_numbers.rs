@@ -6,9 +6,8 @@ use regex::Regex;
 
 /// `kotlin` without the `KotlinNumber{N}` objects and the annotations that name them.
 pub fn without_number_readers(kotlin: &str) -> String {
-    let objects = Regex::new(
-        r"object KotlinNumber\d+\w* : KSerializer<\w+> \{.*?decodeFromJsonElement\(held, element\) \} \} ?",
-    );
+    let objects =
+        Regex::new(r"object KotlinNumber\d+\w* : KSerializer<\w+> \{.*?, refused\) \} \} \} \} ?");
     let annotations = Regex::new(r"@Serializable\(with = KotlinNumber\d+\w*::class\) ");
     if let (Ok(object_pattern), Ok(annotation_pattern)) = (&objects, &annotations) {
         let bare = object_pattern.replace_all(kotlin, "");

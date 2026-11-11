@@ -814,7 +814,7 @@ fn the_readme_shows_the_reads_that_are_emitted_and_what_they_print() {
     let shown = packed(section);
     let parcel_class = parcel_dart::dart_definition();
     let manifest_class = manifest_dart::dart_definition();
-    let closes = " Map<String, dynamic> toJson()";
+    let closes = " static Read _readAt";
     for reads in [
         from_until(&parcel_class, "factory Parcel.fromJson(", closes),
         from_until(

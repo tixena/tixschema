@@ -38,6 +38,7 @@ use super::flattened_models::{
     stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
     yawing_kotlin,
 };
+use super::kotlin_pathed::PATHED;
 use super::read::{kept, serializers};
 use super::tuple_variants_models::Labelling;
 #[cfg(feature = "serde")]
@@ -600,7 +601,10 @@ fn test_plain_enum() {
 fn test_internal_tagged_enum() {
     let kotlin = without_number_readers(&renumbered(&window_error_kotlin::kotlin_definition()));
     assert!(
-        kotlin.contains("val tag = (obj[\"kind\"] as? JsonPrimitive)?.content"),
+        kotlin.contains(
+            "val tag = ((obj[\"kind\"] ?: throw SerializationException(\"missing field \
+             `kind`\")) as? JsonPrimitive)?.content"
+        ),
         "got: {kotlin}"
     );
     assert!(
@@ -679,15 +683,16 @@ fn test_external_tagged_unit_variant_round_trip_source() {
     );
     assert!(
         kotlin.contains(
-            "\"None\" -> if (data is JsonNull) SimpleChoiceNone else throw \
-             SerializationException(\"SimpleChoice: \" + tag + \" takes no value\")"
+            "\"None\" -> kotlinSchemaUnder(\".\" + tag) { if (data is JsonNull) SimpleChoiceNone \
+             else throw SerializationException(\"SimpleChoice: \" + tag + \" takes no value\")"
         ),
         "a unit variant's entry reads it over `null` alone, as serde reads it. got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "\"Value\" -> SimpleChoiceValue(kotlinSchemaDecoded(input.json, serializer<String>(), \
-             data, \"Value\"))"
+            "\"Value\" -> kotlinSchemaUnder(\".\" + tag) { \
+             SimpleChoiceValue(kotlinSchemaDecoded(input.json, serializer<String>(), data, \
+             \"Value\", \"\"))"
         ),
         "got: {kotlin}"
     );
@@ -873,8 +878,8 @@ fn test_flatten_map() {
     );
     assert!(
         kotlin.contains(
-            "val tags = obj.mapValues { (k, v) -> \
-             kotlinSchemaDecoded(input.json, serializer<String>(), v, k) }"
+            "val tags = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, \
+             serializer<String>(), v, k, \".\" + k) }"
         ),
         "a flattened map takes every key of the object. got: {kotlin}"
     );
@@ -1027,12 +1032,12 @@ fn tag_held(object: &str, named: &str) -> String {
 #[test]
 #[cfg(feature = "serde")]
 fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead() {
-    let moved = "override fun transformSerialize(element: JsonElement): JsonElement = \
+    let moved = "private fun transformSerialize(element: JsonElement): JsonElement = \
                  JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
                  element.jsonObject)";
     let read = |named: &str| {
         format!(
-            "override fun transformDeserialize(element: JsonElement): JsonElement = \
+            "private fun transformDeserialize(element: JsonElement): JsonElement = \
              element.also {{ whole: JsonElement -> if (whole is JsonObject) {} }}",
             tag_held("whole", named)
         )
@@ -1042,7 +1047,15 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
             renumbered(&flag_kotlin::kotlin_definition()),
             format!(
                 "@OptIn(ExperimentalSerializationApi::class) object FlagUnjudged : \
-                 JsonTransformingSerializer<Flag>(Flag.generatedSerializer()) {{ {}; {moved} }}",
+                 KSerializer<Flag> {{ private val held = Flag.generatedSerializer(); override val \
+                 descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: \
+                 Encoder, value: Flag) {{ val output = encoder as JsonEncoder; \
+                 output.encodeJsonElement(transformSerialize(output.json.encodeToJsonElement(held, \
+                 value))) }}; {PATHED}override fun \
+                 deserialize(decoder: Decoder): Flag {{ val input = decoder as JsonDecoder; val \
+                 element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
+                 input.json.decodeFromString(held, transformDeserialize(element).toString()) }} \
+                 }}; {}; {moved} }}",
                 read("Flag")
             ),
         ),
@@ -1051,8 +1064,16 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
             format!(
                 "@OptIn(ExperimentalSerializationApi::class) class \
                  GonfalonUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
-                 JsonTransformingSerializer<Gonfalon<Held>>(Gonfalon.generatedSerializer(\
-                 heldSerializer)) {{ {}; {moved} }}",
+                 KSerializer<Gonfalon<Held>> {{ private val held = \
+                 Gonfalon.generatedSerializer(heldSerializer); override val descriptor: \
+                 SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
+                 value: Gonfalon<Held>) {{ val output = encoder as JsonEncoder; \
+                 output.encodeJsonElement(transformSerialize(output.json.encodeToJsonElement(held, \
+                 value))) }}; {PATHED}override fun \
+                 deserialize(decoder: Decoder): Gonfalon<Held> {{ val input = decoder as \
+                 JsonDecoder; val element = input.decodeJsonElement(); return \
+                 kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
+                 transformDeserialize(element).toString()) }} }}; {}; {moved} }}",
                 read("Gonfalon")
             ),
         ),
@@ -1075,9 +1096,9 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
         (
             renumbered(&pennant_kotlin::kotlin_definition()),
             format!(
-                "val obj = input.decodeJsonElement().let {{ it as? JsonObject ?: throw \
-                 SerializationException(\"expected an object, found \" + it) }}; {}; val \
-                 labellingKeys",
+                "val element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj \
+                 = element.let {{ it as? JsonObject ?: throw SerializationException(\"expected an \
+                 object, found \" + it) }}; {}; val labellingKeys",
                 tag_held("obj", "Pennant")
             ),
         ),
@@ -1101,10 +1122,10 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
     for held in [
         "buildJsonObject { value.rest.forEach { (k, v) -> put(k, \
          output.json.encodeToJsonElement(KotlinNumber1, v)) } }",
-        "val obj = input.decodeJsonElement().let { it as? JsonObject ?: throw \
-         SerializationException(\"expected an object, found \" + it) }; val rest = obj.mapValues \
-         { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }; return \
-         Netting(rest = rest) }",
+        "val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { val obj = \
+         element.let { it as? JsonObject ?: throw SerializationException(\"expected an object, \
+         found \" + it) }; val rest = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, \
+         KotlinNumber1, v, k, \".\" + k) }; Netting(rest = rest) } }",
     ] {
         assert!(netting.contains(held), "no `{held}` in: {netting}");
     }
@@ -1132,14 +1153,15 @@ fn serde_reads_an_optional_flattened_map_under_a_function_from_what_it_answers()
 #[test]
 #[cfg(feature = "serde")]
 fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
-    let entries = "mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }";
+    let entries = "mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k, \
+                   \".\" + k) }";
     for (kotlin, held) in [
         (
             renumbered(&corrected_locker_kotlin::kotlin_definition()),
             format!(
                 "val counts = asGiven(obj).let {{ if (it is JsonNull) null else (it as? JsonObject \
                  ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
-                 }}; return CorrectedLocker(counts = counts) }}"
+                 }}; CorrectedLocker(counts = counts) }} }}"
             ),
         ),
         (
@@ -1147,7 +1169,7 @@ fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
             format!(
                 "val counts = asNull(obj).let {{ if (it is JsonNull) null else (it as? JsonObject \
                  ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
-                 }}; return EmptiedLocker(counts = counts) }}"
+                 }}; EmptiedLocker(counts = counts) }} }}"
             ),
         ),
     ] {
@@ -1190,9 +1212,9 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
     let entry_written = "forEach { (k, v) -> put(output.json.encodeToJsonElement(\
                          serializer<Chock>(), k).jsonPrimitive.content, \
                          output.json.encodeToJsonElement(KotlinNumber1, v)) }";
-    let entries = "entries.associate { (k, v) -> input.json.decodeFromJsonElement(\
-                   serializer<Chock>(), JsonPrimitive(k)) to \
-                   kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }";
+    let entries = "entries.associate { (k, v) -> input.json.decodeFromString(serializer<Chock>(), \
+                   JsonPrimitive(k).toString()) to kotlinSchemaDecoded(input.json, KotlinNumber1, \
+                   v, k, \".\" + k) }";
     for (kotlin, held) in [
         (
             renumbered(&cathead_kotlin::kotlin_definition()),
@@ -1200,7 +1222,7 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
         ),
         (
             renumbered(&cathead_kotlin::kotlin_definition()),
-            format!("val lines = obj.{entries}; return Cathead(lines = lines) }}"),
+            format!("val lines = obj.{entries}; Cathead(lines = lines) }} }}"),
         ),
     ] {
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
@@ -1250,8 +1272,8 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
 #[cfg(feature = "serde")]
 fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
     let labelling = "val labellingKeys = setOf(\"label\"); val labelling = \
-                     input.json.decodeFromJsonElement(LabellingUnjudged, \
-                     JsonObject(obj.filterKeys { it in setOf(\"label\") }));";
+                     input.json.decodeFromString(LabellingUnjudged, JsonObject(obj.filterKeys { \
+                     it in setOf(\"label\") }).toString());";
     for (kotlin, held) in [
         (
             renumbered(&whipping_kotlin::kotlin_definition()),
@@ -1259,25 +1281,25 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
         ),
         (
             renumbered(&whipping_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - labellingKeys)));"
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             labellingKeys)).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&hitching_kotlin::kotlin_definition()),
-            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
+            "val labelling = input.json.decodeFromString(LabellingUnjudged, \
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&hitching_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - setOf(\"note\") - labellingKeys)));"
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             setOf(\"note\") - labellingKeys)).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&bending_kotlin::kotlin_definition()),
-            "val extra = lenient.decodeFromJsonElement(BuntingUnjudged, withItsKeys(obj));"
+            "val extra = lenient.decodeFromString(BuntingUnjudged, withItsKeys(obj).toString());"
                 .to_owned(),
         ),
         (
@@ -1297,19 +1319,19 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
 #[cfg(feature = "serde")]
 fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
     let hauled = "val hauledKeys = setOf(\"hidden\", \"label\"); val hauled = \
-                  input.json.decodeFromJsonElement(UnwrittenUnjudged, \
-                  JsonObject(obj.filterKeys { it in setOf(\"hidden\", \"label\") }));";
+                  input.json.decodeFromString(UnwrittenUnjudged, JsonObject(obj.filterKeys { it \
+                  in setOf(\"hidden\", \"label\") }).toString());";
     for (kotlin, held) in [
         (renumbered(&rousing_kotlin::kotlin_definition()), hauled),
         (
             renumbered(&rousing_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - hauledKeys)));",
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             hauledKeys)).toString());",
         ),
         (
             renumbered(&brailing_kotlin::kotlin_definition()),
             "val sheetingKeys = setOf<String>(); val sheeting = \
-             lenient.decodeFromJsonElement(SheetingUnjudged, obj);",
+             lenient.decodeFromString(SheetingUnjudged, obj.toString());",
         ),
         (
             renumbered(&whipping_kotlin::kotlin_definition()),
@@ -1318,18 +1340,18 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
         (
             renumbered(&dipping_kotlin::kotlin_definition()),
             "val ensignKeys = setOf(\"label\"); val ensign = \
-             input.json.decodeFromJsonElement(EnsignUnjudged, JsonObject(obj.filterKeys { it in \
-             setOf(\"label\", \"kind\") })); val tallyKeys = setOf(\"keys\"); \
-             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - ensignKeys)));",
+             input.json.decodeFromString(EnsignUnjudged, JsonObject(obj.filterKeys { it in \
+             setOf(\"label\", \"kind\") }).toString()); val tallyKeys = setOf(\"keys\"); val \
+             tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             ensignKeys)).toString());",
         ),
         (
             renumbered(&gammoning_kotlin::kotlin_definition()),
             "val marlineKeys = setOf(\"label\"); val marline = \
-             input.json.decodeFromJsonElement(MarlineUnjudged, JsonObject(obj.filterKeys { it in \
-             setOf(\"label\", \"spare\") })); val tallyKeys = setOf(\"keys\"); \
-             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - marlineKeys)));",
+             input.json.decodeFromString(MarlineUnjudged, JsonObject(obj.filterKeys { it in \
+             setOf(\"label\", \"spare\") }).toString()); val tallyKeys = setOf(\"keys\"); val \
+             tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             marlineKeys)).toString());",
         ),
         (
             renumbered(&striking_kotlin::kotlin_definition()),
@@ -1366,7 +1388,7 @@ fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
 fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
     let scarfing = renumbered(&scarfing_kotlin::kotlin_definition());
     let decoded = "val sheetingKeys = setOf<String>(); val sheeting = runCatching { \
-                   lenient.decodeFromJsonElement(SheetingUnjudged, obj) }.getOrNull();";
+                   lenient.decodeFromString(SheetingUnjudged, obj.toString()) }.getOrNull();";
     assert!(scarfing.contains(decoded), "no `{decoded}` in: {scarfing}");
 }
 
@@ -1385,7 +1407,7 @@ fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_ele
         } else {
             format!("kotlinSchemaFlat({serializer}, {rest})")
         };
-        let decoded = format!("lenient.decodeFromJsonElement({serializer}, {handed})");
+        let decoded = format!("lenient.decodeFromString({serializer}, {handed}.toString())");
         let tried = if serializer.ends_with("Unjudged") {
             format!("runCatching {{ {decoded} }}.getOrNull()")
         } else {
@@ -1435,7 +1457,7 @@ fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key
     let read = |prop: &str, serializer: &str, taken: &str, keys: &str| {
         format!(
             "val {prop}Keys = {taken}; val {prop} = if (obj.keys.any {{ it in setOf({keys}) }}) \
-             lenient.decodeFromJsonElement({serializer}, obj) else null;"
+             lenient.decodeFromString({serializer}, obj.toString()) else null;"
         )
     };
     for (kotlin, held) in [
@@ -1473,8 +1495,8 @@ fn an_optional_type_that_names_a_function_is_read_from_what_the_function_answers
         format!(
             "val {prop}Keys = {keys}; val {prop}Corrected = {function}(JsonObject(obj - \
              setOf(\"note\"))); val {prop} = runCatching {{ \
-             lenient.decodeFromJsonElement({serializer}, {prop}Corrected) }}.getOrElse {{ if \
-             ({held}) throw it else null }};"
+             lenient.decodeFromString({serializer}, {prop}Corrected.toString()) }}.getOrElse {{ \
+             if ({held}) throw it else null }};"
         )
     };
     let any_key =
@@ -1687,17 +1709,17 @@ fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
         (
             renumbered(&chafing_kotlin::kotlin_definition()),
             "val fairleadKeys = setOf(\"kind\", \"held\"); val fairlead = \
-             lenient.decodeFromJsonElement(SnubberUnjudged, obj); val tallyKeys = setOf(\"keys\"); \
-             val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - fairleadKeys)));",
+             lenient.decodeFromString(SnubberUnjudged, obj.toString()); val tallyKeys = \
+             setOf(\"keys\"); val tally = lenient.decodeFromString(BuntingUnjudged, \
+             withItsKeys(JsonObject(obj - fairleadKeys)).toString());",
         ),
         (
             renumbered(&fraying_kotlin::kotlin_definition()),
-            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") })); if \
+            "val labelling = input.json.decodeFromString(LabellingUnjudged, \
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString()); if \
              (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"kind\", \"held\") - \
-             setOf(\"label\")).keys.firstOrNull()?.let { throw SerializationException(\"Encountered \
-             an unknown key '\" + it + \"'\") };",
+             setOf(\"label\")).keys.firstOrNull()?.let { throw \
+             SerializationException(\"Encountered an unknown key '\" + it + \"'\") };",
         ),
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -1757,16 +1779,16 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
             format!(
                 "val tackingEntry = {beside_a_note} ?: throw SerializationException(\"no variant \
                  of enum Tacking found in flattened data\"); val tacking = \
-                 input.json.decodeFromJsonElement(TackingUnjudged, \
-                 JsonObject(mapOf(tackingEntry.toPair())));"
+                 input.json.decodeFromString(TackingUnjudged, \
+                 JsonObject(mapOf(tackingEntry.toPair())).toString());"
             ),
         ),
         (
             renumbered(&belting_kotlin::kotlin_definition()),
             format!(
                 "val tackingEntry = {beside_a_note}; val tacking = tackingEntry?.let {{ \
-                 input.json.decodeFromJsonElement(TackingUnjudged, JsonObject(mapOf(it.toPair()))) \
-                 }};"
+                 input.json.decodeFromString(TackingUnjudged, \
+                 JsonObject(mapOf(it.toPair())).toString()) }};"
             ),
         ),
         (
@@ -1779,26 +1801,27 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
         ),
         (
             renumbered(&heaving_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - tackingEntry.key)));"
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             tackingEntry.key)).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&scudding_kotlin::kotlin_definition()),
-            "val labelling = input.json.decodeFromJsonElement(LabellingUnjudged, \
-             JsonObject(obj.filterKeys { it in setOf(\"label\") }));"
+            "val labelling = input.json.decodeFromString(LabellingUnjudged, \
+             JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&scudding_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - hatchEntry.key - labellingKeys)));"
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             hatchEntry.key - labellingKeys)).toString());"
                 .to_owned(),
         ),
         (
             renumbered(&luffing_kotlin::kotlin_definition()),
-            "val quaying = lenient.decodeFromJsonElement(serializer<Quaying>(), \
-             kotlinSchemaFlat(serializer<Quaying>(), JsonObject(obj - setOf(\"note\"))));"
+            "val quaying = lenient.decodeFromString(serializer<Quaying>(), \
+             kotlinSchemaFlat(serializer<Quaying>(), JsonObject(obj - \
+             setOf(\"note\"))).toString());"
                 .to_owned(),
         ),
     ] {
@@ -1957,15 +1980,14 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         ),
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),
-            "val counts = obj.mapValues { (k, v) -> \
-             kotlinSchemaDecoded(input.json, KotlinNumber1, v, k) }; return \
-             GaffingCounted(counts = counts) }",
+            "val counts = obj.mapValues { (k, v) -> kotlinSchemaDecoded(input.json, \
+             KotlinNumber1, v, k, \".\" + k) }; GaffingCounted(counts = counts) } }",
         ),
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),
-            "\"Counted\" -> input.json.decodeFromJsonElement(serializer<GaffingCounted>(), data); \
-             \"Labelled\" -> input.json.decodeFromJsonElement(serializer<GaffingLabelled>(), \
-             data) else -> throw",
+            "\"Counted\" -> kotlinSchemaInner(input.json, \".\" + tag, \
+             serializer<GaffingCounted>(), data); \"Labelled\" -> kotlinSchemaInner(input.json, \
+             \".\" + tag, serializer<GaffingLabelled>(), data) else -> throw",
         ),
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),
@@ -1973,12 +1995,13 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         ),
         (
             renumbered(&bowlining_kotlin::kotlin_definition()),
-            "val tally = lenient.decodeFromJsonElement(BuntingUnjudged, \
-             withItsKeys(JsonObject(obj - labellingKeys)));",
+            "val tally = lenient.decodeFromString(BuntingUnjudged, withItsKeys(JsonObject(obj - \
+             labellingKeys)).toString());",
         ),
         (
             renumbered(&bowlining_kotlin::kotlin_definition()),
-            "\"Tallied\" -> input.json.decodeFromJsonElement(serializer<BowliningTallied>(), \
+            "\"Tallied\" -> kotlinSchemaInner(input.json, \".held\", \
+             serializer<BowliningTallied>(), \
              (data ?: throw SerializationException(\"missing field `held`\")))",
         ),
         (
@@ -1994,7 +2017,7 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         ),
         (
             renumbered(&whelping_kotlin::kotlin_definition()),
-            "\"Hoisted\" -> input.json.decodeFromJsonElement(serializer<WhelpingHoisted>(), \
+            "\"Hoisted\" -> kotlinSchemaInner(input.json, \"\", serializer<WhelpingHoisted>(), \
              obj);",
         ),
         (
@@ -2049,7 +2072,8 @@ fn test_generic_dispatched_enum_serializer_class() {
     );
     assert!(
         kotlin.contains(
-            "\"Value\" -> ChoiceValue(kotlinSchemaDecoded(input.json, tSerializer, data, \"Value\"))"
+            "\"Value\" -> kotlinSchemaUnder(\".\" + tag) { \
+             ChoiceValue(kotlinSchemaDecoded(input.json, tSerializer, data, \"Value\", \"\"))"
         ),
         "got: {kotlin}"
     );
@@ -2098,7 +2122,8 @@ fn test_generic_untagged_enum() {
     );
     assert!(
         kotlin.contains(
-            "input.json.decodeFromJsonElement(UntaggedChoiceValue.serializer(tSerializer), element)"
+            "input.json.decodeFromJsonElement(UntaggedChoiceValue.serializer(tSerializer), \
+             element)"
         ),
         "got: {kotlin}"
     );
@@ -2188,7 +2213,7 @@ fn test_generic_flatten_own_field() {
     assert!(
         kotlin.contains(
             "val id = kotlinSchemaDecoded(input.json, tSerializer, (obj[\"id\"] ?: throw \
-             SerializationException(\"missing field `id`\")), \"id\")"
+             SerializationException(\"missing field `id`\")), \"id\", \".id\")"
         ),
         "got: {kotlin}"
     );
@@ -2225,8 +2250,8 @@ fn test_generic_flatten_generic_sibling() {
     );
     assert!(
         kotlin.contains(
-            "val body = input.json.decodeFromJsonElement(WrapperUnjudged(tSerializer), \
-             JsonObject(obj.filterKeys { it in setOf(\"value\") }))"
+            "val body = input.json.decodeFromString(WrapperUnjudged(tSerializer), \
+             JsonObject(obj.filterKeys { it in setOf(\"value\") }).toString())"
         ),
         "a flattened struct is read from the whole object its holder reads. got: {kotlin}"
     );

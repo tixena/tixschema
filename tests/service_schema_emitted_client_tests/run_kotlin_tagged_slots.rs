@@ -108,7 +108,7 @@ const ROWS: [Row; 9] = [
     Row {
         ignoring: "read {\"kind\":\"Merged\",\"note\":\"n\",\"cost\":\"c\"}",
         json: r#"{"kind":"Merged","note":"n","cost":"c","other":1}"#,
-        kotlin: "refused: Encountered an unknown key 'other'",
+        kotlin: "refused: Encountered an unknown key 'other' at path: $",
         read_as: "Docketed",
         serde: "refused",
         zod: "refused",
@@ -138,9 +138,9 @@ const ROWS: [Row; 9] = [
         zod: "read {\"kind\":\"Trimmed\",\"cost\":\"c\"}",
     },
     Row {
-        ignoring: "refused: missing field `sort`",
+        ignoring: "refused: missing field `sort` at path: $",
         json: r#"{"kind":"Sorted","weight":3}"#,
-        kotlin: "refused: missing field `sort`",
+        kotlin: "refused: missing field `sort` at path: $",
         read_as: "Docketed",
         serde: "read {\"kind\":\"Sorted\",\"sort\":\"Ballast\",\"weight\":3}",
         zod: "refused",
@@ -277,13 +277,13 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
          output.json.encodeToJsonElement(TonnageUnjudged, value.value).jsonObject.forEach { (k, \
          v) -> put(k, v) } }",
         "\"Weighed\" -> DocketedWeighed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
-         JsonObject(obj - \"kind\"), \"Weighed\"))",
+         JsonObject(obj - \"kind\"), \"Weighed\", \"\"))",
         "is DocketedExternal -> buildJsonObject { put(\"kind\", \"External\"); when (val written \
          = output.json.encodeToJsonElement(PalletedUnjudged, value.value)) { is JsonPrimitive -> \
          put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, \
          v) } } }",
         "\"Trimmed\" -> DocketedTrimmed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
-         lightened(JsonObject(obj - \"kind\")), \"Trimmed\"))",
+         lightened(JsonObject(obj - \"kind\")), \"Trimmed\", \"\"))",
     ] {
         assert!(docketed.contains(held), "no `{held}` in: {docketed}");
     }
@@ -298,7 +298,7 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
          put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, v) \
          } } }",
         "\"Held\" -> WaybilledHeld(kotlinSchemaDecoded(input.json, heldSerializer, \
-         JsonObject(obj - \"kind\"), \"Held\"))",
+         JsonObject(obj - \"kind\"), \"Held\", \"\"))",
     ] {
         assert!(waybilled.contains(held), "no `{held}` in: {waybilled}");
     }
@@ -542,7 +542,7 @@ fn the_kotlin_text_reads_and_writes_an_object_id_beside_the_tag() {
     let stamping = stamping_kotlin::kotlin_definition();
     for held in [
         "\"Held\" -> StampingHeld(kotlinSchemaDecoded(input.json, serializer<ObjectId>(), \
-         JsonObject(obj - \"kind\"), \"Held\"))",
+         JsonObject(obj - \"kind\"), \"Held\", \"\"))",
         "is StampingHeld -> buildJsonObject { put(\"kind\", \"Held\"); \
          output.json.encodeToJsonElement(serializer<ObjectId>(), value.value).jsonObject.forEach \
          { (k, v) -> put(k, v) } }",

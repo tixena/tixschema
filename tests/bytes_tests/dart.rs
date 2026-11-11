@@ -6,13 +6,16 @@ use super::models::{
 };
 
 /// The Dart read of a `Vec<u8>` member: the items held to a `u8`, then built as a `Uint8List`.
-const READ: &str = "Uint8List.fromList((json['data'] as List<dynamic>).map((e) => (switch (e as int) { final number when number >= 0 && number <= 255 => number, final number => throw FormatException('expected an integer from 0 to 255, found $number') })).toList())";
+const READ: &str = "Uint8List.fromList((json['data'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => (switch (e.$2 as int) { final number when number >= 0 && number <= 255 => number, final number => throw FormatException('expected an integer from 0 to 255, found $number') }))).toList())";
 
 #[test]
 fn a_vec_of_u8_is_a_uint8list() {
     let emitted = bytes_image_dart::dart_definition();
     assert!(emitted.contains("final Uint8List data;"), "{emitted}");
-    assert!(emitted.contains(&format!("data: {READ},")), "{emitted}");
+    assert!(
+        emitted.contains(&format!("data: _readAt(json, 'data', () => {READ}),")),
+        "{emitted}"
+    );
     assert!(
         emitted.contains("'data': data.map((e) => (switch (e) {"),
         "{emitted}"

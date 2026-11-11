@@ -81,7 +81,7 @@ fn a_structs_names_are_escaped_in_its_dart_text() {
             r"final key = switch (entry.key) { 'cost\'s' => 'cost\$usd', final other => other };",
             r"if (!named.containsKey('ki\$nd')) throw FormatException('missing field `ki\$nd`');",
             r#"if (named['ki\$nd'] != 'Price\'s\$Tag\\') throw FormatException('expected tag "Price\'s\$Tag\\", found ' + jsonEncode(named['ki\$nd']));"#,
-            r#"return Tariffed(backslash: named['back\\slash'] as String,cost: named['cost\$usd'] as String,quoted: named['say "hi"'] as String,);"#,
+            r#"return Tariffed(backslash: _readAt(named, 'back\\slash', () => named['back\\slash'] as String),cost: _readAt(named, 'cost\$usd', () => named['cost\$usd'] as String),quoted: _readAt(named, 'say "hi"', () => named['say "hi"'] as String),);"#,
             r#"Map<String, dynamic> toJson() => { 'ki\$nd': 'Price\'s\$Tag\\','back\\slash': backslash,'cost\$usd': cost,'say "hi"': quoted, };"#,
         ],
     );
@@ -92,7 +92,10 @@ fn a_structs_names_are_escaped_in_its_dart_text() {
 /// a plain enum's values.
 #[test]
 fn an_enums_names_are_escaped_in_its_dart_text() {
-    let read = format!("TolledBid(lot: {},);", u8_held(r"json['lo\$t'] as int"));
+    let read = format!(
+        r"TolledBid(lot: _readAt(json, 'lo\$t', () => {}),);",
+        u8_held(r"json['lo\$t'] as int")
+    );
     let written = format!(
         r"@override dynamic toJson() => {{ 'Bid\$Ask': {{ 'lo\$t': {}, }} }};",
         u8_held("lot")
@@ -101,8 +104,8 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
         &tolled_dart::dart_definition(),
         &[
             r#"case 'Calm"': return TolledStill();"#,
-            r"case 'Bid\$Ask' || 'O\'Neil': return TolledBid.fromJsonUnjudged(map[tag]);",
-            r"case 'C:\\Path': return TolledHeld(map['C:\\Path'] as String);",
+            r"case 'Bid\$Ask' || 'O\'Neil': return _readAt(null, tag, () => TolledBid.fromJsonUnjudged(map[tag]));",
+            r"case 'C:\\Path': return _readAt(null, tag, () => TolledHeld(map['C:\\Path'] as String));",
             &read,
             &written,
             r"@override dynamic toJson() => { 'C:\\Path': value };",
@@ -112,7 +115,7 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
     holds_each(
         &levied_dart::dart_definition(),
         &[
-            r"final tag = json['ki\'nd'] as String;",
+            r"final tag = _readAt(json, 'ki\'nd', () => json['ki\'nd'] as String);",
             r#"case 'He"ld': return LeviedHeld(Leveed.fromJsonUnjudged(({...json}..remove('ki\'nd'))));"#,
             &format!(
                 r"Map<String, dynamic> toJson() => {{ 'ki\'nd': 'Bid\$Ask','lo\$t': {}, }};",
@@ -125,8 +128,8 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
     holds_each(
         &dutied_dart::dart_definition(),
         &[
-            r"final tag = json['ki\$nd'] as String;",
-            r"case 'Bid\$Ask': return DutiedBid.fromJsonUnjudged(json['bo\'dy']);",
+            r"final tag = _readAt(json, 'ki\$nd', () => json['ki\$nd'] as String);",
+            r"case 'Bid\$Ask': return _readAt(json, 'bo\'dy', () => DutiedBid.fromJsonUnjudged(json['bo\'dy']));",
             r"case 'Calm\\': return json.containsKey('bo\'dy') ? throw",
             &format!(
                 r"@override dynamic toJson() => {{ 'ki\$nd': 'Bid\$Ask', 'bo\'dy': {{ 'lot': {}, }} }};",

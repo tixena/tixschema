@@ -35,6 +35,7 @@ use syn::{
 };
 
 use self::preprocess::Plugin;
+use self::read::{JUDGED, PATHED};
 use self::validate::{Member, Rules};
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
@@ -1251,8 +1252,7 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
          leaf.descriptor; override fun serialize(encoder: Encoder, value: {export_name}) = \
          leaf.serialize(encoder, value.value); override fun deserialize(decoder: Decoder): \
          {export_name} {{ val read = {export_name}(leaf.deserialize(decoder)); val violations = \
-         read.validate(); if (violations.isNotEmpty()) throw \
-         SerializationException(violations.joinToString(\"; \")); return read }} }}"
+         read.validate(); if (violations.isNotEmpty()) throw {JUDGED}; return read }} }}"
     )
 }
 
@@ -1422,6 +1422,7 @@ fn tuple_wrapper(elements: &[FieldDef], walked: bool) -> (String, Vec<String>) {
                 &read_by(element),
                 &preprocess::corrected(preprocess::of(element), &format!("array[{slot}]")),
                 &kotlin_quoted(&slot.to_string()),
+                &read::slot_step(slot),
             )
         })
         .collect::<Vec<_>>()
@@ -1477,6 +1478,14 @@ fn tuple_wrapper_declarations(
     length: usize,
 ) -> String {
     let serializer_name = format!("{wrapper_name}Serializer");
+    let read = read::read_at(
+        "input",
+        "input.decodeJsonElement()",
+        &format!(
+            "{}; {wrapper_name}({decode_entries})",
+            tuple_array("element", length)
+        ),
+    );
     let (own, opened) = if parameters.is_empty() {
         (wrapper_name.to_owned(), format!("object {serializer_name}"))
     } else {
@@ -1511,10 +1520,8 @@ fn tuple_wrapper_declarations(
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(buildJsonArray {{ {encode_entries} }}) }}; \
          {}override fun deserialize(decoder: Decoder): {own} {{ \
-         val input = decoder as JsonDecoder; {}; \
-         return {wrapper_name}({decode_entries}) }} }}",
-        read::helpers_for(decode_entries),
-        tuple_array("input.decodeJsonElement()", length)
+         val input = decoder as JsonDecoder; {read} }} }}",
+        read::helpers_for(&read),
     )
 }
 
@@ -1549,10 +1556,16 @@ fn unit_typename() -> String {
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{named}\"); \
          override fun serialize(encoder: Encoder, value: {named}) {{ \
          (encoder as JsonEncoder).encodeJsonElement(JsonNull) }}; \
-         override fun deserialize(decoder: Decoder): {named} {{ \
-         val payload = (decoder as JsonDecoder).decodeJsonElement(); if (payload !is JsonNull) \
-         throw SerializationException(\"invalid type: \" + payload + \", expected unit\"); \
-         return {named} }} }}"
+         {PATHED}override fun deserialize(decoder: Decoder): {named} {{ \
+         val input = decoder as JsonDecoder; {} }} }}",
+        read::read_at(
+            "input",
+            "input.decodeJsonElement()",
+            &format!(
+                "if (element !is JsonNull) throw SerializationException(\"invalid type: \" + \
+                 element + \", expected unit\"); {named}"
+            )
+        )
     );
     if naming != TupleNaming::Named {
         KOTLIN_TUPLE_AUX.with(|aux| aux.borrow_mut().push(declared));
@@ -2088,7 +2101,9 @@ fn own_field_plan(
         Some(put)
     };
     let functions = preprocess::of(&field.field_def);
-    let decoded = |element: &str| read::decoded("input.json", &field_serializer, element, &key);
+    let step = read::keyed_step(&key);
+    let decoded =
+        |element: &str| read::decoded("input.json", &field_serializer, element, &key, &step);
     let decode_expr = if field.field_def.is_optional() {
         format!(
             "obj[{key}]?.let {{ {} }}",
@@ -2148,11 +2163,11 @@ fn flatten_struct_field_plan(
     // as serde hands them, and read under the caller's `Json`, so it refuses a key no member reads.
     let reader = if refusing { "input.json" } else { "lenient" };
     let decoded = known.as_ref().map_or_else(
-        || format!("{reader}.decodeFromJsonElement({inner_serializer}, {corrected})"),
+        || format!("{reader}.decodeFromString({inner_serializer}, {corrected}.toString())"),
         |keys| {
             format!(
-                "input.json.decodeFromJsonElement({inner_serializer}, \
-                 JsonObject({corrected}.filterKeys {{ it in {} }}))",
+                "input.json.decodeFromString({inner_serializer}, \
+                 JsonObject({corrected}.filterKeys {{ it in {} }}).toString())",
                 kotlin_set_of(keys)
             )
         },
@@ -2175,8 +2190,8 @@ fn flatten_struct_field_plan(
             format!("if ({keys_ident}.isEmpty()) {rest}.isNotEmpty() else {any_key}")
         };
         format!(
-            "runCatching {{ lenient.decodeFromJsonElement({inner_serializer}, {corrected_ident}) \
-             }}.getOrElse {{ if ({held}) throw it else null }}"
+            "runCatching {{ lenient.decodeFromString({inner_serializer}, \
+             {corrected_ident}.toString()) }}.getOrElse {{ if ({held}) throw it else null }}"
         )
     } else {
         match (recorded_keys(&base), recorded_tag_keys(&base)) {
@@ -2264,7 +2279,7 @@ fn filled_standing(def: &FieldDef, serializer: &str) -> Option<String> {
 /// rule is refused with what the judgement throws.
 fn read_or_judged(serializer: &str, payload: &str) -> String {
     format!(
-        "runCatching {{ lenient.decodeFromJsonElement({serializer}, {payload}) }}.getOrElse {{ \
+        "runCatching {{ lenient.decodeFromString({serializer}, {payload}.toString()) }}.getOrElse {{ \
          refused -> if (runCatching {{ lenient.decodeFromJsonElement(({serializer} as? \
          Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: {serializer}, {payload}) \
          }}.isSuccess) throw refused else null }}"
@@ -2346,14 +2361,14 @@ fn flatten_enum_field_plan(
     let (decode, entry_taken) = if field.field_def.is_optional() {
         (
             format!(
-                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ input.json.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf(it.toPair()))) }}"
+                "val {entry_ident} = {entry_read}; val {prop} = {entry_ident}?.let {{ input.json.decodeFromString({inner_serializer}, JsonObject(mapOf(it.toPair())).toString()) }}"
             ),
             format!("setOfNotNull({entry_ident}?.key)"),
         )
     } else {
         (
             format!(
-                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = input.json.decodeFromJsonElement({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())))"
+                "val {entry_ident} = {entry_read} ?: throw SerializationException(\"no variant of enum {enum_name} found in flattened data\"); val {prop} = input.json.decodeFromString({inner_serializer}, JsonObject(mapOf({entry_ident}.toPair())).toString())"
             ),
             format!("{entry_ident}.key"),
         )
@@ -2387,13 +2402,19 @@ fn flatten_map_field_plan(
     let serialize = format!(
         "value.{prop}{held}.forEach {{ (k, v) -> put({written_key}, output.json.encodeToJsonElement({value_serializer}, v)) }}"
     );
-    let value = read::decoded("input.json", value_serializer, "v", "k");
+    let value = read::decoded(
+        "input.json",
+        value_serializer,
+        "v",
+        "k",
+        &read::keyed_step("k"),
+    );
     let entries = |object: &str| {
         key_serializer.map_or_else(
             || format!("{object}.mapValues {{ (k, v) -> {value} }}"),
             |key| {
                 format!(
-                    "{object}.entries.associate {{ (k, v) -> input.json.decodeFromJsonElement({key}, JsonPrimitive(k)) to {value} }}"
+                    "{object}.entries.associate {{ (k, v) -> input.json.decodeFromString({key}, JsonPrimitive(k).toString()) to {value} }}"
                 )
             },
         )
@@ -2583,19 +2604,20 @@ fn flatten_merging_serializer(
             unknown_key_refused(&format!("(obj{read}{tag}).keys"))
         )
     });
-    let deserialize_fn = format!(
-        "override fun deserialize(decoder: Decoder): {self_type} {{ \
-         val input = decoder as JsonDecoder; val obj = {}; {tag_held}{}; {unknown}\
-         return {export_name}({}) }}",
-        payload_read_as(
-            &aliases::keys_named(
-                &preprocess::corrected(own, "input.decodeJsonElement()"),
-                renamed
-            ),
-            JsonKind::Object
-        ),
+    let read = format!(
+        "val obj = {}; {tag_held}{}; {unknown}{export_name}({})",
+        payload_read_as(&aliases::keys_named("element", renamed), JsonKind::Object),
         plan.deserialize_stmts.join("; "),
         plan.ctor_args.join(", "),
+    );
+    let deserialize_fn = format!(
+        "override fun deserialize(decoder: Decoder): {self_type} {{ \
+         val input = decoder as JsonDecoder; {} }}",
+        read::read_at(
+            "input",
+            &preprocess::corrected(own, "input.decodeJsonElement()"),
+            &read
+        ),
     );
     let deserialize_body = read::with_decoded(&deserialize_fn);
     format!(
@@ -2932,12 +2954,13 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         slot_rules(&mut rules, &slots, "", None);
     }
     rules.own(args.check);
-    let (written, read_back) = tuple_struct_wire(
+    let (written, read_slots) = tuple_struct_wire(
         &export_name,
         lone_slot.map_or(Slots::Array(&slots), Slots::Lone),
         &type_parameters,
-        &payload,
+        "element",
     );
+    let read_back = read::read_at("input", &payload, &read_slots);
     let validated = rules.written("");
     validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
@@ -2969,8 +2992,8 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     )
 }
 
-/// What the serializer of the tuple struct `export_name` writes of `value`, and the statements it
-/// reads one back with from `payload`, as serde writes and reads its `slots`.
+/// What the serializer of the tuple struct `export_name` writes of `value`, and the statements,
+/// ending in what is read, that read one back from `payload`, as serde writes and reads its `slots`.
 fn tuple_struct_wire(
     export_name: &str,
     slots: Slots<'_>,
@@ -2983,18 +3006,19 @@ fn tuple_struct_wire(
             read::member_serializer(element, type_parameters)
         )
     };
-    let decoded = |held: &str, element: &FieldDef, at: usize| {
+    let decoded = |held: &str, element: &FieldDef, at: usize, step: &str| {
         read::decoded(
             "input.json",
             &read::member_serializer(element, type_parameters),
             &preprocess::corrected(preprocess::of(element), held),
             &kotlin_quoted(&at.to_string()),
+            step,
         )
     };
     match slots {
         Slots::Lone(only) => (
             encoded(0, only),
-            format!("return {export_name}({})", decoded(payload, only, 0)),
+            format!("{export_name}({})", decoded(payload, only, 0, "\"\"")),
         ),
         Slots::Array(all) => {
             let entries = all
@@ -3006,13 +3030,20 @@ fn tuple_struct_wire(
             let read_entries = all
                 .iter()
                 .enumerate()
-                .map(|(slot, element)| decoded(&format!("array[{slot}]"), element, slot))
+                .map(|(slot, element)| {
+                    decoded(
+                        &format!("array[{slot}]"),
+                        element,
+                        slot,
+                        &read::slot_step(slot),
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
             (
                 format!("buildJsonArray {{ {entries} }}"),
                 format!(
-                    "{}; return {export_name}({read_entries})",
+                    "{}; {export_name}({read_entries})",
                     tuple_array(payload, all.len())
                 ),
             )
@@ -3289,8 +3320,28 @@ fn slot_read(
     let corrected = preprocess::corrected(preprocess::of(field_def), data);
     format!(
         "{subclass_name}({})",
-        read::decoded("input.json", read_by, &corrected, at)
+        read::decoded("input.json", read_by, &corrected, at, "\"\"")
     )
+}
+
+/// `read`, a variant's read of what its enum hands it, under the variant's step: serde names the
+/// variant's entry, or the content key, ahead of what it refuses below.
+fn under_variant_step(tagging: Tagging<'_>, read: String) -> String {
+    if read.starts_with("kotlinSchemaInner(") || matches!(tagging, Tagging::Unwrapped) {
+        read
+    } else {
+        format!("kotlinSchemaUnder({}) {{ {read} }}", variant_step(tagging))
+    }
+}
+
+/// The step from an enum's element to what a variant's read is handed, as kotlinx writes a path:
+/// the variant's entry, the content key, or none under a tag alone.
+fn variant_step(tagging: Tagging<'_>) -> String {
+    match tagging {
+        Tagging::Adjacent(content) => kotlin_quoted(&format!(".{content}")),
+        Tagging::External => "\".\" + tag".to_owned(),
+        Tagging::Unwrapped => "\"\"".to_owned(),
+    }
 }
 
 /// The key or the variant name a refusal of the content of a variant names: the content key under
@@ -3465,7 +3516,7 @@ fn dispatched_tagged_variant(
         Tagging::Unwrapped => format!("JsonObject(obj - {})", kotlin_quoted(tag_key)),
     };
     let own = || kotlin_subclass_serializer_expr(&subclass_name, ctx.type_parameters);
-    let (content_expr, decode_expr) = match (&payload, &declared) {
+    let (content_expr, read_expr) = match (&payload, &declared) {
         (VariantPayload::Unit, _) => (
             None,
             unit_variant_read(ctx.tagging, &subclass_name, ctx.export_name, ctx.tag_key),
@@ -3484,7 +3535,8 @@ fn dispatched_tagged_variant(
         (VariantPayload::Named(_) | VariantPayload::Value(_), _) => (
             Some(format!("output.json.encodeToJsonElement({}, value)", own())),
             format!(
-                "input.json.decodeFromJsonElement({}, {})",
+                "kotlinSchemaInner(input.json, {}, {}, {})",
+                variant_step(ctx.tagging),
                 own(),
                 preprocess::keyed(
                     &aliases::keys_named(&data, &members_renamed(&payload)),
@@ -3493,6 +3545,7 @@ fn dispatched_tagged_variant(
             ),
         ),
     };
+    let decode_expr = under_variant_step(ctx.tagging, read_expr);
 
     let (key, tag) = (kotlin_quoted(tag_key), kotlin_quoted(&wire_tag));
     let serialize_arm = match (ctx.tagging, &content_expr) {
@@ -3524,6 +3577,35 @@ fn dispatched_tagged_variant(
     let deserialize_arm = format!("{read_under} -> {decode_expr}");
 
     (subclass, serialize_arm, deserialize_arm)
+}
+
+/// What an enum's serializer reads out of `element` under `tagging`: the tag under `tag_key` and
+/// what it hands the variant, then the variant `arms` names.
+fn tag_read(tagging: Tagging<'_>, tag_key: &str, arms: &str) -> String {
+    let obj = payload_read_as("element", JsonKind::Object);
+    let unknown = "throw SerializationException(\"unknown tag \" + tag)";
+    let key = kotlin_quoted(tag_key);
+    match tagging {
+        Tagging::Adjacent(content) => format!(
+            "val obj = {obj}; val tag = {}.content; val data = obj[{}]; {}; \
+             when (tag) {{ {arms} else -> {unknown} }}",
+            payload_read_as(&present(&format!("obj[{key}]"), tag_key), JsonKind::Text),
+            kotlin_quoted(content),
+            unknown_key_refused(&format!("(obj - {key} - {}).keys", kotlin_quoted(content)))
+        ),
+        Tagging::External => format!(
+            "val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
+             else ({}).entries.singleOrNull()?.let {{ it.key to it.value }} ?: throw \
+             SerializationException(\"expected an object of one key, found \" + element); \
+             when (tag) {{ {arms} else -> {unknown} }}",
+            read_as("element", JsonKind::Object)
+        ),
+        Tagging::Unwrapped => format!(
+            "val obj = {obj}; val tag = ({} as? JsonPrimitive)?.content; \
+             when (tag) {{ {arms} else -> {unknown} }}",
+            present(&format!("obj[{key}]"), tag_key)
+        ),
+    }
 }
 
 /// The Kotlin tokens a tagged enum earns, under a tag alone (`tag = "..."`), under a tag and a
@@ -3583,32 +3665,10 @@ fn dispatched_tagged_enum_kotlin_source(
             },
         );
 
-    let arms = deserialize_arms.join("; ");
     let whole = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
-    let obj = payload_read_as(&whole, JsonKind::Object);
-    let unknown = "throw SerializationException(\"unknown tag \" + tag)";
-    let key = kotlin_quoted(tag_key);
-    let deserialize_body = match tagging {
-        Tagging::Adjacent(content) => format!(
-            "val obj = {obj}; val tag = {}.content; val data = obj[{}]; {}; \
-             return when (tag) {{ {arms} else -> {unknown} }}",
-            payload_read_as(&present(&format!("obj[{key}]"), tag_key), JsonKind::Text),
-            kotlin_quoted(content),
-            unknown_key_refused(&format!("(obj - {key} - {}).keys", kotlin_quoted(content)))
-        ),
-        Tagging::External => format!(
-            "val element = {whole}; \
-             val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-             else ({}).entries.singleOrNull()?.let {{ it.key to it.value }} ?: throw \
-             SerializationException(\"expected an object of one key, found \" + element); \
-             return when (tag) {{ {arms} else -> {unknown} }}",
-            read_as("element", JsonKind::Object)
-        ),
-        Tagging::Unwrapped => format!(
-            "val obj = {obj}; val tag = (obj[{key}] as? JsonPrimitive)?.content; \
-             return when (tag) {{ {arms} else -> {unknown} }}"
-        ),
-    };
+    let read = tag_read(tagging, tag_key, &deserialize_arms.join("; "));
+    let deserialize_body =
+        format!("val element = {whole}; return kotlinSchemaAt(input) {{ {read} }}");
 
     let serializer_name = format!("{export_name}Serializer");
     let base = format!(
@@ -3732,10 +3792,10 @@ fn untagged_enum_kotlin_source(
          override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(when (value) {{ {} }}) }}; \
-         override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
+         {PATHED}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
          val input = decoder as JsonDecoder; val element = {}; \
-         return {deserialize_chain}.getOrElse {{ throw SerializationException(\"No variant of \
-         {export_name} matched\") }} }} }}",
+         return kotlinSchemaAt(input) {{ {deserialize_chain}.getOrElse {{ throw \
+         SerializationException(\"No variant of {export_name} matched\") }} }} }} }}",
         serialize_arms.join("; "),
         preprocess::corrected(args.preprocess, "input.decodeJsonElement()"),
     );

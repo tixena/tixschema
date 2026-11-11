@@ -52,7 +52,7 @@ void tallied(String name, Object? Function() read) {
   var answered = 'read';
   try {
     read();
-  } on TypeError {
+  } on FormatException {
     answered = 'not read';
   }
   print('$name: $answered; ${calls.entries.map((entry) => '${entry.key} ${entry.value}').join(', ')}');
@@ -905,8 +905,8 @@ fn the_sample_reads_as_the_rust_read_does() {
     assert_eq!(wrote, SAMPLE);
 }
 
-/// A key the payload does not hold is read as it was with no function named: the cast of what
-/// the key holds fails, where the Rust read answers a missing field.
+/// A key the payload does not hold is read as it was with no function named, and refused as the
+/// missing field the Rust read answers, under the key as its path.
 #[test]
 fn a_label_the_payload_does_not_hold_is_not_read() {
     let absent = r#"{"itemCodeList":["x"],"fragileItemCodes":["x"]}"#;
@@ -919,8 +919,8 @@ fn a_label_the_payload_does_not_hold_is_not_read() {
     );
     let entry = format!(
         "void main() {{\n  try {{\n    Parcel.fromJson(jsonDecode(r'{absent}'));\n    \
-         print('read');\n  }} on TypeError catch (refused) {{\n    print('not read: \
-         $refused');\n  }}\n}}\n"
+         print('read');\n  }} on FormatException catch (refused) {{\n    print('not read: \
+         ${{refused.message}} at ${{refused.source}}');\n  }}\n}}\n"
     );
     let Some(wrote) = ran(
         "dart",
@@ -931,10 +931,7 @@ fn a_label_the_payload_does_not_hold_is_not_read() {
     ) else {
         return;
     };
-    assert_eq!(
-        wrote,
-        "not read: type 'Null' is not a subtype of type 'String' in type cast\n"
-    );
+    assert_eq!(wrote, "not read: missing field `label` at [label]\n");
 }
 
 /// Every position another type reads a preprocessed type in, and every shape the key is written
@@ -1474,7 +1471,7 @@ fn the_readme_shows_the_read_that_is_emitted_and_what_it_answers() {
     let emitted = packed(from_until(
         &parcel_class,
         "factory Parcel.fromJsonUnjudged(",
-        " Map<String, dynamic> toJson()",
+        " static Read _readAt",
     ));
     let shown = from_until(
         section,
@@ -1510,7 +1507,7 @@ fn the_readme_shows_the_read_that_is_emitted_and_what_it_answers() {
         "| 2 | refused with a `FormatException`: `'label': too short: minimum length is 1, got 0` |",
         "| 3 | read; `fragile_item_codes` is `[]` |",
         "| 5 | read; `parcel.label` is `\"A\"` |",
-        "`type 'Null' is not a subtype of type 'String' in type cast`",
+        "is refused with ``missing field `label` ``, as the Rust read answers it",
         "`Error: Method not found: 'trimmed'.`",
         "`Tagged.fromJsonUnjudged(({...json}..remove('dock')))`",
     ] {

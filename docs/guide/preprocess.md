@@ -245,9 +245,9 @@ With the `dart` feature, `fromJsonUnjudged` of every type `dart_definition()` wr
 factory Parcel.fromJsonUnjudged(dynamic payload) {
   final json = withoutFragile(payload) as Map<String, dynamic>;
   return Parcel(
-    label: (json.containsKey('label') ? trimmed(json['label']) : null) as String,
-    item_code_list: (json['itemCodeList'] as List<dynamic>).map((e) => e as String).toList(),
-    fragile_item_codes: (json['fragileItemCodes'] as List<dynamic>).map((e) => e as String).toList(),
+    label: _readAt(json, 'label', () => (json.containsKey('label') ? trimmed(json['label']) : null) as String),
+    item_code_list: _readAt(json, 'itemCodeList', () => (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
+    fragile_item_codes: _readAt(json, 'fragileItemCodes', () => (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
   );
 }
 ```
@@ -277,7 +277,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 
 - **The key stays a last resort.** Each name is one more function you write and keep in step, in every language you emit.
 - **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
-- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with `type 'Null' is not a subtype of type 'String' in type cast`, where the Rust read answers ``missing field `label` ``. A key under `#[serde(default)]` that the payload does not hold is read as its default, and no function is called for it. A slot's function is called with what its position holds.
+- **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with ``missing field `label` ``, as the Rust read answers it. A key under `#[serde(default)]` that the payload does not hold is read as its default, and no function is called for it. A slot's function is called with what its position holds.
 - **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
 - **A type's function is handed the payload as it arrives**, of any kind, as the Rust read hands it. A type that names one takes `dynamic` in both reads, `factory Sticker.fromJson(dynamic json)` and `factory Sticker.fromJsonUnjudged(dynamic payload)`, and the cast after the functions refuses an answer of the wrong kind. A type that names none keeps the payload its read types.
 - **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
