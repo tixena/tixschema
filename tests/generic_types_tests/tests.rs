@@ -364,7 +364,10 @@ mod zod {
             "Got: {zod}"
         );
         assert!(
-            zod.contains("stringified_number_key: z.record(z.number().int().min(0).max(4294967295), z.string())"),
+            zod.contains("stringified_number_key: z.unknown().check(")
+                && zod.contains(
+                    ".pipe(z.record(z.number().int().min(0).max(4294967295), z.string()))"
+                ),
             "Got: {zod}"
         );
     }
@@ -971,7 +974,7 @@ mod jsonschema {
             serde_json::json!({
                 "type": "object",
                 "additionalProperties": { "type": "string" },
-                "propertyNames": { "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" }
+                "propertyNames": { "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" }
             })
         );
     }

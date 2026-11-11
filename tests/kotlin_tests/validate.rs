@@ -674,10 +674,9 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              output.json.encodeToJsonElement(serializer<String>(), value.value)) } }) }; override \
              fun deserialize(decoder: Decoder): SimpleChoice { val input = decoder as \
              JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { \
-             val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull else \
-             (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
-             \" + element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
-             SerializationException(\"expected an object of one key, found \" + element); when \
+             val (tag, data) = if (element is JsonPrimitive && element.isString) \
+             element.content to JsonNull else (element as? JsonObject)?.entries?.singleOrNull()\
+             ?.let { it.key to it.value } ?: throw SerializationException(\"expected value\"); when \
              (tag) { \"None\" -> kotlinSchemaUnder(\".\" + tag) { if (data is JsonNull) \
              SimpleChoiceNone else throw SerializationException(\"SimpleChoice: \" + tag + \" \
              takes no value\") }; \"Value\" -> kotlinSchemaUnder(\".\" + tag) { \

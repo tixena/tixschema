@@ -319,14 +319,17 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
 /// field each names: Zod names a member of a variant, an arm of a `Result` holding a text, and a
-/// flattened member at the union, the `Result` and the member that holds the value.
-const NODE_APART: [(&str, Option<&str>); 3] = [
+/// flattened member at the union, the `Result` and the member that holds the value, and refuses an
+/// `i64` key a JavaScript `number` holds no exact integer of under the key.
+const NODE_APART: [(&str, Option<&str>); 5] = [
     ("a boolean for a number in a variant", Some("peal")),
     (
         "a text for a number in a flattened member",
         Some("frame.oak"),
     ),
     ("a text in an arm of a Result", Some("tally")),
+    ("the largest i64 key", Some("tolls.9223372036854775807")),
+    ("the least i64 key", Some("tolls.-9223372036854775808")),
 ];
 
 /// Each payload of [`CASES`].

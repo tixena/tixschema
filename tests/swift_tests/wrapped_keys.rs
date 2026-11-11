@@ -85,16 +85,12 @@ fn a_wrapper_reads_a_brand_key_through_its_inner_and_writes_the_inner_text_of_it
             "let wireKey = codingKey.stringValue; let key = Callsign(value: wireKey); \
              result[key] = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey).value",
             "let wireKey = key.value; ",
-            "guard let key = ((UInt32(wireKey)).map { Burgee(value: $0) }) else { \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } \
-             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
-             quotes\") }; ",
+            "guard let key = ((UInt32(number)).map { Burgee(value: $0) }) else { ",
             "let wireKey = String(key.value); ",
             "guard let key = (((wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil))\
              .map { Signal(value: $0) }) else {",
             "let wireKey = (key.value ? \"true\" : \"false\"); ",
-            "guard let key = ((((UInt32(wireKey)).map { Burgee(value: $0) })).map { \
+            "guard let key = ((((UInt32(number)).map { Burgee(value: $0) })).map { \
              Lanyard(value: $0) }) else {",
             "let wireKey = String(key.value.value); ",
         ],
@@ -110,7 +106,7 @@ fn a_key_an_alias_names_is_read_as_the_type_it_names() {
         &[
             "public struct TaskforceHullKeyedMap: Codable, Sendable { \
              public var storage: [UInt32: UInt8]; ",
-            "guard let key = UInt32(wireKey) else {",
+            "guard let key = UInt32(number) else {",
             "public let greeting: [String: UInt8]; ",
         ],
     );
@@ -178,7 +174,7 @@ fn a_variant_member_and_a_generic_holder_read_the_key_the_same_way() {
         &armada_swift::swift_definition(),
         &[
             "let key = Callsign(value: wireKey); ",
-            "guard let key = UInt32(wireKey) else {",
+            "guard let key = UInt32(number) else {",
         ],
     );
     holds(

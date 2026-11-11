@@ -596,20 +596,17 @@ fn tacking_told(rows: &[(&str, Option<&str>)]) -> String {
 
 /// An externally tagged enum read alone is read from an object of one key, or a unit variant from
 /// its name, as serde reads it: an object of several keys, two variants' entries or a variant's
-/// entry beside another key, is refused with `more than one key for Tacking`, and an empty object
-/// with `empty object for Tacking`, as serde refuses each, on every run.
+/// entry beside another key, and an empty object are refused with serde's `expected value`, on
+/// every run.
 #[test]
 fn an_externally_tagged_enum_reads_in_swift_an_object_of_one_key_alone() {
     let rows = [
         (
             r#"{"Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
-            Some("more than one key for Tacking"),
+            Some("expected value"),
         ),
-        (
-            r#"{"Bay":{"label":"n"},"north":2}"#,
-            Some("more than one key for Tacking"),
-        ),
-        ("{}", Some("empty object for Tacking")),
+        (r#"{"Bay":{"label":"n"},"north":2}"#, Some("expected value")),
+        ("{}", Some("expected value")),
         (r#"{"Bay":{"label":"n"}}"#, None),
         (r#""Calm""#, None),
         (r#"{"Held":"x"}"#, None),
@@ -617,9 +614,9 @@ fn an_externally_tagged_enum_reads_in_swift_an_object_of_one_key_alone() {
     let expected = tacking_told(&rows);
     assert_eq!(
         expected,
-        "0: more than one key for Tacking\n\
-         1: more than one key for Tacking\n\
-         2: empty object for Tacking\n\
+        "0: expected value\n\
+         1: expected value\n\
+         2: expected value\n\
          3: {\"Bay\":{\"label\":\"n\"}}\n\
          4: \"Calm\"\n\
          5: {\"Held\":\"x\"}\n"

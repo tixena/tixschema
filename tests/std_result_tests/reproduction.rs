@@ -67,7 +67,7 @@ fn a_frontmatter_is_described_as_the_object_serde_writes() {
     let zod = Doc::zod_schema();
     assert!(
         zod.contains(
-            "z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: Read$Schema }), z.strictObject({ Err: Broken$Schema })]))"
+            "z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: Read$Schema }), z.strictObject({ Err: Broken$Schema })]))"
         ),
         "{zod}"
     );

@@ -341,7 +341,7 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          }}\n  \
          return {prefix}WsFailedValidation(operation, \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))\n\
          }}",
-        listed = NOT_A_DOCUMENT.map(|said| format!("\"{said}\"")).join(", ")
+        listed = NOT_A_DOCUMENT.map(swift_quoted).join(", ")
     )
 }
 

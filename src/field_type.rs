@@ -20,6 +20,13 @@ use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text};
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+use crate::utils::NumberKey;
 use crate::utils::{
     MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
 };
@@ -77,8 +84,8 @@ const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 #[cfg(any(feature = "zod", feature = "dart"))]
 pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
 
-/// What `serde_json` says of a `Result` written as an object of other than one key: a refusal it
-/// classifies as text that is not the document.
+/// What `serde_json` says of an externally tagged enum, a `Result` among them, written as neither a
+/// string nor an object of one key: a refusal it classifies as text that is not the document.
 #[cfg(any(
     feature = "zod",
     feature = "dart",
@@ -90,19 +97,41 @@ pub const EXPECTED_VALUE: &str = "expected value";
 /// What `serde_json` says of a map key read as a number whose text opens with neither a digit nor
 /// `-`: a refusal it classifies as text that is not the document.
 #[cfg(any(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    feature = "zod",
     feature = "dart",
     feature = "kotlin",
     feature = "swift"
 ))]
 pub const EXPECTED_NUMERIC_KEY: &str = "invalid value: expected key to be a number in quotes";
 
+/// What `serde_json` says of a map key read as a number whose text breaks the number grammar after
+/// its first character, `01` or `-` or `1.`: a refusal it classifies as text that is not the
+/// document.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const INVALID_NUMBER: &str = "invalid number";
+
+/// What `serde_json` says of a map key read as a number whose text goes on after the number, `1x`
+/// or `1 `: a refusal it classifies as text that is not the document.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub const EXPECTED_QUOTE: &str = "expected `\"`";
+
 /// What `serde_json` says of a number beyond an `f64`: a refusal it classifies as text that is not
 /// the document.
 #[cfg(any(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    feature = "zod",
     feature = "dart",
-    feature = "kotlin"
+    feature = "kotlin",
+    feature = "swift"
 ))]
 pub const NUMBER_OUT_OF_RANGE: &str = "number out of range";
 
@@ -113,7 +142,13 @@ pub const NUMBER_OUT_OF_RANGE: &str = "number out of range";
     feature = "serde",
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
-pub const NOT_A_DOCUMENT: [&str; 3] = [EXPECTED_VALUE, EXPECTED_NUMERIC_KEY, NUMBER_OUT_OF_RANGE];
+pub const NOT_A_DOCUMENT: [&str; 5] = [
+    EXPECTED_VALUE,
+    EXPECTED_NUMERIC_KEY,
+    NUMBER_OUT_OF_RANGE,
+    INVALID_NUMBER,
+    EXPECTED_QUOTE,
+];
 
 /// The kinds of bound `model_schema_prop` carries, named by what each is measured on: a length or
 /// a pattern on a string, a range on a number, and a pattern or a range on one value of either,
@@ -281,6 +316,48 @@ impl FieldDefType {
         }
     }
 
+    /// The least and the most value of an integer type, as decimal digits, and `None` for every
+    /// other type.
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    const fn integer_text_range(&self) -> Option<(&'static str, &'static str)> {
+        const I64: (&str, &str) = ("-9223372036854775808", "9223372036854775807");
+        const U64: (&str, &str) = ("0", "18446744073709551615");
+        match self {
+            Self::U8 => Some(("0", "255")),
+            Self::U16 => Some(("0", "65535")),
+            Self::U32 => Some(("0", "4294967295")),
+            Self::U64 | Self::Usize => Some(U64),
+            Self::I8 => Some(("-128", "127")),
+            Self::I16 => Some(("-32768", "32767")),
+            Self::I32 => Some(("-2147483648", "2147483647")),
+            Self::I64 | Self::Isize => Some(I64),
+            Self::F32
+            | Self::F64
+            | Self::Boolean
+            | Self::BooleanLiteral(_)
+            | Self::Char
+            | Self::Map(_, _)
+            | Self::NumberLiteral(_)
+            | Self::Range(_, _)
+            | Self::Result(_, _)
+            | Self::SiblingType(_, _)
+            | Self::String
+            | Self::StringLiteral(_)
+            | Self::Tuple(_)
+            | Self::TypeParam(_)
+            | Self::Unknown => None,
+            #[cfg(feature = "mongodb")]
+            Self::ObjectId => None,
+            #[cfg(feature = "chrono")]
+            Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
+        }
+    }
+
     /// Whether this is one of the numeric primitives — every integer and float kind a
     /// `literal = N` may collapse into a [`Self::NumberLiteral`].
     pub const fn is_numeric(&self) -> bool {
@@ -299,6 +376,23 @@ impl FieldDefType {
                 | Self::F32
                 | Self::F64
         )
+    }
+
+    /// The number serde reads a map key of this type as, where it is a number type.
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    pub const fn number_key(&self) -> Option<NumberKey> {
+        match self.number_name() {
+            Some(expected) => Some(NumberKey {
+                expected,
+                range: self.integer_text_range(),
+            }),
+            None => None,
+        }
     }
 
     /// The Rust name of the numeric primitive this is, or `None` for a type that is none.
@@ -1964,20 +2058,11 @@ impl FieldDef {
                 let members = range_object(*kind, |member| format!("{member}: {held}"), ", ");
                 format!("z.strictObject({members})")
             }
-            // serde refuses an object of other than one key as text that is not the document: the
-            // issue says so, and a service answers it as the Rust dispatcher does.
             FieldDefType::Result(ok, err) => {
                 let arms = result_union(ok, err, |arm, held| {
                     format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
                 });
-                format!(
-                    "z.unknown().check((ctx) => {{ if (typeof ctx.value === \"object\" && \
-                     ctx.value !== null && !Array.isArray(ctx.value) && \
-                     Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", \
-                     message: \"{EXPECTED_VALUE}\", input: ctx.value, params: {{ \
-                     undeserializable: true }} }}); }}).pipe(z.union([{}]))",
-                    arms.join(", ")
-                )
+                zod_one_key_union(&format!("z.union([{}])", arms.join(", ")))
             }
             FieldDefType::Tuple(lst) if lst.is_empty() => "z.null()".to_owned(),
             FieldDefType::Tuple(lst) => {
@@ -2347,15 +2432,9 @@ impl FieldDef {
             )
     }
 
-    /// The whole record call a map is written as, read off its key: the constructor moves with the
-    /// key schema, because `z.record` over an enumerated key demands every member — the two strings
-    /// a `bool` writes and the members of a plain enum are both such an enumeration — and a map
-    /// holding one of them has to parse.
+    /// The record [`Self::zod_map_record_call`] writes a map keyed by this type as.
     #[cfg(feature = "zod")]
-    fn zod_map_record_call(&self, value_schema: &str) -> String {
-        if self.parameter_shape_name().is_some() {
-            return format!("z.record(z.string(), {value_schema})");
-        }
+    fn zod_map_record(&self, value_schema: &str) -> String {
         match self.map_key_wire() {
             MapKeyWire::Boolean => {
                 format!("z.partialRecord({BOOLEAN_KEY_ZOD}, {value_schema})")
@@ -2369,6 +2448,22 @@ impl FieldDef {
             MapKeyWire::Timestamp => format!("z.record({TIMESTAMP_KEY_ZOD}, {value_schema})"),
             MapKeyWire::Named => format!("z.record({}, {value_schema})", self.zod_type()),
         }
+    }
+
+    /// The whole record call a map is written as, read off its key: the constructor moves with the
+    /// key schema, because `z.record` over an enumerated key demands every member — the two strings
+    /// a `bool` writes and the members of a plain enum are both such an enumeration — and a map
+    /// holding one of them has to parse. A map keyed by a number reads each key as serde reads it.
+    #[cfg(feature = "zod")]
+    fn zod_map_record_call(&self, value_schema: &str) -> String {
+        if self.parameter_shape_name().is_some() {
+            return format!("z.record(z.string(), {value_schema})");
+        }
+        let record = self.zod_map_record(value_schema);
+        let Some(number) = self.zod_number_key() else {
+            return record;
+        };
+        zod_number_keys_read(number, &record)
     }
 
     /// The members of the untagged union this field names, each written as a reference to the
@@ -2479,6 +2574,23 @@ impl FieldDef {
     #[cfg(feature = "zod")]
     pub fn zod_names_a_preprocess(&self) -> bool {
         matches!(&self.field_type, FieldDefType::SiblingType(name, _) if names_a_zod_preprocess(name))
+    }
+
+    /// The number a key of this type is read as, where it is one, or a brand or an alias the
+    /// registry holds over one.
+    #[cfg(feature = "zod")]
+    pub fn zod_number_key(&self) -> Option<NumberKey> {
+        if self.array_depth > 0 || self.is_optional() {
+            return None;
+        }
+        if let FieldDefType::SiblingType(name, arguments) = &self.field_type {
+            return if arguments.is_empty() {
+                lookup_alias_info(name)?.number_key
+            } else {
+                None
+            };
+        }
+        self.field_type.number_key()
     }
 
     /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
@@ -2752,6 +2864,63 @@ fn result_union(
 ) -> [String; 2] {
     let [ok_key, err_key] = RESULT_ARMS;
     [arm(ok_key, ok), arm(err_key, err)]
+}
+
+/// `union`, the schema of an externally tagged enum or a `Result`, behind the check that refuses
+/// what serde refuses as text that is not the document: a value that is neither a string nor an
+/// object of one key. The issue says so in serde's words, and a service answers it as the Rust
+/// dispatcher does.
+#[cfg(feature = "zod")]
+pub fn zod_one_key_union(union: &str) -> String {
+    format!(
+        "z.unknown().check((ctx) => {{ if (ctx.value !== undefined && typeof ctx.value !== \
+         \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
+         Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({{ \
+         code: \"custom\", message: \"{EXPECTED_VALUE}\", input: ctx.value, params: {{ \
+         undeserializable: true }} }}); }}).pipe({union})"
+    )
+}
+
+/// `record`, a map keyed by `number`, behind the check that reads each key as serde reads the text
+/// between its quotes. A key serde refuses as text that is not the document is refused in its
+/// words, marked `undeserializable`; a float for an integer key at the map, and an integer beyond
+/// its type under the number, as the Rust dispatcher names each.
+#[cfg(feature = "zod")]
+fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
+    let marked = |said: &str| {
+        format!(
+            "ctx.issues.push({{ code: \"custom\", message: {said}, input: text, params: {{ \
+             undeserializable: true }} }}); return; "
+        )
+    };
+    let expected = number.expected;
+    let integer = number.range.map_or_else(String::new, |(least, most)| {
+        format!(
+            "if (float) {{ ctx.issues.push({{ code: \"custom\", message: \"invalid type: floating \
+             point `\" + number + \"`, expected {expected}\", input: text }}); return; }} if \
+             (BigInt(number) < {least}n || BigInt(number) > {most}n) {{ ctx.issues.push({{ code: \
+             \"custom\", message: \"invalid value: integer `\" + number + \"`, expected \
+             {expected}\", input: text, path: [number] }}); return; }} "
+        )
+    });
+    format!(
+        "z.unknown().check((ctx) => {{ if (typeof ctx.value !== \"object\" || ctx.value === null \
+         || Array.isArray(ctx.value)) return; for (const text of Object.keys(ctx.value)) {{ const \
+         [number = \"\", sign = \"\", whole, fraction, exponent] = \
+         /^(-?)(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?/.exec(text) ?? []; const after = \
+         text.slice(sign.length + (whole ?? \"\").length); const float = fraction !== undefined || \
+         exponent !== undefined || (sign === \"-\" ? whole === \"0\" || BigInt(whole ?? 0) > \
+         9223372036854775808n : BigInt(whole ?? 0) > 18446744073709551615n); if \
+         (!/^[0-9-]/.test(text)) {{ {numeric} }} if (whole === undefined || /^[0-9]/.test(after) \
+         || (after.startsWith(\".\") && fraction === undefined) || (/^[eE]/.test(after.slice((fraction \
+         ?? \"\").length)) && exponent === undefined)) {{ {invalid} }} if (float && \
+         !Number.isFinite(Number(number))) {{ {beyond} }} {integer}if (number.length < \
+         text.length) {{ {trailing} }} }} }}).pipe({record})",
+        numeric = marked(&ts_quoted(EXPECTED_NUMERIC_KEY)),
+        invalid = marked(&ts_quoted(INVALID_NUMBER)),
+        beyond = marked(&ts_quoted(NUMBER_OUT_OF_RANGE)),
+        trailing = marked(&ts_quoted(EXPECTED_QUOTE)),
+    )
 }
 
 /// The object literal `{ … }` of the members a range of `kind` writes, each as `member` spells it,

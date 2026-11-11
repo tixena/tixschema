@@ -1207,10 +1207,9 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
          value.value)) } }) };",
         "override fun deserialize(decoder: Decoder): Freight { val input = decoder as \
          JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { val \
-         (tag, data) = if (element is JsonPrimitive) element.content to JsonNull else (element as? \
-         JsonObject ?: throw SerializationException(\"expected an object, found \" + \
-         element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
-         SerializationException(\"expected an object of one key, found \" + element); ",
+         (tag, data) = if (element is JsonPrimitive && element.isString) element.content to \
+         JsonNull else (element as? JsonObject)?.entries?.singleOrNull()?.let { it.key to \
+         it.value } ?: throw SerializationException(\"expected value\"); ",
         "when (tag) { \"Boxed\" -> kotlinSchemaUnder(\".\" + tag) { \
          FreightBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, data, \"Boxed\", \"\")) }; \
          \"Held\" -> kotlinSchemaUnder(\".\" + tag) { if (data is JsonNull) FreightHeld else \

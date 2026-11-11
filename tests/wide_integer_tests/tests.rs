@@ -416,7 +416,8 @@ fn zod_reads_a_bigint_or_an_exact_number() {
         "missing the codec in: {schema}"
     );
     assert!(
-        WideKept::zod_schema().contains("keyed: z.record(z.number().int(), z.string()),"),
+        WideKept::zod_schema().contains("keyed: z.unknown().check(")
+            && WideKept::zod_schema().contains(".pipe(z.record(z.number().int(), z.string())),"),
         "a map's key: {}",
         WideKept::zod_schema()
     );

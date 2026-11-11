@@ -179,7 +179,7 @@ const TUPLE_KEY_REFUSAL: &str = "a map key must be a value serde writes as a str
 
 /// The keys of a map keyed by an integer, as the description of the map names them.
 const INTEGER_KEY_NAMES: &str =
-    r#"serde_json :: json ! ({ "type" : "string" , "pattern" : "^-?[0-9]+(\\.0+)?$" }))"#;
+    r#"serde_json :: json ! ({ "type" : "string" , "pattern" : "^(0|-?[1-9][0-9]*)$" }))"#;
 
 /// A brand with named fields whose skipped marker carries a key, as a consumer writes it.
 const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)] \
