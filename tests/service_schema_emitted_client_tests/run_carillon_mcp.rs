@@ -98,6 +98,14 @@ function withinScale(value, ctx) {
   if (value > 12) ctx.issues.push({ code: "custom", message: `${value} is outside of the scale`, input: value });
 }
 
+function audible(value, ctx) {
+  if (value === "mute") ctx.issues.push({ code: "custom", message: "mute is silent", input: value });
+}
+
+function loud(value, ctx) {
+  if (value === "soft") ctx.issues.push({ code: "custom", message: "soft is quiet", input: value });
+}
+
 async function main() {
   const impl = {
     async strike(ctx, req) {
