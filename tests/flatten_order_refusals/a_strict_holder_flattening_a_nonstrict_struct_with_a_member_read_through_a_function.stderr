@@ -1,0 +1,6 @@
+error: model_schema: type `Shipment` flattens `release`, which reads past a key no member declares, so serde cannot refuse such a key beside it. Mark `Shipment` `#[model_schema(nonstrict)]`, so every surface reads past such a key as serde does.
+  --> tests/flatten_order_refusals/a_strict_holder_flattening_a_nonstrict_struct_with_a_member_read_through_a_function.rs:30:5
+   |
+30 | /     #[serde(flatten)]
+31 | |     pub release: Release,
+   | |________________________^

@@ -568,7 +568,7 @@ pub struct Loose {
 }
 
 /// A flattened member that names a function, which is handed the keys its holder does not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Girdled {
     pub dock: String,
@@ -578,7 +578,7 @@ pub struct Girdled {
 }
 
 /// A flattened map of lists that names a function, which adds the list of its keys.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Sashed {
     #[model_schema_prop(preprocess = ["withItsKeys"])]

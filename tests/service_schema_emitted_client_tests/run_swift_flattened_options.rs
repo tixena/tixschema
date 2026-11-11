@@ -135,19 +135,6 @@ impl Row {
         }
     }
 
-    /// The holder read as `T`, named `read_as` in Swift, from `json`, which serde refuses and the
-    /// Swift read reads as `read`, as Zod reads it.
-    fn read_by_zod<T>(name: &'static str, read_as: &str, json: &str, read: &'static str) -> Self
-    where
-        T: DeserializeOwned,
-    {
-        Self {
-            decided: Some(read),
-            swift: format!("written(read({read_as}.self, #\"{json}\"#))"),
-            ..Self::refused::<T>(name, read_as, json)
-        }
-    }
-
     /// What the read of `json` as `T`, named `read_as` in Swift, says as it refuses the payload,
     /// ahead of any position serde says it at.
     fn refused<T>(name: &'static str, read_as: &str, json: &str) -> Self
@@ -274,7 +261,7 @@ fn rows() -> Vec<Row> {
         ),
         Row::refused::<Kinking>("kinking refused", "Kinking", KINKING_SHORT),
         Row::refused::<Tarring>("tarring refused", "Tarring", TARRING_SHORT),
-        Row::read_by_zod::<Veering>("veering absent", "Veering", LAPPING_ABSENT, LAPPING_ABSENT),
+        Row::refused::<Veering>("veering absent", "Veering", LAPPING_ABSENT),
     ];
     rows.extend(enum_rows());
     rows
@@ -343,9 +330,8 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// its keys beside its holder's own. A flattened `Option` is read as `nil` where the object holds
 /// none of its type's keys, as serde reads it, and a model it holds that breaks its rule refuses
 /// the payload in serde's words; one that names a function, handed none of its struct's keys, is
-/// `nil`, as Zod reads it, where serde refuses what the function answers. Where the object holds
-/// a key its type does not read, a key
-/// held as a number or one of two keys, a variant's entry, tag or content that does not read, or
+/// refused, as serde refuses what the function answers. Where the object holds a key its type does
+/// not read, a key held as a number or one of two keys, a variant's entry, tag or content that does not read, or
 /// a content with no tag, serde reads `None` and the Swift read refuses the payload, but for a
 /// type whose keys are not known and a map of dates one of whose entries is no date, each read as
 /// `nil` as serde reads it: an untagged enum and an enum declared below its holder among them, and
@@ -424,14 +410,10 @@ fn a_flattened_option_reads_and_writes_in_swift_what_serde_reads_and_writes() {
     );
 }
 
-/// An optional member that names a function is read from what the function answers, and where
-/// that read throws is `nil` where the object the function is handed holds none of its struct's
-/// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
-/// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
-/// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
-/// type the answer does not read and reads `null` as `None`. Beside a `nonstrict` holder it is
-/// `nil` exactly where the function answers `null`: each payload of [`OPEN_CORRECTED`] reads as
-/// serde and Zod read it.
+/// Beside a `nonstrict` holder, an optional member that names a function is `nil` exactly where
+/// the function answers `null`, and is read from any other answer: each payload of [`CORRECTED`]
+/// and [`OPEN_CORRECTED`] reads as serde and the Zod schema of its holder read it, written back
+/// with its keys sorted.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_swift_as_zod_does() {
     let mut expected = String::new();

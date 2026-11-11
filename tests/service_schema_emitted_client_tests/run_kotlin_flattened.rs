@@ -1621,13 +1621,10 @@ fn zod_reads_every_payload_of_a_nonstrict_holder_of_an_option_declared_below() {
     );
 }
 
-/// An optional member that names a function is read from what the function answers, and where
-/// that read throws is `null` where the object the function is handed holds none of its type's
-/// keys, or no key at all for a type whose keys are not known, and refuses the payload where it
-/// holds one: each payload reads as the Zod schema of its holder reads it, written back with its
-/// keys in order, where serde refuses a type the answer does not read and reads `null` as `None`.
-/// Beside a `nonstrict` holder it is `null` exactly where the function answers `null`: each payload
-/// of [`OPEN_CORRECTED`] reads as serde and Zod read it.
+/// Beside a `nonstrict` holder, an optional member that names a function is `null` exactly where
+/// the function answers `null`, and is read from any other answer: each payload of [`CORRECTED`]
+/// and [`OPEN_CORRECTED`] reads as serde and the Zod schema of its holder read it, written back
+/// with its keys in order.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_kotlin_as_zod_does() {
     let mut expected = String::new();

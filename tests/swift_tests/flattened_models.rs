@@ -208,7 +208,7 @@ pub struct Serving {
 }
 
 /// A map that names a function, which serde hands every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Snaking {
     #[model_schema_prop(preprocess = ["asGiven"])]
@@ -217,7 +217,7 @@ pub struct Snaking {
 }
 
 /// A member that names a function, the one flattened member, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Frapping {
     pub note: String,
@@ -228,7 +228,7 @@ pub struct Frapping {
 
 /// A member that names a function flattened ahead of a struct, where serde hands the function
 /// every key but its holder's own, the struct's among them.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Kedging {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
@@ -270,7 +270,7 @@ pub struct Marling {
 
 /// A member that names a function flattened after another that names one, where serde hands the
 /// second every key but its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Mousing {
     #[model_schema_prop(preprocess = ["asGiven"])]
@@ -297,7 +297,7 @@ pub struct Bowsing {
 
 /// A struct with a flattened member of its own that names a function, which serde reads as a map
 /// and so takes no key: the function is handed the keys neither the struct nor its holders took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Footing {
     pub marker: String,
@@ -320,7 +320,7 @@ pub struct Splaying {
 
 /// A member that names a function flattened after a struct, where serde hands the function the
 /// keys neither the struct nor its holder took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Twinning {
     #[serde(flatten)]
@@ -345,7 +345,7 @@ pub struct Gripping {
 
 /// A struct flattened first in a holder of no member of its own, ahead of a member that names a
 /// function, which takes the keys the types around the holder took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stropping {
     #[serde(flatten)]
@@ -453,7 +453,7 @@ pub struct Anchoring {
 
 /// [`Careen`] flattened ahead of a member that names a function, which serde hands every entry
 /// but the enum's.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Dredging {
     #[serde(flatten)]

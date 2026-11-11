@@ -222,7 +222,7 @@ pub struct Fidding {
 }
 
 /// A flattened `Option` read from what a function answers, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Veering {
     pub note: String,

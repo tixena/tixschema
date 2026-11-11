@@ -54,22 +54,13 @@ fn entries_read(property: &str, value_type: &str, value: &str) -> String {
     )
 }
 
-/// The read of the member `property` that names `withItsKeys`, from the payload without `taken`.
+/// The read of the member `property` that names `withItsKeys`, from the payload without `taken`,
+/// beside its `nonstrict` holder: the type read from the function's answer refuses a key it does
+/// not declare, as serde reads it.
 fn handed(property: &str, taken: &str) -> String {
-    handed_by(property, taken, "read")
-}
-
-/// [`handed`] beside a `nonstrict` holder, where the type read from the function's answer refuses
-/// a key it does not declare, as serde reads it.
-fn handed_refusing(property: &str, taken: &str) -> String {
-    handed_by(property, taken, "readRefusing")
-}
-
-/// [`handed`], the answer read through `SwiftSchemaPayload.{reader}`.
-fn handed_by(property: &str, taken: &str, reader: &str) -> String {
     format!(
         "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
-         self.{property} = try SwiftSchemaPayload.{reader}(Counting.self, \
+         self.{property} = try SwiftSchemaPayload.readRefusing(Counting.self, \
          from: withItsKeys({property}Payload), at: decoder.codingPath)"
     )
 }
@@ -227,7 +218,7 @@ fn a_map_that_names_a_function_hands_it_the_keys_the_types_around_took() {
     assert_written(
         &snaking_swift::swift_definition(),
         "let restPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; \
-         self.rest = try SwiftSchemaPayload.read([String: String].self, \
+         self.rest = try SwiftSchemaPayload.readRefusing([String: String].self, \
          from: asGiven(restPayload), at: decoder.codingPath)",
     );
 }
@@ -262,7 +253,7 @@ fn a_function_is_handed_every_key_but_its_holders_own_where_no_member_ahead_took
         marling_swift::swift_definition(),
         bowsing_swift::swift_definition(),
     ] {
-        assert_written(&definition, &handed_refusing("tally", "taken + [\"note\"]"));
+        assert_written(&definition, &handed("tally", "taken + [\"note\"]"));
     }
 }
 

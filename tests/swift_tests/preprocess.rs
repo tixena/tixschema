@@ -101,7 +101,7 @@ pub struct Stacked {
 }
 
 /// A flattened member that names a function of its own, and one that names none.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bayed {
     #[serde(flatten)]
@@ -630,8 +630,8 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
             concat!(
                 "let bayPayload = try SwiftSchemaPayload(from: decoder, ",
                 r#"without: taken + ["dock"]).value; "#,
-                "self.bay = try SwiftSchemaPayload.read(Bay.self, from: withItsKeys(bayPayload), ",
-                "at: decoder.codingPath); ",
+                "self.bay = try SwiftSchemaPayload.readRefusing(Bay.self, ",
+                "from: withItsKeys(bayPayload), at: decoder.codingPath); ",
             ),
             ALONE,
         ],

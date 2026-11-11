@@ -110,7 +110,7 @@ pub struct Spare {
 
 /// A member that names a function flattened after a struct, with a member of its holder's own
 /// between them: serde hands the function the keys neither took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Clamping {
     #[serde(flatten)]
@@ -122,7 +122,7 @@ pub struct Clamping {
 }
 
 /// A member that names a function, the one flattened member, beside a member of its holder's own.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fastening {
     pub note: String,
@@ -133,7 +133,7 @@ pub struct Fastening {
 
 /// A member that names a function flattened ahead of a struct, where serde hands the function
 /// every key, the struct's among them.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hoisting {
     #[model_schema_prop(preprocess = ["withItsKeys"])]
@@ -173,7 +173,7 @@ pub struct Lacing {
 
 /// A member that names a function flattened after another that names one, where serde hands the
 /// second every key.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Rigging {
     #[model_schema_prop(preprocess = ["asGiven"])]
@@ -198,7 +198,7 @@ pub struct Belaying {
 
 /// A member that names a function flattened after a struct, where serde hands the function the
 /// keys the struct did not take.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Twin {
     #[serde(flatten)]
@@ -224,7 +224,7 @@ pub enum Hatching {
 
 /// A member that names a function flattened after an externally tagged enum, where serde hands
 /// the function every entry but the one the enum took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Loading {
     #[serde(flatten)]
@@ -271,7 +271,7 @@ pub enum Warping {
 }
 
 /// A member that names a function flattened after [`Warping`].
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Kedging {
     #[serde(flatten)]
@@ -283,7 +283,7 @@ pub struct Kedging {
 
 /// A struct and a member that names a function flattened after an externally tagged enum, where
 /// serde hands the struct every entry but the enum's, and the function every entry neither took.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Trimming {
     #[serde(flatten)]
@@ -337,7 +337,7 @@ pub struct Shoring {
 
 /// An optional map under a function that answers the payload as it was handed: serde reads the
 /// map from what it answers, and refuses an entry that does not read as a count.
-#[model_schema()]
+#[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Hawsehole {
     #[model_schema_prop(preprocess = ["asGiven"])]

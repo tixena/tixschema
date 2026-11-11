@@ -11,3 +11,8 @@ mod tests;
 #[cfg(feature = "serde")]
 #[path = "jsonschema_tests/shared_definitions.rs"]
 mod shared_definitions;
+
+#[cfg(test)]
+#[cfg(feature = "serde")]
+#[path = "jsonschema_tests/function_read_members.rs"]
+mod function_read_members;

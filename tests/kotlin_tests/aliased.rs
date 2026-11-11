@@ -159,7 +159,7 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
          kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"label\"] ?: throw \
          SerializationException(\"missing field `label`\")), \"label\"); \
          val tallyKeys = setOf(\"keys\"); val tally = \
-         lenient.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
+         input.json.decodeFromJsonElement(PennonUnjudged, withItsKeys(JsonObject(obj - \
          setOf(\"label\"))));"
     );
     assert!(fairleading.contains(&held), "no `{held}` in: {fairleading}");
