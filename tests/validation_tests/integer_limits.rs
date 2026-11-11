@@ -67,11 +67,11 @@ mod the_zod_text {
     }
 
     #[test]
-    fn a_float_limit_on_a_bigint_is_compared_whole_and_stated_as_written() {
+    fn a_whole_float_limit_on_a_bigint_is_compared_whole_and_stated_as_written() {
         let schema = ScaleMixed::zod_schema();
         assert!(
             schema.contains(
-                ".max(1n, { error: (issue) => `too large: maximum is 1.5, got \
+                ".max(1n, { error: (issue) => `too large: maximum is 1, got \
                  ${String(issue.input)}` })"
             ),
             "{schema}"
@@ -147,11 +147,11 @@ pub struct ScaleSpelling {
     pub suffixed: i64,
 }
 
-/// A float limit on an integer, an integer limit on a float, and a whole float limit on a float.
+/// A whole float limit on an integer, an integer limit on a float, and a whole float limit on a float.
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScaleMixed {
-    #[model_schema_prop(maximum = 1.5)]
+    #[model_schema_prop(maximum = 1.0)]
     pub count: i64,
     #[model_schema_prop(maximum = 120)]
     pub weight: f64,
@@ -283,7 +283,7 @@ fn the_json_schema_writes_an_integer_limit_as_the_integer_and_a_float_limit_as_w
     assert_eq!(written(&reading_schema, "weight", "minimum"), "1.5");
 
     let mixed_schema = ScaleMixed::json_schema();
-    assert_eq!(written(&mixed_schema, "count", "maximum"), "1.5");
+    assert_eq!(written(&mixed_schema, "count", "maximum"), "1.0");
     assert_eq!(written(&mixed_schema, "whole_float", "maximum"), "10.0");
     assert_eq!(written(&mixed_schema, "weight", "maximum"), "120");
     assert_eq!(
@@ -304,11 +304,11 @@ fn an_integer_limit_on_a_float_is_compared_as_that_float() {
 }
 
 #[test]
-fn a_float_limit_on_an_integer_is_compared_with_its_fraction_dropped_and_stated_as_written() {
+fn a_whole_float_limit_on_an_integer_is_compared_whole_and_stated_as_written() {
     assert_eq!(mixed(1, 1.0).validate(), Ok(()));
     assert_eq!(
         mixed(2, 1.0).validate(),
-        Err(vec!["'count': too large: maximum is 1.5, got 2".to_owned()])
+        Err(vec!["'count': too large: maximum is 1, got 2".to_owned()])
     );
 }
 
@@ -454,7 +454,7 @@ fn the_dart_check_and_sentence_write_the_digits() {
     assert!(spelled.contains("if (spaced > 1000)"), "{spelled}");
     assert!(spelled.contains("if (suffixed > 1000)"), "{spelled}");
     let held = scale_mixed_dart::dart_definition();
-    assert!(held.contains("if (count > 1.5)"), "{held}");
+    assert!(held.contains("if (count > 1)"), "{held}");
     assert!(held.contains("if (weight > 120)"), "{held}");
     let vast = scale_vast_dart::dart_definition();
     assert!(
@@ -509,7 +509,7 @@ fn the_kotlin_check_and_sentence_write_the_digits() {
     assert!(spelled.contains("if (spaced > 1000)"), "{spelled}");
     assert!(spelled.contains("if (suffixed > 1000)"), "{spelled}");
     let held = scale_mixed_kotlin::kotlin_definition();
-    assert!(held.contains("if (count.toDouble() > 1.5)"), "{held}");
+    assert!(held.contains("if (count > 1)"), "{held}");
     assert!(held.contains("if (weight > 120.0)"), "{held}");
     let vast = scale_vast_kotlin::kotlin_definition();
     assert!(
