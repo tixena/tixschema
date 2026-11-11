@@ -24,6 +24,11 @@ const OID: &str = "$oid";
 
 /// Any JSON value as a function is handed it, and the read of a type back from one, written into
 /// each type that names a function. `read` writes the coding path of the value into its errors.
+/// A number written with a fraction, an exponent or as `-0` is held as a `Double`, as serde's
+/// `Value` holds a float; `JSONSerialization` writes it back with none of that, so the decoder
+/// that reads the type is handed the paths where the payload holds a `Double`: a number that
+/// `JSONSerialization` read, an `NSNumber`, is both a `Double` and, when whole, an `Int64`, and
+/// is no float.
 pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable { let value: Any; \
      init(from decoder: Decoder) throws { \
      if let keyed = try? decoder.container(keyedBy: Key.self) { \
@@ -35,13 +40,24 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      else { let single = try decoder.singleValueContainer(); \
      if single.decodeNil() { value = NSNull() } \
      else if let flag = try? single.decode(Bool.self) { value = flag } \
-     else if let whole = try? single.decode(Int64.self) { value = whole } \
+     else if let whole = try? single.decode(Int64.self), \
+     !SwiftSchemaFit<Int64>.fractional(decoder, whole) { value = whole } \
      else if let number = try? single.decode(Double.self) { value = number } \
      else { value = try single.decode(String.self) } } }; \
      init(from decoder: Decoder, without taken: [String]) throws { \
      let whole = try SwiftSchemaPayload(from: decoder).value; \
      guard var members = whole as? [String: Any] else { value = whole; return }; \
      for key in taken { members.removeValue(forKey: key) }; value = members }; \
+     static func decoder(for payload: Any) -> JSONDecoder { func floated(_ value: Any, \
+     _ path: [String]) -> Set<[String]> { var found: Set<[String]> = []; \
+     if let members = value as? [String: Any] { for (key, member) in members { \
+     found.formUnion(floated(member, path + [key])) } } \
+     else if let items = value as? [Any] { for (index, item) in items.enumerated() { \
+     found.formUnion(floated(item, path + [String(index)])) } } \
+     else if value is Double, !(value is Int64) { found.insert(path) }; return found }; \
+     let reader = JSONDecoder(); \
+     reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFloated\")!] = floated(payload, []); \
+     return reader }; \
      static func read<Read: Decodable>(_ type: Read.Type, from payload: Any, \
      at path: [CodingKey]) throws -> Read { \
      guard JSONSerialization.isValidJSONObject([payload]), \
@@ -52,7 +68,7 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     let reader = JSONDecoder(); \
+     let reader = decoder(for: payload); \
      reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] = true; \
      do { return try reader.decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
@@ -80,7 +96,7 @@ const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.T
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     do { return try JSONDecoder().decode(type, from: written) } \
+     do { return try decoder(for: payload).decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
      throw DecodingError.typeMismatch(asked, placed(context)) } \
      catch DecodingError.valueNotFound(let asked, let context) { \

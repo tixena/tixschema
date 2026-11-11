@@ -37,7 +37,9 @@ const FIXED_WIDTH: [&str; 8] = [
 /// exponent mark, which `JSONDecoder`'s own decoder holds in stored properties it reads through
 /// `Mirror`; under any other decoder the number reads as Foundation reads it. A type parameter
 /// filled with a `Float` reads one beyond its range as a `Double` narrowed to an infinity of its
-/// sign, as serde reads an `f32`.
+/// sign, as serde reads an `f32`. It refuses too an integer whose coding path is one `userInfo`
+/// names under `swiftSchemaFloated`: the paths where the payload of a preprocess holds a float,
+/// which `JSONSerialization` writes back with no fraction.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
@@ -49,10 +51,17 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      catch let refused where !(refused is DecodingError) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
-     if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
-     written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
+     if let integer = value as? any FixedWidthInteger, Self.fractional(decoder, integer) || \
+     Self.floated(decoder) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     fileprivate static func fractional(_ decoder: Decoder, _ integer: any FixedWidthInteger) \
+     -> Bool { guard let written = written(decoder) else { return false }; return \
+     written.exponent || written.count != \"\\(integer)\".utf8.count }; \
+     private static func floated(_ decoder: Decoder) -> Bool { guard let paths = \
+     decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFloated\")!] as? Set<[String]> \
+     else { return false }; return paths.contains(decoder.codingPath.map { $0.intValue.map(\
+     String.init) ?? $0.stringValue }) }; \
      private static func written(_ decoder: Decoder) -> (count: Int, exponent: Bool)? { func \
      child(_ of: Any, _ label: String) -> Any? { Mirror(reflecting: of).children.first { \
      $0.label == label }?.value }; guard let values = child(decoder, \"values\") as? [Any], let \
@@ -680,7 +689,7 @@ fn block_end(statements: &str) -> Option<usize> {
 /// The helpers the statements of `read` name: [`FITTED`] and [`FLATTENED`].
 pub(super) fn helpers_for(read: &str) -> String {
     let mut helpers = String::new();
-    if read.contains("SwiftSchemaFit<") {
+    if read.contains("SwiftSchemaFit<") || read.contains("SwiftSchemaPayload") {
         helpers.push_str(FITTED);
         helpers.push_str("; ");
     }
@@ -771,7 +780,10 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         String::new()
     };
     let taking = names_taken(body) || names_taken(written.beside);
-    let opened = format!("{key}{payload}{twins}{}", helpers_for(&read));
+    let opened = format!(
+        "{key}{payload}{twins}{}",
+        helpers_for(&format!("{read}{payload}"))
+    );
     if let Some(refusing) = refused {
         return format!(
             "{opened}public {TAKING} {{ {body} }}; public {UNJUDGED} {{ {refusing}\

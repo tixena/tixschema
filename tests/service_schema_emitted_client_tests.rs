@@ -424,6 +424,18 @@ mod integral_float_models;
 #[path = "service_schema_emitted_client_tests/run_swift_integral_floats.rs"]
 mod run_swift_integral_floats;
 
+/// The models a number written as a float is read on through the payload of a `preprocess` and a
+/// flattened member.
+#[cfg(all(test, feature = "swift", feature = "serde"))]
+#[path = "service_schema_emitted_client_tests/payload_float_models.rs"]
+mod payload_float_models;
+
+/// A number written as a float, refused for an integer by the emitted Swift types that read it
+/// through a payload where serde refuses it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_payload_floats.rs"]
+mod run_swift_payload_floats;
+
 /// A fixed-width integer through an alias, refused by the emitted Swift types where serde refuses
 /// it.
 #[cfg(test)]
