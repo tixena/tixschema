@@ -8,7 +8,7 @@ use core::fmt::Write as _;
 
 use super::integer_limit_models::{
     REPORT, ROWS, limit_ceiling_dart, limit_ends_dart, limit_floor_dart, limit_forms_dart,
-    limit_mixed_dart,
+    limit_mixed_dart, limit_wide_dart,
 };
 use super::run_dart_validate::{analyzed, dart, module};
 
@@ -40,6 +40,7 @@ fn definitions() -> Vec<String> {
         limit_forms_dart::dart_definition(),
         limit_mixed_dart::dart_definition(),
         limit_ends_dart::dart_definition(),
+        limit_wide_dart::dart_definition(),
     ]
 }
 

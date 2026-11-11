@@ -119,7 +119,15 @@ async function __p__Call(
   if (result === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
   }
-  if (result.isError !== true) return { kind: "success", structured: result.structuredContent, blocks: result.content };
+  if (result.isError !== true) {
+    let structured: unknown = result.structuredContent;
+    try {
+      structured = __p__Object(__p__Object(__p__ValueRead(answered))?.result)?.structuredContent;
+    } catch {
+      structured = result.structuredContent;
+    }
+    return { kind: "success", structured, blocks: result.content };
+  }
   const blocks: ReadonlyArray<unknown> = Array.isArray(result.content) ? result.content : [];
   const errorText = blocks
     .map((block) => __p__Object(block))
@@ -129,7 +137,7 @@ async function __p__Call(
   }
   let carried: unknown;
   try {
-    carried = __p__Read(errorText);
+    carried = __p__ValueRead(errorText);
   } catch (rejected) {
     return { kind: "fault", fault: __p__Undeserializable(operation, `the error text is no JSON: ${String(rejected)}`) };
   }
@@ -393,6 +401,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fault_of_fn(&named, &prefix),
     ];
     if service.operations.iter().any(OperationDef::is_mcp_tool) {
+        published.push(message::read_fn(&format!("{prefix}ValueRead")));
         published.push(fill(ARGUMENTS));
         published.push(fill(CALL));
     }

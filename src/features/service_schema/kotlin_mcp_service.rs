@@ -824,13 +824,18 @@ private fun <T> @P@McpReceive(
     val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
     val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
+    if (detail.startsWith("invalid type: floating point")) {
+      // Read from its text, the refusal states the path of the number, which the element states none of.
+      val at = runCatching { Json.decodeFromString(serializer, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
+      if (at != null) refuse("failed-validation", detail, at, emptyList())
+    }
     if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
     val said = detail.substringBefore(" at path: ")
     if (said == "@EXPECTED_NUMERIC_KEY@") refuse("undeserializable-payload", said, null, emptyList())
     val found = mutableListOf<Pair<String, String>>()
     @P@McpMismatches(schema, source, null, passed, emptyList(), found)
-    if (said == "@EXPECTED_VALUE@") {
-      // Read from its text, the refusal states the path of the `Result`, which no schema walk finds.
+    if (said == "@EXPECTED_VALUE@" || found.isEmpty()) {
+      // Read from its text, the refusal states the path of a `Result`, or of a number the schema admits and serde refuses (`1.0` or `-0` for an integer), which no schema walk finds.
       val at = runCatching { Json.decodeFromString(twin, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
       if (at != null) {
         found.removeAll { it.first == at }
@@ -2902,7 +2907,7 @@ fn resource_body(
         String::new()
     } else {
         format!(
-            "        val mcpEncoded = Json.encodeToJsonElement({}, answered.value)\n",
+            "        val mcpEncoded = {prefix}WsWritten({}, answered.value)\n",
             read_serializer(ty)
         )
     };
@@ -2915,7 +2920,7 @@ fn resource_body(
          throw {prefix}McpRefused({prefix}McpInternal({wire}, unexpected.message ?: unexpected.toString()))\n  }}\n  \
          return try {{\n    when (answered) {{\n      \
          is {result}.Ok -> {{\n{encoded}{success}\n      }}\n      \
-         is {result}.Declared -> {prefix}McpDeclined(Json.encodeToJsonElement({written_error}, answered.error), {refusal})\n      \
+         is {result}.Declared -> {prefix}McpDeclined({prefix}WsWritten({written_error}, answered.error), {refusal})\n      \
          is {result}.Fault -> {prefix}McpFaultedRequest(Json.encodeToJsonElement(serializer<{fields}>(), answered.fault))\n    \
          }}\n  }} catch (unwritten: SerializationException) {{\n    \
          throw {prefix}McpRefused({prefix}McpInternal({wire}, \"the answer would not serialize: ${{unwritten.message}}\"))\n  }}\n}}"
@@ -3347,7 +3352,7 @@ fn ok_arm(
     if operation.mcp.task.is_some() {
         let written = read_serializer(success);
         return format!(
-            "          is {result}.Ok -> {prefix}McpTaskStart(Json.encodeToJsonElement({written}, answered.value) as JsonObject, {}, mcpParams)\n",
+            "          is {result}.Ok -> {prefix}McpTaskStart({prefix}WsWritten({written}, answered.value) as JsonObject, {}, mcpParams)\n",
             kotlin_quoted(operation.mcp_tool_name())
         );
     }
@@ -3368,7 +3373,7 @@ fn ok_arm(
         }
         let written = read_serializer(success);
         return format!(
-            "          is {result}.Ok -> {prefix}McpDone(Json.encodeToJsonElement({written}, answered.value), null)\n"
+            "          is {result}.Ok -> {prefix}McpDone({prefix}WsWritten({written}, answered.value), null)\n"
         );
     }
     let extra = header_elements(&shape.header_out, success, "headerOut");
@@ -3376,7 +3381,7 @@ fn ok_arm(
     let puts = header_puts(prefix, &extra, "answered.value");
     format!(
         "          is {result}.Ok -> {{\n            \
-         val members = mutableMapOf<String, JsonElement>(\"value\" to Json.encodeToJsonElement({written}, answered.value.value))\n\
+         val members = mutableMapOf<String, JsonElement>(\"value\" to {prefix}WsWritten({written}, answered.value.value))\n\
 {puts}            \
          {prefix}McpDone(JsonObject(members), null)\n          }}\n"
     )
@@ -3406,7 +3411,7 @@ fn declared_arm(
         };
         return format!(
             "          is {result}.Declared -> {{\n            \
-             val mcpBody = Json.encodeToJsonElement({written}, answered.error)\n            \
+             val mcpBody = {prefix}WsWritten({written}, answered.error)\n            \
              {prefix}McpAsking({}, {}, {}, {answers}, {form}, {}, mcpBody, mcpParams, {declined})\n              \
              ?: {prefix}McpDone(null, {prefix}McpServeText(mcpBody))\n          }}\n",
             arm_marker(operation, "TAG"),
@@ -3418,7 +3423,7 @@ fn declared_arm(
     if shape.error_header_out.is_empty() {
         let written = read_serializer(error);
         return format!(
-            "          is {result}.Declared -> {prefix}McpDone(null, {prefix}McpServeText(Json.encodeToJsonElement({written}, answered.error)))\n"
+            "          is {result}.Declared -> {prefix}McpDone(null, {prefix}McpServeText({prefix}WsWritten({written}, answered.error)))\n"
         );
     }
     let extra = header_elements(&shape.error_header_out, error, "errorHeaderOut");
@@ -3426,7 +3431,7 @@ fn declared_arm(
     let puts = header_puts(prefix, &extra, "answered.error");
     format!(
         "          is {result}.Declared -> {{\n            \
-         val members = mutableMapOf<String, JsonElement>(\"value\" to Json.encodeToJsonElement({written}, answered.error.error))\n\
+         val members = mutableMapOf<String, JsonElement>(\"value\" to {prefix}WsWritten({written}, answered.error.error))\n\
 {puts}            \
          {prefix}McpDone(null, {prefix}McpServeText(JsonObject(members)))\n          }}\n"
     )
@@ -3441,13 +3446,13 @@ fn header_puts(prefix: &str, extra: &[HeaderElement], root: &str) -> String {
         if let Some(inner) = option_inner(&field.ty) {
             let _ = writeln!(
                 text,
-                "            {accessor}?.let {{ {prefix}McpPut(members, {name}, Json.encodeToJsonElement({}, it)) }}",
+                "            {accessor}?.let {{ {prefix}McpPut(members, {name}, {prefix}WsWritten({}, it)) }}",
                 read_serializer(inner)
             );
         } else {
             let _ = writeln!(
                 text,
-                "            {prefix}McpPut(members, {name}, Json.encodeToJsonElement({}, {accessor}))",
+                "            {prefix}McpPut(members, {name}, {prefix}WsWritten({}, {accessor}))",
                 read_serializer(&field.ty)
             );
         }

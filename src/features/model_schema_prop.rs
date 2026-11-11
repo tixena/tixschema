@@ -4,6 +4,7 @@ use proc_macro2::Span;
 use syn::meta::ParseNestedMeta;
 use syn::{Attribute, Lit, LitStr, Type};
 
+use crate::field_type::FieldDefType;
 use crate::utils::{constraining_pattern, emittable_pattern, portable_pattern};
 
 /// Every key the parser reads, in the order the unknown-key rejection names them. Add a new key to
@@ -219,6 +220,8 @@ pub struct ModelSchemaPropMeta {
     pub attr_rejection: Option<syn::Error>,
     /// The functions `check` names, in the order written.
     pub check: Vec<FunctionName>,
+    /// The type a numeric `literal` collapsed the field from.
+    pub collapsed_from: Option<FieldDefType>,
     /// The `pattern` of the enum the field's variant belongs to, where the field writes one of its
     /// own in [`Self::pattern`]: the value is held to both.
     pub enum_pattern: Option<String>,

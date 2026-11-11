@@ -283,7 +283,7 @@ fn the_declared_ok_status_decodes_into_the_success_type() {
     assert!(
         method.contains("if (status == 200) {")
             && method.contains(
-                "value = CreateDocumentResponse.fromJson(jsonDecode(utf8.decode(response.body)));"
+                "value = CreateDocumentResponse.fromJson(jsonDecode(_documentClientServiceHttpSignedZeros(utf8.decode(response.body))));"
             )
             && method.contains("return DocumentClientServiceCreateDocumentResultOk(value);"),
         "got: {method}"
@@ -297,7 +297,7 @@ fn a_mapped_error_status_decodes_into_the_declared_error_and_is_returned() {
     assert!(
         method.contains("if (status == 409) {")
             && method.contains(
-                "declared = CreateDocumentError.fromJson(jsonDecode(utf8.decode(response.body)));"
+                "declared = CreateDocumentError.fromJson(jsonDecode(_documentClientServiceHttpSignedZeros(utf8.decode(response.body))));"
             )
             && method
                 .contains("return DocumentClientServiceCreateDocumentResultOperation(declared);"),
@@ -318,7 +318,7 @@ fn a_fixed_fault_status_decodes_into_a_fault_reusing_the_generated_fault_fields_
     );
     assert!(
         written.contains(
-            "return DocumentClientServiceFaultFields.fromJson(jsonDecode(utf8.decode(body)));"
+            "return DocumentClientServiceFaultFields.fromJson(jsonDecode(_documentClientServiceHttpSignedZeros(utf8.decode(body))));"
         ),
         "the fault body decodes through the same generated `FaultFields` codec every other \
          surface answers faults through, rather than a hand-rolled parse. Got: {written}"
@@ -359,7 +359,7 @@ fn a_header_out_tuple_success_reads_the_body_and_the_header_back() {
     let method = method_body(&written, "getVersion");
     assert!(
         method
-            .contains("value = VersionResponse.fromJson(jsonDecode(utf8.decode(response.body)));"),
+            .contains("value = VersionResponse.fromJson(jsonDecode(_documentClientServiceHttpSignedZeros(utf8.decode(response.body))));"),
         "got: {method}"
     );
     assert!(
@@ -714,7 +714,9 @@ fn a_primitive_message_and_success_cross_as_their_own_json_values() {
         "got: {method}"
     );
     assert!(
-        method.contains("value = jsonDecode(utf8.decode(response.body)) as int;"),
+        method.contains(
+            "value = jsonDecode(_shelvesHttpSignedZeros(utf8.decode(response.body))) as int;"
+        ),
         "got: {method}"
     );
     assert!(!method.contains("toJson"), "got: {method}");

@@ -20,7 +20,7 @@ A function a `preprocess` names is called by the read alone of each language, ah
 | `literal = "val"` | `String`, and each item of a list | `z.literal("val", { error })` and a refinement that leaves its issue no abort | `{"type": "string", "const": "val"}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value != 'val'` | `validate()`: `value != "val"` | `validate()`: `value != "val"` |
 | `literal = true` | `bool`, and each item of a list | `z.literal(true, { error })` and a refinement that leaves its issue no abort | `{"type": "boolean", "const": true}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `!value` | `validate()`: `!value` | `validate()`: `!value` |
 | `literal = 214` | numeric, and each item of a list | `z.literal(214, { error })`, a refinement that leaves its issue no abort, and one that reads the `Number` object the service code reads `214.0` as as `214`; on an `i64` or a `u64` a `z.codec` to `z.literal(214n)` | `{"type": "number", "const": 214}`; on an `i64` or a `u64` `{"type": "integer", "const": 214}` | `validate()`, which the type's read runs; the member's own hook too in an untagged enum | `validate()`: `value != 214`, in the number's own type | `validate()`: `value != 214`, in the number's own type | `validate()`: `value.toUInt() != 214u`, in the number's own type |
-| `preprocess = ["fn"]` | any, and a type | `z.preprocess(unboxed, z.preprocess(fn, ...))` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
+| `preprocess = ["fn"]` | any, and a type | `z.preprocess(paired, z.preprocess(stage, ... z.preprocess(reboxed, ...)))` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
 | `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode | `validate()` calls `fn`, and `fromJson` throws `FormatException` with its messages | `validate()` calls `fn`, and `init(from:)` throws `DecodingError.dataCorrupted` with its messages | `validate()` calls `fn`, and `{Type}Serializer` throws `SerializationException` with its messages |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) | — | — | — |
 | `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number().int())` | `{"type": "integer"}` | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, the number serde writes | a `Long` |
@@ -50,16 +50,19 @@ repeats none of it. What a change has to keep:
 
 **A limit is the literal written.** `ModelSchemaPropMeta` holds `minimum` and `maximum` as the
 `syn::Lit` of the attribute, and the limit takes its field's type where the generated code
-compiles: `9007199254740993 as i64`. `limit_text` is the one formatter of a surface: an integer's
-digits, with no separator or suffix, or a float as its `Display` writes it, so a sentence cannot
-differ from its check. A refusal at expansion names a float through `format_number_literal`
-(`limit_refused`), the value it holds. `limit_number` is the same limit as an `f64`, for a
+compiles (`compared_limit`): an integer field's through a cast, `9007199254740993 as i64`, and a
+float field's as a literal of its type, `3000000000_f64`, since a cast to a float leaves an
+integer literal an `i32`, which wraps past `2^31`. `limit_text` is the one formatter of a
+surface: an integer's digits, with no separator or suffix, or a float as its `Display` writes it,
+so a sentence cannot differ from its check. A refusal at expansion names a float through
+`format_number_literal` (`limit_refused`), the value it holds. `limit_number` is the same limit as an `f64`, for a
 comparison in the macro alone: past `2^53` it is rounded, so two integer limits are compared as
 `i128` (`limit_above`) and the range guard reads an integer limit as one (`check_bound_in_range`).
 The JSON Schema writes an integer limit through `limit_json`, suffixed, since `json!` reads a bare
 integer as an `i32`, and a float as an `f64`. Zod's `bigint` bound and Swift's comparison with an
-integer drop a float's fraction, as the Rust cast does, and Kotlin writes an integer limit of the
-least `Long` as `Long.MIN_VALUE`, its digits being no literal `kotlinc` reads.
+integer drop a float's fraction, as the Rust cast does, Swift compares a float with a float
+literal, `3000000000.0`, and Kotlin writes an integer limit of the least `Long` as
+`Long.MIN_VALUE`, its digits being no literal `kotlinc` reads.
 `tests/validation_tests/integer_limits.rs` pins the surfaces' text, and `integer_limit_models.rs`
 with `run_{node,dart,swift,kotlin}_integer_limits.rs` runs each.
 
@@ -296,7 +299,7 @@ what a change has to keep.
   `item_code_list`; the doctest declares the members as the documents do.
 
 Multiple constraints on one field are combined. Multiple `preprocess` functions nest:
-`z.preprocess(unboxed, z.preprocess(fn1, z.preprocess(fn2, innerSchema)))`, `unboxed` being the function `ZOD_UNBOXED` writes, which reads each `Number` object the service code reads a number written with a fraction or an exponent as back to its number, so `fn1` is handed what `JSON.parse` reads.
+`z.preprocess(paired, z.preprocess(stage1, z.preprocess(stage2, z.preprocess(reboxed, innerSchema))))`, `paired` being the function `ZOD_PAIRED` writes, which answers the value beside a copy that reads each `Number` object the service code reads a number written with a fraction or an exponent as back to its number, `stage1` and `stage2` the stages `zod_preprocess_stage` writes around `fn1` and `fn2`, each handing its function the copy, so `fn1` is handed what `JSON.parse` reads, and `reboxed` the function `ZOD_REBOXED` writes, which answers a number a function left where a `Number` object stood as that object again, so an integer a function answers unchanged is refused when it was written as a float.
 
 `literal` takes a string, boolean, integer or float literal. The kind written must match what the
 field's Rust type can carry — a boolean literal only on a `bool` field, a numeric literal only on a
