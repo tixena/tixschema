@@ -365,7 +365,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         fill(TRANSPORT),
         client_type(service, &named),
         format!("const {prefix}Version: string = {VERSION_MARKER};"),
-        message::read_fn(&format!("{prefix}Read")),
+        message::envelope_read_fn(&format!("{prefix}Read")),
         message::wire_fn(&format!("{prefix}Sent")),
         message::infinite_fn(&format!("{prefix}Infinite")),
         message::checked_fn(

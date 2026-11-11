@@ -47,9 +47,9 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
-#[cfg(all(feature = "serde", feature = "zod"))]
-use crate::field_type::zod_check_wrap_handing;
 use crate::field_type::{RESULT_ARMS, RangeKind};
+#[cfg(all(feature = "serde", feature = "zod"))]
+use crate::field_type::{ZOD_NAMED_ARM, zod_check_wrap_handing};
 #[cfg(feature = "zod")]
 use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
 use crate::{
@@ -483,6 +483,20 @@ const WRITTEN_AS_OBJECT: &str = "a JSON object";
 /// as `None`: every key it was handed, with any value, and none of them in the value read.
 #[cfg(feature = "zod")]
 const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform(() => ({}))";
+
+/// The check a flattened member joins its holder through. serde reads such a member from the keys
+/// its holder buffers and names the holder for a value inside it of the wrong type, so a type
+/// refusal moves to the holder's place; a missing key, an unknown key and a broken bound stay where
+/// Zod puts them.
+#[cfg(feature = "zod")]
+const ZOD_AT_THE_HOLDER: &str = ".superRefine((_read, ctx) => { ctx.issues.splice(0, \
+     ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last \
+     = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above \
+     = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, \
+     step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" \
+     && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && \
+     [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, \
+     path: [] } : issue; })); }, { when: () => true })";
 
 /// A name a Cargo feature of this crate reads: the feature, what the name is read as under it, and
 /// the fewest type arguments it is read with.
@@ -13314,7 +13328,7 @@ fn join_external_union(
 
     #[cfg(feature = "zod")]
     let schema_code = format!(
-        "z.union([{}])",
+        "z.union([{}]){ZOD_NAMED_ARM}",
         members
             .iter()
             .map(|(_, zod, _)| zod.as_str())
@@ -13867,14 +13881,15 @@ fn render_internal_variant(
         return (typescript, zod, json, true);
     }
 
-    // The content joins the member through [`deferred_zod_operand`] for the reason a flattened
-    // base does: it names a `const` of its own, and one macro invocation sees one type.
+    // The content joins the member through [`flattened_zod_operand`] for the reasons a flattened
+    // base does: it names a `const` of its own, one macro invocation sees one type, and serde reads
+    // it from the keys the tag's object buffers.
     #[cfg(feature = "zod")]
     let zod = format!(
         "{}({}).and({})",
         zod_own_object(),
         parts.schema_code,
-        deferred_zod_operand(&inner.zod_type())
+        flattened_zod_operand(&inner.zod_type())
     );
     #[cfg(not(feature = "zod"))]
     let zod = String::new();
@@ -21978,6 +21993,13 @@ fn deferred_zod_operand(schema: &str) -> String {
     format!("z.lazy(() => {schema})")
 }
 
+/// [`deferred_zod_operand`] of a member serde reads from the keys its holder buffers, read through
+/// [`ZOD_AT_THE_HOLDER`]: a flattened member, and a newtype variant's content beside its tag.
+#[cfg(feature = "zod")]
+fn flattened_zod_operand(schema: &str) -> String {
+    format!("{}{ZOD_AT_THE_HOLDER}", deferred_zod_operand(schema))
+}
+
 /// The suffix the binding an item publishes is named with. A generic type publishes a factory —
 /// one schema per filling, built on demand — where a type that declares no parameter publishes the
 /// one schema it has.
@@ -22640,7 +22662,7 @@ fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<(String, bool)> {
                     .into_iter()
                     .map(|schema| {
                         (
-                            format!("{join}.and({})", deferred_zod_operand(schema)),
+                            format!("{join}.and({})", flattened_zod_operand(schema)),
                             *closed || operand.closes,
                         )
                     })
@@ -22726,7 +22748,7 @@ fn zod_merged_object(own: &str, operands: &[MergedOperand]) -> String {
 }
 
 #[cfg(feature = "zod")]
-/// Each flattened base joins an intersection through [`deferred_zod_operand`]: a base names a
+/// Each flattened base joins an intersection through [`flattened_zod_operand`]: a base names a
 /// `const` of its own, and one macro invocation sees one type, so nothing here can know whether
 /// that `const` is declared above this module or below it.
 fn generate_zod_schema_method(
@@ -22883,7 +22905,7 @@ fn generate_plain_enum_zod_schema_method(
         // ahead of it, and `closed` after it.
         let around = zod_preprocess_wrap(String::new(), &args.preprocess);
         let opened = around.trim_end_matches(')');
-        let closed = ")".repeat(args.preprocess.len());
+        let closed = &around[opened.len()..];
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {

@@ -1,11 +1,10 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
-//! same payload, but for the cases the TypeScript table of its own records: the message read, a
-//! frame dropped, or the fault's kind and the field it names, and an attachment calls no handler
-//! for a frame it refuses or drops and replies to a message it reads as the Rust dispatcher does.
-//! Each client then refuses to send an `f32` read as an infinity. Each run resolves on the replies
-//! it counts, with no clock.
+//! same payload: the message read, a frame dropped, or the fault's kind and the field it names,
+//! and an attachment calls no handler for a frame it refuses or drops and replies to a message it
+//! reads as the Rust dispatcher does. Each client then refuses to send an `f32` read as an
+//! infinity. Each run resolves on the replies it counts, with no clock.
 
 use super::carillon_service::{CASES, STRUCK, frame, over_ws, payload, rust_answers};
 use core::fmt::Write as _;
@@ -397,32 +396,6 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
-
-/// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
-/// field each names: Zod names a member of a variant, an arm of a `Result` holding a text, and a
-/// flattened member at the union, the `Result` and the member that holds the value; and reads a
-/// number written with a fraction or an exponent, or `-0`, for an integer, which `JSON.parse`
-/// reads as the integer.
-const NODE_APART: [(&str, Option<&str>); 15] = [
-    ("a boolean for a number in a variant", Some("peal")),
-    (
-        "a text for a number in a flattened member",
-        Some("frame.oak"),
-    ),
-    ("a text in an arm of a Result", Some("tally")),
-    ("an integral fraction for a u32", None),
-    ("an exponent for a u32", None),
-    ("a capital exponent for a u32", None),
-    ("a fraction of zero for a u32", None),
-    ("a fraction of zero below zero for a u32", None),
-    ("a zero below zero for a u32", None),
-    ("an integral fraction for an i64", None),
-    ("an exponent for an i64", None),
-    ("a capital exponent for an i64", None),
-    ("a fraction of zero for an i64", None),
-    ("a fraction of zero below zero for an i64", None),
-    ("a zero below zero for an i64", None),
-];
 
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
@@ -845,8 +818,8 @@ fn the_typescript_attachment_and_client_name_the_field_the_rust_dispatcher_names
             answered["reply"] = serde_json::from_str(text).unwrap();
         }
     }
-    assert_attached_as_rust(&told["attached"], &NODE_APART);
-    assert_read_as_rust(&told["read"], &NODE_APART);
+    assert_attached_as_rust(&told["attached"], &[]);
+    assert_read_as_rust(&told["read"], &[]);
     assert_eq!(
         told["refused"],
         json!({

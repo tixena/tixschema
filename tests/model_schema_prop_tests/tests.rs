@@ -794,7 +794,7 @@ fn test_nullable_struct_zod() {
     );
 
     assert!(
-        zod.contains("h: z.preprocess(trim, z.union([z.string(), z.null()]))"),
+        zod.contains("h: z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trim, z.union([z.string(), z.null()])))"),
         "preprocess should wrap the whole nullable union: {zod}"
     );
 }
