@@ -67,7 +67,7 @@ fn a_frontmatter_is_described_as_the_object_serde_writes() {
     let zod = Doc::zod_schema();
     assert!(
         zod.contains(
-            "z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: Read$Schema }), z.strictObject({ Err: Broken$Schema })]))"
+            "z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: Read$Schema }), z.strictObject({ Err: Broken$Schema })]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true }))"
         ),
         "{zod}"
     );

@@ -213,10 +213,36 @@ pub fn reads_local(text: &str, name: &str) -> bool {
 
 /// The function named `function` that reads a JSON text: each integer a `number` does not hold
 /// exactly rebuilt from its source text as a `bigint`, as a `u64` and an `i64` beyond `2^53 - 1`
-/// are written. A runtime that hands a reviver no source text keeps the `number`. A number beyond
-/// an `f64`, which `JSON.parse` reads as an infinity, is refused in serde's words: serde reads no
-/// text that holds one.
+/// are written, and each number written with a fraction or an exponent, or as `-0`, whose value is
+/// an integer read as a `Number` object, which no integer's schema reads and a float's reads, as
+/// serde reads such a number as a float. A runtime that hands a reviver no source text keeps the
+/// `number`. A number beyond an `f64`, which `JSON.parse` reads as an infinity, is refused in
+/// serde's words: serde reads no text that holds one.
 pub fn read_fn(function: &str) -> String {
+    format!(
+        "/**\n \
+         * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its \
+         source text\n \
+         * as a `bigint`, each integer written as a float read as a `Number` object, and a number \
+         beyond an\n \
+         * `f64` refused.\n \
+         */\n\
+         function {function}(text: string): unknown {{\n  \
+         return JSON.parse(text, (_key, value: unknown, context?: {{ source?: string }}) => {{\n    \
+         if (value === Infinity || value === -Infinity) throw new SyntaxError(\"{NUMBER_OUT_OF_RANGE}\");\n    \
+         if (typeof value !== \"number\" || context?.source === undefined) return value;\n    \
+         if (!Number.isSafeInteger(value) && /^-?(0|[1-9][0-9]*)$/.test(context.source)) return \
+         BigInt(context.source);\n    \
+         return Number.isInteger(value) && /[.eE]|^-0$/.test(context.source) ? new Number(value) : \
+         value;\n  \
+         }});\n\
+         }}"
+    )
+}
+
+/// [`read_fn`] without the `Number` object: the reader of a peer's protocol envelope, whose
+/// numbers it reads as the peer wrote them.
+pub fn envelope_read_fn(function: &str) -> String {
     format!(
         "/**\n \
          * `text` read as JSON, each integer a `number` does not hold exactly rebuilt from its \

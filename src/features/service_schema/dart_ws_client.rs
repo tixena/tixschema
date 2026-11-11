@@ -231,17 +231,23 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
         return format!(
             "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
              /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+             /// Throws what `send` throws, and then waits on nothing.\n  \
              Future<Map<String, dynamic>?> request(String operation, Object? payload) {{\n    \
              final id = '${{_nextId++}}';\n    \
              final completer = Completer<Map<String, dynamic>?>();\n    \
              _pending[id] = completer;\n    \
-             send({{\n      \
-             'kind': 'request',\n      \
-             'id': id,\n      \
-             'service': '{named}',\n      \
-             'operation': operation,\n      \
-             'payload': payload,\n    \
+             try {{\n      \
+             send({{\n        \
+             'kind': 'request',\n        \
+             'id': id,\n        \
+             'service': '{named}',\n        \
+             'operation': operation,\n        \
+             'payload': payload,\n      \
              }});\n    \
+             }} catch (_) {{\n      \
+             _pending.remove(id);\n      \
+             rethrow;\n    \
+             }}\n    \
              return completer.future;\n  \
              }}\n\n  \
              /// Sends `operation` with `payload` as a `notify` frame. No reply is expected.\n  \
@@ -254,6 +260,7 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     format!(
         "/// Sends `operation`, `payload` and `headers` as a `request` frame (`headers` written only\n  \
          /// when non-empty) and answers with the matching `reply` frame, or `null` once closed.\n  \
+         /// Throws what `send` throws, and then waits on nothing.\n  \
          Future<Map<String, dynamic>?> request(\n    \
          String operation,\n    \
          Object? payload,\n    \
@@ -262,14 +269,19 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
          final id = '${{_nextId++}}';\n    \
          final completer = Completer<Map<String, dynamic>?>();\n    \
          _pending[id] = completer;\n    \
-         send({{\n      \
-         'kind': 'request',\n      \
-         'id': id,\n      \
-         'service': '{named}',\n      \
-         'operation': operation,\n      \
-         'payload': payload,\n      \
-         if (headers.isNotEmpty) 'headers': headers,\n    \
+         try {{\n      \
+         send({{\n        \
+         'kind': 'request',\n        \
+         'id': id,\n        \
+         'service': '{named}',\n        \
+         'operation': operation,\n        \
+         'payload': payload,\n        \
+         if (headers.isNotEmpty) 'headers': headers,\n      \
          }});\n    \
+         }} catch (_) {{\n      \
+         _pending.remove(id);\n      \
+         rethrow;\n    \
+         }}\n    \
          return completer.future;\n  \
          }}\n\n  \
          /// Sends `operation`, `payload` and `headers` as a `notify` frame. No reply is expected.\n  \
@@ -586,6 +598,14 @@ fn refused_fault(fn_prefix: &str, wire: &str) -> String {
     format!("_{fn_prefix}WsRefused({wire}, rejected)")
 }
 
+/// The fault a client answers for the value of `header` its read refused, naming the header.
+pub(super) fn header_refused_fault(fn_prefix: &str, wire: &str, header: &str) -> String {
+    format!(
+        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {})",
+        quoted(header)
+    )
+}
+
 /// One `late final` local per header element, decoded off `headers_expr` (or `null` if absent).
 /// `margin` is the leading whitespace, since the two call sites nest at different depths.
 fn header_value_decode_stmts(
@@ -608,6 +628,7 @@ fn header_value_decode_stmts(
         let local = format!("{local_prefix}{index}");
         let dart_ty = dart_type_of(ty);
         let decode = dart_json_decode(ty, &format!("{headers_expr}?[{name}]"));
+        let refused = header_refused_fault(fn_prefix, wire, header);
         let _ = write!(
             stmt,
             "{margin}late final {dart_ty} {local};\n\
@@ -615,7 +636,7 @@ fn header_value_decode_stmts(
              {margin}  {local} = {decode};\n\
              {margin}}} catch (rejected) {{\n\
              {margin}  return {result}Fault(\n\
-             {margin}    _{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {name}),\n\
+             {margin}    {refused},\n\
              {margin}  );\n\
              {margin}}}\n"
         );

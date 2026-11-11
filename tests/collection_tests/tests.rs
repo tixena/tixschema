@@ -1241,7 +1241,9 @@ fn test_comprehensive_hashmap_typescript_generation() {
     assert!(zod_schema.contains("string_value: z.record(z.string(), z.string())"));
     assert!(zod_schema.contains(&format!("u64_value: z.record(z.string(), {I64_ZOD})")));
     assert!(zod_schema.contains(&format!("i64_value: z.record(z.string(), {I64_ZOD})")));
-    assert!(zod_schema.contains("f64_value: z.record(z.string(), z.number())"));
+    assert!(zod_schema.contains(
+        "f64_value: z.record(z.string(), z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()))"
+    ));
     assert!(zod_schema.contains("bool_value: z.record(z.string(), z.boolean())"));
 
     assert!(zod_schema.contains("string_array: z.record(z.string(), z.array(z.string()))"));
@@ -1251,7 +1253,9 @@ fn test_comprehensive_hashmap_typescript_generation() {
     assert!(zod_schema.contains(&format!(
         "i64_array: z.record(z.string(), z.array({I64_ZOD}))"
     )));
-    assert!(zod_schema.contains("f64_array: z.record(z.string(), z.array(z.number()))"));
+    assert!(zod_schema.contains(
+        "f64_array: z.record(z.string(), z.array(z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())))"
+    ));
     assert!(zod_schema.contains("bool_array: z.record(z.string(), z.array(z.boolean()))"));
 
     // An `Option` map value is null-flavored, not undefined-flavored: the entry it sits in cannot
@@ -2126,7 +2130,7 @@ fn test_chrono_brand_keyed_maps_constructible() {
 /// The keys of a map keyed by an integer, as the JSON Schema names them: the text serde writes.
 #[cfg(feature = "serde")]
 fn integer_keys() -> Value {
-    serde_json::json!({ "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" })
+    serde_json::json!({ "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" })
 }
 
 /// The keys of a map keyed by a `bool`, as the JSON Schema names them.
@@ -2178,11 +2182,11 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
     let zod_schema = ScalarBrandKeyedMaps::zod_schema();
     for expected in [
         "by_enabled: z.partialRecord(z.enum([\"true\", \"false\"]), z.number().int())",
-        "by_tick: z.record(Tick$Schema, z.number().int())",
-        "chained: z.record(TickRef$Schema, z.number().int())",
-        "nested: z.record(Tick$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
-         z.number().int()))",
-        "samples: z.record(Tick$Schema, MetricSample$Schema)",
+        ".pipe(z.record(Tick$Schema, z.number().int()))",
+        ".pipe(z.record(TickRef$Schema, z.number().int()))",
+        ".pipe(z.record(Tick$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
+         z.number().int())))",
+        ".pipe(z.record(Tick$Schema, MetricSample$Schema))",
     ] {
         assert!(
             zod_schema.contains(expected),
@@ -2380,13 +2384,13 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
 
     let zod_schema = ScalarAliasKeyedMaps::zod_schema();
     for expected in [
-        "branded: z.record(TickBrandKeyType$Schema, z.number().int())",
+        ".pipe(z.record(TickBrandKeyType$Schema, z.number().int()))",
         "by_enabled: z.partialRecord(z.enum([\"true\", \"false\"]), z.number().int())",
-        "by_tick: z.record(TickKeyType$Schema, z.number().int())",
-        "chained: z.record(TickKeyRefType$Schema, z.number().int())",
-        "nested: z.record(TickKeyType$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
-         z.number().int()))",
-        "samples: z.record(TickKeyType$Schema, MetricSample$Schema)",
+        ".pipe(z.record(TickKeyType$Schema, z.number().int()))",
+        ".pipe(z.record(TickKeyRefType$Schema, z.number().int()))",
+        ".pipe(z.record(TickKeyType$Schema, z.partialRecord(z.enum([\"true\", \"false\"]), \
+         z.number().int())))",
+        ".pipe(z.record(TickKeyType$Schema, MetricSample$Schema))",
     ] {
         assert!(
             zod_schema.contains(expected),
@@ -3016,7 +3020,7 @@ fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
         "dates: z.record(z.iso.date(), z.number().int())",
         "datetimes: z.record(z.preprocess((arg) => { if (typeof arg !== \"string\") return arg;",
         "z.iso.datetime({ local: true })), z.number().int())",
-        "numbers: z.record(z.number().int().min(0).max(4294967295), z.number().int())",
+        ".pipe(z.record(z.number().int().min(0).max(4294967295), z.number().int()))",
         "slots: z.partialRecord(MetricSlot$Schema, z.number().int())",
         "strings: z.record(z.string(), z.number().int())",
         "times: z.record(z.preprocess((arg) => {",
@@ -3600,7 +3604,9 @@ fn test_set_element_zod_generation() {
         ),
         format!("labels: z.array(z.string()){REPEAT_CHECK},"),
         // The preprocess wrap belongs once, outside the array — where the `Vec` spelling puts it.
-        format!("preprocessed_labels: z.preprocess(trim, z.array(z.string()){REPEAT_CHECK}),"),
+        format!(
+            "preprocessed_labels: z.preprocess(function unboxed(held) {{ if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : {{ ...held }}; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }}, z.preprocess(trim, z.array(z.string()){REPEAT_CHECK})),"
+        ),
         format!("sibling_tags: z.array(MetricTag$Schema){REPEAT_CHECK},"),
         format!("small_ids: z.array(z.number().int().min(0).max(4294967295)){REPEAT_CHECK},"),
     ] {

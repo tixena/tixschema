@@ -1,6 +1,7 @@
 //! Maps keyed by a value serde writes as text of its own, held under a key and flattened, and the
 //! payloads serde reads and refuses for them. Each is read by the JSON Schema, and by the Zod
-//! schema under `node`, as serde reads it, but where serde and Zod part on the text of a number.
+//! schema under `node`, as serde reads it, but where serde buffers an enum's content ahead of its
+//! tag.
 
 use alloc::collections::BTreeMap;
 
@@ -56,14 +57,14 @@ pub const PAYLOADS: [Payload; 25] = [
     Payload {
         json: r#"{"counts":{"07":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with a leading zero",
-        parted: true,
+        parted: false,
         read_as: "Marlinspike",
         widened: false,
     },
     Payload {
         json: r#"{"counts":{"7.0":2},"flags":{},"letters":{},"turns":{}}"#,
         name: "a number key with a fraction of zeros",
-        parted: true,
+        parted: false,
         read_as: "Marlinspike",
         widened: false,
     },
@@ -194,17 +195,19 @@ each map: read
 a number key, a count of text: refused
     'counts.7': Invalid input: expected number, received string
 a number key of text: refused
-    'counts.x': Invalid key in record
+    'counts': invalid value: expected key to be a number in quotes
 a number key with a fraction: refused
-    'counts.7.5': Invalid key in record
+    'counts': invalid type: floating point `7.5`, expected u32
 a number key under a plus: refused
-    'counts.+7': Invalid key in record
+    'counts': invalid value: expected key to be a number in quotes
 a number key with an exponent: refused
-    'counts.1e2': Invalid key in record
-a number key with a leading zero: read
-a number key with a fraction of zeros: read
+    'counts': invalid type: floating point `1e2`, expected u32
+a number key with a leading zero: refused
+    'counts': invalid number
+a number key with a fraction of zeros: refused
+    'counts': invalid type: floating point `7.0`, expected u32
 a number key below the range of a u32: refused
-    'counts.-7': Invalid key in record
+    'counts.-7': invalid value: integer `-7`, expected u32
 a bool key, a count of text: refused
     'flags.true': Invalid input: expected number, received string
 a bool key of other text: refused
@@ -219,14 +222,14 @@ flattened, a key of a brand over a char: read
 flattened, a key of a brand over a char, of two chars: refused
     Unrecognized key: \"tt\"
 flattened, a key of a brand over a char, a count of text: refused
-    't': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 under a tag and a content key: read
 under a tag and a content key, a key of text: refused
-    'body.depths.x': Invalid key in record
+    'body.depths': invalid value: expected key to be a number in quotes
 under a tag and a content key, the content first: read
 under its name: read
 under its name, a key of text: refused
-    'Lines.depths.x': Invalid key in record
+    'Lines.depths': invalid value: expected key to be a number in quotes
 a date key: read
 a date key of other text: refused
     'days.x': Invalid key in record
@@ -277,8 +280,8 @@ pub struct Marlinspike {
 pub struct Payload {
     pub json: &'static str,
     pub name: &'static str,
-    /// serde refuses the payload, which Zod and the JSON Schema read: the text of a number key
-    /// Zod reads as the number, or an enum's content ahead of its tag, which serde buffers.
+    /// serde refuses the payload, which Zod and the JSON Schema read: an enum's content ahead of
+    /// its tag, which serde buffers.
     pub parted: bool,
     pub read_as: &'static str,
     /// The JSON Schema reads the payload, which serde and Zod refuse: a number key below the

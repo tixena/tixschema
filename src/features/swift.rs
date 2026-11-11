@@ -19,7 +19,6 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::swift_literal_text;
-use crate::features::JSON_NUMBER;
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
@@ -33,8 +32,9 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, FieldDef, FieldDefType, MissingKey, RESULT_ARMS,
-    RangeKind, Scope, VariantKind, get_field_def, is_plain_enum, is_sequence_wrapper,
+    EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, EXPECTED_VALUE, FieldDef, FieldDefType, INVALID_NUMBER,
+    MissingKey, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, Scope, VariantKind, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::flattened_keys;
@@ -43,8 +43,8 @@ use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
 use crate::utils::is_unconsumed;
 use crate::utils::{
-    MapKeyWire, compute_alias_export_name, compute_item_export_name, is_nonstrict, to_snake_case,
-    type_parameters_in_scope, within_variant,
+    MapKeyWire, NumberKey, compute_alias_export_name, compute_item_export_name, is_nonstrict,
+    to_snake_case, type_parameters_in_scope, within_variant,
 };
 
 #[cfg(feature = "serde")]
@@ -1083,6 +1083,8 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
                 format!("{held}.rawValue"),
             )
         }
+        // A number is parsed from `number`, the text of the number serde reads off the key, which
+        // the wrapper binds ahead of the parse.
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
@@ -1093,7 +1095,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
         | FieldDefType::Isize => {
             let swift_type = swift_map_key_scalar(key);
             (
-                Some(format!("{swift_type}(wireKey)")),
+                Some(format!("{swift_type}(number)")),
                 format!("String({held})"),
             )
         }
@@ -1101,8 +1103,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
             let swift_type = swift_map_key_scalar(key);
             (
                 Some(format!(
-                    "(wireKey.range(of: \"{JSON_NUMBER}\", options: .regularExpression) != nil \
-                     ? {swift_type}(wireKey).flatMap {{ $0.isFinite ? $0 : nil }} : nil)"
+                    "{swift_type}(number).flatMap {{ $0.isFinite ? $0 : nil }}"
                 )),
                 format!("\"\\({held})\""),
             )
@@ -1218,7 +1219,10 @@ fn map_key_wrapper_struct(
     };
     #[cfg(not(feature = "chrono"))]
     let formatter_decl = String::new();
-    let helpers = read::helpers_for(&format!("{own_read}{entries}"));
+    let mut helpers = read::helpers_for(&format!("{own_read}{entries}"));
+    if bound_key.contains("swiftSchemaKeyNumber(") {
+        helpers.push_str(&key_number_read());
+    }
     format!(
         "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
          public var storage: [{key_type}: {value_type}]; \
@@ -1238,25 +1242,20 @@ fn map_key_wrapper_struct(
     )
 }
 
-/// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is. A key
-/// read as a number whose text opens with neither a digit nor `-` is refused in serde's words for
-/// text that is not the document.
+/// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
 fn wrapper_bound_key(key: &FieldDef) -> String {
-    let refusal = if numeric_key(key) {
-        format!(
-            "wireKey.first.map {{ $0 == \"-\" || (\"0\"...\"9\").contains($0) }} == true ? \
-             \"bad key \\(wireKey)\" : \"{EXPECTED_NUMERIC_KEY}\""
-        )
-    } else {
-        "\"bad key \\(wireKey)\"".to_owned()
-    };
     let inner = judged_inner_brands(key);
     match read_map_key(key) {
         KeyRead::Whole(read) => format!("let key = {read}; {inner}"),
-        KeyRead::Parsed(parsed) => format!(
-            "guard let key = {parsed} else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: {refusal}) }}; {}{inner}",
-            refused_repeat_of_a_date_key(key)
+        KeyRead::Parsed(parsed) => keys::leaf(key).field_type.number_key().map_or_else(
+            || {
+                format!(
+                    "guard let key = {parsed} else {{ \
+                     throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; {}{inner}",
+                    refused_repeat_of_a_date_key(key)
+                )
+            },
+            |number| format!("{}{inner}", number_bound_key(number, &parsed)),
         ),
     }
 }
@@ -1283,22 +1282,78 @@ fn judged_inner_brands(key: &FieldDef) -> String {
     judged.concat()
 }
 
-/// Whether serde reads `key` as a number, alone or under its aliases and brands.
-fn numeric_key(key: &FieldDef) -> bool {
-    matches!(
-        keys::leaf(key).field_type,
-        FieldDefType::U8
-            | FieldDefType::U16
-            | FieldDefType::U32
-            | FieldDefType::U64
-            | FieldDefType::I8
-            | FieldDefType::I16
-            | FieldDefType::I32
-            | FieldDefType::I64
-            | FieldDefType::Usize
-            | FieldDefType::Isize
-            | FieldDefType::F32
-            | FieldDefType::F64
+/// The static function a map's wrapper reads the number of a key's text with, as serde reads the
+/// text between a key's quotes: the text of the number and whether serde reads it as a float. A text
+/// that is no number, and a float beyond a `Double`, are refused in serde's words for text that is
+/// not the document; what follows the number is the caller's to refuse, after the type refuses the
+/// number.
+fn key_number_read() -> String {
+    let refused = |said: &str| format!("throw refused({})", swift_quoted(said));
+    format!(
+        "private static func swiftSchemaKeyNumber(_ text: String, at codingPath: [CodingKey]) \
+         throws -> (String, Bool) {{ let bytes = Array(text.utf8); func refused(_ said: String) -> \
+         DecodingError {{ DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+         codingPath, debugDescription: said)) }}; func digit(_ at: Int) -> Bool {{ at < \
+         bytes.count && bytes[at] >= 48 && bytes[at] <= 57 }}; func digits(_ from: Int) throws -> \
+         Int {{ guard digit(from) else {{ {invalid} }}; var at = from; while digit(at) {{ at += 1 \
+         }}; return at }}; guard let first = bytes.first, first == 45 || (48...57).contains(first) \
+         else {{ {numeric} }}; let sign = first == 45 ? 1 : 0; let zero = sign < bytes.count && \
+         bytes[sign] == 48; var at = try (zero ? sign + 1 : digits(sign)); if zero && digit(at) {{ \
+         {invalid} }}; var float = false; if at < bytes.count && bytes[at] == 46 {{ at = try \
+         digits(at + 1); float = true }}; if at < bytes.count && (bytes[at] == 101 || bytes[at] == \
+         69) {{ at = try digits(at + 1 < bytes.count && (bytes[at + 1] == 43 || bytes[at + 1] == \
+         45) ? at + 2 : at + 1); float = true }}; let number = String(decoding: bytes[..<at], as: \
+         UTF8.self); let wide = float || (sign == 1 ? number == \"-0\" || Int64(number) == nil : \
+         UInt64(number) == nil); if wide && !(Double(number)?.isFinite ?? false) {{ {beyond} }}; \
+         return (number, wide) }}; ",
+        invalid = refused(INVALID_NUMBER),
+        numeric = refused(EXPECTED_NUMERIC_KEY),
+        beyond = refused(NUMBER_OUT_OF_RANGE),
+    )
+}
+
+/// What a map's wrapper binds a key read as `number` with, from the text serde reads between the
+/// key's quotes: the number, then the type's refusal of it, then the text after it. A refusal serde
+/// classifies as text that is not the document is in its words; a float for an integer key is
+/// refused at the map, and an integer beyond the type under the number. The wrapper declares
+/// [`key_number_read`].
+fn number_bound_key(number: NumberKey, parsed: &str) -> String {
+    let refused = |path: &str, said: &str| {
+        format!(
+            "throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: {path}, \
+             debugDescription: {said}))"
+        )
+    };
+    let read = |wide: &str| {
+        format!(
+            "let (number, {wide}) = try Self.swiftSchemaKeyNumber(wireKey, at: \
+             container.codingPath); "
+        )
+    };
+    let trailing = format!(
+        "if number.utf8.count < wireKey.utf8.count {{ {} }}; ",
+        refused("container.codingPath", &swift_quoted(EXPECTED_QUOTE))
+    );
+    let expected = number.expected;
+    if number.range.is_none() {
+        return format!(
+            "{}{trailing}guard let key = {parsed} else {{ throw \
+             DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \
+             \"bad key \\(wireKey)\") }}; ",
+            read("_")
+        );
+    }
+    format!(
+        "{}if wide {{ {} }}; guard let key = {parsed} else {{ {} }}; {trailing}",
+        read("wide"),
+        refused(
+            "container.codingPath",
+            &format!("\"invalid type: floating point `\\(number)`, expected {expected}\"")
+        ),
+        refused(
+            "container.codingPath + [DynamicCodingKey(stringValue: number)! as CodingKey]",
+            &format!("\"invalid value: integer `\\(number)`, expected {expected}\"")
+        ),
     )
 }
 
@@ -1762,11 +1817,26 @@ fn result_case(arm: &str) -> String {
     arm.to_lowercase()
 }
 
+/// The statements that bind `container`, the keyed container of `key_type` the decoder holds, and
+/// `key`, its one key, as serde reads an externally tagged enum and a `Result`: a value that is
+/// neither a string nor an object of one key is refused in serde's words for text that is not the
+/// document, and a string as Foundation refuses it.
+fn one_key_container(key_type: &str) -> String {
+    format!(
+        "guard let container = try? decoder.container(keyedBy: {key_type}.self), \
+         container.allKeys.count == 1, let key = container.allKeys.first else {{ if (try? \
+         decoder.singleValueContainer().decode(String.self)) != nil {{ _ = try \
+         decoder.container(keyedBy: {key_type}.self) }}; throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"{EXPECTED_VALUE}\")) }}; "
+    )
+}
+
 /// A `Result` leaf: an enum of its own, `{hint}Result`, of one case per arm, read from and written
 /// as the object whose one key names the arm, and walked by its `validate()` under that key. An
-/// arm of `()` is a case with no value, written as `null`. Any other object is refused, as serde
-/// refuses it: one of other than one key in serde's words for text that is not the document. The
-/// enum declares the parameters its arms reach.
+/// arm of `()` is a case with no value, written as `null`. Any other value is refused, as serde
+/// refuses it: one that is neither a string nor an object of one key in serde's words for text that
+/// is not the document. The enum declares the parameters its arms reach.
 fn result_shape(
     ok: &FieldDef,
     err: &FieldDef,
@@ -1828,16 +1898,10 @@ fn result_shape(
         shapes.push(slot.shape);
     }
     let generic_params = bounded_generic_params(&parameters_reached(&[ok, err]));
-    let not_a_document = format!(
-        "throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: \"{EXPECTED_VALUE}\"))"
-    );
     let both = read::both(
         &format!(
-            "let container = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); \
-             guard container.allKeys.count == 1, let key = container.allKeys.first else {{ {} }}; \
-             switch key.stringValue {{ {reads}default: {} }}",
-            not_a_document,
+            "{}switch key.stringValue {{ {reads}default: {} }}",
+            one_key_container("SwiftSchemaAnyKey"),
             refused("Not one key, Ok or Err, of a Result")
         ),
         &preprocess::Written {
@@ -4537,8 +4601,9 @@ fn plain_enum_swift_source(
 
 /// The Swift tokens the externally tagged shape earns — serde's default once a variant carries
 /// data. Swift's own associated-value synthesis wraps a payload under an auto-generated `_0` key
-/// rather than serde's bare `{"Foo": payload}`, so this writes the codec by hand instead. An object
-/// of no key or of several is refused, as serde refuses it: `allKeys` keeps no order to pick by.
+/// rather than serde's bare `{"Foo": payload}`, so this writes the codec by hand instead. A value
+/// that is neither a string nor an object of one key is refused in serde's words for text that is
+/// not the document: `allKeys` keeps no order to pick by.
 fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
@@ -4615,12 +4680,9 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         &format!(
             "if let single = try? decoder.singleValueContainer(), let tag = try? single.decode(String.self) {{ \
              switch tag {{ {unit_decode_arms} default: break }} }}; \
-             let container = try decoder.container(keyedBy: SwiftSchemaExternalCodingKey.self); \
-             guard container.allKeys.count == 1, let key = container.allKeys.first else {{ \
-             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \
-             container.allKeys.isEmpty ? \"empty object for {export_name}\" : \"more than one key for {export_name}\")) }}; \
-             switch key.stringValue {{ {object_decode_arms} \
-             default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}"
+             {}switch key.stringValue {{ {object_decode_arms} \
+             default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}",
+            one_key_container("SwiftSchemaExternalCodingKey")
         ),
         &preprocess::Written {
             beside: "",

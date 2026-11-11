@@ -194,9 +194,67 @@ fn a_missed_pong_closes_the_socket_and_settles_every_waiting_call() {
     );
     let close = body_from(&written, "private func handleClose() {");
     assert!(
-        close.contains("continuation.resume(returning: nil)"),
+        close.contains("held.settle(.success(nil))"),
         "every request still waiting resumes with `nil`, which each waiting method reads as the \
          transport-failure fault. Got: {close}"
+    );
+}
+
+#[test]
+fn a_call_whose_task_is_cancelled_while_it_waits_answers_the_cancellation() {
+    let written = swift_ws_client_of(SWIFT_WS_SERVICE);
+    let correlate = body_from(&written, "private func correlate<Payload: Encodable>(");
+    assert!(
+        correlate.contains(
+            "    let waiting = ConversationClientServiceWsWaiting()\n    pending[id] = waiting\n    \
+             defer {\n      pending.removeValue(forKey: id)\n    }\n    return try await \
+             withTaskCancellationHandler {\n      try await withCheckedThrowingContinuation { \
+             (continuation: CheckedContinuation<Data?, any Error>) in\n        \
+             waiting.hold(continuation)\n        socket.send(text)\n      }\n    } onCancel: {\n      \
+             waiting.settle(.failure(CancellationError()))\n    }\n"
+        ),
+        "the wait resumes at the cancel, and its id leaves `pending` however it ends. \
+         Got: {correlate}"
+    );
+    let method = body_from(&written, "public func window(_ req: WindowRequest)");
+    assert!(
+        method.contains(
+            "} catch is CancellationError {\n      return \
+             .failure(.fault(conversationClientServiceWsTransportFailure(\"window\", \"the task was \
+             cancelled before the reply arrived\")))\n    } catch {"
+        ),
+        "a cancelled call answers `transportFailure`, never a refused read. Got: {method}"
+    );
+}
+
+#[test]
+fn a_waiting_request_is_resumed_once_by_whichever_settles_it_first() {
+    let written = swift_ws_client_of(SWIFT_WS_SERVICE);
+    let waiting = body_from(
+        &written,
+        "final class ConversationClientServiceWsWaiting: @unchecked Sendable {",
+    );
+    assert!(
+        waiting.contains(
+            "  func hold(_ continuation: CheckedContinuation<Data?, any Error>) {\n    lock.lock()\n    \
+             let early = reached\n    if early == nil {\n      self.continuation = continuation\n    \
+             }\n    lock.unlock()\n    if let early {\n      continuation.resume(with: early)\n    \
+             }\n  }"
+        ) && waiting.contains(
+            "  func settle(_ outcome: Result<Data?, any Error>) {\n    lock.lock()\n    if reached \
+             == nil {\n      reached = outcome\n    }\n    let held = continuation\n    \
+             continuation = nil\n    lock.unlock()\n    held?.resume(with: outcome)\n  }"
+        ),
+        "a cancel that comes before the wait is held resumes it as it is held, and a reply after \
+         the cancel resumes nothing. Got: {waiting}"
+    );
+    let message = body_from(
+        &written,
+        "private func handleMessage(_ text: String) async {",
+    );
+    assert!(
+        message.contains("waiting.settle(.success(data))"),
+        "got: {message}"
     );
 }
 
