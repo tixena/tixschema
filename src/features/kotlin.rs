@@ -1796,7 +1796,7 @@ pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
 }
 
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
-fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
+pub fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
 }
 

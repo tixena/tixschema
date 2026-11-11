@@ -17,6 +17,12 @@ pub(super) fn any(service: &ServiceDef) -> bool {
     service.operations.iter().any(OperationDef::is_mcp_prompt)
 }
 
+/// Whether a prompt of the service reads its arguments as an object, which a refused read lists
+/// every problem of.
+pub(super) fn lists(service: &ServiceDef) -> bool {
+    prompts(service).any(|operation| matches!(operation.inputs, OperationInputs::Generated(_)))
+}
+
 fn prompts(service: &ServiceDef) -> impl Iterator<Item = &OperationDef> {
     service
         .operations
@@ -130,7 +136,11 @@ fn get_block(operation: &OperationDef, module: &Ident) -> TokenStream {
     let validator = message_validator_ident(operation);
     let call = call_arguments(operation);
     let source = message_source(operation);
-    let reading = super::resources::reading(operation, module, &source, &reader, &validator);
+    let refused = matches!(operation.inputs, OperationInputs::Generated(_)).then(|| {
+        quote! { listed_refusal(#wire, &prompt_input(#prompt), &#source, &[], &rejected) }
+    });
+    let reading =
+        super::resources::reading(operation, module, &source, &reader, &validator, refused);
     let description = operation.doc.clone().unwrap_or_default();
     let OperationOutcome::Reply {
         success,
@@ -227,7 +237,7 @@ fn complete_block(
     let typed_key = wire_key(&fields.first()?.0);
     let chosen_key = wire_key(&fields.get(1)?.0);
     let source = quote! { ::serde_json::json!({ #typed_key: typed, #chosen_key: chosen }) };
-    let reading = super::resources::reading(operation, module, &source, &reader, &validator);
+    let reading = super::resources::reading(operation, module, &source, &reader, &validator, None);
     let limit = Literal::usize_unsuffixed(COMPLETION_LIMIT);
     Some(quote! {
         if prompt == #prompt && parameter == #argument {

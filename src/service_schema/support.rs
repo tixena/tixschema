@@ -141,11 +141,20 @@ pub fn emit(
          Every type here belongs to this service alone: the crate that declares `{declared}` \
          owns them, and nothing is imported from tixschema at runtime."
     );
-    let fault = fault_declaration(declared, non_exhaustive, jsonschema);
     let call_error = call_error_declaration(declared, non_exhaustive);
     let accessors = fault_accessors();
     let constructors = fault_constructors();
     let renderings = renderings();
+    let fault = fault_declaration(
+        declared,
+        non_exhaustive,
+        jsonschema,
+        &quote! {
+            #accessors
+            #constructors
+            #renderings
+        },
+    );
     let envelope = answered_envelope();
     let validation = message_validation();
     let messages = message_type_aliases(service);
@@ -193,9 +202,6 @@ pub fn emit(
 
             #fault
             #call_error
-            #accessors
-            #constructors
-            #renderings
             #envelope
             #validation
             #messages
@@ -1508,6 +1514,12 @@ fn fault_fields_ident(declared: &Ident) -> Ident {
     )
 }
 
+/// What one problem a fault lists publishes as on every surface: `BillingService` becomes
+/// `BillingServiceFaultIssue`.
+pub fn fault_issue_name(declared: &str) -> String {
+    format!("{declared}FaultIssue")
+}
+
 /// `CallError<E>`, the failure arm of every generated client call.
 ///
 /// A call site matches at both levels, which is the price of not pretending a fault is an ordinary
@@ -1629,6 +1641,13 @@ fn fault_accessors() -> TokenStream {
                 self.field.as_deref()
             }
 
+            /// Each problem the failure found, at its field, where it found more than one; the
+            /// first is the one [`field`](Self::field) names. Empty for a failure of one problem.
+            #[must_use]
+            pub fn issues(&self) -> &[ServiceFaultIssue] {
+                self.issues.as_deref().unwrap_or_default()
+            }
+
             /// Which kind of defect this is.
             #[must_use]
             pub const fn kind(&self) -> ServiceFaultKind {
@@ -1641,6 +1660,30 @@ fn fault_accessors() -> TokenStream {
             #[must_use]
             pub fn operation(&self) -> &str {
                 &self.operation
+            }
+        }
+
+        impl ServiceFaultIssue {
+            /// One problem of a failure: the field it is at, where it is at one, and what is wrong
+            /// there.
+            #[must_use]
+            pub fn new(field: ::core::option::Option<&str>, detail: &str) -> Self {
+                Self {
+                    detail: detail.to_owned(),
+                    field: field.map(str::to_owned),
+                }
+            }
+
+            /// What is wrong, in words, without the field.
+            #[must_use]
+            pub fn detail(&self) -> &str {
+                &self.detail
+            }
+
+            /// The field the problem is at, where it is at one.
+            #[must_use]
+            pub fn field(&self) -> ::core::option::Option<&str> {
+                self.field.as_deref()
             }
         }
     }
@@ -1680,6 +1723,7 @@ fn fault_constructors() -> TokenStream {
                 Self {
                     detail: detail.to_owned(),
                     field: field.map(str::to_owned),
+                    issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::FailedValidation,
                     operation: operation.to_owned(),
                 }
@@ -1691,6 +1735,7 @@ fn fault_constructors() -> TokenStream {
                 Self {
                     detail: detail.to_owned(),
                     field: ::core::option::Option::None,
+                    issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::HandlerPanic,
                     operation: operation.to_owned(),
                 }
@@ -1704,6 +1749,7 @@ fn fault_constructors() -> TokenStream {
                     // The transport reports that the call did not travel, not that a value inside
                     // it was wrong, so there is no field to name.
                     field: ::core::option::Option::None,
+                    issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::TransportFailure,
                     operation: operation.to_owned(),
                 }
@@ -1717,6 +1763,7 @@ fn fault_constructors() -> TokenStream {
                     // `refused_payload` sends here only the refusals serde_json classified as bytes
                     // that are not a document, so there is no field to name.
                     field: ::core::option::Option::None,
+                    issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::UndeserializablePayload,
                     operation: operation.to_owned(),
                 }
@@ -1728,8 +1775,19 @@ fn fault_constructors() -> TokenStream {
                 Self {
                     detail: "the service answers to no operation by that name".to_owned(),
                     field: ::core::option::Option::None,
+                    issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::UnknownOperation,
                     operation: operation.to_owned(),
+                }
+            }
+
+            /// This fault, listing `issues` beside its own field and detail: each problem it
+            /// found, the first being the one its field names. An empty list leaves it unchanged.
+            #[must_use]
+            pub fn with_issues(self, issues: ::std::vec::Vec<ServiceFaultIssue>) -> Self {
+                Self {
+                    issues: (!issues.is_empty()).then_some(issues),
+                    ..self
                 }
             }
         }
@@ -1739,7 +1797,12 @@ fn fault_constructors() -> TokenStream {
 /// `ServiceFault` and the kind it reports. Both derive `Serialize`, which is what the transport
 /// needs to put a fault on the wire, and neither derives `Deserialize`, so a fault never arrives
 /// simply by having been written there.
-fn fault_declaration(declared: &Ident, non_exhaustive: bool, jsonschema: bool) -> TokenStream {
+fn fault_declaration(
+    declared: &Ident,
+    non_exhaustive: bool,
+    jsonschema: bool,
+    impls: &TokenStream,
+) -> TokenStream {
     let fields = fault_fields_ident(declared);
     let sealed = exhaustiveness(non_exhaustive);
     let model_schema = model_schema_attribute(jsonschema);
@@ -1765,6 +1828,19 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool, jsonschema: bool) -
     );
     let kind_alias_doc =
         format!("Which kind of defect a [`ServiceFault`] reports. The same type as [`{kind}`].");
+    let issue = format_ident!(
+        "{}",
+        fault_issue_name(&declared.to_string()),
+        span = declared.span()
+    );
+    let issue_doc = format!(
+        "One problem a `{declared}` fault found, at its field, where the fault lists more than one."
+    );
+    let issue_alias_doc =
+        format!("One problem a [`ServiceFault`] lists. The same type as [`{issue}`].");
+    let definitions = fields_with_issue(&fields, &issue);
+    let fields_alias_doc =
+        format!("`{fields}`, declared in [`fault_fields`] beside what reads and builds it.");
     quote! {
         #[doc = #kind_doc]
         #model_schema
@@ -1787,26 +1863,135 @@ fn fault_declaration(declared: &Ident, non_exhaustive: bool, jsonschema: bool) -
             UnknownOperation,
         }
 
-        #[doc = #fault_doc]
+        #[doc = #issue_doc]
         #model_schema
         #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
         #[serde(rename_all = "camelCase")]
-        pub struct #fields {
+        pub struct #issue {
             detail: ::std::string::String,
-            // Omitted, never written as `null`, when there is no field to name: the reply
-            // envelope's convention, and what lets the TypeScript spell it `string | undefined`.
             #[serde(skip_serializing_if = "::core::option::Option::is_none")]
             field: ::core::option::Option<::std::string::String>,
-            kind: #kind,
-            operation: ::std::string::String,
         }
+
+        /// The fault's fields and what reads and builds them, declared apart so that the Swift
+        /// and Kotlin definitions published under the fields' name can hold the issue type's.
+        pub mod fault_fields {
+            use super::*;
+
+            #[doc = #fault_doc]
+            #model_schema
+            #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct #fields {
+                detail: ::std::string::String,
+                // Omitted, never written as `null`, when there is no field to name: the reply
+                // envelope's convention, and what lets the TypeScript spell it `string | undefined`.
+                #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+                field: ::core::option::Option<::std::string::String>,
+                // Omitted for a failure of one problem, so optional in TypeScript.
+                #[model_schema_prop(ts_optional)]
+                #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+                issues: ::core::option::Option<::std::vec::Vec<#issue>>,
+                kind: #kind,
+                operation: ::std::string::String,
+            }
+
+            #impls
+        }
+
+        #[doc = #fields_alias_doc]
+        pub type #fields = fault_fields::#fields;
+
+        #definitions
 
         #[doc = #alias_doc]
         pub type ServiceFault = #fields;
 
+        #[doc = #issue_alias_doc]
+        pub type ServiceFaultIssue = #issue;
+
         #[doc = #kind_alias_doc]
         pub type ServiceFaultKind = #kind;
     }
+}
+
+/// The Swift and Kotlin definitions published under the fault's fields, each the issue type's
+/// followed by the fields' own, so a bundle that lists the fields declares every type they name.
+fn fields_with_issue(fields: &Ident, issue: &Ident) -> TokenStream {
+    let dart = dart_fields(fields);
+    let swift = swift_fields_with_issue(fields, issue);
+    let kotlin = kotlin_fields_with_issue(fields, issue);
+    quote! {
+        #dart
+        #swift
+        #kotlin
+    }
+}
+
+/// The Dart of the fault's fields, where it was published before the fields moved into
+/// [`fault_fields`].
+#[cfg(feature = "dart")]
+fn dart_fields(fields: &Ident) -> TokenStream {
+    use crate::features::dart::dart_module_ident;
+    let own = dart_module_ident(&fields.to_string(), fields.span());
+    quote! {
+        /// The Dart of the fault's fields.
+        pub mod #own {
+            /// The fields' class.
+            pub fn dart_definition() -> ::std::string::String {
+                super::fault_fields::#own::dart_definition()
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "dart"))]
+fn dart_fields(_fields: &Ident) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(feature = "swift")]
+fn swift_fields_with_issue(fields: &Ident, issue: &Ident) -> TokenStream {
+    use crate::features::swift::swift_module_ident;
+    let own = swift_module_ident(&fields.to_string(), fields.span());
+    let listed = swift_module_ident(&issue.to_string(), issue.span());
+    quote! {
+        /// The Swift of the fault's fields, the issue type's ahead of it.
+        pub mod #own {
+            /// Both types, the issue first.
+            pub fn swift_definition() -> ::std::string::String {
+                [super::#listed::swift_definition(), super::fault_fields::#own::swift_definition()]
+                    .join("\n\n")
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "swift"))]
+fn swift_fields_with_issue(_fields: &Ident, _issue: &Ident) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(feature = "kotlin")]
+fn kotlin_fields_with_issue(fields: &Ident, issue: &Ident) -> TokenStream {
+    use crate::features::kotlin::kotlin_module_ident;
+    let own = kotlin_module_ident(&fields.to_string(), fields.span());
+    let listed = kotlin_module_ident(&issue.to_string(), issue.span());
+    quote! {
+        /// The Kotlin of the fault's fields, the issue type's ahead of it.
+        pub mod #own {
+            /// Both types, the issue first.
+            pub fn kotlin_definition() -> ::std::string::String {
+                [super::#listed::kotlin_definition(), super::fault_fields::#own::kotlin_definition()]
+                    .join("\n\n")
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "kotlin"))]
+fn kotlin_fields_with_issue(_fields: &Ident, _issue: &Ident) -> TokenStream {
+    TokenStream::new()
 }
 
 /// How a fault and a call error read in a log line. A fault is meant to page a human, so the one

@@ -56,6 +56,7 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
     let (kinds, names): (Vec<_>, Vec<_>) = listed.chain(folder_skills).unzip();
     let scopes = scopes_method(service);
     let listed_resources = resources_methods(service);
+    let read_inputs = read_inputs_method(service);
     let listed_prompts = prompts_method(service);
     let listed_skills = skills_methods(service);
     let sorted = sorted_fn();
@@ -67,6 +68,8 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
         #tools
 
         #listed_resources
+
+        #read_inputs
 
         #listed_prompts
 
@@ -81,6 +84,55 @@ pub fn registry_items(service: &ServiceDef) -> TokenStream {
 
         #[doc = " Every tool, prompt, resource and resource template the service lists, as `(<kind>, <name>)`."]
         pub const MCP_NAMES: &'static [(&'static str, &'static str)] = &[#((#kinds, #names)),*];
+    }
+}
+
+/// `mcp_read_inputs()`: the schema of the message each resource template reads, which a read the
+/// dispatcher refused is walked against to name every problem, on every server.
+fn read_inputs_method(service: &ServiceDef) -> TokenStream {
+    let reads = service
+        .operations
+        .iter()
+        .filter(|operation| {
+            operation
+                .mcp
+                .resource
+                .as_ref()
+                .is_some_and(McpResourceUri::is_template)
+        })
+        .map(|operation| {
+            let wire = &operation.wire_name;
+            let input = read_input(operation);
+            quote! { (#wire, #input) }
+        });
+    quote! {
+        #[doc = " The schema of the message each resource template reads, by the operation's wire"]
+        #[doc = " name, with the definitions it references under `$defs`."]
+        pub fn mcp_read_inputs() -> ::std::vec::Vec<(&'static str, ::serde_json::Value)> {
+            ::std::vec![#(#reads),*]
+        }
+    }
+}
+
+/// The schema of the message a resource template reads, its definitions beside it.
+fn read_input(operation: &OperationDef) -> TokenStream {
+    let subject = operation.ident.to_string();
+    let run = run();
+    let message = message_type(operation).map_or_else(
+        || quote! { ::serde_json::json!({ "type": "object" }) },
+        |declared| described(&subject, &declared),
+    );
+    quote! {
+        {
+            #run
+            let mut message = #message;
+            if let ::serde_json::Value::Object(members) = &mut message
+                && !hoisted_defs.is_empty()
+            {
+                members.insert("$defs".to_owned(), ::serde_json::Value::Object(hoisted_defs));
+            }
+            message
+        }
     }
 }
 
@@ -938,6 +990,21 @@ fn input_schema(operation: &OperationDef) -> TokenStream {
             arguments_object(message, #wrapped, headers, &[#(#marks),*], &[#(#hidden),*], hoisted_defs)
         }
     }
+}
+
+/// The keys of a tool's arguments that the walk of its message reads past, these being read apart
+/// from it: the headers and the form's answers beside a message that holds the whole object. A
+/// message under `value` has none of them inside it.
+pub fn read_apart(operation: &OperationDef) -> Vec<String> {
+    if matches!(operation.inputs, OperationInputs::Named(_)) {
+        return Vec::new();
+    }
+    HttpShape::of(operation)
+        .header_in
+        .iter()
+        .map(|header| header.name.clone())
+        .chain(answers_key(operation))
+        .collect()
 }
 
 /// The wire key of the argument an `interview(..., answers = ...)` carries the form's answers in:

@@ -8,7 +8,8 @@ error[E0433]: cannot find module or crate `shipping_form_schema` in this scope
    = help: consider importing one of these structs:
            crate::ship_document_request_schema::Schema
            crate::ship_error_schema::Schema
-           crate::shipping_service_schema::shipping_service_fault_fields_schema::Schema
+           crate::shipping_service_schema::fault_fields::shipping_service_fault_fields_schema::Schema
+           crate::shipping_service_schema::shipping_service_fault_issue_schema::Schema
            crate::shipping_service_schema::shipping_service_fault_kind_schema::Schema
 
 error[E0433]: cannot find module or crate `shipping_form_schema` in this scope
@@ -24,10 +25,11 @@ help: consider importing one of these structs
    |
  4 + use crate::ship_error_schema::Schema;
    |
- 4 + use crate::shipping_service_schema::shipping_service_fault_fields_schema::Schema;
+ 4 + use crate::shipping_service_schema::fault_fields::shipping_service_fault_fields_schema::Schema;
    |
- 4 + use crate::shipping_service_schema::shipping_service_fault_kind_schema::Schema;
+ 4 + use crate::shipping_service_schema::shipping_service_fault_issue_schema::Schema;
    |
+   = and 1 other candidate
 
 error[E0599]: no associated function or constant named `mcp_form_flat` found for struct `ShippingForm` in the current scope
   --> tests/foundation_refusals/mcp_form_not_a_model.rs:23:14

@@ -103,7 +103,7 @@ fn read_block(operation: &OperationDef, module: &Ident) -> Option<TokenStream> {
     let validator = message_validator_ident(operation);
     let call = call_arguments(operation);
     let source = quote! { ::serde_json::Value::String(path.to_owned()) };
-    let reading = reading(operation, module, &source, &reader, &validator);
+    let reading = reading(operation, module, &source, &reader, &validator, None);
     let (pattern, content) = if is_blob(operation) {
         (
             quote! { (bytes, content_type) },

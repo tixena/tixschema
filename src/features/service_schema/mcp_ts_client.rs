@@ -512,15 +512,29 @@ fn minted_fn(named: &str, prefix: &str, suffix: &str, kind: &str) -> String {
 }
 
 fn fault_of_fn(named: &str, prefix: &str) -> String {
-    let members =
-        "      detail,\n      field,\n      kind: kind as __N__FaultKind,\n      operation,"
-            .replace("__N__", named);
+    let members = "      detail,\n      field,\n      kind: kind as __N__FaultKind,\n      operation,\n      \
+                   ...(listed === undefined ? {} : { issues: listed }),"
+        .replace("__N__", named);
     format!(
-        "/** A fault read back from the text of an answer, `undefined` where it is none. */\n\
+        "/** The problems a fault lists, `undefined` where one of them is no problem. */\n\
+         function {prefix}IssuesOf(value: unknown): Array<{named}FaultIssue> | undefined {{\n  \
+         if (!Array.isArray(value)) return undefined;\n  \
+         const listed: Array<{named}FaultIssue> = [];\n  \
+         for (const entry of value) {{\n    \
+         const held = {prefix}Object(entry);\n    \
+         if (held === undefined) return undefined;\n    \
+         const {{ detail, field }} = held;\n    \
+         if (typeof detail !== \"string\" || (field !== undefined && typeof field !== \"string\")) return undefined;\n    \
+         listed.push({{ detail, field }});\n  \
+         }}\n  \
+         return listed;\n\
+         }}\n\n\
+         /** A fault read back from the text of an answer, `undefined` where it is none. */\n\
          function {prefix}FaultOf(value: unknown): {named}Fault | undefined {{\n  \
          const held = {prefix}Object(value);\n  \
          if (held === undefined) return undefined;\n  \
-         const {{ detail, field, kind, operation }} = held;\n  \
+         const {{ detail, field, issues, kind, operation }} = held;\n  \
+         const listed = issues === undefined ? undefined : {prefix}IssuesOf(issues);\n  \
          const kinds: ReadonlyArray<unknown> = [\n    \
          \"failed-validation\",\n    \
          \"handler-panic\",\n    \
@@ -531,6 +545,7 @@ fn fault_of_fn(named: &str, prefix: &str) -> String {
          if (\n    \
          typeof detail === \"string\" &&\n    \
          (field === undefined || typeof field === \"string\") &&\n    \
+         (issues === undefined || listed !== undefined) &&\n    \
          typeof kind === \"string\" &&\n    \
          kinds.includes(kind) &&\n    \
          typeof operation === \"string\"\n  \

@@ -1335,3 +1335,22 @@ fn a_task_key_that_is_unknown_is_refused_at_parse() {
     assert_eq!(reported.len(), 1, "{reported:?}");
     assert!(reported[0].contains("a key `task(...)` does not take"));
 }
+
+/// The walk of a tool's input schema is called in the arm where serde refused the arguments and
+/// nowhere else, so a call whose arguments read never walks them.
+#[test]
+fn the_arguments_are_walked_only_once_the_read_has_refused_them() {
+    let expanded = expansion(quote! { transports = ["mcp"] }, DOCUMENTED);
+    let read = ":: core :: result :: Result :: Ok (received) => received ,";
+    let refused = ":: core :: result :: Result :: Err (rejected) => { return :: core :: option :: \
+                   Option :: Some (:: core :: result :: Result :: Ok (fault_result (refused_arguments (";
+    let calls = expanded.matches("refused_arguments (").count();
+    assert_eq!(
+        expanded.matches("fn refused_arguments (").count(),
+        1,
+        "{expanded}"
+    );
+    assert_eq!(expanded.matches(read).count(), 2, "{expanded}");
+    assert_eq!(expanded.matches(refused).count(), 2, "{expanded}");
+    assert_eq!(calls, 3, "{expanded}");
+}

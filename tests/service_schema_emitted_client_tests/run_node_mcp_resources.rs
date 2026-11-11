@@ -128,6 +128,9 @@ const shelfImpl = {
   async getCount(ctx, bin) {
     return { ok: true, value: String(bin) };
   },
+  async getBay(ctx, req) {
+    return { ok: true, value: `${req.bay}/${req.level}` };
+  },
   async suggestSlots(ctx, req) {
     return { ok: true, value: [req.typed] };
   },

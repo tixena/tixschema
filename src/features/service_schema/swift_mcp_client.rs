@@ -43,7 +43,7 @@ public protocol @N@McpTransport: Sendable {
 }";
 
 const SUPPORT: &str = r#"func @P@McpFault(_ kind: @N@FaultKind, _ operation: String, _ detail: String) -> @N@Fault {
-  @N@Fault(detail: detail, field: nil, kind: kind, operation: operation)
+  @N@Fault(detail: detail, field: nil, issues: nil, kind: kind, operation: operation)
 }
 
 func @P@McpDatedEncoder() -> JSONEncoder {

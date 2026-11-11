@@ -136,7 +136,10 @@ for _ in 0..<2 {
     try await client.touchDocument(TouchDocumentRequest(documentId: "doc-1", reader: "reviewer-7"))
     lines.append("ok sent")
   } catch let refusal as MobileDocumentServiceRefusal {
-    lines.append("refused \(refusal.fault.kind.rawValue)")
+    let listed = (refusal.fault.issues ?? []).map { $0.field ?? "" }
+    lines.append(listed.isEmpty
+      ? "refused \(refusal.fault.kind.rawValue)"
+      : "refused \(refusal.fault.kind.rawValue) issues=\(listed.joined(separator: ","))")
   }
 }
 

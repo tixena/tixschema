@@ -31,7 +31,7 @@ pub const CLIENT_LINES: [&str; 17] = [
     "ok sent",
     "ok version=9",
     "ok version=10",
-    "refused failed-validation",
+    "refused failed-validation issues=documentId,reader",
     "refused transport-failure",
 ];
 
@@ -147,7 +147,16 @@ pub fn client_calls() -> Vec<ClientCall> {
     };
     let touching = json!({ "documentId": "doc-1", "reader": "reviewer-7" });
     let fault = json!({
-        "fault": { "detail": "the reader is unknown", "kind": "failed-validation", "operation": "touch-document" },
+        "fault": {
+            "detail": "'documentId': no such document; 'reader': the reader is unknown",
+            "field": "documentId",
+            "issues": [
+                { "detail": "no such document", "field": "documentId" },
+                { "detail": "the reader is unknown", "field": "reader" },
+            ],
+            "kind": "failed-validation",
+            "operation": "touch-document",
+        },
         "isServiceFault": true,
     });
     vec![

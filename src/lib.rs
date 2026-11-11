@@ -2042,10 +2042,11 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 /// - The `<Operation>Request` messages above, each a `#[model_schema]` type that publishes on every
 ///   surface.
 /// - The module `{service}_schema` (the trait's name in snake case). It holds `ServiceFault`, the
-///   fault for a defect no operation declared, with `kind()`, `operation()`, `field()` and
-///   `detail()` and one public constructor per kind; `ServiceFaultKind`, written on the wire as
-///   `failed-validation`, `handler-panic`, `transport-failure`, `undeserializable-payload` or
-///   `unknown-operation`; and `CallError<E>`, the failure of a Rust client call, which is
+///   fault for a defect no operation declared, with `kind()`, `operation()`, `field()`,
+///   `issues()` and `detail()` and one public constructor per kind; `ServiceFaultKind`, written on
+///   the wire as `failed-validation`, `handler-panic`, `transport-failure`,
+///   `undeserializable-payload` or `unknown-operation`; `ServiceFaultIssue`, one problem of a fault
+///   that lists several; and `CallError<E>`, the failure of a Rust client call, which is
 ///   `Fault(ServiceFault)` or `Operation(E)`. For a dispatcher written by hand it also holds, per
 ///   operation, `{Operation}Message`, `unjudged_{operation}` (the message's read alone) and
 ///   `validated_{operation}` (the message's `validate()`, or `Ok(())` where it has none).
@@ -2066,7 +2067,8 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///     definition: a bundle holds each message's own `{type}_swift::swift_definition()` or
 ///     `{type}_kotlin::kotlin_definition()`, and the fault's from
 ///     `{service}_schema::{service}_fault_kind_swift` and
-///     `{service}_schema::{service}_fault_fields_swift`, or their `_kotlin` twins.
+///     `{service}_schema::{service}_fault_fields_swift`, or their `_kotlin` twins; the fields'
+///     definition holds the issue type's too.
 /// - For each transport asked for, `#[macro_export]` macros named
 ///   `{service}_{transport}_dispatcher!()` and `{service}_{transport}_client!()`, and for
 ///   `amqp_rpc` also `{service}_amqp_rpc_server!()`. Each takes no arguments and writes its items
