@@ -4624,6 +4624,7 @@ fn openapi_gives_every_generated_type_the_jsonschema_entry() {
         [
             ("VoidInvoiceRequest", entry),
             ("BillingServiceFaultKind", entry),
+            ("BillingServiceFaultIssue", entry),
             ("BillingServiceFaultFields", entry),
         ]
         .map(|(named, attribute)| (named.to_owned(), attribute.to_owned()))
@@ -4638,6 +4639,7 @@ fn without_openapi_no_generated_type_lists_an_entry() {
         [
             ("VoidInvoiceRequest", bare),
             ("BillingServiceFaultKind", bare),
+            ("BillingServiceFaultIssue", bare),
             ("BillingServiceFaultFields", bare),
         ]
         .map(|(named, attribute)| (named.to_owned(), attribute.to_owned()))

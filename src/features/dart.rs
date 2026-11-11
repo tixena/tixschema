@@ -2542,21 +2542,44 @@ fn first_of(json: &str, enum_name: &str, names: &[Vec<String>]) -> String {
 
 /// The read of an externally tagged enum typed `def` flattened into its holder from `first`, the
 /// object [`first_of`] answers. An optional one reads no value where that object holds no entry,
-/// and is refused where the entry does not read, as TypeScript and Zod refuse it.
+/// and where the entry does not read is refused, as TypeScript and Zod refuse it, but under a
+/// `nonstrict` holder, which reads no value there, as serde and Zod read it.
 fn first_entry_decode(def: &FieldDef, first: &str) -> String {
     if !def.is_optional() {
         return dart_decode_expr(def, first, Read::Unjudged);
     }
-    let read = dart_decode_at(def, def.array_depth, "entry", Read::Unjudged);
+    let read = held_read(&dart_decode_at(
+        def,
+        def.array_depth,
+        "entry",
+        Read::Unjudged,
+    ));
     format!("(switch ({first}) {{ final entry => entry.isEmpty ? null : {read} }})")
+}
+
+/// `read`, an expression, answering `null` where it throws.
+fn caught(read: &str) -> String {
+    format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()")
+}
+
+/// `read`, the read of a flattened `Option`'s type where a key it is looked for by is there: a
+/// read that throws refuses the payload, but under a `nonstrict` holder, whose Zod schema reads the
+/// member as absent there, as serde reads `None`.
+fn held_read(read: &str) -> String {
+    if is_nonstrict() {
+        caught(read)
+    } else {
+        read.to_owned()
+    }
 }
 
 /// The read of a member typed `def` flattened into its holder from `handed`, the object it is
 /// handed, whose type takes `taken`. An optional one that names no function reads no value where
 /// `handed` holds none of the keys it is looked for by ([`looked_for_by`]), and is refused where
-/// its type does not read, as TypeScript and Zod refuse it. Where no key is known, a map among
-/// them, it reads no value wherever its type does not read, as serde reads it. An optional one
-/// that names a function and holds no map is read by [`corrected_option`].
+/// its type does not read, as TypeScript and Zod refuse it, but under a `nonstrict` holder, which
+/// reads no value there. Where no key is known, a map among them, it reads no value wherever its
+/// type does not read, as serde reads it. An optional one that names a function and holds no map
+/// is read by [`corrected_option`].
 fn flattened_decode(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     let parameter = if let FieldDefType::TypeParam(parameter) = &def.field_type
         && def.array_depth == 0
@@ -2606,14 +2629,15 @@ fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
     if !def.is_optional() {
         return read;
     }
-    let caught = format!("(() {{ try {{ return {read}; }} catch (_) {{ return null; }} }})()");
+    let caught = caught(&read);
+    let held = held_read(&read);
     if let FieldDefType::TypeParam(parameter) = &def.field_type
         && def.array_depth == 0
         && let Some(named) = looked_up_argument(parameter)
     {
         // The keys of what fills the parameter, where a holder hands them.
         return format!(
-            "({named} == null ? {caught} : ({handed}.keys.any({named}.contains) ? {read} : null))"
+            "({named} == null ? {caught} : ({handed}.keys.any({named}.contains) ? {held} : null))"
         );
     }
     let keys = looked_for_by(def, taken);
@@ -2621,7 +2645,7 @@ fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
         return caught;
     }
     format!(
-        "({handed}.keys.any(const [{}].contains) ? {read} : null)",
+        "({handed}.keys.any(const [{}].contains) ? {held} : null)",
         listed_names(&keys)
     )
 }
@@ -2630,10 +2654,18 @@ fn flattened_read(def: &FieldDef, handed: &str, taken: &[String]) -> String {
 /// it is handed, through `functions`, as the holder's Zod schema reads it: the type it holds, read
 /// from what they answer, and where that read throws, an answer of `null` among it, no value where
 /// `handed` holds none of a struct's keys, or no key at all for a type whose keys are not known,
-/// and refused otherwise. An enum's tag stands for none of its variants' members.
+/// and refused otherwise. An enum's tag stands for none of its variants' members. Under a
+/// `nonstrict` holder it reads no value exactly where they answer `null`, and the type from any
+/// other answer, as serde reads it.
 fn corrected_option(def: &FieldDef, functions: &[FunctionName], handed: &str) -> String {
     let answer = declared("corrected");
     let read = dart_decode_at(def, def.array_depth, &answer, Read::Unjudged);
+    if is_nonstrict() {
+        return format!(
+            "switch ({}) {{ null => null, final {answer} => {read} }}",
+            corrected(functions, handed)
+        );
+    }
     let keys = struct_keys(def);
     let held = if keys.is_empty() {
         format!("{handed}.isNotEmpty")

@@ -95,7 +95,8 @@ fn an_object_id_is_read_and_written_back_by_swift_as_serde_reads_it() {
 }
 
 /// The Swift read hands a flattened `ObjectId`, and a brand and an alias over one, the entry of
-/// its `$oid` key alone, and looks for an optional one by that key in the whole object.
+/// its `$oid` key alone, and looks for an optional one by that key in the whole object, reading it
+/// as `nil` beside the `nonstrict` `Stampage` where it does not read.
 #[test]
 fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
     let kept = |stem: &str| {
@@ -133,7 +134,9 @@ fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
             stampage_swift::swift_definition(),
             format!(
                 "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: \
-                 {{ [\"$oid\"].contains($0.stringValue) }}) {{ {}",
+                 {{ [\"$oid\"].contains($0.stringValue) }}) {{ do {{ {}self.oid = try \
+                 SwiftSchemaPayload.read(ObjectId.self, from: oidPayload, at: decoder.codingPath) \
+                 }} catch {{ self.oid = nil }} }} else {{ self.oid = nil }}",
                 kept("oid")
             ),
         ),

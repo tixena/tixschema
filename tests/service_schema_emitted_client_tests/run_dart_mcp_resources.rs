@@ -159,6 +159,7 @@ const FAULT_DRIVER: &str = "
 final shelfHandlers = ShelfServiceHandlers<void>(
   getSlot: (ctx, req) async => '${req.aisle.value}/${req.slot}',
   getCount: (ctx, bin) async => '$bin',
+  getBay: (ctx, req) async => '${req.bay}/${req.level}',
   suggestSlots: (ctx, req) async => [req.typed.value],
 );
 

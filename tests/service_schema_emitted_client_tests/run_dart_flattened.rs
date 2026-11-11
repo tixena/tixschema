@@ -438,8 +438,9 @@ fn a_flattened_enum_beside_a_member_reads_in_dart_the_entry_serde_reads() {
 
 /// An optional externally tagged enum flattened beside a member of its holder's own is read as no
 /// value where no entry is under a variant's name, and from the first entry under one, as serde
-/// reads it. An entry that does not read is refused, as the Zod schema refuses it, where serde
-/// reads no value and drops the entry. The holder is written back as serde writes it back.
+/// reads it. The holder is `nonstrict`, so an entry that does not read is read as no value and
+/// dropped, as serde and the Zod schema read it. The holder is written back as serde writes it
+/// back.
 #[test]
 fn an_optional_flattened_enum_beside_a_member_reads_in_dart_no_value_where_no_entry_is() {
     let caulked = CAULKING.map(|payload| {
@@ -462,11 +463,10 @@ fn an_optional_flattened_enum_beside_a_member_reads_in_dart_no_value_where_no_en
         ],
         "serde reads no value where no entry reads"
     );
-    let mut expected = caulked[..3].iter().fold(String::new(), |mut acc, row| {
+    let expected = caulked.iter().fold(String::new(), |mut acc, row| {
         writeln!(acc, "caulking: {row}").unwrap();
         acc
     });
-    expected.push_str("caulking: refused\n");
     let Some(printed) = printed(
         "flattened-optional-beside-a-member",
         &[

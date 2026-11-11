@@ -93,7 +93,7 @@ pub fn openapi_method(service: &ServiceDef, asked: &OpenApiArguments) -> TokenSt
         "{}",
         ident_schema_module_name(&fault_fields_typescript_name(&service.ident.to_string()))
     );
-    let fault = quote! { #module::#fault_module };
+    let fault = quote! { #module::fault_fields::#fault_module };
     let mut named = Named {
         module,
         names: vec![quote! { #fault::Schema::JSON_SCHEMA_NAME }],

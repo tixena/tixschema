@@ -158,7 +158,10 @@ fn bound_filling(parameters: &[SchemaParameter]) -> proc_macro2::TokenStream {
 /// published name are told apart, and its references to itself point at a provisional key until its
 /// body settles the key: its own, or, where another body holds that key once this one is written,
 /// the key and a fingerprint of its own body. `filling` is the documents this frame's parameters
-/// were filled with, which the guard compares against and the hoisted key is built from.
+/// were filled with, which the guard compares against and the hoisted key is built from. A generic
+/// filled with a type in flight keeps a provisional key, and a body that holds a reference to
+/// another type in flight is written under its own provisional key; each keeps a record until the
+/// types it waits on settle their keys and the definition is keyed again.
 fn guarded_description(
     def_name: &str,
     rust_ident: &str,
@@ -166,9 +169,36 @@ fn guarded_description(
     filling: &proc_macro2::TokenStream,
     discriminate_by_filling: bool,
 ) -> proc_macro2::TokenStream {
-    let refusal = refilled_cycle_refusal(def_name);
+    let refusal = refilled_cycle_refusal(def_name, discriminate_by_filling);
     let key_binding = hoisted_key(def_name, discriminate_by_filling);
-    let helpers = frame_helpers();
+    let helpers = frame_helpers(discriminate_by_filling);
+    let (popped, recorded) = if discriminate_by_filling {
+        (
+            quote::quote! { let (_, filling) = in_flight.pop().unwrap_or_default(); },
+            quote::quote! {
+                if key.contains('~') {
+                    let labels = primitive_labels(&filling);
+                    recorded(hoisted_defs, &key, #def_name, IDENTITY, filling, labels);
+                }
+            },
+        )
+    } else {
+        (
+            quote::quote! { in_flight.pop(); },
+            quote::quote! {
+                if key.contains('~') {
+                    recorded(
+                        hoisted_defs,
+                        &key,
+                        #def_name,
+                        IDENTITY,
+                        ::std::vec::Vec::new(),
+                        ::std::vec::Vec::new(),
+                    );
+                }
+            },
+        )
+    };
     quote::quote! {
         const IDENTITY: &str = ::core::concat!(::core::module_path!(), "::", #rust_ident);
         #helpers
@@ -187,63 +217,50 @@ fn guarded_description(
         }
         in_flight.push((IDENTITY, filling));
         let mut described = #body;
-        in_flight.pop();
-        // Checked as the key stands now: another type of this name written during this frame
-        // keeps the key, and this body takes the fingerprint.
-        let taken = hoisted_defs.get(&key).is_some_and(|stored| {
-            !stored.is_null() && *stored != described && keyed(stored) != keyed(&described)
-        });
-        let key = if taken {
-            let canonical = serde_json::to_string(&keyed(&described)).unwrap_or_default();
-            format!("{key}.{:016x}", digest(canonical.as_bytes()))
+        #popped
+        let flying: ::std::vec::Vec<&str> = in_flight.iter().map(|(named, _)| *named).collect();
+        let key = if !key.contains('~')
+            && waits(&described, hoisted_defs, pointer_prefix, &flying, &mut ::std::vec::Vec::new())
+        {
+            provisional.clone()
         } else {
-            key
-        };
-        if hoisted_defs.contains_key(&provisional) {
-            hoisted_defs.retain(|held, _| *held != provisional);
-            let from = format!("{pointer_prefix}{provisional}");
-            let to = format!("{pointer_prefix}{key}");
-            repointed(&mut described, &from, &to);
-            for written in hoisted_defs.values_mut() {
-                repointed(written, &from, &to);
+            // Checked as the key stands now: another type of this name written during this frame
+            // keeps the key, and this body takes the fingerprint. A text under the key is the key
+            // an earlier definition there settled at, not a body.
+            let taken = hoisted_defs.get(&key).is_some_and(|stored| {
+                !stored.is_null()
+                    && !stored.is_string()
+                    && *stored != described
+                    && keyed(stored) != keyed(&described)
+            });
+            if taken {
+                let canonical = serde_json::to_string(&keyed(&described)).unwrap_or_default();
+                format!("{key}.{:016x}", digest(canonical.as_bytes()))
+            } else {
+                key
             }
-        }
+        };
         let pointer = format!("{}{key}", pointer_prefix);
-        hoisted_defs.insert(key, described);
+        let reached = key != provisional && hoisted_defs.contains_key(&provisional);
+        if reached {
+            repointed(&mut described, &format!("{pointer_prefix}{provisional}"), &pointer);
+        }
+        hoisted_defs.insert(key.clone(), described);
+        #recorded
+        if reached {
+            settled(hoisted_defs, pointer_prefix, &provisional, &key, &flying);
+        }
         serde_json::json!({ "$ref": pointer })
     }
 }
 
 /// The statements that bind `key`, what this frame's definition is hoisted under before its body
-/// is known: the published name, and for a generic type the labels and a fingerprint of its
-/// filling, read with each provisional pointer at its key.
+/// is known: the published name, and for a generic type the key `filled_key` builds from its
+/// filling.
 fn hoisted_key(def_name: &str, discriminate_by_filling: bool) -> proc_macro2::TokenStream {
     if discriminate_by_filling {
         quote::quote! {
-            let filling: ::std::vec::Vec<serde_json::Value> = filling.iter().map(keyed).collect();
-            let key = {
-                // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
-                // primitive's `"type"` keyword.
-                fn argument_label(argument: &serde_json::Value) -> ::core::option::Option<::std::string::String> {
-                    if let ::core::option::Option::Some(reference) =
-                        argument.get("$ref").and_then(serde_json::Value::as_str)
-                    {
-                        return reference.rsplit('/').next().map(str::to_string);
-                    }
-                    argument
-                        .get("type")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string)
-                }
-                let canonical = serde_json::to_string(&filling).unwrap_or_default();
-                let fingerprint = digest(canonical.as_bytes());
-                let labels: ::std::vec::Vec<::std::string::String> = filling.iter().filter_map(argument_label).collect();
-                if labels.is_empty() {
-                    format!("{}.{fingerprint:016x}", #def_name)
-                } else {
-                    format!("{}.{}-{fingerprint:016x}", #def_name, labels.join("_"))
-                }
-            };
+            let key = filled_key(#def_name, &filling, &primitive_labels(&filling));
         }
     } else {
         quote::quote! {
@@ -252,9 +269,14 @@ fn hoisted_key(def_name: &str, discriminate_by_filling: bool) -> proc_macro2::To
     }
 }
 
-/// The functions a frame reads its references through, as the tokens that declare them.
-fn frame_helpers() -> proc_macro2::TokenStream {
+/// The functions a frame reads its references through and settles its key with, as the tokens that
+/// declare them; `generic` adds the ones only a generic type's frame calls.
+fn frame_helpers(generic: bool) -> proc_macro2::TokenStream {
+    let settling = settling_helpers();
+    let filled = generic.then(filled_helpers);
     quote::quote! {
+        #settling
+        #filled
         // The FNV-1a offset basis and prime, spelled out: the internals of
         // `std::hash::Hasher` may change between compilers.
         fn digest(bytes: &[u8]) -> u64 {
@@ -287,8 +309,9 @@ fn frame_helpers() -> proc_macro2::TokenStream {
                 | serde_json::Value::String(_) => {}
             }
         }
-        // A reference to a type still in flight points at `<key>~<identity>` until that frame
-        // settles its key; bodies are compared and fingerprinted with each such pointer at `<key>`.
+        // A reference to a type still in flight, or to a definition that waits on one, points at
+        // `<key>~<identity>` or `<key>~<fingerprint>` until that type settles its key; bodies are
+        // compared and fingerprinted with each such pointer at `<key>`.
         fn keyed(schema: &serde_json::Value) -> serde_json::Value {
             match schema {
                 serde_json::Value::Array(items) => {
@@ -315,6 +338,358 @@ fn frame_helpers() -> proc_macro2::TokenStream {
                 | serde_json::Value::Number(_)
                 | serde_json::Value::String(_) => schema.clone(),
             }
+        }
+    }
+}
+
+/// The functions a frame settles its key with, as the tokens that declare them. Beside the
+/// definitions, the hoisted map holds entries no reference reaches, which `defs_settled` drops:
+/// under a provisional key whose frame or definition has settled, the key it settled at; and under
+/// `RECORDS`, the name, identity, filling and primitive labels of each definition keyed while a type
+/// it names is in flight.
+fn settling_helpers() -> proc_macro2::TokenStream {
+    let keying = filled_keying();
+    let relocated = relocation();
+    let waiting = waiting_helpers();
+    let rekeying = record_rekeying();
+    quote::quote! {
+        const RECORDS: &str = "~";
+        #keying
+        #relocated
+        #waiting
+        #rekeying
+        // Points every reference at `provisional` to `key`, then keys again each recorded
+        // definition that held a pointer just moved, until none is left to key.
+        fn settled(
+            defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+            provisional: &str,
+            key: &str,
+            flying: &[&str],
+        ) {
+            defs.insert(provisional.to_string(), serde_json::Value::String(key.to_string()));
+            let mut pending = match defs.get_mut(RECORDS) {
+                ::core::option::Option::Some(serde_json::Value::Array(records)) => ::core::mem::take(records),
+                _ => ::std::vec::Vec::new(),
+            };
+            defs.retain(|held, _| held != RECORDS);
+            let mut queue = ::std::vec::Vec::new();
+            moved(defs, &mut pending, &mut queue, &format!("{prefix}{provisional}"), &format!("{prefix}{key}"));
+            while !queue.is_empty() {
+                let mut record = queue.remove(0);
+                let ::core::option::Option::Some(held) = record["key"].as_str().map(str::to_string) else {
+                    continue;
+                };
+                let rekeyed = rekeyed(defs, prefix, &record, flying);
+                if rekeyed != held {
+                    let body = defs.get(&held).cloned().unwrap_or(serde_json::Value::Null);
+                    relocated(defs, &held, &rekeyed, &body);
+                    for written in defs.values_mut() {
+                        if written.as_str() == ::core::option::Option::Some(held.as_str()) {
+                            *written = serde_json::Value::String(rekeyed.clone());
+                        }
+                    }
+                    defs.insert(held.clone(), serde_json::Value::String(rekeyed.clone()));
+                    moved(defs, &mut pending, &mut queue, &format!("{prefix}{held}"), &format!("{prefix}{rekeyed}"));
+                }
+                if rekeyed.contains('~') {
+                    record["key"] = serde_json::Value::String(rekeyed);
+                    pending.push(record);
+                }
+            }
+            if !pending.is_empty() {
+                defs.insert(RECORDS.to_string(), serde_json::Value::Array(pending));
+            }
+        }
+        fn recorded(
+            defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            key: &str,
+            name: &str,
+            identity: &str,
+            filling: ::std::vec::Vec<serde_json::Value>,
+            labels: ::std::vec::Vec<::core::option::Option<::std::string::String>>,
+        ) {
+            let record = serde_json::json!({
+                "filling": filling,
+                "identity": identity,
+                "key": key,
+                "labels": labels,
+                "name": name,
+            });
+            if let ::core::option::Option::Some(serde_json::Value::Array(records)) = defs.get_mut(RECORDS) {
+                records.push(record);
+            } else {
+                defs.insert(RECORDS.to_string(), serde_json::Value::Array(vec![record]));
+            }
+        }
+    }
+}
+
+/// The functions that say what a definition waits on, as the tokens that declare them: `waits`
+/// says whether a schema reaches the provisional key of a type in `flying`, the types in flight
+/// around the frame, directly or through a definition keyed provisionally, `seen` holding the keys
+/// already read; `holds` whether it holds a reference to `pointer`; and `moved` points every
+/// reference at `from` to `to` and queues each pending record whose filling or body held it.
+fn waiting_helpers() -> proc_macro2::TokenStream {
+    quote::quote! {
+        fn waits(
+            schema: &serde_json::Value,
+            defs: &serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+            flying: &[&str],
+            seen: &mut ::std::vec::Vec<::std::string::String>,
+        ) -> bool {
+            match schema {
+                serde_json::Value::Array(items) => {
+                    items.iter().any(|item| waits(item, defs, prefix, flying, seen))
+                }
+                serde_json::Value::Object(members) => members.iter().any(|(keyword, held)| {
+                    if keyword != "$ref" {
+                        return waits(held, defs, prefix, flying, seen);
+                    }
+                    let ::core::option::Option::Some(key) = held
+                        .as_str()
+                        .and_then(|pointer| pointer.strip_prefix(prefix))
+                        .filter(|key| key.contains('~'))
+                    else {
+                        return false;
+                    };
+                    if flying.iter().any(|identity| {
+                        key.strip_suffix(identity).is_some_and(|head| head.ends_with('~'))
+                    }) {
+                        return true;
+                    }
+                    if seen.iter().any(|visited| visited == key) {
+                        return false;
+                    }
+                    seen.push(key.to_string());
+                    defs.get(key).is_some_and(|body| waits(body, defs, prefix, flying, seen))
+                }),
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => false,
+            }
+        }
+        fn holds(schema: &serde_json::Value, pointer: &str) -> bool {
+            match schema {
+                serde_json::Value::Array(items) => items.iter().any(|item| holds(item, pointer)),
+                serde_json::Value::Object(members) => members.iter().any(|(keyword, held)| {
+                    if keyword == "$ref" {
+                        held.as_str() == ::core::option::Option::Some(pointer)
+                    } else {
+                        holds(held, pointer)
+                    }
+                }),
+                serde_json::Value::Null
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::String(_) => false,
+            }
+        }
+        fn moved(
+            defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            pending: &mut ::std::vec::Vec<serde_json::Value>,
+            queue: &mut ::std::vec::Vec<serde_json::Value>,
+            from: &str,
+            to: &str,
+        ) {
+            for record in ::core::mem::take(pending) {
+                let body = record["key"].as_str().and_then(|held| defs.get(held));
+                if holds(&record["filling"], from) || body.is_some_and(|body| holds(body, from)) {
+                    queue.push(record);
+                } else {
+                    pending.push(record);
+                }
+            }
+            for written in defs.values_mut() {
+                repointed(written, from, to);
+            }
+            for record in pending.iter_mut().chain(queue.iter_mut()) {
+                repointed(&mut record["filling"], from, to);
+            }
+        }
+    }
+}
+
+/// The function that keys a recorded definition again, as the tokens that declare it:
+/// `rekeyed(defs, prefix, record, flying)` answers the key its filling gives it, which holds `~`
+/// while the filling names a type in flight; while its body still waits on a type in `flying`, that
+/// key, `~` and its identity; and otherwise the key or, where another body holds it, the key and a
+/// fingerprint.
+fn record_rekeying() -> proc_macro2::TokenStream {
+    quote::quote! {
+        fn rekeyed(
+            defs: &serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+            record: &serde_json::Value,
+            flying: &[&str],
+        ) -> ::std::string::String {
+            let (
+                ::core::option::Option::Some(held),
+                ::core::option::Option::Some(name),
+                ::core::option::Option::Some(identity),
+                ::core::option::Option::Some(filling),
+            ) = (
+                record["key"].as_str(),
+                record["name"].as_str(),
+                record["identity"].as_str(),
+                record["filling"].as_array(),
+            )
+            else {
+                return record["key"].as_str().unwrap_or_default().to_string();
+            };
+            let labels: ::std::vec::Vec<::core::option::Option<::std::string::String>> = record["labels"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|label| label.as_str().map(str::to_string))
+                .collect();
+            // A type that declares no parameter is recorded with no filling.
+            let key = if filling.is_empty() {
+                name.to_string()
+            } else {
+                filled_key(name, filling, &labels)
+            };
+            if key.contains('~') {
+                return key;
+            }
+            let body = defs.get(held).cloned().unwrap_or(serde_json::Value::Null);
+            if waits(&body, defs, prefix, flying, &mut vec![held.to_string()]) {
+                return format!("{key}~{identity}");
+            }
+            let taken = defs.get(&key).is_some_and(|stored| {
+                !stored.is_null() && !stored.is_string() && *stored != body && keyed(stored) != keyed(&body)
+            });
+            if taken {
+                let canonical = serde_json::to_string(&keyed(&body)).unwrap_or_default();
+                format!("{key}.{:016x}", digest(canonical.as_bytes()))
+            } else {
+                key
+            }
+        }
+    }
+}
+
+/// The function a generic type's key is built from its filling with, as the tokens that declare
+/// it: `filled_key(name, filling, primitive_labels)` writes the published name, the labels and a
+/// fingerprint of the filling read with each provisional pointer at its key, and, while a pointer is
+/// still provisional, `~` and a fingerprint of the filling as it is. An argument that is a
+/// reference is labelled by the key it points at, and any other by the label `primitive_labels`
+/// holds at its position.
+fn filled_keying() -> proc_macro2::TokenStream {
+    quote::quote! {
+        fn filled_key(
+            name: &str,
+            filling: &[serde_json::Value],
+            primitive_labels: &[::core::option::Option<::std::string::String>],
+        ) -> ::std::string::String {
+            let read: ::std::vec::Vec<serde_json::Value> = filling.iter().map(keyed).collect();
+            let canonical = serde_json::to_string(&read).unwrap_or_default();
+            let fingerprint = digest(canonical.as_bytes());
+            // An argument's own recognizable name: another hoisted key (off its `$ref`), or a
+            // primitive's label.
+            let labels: ::std::vec::Vec<::std::string::String> = read
+                .iter()
+                .zip(primitive_labels)
+                .filter_map(|(argument, primitive)| {
+                    argument.get("$ref").and_then(serde_json::Value::as_str).map_or_else(
+                        || primitive.clone(),
+                        |reference| reference.rsplit('/').next().map(str::to_string),
+                    )
+                })
+                .collect();
+            let key = if labels.is_empty() {
+                format!("{name}.{fingerprint:016x}")
+            } else {
+                format!("{name}.{}-{fingerprint:016x}", labels.join("_"))
+            };
+            if read.as_slice() == filling {
+                return key;
+            }
+            let held = serde_json::to_string(filling).unwrap_or_default();
+            format!("{key}~{:016x}", digest(held.as_bytes()))
+        }
+    }
+}
+
+/// The function that moves a definition to another key, as the tokens that declare it:
+/// `relocated(defs, held, key, body)` writes `body` where `held` stood, or over `key` where `key`
+/// already stands, so every other definition keeps its place.
+fn relocation() -> proc_macro2::TokenStream {
+    quote::quote! {
+        fn relocated(
+            defs: &mut serde_json::Map<::std::string::String, serde_json::Value>,
+            held: &str,
+            key: &str,
+            body: &serde_json::Value,
+        ) {
+            let standing = defs.contains_key(key);
+            for (written_at, written) in ::core::mem::take(defs) {
+                if written_at == held {
+                    if !standing {
+                        defs.insert(key.to_string(), body.clone());
+                    }
+                } else if written_at == key {
+                    defs.insert(written_at, body.clone());
+                } else {
+                    defs.insert(written_at, written);
+                }
+            }
+        }
+    }
+}
+
+/// The two functions only a generic type's frame calls, as the tokens that declare them:
+/// `primitive_labels` reads the `"type"` keyword of each argument, which labels one that is no
+/// reference, and `identified` reads each pointer at a type that settled before in this document at
+/// the key it settled at, so two fillings are compared by the types they name.
+fn filled_helpers() -> proc_macro2::TokenStream {
+    quote::quote! {
+        fn primitive_labels(
+            filling: &[serde_json::Value],
+        ) -> ::std::vec::Vec<::core::option::Option<::std::string::String>> {
+            filling
+                .iter()
+                .map(|argument| argument.get("type").and_then(serde_json::Value::as_str).map(str::to_string))
+                .collect()
+        }
+        fn identified(
+            filling: &[serde_json::Value],
+            defs: &serde_json::Map<::std::string::String, serde_json::Value>,
+            prefix: &str,
+        ) -> ::std::vec::Vec<serde_json::Value> {
+            fn read(
+                schema: &serde_json::Value,
+                defs: &serde_json::Map<::std::string::String, serde_json::Value>,
+                prefix: &str,
+            ) -> serde_json::Value {
+                match schema {
+                    serde_json::Value::Array(items) => serde_json::Value::Array(
+                        items.iter().map(|item| read(item, defs, prefix)).collect(),
+                    ),
+                    serde_json::Value::Object(members) => serde_json::Value::Object(
+                        members
+                            .iter()
+                            .map(|(keyword, held)| {
+                                let marked = held
+                                    .as_str()
+                                    .filter(|_| keyword == "$ref")
+                                    .and_then(|pointer| pointer.strip_prefix(prefix))
+                                    .and_then(|key| defs.get(key))
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(|key| serde_json::Value::String(format!("{prefix}{key}")));
+                                (keyword.clone(), marked.unwrap_or_else(|| read(held, defs, prefix)))
+                            })
+                            .collect(),
+                    ),
+                    serde_json::Value::Null
+                    | serde_json::Value::Bool(_)
+                    | serde_json::Value::Number(_)
+                    | serde_json::Value::String(_) => schema.clone(),
+                }
+            }
+            filling.iter().map(|argument| read(argument, defs, prefix)).collect()
         }
     }
 }
@@ -486,8 +861,9 @@ fn reference_walkers() -> proc_macro2::TokenStream {
 }
 
 /// How a reference coming back around to a name at another filling refuses, as the tokens the
-/// guard raises it with.
-fn refilled_cycle_refusal(def_name: &str) -> proc_macro2::TokenStream {
+/// guard raises it with. A generic type's fillings are compared by the types they name, and one
+/// that names the same types points at the frame in flight, keyed off that frame's own filling.
+fn refilled_cycle_refusal(def_name: &str, generic: bool) -> proc_macro2::TokenStream {
     let message = format!(
         "`{def_name}`: a reference closes a cycle at a filling the document is not being written \
          at — in flight at {{}}, and this reference names {{}}; a document holds one definition per \
@@ -495,11 +871,26 @@ fn refilled_cycle_refusal(def_name: &str) -> proc_macro2::TokenStream {
          filling already in flight, or key the definitions by name and filling so each filling gets \
          a definition of its own."
     );
+    if !generic {
+        return quote::quote! {
+            if *in_flight_filling != filling {
+                panic!(
+                    #message,
+                    serde_json::Value::Array(in_flight_filling.clone()),
+                    serde_json::Value::Array(filling),
+                );
+            }
+        };
+    }
     quote::quote! {
-        if *in_flight_filling != filling {
+        let key = filled_key(#def_name, in_flight_filling, &primitive_labels(in_flight_filling));
+        let provisional = format!("{key}~{IDENTITY}");
+        let in_flight_filling = identified(in_flight_filling, hoisted_defs, pointer_prefix);
+        let filling = identified(&filling, hoisted_defs, pointer_prefix);
+        if in_flight_filling != filling {
             panic!(
                 #message,
-                serde_json::Value::Array(in_flight_filling.clone()),
+                serde_json::Value::Array(in_flight_filling),
                 serde_json::Value::Array(filling),
             );
         }

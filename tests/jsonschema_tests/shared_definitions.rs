@@ -56,12 +56,121 @@ pub mod chains {
     }
 }
 
+/// A probe that lists boxed probes of its own kind: published under the same name as a sensor's,
+/// and holding one.
+pub mod looped {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::{Boxed, boxed_schema, sensors};
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Probe {
+        pub held: sensors::Probe,
+        pub kids: Vec<Boxed<Self>>,
+    }
+}
+
+/// A probe that lists kits of its own kind, where a kit also lists probes of this kind.
+pub mod kits {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::{Kit, kit_schema};
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Probe {
+        pub kits: Vec<Kit<Self>>,
+    }
+}
+
+/// A holder of a sensor's probe.
+pub mod first {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::sensors;
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Holder {
+        pub p: sensors::Probe,
+    }
+}
+
+/// A holder of a ring's probe: published under the same name as the first holder.
+pub mod second {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::ring;
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Holder {
+        pub p: Box<ring::Probe>,
+    }
+}
+
+/// A probe that lists holders of probes of its own kind: published under the same name as a
+/// sensor's, and holding one.
+pub mod ring {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::{second, sensors};
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Probe {
+        pub back: Vec<second::Holder>,
+        pub held: sensors::Probe,
+    }
+}
+
 use jsonschema::draft202012;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
 const DEFS: &str = "#/$defs/";
+
+#[model_schema(default_types(Item = f64), enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Boxed<Item> {
+    pub item: Item,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EdgeHolder {
+    pub a: Boxed<sensors::Probe>,
+    pub b: looped::Probe,
+    pub c: Boxed<sensors::Probe>,
+}
+
+#[model_schema(default_types(Item = f64), enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Kit<Item> {
+    pub item: Item,
+    pub spares: Vec<kits::Probe>,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KitShelf {
+    pub kit: Kit<sensors::Probe>,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HolderShelf {
+    pub a: first::Holder,
+    pub b: ring::Probe,
+    pub c: first::Holder,
+}
 
 /// A probe as a survey holds it: published under the same name as a sensor's, and holding one.
 #[model_schema(enable = ["jsonschema"])]
@@ -442,5 +551,159 @@ fn a_recursive_type_holding_another_type_of_its_name_reaches_its_own_definition(
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");
     written["next"]["held"] = written["next"].clone();
+    assert!(!validator.is_valid(&written));
+}
+
+#[test]
+fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
+    let document = EdgeHolder::json_schema();
+    let reference = |key: &str| json!({ "$ref": format!("{DEFS}{key}") });
+    let object = |properties: Value, required: Value| {
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": properties,
+            "required": required,
+        })
+    };
+    assert_eq!(
+        document,
+        json!({
+            "$defs": {
+                "Probe": sensors::Probe::json_schema(),
+                "Boxed.Probe-8bdfe637c7ee7e45": object(
+                    json!({ "item": reference("Probe") }),
+                    json!(["item"]),
+                ),
+                "Probe.a65e37656a751467": object(
+                    json!({
+                        "held": reference("Probe"),
+                        "kids": {
+                            "type": "array",
+                            "items": object(
+                                json!({ "item": reference("Probe.a65e37656a751467") }),
+                                json!(["item"]),
+                            ),
+                        },
+                    }),
+                    json!(["held", "kids"]),
+                ),
+            },
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "a": reference("Boxed.Probe-8bdfe637c7ee7e45"),
+                "b": reference("Probe.a65e37656a751467"),
+                "c": reference("Boxed.Probe-8bdfe637c7ee7e45"),
+            },
+            "required": ["a", "b", "c"],
+        })
+    );
+    assert_valid_and_resolved(&document);
+
+    let validator = draft202012::new(&document).unwrap();
+    let mut written = serde_json::to_value(EdgeHolder {
+        a: Boxed {
+            item: sensors::Probe { depth: 1 },
+        },
+        b: looped::Probe {
+            held: sensors::Probe { depth: 2 },
+            kids: vec![Boxed {
+                item: looped::Probe {
+                    held: sensors::Probe { depth: 3 },
+                    kids: Vec::new(),
+                },
+            }],
+        },
+        c: Boxed {
+            item: sensors::Probe { depth: 4 },
+        },
+    })
+    .unwrap();
+    assert!(validator.is_valid(&written), "{written:#}");
+    let looped_probe = written["b"]["kids"][0]["item"].clone();
+    let sensor_probe = written["a"]["item"].clone();
+    written["b"]["kids"][0]["item"] = sensor_probe;
+    assert!(!validator.is_valid(&written));
+    written["b"]["kids"][0]["item"] = looped_probe.clone();
+    written["a"]["item"] = looped_probe;
+    assert!(!validator.is_valid(&written));
+}
+
+#[test]
+#[should_panic(
+    expected = "`Kit`: a reference closes a cycle at a filling the document is not being \
+                written at — in flight at [{\"$ref\":\"#/$defs/Probe\"}], and this reference \
+                names [{\"$ref\":\"#/$defs/Probe~"
+)]
+fn a_cycle_reaching_a_generic_filled_with_another_type_of_its_filling_name_is_refused() {
+    KitShelf::json_schema();
+}
+
+#[test]
+fn a_type_holding_a_type_in_flight_leaves_the_other_type_of_its_name_its_definition() {
+    let document = HolderShelf::json_schema();
+    let reference = |key: &str| json!({ "$ref": format!("{DEFS}{key}") });
+    let object = |properties: Value, required: Value| {
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": properties,
+            "required": required,
+        })
+    };
+    assert_eq!(
+        document,
+        json!({
+            "$defs": {
+                "Probe": sensors::Probe::json_schema(),
+                "Holder": object(json!({ "p": reference("Probe") }), json!(["p"])),
+                "Probe.def681e2d5c117d0": object(
+                    json!({
+                        "back": {
+                            "type": "array",
+                            "items": object(
+                                json!({ "p": reference("Probe.def681e2d5c117d0") }),
+                                json!(["p"]),
+                            ),
+                        },
+                        "held": reference("Probe"),
+                    }),
+                    json!(["back", "held"]),
+                ),
+            },
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "a": reference("Holder"),
+                "b": reference("Probe.def681e2d5c117d0"),
+                "c": reference("Holder"),
+            },
+            "required": ["a", "b", "c"],
+        })
+    );
+    assert_valid_and_resolved(&document);
+
+    let validator = draft202012::new(&document).unwrap();
+    let mut written = serde_json::to_value(HolderShelf {
+        a: first::Holder {
+            p: sensors::Probe { depth: 1 },
+        },
+        b: ring::Probe {
+            back: vec![second::Holder {
+                p: Box::new(ring::Probe {
+                    back: Vec::new(),
+                    held: sensors::Probe { depth: 3 },
+                }),
+            }],
+            held: sensors::Probe { depth: 2 },
+        },
+        c: first::Holder {
+            p: sensors::Probe { depth: 4 },
+        },
+    })
+    .unwrap();
+    assert!(validator.is_valid(&written), "{written:#}");
+    written["a"] = written["b"]["back"][0].clone();
     assert!(!validator.is_valid(&written));
 }

@@ -64,7 +64,9 @@ use crate::service_schema::support::exhaustiveness;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use crate::service_schema::support::message_wire_key_ident;
 #[cfg(any(feature = "typescript", feature = "dart"))]
-use crate::service_schema::support::{fault_fields_typescript_name, module_ident};
+use crate::service_schema::support::{
+    fault_fields_typescript_name, fault_issue_name, module_ident,
+};
 use crate::service_schema::transport::OpenApiArguments;
 use crate::service_schema::transport::http_rest::openapi::openapi_method;
 use proc_macro2::TokenStream;
@@ -358,7 +360,9 @@ fn published(service: &ServiceDef) -> Vec<TokenStream> {
         fault_fields_typescript_name(&service.ident.to_string())
     );
     let kind = format_ident!("{}FaultKind", service.ident);
+    let issue = format_ident!("{}", fault_issue_name(&service.ident.to_string()));
     collected.push(quote! { #module::#kind::ts_definition() });
+    collected.push(quote! { #module::#issue::ts_definition() });
     collected.push(quote! { #module::#fields::ts_definition() });
     collected.extend(
         fault::emit(service)
@@ -390,7 +394,12 @@ fn dart_published(service: &ServiceDef) -> Vec<TokenStream> {
     let fields_dart = dart_module_ident(&fields, service.ident.span());
     let kind = format!("{}FaultKind", service.ident);
     let kind_dart = dart_module_ident(&kind, service.ident.span());
+    let issue_dart = dart_module_ident(
+        &fault_issue_name(&service.ident.to_string()),
+        service.ident.span(),
+    );
     collected.push(quote! { #module::#kind_dart::dart_definition() });
+    collected.push(quote! { #module::#issue_dart::dart_definition() });
     collected.push(quote! { #module::#fields_dart::dart_definition() });
     collected.extend(
         dart_result::emit(service)

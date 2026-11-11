@@ -1348,7 +1348,7 @@ fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
          /// own safety check, before the transport is ever reached.\n\
          func {fn_prefix}HttpOutboundFault(_ operation: String, _ field: String, _ detail: \
          String) -> {fields} {{\n  \
-         {fields}(detail: detail, field: field, kind: {kind}.failedValidation, operation: \
+         {fields}(detail: detail, field: field, issues: nil, kind: {kind}.failedValidation, operation: \
          operation)\n\
          }}"
     )
@@ -1457,7 +1457,7 @@ fn transport_failure_fn(named: &str, fn_prefix: &str) -> String {
         "/// The fault a `{named}` HTTP client answers with when the transport could not carry a\n\
          /// call: the request never went out, or the response never came back.\n\
          func {fn_prefix}TransportFailure(_ operation: String, _ detail: String) -> {fields} {{\n  \
-         {fields}(detail: detail, field: nil, kind: {kind}.transportFailure, operation: operation)\n\
+         {fields}(detail: detail, field: nil, issues: nil, kind: {kind}.transportFailure, operation: operation)\n\
          }}"
     )
 }
@@ -1470,7 +1470,7 @@ fn undeserializable_payload_fn(named: &str, fn_prefix: &str) -> String {
          /// answer its status promised: a body that will not decode, a declared header that\n\
          /// never arrived, or a status this client did not expect.\n\
          func {fn_prefix}UndeserializablePayload(_ operation: String, _ detail: String) -> {fields} {{\n  \
-         {fields}(detail: detail, field: nil, kind: {kind}.undeserializablePayload, operation: operation)\n\
+         {fields}(detail: detail, field: nil, issues: nil, kind: {kind}.undeserializablePayload, operation: operation)\n\
          }}"
     )
 }

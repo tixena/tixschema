@@ -753,9 +753,10 @@ mod flattened_models;
 
 /// An optional flattened member whose type the Kotlin emitter recorded no keys for: a struct
 /// declared below its holder with a flattened member of its own, and an enum under each tagging
-/// but serde's own.
+/// but serde's own, read by the Kotlin run, and beside a `nonstrict` holder by the Swift and the
+/// Dart run.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 #[path = "kotlin_tests/unrecorded_options_models.rs"]
 mod unrecorded_options_models;
 

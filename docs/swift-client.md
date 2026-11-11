@@ -465,10 +465,19 @@ change to the emitter has to keep.
   tries the type over the function's answer first, and its branch without the type takes an
   object of no key beyond its holder's own, so serde's refusal of `{"note":"n"}` and its `None`
   for a function that answers `null` are not followed, as the Kotlin read does not follow them.
-  `corrected_field` writes it, handed the keys as `absent`.
-  `tests/swift_tests/flattened_options.rs` pins the text of `Veering` and of `Reeved`, `Wormed`
-  and `Moused` of `tests/kotlin_tests/corrected_options_models.rs`, and
-  `run_swift_flattened_options.rs` holds the Swift read of each payload of `CORRECTED` to Zod's.
+  `corrected_field` writes it, handed the keys as `absent`. Under a `nonstrict` holder,
+  `preprocess::optional` binds the object handed under `{stem}HandedPayload`, the functions'
+  answer under `{stem}Payload`, and assigns `nil` where that answer is `NSNull` and the type read
+  from it otherwise, as serde and the holder's Zod schema read it. A flattened member that names a
+  function beside a `nonstrict` holder is read with `preprocess::Member::refusing`, through
+  `SwiftSchemaPayload.readRefusing` (`REFUSING`, which `payload_for` adds to the payload helper
+  only where it is called), a read with no `swiftSchemaFlat`, so its type refuses a key it does not
+  declare, as serde refuses it; `flattened_option` and
+  `preprocess::entry` read a type whose keys are there inside `do`/`catch`, `nil` where it throws.
+  `tests/swift_tests/flattened_options.rs` pins the text of `Veering` and of `Reeved`, `Wormed`,
+  `Moused`, `Served` and `Marled` of `tests/kotlin_tests/corrected_options_models.rs`, and
+  `run_swift_flattened_options.rs` holds the Swift read of each payload of `CORRECTED` and
+  `OPEN_CORRECTED` to Zod's.
 - **A flattened externally tagged enum under a member's function reads a unit variant's entry
   over `null`**, as the Zod schema of its holder reads it and serde writes it. `corrected_field`
   hands `preprocess::Member::units` the enum's unit variants (`units_of`, from the entries

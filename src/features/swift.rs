@@ -410,6 +410,7 @@ impl VariantPayload {
                     keys: from.keys,
                     plain: preprocess::Plain::Declared,
                     real_type: held,
+                    refusing: false,
                     stem: from.stem,
                     units: &self.beside.units,
                     walked: self.walked.is_some(),
@@ -1554,6 +1555,7 @@ fn tuple_shape(elements: &[FieldDef], name_hint: &str, aux: &mut Vec<String>) ->
                         keys: "",
                         plain: preprocess::Plain::Declared,
                         real_type: &element_type,
+                        refusing: false,
                         stem: &stem,
                         units: &[],
                         walked,
@@ -2429,6 +2431,7 @@ fn flattened_enum(
             keys: "CodingKeys",
             plain: preprocess::Plain::Declared,
             real_type,
+            refusing: false,
             stem: swift_bare(&field.swift_name),
             units: &[],
             walked: validate::walks(&def),
@@ -2486,7 +2489,8 @@ fn tag_keys(tag_attrs: &EnumTagAttrs, preprocess: &[FunctionName]) -> Vec<String
 /// or the tag and the content key of an enum under a tag key, and the type otherwise, read as a
 /// flattened member of that type is, a read that throws refusing the payload. A type parameter is
 /// tested by the keys of the type that fills it, where they are known as it is read. A type whose
-/// keys are not known is read as `nil` wherever its read throws.
+/// keys are not known is read as `nil` wherever its read throws, and so is every type under a
+/// `nonstrict` holder where one of its keys is there, as its Zod schema and serde read it.
 fn flattened_option(
     field: &SwiftField,
     source: &read::Source,
@@ -2499,6 +2503,7 @@ fn flattened_option(
     let read = present_statement(&held, source, withheld, false, container, locals, twins);
     let absent = format!("self.{} = nil", field.swift_name);
     let caught = format!("do {{ {read} }} catch {{ {absent} }}");
+    let where_held = if is_nonstrict() { &caught } else { &read };
     // A type read from its own keys alone is looked for in the whole object it is read from.
     let without = if withheld
         && !preprocess::reads_the_whole(&field.field_def)
@@ -2512,7 +2517,7 @@ fn flattened_option(
     if let Some(filled) = preprocess::filled_keys(&held.field_def, &held.real_type) {
         let standing = format!("{}Standing", swift_bare(&field.swift_name));
         return format!(
-            "let {standing}: [String]? = {filled}; if let {standing} {{ if {} {{ {read} }} else \
+            "let {standing}: [String]? = {filled}; if let {standing} {{ if {} {{ {where_held} }} else \
              {{ {absent} }} }} else {{ {caught} }}",
             preprocess::holds_one_listed(&standing, without)
         );
@@ -2522,7 +2527,7 @@ fn flattened_option(
         return caught;
     }
     format!(
-        "if {} {{ {read} }} else {{ {absent} }}",
+        "if {} {{ {where_held} }} else {{ {absent} }}",
         preprocess::holds_one_of(&keys, without)
     )
 }
@@ -2553,7 +2558,9 @@ fn flattened_under_option(field: &SwiftField) -> SwiftField {
 /// and holds no map, as its holder's Zod schema reads it: the type it holds, read from what the
 /// functions answer, and where that read throws, `nil` where the object they are handed holds none
 /// of a struct's keys, or no key at all for a type whose keys are not known, and refused otherwise.
-/// An enum's tag stands for none of its variants' members, so its keys are not known.
+/// An enum's tag stands for none of its variants' members, so its keys are not known. Under a
+/// `nonstrict` holder it is `nil` exactly where the functions answer `null`
+/// ([`preprocess::optional`]).
 fn corrected_option(
     field: &SwiftField,
     functions: &[FunctionName],
@@ -2651,6 +2658,7 @@ fn default_statement(field: &SwiftField, at: &str, path: &str, twins: &mut Vec<S
             keys: "CodingKeys",
             plain,
             real_type: &field.real_type,
+            refusing: false,
             stem: &stem,
             units: &[],
             walked: validate::walks(&field.field_def),
@@ -2690,6 +2698,7 @@ fn corrected_field(
         keys: "CodingKeys",
         plain,
         real_type: &field.real_type,
+        refusing: field.flatten && is_nonstrict() && !functions.is_empty(),
         stem: swift_bare(&field.swift_name),
         units: &units,
         walked,
@@ -3928,6 +3937,7 @@ fn lone_slot_read(
                 keys: "",
                 plain: preprocess::Plain::Declared,
                 real_type,
+                refusing: false,
                 stem: "value",
                 units: &[],
                 walked,

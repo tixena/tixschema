@@ -289,7 +289,7 @@ fn transport_failure_helper(named: &str, prefix: &str) -> String {
          it:\n\
          /// the frame never went out, or the reply never came back before the socket closed.\n\
          func {prefix}WsTransportFailure(_ operation: String, _ detail: String) -> {fault} {{\n  \
-         {fault}(detail: detail, field: nil, kind: .transportFailure, operation: operation)\n\
+         {fault}(detail: detail, field: nil, issues: nil, kind: .transportFailure, operation: operation)\n\
          }}"
     )
 }
@@ -302,7 +302,7 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          /// own declared success or error, or when a payload will not become the wire shape \
          going out.\n\
          func {prefix}WsFailedValidation(_ operation: String, _ detail: String) -> {fault} {{\n  \
-         {fault}(detail: detail, field: nil, kind: .failedValidation, operation: operation)\n\
+         {fault}(detail: detail, field: nil, issues: nil, kind: .failedValidation, operation: operation)\n\
          }}"
     )
 }

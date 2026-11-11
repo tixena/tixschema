@@ -373,7 +373,7 @@ export async function usage() {
     const found: number = version.value.version;
     return found;
   }
-  if ("isServiceFault" in version.error) return version.error.fault.kind;
+  if ("isServiceFault" in version.error) return version.error.fault.issues?.[0]?.field ?? version.error.fault.kind;
   return version.error.errorCode;
 }
 "#;
@@ -383,6 +383,13 @@ const CLIENT_DRIVER: &str = r#"
 const answerOf = (result) => JSON.stringify({ jsonrpc: "2.0", id: 1, result: { resultType: "complete", ...result } });
 const text = (value) => ({ type: "text", text: JSON.stringify(value) });
 const fault = { detail: "the handler came apart", kind: "handler-panic", operation: "get-version" };
+const listing = {
+  detail: "'document_id': too short; 'reader': unknown",
+  field: "document_id",
+  issues: [{ detail: "too short", field: "document_id" }, { detail: "unknown", field: "reader" }],
+  kind: "failed-validation",
+  operation: "get-version",
+};
 
 async function main() {
   const seen = [];
@@ -401,6 +408,7 @@ async function main() {
   const version = () => client.getVersion({ document_id: "doc-1" });
   await ask("success", () => answerOf({ content: [text({ version: 7 })], isError: false, structuredContent: { version: 7 } }), version);
   await ask("faultInText", () => answerOf({ content: [text({ fault, isServiceFault: true })], isError: true }), version);
+  await ask("faultListing", () => answerOf({ content: [text({ fault: listing, isServiceFault: true })], isError: true }), version);
   await ask("declared", () => answerOf({ content: [text({ errorCode: "not-found" })], isError: true }), version);
   await ask("faultInError", () => JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "get-version: the handler came apart", data: { fault, isServiceFault: true } } }), version);
   await ask("otherError", () => JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32601, message: "Method not found: tools/call" } }), version);
@@ -1498,6 +1506,19 @@ fn the_client_reads_each_outcome_and_sends_what_the_server_reads() {
         outcomes["faultInText"],
         json!({ "ok": false, "error": { "isServiceFault": true, "fault": {
             "detail": "the handler came apart", "kind": "handler-panic", "operation": "get-version",
+        } } })
+    );
+    assert_eq!(
+        outcomes["faultListing"],
+        json!({ "ok": false, "error": { "isServiceFault": true, "fault": {
+            "detail": "'document_id': too short; 'reader': unknown",
+            "field": "document_id",
+            "issues": [
+                { "detail": "too short", "field": "document_id" },
+                { "detail": "unknown", "field": "reader" },
+            ],
+            "kind": "failed-validation",
+            "operation": "get-version",
         } } })
     );
     assert_eq!(outcomes["declared"], not_found);

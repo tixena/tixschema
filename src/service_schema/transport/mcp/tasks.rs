@@ -83,7 +83,7 @@ fn call_block(
     let reader = message_reader_ident(target);
     let validator = message_validator_ident(target);
     let call = call_arguments(target);
-    let reading = super::resources::reading(target, module, source, &reader, &validator);
+    let reading = super::resources::reading(target, module, source, &reader, &validator, None);
     quote! {
         #reading
         match caught(move || svc.#method(ctx #(, #call)*)).await {

@@ -463,7 +463,8 @@ pub fn observed(matches: Match, answered: &str) -> String {
     }
 }
 
-/// An answer whose tool execution error carries a fault, with the fault's `detail` left out.
+/// An answer whose tool execution error carries a fault, with the fault's `detail` left out, and
+/// that of the first problem it lists, which is the same words.
 fn without_detail(answer: &Value) -> Value {
     let mut stripped = answer.clone();
     let Some(text) = stripped["result"]["content"][0]["text"].as_str() else {
@@ -471,6 +472,9 @@ fn without_detail(answer: &Value) -> Value {
     };
     let mut carried: Value = serde_json::from_str(text).unwrap();
     carried["fault"].as_object_mut().unwrap().remove("detail");
+    if let Some(first) = carried["fault"]["issues"].get_mut(0) {
+        first.as_object_mut().unwrap().remove("detail");
+    }
     stripped["result"]["content"][0]["text"] = Value::String(carried.to_string());
     stripped
 }

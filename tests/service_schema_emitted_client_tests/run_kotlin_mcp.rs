@@ -673,7 +673,8 @@ suspend fun clientReport(input: JsonObject): JsonObject {
                 client.touchDocument(TouchDocumentRequest("doc-1", "reviewer-7"))
                 "ok sent"
             } catch (refused: MobileDocumentServiceMcpRefusal) {
-                "refused ${kind(refused.fault)}"
+                val listed = refused.fault.issues.orEmpty().map { it.field.orEmpty() }
+                if (listed.isEmpty()) "refused ${kind(refused.fault)}" else "refused ${kind(refused.fault)} issues=${listed.joinToString(",")}"
             },
         )
     }
