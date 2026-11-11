@@ -477,8 +477,8 @@ fn serde_reads_a_flattened_externally_tagged_enum_from_its_variants_entry_wherev
 }
 
 /// An optional externally tagged enum beside a member of its holder's own is read as no value where
-/// no entry is under a variant's name, and where the entry under one does not read, which the Zod
-/// schema refuses.
+/// no entry is under a variant's name, and where the entry under one does not read, as the Zod
+/// schema of the `nonstrict` holder reads it.
 #[test]
 fn serde_reads_an_optional_flattened_externally_tagged_enum_as_none_where_no_entry_reads() {
     let caulked = CAULKING.map(|payload| {

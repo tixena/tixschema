@@ -16,6 +16,7 @@
 
 #![cfg(all(feature = "dart", feature = "serde"))]
 
+use alloc::collections::BTreeMap;
 use core::fmt::Write as _;
 
 use serde::de::DeserializeOwned;
@@ -24,22 +25,28 @@ use serde_json::Value;
 use tixschema::model_schema;
 
 use super::corrected_options_models::{
-    CORRECTED, frapped_dart, moused_dart, reeved_dart, tholepin_dart, wormed_dart,
+    CORRECTED, OPEN_CORRECTED, frapped_dart, marled_dart, moused_dart, parcelled_dart, reeved_dart,
+    seized_dart, served_dart, snaked_dart, tholepin_dart, wormed_dart,
 };
 use super::run_dart_validate::{dart, module};
 use super::swift_flattened_options_models::{
-    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking, HEELING,
-    Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED, LOWERING, Lapping,
-    Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT, SENNIT_ABSENT,
-    SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering, becket_dart,
-    crowning_dart, easing_dart, fidding_dart, flaking_dart, gasket_dart, grommet_dart,
-    heeling_dart, kinking_dart, lapping_dart, lowering_dart, nippering_dart, painter_dart,
-    pitching_dart, plaiting_dart, ratline_dart, sennit_dart, shackle_dart, squaring_dart,
-    tabling_dart, tarring_dart, thimble_dart, toggle_dart, veering_dart,
+    Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking,
+    Gasketing, HEELING, Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED,
+    LOWERING, Lapping, Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT,
+    SENNIT_ABSENT, SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering,
+    becket_dart, crowning_dart, easing_dart, fidding_dart, flaking_dart, gasket_dart,
+    gasketing_dart, grommet_dart, heeling_dart, kinking_dart, lapping_dart, lowering_dart,
+    nippering_dart, painter_dart, pitching_dart, plaiting_dart, ratline_dart, sennit_dart,
+    shackle_dart, squaring_dart, tabling_dart, tarring_dart, thimble_dart, toggle_dart,
+    veering_dart,
+};
+use super::unrecorded_options_models::{
+    OPEN_HOLDERS, READ_BACK, UNRECORDED, bight_dart, crowned_dart, fiddling_dart, hitched_dart,
+    slipped_dart, slipping_dart, snagging_dart,
 };
 
-/// The function [`Veering`], [`Cringle`] and the holders of [`CORRECTED`] but `Wormed` name, which
-/// answers the payload as it was handed.
+/// The function [`Veering`], [`Cringle`] and the holders of [`CORRECTED`] and [`OPEN_CORRECTED`]
+/// but `Wormed` and `Served` name, which answers the payload as it was handed.
 const AS_GIVEN: &str = "dynamic asGiven(dynamic payload) => payload;";
 
 /// What prints a row: the value read, as the row tells it, or what the read says as it refuses
@@ -61,10 +68,13 @@ void row(String name, String Function() read) {
 /// What the Dart read says of a key held as a number where its type reads a text.
 const MISTYPED: &str = "refused: type 'int' is not a subtype of type 'String' in type cast";
 
-/// The function [`CORRECTED`]'s `Wormed` names, which answers `null` whatever it is handed, and
-/// what prints the holder a payload reads as, written back with its keys sorted, or `refused`.
+/// The function `Wormed` and `Served` name, which answers `null` whatever it is handed, and what
+/// prints the holder a payload reads as, written back with its keys sorted, or `refused`.
 const CORRECTED_HELPERS: &str = "
 dynamic asNull(dynamic payload) => null;
+
+dynamic nullWhereNoted(dynamic payload) =>
+    payload is Map && payload.containsKey('note') ? null : payload;
 
 String told(Map<String, dynamic> Function() read) {
   try {
@@ -246,7 +256,8 @@ fn rows() -> Vec<Row> {
         fidding("fidding unread", LAPPING_ABSENT),
         fidding("fidding mistyped", LAPPING_MISTYPED),
         ratline("ratline mistyped", FLAKING_MISTYPED),
-        // A key of the type held as a number, or one of two keys: TypeScript and Zod refuse it.
+        // A key of the type held as a number, or one of two keys: TypeScript and Zod refuse it
+        // beside a strict holder.
         lapping("lapping mistyped", LAPPING_MISTYPED).in_dart(MISTYPED),
         flaking("flaking mistyped", FLAKING_MISTYPED).in_dart(MISTYPED),
         sennit("sennit mistyped", SENNIT_MISTYPED).in_dart(MISTYPED),
@@ -304,14 +315,14 @@ fn enum_rows() -> Vec<Row> {
         lowering("lowering absent", LOWERING[0]),
         lowering("lowering", LOWERING[1]),
         lowering("lowering unit", LOWERING[2]),
-        // A tag, or a member of the variant it names, that does not read: TypeScript and Zod refuse
-        // it.
-        lowering("lowering mistyped", LOWERING[3]).in_dart(turns),
-        lowering("lowering unnamed", LOWERING[4]).in_dart("refused: Unknown Grommet: Gale"),
+        lowering("lowering mistyped", LOWERING[3]),
+        lowering("lowering unnamed", LOWERING[4]),
         lowering("lowering untagged", LOWERING[5]),
         squaring("squaring absent", SQUARING[0]),
         squaring("squaring", SQUARING[1]),
         squaring("squaring unit", SQUARING[2]),
+        // A tag, or a member of the variant it names, that does not read beside the strict
+        // `Squaring`: TypeScript and Zod refuse it.
         squaring("squaring mistyped", SQUARING[3]).in_dart(turns),
         squaring("squaring unnamed", SQUARING[4]).in_dart("refused: Unknown Becket: Gale"),
         squaring("squaring untagged", SQUARING[5])
@@ -338,6 +349,7 @@ fn definitions() -> Vec<String> {
         fidding_dart::dart_definition(),
         tabling_dart::dart_definition(),
         lapping_dart::dart_definition(),
+        gasketing_dart::dart_definition(),
         flaking_dart::dart_definition(),
         sennit_dart::dart_definition(),
         gasket_dart::dart_definition(),
@@ -411,9 +423,10 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
 
 /// A flattened `Option` of an enum under a tag key whose class was emitted above is read where the
 /// whole object its holder reads holds its tag or its content key, as TypeScript and Zod read it,
-/// and is `null` where it holds neither. One with no key to be looked for by, an untagged enum, one
-/// declared below its holder and one that names a function on itself, is handed the object without
-/// its holder's own keys and read in a closure that answers `null` where the read throws.
+/// and is `null` where it holds neither; beside the `nonstrict` `Lowering`, it is read in a closure
+/// that answers `null` where the read throws, as serde and Zod read it. One with no key to be
+/// looked for by, an untagged enum, one declared below its holder and one that names a function on
+/// itself, is handed the object without its holder's own keys and read in such a closure.
 #[test]
 fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_held() {
     let handed = "({...json}..remove('note'))";
@@ -422,8 +435,9 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
     assert_written(
         &lowering_dart::dart_definition(),
         &format!(
-            "Lowering(grommet: ({handed}.keys.any(const ['kind'].contains) ? \
-             Grommet.fromJsonUnjudged({handed}) : null),note: json['note'] as String,);"
+            "Lowering(grommet: ({handed}.keys.any(const ['kind'].contains) ? {} : null),note: \
+             json['note'] as String,);",
+            closed(&format!("Grommet.fromJsonUnjudged({handed})"))
         ),
     );
     assert_written(
@@ -561,11 +575,41 @@ fn a_flattened_option_reads_and_writes_in_dart_what_serde_reads_and_writes() {
     assert_read_in_dart(&rows, "flattened-options");
 }
 
+/// Beside the `nonstrict` `Gasketing`, a flattened `Option` of a struct is read where its key is
+/// there and reads, and is `null` where it is absent and where it does not read, as serde and Zod
+/// read it. The holder is written back as serde writes it back.
+#[test]
+fn a_flattened_option_beside_a_nonstrict_holder_reads_in_dart_as_serde_does() {
+    let gasketing = |name, json| {
+        Row::read(
+            name,
+            "Gasketing",
+            "read.tabling",
+            json,
+            |read: &Gasketing| written(&read.tabling),
+        )
+    };
+    let rows = [
+        gasketing("gasketing", LAPPING),
+        gasketing("gasketing absent", LAPPING_ABSENT),
+        gasketing("gasketing mistyped", LAPPING_MISTYPED),
+    ];
+    assert_eq!(
+        told_by_serde(&rows),
+        "gasketing: {\"label\":\"north\"} {\"note\":\"n\",\"label\":\"north\"}\n\
+         gasketing absent: null {\"note\":\"n\"}\n\
+         gasketing mistyped: null {\"note\":\"n\"}\n",
+        "serde no longer reads each payload as it did"
+    );
+    assert_read_in_dart(&rows, "flattened-options-nonstrict");
+}
+
 /// A flattened `Option` of an enum is `null` where the object holds none of its keys, as serde
 /// reads it: no entry under a variant's name, and neither the tag nor the content key, a member of
 /// a variant there with no tag among them. Where an entry, a tag or a content is there and does
 /// not read, or a content is there with no tag, serde reads `None` and the Dart read refuses the
-/// payload, as TypeScript and Zod refuse it. An untagged enum, one declared below its holder and
+/// payload, as TypeScript and Zod refuse it, but beside the `nonstrict` `Lowering`, which reads
+/// `null` there, as serde and Zod read it. An untagged enum, one declared below its holder and
 /// one that names a function on itself have no key to be looked for by, and are read as `null`
 /// wherever they do not read, as serde reads them. Each holder is written back as serde writes it
 /// back.
@@ -660,7 +704,8 @@ fn the_emitted_holders_of_a_flattened_option_have_no_issue() {
     assert!(said.contains("No issues found!"), "{said}");
 }
 
-/// The emitted definitions of the holders of [`CORRECTED`] and of the types they hold.
+/// The emitted definitions of the holders of [`CORRECTED`] and [`OPEN_CORRECTED`] and of the
+/// types they hold.
 fn corrected_definitions() -> Vec<String> {
     vec![
         tholepin_dart::dart_definition(),
@@ -668,6 +713,11 @@ fn corrected_definitions() -> Vec<String> {
         wormed_dart::dart_definition(),
         frapped_dart::dart_definition(),
         moused_dart::dart_definition(),
+        parcelled_dart::dart_definition(),
+        served_dart::dart_definition(),
+        marled_dart::dart_definition(),
+        snaked_dart::dart_definition(),
+        seized_dart::dart_definition(),
     ]
 }
 
@@ -676,12 +726,14 @@ fn corrected_definitions() -> Vec<String> {
 /// keys, or no key at all for a type whose keys are not known, an enum under a tag alone among
 /// them, and refuses the payload where it holds one: each payload of [`CORRECTED`] reads as the
 /// Zod schema of its holder reads it, written back with its keys sorted, where serde refuses a
-/// type the answer does not read and reads `null` as `None`.
+/// type the answer does not read and reads `null` as `None`. Beside a `nonstrict` holder it is
+/// `null` exactly where the function answers `null`: each payload of [`OPEN_CORRECTED`] reads as
+/// serde and Zod read it.
 #[test]
 fn an_optional_type_that_names_a_function_reads_in_dart_as_zod_does() {
     let mut expected = String::new();
     let mut main = String::from("void main() {\n");
-    for (at, row) in CORRECTED.iter().enumerate() {
+    for (at, row) in CORRECTED.iter().chain(&OPEN_CORRECTED).enumerate() {
         assert_eq!(
             (row.read_back)(row.json),
             row.serde,
@@ -707,6 +759,64 @@ fn an_optional_type_that_names_a_function_reads_in_dart_as_zod_does() {
     };
     assert!(ran, "{printed}");
     assert_eq!(printed, expected, "the Dart read is not the Zod read");
+}
+
+/// Beside a `nonstrict` holder, an optional member that names a function reads no value where the
+/// function answers `null`, and its type from any other answer.
+#[test]
+fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_where_it_answers_no_null() {
+    assert_written(
+        &served_dart::dart_definition(),
+        "tholepin: switch (asNull(({...json}..remove('note')))) { null => null, final corrected => \
+         Tholepin.fromJsonUnjudged(corrected) },",
+    );
+    assert_written(
+        &marled_dart::dart_definition(),
+        "Marled(frapped: switch (asGiven(({...json}..remove('note')))) { null => null, final \
+         corrected => Frapped.fromJsonUnjudged(corrected) },note: json['note'] as String,);",
+    );
+}
+
+/// Beside a `nonstrict` holder, an optional member whose read throws is `null` wherever its keys
+/// are, and the holder reads past them: each row of [`UNRECORDED`] whose holder is one of
+/// [`OPEN_HOLDERS`] reads as serde reads it, written back with its keys sorted, an enum's tag
+/// beside no member of its variant among them.
+#[test]
+fn an_optional_type_beside_a_nonstrict_holder_reads_in_dart_as_serde_does() {
+    let mut expected = String::new();
+    let mut main = String::from("void main() {\n");
+    for (at, (row, read_back)) in UNRECORDED.iter().zip(READ_BACK).enumerate() {
+        if !OPEN_HOLDERS.contains(&row.holder) {
+            continue;
+        }
+        let sorted: BTreeMap<String, Value> = serde_json::from_str(read_back).unwrap();
+        let _ = writeln!(
+            expected,
+            "{at}: {}",
+            serde_json::to_string(&sorted).unwrap()
+        );
+        let _ = writeln!(
+            main,
+            "  print('{at}: ${{told(() => {}.fromJson(jsonDecode(r'{}')).toJson())}}');",
+            row.holder, row.json
+        );
+    }
+    main.push_str("}\n");
+    let definitions = [
+        bight_dart::dart_definition(),
+        fiddling_dart::dart_definition(),
+        crowned_dart::dart_definition(),
+        hitched_dart::dart_definition(),
+        snagging_dart::dart_definition(),
+        slipped_dart::dart_definition(),
+        slipping_dart::dart_definition(),
+    ];
+    let source = module(&definitions, &[CORRECTED_HELPERS], &main);
+    let Some((ran, printed)) = dart("unrecorded-options", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
 /// The analyzer passes the holders of an optional member that names a function.

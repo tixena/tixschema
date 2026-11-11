@@ -195,9 +195,13 @@ consumer's view; this is what a change has to keep.
   of `null` among it, and the object the functions are handed holds none of the struct's keys
   (`struct_keys`, the `Taken::Keys` recorded for its type whatever function the member names), or
   no key at all for a type whose keys are not known, an enum among them, and rethrows where it
-  holds one. serde refuses an answer its type does not read. `run_dart_flattened_options.rs`
-  holds each row of `CORRECTED`, in `tests/kotlin_tests/corrected_options_models.rs`, to what Zod
-  reads. What a member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a
+  holds one. serde refuses an answer its type does not read. Under a `nonstrict` holder,
+  `corrected_option` writes `switch (answer) { null => null, final corrected => read }`, the
+  member `null` exactly where the functions answer `null`, as serde and the holder's Zod schema
+  read it, and `held_read` wraps the read of a type whose keys are there in `caught`, so a read
+  that throws is `null` wherever a key is looked for. `run_dart_flattened_options.rs` holds each
+  row of `CORRECTED` and `OPEN_CORRECTED`, in `tests/kotlin_tests/corrected_options_models.rs`, to
+  what Zod reads. What a member takes is `taken_by`, the `Taken` recorded for its type in `DART_TAKEN_KEYS`, and nothing for a
   member that names a function:
   - `Taken::Keys` of a struct, which `struct_dart_tokens` records from
     `keys_taken_when_flattened` in `src/features/serde.rs`, which the Swift and Kotlin emitters

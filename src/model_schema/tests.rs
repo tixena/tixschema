@@ -64,6 +64,10 @@ use super::{
     VariantKind, check_variant_slot_wire_is_readable, parse_serde_key_omission, variant_wire_kind,
 };
 
+#[cfg(feature = "zod")]
+use crate::features::model_schema_prop::FunctionName;
+#[cfg(feature = "zod")]
+use crate::utils::record_nonstrict;
 #[cfg(feature = "serde")]
 use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
@@ -21991,13 +21995,24 @@ fn a_transparent_struct_each_derive_takes_one_field_of_is_not_refused() {
 fn merged_source(spelling: &str, branches: &[&str], absence: SourceAbsence) -> MergedOperand {
     MergedOperand {
         absence,
+        answered_null: None,
         branches: branches
             .iter()
             .map(|branch| (*branch).to_owned())
             .collect::<Vec<_>>(),
+        closes: false,
         entries: false,
         spelling: spelling.to_owned(),
     }
+}
+
+/// The `.and(...)` chains [`super::zod_merged_joins`] writes for `operands`, in order.
+#[cfg(feature = "zod")]
+fn merged_chains(operands: &[MergedOperand]) -> Vec<String> {
+    super::zod_merged_joins(operands)
+        .into_iter()
+        .map(|(chain, _)| chain)
+        .collect()
 }
 
 #[cfg(feature = "zod")]
@@ -22005,7 +22020,7 @@ fn merged_source(spelling: &str, branches: &[&str], absence: SourceAbsence) -> M
 fn a_single_key_set_source_closes_the_object_once() {
     let operands = [merged_source("Base$Schema", &[], SourceAbsence::Never)];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![".and(z.lazy(() => Base$Schema))".to_owned()]
     );
     assert_eq!(
@@ -22032,7 +22047,7 @@ fn a_single_branch_source_collapses_to_the_branchs_own_object() {
 #[cfg(feature = "zod")]
 #[test]
 fn a_source_less_object_is_written_as_it_stands() {
-    assert_eq!(super::zod_merged_joins(&[]), vec![String::new()]);
+    assert_eq!(merged_chains(&[]), vec![String::new()]);
     assert_eq!(super::zod_merged_object("OWN", &[]), "OWN");
 }
 
@@ -22045,7 +22060,7 @@ fn a_two_branch_source_writes_the_object_once_per_branch() {
         SourceAbsence::Never,
     )];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![
             ".and(z.lazy(() => Left$Schema))".to_owned(),
             ".and(z.lazy(() => Right$Schema))".to_owned(),
@@ -22067,7 +22082,7 @@ fn a_three_branch_source_writes_the_object_once_per_branch() {
         SourceAbsence::Never,
     )];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![
             ".and(z.lazy(() => Left$Schema))".to_owned(),
             ".and(z.lazy(() => Middle$Schema))".to_owned(),
@@ -22087,7 +22102,7 @@ fn an_absent_source_writes_the_object_with_it_and_without_it() {
     for absence in [SourceAbsence::Field, SourceAbsence::Published] {
         let operands = [merged_source("Base$Schema", &[], absence)];
         assert_eq!(
-            super::zod_merged_joins(&operands),
+            merged_chains(&operands),
             vec![".and(z.lazy(() => Base$Schema))".to_owned(), String::new()]
         );
         assert_eq!(
@@ -22106,7 +22121,7 @@ fn the_absence_of_a_source_read_as_entries_holds_every_key_it_was_handed() {
             ..merged_source("Counts$Schema", &[], absence)
         }];
         assert_eq!(
-            super::zod_merged_joins(&operands),
+            merged_chains(&operands),
             vec![
                 ".and(z.lazy(() => Counts$Schema))".to_owned(),
                 ".and(z.record(z.string(), z.unknown()).transform(() => ({})))".to_owned()
@@ -22118,8 +22133,85 @@ fn the_absence_of_a_source_read_as_entries_holds_every_key_it_was_handed() {
         ..merged_source("Counts$Schema", &[], SourceAbsence::Never)
     }];
     assert_eq!(
-        super::zod_merged_joins(&always),
+        merged_chains(&always),
         vec![".and(z.lazy(() => Counts$Schema))".to_owned()]
+    );
+}
+
+/// Beside a `nonstrict` holder, the absence of a flattened `Option` that names a `preprocess` is
+/// read only where the functions answer `null`, and holds no key; beside a strict holder it is the
+/// holder's own object.
+#[cfg(feature = "zod")]
+#[test]
+fn the_absence_of_an_option_that_names_a_function_beside_a_nonstrict_holder_is_an_answer_of_null() {
+    let mut def = get_field_def("held", &syn::parse_quote!(Option<Held>), "");
+    def.model_schema_prop_meta = Some(ModelSchemaPropMeta {
+        preprocess: ["unwrapped", "asNull"]
+            .map(|name| FunctionName {
+                name: name.to_owned(),
+                written_at: proc_macro2::Span::call_site(),
+            })
+            .to_vec(),
+        ..ModelSchemaPropMeta::default()
+    });
+    assert_eq!(super::zod_absent_where_answered_null(&def), None);
+    record_nonstrict(true);
+    let answered = super::zod_absent_where_answered_null(&def);
+    record_nonstrict(false);
+    let answered_null =
+        "z.preprocess(unwrapped, z.preprocess(asNull, z.null())).transform(() => ({}))";
+    assert_eq!(answered.as_deref(), Some(answered_null));
+    let operands = [MergedOperand {
+        answered_null: answered,
+        ..merged_source("Held$Schema", &[], SourceAbsence::Field)
+    }];
+    assert_eq!(
+        merged_chains(&operands),
+        vec![
+            ".and(z.lazy(() => Held$Schema))".to_owned(),
+            format!(".and({answered_null})")
+        ]
+    );
+}
+
+/// A branch that holds a member read through a function joins the holder's own object closed, and
+/// the branch without it the object as it is written; a strict holder's object is closed already.
+#[cfg(feature = "zod")]
+#[test]
+fn a_branch_that_holds_a_member_read_through_a_function_joins_the_closed_own_object() {
+    let operands = [MergedOperand {
+        answered_null: Some("ANSWERED".to_owned()),
+        closes: true,
+        ..merged_source("Held$Schema", &[], SourceAbsence::Field)
+    }];
+    assert_eq!(
+        super::zod_merged_object("z.object({ note: z.string() })", &operands),
+        "z.union([\n  z.strictObject({ note: z.string() }).and(z.lazy(() => Held$Schema)),\n  \
+         z.object({ note: z.string() }).and(ANSWERED),\n])"
+    );
+    let (bound, written) =
+        super::zod_merged_statements("Holder", "z.object({ note: z.string() })", &operands);
+    assert_eq!(
+        bound,
+        "const Holder$OwnSchema = z.object({ note: z.string() });\n\nconst \
+         Holder$ClosedSchema = z.strictObject({ note: z.string() });\n\n"
+    );
+    assert_eq!(
+        written,
+        "z.union([\n  Holder$ClosedSchema.and(z.lazy(() => Held$Schema)),\n  \
+         Holder$OwnSchema.and(ANSWERED),\n])"
+    );
+    let always = [MergedOperand {
+        closes: true,
+        ..merged_source("Held$Schema", &[], SourceAbsence::Never)
+    }];
+    assert_eq!(
+        super::zod_merged_statements("Holder", "z.object({ note: z.string() })", &always).1,
+        "z.strictObject({ note: z.string() }).and(z.lazy(() => Held$Schema))"
+    );
+    assert_eq!(
+        super::zod_closed_own("z.strictObject({ note: z.string() })"),
+        "z.strictObject({ note: z.string() })"
     );
 }
 
@@ -22139,7 +22231,7 @@ fn two_branching_sources_write_their_cross_product() {
         ),
     ];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![
             ".and(z.lazy(() => Left$Schema)).and(z.lazy(() => Up$Schema))".to_owned(),
             ".and(z.lazy(() => Left$Schema)).and(z.lazy(() => Down$Schema))".to_owned(),
@@ -22158,7 +22250,7 @@ fn an_absent_branching_source_offers_its_branches_and_the_absence() {
         SourceAbsence::Field,
     )];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![
             ".and(z.lazy(() => Left$Schema))".to_owned(),
             ".and(z.lazy(() => Right$Schema))".to_owned(),
@@ -22185,7 +22277,7 @@ fn a_branching_source_multiplies_against_an_absent_one() {
         merged_source("Base$Schema", &[], SourceAbsence::Field),
     ];
     assert_eq!(
-        super::zod_merged_joins(&operands),
+        merged_chains(&operands),
         vec![
             ".and(z.lazy(() => Left$Schema)).and(z.lazy(() => Base$Schema))".to_owned(),
             ".and(z.lazy(() => Left$Schema))".to_owned(),
