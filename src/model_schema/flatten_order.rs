@@ -82,6 +82,8 @@ const FLAGS: &str = "__TIXSCHEMA_FLATTENED";
 const KEYS: &str = "__TIXSCHEMA_KEYS";
 /// How many types deep a member is followed before what it reads is called unseen.
 const DEPTH: usize = 8;
+/// Why the expansion cannot see what a member a function of its author's reads.
+const HOOKED: &str = "read through a function of its author's";
 /// Why the expansion cannot see a member whose hidden constant answers for it.
 const NOT_SEEN: &str = "declared below the type that flattens it, in another crate, or with no \
                         `#[model_schema]`";
@@ -226,6 +228,9 @@ enum Part {
     /// A member a `preprocess` reads: its functions are handed every key still left, and the
     /// member is read from what they answer.
     Corrected,
+    /// A member or a payload serde reads through a `deserialize_with` or a `with` of its author's,
+    /// which is handed every key still left.
+    Hooked,
     Read(Box<FieldDef>),
     Unseen(String),
 }
@@ -686,7 +691,15 @@ fn named_reads(def: &FieldDef, name: &str, arguments: &[FieldDef], depth: usize)
         .chain(shape.payloads.iter().map(|payload| (payload, true)))
     {
         match part {
+            // A type recorded with such a member is `nonstrict`, a strict one being refused, so it
+            // reads past what the function leaves.
             Part::Corrected => {}
+            Part::Hooked if !payload => {}
+            Part::Hooked => read.see(Some(Unseen {
+                itself: false,
+                resolvable: false,
+                why: HOOKED.to_owned(),
+            })),
             Part::Read(held) => {
                 let found = reads(
                     &filled(held, &shape.parameters, arguments),
@@ -905,7 +918,7 @@ fn empty_by(
         EmptyRule::AllOf(parts) => parts.iter().fold(Answer::Yes, |held, part| {
             held.and(match part {
                 Part::Read(def) => empty_of(&filled(def, parameters, arguments), depth),
-                Part::Corrected | Part::Unseen(_) => Answer::Unknown,
+                Part::Corrected | Part::Hooked | Part::Unseen(_) => Answer::Unknown,
             })
         }),
         EmptyRule::AnyOf(rules) => rules.iter().fold(Answer::No, |held, variant| {
@@ -956,7 +969,7 @@ fn read_by_a_function(field: &Field) -> bool {
 /// What a flattened member, or a payload, decides of its type.
 fn part(field: &Field, parameters: &[String]) -> Part {
     if read_hook(&field.attrs).is_some() {
-        return Part::Unseen("read through a function of its author's".to_owned());
+        return Part::Hooked;
     }
     if !parse_model_schema_prop_attributes(&field.attrs)
         .preprocess
@@ -974,6 +987,7 @@ fn member_reads(field: &Field, parameters: &[String]) -> Reads {
             rest: true,
             ..Reads::default()
         },
+        Part::Hooked => Reads::not_met(HOOKED.to_owned(), false),
         Part::Read(def) => reads(&def, 0),
         Part::Unseen(why) => Reads::not_met(why, false),
     }
@@ -1508,24 +1522,16 @@ pub fn refused_by_a_member(fields: &Fields, generics: &Generics) -> bool {
         .any(|field| matches!(member_reads(field, &parameters).class(), Class::Refusing(_)))
 }
 
-/// Whether a variant of `item_enum` refuses a key no member declares whatever the enum's own
-/// strictness: one that flattens a member that refuses it, and, under a tag alone or untagged, a
+/// Whether `variant` of `item_enum` refuses a key no member declares whatever the enum's own
+/// strictness: it flattens a member that refuses it, or, under a tag alone or untagged, it is a
 /// newtype variant over a type that refuses a key it does not declare, which serde hands the keys.
-pub fn a_variant_refuses_a_stray(item_enum: &ItemEnum) -> bool {
+pub fn variant_refuses_a_stray(item_enum: &ItemEnum, variant: &Variant) -> bool {
     let parameters = parameter_names(&item_enum.generics);
-    let whole = reads_every_key(item_enum);
-    item_enum
-        .variants
-        .iter()
-        .filter(|variant| variant_on_the_wire(variant))
-        .any(|variant| {
-            refused_by_a_member(&variant.fields, &item_enum.generics)
-                || (whole
-                    && newtype_slot(variant).is_some_and(|slot| {
-                        !read_by_a_function(slot)
-                            && refuses_read_whole(&def_of(&slot.ty, &parameters), 0)
-                    }))
-        })
+    refused_by_a_member(&variant.fields, &item_enum.generics)
+        || (reads_every_key(item_enum)
+            && newtype_slot(variant).is_some_and(|slot| {
+                !read_by_a_function(slot) && refuses_read_whole(&def_of(&slot.ty, &parameters), 0)
+            }))
 }
 
 /// Whether a value `def` describes, read from every key of an object, refuses one it does not
@@ -2236,10 +2242,24 @@ pub fn open_member_refusal(item_struct: &ItemStruct) -> Option<(&Field, String)>
     open_member(&item_struct.fields, &parameters, &holder, None)
 }
 
-/// The first member [`open_member`] names of a struct variant of `item_enum` serde reads, with its
-/// refusal of the variant.
+/// The member [`open_member`] names of `fields`, with its refusal of `holder`, or of its
+/// `variant`, where no member they flatten refuses a key no member declares: serde then reads past
+/// such a key beside it, or reads it as the function answers, whatever the holder's strictness.
+fn reads_past_beside<'fields>(
+    fields: &'fields Fields,
+    generics: &Generics,
+    holder: &str,
+    variant: Option<&str>,
+) -> Option<(&'fields Field, String)> {
+    if refused_by_a_member(fields, generics) {
+        return None;
+    }
+    open_member(fields, &parameter_names(generics), holder, variant)
+}
+
+/// The first member [`reads_past_beside`] names of a struct variant of `item_enum` serde reads,
+/// each variant judged by itself, with its refusal of the variant.
 pub fn open_variant_refusal(item_enum: &ItemEnum) -> Option<(&Field, String)> {
-    let parameters = parameter_names(&item_enum.generics);
     let holder = item_enum.ident.unraw().to_string();
     item_enum
         .variants
@@ -2248,7 +2268,7 @@ pub fn open_variant_refusal(item_enum: &ItemEnum) -> Option<(&Field, String)> {
         .filter(|variant| matches!(variant.fields, Fields::Named(_)))
         .find_map(|variant| {
             let named = variant.ident.unraw().to_string();
-            open_member(&variant.fields, &parameters, &holder, Some(&named))
+            reads_past_beside(&variant.fields, &item_enum.generics, &holder, Some(&named))
         })
 }
 
@@ -3851,13 +3871,29 @@ pub(super) fn held_open_refusal<'item>(
         .ident
         .as_ref()
         .map_or_else(String::new, |ident| ident.unraw().to_string());
+    // A struct holding those members would itself be refused unless it is `nonstrict`.
+    let held_apart = if reads_past_beside(
+        &held_open.fields,
+        &item_enum.generics,
+        &enum_name.to_string(),
+        Some(&variant.to_string()),
+    )
+    .is_some()
+    {
+        format!(
+            "in a struct of its own marked `#[model_schema(nonstrict)]`, and write `{variant}` as \
+             a newtype variant over it"
+        )
+    } else {
+        format!("in a struct of their own and write `{variant}` as a newtype variant over it")
+    };
     let message = format!(
         "type `{enum_name}`: variant `{variant}` flattens `{member}` (`{}`), which reads every key \
          still left, so tixschema cannot write `#[serde(deny_unknown_fields)]` on `{enum_name}` \
          without refusing the keys of `{member}` there, and serde reads that attribute for every \
          variant of an enum at once: it then reads past a key no member declares {refusing} as \
          well. Mark `{enum_name}` `#[model_schema(nonstrict)]`, or hold the members of `{variant}` \
-         in a struct of their own and write `{variant}` as a newtype variant over it.",
+         {held_apart}.",
         spelled(&field.ty)
     );
     Some((field, message))
@@ -4152,6 +4188,10 @@ fn flags_value(
                 whole_unseen: shape.whole_unseen,
             };
             for (field, payload) in parts_of(item) {
+                if !payload && read_hook(&field.attrs).is_some() {
+                    // The type reads past what the function leaves, as [`named_reads`] reads it.
+                    continue;
+                }
                 let part = member_reads(field, &parameters);
                 let resolvable = part.unseen.as_ref().is_some_and(|unseen| unseen.resolvable);
                 if let Some(named) =

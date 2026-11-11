@@ -419,10 +419,26 @@ String fault(String kind) => jsonEncode({
       'fault': {'detail': 'it broke', 'kind': kind, 'operation': 'get-version'},
     });
 
+String listing() => jsonEncode({
+      'isServiceFault': true,
+      'fault': {
+        'detail': "'document_id': too short; 'reader': unknown",
+        'field': 'document_id',
+        'issues': [
+          {'detail': 'too short', 'field': 'document_id'},
+          {'detail': 'unknown', 'field': 'reader'},
+        ],
+        'kind': 'failed-validation',
+        'operation': 'get-version',
+      },
+    });
+
 String summary(DartDocumentServiceGetVersionResult outcome) => switch (outcome) {
       DartDocumentServiceGetVersionResultOk(:final value) => 'ok version=${value.version}',
       DartDocumentServiceGetVersionResultOperation(:final error) => 'declared ${jsonEncode(error.toJson())}',
-      DartDocumentServiceGetVersionResultFault(:final fault) => 'fault ${fault.kind.wireValue}',
+      DartDocumentServiceGetVersionResultFault(:final fault) => fault.issues == null
+          ? 'fault ${fault.kind.wireValue}'
+          : 'fault ${fault.kind.wireValue} issues=${fault.issues!.map((issue) => issue.field).join(',')}',
     };
 
 void main() async {
@@ -430,7 +446,7 @@ void main() async {
   final canned = Canned([
     result(1, {'content': [{'type': 'text', 'text': '{"version":7}'}], 'structuredContent': {'version': 7}, 'isError': false}),
     result(2, {...jsonDecode(toolText({'errorCode': 'not-found'})) as Map<String, dynamic>}),
-    result(3, {...jsonDecode(toolText(jsonDecode(fault('failed-validation')))) as Map<String, dynamic>}),
+    result(3, {...jsonDecode(toolText(jsonDecode(listing()))) as Map<String, dynamic>}),
     jsonEncode({'jsonrpc': '2.0', 'id': 4, 'error': {'code': -32603, 'message': 'get-version: it broke', 'data': jsonDecode(fault('handler-panic'))}}),
     jsonEncode({'jsonrpc': '2.0', 'id': 5, 'error': {'code': -32601, 'message': 'Method not found'}}),
     'this is no JSON',
@@ -1435,7 +1451,7 @@ fn the_client_reads_the_seven_outcomes_and_writes_each_call_as_the_server_reads_
         json!([
             "ok version=7",
             "declared {\"errorCode\":\"not-found\"}",
-            "fault failed-validation",
+            "fault failed-validation issues=document_id,reader",
             "fault handler-panic",
             "fault transport-failure",
             "fault undeserializable-payload",

@@ -44,7 +44,7 @@ use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::is_unconsumed;
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, is_nonstrict, to_snake_case,
-    type_parameters_in_scope,
+    type_parameters_in_scope, within_variant,
 };
 
 #[cfg(feature = "serde")]
@@ -4144,7 +4144,7 @@ fn resolve_variant_payload(
     step: Option<&str>,
     aux: &mut Vec<String>,
 ) -> VariantPayload {
-    match variant_wire_kind(variant) {
+    within_variant(&variant.ident, || match variant_wire_kind(variant) {
         VariantKind::Unit => VariantPayload {
             beside: SlotEntries::default(),
             bound: Vec::new(),
@@ -4161,7 +4161,7 @@ fn resolve_variant_payload(
         VariantKind::Named => named_payload(shape, variant, rename_all_fields, step, aux),
         VariantKind::TupleSingle => slot_payload(shape, variant, step, aux),
         VariantKind::TupleMultiple => slots_payload(shape, variant, step, aux),
-    }
+    })
 }
 
 /// The payload of a variant with named members: the struct written for them, each member read as
@@ -4575,28 +4575,54 @@ fn tagged_encode_arm(case_name: &str, wire_tag: &str, then: Option<&str>) -> Str
     )
 }
 
-/// The Swift tokens the internally tagged shape earns (`tag = "..."`, no `content`): the tag
-/// merges into the same object a `Named` payload's own fields sit in, so a variant's own payload
-/// struct decodes/encodes through the *same* `decoder`/`encoder` the enum's own tag read from.
-/// The statement that refuses a key beside the tag `tag_key` of a unit variant that the members
-/// flattened ahead of the enum did not take, as the Rust read of a strict enum does: none for a
-/// `nonstrict` enum and one that names a function on itself.
-fn unit_beside_the_tag(tag_key: &str, corrects: &[FunctionName]) -> String {
+/// The statement that refuses a key beside the tag `tag_key` of a variant that is none of the
+/// variant's `keys` and that the members flattened ahead of the enum did not take, as the Rust read
+/// of a strict enum does for a unit variant: none for a variant that reads such a key past and for
+/// an enum that names a function on itself.
+fn beside_the_tag(tag_key: &str, keys: &[String], corrects: &[FunctionName]) -> String {
     if is_nonstrict() || !corrects.is_empty() {
         return String::new();
     }
+    let unlisted = if keys.is_empty() {
+        format!("unknown.stringValue != {}", swift_quoted(tag_key))
+    } else {
+        let beside: Vec<String> = iter::once(tag_key.to_owned())
+            .chain(keys.iter().cloned())
+            .collect();
+        format!(
+            "!{}.contains(unknown.stringValue)",
+            preprocess::listed(&beside)
+        )
+    };
     format!(
         "if !(decoder.codingPath.isEmpty && \
          decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ \
          for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys \
-         where unknown.stringValue != {} && !taken.contains(unknown.stringValue) {{ \
+         where {unlisted} && !taken.contains(unknown.stringValue) {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
          decoder.codingPath + [unknown], debugDescription: \"unknown field \
-         `\\(unknown.stringValue)`\")) }} }}; ",
-        swift_quoted(tag_key)
+         `\\(unknown.stringValue)`\")) }} }}; "
     )
 }
 
+/// What [`beside_the_tag`] writes in the arm of the variant `variant` of a `nonstrict` enum that
+/// refuses a stray key, where the keys of its payload are known: a strict enum's own read refuses
+/// such a key for every variant at once.
+fn refused_in_its_arm(
+    variant: &Variant,
+    keys: Option<&[String]>,
+    tag_key: &str,
+    corrects: &[FunctionName],
+) -> String {
+    let Some(known) = keys.filter(|_| is_nonstrict()) else {
+        return String::new();
+    };
+    within_variant(&variant.ident, || beside_the_tag(tag_key, known, corrects))
+}
+
+/// The Swift tokens the internally tagged shape earns (`tag = "..."`, no `content`): the tag
+/// merges into the same object a `Named` payload's own fields sit in, so a variant's own payload
+/// struct decodes/encodes through the *same* `decoder`/`encoder` the enum's own tag read from.
 fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
@@ -4646,16 +4672,20 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
                 &|held| format!("self = .{case_name}({held})"),
                 &mut twins,
             );
+            let beside =
+                refused_in_its_arm(variant, payload.keys.as_deref(), tag_key, args.preprocess);
             write!(
                 decode_arms,
-                "case {}: {read}; ",
+                "case {}: {beside}{read}; ",
                 aliases::case_names(&wire_tag, &aliases::written_on(&variant.attrs))
             )
             .unwrap();
             let then = format!("{}; ", payload.written_beside("payload"));
             encode_arms.push_str(&tagged_encode_arm(&case_name, &wire_tag, Some(&then)));
         } else {
-            let beside = unit_beside_the_tag(tag_key, args.preprocess);
+            let beside = within_variant(&variant.ident, || {
+                beside_the_tag(tag_key, &[], args.preprocess)
+            });
             write!(
                 decode_arms,
                 "case {}: {beside}self = .{case_name}; ",
@@ -4860,7 +4890,9 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
             let reader = format!("swiftSchemaRead{named}");
             let read = tried_read(&returned, export_name, &reader, ty, &mut choosers);
-            let tried = checked_alone(payload.keys.as_ref(), &read, export_name, &mut choosers);
+            let tried = within_variant(&variant.ident, || {
+                checked_alone(payload.keys.as_ref(), &read, export_name, &mut choosers)
+            });
             let check = bound_check(
                 &payload.bound,
                 (export_name, &named.to_string(), ty),

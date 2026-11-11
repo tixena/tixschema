@@ -22,6 +22,10 @@ pub struct ShelfLabel(pub String);
 /// Keeps goods in the slots of aisles.
 #[service_schema(transports = ["mcp"])]
 pub trait ShelfService<Ctx> {
+    /// One level of one bay, two numbers no captured text reads as.
+    #[service_schema_op(mcp(resource = "shelf://bays/{bay}/levels/{level}"))]
+    async fn get_bay(&self, ctx: &Ctx, bay: u32, level: u32) -> Result<String, BookError>;
+
     /// The count of one shelf, a number no captured text reads as.
     #[service_schema_op(mcp(resource = "shelf://counts/{bin}"))]
     async fn get_count(&self, ctx: &Ctx, bin: u32) -> Result<String, BookError>;
@@ -50,6 +54,15 @@ pub trait ShelfService<Ctx> {
 pub struct Shelves;
 
 impl ShelfService<()> for Shelves {
+    fn get_bay(
+        &self,
+        _ctx: &(),
+        bay: u32,
+        level: u32,
+    ) -> impl Future<Output = Result<String, BookError>> {
+        ready(Ok(format!("{bay}/{level}")))
+    }
+
     fn get_count(&self, _ctx: &(), bin: u32) -> impl Future<Output = Result<String, BookError>> {
         ready(Ok(bin.to_string()))
     }

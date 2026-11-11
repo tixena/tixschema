@@ -59,7 +59,7 @@ use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
     compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict, option_alias,
-    to_snake_case, type_parameters_in_scope,
+    to_snake_case, type_parameters_in_scope, within_variant,
 };
 
 #[cfg(feature = "serde")]
@@ -1796,7 +1796,7 @@ pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
 }
 
 /// The `{ident}_kotlin` module ident an item's own `kotlin_definition()` publishes from.
-fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
+pub fn kotlin_module_ident(rust_ident: &str, span: proc_macro2::Span) -> Ident {
     Ident::new(&format!("{}_kotlin", to_snake_case(rust_ident)), span)
 }
 
@@ -3628,7 +3628,7 @@ fn dispatched_tagged_enum_kotlin_source(
     let (subclasses, serialize_arms, deserialize_arms): (Vec<_>, Vec<_>, Vec<_>) = item_enum
         .variants
         .iter()
-        .map(|variant| dispatched_tagged_variant(variant, &ctx))
+        .map(|variant| within_variant(&variant.ident, || dispatched_tagged_variant(variant, &ctx)))
         .fold(
             (Vec::new(), Vec::new(), Vec::new()),
             |(mut subclasses, mut serializes, mut deserializes),
@@ -3744,20 +3744,24 @@ fn untagged_enum_kotlin_source(
             owner: &subclass_name,
             type_parameters: &type_parameters,
         };
-        let (declaration, _) = variant_subclass(
-            export_name,
-            &plugin,
-            &generic_params,
-            &nothing_generic_args,
-            None,
-            bare_value,
-            &payload,
-        );
+        let (declaration, serializer) = within_variant(&variant.ident, || {
+            let (declaration, _) = variant_subclass(
+                export_name,
+                &plugin,
+                &generic_params,
+                &nothing_generic_args,
+                None,
+                bare_value,
+                &payload,
+            );
+            let serializer = variant_serializer(&plugin, &generic_params, &payload, None);
+            (declaration, serializer)
+        });
         subclasses.push(format!(
             "{declaration} {{ {} }}",
             rules.written("override ")
         ));
-        subclasses.extend(variant_serializer(&plugin, &generic_params, &payload, None));
+        subclasses.extend(serializer);
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
             "is {subclass_name} -> output.json.encodeToJsonElement({subclass_serializer}, value)"

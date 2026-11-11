@@ -1253,8 +1253,8 @@ mod flattened_stray_models;
 #[path = "service_schema_emitted_client_tests/run_flattened_strays.rs"]
 mod run_flattened_strays;
 
-/// A `nonstrict` holder of a member that reads every key, and a strict holder of one that refuses
-/// a key it does not declare.
+/// `nonstrict` holders of a member that reads every key, a strict holder of one that refuses a key
+/// it does not declare, and enums whose variants hold each.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/read_past_models.rs"]
 mod read_past_models;

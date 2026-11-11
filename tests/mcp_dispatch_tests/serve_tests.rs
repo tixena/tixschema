@@ -475,6 +475,48 @@ fn a_key_that_is_missing_and_a_value_of_the_wrong_type_name_their_full_path() {
 }
 
 #[test]
+fn two_drafts_that_each_miss_a_key_are_named_in_one_fault() {
+    let missing = ask(
+        "check-drafts",
+        &json!({ "drafts": [{ "references": [] }, { "references": [] }] }),
+    );
+    assert_eq!(
+        failure_text(&missing),
+        "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.title': missing field `title`\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+}
+
+#[test]
+fn a_missing_key_an_unknown_key_and_a_value_of_the_wrong_type_are_named_in_one_fault() {
+    let refused = ask(
+        "check-drafts",
+        &json!({ "drafts": [
+            { "references": [] },
+            { "references": [], "subtitle": "Draft", "title": "Plan" },
+            { "references": [], "title": 5_u8 },
+        ] }),
+    );
+    assert_eq!(
+        failure_text(&refused),
+        "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.subtitle': unknown field `subtitle`; 'drafts.2.title': invalid type, expected a string\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"unknown field `subtitle`\",\"field\":\"drafts.1.subtitle\"},{\"detail\":\"invalid type, expected a string\",\"field\":\"drafts.2.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+}
+
+/// The walk names what does not read; a bound is the validator's, which runs only once the
+/// arguments read.
+#[test]
+fn a_broken_bound_beside_a_missing_key_is_not_named() {
+    let refused = ask(
+        "check-drafts",
+        &json!({ "drafts": [{ "references": [], "title": "" }, { "references": [] }] }),
+    );
+    assert_eq!(
+        failure_text(&refused),
+        "{\"fault\":{\"detail\":\"'drafts.1.title': missing field `title`\",\"field\":\"drafts.1.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+    );
+}
+
+#[test]
 fn an_unknown_key_inside_a_list_names_the_key_once() {
     let unknown = ask(
         "check-drafts",

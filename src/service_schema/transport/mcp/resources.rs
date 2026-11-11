@@ -267,7 +267,7 @@ pub(super) fn list_arm(held: &Resourced<'_>, module: &Ident) -> Option<TokenStre
             quote! { ::serde_json::json!({}) }
         }
     };
-    let reading = reading(operation, module, &source, &reader, &validator);
+    let reading = reading(operation, module, &source, &reader, &validator, None);
     Some(quote! {
         "resources/list" => {
             #reading
@@ -377,7 +377,7 @@ fn complete_block(
     let typed_key = wire_key(&fields.first()?.0);
     let chosen_key = wire_key(&fields.get(1)?.0);
     let source = quote! { ::serde_json::json!({ #typed_key: typed, #chosen_key: chosen }) };
-    let reading = reading(operation, module, &source, &reader, &validator);
+    let reading = reading(operation, module, &source, &reader, &validator, None);
     let limit = Literal::usize_unsuffixed(COMPLETION_LIMIT);
     Some(quote! {
         if uri == #uri && parameter == #parameter {
@@ -424,15 +424,15 @@ pub(super) fn reading(
     source: &TokenStream,
     reader: &Ident,
     validator: &Ident,
+    listed: Option<TokenStream>,
 ) -> TokenStream {
     let wire = &operation.wire_name;
+    let refused = listed.unwrap_or_else(|| quote! { refused_payload(#wire, &rejected) });
     quote! {
         let received = match read_tracked(#source, |tracked| $crate::#module::#reader(tracked)) {
             ::core::result::Result::Ok(received) => received,
             ::core::result::Result::Err(rejected) => {
-                return ::core::option::Option::Some(::core::result::Result::Err(faulted(
-                    refused_payload(#wire, &rejected),
-                )));
+                return ::core::option::Option::Some(::core::result::Result::Err(faulted(#refused)));
             }
         };
         if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&received) {
@@ -471,7 +471,10 @@ fn read_block(operation: &OperationDef, module: &Ident) -> TokenStream {
     let call = call_arguments(operation);
     let names = resource.placeholder_names();
     let source = message_source(operation, &names);
-    let reading = reading(operation, module, &source, &reader, &validator);
+    let refused = resource.is_template().then(|| {
+        quote! { listed_refusal(#wire, &read_input(#wire), &#source, &[], &rejected) }
+    });
+    let reading = reading(operation, module, &source, &reader, &validator, refused);
     let ttl = ttl_of(operation);
     let scope = scope_of(operation);
     let mime = operation
