@@ -8,9 +8,9 @@ use super::{arrays, validate};
 use super::{
     field_reaches_type_parameter, innermost, key_object_name, key_serializer_expr, kotlin_base,
     kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
-    listed_serializer, lookup_kotlin_name, marked_nullable_at, range_serializer, range_typename,
-    result_serializer, result_typename, sibling_typename, tuple_wrapper_serializer,
-    tuple_wrapper_typename,
+    listed_serializer, lookup_kotlin_name, map_object_name, map_serializer, marked_nullable_at,
+    range_serializer, range_typename, result_serializer, result_typename, sibling_typename,
+    tuple_wrapper_serializer, tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
@@ -184,11 +184,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
             |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
         )
     } else if let FieldDefType::Map(key, value) = &field.field_type {
-        format!(
-            "Map<{}, {}>",
-            annotated_typename(key, in_keys),
-            annotated_typename(value, annotated)
-        )
+        annotated_map((key, value), in_keys, annotated)
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
         tuple_wrapper_typename(positions, annotated.unjudged)
     } else if let FieldDefType::Range(kind, bound) = &field.field_type {
@@ -233,6 +229,30 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
                 },
             )
     })
+}
+
+/// [`annotated_base`] of a map of `key` to `value`, its keys declared as `in_keys` says: one keyed
+/// by a brand names the brand's map serializer where the plugin reads it.
+fn annotated_map(
+    (key, value): (&FieldDef, &FieldDef),
+    in_keys: Annotated,
+    annotated: Annotated,
+) -> String {
+    let map = format!(
+        "Map<{}, {}>",
+        annotated_typename(key, in_keys),
+        annotated_typename(value, annotated)
+    );
+    match (in_keys.numbers == Numbers::Key)
+        .then(|| texts::mapped_by(key))
+        .flatten()
+    {
+        Some(brand) => format!(
+            "@Serializable(with = {}::class) {map}",
+            map_object_name(&brand)
+        ),
+        None => map,
+    }
 }
 
 /// [`annotated_base`] with the `?` an optional `field` carries.
@@ -846,10 +866,10 @@ pub(super) fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) 
             Some(_) | None => kotlin_serializer_expr(&innermost(field), type_parameters),
         }
     } else if let FieldDefType::Map(key, value) = &field.field_type {
-        format!(
-            "MapSerializer({}, {})",
-            key_serializer_expr(key, type_parameters),
-            unjudged_serializer(value, type_parameters)
+        map_serializer(
+            key,
+            &key_serializer_expr(key, type_parameters),
+            &unjudged_serializer(value, type_parameters),
         )
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
         tuple_wrapper_serializer(positions, true)

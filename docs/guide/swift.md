@@ -39,7 +39,13 @@ for (key, held) in parcelsByDock.sorted(by: { $0.key < $1.key }) { errors += hel
 if let held = spareParcel { errors += held.validate().map { Manifest.swiftSchemaUnder("spareParcel", $0) } }
 ```
 
-A Swift dictionary keeps no order, so a map is walked by its sorted keys. A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
+A Swift dictionary keeps no order, so a map is walked by its sorted keys. A map's key is judged as its value is, under the same place, as Rust's `validate()` judges it: with `pitches: BTreeMap<Pitch, u32>` over a brand whose `check` refuses a pitch above 12, `{"pitches":{"13":1}}` is refused with `'pitches.13': 13 is outside of the scale`, and the walk binds no value it does not judge:
+
+```swift
+for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { Chime.swiftSchemaUnder("pitches.\(key.value)", $0) } }
+```
+
+A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
 
 **The path a message names** is the steps serde writes on the way to the value, joined by dots: a key, a position in an array, or nothing where serde writes the value itself.
 
@@ -91,7 +97,7 @@ error: cannot find 'withinParcel' in scope
 **What you declare.**
 
 - **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
-- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds declares `func validate() -> [String] { [] }`, `func swiftSchemaValidateBound() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
+- **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds, a map's key among them, declares `func validate() -> [String] { [] }`, `func swiftSchemaValidateBound() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
 - **A type alias of a list, a map or an `Option` is declared above every type whose field names it.** Declared below, the holder reads it as a model, and the emitted Swift does not compile: `incorrect argument label in call (have 'swiftSchemaUnjudged:', expected 'from:')` and `value of type 'ProbeList' (aka 'Array<String>') has no member 'validate'`. Move the alias above the holder.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'`, or `'swiftSchemaBoundText'` for a pattern. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
 
