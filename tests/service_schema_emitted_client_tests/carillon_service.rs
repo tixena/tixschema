@@ -1,7 +1,8 @@
 //! `CarillonService` on `ws_rpc`, whose one operation takes a message that holds a struct in a
 //! list, in a map, in an externally, an adjacently and an internally tagged enum, beside a
 //! flattened member and in a struct with its own tag, numbers alone and in a list, a map keyed by a
-//! brand with a check, a `Result`, a member with a bound, and answers the message it was handed.
+//! brand with a check and one keyed by a brand with a check over another, a `Result`, a member
+//! with a bound, and answers the message it was handed.
 //! What the Rust dispatcher answers to each payload names the field every emitted dispatcher and
 //! client is measured against. Nothing here waits on a clock.
 
@@ -17,11 +18,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1}}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 45] = [
+pub const CASES: [(&str, &str, Option<&str>); 63] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -127,6 +128,40 @@ pub const CASES: [(&str, &str, Option<&str>); 45] = [
     ("an f32 beyond an f64", "ring", Some("1e400")),
     ("an f64 beyond an f32", "sway", Some("1e39")),
     ("an f64 beyond its range", "sway", Some("1e400")),
+    (
+        "a key the inner brand's check refuses",
+        "outer.mute",
+        Some("1"),
+    ),
+    (
+        "a key the outer brand's check refuses",
+        "outer.soft",
+        Some("1"),
+    ),
+    ("an integral fraction for a u32", "strokes", Some("1.0")),
+    ("an exponent for a u32", "strokes", Some("1e2")),
+    ("a capital exponent for a u32", "strokes", Some("1E2")),
+    ("a fraction of zero for a u32", "strokes", Some("0.0")),
+    (
+        "a fraction of zero below zero for a u32",
+        "strokes",
+        Some("-0.0"),
+    ),
+    ("a zero below zero for a u32", "strokes", Some("-0")),
+    ("an integral fraction for an i64", "depth", Some("1.0")),
+    ("an exponent for an i64", "depth", Some("1e2")),
+    ("a capital exponent for an i64", "depth", Some("1E2")),
+    ("a fraction of zero for an i64", "depth", Some("0.0")),
+    (
+        "a fraction of zero below zero for an i64",
+        "depth",
+        Some("-0.0"),
+    ),
+    ("a zero below zero for an i64", "depth", Some("-0")),
+    ("a one for a u32", "strokes", Some("1")),
+    ("a zero for a u32", "strokes", Some("0")),
+    ("a one for an i64", "depth", Some("1")),
+    ("a zero for an i64", "depth", Some("0")),
 ];
 
 /// The cases where the Rust dispatcher names a place above the one the case changes: serde reads a
@@ -136,12 +171,16 @@ pub const NAMED_AT_THE_HOLDER: [(&str, &str); 1] =
     [("a text for a number in a flattened member", "frame")];
 
 /// The cases the Rust dispatcher reads: serde reads an `f32` beyond its range as an infinity of the
-/// sign written.
-pub const READ_BY_RUST: [&str; 4] = [
+/// sign written, and an integer written plainly.
+pub const READ_BY_RUST: [&str; 8] = [
     "an f32 beyond its range",
     "an f32 just beyond its range",
     "an f32 beyond its range below zero",
     "an f64 beyond an f32",
+    "a one for a u32",
+    "a zero for a u32",
+    "a one for an i64",
+    "a zero for an i64",
 ];
 
 /// The cases the Rust dispatcher answers `undeserializable-payload` for, naming no field: `serde_json`
@@ -196,6 +235,16 @@ pub struct CarillonBeam {
 #[serde(transparent)]
 pub struct CarillonPitch(pub u32);
 
+#[model_schema(enable = ["jsonschema"], check = ["audible"])]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct CarillonTone(pub String);
+
+#[model_schema(enable = ["jsonschema"], check = ["loud"])]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct CarillonOuterTone(pub CarillonTone);
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CarillonFrame {
@@ -219,6 +268,7 @@ pub struct CarillonChime {
     pub frame: CarillonFrame,
     #[model_schema_prop(minLength = 1)]
     pub label: String,
+    pub outer: BTreeMap<CarillonOuterTone, u32>,
     pub peal: CarillonPeal,
     pub pitches: BTreeMap<CarillonPitch, u32>,
     pub ring: f32,
@@ -279,10 +329,28 @@ fn within_scale(value: &CarillonPitch) -> Result<(), Vec<String>> {
     }
 }
 
-/// [`STRUCK`] with the change `case` names. A value no `Value` holds, a number beyond an `f64`, is
-/// written into the text as it is.
+/// The check of [`CarillonTone`]: a tone that sounds.
+fn audible(value: &CarillonTone) -> Result<(), Vec<String>> {
+    if value.0 == "mute" {
+        Err(vec!["mute is silent".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// The check of [`CarillonOuterTone`]: a tone louder than soft.
+fn loud(value: &CarillonOuterTone) -> Result<(), Vec<String>> {
+    if value.0.0 == "soft" {
+        Err(vec!["soft is quiet".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// [`STRUCK`] with the change `case` names. A number is written into the text as it is: `Value`
+/// writes `1e2` as `100.0` and `-0` as `-0.0`, and holds no number beyond an `f64`.
 pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
-    const UNHELD: &str = "the value no Value holds";
+    const VERBATIM: &str = "the number written as it is";
     let mut changed: Value = serde_json::from_str(STRUCK).unwrap();
     if place.is_empty() {
         return changed.to_string();
@@ -296,7 +364,10 @@ pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
             _ => &mut at[*step],
         };
     }
-    let replaced = value.map(|text| serde_json::from_str(text).unwrap_or_else(|_| json!(UNHELD)));
+    let replaced = value.map(|text| match serde_json::from_str(text) {
+        Ok(Value::Number(_)) | Err(_) => json!(VERBATIM),
+        Ok(read) => read,
+    });
     match (replaced, last.parse::<usize>()) {
         (Some(written), Ok(index)) if at.is_array() => at[index] = written,
         (Some(written), _) => at[*last] = written,
@@ -306,7 +377,7 @@ pub fn payload((_, place, value): (&str, &str, Option<&str>)) -> String {
     }
     let text = changed.to_string();
     match value {
-        Some(unheld) if text.contains(UNHELD) => text.replace(&format!("\"{UNHELD}\""), unheld),
+        Some(number) if text.contains(VERBATIM) => text.replace(&format!("\"{VERBATIM}\""), number),
         _ => text,
     }
 }

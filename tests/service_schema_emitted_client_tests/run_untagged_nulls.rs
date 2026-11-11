@@ -308,8 +308,8 @@ fn the_swift_read_of_a_variant_over_an_option_takes_the_nil_it_reads() {
         (
             plumb_swift::swift_definition(),
             [
-                "do { let value = try SoundedType(from: decoder); self = .depth(value); return } \
-                 catch {}; ",
+                "do { let value = try SwiftSchemaFit<SoundedType>(from: decoder).value; self = \
+                 .depth(value); return } catch {}; ",
                 "if let value = try? Bool(from: decoder) { self = .flag(value); return }; ",
             ],
         ),

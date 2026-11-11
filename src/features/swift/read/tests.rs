@@ -3,7 +3,10 @@
 
 use syn::Item;
 
-use super::{JUDGED, Locals, Presence, Source, both, fitted, held, takes_keys, unjudged};
+use super::{
+    JUDGED, Locals, Presence, Source, both, fitted, held, substituted, takes_keys, top_level,
+    unjudged,
+};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::swift::preprocess::{PAYLOAD, Written};
 use crate::features::swift::{SwiftTypeArgs, swift_schema_dispatch};
@@ -549,5 +552,115 @@ fn a_read_from_the_decoder_reads_an_integer_through_the_fitting_read() {
     assert_eq!(
         Source::Listed("listed".to_owned()).plain("UInt8", &[]),
         "listed.decode(SwiftSchemaFit<UInt8>.self).value"
+    );
+}
+
+/// The read of a member typed with an alias of a fixed-width integer, or of an `Optional` of one,
+/// names the alias inside `SwiftSchemaFit`; one of a list of such an integer is read as the list it
+/// names is. A member typed with an alias of any other type is read as it was.
+#[test]
+fn an_alias_of_an_integer_is_read_through_the_fitting_read() {
+    for alias in [
+        syn::parse_quote! { pub type Sounding = i64; },
+        syn::parse_quote! { pub type Fathoms = Option<u32>; },
+        syn::parse_quote! { pub type Soundings = Vec<Sounding>; },
+        syn::parse_quote! { pub type Resounding = Sounding; },
+        syn::parse_quote! { pub type Bearing = String; },
+    ] {
+        assert!(emitted(&alias).contains("public typealias "));
+    }
+    let chart: Item = syn::parse_quote! {
+        pub struct Chart {
+            pub depth: Sounding,
+            pub fathoms: Fathoms,
+            pub soundings: Soundings,
+            pub listed: Vec<Sounding>,
+            pub resounded: Resounding,
+            pub bearing: Bearing,
+        }
+    };
+    let written = emitted(&chart);
+    for read in [
+        "self.depth = try container.decode(SwiftSchemaFit<SoundingType>.self, forKey: .depth).value",
+        "self.fathoms = try container.decode(SwiftSchemaFit<FathomsType>.self, forKey: .fathoms).value",
+        "self.soundings = try container.decode([SwiftSchemaFit<SoundingType>].self, forKey: \
+         .soundings).map({ $0.value })",
+        "self.listed = try container.decode([SwiftSchemaFit<SoundingType>].self, forKey: \
+         .listed).map({ $0.value })",
+        "self.resounded = try container.decode(SwiftSchemaFit<ResoundingType>.self, forKey: \
+         .resounded).value",
+        "self.bearing = try container.decode(BearingType.self, forKey: .bearing)",
+    ] {
+        assert!(written.contains(read), "{read} is not in: {written}");
+    }
+    assert_eq!(
+        Source::Decoder.plain("FathomsType", &[]),
+        "SwiftSchemaFit<FathomsType>(from: decoder).value"
+    );
+}
+
+/// The read of a member typed with an alias that declares a parameter reads what the alias names
+/// at its filling: an integer through the fitting read under the alias's own name, and a list or a
+/// map of one as that list or map. One filled with any other type is read as it was.
+#[test]
+fn a_generic_alias_filled_with_an_integer_is_read_through_the_fitting_read() {
+    for alias in [
+        syn::parse_quote! { pub type Leadline<Held> = Vec<Held>; },
+        syn::parse_quote! { pub type Plumbed<Held> = Held; },
+        syn::parse_quote! { pub type Logged<Held> = HashMap<String, Option<Held>>; },
+        syn::parse_quote! { pub type Charted<Mark, Held> = HashMap<Mark, Held>; },
+    ] {
+        assert!(emitted(&alias).contains("public typealias "));
+    }
+    let survey: Item = syn::parse_quote! {
+        pub struct Survey {
+            pub casts: Leadline<u8>,
+            pub depth: Plumbed<u8>,
+            pub shoal: Plumbed<Option<i32>>,
+            pub nested: Leadline<Plumbed<u16>>,
+            pub logged: Logged<Vec<u32>>,
+            pub charted: Plumbed<Charted<String, u8>>,
+            pub bearing: Plumbed<String>,
+        }
+    };
+    let written = emitted(&survey);
+    for read in [
+        "self.casts = try container.decode([SwiftSchemaFit<UInt8>].self, forKey: .casts)\
+         .map({ $0.value })",
+        "self.depth = try container.decode(SwiftSchemaFit<PlumbedType<UInt8>>.self, forKey: \
+         .depth).value",
+        "self.shoal = try container.decode(SwiftSchemaFit<PlumbedType<Int32?>>.self, forKey: \
+         .shoal).value",
+        "self.nested = try container.decode([SwiftSchemaFit<PlumbedType<UInt16>>].self, forKey: \
+         .nested).map({ $0.value })",
+        "self.logged = try container.decode([String: [SwiftSchemaFit<UInt32>]?].self, forKey: \
+         .logged).mapValues({ $0?.map({ $0.value }) })",
+        "self.charted = try container.decode(PlumbedType<ChartedType<String, UInt8>>.self, \
+         forKey: .charted)",
+        "self.bearing = try container.decode(PlumbedType<String>.self, forKey: .bearing)",
+    ] {
+        assert!(written.contains(read), "{read} is not in: {written}");
+    }
+}
+
+/// What fills an alias's parameters is split on its top-level commas, and each parameter is
+/// written as its filling where it stands as a whole name.
+#[test]
+fn a_filling_is_split_on_its_top_level_commas_and_substituted_by_whole_names() {
+    assert_eq!(
+        top_level("ChartedType<String, UInt8>, [String: UInt8], UInt8?"),
+        ["ChartedType<String, UInt8>", "[String: UInt8]", "UInt8?"]
+    );
+    assert_eq!(
+        substituted(
+            "[Mark: [Held?]]",
+            &["Mark".to_owned(), "Held".to_owned()],
+            &["String", "UInt8"]
+        ),
+        "[String: [UInt8?]]"
+    );
+    assert_eq!(
+        substituted("[Holder: Held]", &["Held".to_owned()], &["UInt8"]),
+        "[Holder: UInt8]"
     );
 }
