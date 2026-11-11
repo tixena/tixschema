@@ -3694,6 +3694,7 @@ fn struct_schema_impl_items(
             &bodies.2,
             &flatten_merged_sources(flattened_fields),
             item_name,
+            rust_ident,
             &schema_parameters(generics, args),
             docs.json_examples.as_ref(),
         ));
@@ -9509,6 +9510,7 @@ fn tuple_struct_json_schema_items(
     [
         json_schema_methods(
             item_name,
+            &item_struct.ident.to_string(),
             &tuple_struct_json_body(item_name, shape),
             &schema_parameters(&item_struct.generics, args),
             struct_json_examples(item_struct, shape).as_ref(),
@@ -10540,6 +10542,7 @@ fn build_branded_json_schema_method(
     args: &ModelSchemaArgs,
     json_inner: &BrandedJsonInner,
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -10553,7 +10556,7 @@ fn build_branded_json_schema_method(
         }
         BrandedJsonInner::Slot(inner) => branded_slot_json_schema(args, inner, def_name),
     };
-    json_schema_methods(def_name, &body, parameters, examples)
+    json_schema_methods(def_name, rust_ident, &body, parameters, examples)
 }
 
 /// The `FieldDef` every surface renders from: the written one with each name that is one of the
@@ -11353,6 +11356,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
             args,
             &branded_json_inner(&value_inner),
             &item_name,
+            &rust_ident,
             &schema_parameters(&item_struct.generics, args),
             json_schema_examples(&item_struct.attrs).as_ref(),
         ));
@@ -12218,7 +12222,7 @@ fn process_plain_enum(
     let schema_impl_items: Vec<proc_macro2::TokenStream> = vec![
         // No slot to fill: Rust refuses an all-unit enum that leaves a type parameter unused, so a
         // plain enum reaches here declaring none — whatever consts and lifetimes it also binds.
-        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum.attrs, args),
+        generate_plain_enum_json_schema_method(&enumerated, item_name, &item_enum, args),
         #[cfg(feature = "typescript")]
         ts_definition_method,
         #[cfg(feature = "zod")]
@@ -21422,6 +21426,7 @@ fn generate_json_schema_method(
     json_schema_fields: &[proc_macro2::TokenStream],
     flatten_json_schemas: &[MergedSource],
     def_name: &str,
+    rust_ident: &str,
     parameters: &[SchemaParameter],
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
@@ -21429,6 +21434,7 @@ fn generate_json_schema_method(
         json_schema_fields,
         flatten_json_schemas,
         def_name,
+        rust_ident,
         parameters,
         examples,
     )
@@ -22672,7 +22678,7 @@ fn bind_item_jsdoc_local(docs: &str) -> proc_macro2::TokenStream {
 fn generate_plain_enum_json_schema_method(
     enumerated: &[proc_macro2::TokenStream],
     def_name: &str,
-    attrs: &[syn::Attribute],
+    item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if !args.enable.jsonschema {
@@ -22681,8 +22687,9 @@ fn generate_plain_enum_json_schema_method(
     generate_plain_enum_json_schema_method_impl(
         enumerated,
         def_name,
+        &item_enum.ident.to_string(),
         &[],
-        json_schema_examples(attrs).as_ref(),
+        json_schema_examples(&item_enum.attrs).as_ref(),
     )
 }
 
@@ -22785,6 +22792,7 @@ fn enum_json_schema_methods(
     }
     json_schema_methods(
         def_name,
+        &item_enum.ident.to_string(),
         &quote::quote! { { #main_schema_code } },
         &schema_parameters(&item_enum.generics, args),
         json_schema_examples(&item_enum.attrs).as_ref(),
@@ -22997,6 +23005,7 @@ fn generate_alias_json_schema_method(
         own.or_else(|| republished_json_examples(&surface_field_def(&alias.generics, field_def)));
     json_schema_methods(
         export_name,
+        &alias.ident.to_string(),
         &body,
         &schema_parameters(&alias.generics, args),
         values.as_ref(),

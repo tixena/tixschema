@@ -27,12 +27,58 @@ pub mod releases {
     }
 }
 
+/// A probe as a sensor reports it.
+pub mod sensors {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Probe {
+        pub depth: u32,
+    }
+}
+
+/// A probe that leads on to the next one: published under the same name as a sensor's, holding
+/// one, and reaching itself.
+pub mod chains {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::sensors;
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Probe {
+        pub held: sensors::Probe,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub next: Option<Box<Self>>,
+    }
+}
+
 use jsonschema::draft202012;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
 const DEFS: &str = "#/$defs/";
+
+/// A probe as a survey holds it: published under the same name as a sensor's, and holding one.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Probe {
+    pub held: sensors::Probe,
+    pub label: String,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Survey {
+    pub first: Probe,
+    pub reading: sensors::Probe,
+    pub second: Probe,
+    pub spare: sensors::Probe,
+}
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -268,5 +314,133 @@ fn a_written_value_reads_against_the_document_and_a_wrong_one_does_not() {
     assert!(!validator.is_valid(&written));
     written["shipping"]["city"] = json!("Porto");
     written["current_release"] = json!({ "number": 4_u32 });
+    assert!(!validator.is_valid(&written));
+}
+
+/// `document` is valid JSON Schema 2020-12 and each of its `$ref`s names one of its definitions.
+fn assert_valid_and_resolved(document: &Value) {
+    draft202012::meta::validate(document).unwrap();
+    let mut found = Vec::new();
+    references(document, &mut found);
+    for pointer in found {
+        let key = pointer.strip_prefix(DEFS).unwrap();
+        assert!(
+            document["$defs"].get(key).is_some(),
+            "`{pointer}` names nothing: {document:#}"
+        );
+    }
+}
+
+#[test]
+fn a_type_holding_another_type_of_its_name_describes_the_one_it_holds() {
+    let document = Probe::json_schema();
+    assert_eq!(
+        document["properties"]["held"],
+        sensors::Probe::json_schema()
+    );
+    assert_eq!(
+        document,
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "held": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": { "depth": { "type": "integer" } },
+                    "required": ["depth"],
+                },
+                "label": { "type": "string" },
+            },
+            "required": ["held", "label"],
+        })
+    );
+    assert_valid_and_resolved(&document);
+}
+
+#[test]
+fn two_types_of_one_name_used_twice_each_are_two_definitions() {
+    let document = Survey::json_schema();
+    let reference = |key: &str| json!({ "$ref": format!("{DEFS}{key}") });
+    assert_eq!(
+        document,
+        json!({
+            "$defs": {
+                "Probe": sensors::Probe::json_schema(),
+                "Probe.8a26ec7e993bf99a": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "held": reference("Probe"),
+                        "label": { "type": "string" },
+                    },
+                    "required": ["held", "label"],
+                },
+            },
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "first": reference("Probe.8a26ec7e993bf99a"),
+                "reading": reference("Probe"),
+                "second": reference("Probe.8a26ec7e993bf99a"),
+                "spare": reference("Probe"),
+            },
+            "required": ["first", "reading", "second", "spare"],
+        })
+    );
+    assert_valid_and_resolved(&document);
+
+    let validator = draft202012::new(&document).unwrap();
+    let probe = Probe {
+        held: sensors::Probe { depth: 3 },
+        label: "north".to_owned(),
+    };
+    let mut written = serde_json::to_value(Survey {
+        first: probe.clone(),
+        reading: sensors::Probe { depth: 4 },
+        second: probe,
+        spare: sensors::Probe { depth: 5 },
+    })
+    .unwrap();
+    assert!(validator.is_valid(&written), "{written:#}");
+    written["first"]["held"] = written["second"].clone();
+    assert!(!validator.is_valid(&written));
+}
+
+#[test]
+fn a_recursive_type_holding_another_type_of_its_name_reaches_its_own_definition() {
+    let document = chains::Probe::json_schema();
+    assert_eq!(
+        document,
+        json!({
+            "$defs": {
+                "Probe.56a7020ba0740138": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "held": sensors::Probe::json_schema(),
+                        "next": {
+                            "anyOf": [{ "$ref": "#/$defs/Probe.56a7020ba0740138" }, { "type": "null" }],
+                        },
+                    },
+                    "required": ["held"],
+                },
+            },
+            "$ref": "#/$defs/Probe.56a7020ba0740138",
+        })
+    );
+    assert_valid_and_resolved(&document);
+
+    let validator = draft202012::new(&document).unwrap();
+    let mut written = serde_json::to_value(chains::Probe {
+        held: sensors::Probe { depth: 1 },
+        next: Some(Box::new(chains::Probe {
+            held: sensors::Probe { depth: 2 },
+            next: None,
+        })),
+    })
+    .unwrap();
+    assert!(validator.is_valid(&written), "{written:#}");
+    written["next"]["held"] = written["next"].clone();
     assert!(!validator.is_valid(&written));
 }

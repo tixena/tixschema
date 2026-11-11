@@ -1,8 +1,8 @@
 //! Each holder of [`read_past_models`](super::read_past_models) read with and without a key no
 //! member declares by serde, the JSON Schema, Zod under `node`, and the emitted Dart, Kotlin and
 //! Swift types: every surface reads each payload serde writes back as the object it was, reads the
-//! `nonstrict` `Customer` past the key as serde does, and refuses it beside the strict `Supplier`,
-//! as serde refuses it.
+//! `nonstrict` `Customer` and `Event` past the key as serde does, and refuses it beside the strict
+//! `Supplier`, as serde refuses it.
 
 use core::fmt::Write as _;
 
@@ -10,16 +10,18 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
-use super::read_past_models::{Contact, Customer, Supplier, SupplierContact};
+use super::read_past_models::{Contact, Customer, Event, Supplier, SupplierContact};
 #[cfg(feature = "dart")]
-use super::read_past_models::{contact_dart, customer_dart, supplier_contact_dart, supplier_dart};
+use super::read_past_models::{
+    contact_dart, customer_dart, event_dart, supplier_contact_dart, supplier_dart,
+};
 #[cfg(feature = "kotlin")]
 use super::read_past_models::{
-    contact_kotlin, customer_kotlin, supplier_contact_kotlin, supplier_kotlin,
+    contact_kotlin, customer_kotlin, event_kotlin, supplier_contact_kotlin, supplier_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::read_past_models::{
-    contact_swift, customer_swift, supplier_contact_swift, supplier_swift,
+    contact_swift, customer_swift, event_swift, supplier_contact_swift, supplier_swift,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::{dart, module};
@@ -40,6 +42,24 @@ where
 /// Each holder's name and a payload serde writes of it, one per variant of what it flattens.
 fn payloads() -> Vec<(&'static str, String)> {
     vec![
+        written(
+            "Event",
+            &Event::Signed {
+                contact: Contact::Email {
+                    email: "cy@example.com".to_owned(),
+                },
+                name: "Cy".to_owned(),
+            },
+        ),
+        written(
+            "Event",
+            &Event::Signed {
+                contact: Contact::Phone {
+                    phone: "557".to_owned(),
+                },
+                name: "Di".to_owned(),
+            },
+        ),
         written(
             "Customer",
             &Customer {
@@ -79,10 +99,20 @@ fn payloads() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// `json` with a key no member of either holder declares.
-fn with_stray(json: &str) -> String {
+/// `json` with a key no member of the holder `name` declares, beside its members: in the object
+/// serde writes `Event`'s variant under.
+fn with_stray(name: &str, json: &str) -> String {
     let mut object: Map<String, Value> = serde_json::from_str(json).unwrap();
-    object.insert("stray".to_owned(), json!(1_u8));
+    let members = if name == "Event" {
+        object
+            .values_mut()
+            .next()
+            .and_then(Value::as_object_mut)
+            .unwrap()
+    } else {
+        &mut object
+    };
+    members.insert("stray".to_owned(), json!(1_u8));
     serde_json::to_string(&object).unwrap()
 }
 
@@ -91,13 +121,13 @@ fn rows() -> Vec<(&'static str, String)> {
     let payloads = payloads();
     let strays: Vec<(&'static str, String)> = payloads
         .iter()
-        .map(|(name, json)| (*name, with_stray(json)))
+        .map(|(name, json)| (*name, with_stray(name, json)))
         .collect();
     payloads.into_iter().chain(strays).collect()
 }
 
 /// What every surface is held to print of each row: the object serde wrote, which a stray key
-/// beside `Customer` leaves as it was, or `refused` for a stray key beside `Supplier`.
+/// beside `Customer` and `Event` leaves as it was, or `refused` for a stray key beside `Supplier`.
 fn expected() -> Vec<(usize, Value)> {
     let payloads = payloads();
     rows()
@@ -105,7 +135,7 @@ fn expected() -> Vec<(usize, Value)> {
         .enumerate()
         .map(|(at, (name, _))| {
             let written = &payloads[at % payloads.len()].1;
-            let told = if at < payloads.len() || *name == "Customer" {
+            let told = if at < payloads.len() || *name != "Supplier" {
                 serde_json::from_str(written).unwrap()
             } else {
                 Value::String("refused".to_owned())
@@ -141,15 +171,15 @@ where
 }
 
 #[test]
-fn serde_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn serde_reads_past_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier() {
     let told: Vec<(usize, Value)> = rows()
         .iter()
         .enumerate()
         .map(|(at, (name, json))| {
-            let read = if *name == "Customer" {
-                serde_told::<Customer>(json)
-            } else {
-                serde_told::<Supplier>(json)
+            let read = match *name {
+                "Customer" => serde_told::<Customer>(json),
+                "Event" => serde_told::<Event>(json),
+                _ => serde_told::<Supplier>(json),
             };
             (at, read)
         })
@@ -158,14 +188,14 @@ fn serde_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier()
 }
 
 #[test]
-fn the_json_schema_takes_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn the_json_schema_takes_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier() {
     let taken: Vec<bool> = rows()
         .iter()
         .map(|(name, json)| {
-            let schema = if *name == "Customer" {
-                Customer::json_schema()
-            } else {
-                Supplier::json_schema()
+            let schema = match *name {
+                "Customer" => Customer::json_schema(),
+                "Event" => Event::json_schema(),
+                _ => Supplier::json_schema(),
             };
             let instance: Value = serde_json::from_str(json).unwrap();
             jsonschema::validator_for(&schema)
@@ -181,7 +211,8 @@ fn the_json_schema_takes_a_stray_key_beside_customer_and_refuses_it_beside_suppl
 }
 
 #[test]
-fn the_zod_schema_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn the_zod_schema_reads_past_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier()
+{
     const REQUIRED: &[&str] = &["zod"];
     let Some(modules) = node_modules(REQUIRED) else {
         stand_down_modules(REQUIRED, "the Zod schemas of holders read past a stray key");
@@ -191,6 +222,7 @@ fn the_zod_schema_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_s
     for (ts, zod) in [
         (Contact::ts_definition(), Contact::zod_schema()),
         (Customer::ts_definition(), Customer::zod_schema()),
+        (Event::ts_definition(), Event::zod_schema()),
         (
             SupplierContact::ts_definition(),
             SupplierContact::zod_schema(),
@@ -224,7 +256,7 @@ fn the_zod_schema_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_s
 
 #[cfg(feature = "dart")]
 #[test]
-fn the_dart_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn the_dart_read_reads_past_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier() {
     let mut main = String::from("void main() {\n");
     for (at, (name, json)) in rows().iter().enumerate() {
         let _ = writeln!(
@@ -237,6 +269,7 @@ fn the_dart_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_su
         &[
             contact_dart::dart_definition(),
             customer_dart::dart_definition(),
+            event_dart::dart_definition(),
             supplier_contact_dart::dart_definition(),
             supplier_dart::dart_definition(),
         ],
@@ -252,7 +285,8 @@ fn the_dart_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_su
 
 #[cfg(feature = "kotlin")]
 #[test]
-fn the_kotlin_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn the_kotlin_read_reads_past_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier()
+{
     let mut main = String::from("fun main() {\n");
     for (at, (name, json)) in rows().iter().enumerate() {
         let _ = writeln!(
@@ -272,6 +306,7 @@ fn the_kotlin_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_
             .to_owned(),
         contact_kotlin::kotlin_definition(),
         customer_kotlin::kotlin_definition(),
+        event_kotlin::kotlin_definition(),
         supplier_contact_kotlin::kotlin_definition(),
         supplier_kotlin::kotlin_definition(),
         main,
@@ -284,7 +319,8 @@ fn the_kotlin_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_
 
 #[cfg(feature = "swift")]
 #[test]
-fn the_swift_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_supplier() {
+fn the_swift_read_reads_past_a_stray_key_beside_customer_and_event_and_refuses_it_beside_supplier()
+{
     let mut main = String::from(
         "func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {\n  do {\n    \
          let read = try JSONDecoder().decode(type, from: Data(payload.utf8))\n    \
@@ -298,6 +334,7 @@ fn the_swift_read_reads_past_a_stray_key_beside_customer_and_refuses_it_beside_s
         "import Foundation".to_owned(),
         contact_swift::swift_definition(),
         customer_swift::swift_definition(),
+        event_swift::swift_definition(),
         supplier_contact_swift::swift_definition(),
         supplier_swift::swift_definition(),
         main,
