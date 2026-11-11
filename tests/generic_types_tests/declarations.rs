@@ -710,6 +710,7 @@ const schemas = {
   Wharf: lib.Wharf$Schema,
   Mole: lib.Mole$Schema,
   Pause: lib.Pause$Schema,
+  Tethered: lib.Tethered$Schema,
 };
 const sorted = (value) =>
   Array.isArray(value)

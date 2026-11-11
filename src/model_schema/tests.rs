@@ -8458,8 +8458,6 @@ fn a_bound_the_integer_type_holds_is_not_refused() {
         ("u64", "maximum = 18446744073709551615"),
         ("i64", "minimum = -9223372036854775808"),
         ("i64", "maximum = 9223372036854775807"),
-        ("u32", "minimum = -0.5"),
-        ("u8", "maximum = 300.5"),
         ("f64", "minimum = -1.5"),
         ("f32", "maximum = 1e30"),
     ] {
@@ -8469,6 +8467,101 @@ fn a_bound_the_integer_type_holds_is_not_refused() {
         .unwrap();
         assert_eq!(
             bound_range_refusals(&item),
+            Vec::<String>::new(),
+            "for {constraint} on {field_type}"
+        );
+    }
+}
+
+/// The refusals of a bound a field's type cannot compare alike on every surface.
+fn bound_representable_refusals(item: &syn::ItemStruct) -> Vec<String> {
+    field_prop_guard_messages(item)
+        .into_iter()
+        .filter(|text| text.contains("holds a fraction") || text.contains("is beyond what"))
+        .collect()
+}
+
+#[test]
+fn a_fraction_on_an_integer_bound_is_refused_naming_the_whole_bound_to_write() {
+    for (field_type, key, written, whole) in [
+        ("i32", "minimum", "1.5", "2"),
+        ("i32", "maximum", "-1.5", "-2"),
+        ("i64", "maximum", "1.5", "1"),
+        ("i64", "minimum", "-1.5", "-1"),
+        ("u32", "minimum", "-0.5", "0"),
+        ("u8", "maximum", "2.25", "2"),
+        ("usize", "minimum", "0.5", "1"),
+        ("Option<i16>", "minimum", "1.5", "2"),
+        ("Box<u8>", "maximum", "9.5", "9"),
+    ] {
+        let numeric = field_type
+            .trim_start_matches("Option<")
+            .trim_start_matches("Box<")
+            .trim_end_matches('>');
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Counted {{ #[model_schema_prop({key} = {written})] count: {field_type} }}"
+        ))
+        .unwrap();
+        assert_eq!(
+            bound_representable_refusals(&item),
+            vec![format!(
+                "model_schema: field `count`: `{key} = {written}` holds a fraction, and \
+                 `{numeric}` holds whole numbers only. Write `{key} = {whole}`."
+            )],
+            "for {key} = {written} on {field_type}"
+        );
+    }
+}
+
+#[test]
+fn a_bound_beyond_what_a_float_holds_is_refused_naming_the_largest_value() {
+    for (field_type, key, written, largest) in [
+        ("f32", "maximum", "1e39", "3.4028235e38"),
+        ("f32", "minimum", "-1e39", "3.4028235e38"),
+        (
+            "f32",
+            "maximum",
+            "1000000000000000000000000000000000000000",
+            "3.4028235e38",
+        ),
+        ("Option<f32>", "maximum", "1e39", "3.4028235e38"),
+        ("f64", "maximum", "1e999", "1.7976931348623157e308"),
+    ] {
+        let numeric = field_type
+            .trim_start_matches("Option<")
+            .trim_end_matches('>');
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Counted {{ #[model_schema_prop({key} = {written})] count: {field_type} }}"
+        ))
+        .unwrap();
+        assert_eq!(
+            bound_representable_refusals(&item),
+            vec![format!(
+                "model_schema: field `count`: `{key} = {written}` is beyond what an `{numeric}` \
+                 holds ({largest} in size). Write a bound inside that range, or take it off."
+            )],
+            "for {key} = {written} on {field_type}"
+        );
+    }
+}
+
+#[test]
+fn a_bound_the_type_compares_alike_is_not_refused_as_unrepresentable() {
+    for (field_type, constraint) in [
+        ("i32", "minimum = 2, maximum = 10"),
+        ("i64", "maximum = 10.0"),
+        ("u32", "minimum = 0.0"),
+        ("f32", "maximum = 3e38"),
+        ("f32", "minimum = 0.5, maximum = 1e30"),
+        ("f64", "maximum = 1e39"),
+        ("f64", "minimum = -1.5"),
+    ] {
+        let item: syn::ItemStruct = syn::parse_str(&format!(
+            "struct Counted {{ #[model_schema_prop({constraint})] count: {field_type} }}"
+        ))
+        .unwrap();
+        assert_eq!(
+            bound_representable_refusals(&item),
             Vec::<String>::new(),
             "for {constraint} on {field_type}"
         );

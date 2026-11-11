@@ -1,0 +1,5 @@
+error: model_schema: field `double`: `maximum = 1e999` is beyond what an `f64` holds (1.7976931348623157e308 in size). Write a bound inside that range, or take it off.
+  --> tests/bound_representable_refusals/maximum_beyond_an_f64.rs:10:5
+   |
+10 |     pub double: f64,
+   |     ^^^^^^^^^^^^^^^

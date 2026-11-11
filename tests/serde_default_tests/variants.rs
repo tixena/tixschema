@@ -671,3 +671,31 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          IllegalArgumentException(\"validate()\")); return read } }"
     );
 }
+
+/// A bound on a member of the inner untagged enum takes its variant out of the candidate set, so
+/// the later variant reads a payload only it names, a stray key the later variant does not name is
+/// refused, and a payload the bound accepts is read as the inner variant.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another() {
+    let read = |payload: &str| {
+        serde_json::from_str::<Anchorage>(payload).map_err(|error| error.to_string())
+    };
+    assert_eq!(
+        read(r#"{"harbour":"h"}"#),
+        Ok(Anchorage::Named {
+            harbour: "h".to_owned()
+        })
+    );
+    assert_eq!(
+        read(r#"{"harbour":"h","line":""}"#),
+        Err("data did not match any variant of untagged enum Anchorage".to_owned())
+    );
+    assert_eq!(
+        read(r#"{"line":"x"}"#),
+        Ok(Anchorage::Held(UntaggedBerthing::Moored {
+            dock: north_dock(),
+            line: "x".to_owned(),
+        }))
+    );
+}

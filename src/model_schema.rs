@@ -19924,6 +19924,103 @@ fn check_bound_in_range(
     Err(first)
 }
 
+/// The digits a numeric limit was written with, apart from any separator, suffix or sign.
+fn limit_digits(limit: &Lit) -> Option<String> {
+    if let Lit::Int(int) = limit {
+        Some(int.base10_digits().to_owned())
+    } else if let Lit::Float(float) = limit {
+        Some(float.base10_digits().to_owned())
+    } else {
+        None
+    }
+}
+
+/// Rejects a `minimum` or `maximum` no surface compares alike: a fraction on an integer field,
+/// which Rust and Swift compare with the fraction dropped and Zod, Dart and Kotlin compare as
+/// written, and a number on a float field that is infinite as the field's type, which Rust and
+/// Kotlin build as infinity and Swift warns about:
+///
+/// ```text
+/// error: model_schema: field `least`: `minimum = 1.5` holds a fraction, and `i32` holds whole numbers only. Write `minimum = 2`.
+/// error: model_schema: field `single`: `maximum = 1e39` is beyond what an `f32` holds (3.4028235e38 in size). Write a bound inside that range, or take it off.
+/// ```
+fn check_bound_representable(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    let Some(type_name) = field_def.field_type.number_name() else {
+        return Ok(());
+    };
+    let mut refusals = [
+        ("minimum", prop_meta.minimum.as_ref()),
+        ("maximum", prop_meta.maximum.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(key, written)| {
+        let limit = written?;
+        let number = limit_number(limit);
+        let shown = limit_digits(limit)?;
+        let message = match type_name {
+            "f32" | "f64" => {
+                let beyond = if type_name == "f32" {
+                    shown.parse::<f32>().is_ok_and(f32::is_infinite)
+                } else {
+                    shown.parse::<f64>().is_ok_and(f64::is_infinite)
+                };
+                let largest = if type_name == "f32" {
+                    "3.4028235e38"
+                } else {
+                    "1.7976931348623157e308"
+                };
+                beyond.then(|| {
+                    format!(
+                        "model_schema: {label}: `{key} = {shown}` is beyond what an `{type_name}` \
+                         holds ({largest} in size). Write a bound inside that range, or take it \
+                         off."
+                    )
+                })?
+            }
+            _ => {
+                if !number.is_finite() || number.fract() == 0.0_f64 {
+                    return None;
+                }
+                let whole = if key == "minimum" {
+                    number.ceil()
+                } else {
+                    number.floor()
+                };
+                let to_write = format_number_literal(whole);
+                format!(
+                    "model_schema: {label}: `{key} = {shown}` holds a fraction, and `{type_name}` \
+                     holds whole numbers only. Write `{key} = {}`.",
+                    if to_write == "-0" { "0" } else { &to_write }
+                )
+            }
+        };
+        Some(syn::Error::new_spanned(field, message))
+    });
+    let Some(mut first) = refusals.next() else {
+        return Ok(());
+    };
+    for next in refusals {
+        first.combine(next);
+    }
+    Err(first)
+}
+
+/// Rejects a `minimum` or `maximum` the field's number type cannot hold or no surface compares alike.
+fn check_bound_values(
+    field: &Field,
+    field_def: &FieldDef,
+    prop_meta: &ModelSchemaPropMeta,
+    label: &str,
+) -> Result<(), syn::Error> {
+    check_bound_in_range(field, field_def, prop_meta, label)?;
+    check_bound_representable(field, field_def, prop_meta, label)
+}
+
 /// What a fixed array's outermost level always holds: the spelling of its type and its length.
 fn fixed_outer_length(field_def: &FieldDef, ty: &syn::Type) -> Option<(String, usize)> {
     let outermost = field_def.array_depth.checked_sub(1)?;
@@ -20049,7 +20146,7 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     check_bound_kind(field, field_def, prop_meta, label)?;
-    check_bound_in_range(field, field_def, prop_meta, label)?;
+    check_bound_values(field, field_def, prop_meta, label)?;
     check_bound_meetable(field, field_def, prop_meta, label)?;
     // What is left on a list counts its items, whatever they are.
     if field_def.is_list() {

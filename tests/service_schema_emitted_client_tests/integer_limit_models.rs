@@ -108,7 +108,7 @@ written forms past the limit: refused
     'suffixed': too large: maximum is 1000, got 1001
 floats within: passes
 floats past: refused
-    'count': too large: maximum is 1.5, got 2
+    'count': too large: maximum is 1, got 2
     'load': too large: maximum is 120, got 120.5
     'weight': too small: minimum is 1.5, got 1.25
 the ends held: passes
@@ -152,11 +152,11 @@ pub struct LimitForms {
     pub suffixed: i64,
 }
 
-/// A float limit on an integer, an integer limit on a float, and a float limit on a float.
+/// A whole float limit on an integer, an integer limit on a float, and a float limit on a float.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LimitMixed {
-    #[model_schema_prop(maximum = 1.5)]
+    #[model_schema_prop(maximum = 1.0)]
     pub count: i64,
     #[model_schema_prop(maximum = 120)]
     pub load: f64,
