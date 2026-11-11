@@ -187,7 +187,7 @@ use declaring_crate::{GetVersionRequest, VersionResponse};
 declaring_crate::document_service_http_rest_client!();
 ```
 
-The invoking crate names its own subset of the runtime crates the macro's body reaches through `::`: the dispatcher's crate names `serde`, `serde_json` and `tracing` (the panic guard logs through it); the client's crate names `serde` and `serde_json` and not `tracing` -- nothing in a client catches a panic.
+The invoking crate names its own subset of the runtime crates the macro's body reaches through `::`: the dispatcher's crate names `serde`, `serde_json`, `serde_path_to_error` and `tracing` (the panic guard logs through `tracing`); the client's crate names `serde`, `serde_json` and `serde_path_to_error` and not `tracing` -- nothing in a client catches a panic.
 
 **The fault catch-all.** A payload that will not deserialize or fails `validate()`, a request no route answers to, and a handler that panicked are none of the things an operation declared it could fail at, so they answer through `FaultHandler` rather than through any declared error:
 

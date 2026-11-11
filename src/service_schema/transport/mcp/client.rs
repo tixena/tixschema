@@ -88,8 +88,9 @@ pub(super) fn macro_tokens(service: &ServiceDef, transport: Transport) -> TokenS
          here.\n\n\
          It takes no arguments and emits bare items - the `Transport` seam, `McpMessage`, the \
          client type and one method per operation - so the caller supplies the module they land \
-         in and two transports in one crate cannot collide. The invoking crate names `serde` and \
-         `serde_json` in its own manifest, because the items below call them. The service's \
+         in and two transports in one crate cannot collide. The invoking crate names `serde`, \
+         `serde_json` and `serde_path_to_error` in its own manifest, because the items below call \
+         them. The service's \
          `{schema}` is reached as `$crate::{schema}`, so a service declared in a submodule \
          re-exports it at the crate root.\n\n\
          {placement}\n\n\

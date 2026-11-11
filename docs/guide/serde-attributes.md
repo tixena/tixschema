@@ -38,7 +38,7 @@ The three `skip` spellings are three different wires, and [Optional Fields](mode
 
 The TypeScript type and the Zod schema write a key, a tag, a variant's name, a plain enum's value and a `literal` as an escaped string literal, so a name holding a `"` or a `\` describes exactly what serde writes: `#[serde(rename = "say \"hi\"")]` is the key `"say \"hi\""`, and `#[serde(rename = "C:\\Path")]` the variant `"C:\\Path"`.
 
-If the `serde` feature is disabled but serde attributes are present, you will see compile-time warnings and field names will not be transformed.
+Without tixschema's `serde` feature no `#[serde(...)]` attribute is read, and TypeScript and Zod write each member of a struct or of a variant in camelCase: `#[serde(rename = "mail")] pub email_address: String` is `emailAddress` on both, where serde writes `mail`, and `user_id` under `#[serde(rename_all = "kebab-case")]` is `userId`, where serde writes `user-id`. An enum with data is written as one object per variant, the variant's name under `type` and its data under `value`, a unit variant with no `value`, and Zod reads it with `z.discriminatedUnion("type", [...])`: `pub enum Shape { Square { side_length: u32 }, Circle(f64), Point }` is `{ type: "Square"; value: { sideLength: number; }; } | { type: "Circle"; value: number; } | { type: "Point"; }`, where serde writes `{"Square":{"side_length":3}}`, `{"Circle":1.5}` and `"Point"`. A plain enum is the union of its variants' names, `"Calm" | "Gale"`, as serde writes it.
 
 ### A Struct's Own Tag
 
