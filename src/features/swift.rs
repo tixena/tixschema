@@ -4214,10 +4214,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     } else {
         real_type
     };
-    read::note_alias(
-        &export_name,
-        type_parameters.is_empty().then_some(target_type.as_str()),
-    );
+    read::note_alias(&export_name, &type_parameters, &target_type);
     let body = format!("public typealias {export_name}{generic_params} = {target_type};");
     let rust_ident = item_type.ident.to_string();
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);

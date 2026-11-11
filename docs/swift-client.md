@@ -140,17 +140,23 @@ to keep.
   parameter writes the text it wrote.
 - **An alias of an integer is read through the fitting read too.** A holder names an alias by
   the name its `typealias` declares, `SixtyRevisionType`, which `fit_held` cannot read the integer
-  off, so `alias_swift_tokens` hands `read::note_alias` the Swift type each alias that declares no
-  parameter names, and `FITTED_ALIASES` records, by the alias's Swift name, how `fit_held` reads
-  it, for every holder written after it. An alias of a fixed-width integer, or of an `Optional` of
+  off, so `alias_swift_tokens` hands `read::note_alias` the Swift type each alias names and the
+  parameters it declares, and `FITTED_ALIASES` records, by the alias's Swift name, how `fit_held`
+  reads it, for every holder written after it. An alias of a fixed-width integer, or of an `Optional` of
   one, another such alias among its targets, is read as `SwiftSchemaFit` of the alias,
   `container.decode(SwiftSchemaFit<SixtyRevisionType>.self, forKey: .aliased).value`: a
   `typealias` is transparent, so `expected` names the integer, `i64`. An alias of a list or a map
   of one is read as its target is, `[SwiftSchemaFit<Int64>]` mapped back with `.map({ $0.value })`,
   whose value is the alias's. Every caller of `read::fitted` and `Source::plain` reads it, the
   newtype variant of an untagged enum over `pub type Sounded = Option<u32>` among them,
-  `SwiftSchemaFit<SoundedType>(from: decoder).value`. An alias that names no integer, and one that
-  declares a parameter, are read as Foundation reads them.
+  `SwiftSchemaFit<SoundedType>(from: decoder).value`. An alias that declares a parameter is
+  recorded with its parameters and the Swift type it names over them (`Recorded::Generic`), and a
+  holder that writes it filled, `GaugedType<UInt8>`, is read as that type is with each parameter
+  written as its filling (`aliased`, `substituted`, the fillings split on their top-level commas by
+  `top_level`): `[Held]` filled with `UInt8` is `[UInt8]`, read as
+  `[SwiftSchemaFit<UInt8>]` mapped back with `.map({ $0.value })`, and `Held` filled with `UInt8`
+  is an integer, read as `SwiftSchemaFit<PlumbedType<UInt8>>`. An alias that names no integer,
+  and one filled with no integer, `PlumbedType<String>`, are read as Foundation reads them.
 - **A `Float` is read as a `Double` and narrowed**, as serde reads an `f32`: Foundation refuses
   one beyond its range, `1e39`, with `The given data was not valid JSON.` under an empty coding
   path, where serde reads an infinity of its sign. `read::fitted` writes a read whose type holds a

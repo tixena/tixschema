@@ -1,9 +1,9 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
-//! same payload, but for the cases the TypeScript table of its own records and the one case the
-//! Kotlin surfaces answer apart: the message read, a frame dropped, or the fault's kind and the
-//! field it names, and an attachment calls no handler for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
+//! same payload, but for the cases the TypeScript table of its own records: the message read, a
+//! frame dropped, or the fault's kind and the field it names, and an attachment calls no handler
+//! for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
 
 use super::carillon_service::{CASES, STRUCK, frame, payload, rust_answers};
 use core::fmt::Write as _;
@@ -357,11 +357,6 @@ const NODE_APART: [(&str, Option<&str>); 3] = [
     ("a text in an arm of a Result", Some("tally")),
 ];
 
-/// The case the Kotlin attachment and client answer apart from the Rust dispatcher: the Kotlin
-/// read refuses a key the inner brand's check refuses with no path, so each names no field.
-#[cfg(feature = "kotlin")]
-const KOTLIN_UNPLACED: &str = "a key the inner brand's check refuses";
-
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
     CASES.into_iter().map(payload).collect()
@@ -574,20 +569,7 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source()) else {
         return;
     };
-    let mut told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    let at = CASES
-        .iter()
-        .position(|case| case.0 == KOTLIN_UNPLACED)
-        .unwrap();
-    for pointer in [
-        format!("/attached/{at}/reply/error/fault"),
-        format!("/read/{at}"),
-    ] {
-        let fault = told.pointer_mut(&pointer).unwrap();
-        assert_eq!(fault["kind"], "failed-validation", "{pointer}");
-        assert!(fault.get("field").is_none_or(Value::is_null), "{pointer}");
-        fault["field"] = json!(CASES[at].1);
-    }
+    let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
 }

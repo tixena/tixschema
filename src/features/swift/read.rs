@@ -122,9 +122,23 @@ pub(super) type EntryRead<'read> =
     dyn Fn(&Source, &dyn Fn(&str) -> String, &mut Locals) -> String + 'read;
 
 thread_local! {
-    /// How [`fit_held`] reads a value of each alias the emitter wrote that declares no parameter
-    /// and names a fixed-width integer, by the Swift name the alias is declared under.
-    static FITTED_ALIASES: RefCell<HashMap<String, Aliased>> = RefCell::new(HashMap::new());
+    /// How [`fit_held`] reads a value of each alias the emitter wrote that names a fixed-width
+    /// integer, and each alias that declares a parameter, by the Swift name the alias is declared
+    /// under.
+    static FITTED_ALIASES: RefCell<HashMap<String, Recorded>> = RefCell::new(HashMap::new());
+}
+
+/// What [`note_alias`] records of an alias.
+#[derive(Clone)]
+enum Recorded {
+    /// The parameters of an alias that declares some, and the Swift type it names over them, into
+    /// which what fills them at a holder is substituted.
+    Generic {
+        parameters: Vec<String>,
+        target: String,
+    },
+    /// How a value of an alias that declares no parameter is read.
+    Read(Aliased),
 }
 
 /// How a value of an alias that names a fixed-width integer is read through `SwiftSchemaFit`.
@@ -379,20 +393,20 @@ impl Source {
     }
 }
 
-/// Records how [`fit_held`] reads a value of the alias the emitter declares as `named` over
-/// `target`, the Swift type it names, for a holder written after it, or forgets an alias that
-/// names no fixed-width integer, or that declares a parameter (`None`).
-pub(super) fn note_alias(named: &str, target: Option<&str>) {
-    let aliased = target.and_then(|text| {
-        if fits(text.trim_end_matches('?'), &[]) {
-            return Some(Aliased::Alone);
-        }
-        fit_held(text, &[])
-            .zip(unfit(text, &[]))
-            .map(|(fit, unfit)| Aliased::Through { fit, unfit })
-    });
+/// Records how [`fit_held`] reads a value of the alias the emitter declares as `named`, with the
+/// type parameters `parameters`, over `target`, the Swift type it names, for a holder written
+/// after it, or forgets an alias that declares no parameter and names no fixed-width integer.
+pub(super) fn note_alias(named: &str, parameters: &[String], target: &str) {
+    let noted = if parameters.is_empty() {
+        read_of(target, &[]).map(Recorded::Read)
+    } else {
+        Some(Recorded::Generic {
+            parameters: parameters.to_vec(),
+            target: target.to_owned(),
+        })
+    };
     FITTED_ALIASES.with(|recorded| {
-        if let Some(read) = aliased {
+        if let Some(read) = noted {
             recorded.borrow_mut().insert(named.to_owned(), read);
         } else {
             recorded.borrow_mut().remove(named);
@@ -400,10 +414,86 @@ pub(super) fn note_alias(named: &str, target: Option<&str>) {
     });
 }
 
+/// How a value of `target`, a Swift type an alias names, is read through `SwiftSchemaFit` under
+/// the type parameters `parameters`: through the alias itself for an integer or an `Optional` of
+/// one, and as `target` is read for a list or a map of one.
+fn read_of(target: &str, parameters: &[String]) -> Option<Aliased> {
+    if fits(target.trim_end_matches('?'), parameters) {
+        return Some(Aliased::Alone);
+    }
+    fit_held(target, parameters)
+        .zip(unfit(target, parameters))
+        .map(|(fit, unfit)| Aliased::Through { fit, unfit })
+}
+
 /// How a value of the alias `read_as` names is read through `SwiftSchemaFit`, where it is one
-/// [`note_alias`] recorded.
-fn aliased(read_as: &str) -> Option<Aliased> {
-    FITTED_ALIASES.with(|recorded| recorded.borrow().get(read_as).cloned())
+/// [`note_alias`] recorded: an alias that declares parameters, written with what fills them, is
+/// read as what it names with each parameter written as its filling, under the holder's
+/// `parameters`.
+fn aliased(read_as: &str, parameters: &[String]) -> Option<Aliased> {
+    let (named, filled) = read_as
+        .strip_suffix('>')
+        .and_then(|open| open.split_once('<'))
+        .map_or((read_as, None), |(named, fillings)| (named, Some(fillings)));
+    let noted = FITTED_ALIASES.with(|recorded| recorded.borrow().get(named).cloned())?;
+    match noted {
+        Recorded::Generic {
+            parameters: declared,
+            target,
+        } => {
+            let split = top_level(filled?);
+            if split.len() != declared.len() {
+                return None;
+            }
+            read_of(&substituted(&target, &declared, &split), parameters)
+        }
+        Recorded::Read(read) => filled.is_none().then_some(read),
+    }
+}
+
+/// The types `fillings`, written as a list of Swift types, holds, split on its top-level commas.
+fn top_level(fillings: &str) -> Vec<&str> {
+    let mut depth = 0_i32;
+    let mut start = 0;
+    let mut split = Vec::new();
+    for (at, written) in fillings.char_indices() {
+        match written {
+            '[' | '<' | '(' => depth += 1_i32,
+            ']' | '>' | ')' => depth -= 1_i32,
+            ',' if depth == 0_i32 => {
+                split.push(fillings[start..at].trim());
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    split.push(fillings[start..].trim());
+    split
+}
+
+/// `target` with each of `parameters` it names, as a whole identifier, written as the filling at
+/// its position in `fillings`.
+fn substituted(target: &str, parameters: &[String], fillings: &[&str]) -> String {
+    let mut written = String::new();
+    let mut word = String::new();
+    let flush = |pending: &mut String, into: &mut String| {
+        let filling = parameters
+            .iter()
+            .position(|named| named == pending)
+            .and_then(|at| fillings.get(at).copied());
+        into.push_str(filling.unwrap_or(pending));
+        pending.clear();
+    };
+    for letter in target.chars() {
+        if letter.is_alphanumeric() || letter == '_' {
+            word.push(letter);
+        } else {
+            flush(&mut word, &mut written);
+            written.push(letter);
+        }
+    }
+    flush(&mut word, &mut written);
+    written
 }
 
 /// `read_as`, a Swift type, with each fixed-width integer, each alias of one and each of
@@ -421,7 +511,7 @@ fn fit_held(read_as: &str, parameters: &[String]) -> Option<String> {
     if fits(read_as, parameters) {
         return Some(format!("SwiftSchemaFit<{read_as}>"));
     }
-    match aliased(read_as)? {
+    match aliased(read_as, parameters)? {
         Aliased::Through { fit, unfit: _unfit } => Some(fit),
         Aliased::Alone => None,
     }
@@ -443,7 +533,7 @@ fn unfit(read_as: &str, parameters: &[String]) -> Option<String> {
     if fits(read_as, parameters) {
         return Some(".value".to_owned());
     }
-    match aliased(read_as)? {
+    match aliased(read_as, parameters)? {
         Aliased::Through { fit: _fit, unfit } => Some(unfit),
         Aliased::Alone => None,
     }
@@ -455,7 +545,7 @@ fn unfit(read_as: &str, parameters: &[String]) -> Option<String> {
 fn fits(read_as: &str, parameters: &[String]) -> bool {
     FIXED_WIDTH.contains(&read_as)
         || parameters.iter().any(|named| named == read_as)
-        || matches!(aliased(read_as), Some(Aliased::Alone))
+        || matches!(aliased(read_as, parameters), Some(Aliased::Alone))
 }
 
 /// The key and the value of the map `[Key: Value]`, or no key and the item of the list `[Item]`;
