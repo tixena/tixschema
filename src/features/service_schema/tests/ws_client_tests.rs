@@ -264,6 +264,23 @@ fn a_close_settles_every_pending_request_with_a_transport_failure_fault() {
 }
 
 #[test]
+fn a_request_whose_send_throws_takes_its_entry_back_out_of_the_correlation_map() {
+    let written = ws_client_of(MIXED_SERVICE);
+    let registered = written.find("pending.set(id, {").unwrap();
+    let sent = written
+        .find("JSON.stringify(billingServiceWsSent({ kind: \"request\"")
+        .unwrap();
+    assert!(
+        registered < sent
+            && written[sent..].contains(
+                "} catch (refused) {\n          pending.delete(id);\n          throw refused;\n"
+            ),
+        "a frame `JSON.stringify` or the socket refuses is answered by no reply, so nothing is \
+         left waiting for one. Got: {written}"
+    );
+}
+
+#[test]
 fn an_inbound_ping_is_answered_with_a_pong_and_an_inbound_pong_re_arms_the_next_ping() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(

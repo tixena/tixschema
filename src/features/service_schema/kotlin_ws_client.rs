@@ -207,13 +207,15 @@ fn transport_header_stmt(named: &str) -> String {
 }
 
 /// Assigns the next id and registers the pending deferred under one lock, then sends the request
-/// frame and awaits the reply outside it.
+/// frame and awaits the reply outside it. The deferred goes back out of `pending` however the
+/// call ends: a `send` that throws and a caller cancelled while it waits leave nothing waiting.
 fn transport_request_stmt(named: &str, has_headers: bool) -> String {
     if has_headers {
         return format!(
             "/// Sends `operation` with `payload` and `headers` as a `request` frame and answers\n  \
              /// with the matching `reply` frame's own fields, or `null` once the connection closes\n  \
-             /// before one arrives.\n  \
+             /// before one arrives. Throws what the socket's `send` throws, and `CancellationException` to\n  \
+             /// a caller cancelled while it waits; either way it leaves nothing waiting for the reply.\n  \
              suspend fun request(operation: String, payload: JsonElement?, headers: JsonObject): JsonObject? {{\n    \
              val deferred = CompletableDeferred<JsonObject?>()\n    \
              val id = synchronized(this) {{\n      \
@@ -221,23 +223,29 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
              pending[assigned] = deferred\n      \
              assigned\n    \
              }}\n    \
-             send(\n      \
-             buildJsonObject {{\n        \
-             put(\"kind\", \"request\")\n        \
-             put(\"id\", id)\n        \
-             put(\"service\", \"{named}\")\n        \
-             put(\"operation\", operation)\n        \
-             put(\"payload\", payload ?: JsonNull)\n        \
-             if (headers.isNotEmpty()) put(\"headers\", headers)\n      \
-             }},\n    \
-             )\n    \
-             return deferred.await()\n  \
+             try {{\n      \
+             send(\n        \
+             buildJsonObject {{\n          \
+             put(\"kind\", \"request\")\n          \
+             put(\"id\", id)\n          \
+             put(\"service\", \"{named}\")\n          \
+             put(\"operation\", operation)\n          \
+             put(\"payload\", payload ?: JsonNull)\n          \
+             if (headers.isNotEmpty()) put(\"headers\", headers)\n        \
+             }},\n      \
+             )\n      \
+             return deferred.await()\n    \
+             }} finally {{\n      \
+             synchronized(this) {{ pending.remove(id) }}\n    \
+             }}\n  \
              }}\n\n  "
         );
     }
     format!(
         "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
          /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+         /// Throws what the socket's `send` throws, and `CancellationException` to a caller cancelled\n  \
+         /// while it waits; either way it leaves nothing waiting for the reply.\n  \
          suspend fun request(operation: String, payload: JsonElement?): JsonObject? {{\n    \
          val deferred = CompletableDeferred<JsonObject?>()\n    \
          val id = synchronized(this) {{\n      \
@@ -245,16 +253,20 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
          pending[assigned] = deferred\n      \
          assigned\n    \
          }}\n    \
-         send(\n      \
-         buildJsonObject {{\n        \
-         put(\"kind\", \"request\")\n        \
-         put(\"id\", id)\n        \
-         put(\"service\", \"{named}\")\n        \
-         put(\"operation\", operation)\n        \
-         put(\"payload\", payload ?: JsonNull)\n      \
-         }},\n    \
-         )\n    \
-         return deferred.await()\n  \
+         try {{\n      \
+         send(\n        \
+         buildJsonObject {{\n          \
+         put(\"kind\", \"request\")\n          \
+         put(\"id\", id)\n          \
+         put(\"service\", \"{named}\")\n          \
+         put(\"operation\", operation)\n          \
+         put(\"payload\", payload ?: JsonNull)\n        \
+         }},\n      \
+         )\n      \
+         return deferred.await()\n    \
+         }} finally {{\n      \
+         synchronized(this) {{ pending.remove(id) }}\n    \
+         }}\n  \
          }}\n\n  "
     )
 }
@@ -473,6 +485,8 @@ fn client_method(
 {headers_build}    \
              try {{\n      \
              transport.notify({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+             }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+             throw cancelled\n    \
              }} catch (uncarried: Throwable) {{\n      \
              throw {named}WsRefusal({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
              }}\n  \
@@ -487,6 +501,8 @@ fn client_method(
 {headers_build}    \
                  val reply = try {{\n      \
                  transport.request({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+                 throw cancelled\n    \
                  }} catch (uncarried: Throwable) {{\n      \
                  return {result}.Fault({fn_prefix}WsTransportFailure({wire}, uncarried.toString()))\n    \
                  }}\n    \
@@ -1062,6 +1078,8 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 arm,
                 "      try {{\n        \
                  handlers.{call}({call_args})\n      \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n        \
+                 throw cancelled\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
@@ -1091,6 +1109,8 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
                 arm,
                 "      val answered = try {{\n        \
                  handlers.{call}({call_args})\n      \
+                 }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n        \
+                 throw cancelled\n      \
                  }} catch (unexpected: Throwable) {{\n        \
                  val fault = {fn_prefix}WsHandlerPanic({wire}, unexpected.toString())\n        \
                  onFault(fault)\n\
