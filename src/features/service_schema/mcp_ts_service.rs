@@ -6,6 +6,7 @@ use super::fault;
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::message;
 use super::service::enveloped_impl;
+use crate::field_type::EXPECTED_NUMERIC_KEY;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{answers_key, is_content_pair};
 use crate::service_schema::parse::{
@@ -756,7 +757,23 @@ type __p__McpIssue = {
   readonly path: ReadonlyArray<PropertyKey>;
   readonly keys?: ReadonlyArray<string>;
   readonly errors?: ReadonlyArray<ReadonlyArray<__p__McpIssue>>;
+  readonly issues?: ReadonlyArray<{ readonly expected?: unknown; readonly message: string }>;
+  readonly params?: { readonly undeserializable?: unknown };
 };
+
+/** Whether `issue` keeps the arguments from reading. serde reads them out of a value, where a `Result` of other than one key is a value of the wrong kind. */
+function __p__McpUnreadableIssue(issue: __p__McpIssue): boolean {
+  return __p__McpUnreadable.has(issue.code) || issue.params?.undeserializable === true;
+}
+
+/** Whether `issue` refuses a key of a map keyed by a number whose text opens with neither a digit nor `-`, which serde reads as text that is not the document. */
+function __p__McpNoNumber(issue: __p__McpIssue): boolean {
+  return (
+    issue.code === "invalid_key" &&
+    issue.issues?.some((inner) => inner.expected === "number") === true &&
+    !/^[0-9-]/.test(String(issue.path[issue.path.length - 1]))
+  );
+}
 
 /** The path of an issue: below an `invalid_union`, the deepest path any of its alternatives reached; below `unrecognized_keys`, the first key. */
 function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
@@ -785,7 +802,7 @@ function __p__McpListed(
   });
 }
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, and otherwise naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
+/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, `undeserializable-payload` naming no field where the first value that does not read is a key that is no number, and otherwise `failed-validation` naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -802,9 +819,10 @@ function __p__McpUnread(
       .join("; ");
     return __FAULT__("failed-validation", operation, detail, answers);
   }
-  const unreadable = issues.filter((issue) => __p__McpUnreadable.has(issue.code));
+  const unreadable = issues.filter(__p__McpUnreadableIssue);
   const unread = unreadable[0];
   if (unread === undefined) return undefined;
+  if (__p__McpNoNumber(unread)) return __FAULT__("undeserializable-payload", operation, "__EXPECTED_NUMERIC_KEY__");
   const steps = __p__McpSteps(unread);
   const detail = unreadable
     .flatMap((issue) =>
@@ -2631,6 +2649,7 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .replace("__ASKING__", if asks { ASKING } else { "" })
         .replace("__DRIVEN__", &driven)
         .replace("__FAULT__", &fault)
+        .replace("__EXPECTED_NUMERIC_KEY__", EXPECTED_NUMERIC_KEY)
         .replace("__N__", named)
         .replace("__p__", prefix)
 }
