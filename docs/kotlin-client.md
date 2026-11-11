@@ -462,10 +462,15 @@ the consumer's view; this is what a change has to keep.
   names a key that does not read, and each value from its text under the key's step: kotlinx records a map entry's step as the decoded key and prints it with
   `toString()`, which is `Pitch(value=3)` for a value class. `annotated_base` names it on a map the
   plugin reads, the key keeping the serializer it names, and `map_serializer` composes it where
-  the emitter writes the read. `run_kotlin_brand_key_paths.rs` holds a value refused under a key
-  over a text, a number and a date to the path serde names. `{Type}KeySerializer` refuses a key its brand's `validate()`
-  refuses inside `kotlinSchemaAt(decoder)`, which states the map's path, each message under the
-  key's text, so the field names the key below its map. A flattened member is read
+  the emitter writes the read. `{Type}KeySerializer`, which a brand over a number or a `bool`
+  declares, refuses a key its brand's `validate()` refuses inside `kotlinSchemaAt(decoder)`, which
+  states the map's path, each message under the key's text, so the field names the key below its
+  map. Any other brand, one over a text or a date, has none: `map_object`, told so by
+  `value_class_tokens`, reads its key through `{Brand}Unjudged` and throws what the key's
+  `validate()` answers inside the map's `kotlinSchemaAt`, in the same form, `'mute': mute is
+  silent at path: $.tones`, so each key is judged once. `run_kotlin_brand_key_paths.rs` holds a
+  value refused under a key over a text, a number and a date, and a key each brand's check
+  refuses, to the field serde names. A flattened member is read
   through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
   `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the fault's field

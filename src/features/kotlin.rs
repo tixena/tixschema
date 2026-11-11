@@ -1279,26 +1279,45 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
 /// The class that reads a map keyed by the brand `export_name` entry by entry: the key from its
 /// text at the map's path, as serde names a key that does not read, and the value under the key's
 /// text, which kotlinx would state as the brand's `toString()`. It writes the map as kotlinx
-/// writes it.
-fn map_object(export_name: &str) -> String {
+/// writes it. A brand with a `{Brand}KeySerializer` (`keyed`) is judged by it; any other is read
+/// unjudged and judged here, each message under the key's text at the map's path.
+fn map_object(export_name: &str, keyed: bool) -> String {
     let own = format!("Map<{export_name}, KotlinSchemaValue>");
+    let value = read::decoded(
+        "input.json",
+        "valueSerializer",
+        "entry.value",
+        "entry.key",
+        &read::keyed_step("entry.key"),
+    );
+    let entry = if keyed {
+        format!(
+            "{} to {value}",
+            read::decoded(
+                "input.json",
+                "keySerializer",
+                "JsonPrimitive(entry.key)",
+                "entry.key",
+                "\"\""
+            )
+        )
+    } else {
+        format!(
+            "val key = {}; val violations = key.validate(); if (violations.isNotEmpty()) throw \
+             SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \"': \" \
+             + it }}); key to {value}",
+            read::decoded(
+                "input.json",
+                &format!("{export_name}Unjudged"),
+                "JsonPrimitive(entry.key)",
+                "entry.key",
+                "\"\""
+            )
+        )
+    };
     let read = format!(
         "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" + \
-         element)).entries.associate {{ entry -> {} to {} }}",
-        read::decoded(
-            "input.json",
-            "keySerializer",
-            "JsonPrimitive(entry.key)",
-            "entry.key",
-            "\"\""
-        ),
-        read::decoded(
-            "input.json",
-            "valueSerializer",
-            "entry.value",
-            "entry.key",
-            &read::keyed_step("entry.key")
-        ),
+         element)).entries.associate {{ entry -> {entry} }}"
     );
     let deserialize = format!(
         "override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
@@ -3020,13 +3039,13 @@ fn value_class_tokens(
         read::transforming_inline(&export_name, &generic_params, &type_parameters, &correction)
     };
     let (keyed, mapped) = if type_parameters.is_empty() {
-        let mapped = texts::keys_a_map(&value_field).then(|| {
-            texts::note_mapped(&rust_ident);
-            map_object(&export_name)
-        });
         let keyed = texts::key_leaf(&value_field).map(|leaf| {
             texts::note_keyed(&rust_ident);
             key_object(&export_name, &leaf)
+        });
+        let mapped = texts::keys_a_map(&value_field).then(|| {
+            texts::note_mapped(&rust_ident);
+            map_object(&export_name, keyed.is_some())
         });
         (keyed, mapped)
     } else {
