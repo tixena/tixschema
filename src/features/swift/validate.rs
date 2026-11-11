@@ -645,7 +645,7 @@ fn declared_name(def: &FieldDef) -> Option<&str> {
 
 /// Whether a holder runs the `validate()` of the type `rust_ident` names: one that runs a rule,
 /// and one of a name the emitter has not written yet, a type declared below.
-fn validates(rust_ident: &str) -> bool {
+pub(super) fn validates(rust_ident: &str) -> bool {
     noted(rust_ident).is_none_or(|seen| seen.validates)
 }
 

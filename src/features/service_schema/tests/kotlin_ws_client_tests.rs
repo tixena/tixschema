@@ -61,10 +61,10 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = kotlin_ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "put(\"error\", Json.encodeToJsonElement(serializer<BalanceError>(), answered.error))"
+            "put(\"error\", billingServiceWsWritten(serializer<BalanceError>(), answered.error))"
         ),
-        "the dispatcher writes the declared error through its own serializer, whole. \
-         Got: {written}"
+        "the dispatcher writes the declared error through its own serializer, whole, as serde \
+         writes it. Got: {written}"
     );
     assert!(
         !written.contains("errorMessage"),
@@ -680,7 +680,7 @@ fn the_dispatcher_writes_a_bare_date_reply_through_the_serializer_of_its_form() 
         "        try {\n          when (answered) {\n            is DatingServiceStampResult.Ok -> \
          send(buildJsonObject { put(\"kind\", \"reply\"); put(\"id\", id); put(\"service\", \
          \"DatingService\"); put(\"ok\", true); put(\"value\", \
-         Json.encodeToJsonElement(KotlinText2, answered.value)) }.toString())\n",
+         datingServiceWsWritten(KotlinText2, answered.value)) }.toString())\n",
         "        } catch (unwritten: SerializationException) {\n          \
          val fault = datingServiceWsHandlerPanic(\"stamp\", unwritten.toString())\n          \
          onFault(fault)\n",

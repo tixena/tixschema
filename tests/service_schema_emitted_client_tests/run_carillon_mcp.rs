@@ -18,8 +18,8 @@ use super::CarillonMcpServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_peal_dart, carillon_pitch_dart, carillon_swing_dart,
-    carillon_turn_dart, carillon_yoke_dart,
+    carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart,
+    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -30,6 +30,14 @@ use super::runtime::ran;
 const NODE_DRIVER: &str = r#"
 function withinScale(value, ctx) {
   if (value > 12) ctx.issues.push({ code: "custom", message: `${value} is outside of the scale`, input: value });
+}
+
+function audible(value, ctx) {
+  if (value === "mute") ctx.issues.push({ code: "custom", message: "mute is silent", input: value });
+}
+
+function loud(value, ctx) {
+  if (value === "soft") ctx.issues.push({ code: "custom", message: "soft is quiet", input: value });
 }
 
 async function main() {
@@ -116,6 +124,12 @@ const DART_DRIVER: &str = "
 List<String> withinScale(CarillonPitch value) =>
     value.value <= 12 ? const <String>[] : <String>['${value.value} is outside of the scale'];
 
+List<String> audible(CarillonTone value) =>
+    value.value == 'mute' ? const <String>['mute is silent'] : const <String>[];
+
+List<String> loud(CarillonOuterTone value) =>
+    value.value.value == 'soft' ? const <String>['soft is quiet'] : const <String>[];
+
 class Canned implements CarillonMcpServiceMcpTransport {
   Canned(this.answer);
   final String answer;
@@ -177,6 +191,12 @@ const KOTLIN_DRIVER: &str = r#"
 fun withinScale(value: CarillonPitch): List<String> =
     if (value.value <= 12u) emptyList() else listOf("${value.value} is outside of the scale")
 
+fun audible(value: CarillonTone): List<String> =
+    if (value.value == "mute") listOf("mute is silent") else emptyList()
+
+fun loud(value: CarillonOuterTone): List<String> =
+    if (value.value.value == "soft") listOf("soft is quiet") else emptyList()
+
 object Handlers : CarillonMcpServiceHandlers {
     val struck = java.util.concurrent.atomic.AtomicInteger(0)
     override suspend fun strike(req: CarillonChime): CarillonMcpServiceStrikeResult {
@@ -237,6 +257,14 @@ fun main() = runBlocking {
 const SWIFT_DRIVER: &str = r#"
 func withinScale(_ value: CarillonPitch) -> [String] {
   value.value <= 12 ? [] : ["\(value.value) is outside of the scale"]
+}
+
+func audible(_ value: CarillonTone) -> [String] {
+  value.value == "mute" ? ["mute is silent"] : []
+}
+
+func loud(_ value: CarillonOuterTone) -> [String] {
+  value.value.value == "soft" ? ["soft is quiet"] : []
 }
 
 struct Canned: CarillonMcpServiceMcpTransport {
@@ -365,8 +393,8 @@ fn assert_read_as_rust(read: &Value, tolled: &Value) {
 fn node_bundle() -> String {
     use super::CarillonMcpServiceSchema;
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonPeal,
-        CarillonPitch, CarillonSwing, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonOuterTone,
+        CarillonPeal, CarillonPitch, CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -386,6 +414,10 @@ fn node_bundle() -> String {
         CarillonFrame::zod_schema(),
         CarillonYoke::ts_definition(),
         CarillonYoke::zod_schema(),
+        CarillonTone::ts_definition(),
+        CarillonTone::zod_schema(),
+        CarillonOuterTone::ts_definition(),
+        CarillonOuterTone::zod_schema(),
         CarillonChime::ts_definition(),
         CarillonChime::zod_schema(),
         CarillonError::ts_definition(),
@@ -412,7 +444,9 @@ fn the_typescript_text_of_the_carillon_mcp_service_type_checks() {
     };
     let source = format!(
         "{}\n\nexport function withinScale(value: number, ctx: {{ issues: unknown[] }}): void {{\n  \
-         void value;\n  void ctx;\n}}\n",
+         void value;\n  void ctx;\n}}\n\nexport function audible(value: string, ctx: {{ issues: \
+         unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n\nexport function loud(value: \
+         string, ctx: {{ issues: unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n",
         node_bundle()
     );
     let Some((succeeded, said)) = compiled_with_modules(
@@ -533,6 +567,8 @@ fn dart_source() -> String {
         carillon_beam_dart::dart_definition(),
         carillon_frame_dart::dart_definition(),
         carillon_yoke_dart::dart_definition(),
+        carillon_tone_dart::dart_definition(),
+        carillon_outer_tone_dart::dart_definition(),
         carillon_chime_dart::dart_definition(),
         carillon_error_dart::dart_definition(),
         CarillonMcpServiceSchema::dart_definition(),
@@ -583,8 +619,9 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin, carillon_error_kotlin,
-        carillon_frame_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin, carillon_swing_kotlin,
-        carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_frame_kotlin, carillon_outer_tone_kotlin, carillon_peal_kotlin,
+        carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin,
+        carillon_yoke_kotlin,
     };
 
     let raw = |text: &str| format!("\"\"\"{text}\"\"\"");
@@ -605,6 +642,8 @@ fn kotlin_source() -> String {
         carillon_beam_kotlin::kotlin_definition(),
         carillon_frame_kotlin::kotlin_definition(),
         carillon_yoke_kotlin::kotlin_definition(),
+        carillon_tone_kotlin::kotlin_definition(),
+        carillon_outer_tone_kotlin::kotlin_definition(),
         carillon_chime_kotlin::kotlin_definition(),
         carillon_error_kotlin::kotlin_definition(),
         carillon_mcp_service_fault_fields_kotlin::kotlin_definition(),
@@ -642,8 +681,8 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         carillon_beam_swift, carillon_bell_swift, carillon_chime_swift, carillon_error_swift,
-        carillon_frame_swift, carillon_peal_swift, carillon_pitch_swift, carillon_swing_swift,
-        carillon_turn_swift, carillon_yoke_swift,
+        carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift,
+        carillon_swing_swift, carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
@@ -657,6 +696,8 @@ fn swift_source() -> String {
         carillon_beam_swift::swift_definition(),
         carillon_frame_swift::swift_definition(),
         carillon_yoke_swift::swift_definition(),
+        carillon_tone_swift::swift_definition(),
+        carillon_outer_tone_swift::swift_definition(),
         carillon_chime_swift::swift_definition(),
         carillon_error_swift::swift_definition(),
         carillon_mcp_service_fault_fields_swift::swift_definition(),

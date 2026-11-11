@@ -2,6 +2,9 @@
 //! read, and `init(from:)` runs it and then `validate()`. A member is read unjudged wherever
 //! `validate()` runs the `validate()` of what it holds, so the whole value is judged once.
 
+use core::cell::RefCell;
+use std::collections::HashMap;
+
 use super::preprocess::{self, Written};
 use super::validate::{item_of, under_option};
 use super::{
@@ -29,11 +32,12 @@ const FIXED_WIDTH: [&str; 8] = [
 
 /// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one value and
 /// holds it in `value`. It refuses an integer that does not fit, and one written with a fraction
-/// or an exponent, at its own coding path, in serde's words. It tells such a number by the byte
-/// count of its text and its exponent mark, which `JSONDecoder`'s own decoder holds in stored
-/// properties it reads through `Mirror`; under any other decoder the number reads as Foundation
-/// reads it. A type parameter filled with a `Float` reads one beyond its range as a `Double`
-/// narrowed to an infinity of its sign, as serde reads an `f32`.
+/// or an exponent, at its own coding path, in serde's words, which name the integer an `Optional`
+/// holds as they name the integer. It tells such a number by the byte count of its text and its
+/// exponent mark, which `JSONDecoder`'s own decoder holds in stored properties it reads through
+/// `Mirror`; under any other decoder the number reads as Foundation reads it. A type parameter
+/// filled with a `Float` reads one beyond its range as a `Double` narrowed to an infinity of its
+/// sign, as serde reads an `f32`.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
@@ -55,10 +59,12 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      top = values.last, let number = child(top, \"number\") else { return nil }; let parts = \
      Mirror(reflecting: number).children.map(\\.value); guard parts.count == 2, let count = \
      child(parts[0], \"count\") as? Int, let exponent = parts[1] as? Bool else { return nil }; \
-     return (count, exponent) }; private static var expected: String { [\"Int\": \
+     return (count, exponent) }; private static var expected: String { let named = \
+     String(describing: SwiftSchemaLeaf.self); var leaf = Substring(named); while \
+     leaf.hasPrefix(\"Optional<\"), leaf.hasSuffix(\">\") { leaf = leaf.dropFirst(9).dropLast() \
+     }; return [\"Int\": \
      \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
-     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(describing: \
-     SwiftSchemaLeaf.self)] ?? String(describing: SwiftSchemaLeaf.self) }; \
+     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(leaf)] ?? named }; \
      private static func floating(_ number: Double) -> String { var spelled = \
      number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
      spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
@@ -114,6 +120,36 @@ pub(super) const UNJUDGED: &str = "init(swiftSchemaUnjudged decoder: Decoder) th
 /// What reads the value of one entry of a map from where it is, and hands it to the sink.
 pub(super) type EntryRead<'read> =
     dyn Fn(&Source, &dyn Fn(&str) -> String, &mut Locals) -> String + 'read;
+
+thread_local! {
+    /// How [`fit_held`] reads a value of each alias the emitter wrote that names a fixed-width
+    /// integer, and each alias that declares a parameter, by the Swift name the alias is declared
+    /// under.
+    static FITTED_ALIASES: RefCell<HashMap<String, Recorded>> = RefCell::new(HashMap::new());
+}
+
+/// What [`note_alias`] records of an alias.
+#[derive(Clone)]
+enum Recorded {
+    /// The parameters of an alias that declares some, and the Swift type it names over them, into
+    /// which what fills them at a holder is substituted.
+    Generic {
+        parameters: Vec<String>,
+        target: String,
+    },
+    /// How a value of an alias that declares no parameter is read.
+    Read(Aliased),
+}
+
+/// How a value of an alias that names a fixed-width integer is read through `SwiftSchemaFit`.
+#[derive(Clone)]
+enum Aliased {
+    /// As `SwiftSchemaFit` of the alias itself: it names the integer, or an `Optional` of it.
+    Alone,
+    /// As what it names is read, a list or a map of the integer: [`fit_held`]'s type and
+    /// [`unfit`]'s mapping of the target.
+    Through { fit: String, unfit: String },
+}
 
 /// The locals one initializer has written, from which the next are named.
 #[derive(Default)]
@@ -357,9 +393,113 @@ impl Source {
     }
 }
 
-/// `read_as`, a Swift type, with each fixed-width integer and each of `parameters` it holds, alone
-/// or in a list, as a map's value or under an `Optional`, read through `SwiftSchemaFit`; `None`
-/// where it holds none there. What fills a type parameter may be such an integer.
+/// Records how [`fit_held`] reads a value of the alias the emitter declares as `named`, with the
+/// type parameters `parameters`, over `target`, the Swift type it names, for a holder written
+/// after it, or forgets an alias that declares no parameter and names no fixed-width integer.
+pub(super) fn note_alias(named: &str, parameters: &[String], target: &str) {
+    let noted = if parameters.is_empty() {
+        read_of(target, &[]).map(Recorded::Read)
+    } else {
+        Some(Recorded::Generic {
+            parameters: parameters.to_vec(),
+            target: target.to_owned(),
+        })
+    };
+    FITTED_ALIASES.with(|recorded| {
+        if let Some(read) = noted {
+            recorded.borrow_mut().insert(named.to_owned(), read);
+        } else {
+            recorded.borrow_mut().remove(named);
+        }
+    });
+}
+
+/// How a value of `target`, a Swift type an alias names, is read through `SwiftSchemaFit` under
+/// the type parameters `parameters`: through the alias itself for an integer or an `Optional` of
+/// one, and as `target` is read for a list or a map of one.
+fn read_of(target: &str, parameters: &[String]) -> Option<Aliased> {
+    if fits(target.trim_end_matches('?'), parameters) {
+        return Some(Aliased::Alone);
+    }
+    fit_held(target, parameters)
+        .zip(unfit(target, parameters))
+        .map(|(fit, unfit)| Aliased::Through { fit, unfit })
+}
+
+/// How a value of the alias `read_as` names is read through `SwiftSchemaFit`, where it is one
+/// [`note_alias`] recorded: an alias that declares parameters, written with what fills them, is
+/// read as what it names with each parameter written as its filling, under the holder's
+/// `parameters`.
+fn aliased(read_as: &str, parameters: &[String]) -> Option<Aliased> {
+    let (named, filled) = read_as
+        .strip_suffix('>')
+        .and_then(|open| open.split_once('<'))
+        .map_or((read_as, None), |(named, fillings)| (named, Some(fillings)));
+    let noted = FITTED_ALIASES.with(|recorded| recorded.borrow().get(named).cloned())?;
+    match noted {
+        Recorded::Generic {
+            parameters: declared,
+            target,
+        } => {
+            let split = top_level(filled?);
+            if split.len() != declared.len() {
+                return None;
+            }
+            read_of(&substituted(&target, &declared, &split), parameters)
+        }
+        Recorded::Read(read) => filled.is_none().then_some(read),
+    }
+}
+
+/// The types `fillings`, written as a list of Swift types, holds, split on its top-level commas.
+fn top_level(fillings: &str) -> Vec<&str> {
+    let mut depth = 0_i32;
+    let mut start = 0;
+    let mut split = Vec::new();
+    for (at, written) in fillings.char_indices() {
+        match written {
+            '[' | '<' | '(' => depth += 1_i32,
+            ']' | '>' | ')' => depth -= 1_i32,
+            ',' if depth == 0_i32 => {
+                split.push(fillings[start..at].trim());
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    split.push(fillings[start..].trim());
+    split
+}
+
+/// `target` with each of `parameters` it names, as a whole identifier, written as the filling at
+/// its position in `fillings`.
+fn substituted(target: &str, parameters: &[String], fillings: &[&str]) -> String {
+    let mut written = String::new();
+    let mut word = String::new();
+    let flush = |pending: &mut String, into: &mut String| {
+        let filling = parameters
+            .iter()
+            .position(|named| named == pending)
+            .and_then(|at| fillings.get(at).copied());
+        into.push_str(filling.unwrap_or(pending));
+        pending.clear();
+    };
+    for letter in target.chars() {
+        if letter.is_alphanumeric() || letter == '_' {
+            word.push(letter);
+        } else {
+            flush(&mut word, &mut written);
+            written.push(letter);
+        }
+    }
+    flush(&mut word, &mut written);
+    written
+}
+
+/// `read_as`, a Swift type, with each fixed-width integer, each alias of one and each of
+/// `parameters` it holds, alone or in a list, as a map's value or under an `Optional`, read through
+/// `SwiftSchemaFit`; `None` where it holds none there. What fills a type parameter may be such an
+/// integer.
 fn fit_held(read_as: &str, parameters: &[String]) -> Option<String> {
     if let Some(held) = read_as.strip_suffix('?') {
         return fit_held(held, parameters).map(|fit| format!("{fit}?"));
@@ -368,7 +508,13 @@ fn fit_held(read_as: &str, parameters: &[String]) -> Option<String> {
         let fit = fit_held(held, parameters)?;
         return Some(key.map_or_else(|| format!("[{fit}]"), |named| format!("[{named}: {fit}]")));
     }
-    fits(read_as, parameters).then(|| format!("SwiftSchemaFit<{read_as}>"))
+    if fits(read_as, parameters) {
+        return Some(format!("SwiftSchemaFit<{read_as}>"));
+    }
+    match aliased(read_as, parameters)? {
+        Aliased::Through { fit, unfit: _unfit } => Some(fit),
+        Aliased::Alone => None,
+    }
 }
 
 /// What turns a value of [`fit_held`]'s type for `read_as` back into a `read_as`: `.value` of each
@@ -384,13 +530,22 @@ fn unfit(read_as: &str, parameters: &[String]) -> Option<String> {
         let mapping = if key.is_some() { "mapValues" } else { "map" };
         return Some(format!(".{mapping}({{ $0{inner} }})"));
     }
-    fits(read_as, parameters).then(|| ".value".to_owned())
+    if fits(read_as, parameters) {
+        return Some(".value".to_owned());
+    }
+    match aliased(read_as, parameters)? {
+        Aliased::Through { fit: _fit, unfit } => Some(unfit),
+        Aliased::Alone => None,
+    }
 }
 
-/// Whether `read_as` is itself read through `SwiftSchemaFit`: a fixed-width integer, or one of the
-/// type parameters `parameters`, which such an integer may fill.
+/// Whether `read_as` is itself read through `SwiftSchemaFit`: a fixed-width integer, an alias of
+/// one or of an `Optional` of one, or one of the type parameters `parameters`, which such an
+/// integer may fill.
 fn fits(read_as: &str, parameters: &[String]) -> bool {
-    FIXED_WIDTH.contains(&read_as) || parameters.iter().any(|named| named == read_as)
+    FIXED_WIDTH.contains(&read_as)
+        || parameters.iter().any(|named| named == read_as)
+        || matches!(aliased(read_as, parameters), Some(Aliased::Alone))
 }
 
 /// The key and the value of the map `[Key: Value]`, or no key and the item of the list `[Item]`;

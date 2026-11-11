@@ -1,8 +1,14 @@
 //! What the Swift backend writes for a map keyed by a brand or an alias: a brand whose Rust item
-//! derives `Hash` declares `Hashable`, a map's wrapper reads a brand's key through its inner type
-//! and writes the inner type's text of `key.value`, and an alias is read as the type it names.
+//! derives `Hash` declares `Hashable`, a map's wrapper reads a brand's key through its inner type,
+//! judging each brand with a check below the key's own, and writes the inner type's text of
+//! `key.value`, and an alias is read as the type it names.
 //! `service_schema_emitted_client_tests/run_swift_wrapped_keys.rs` compiles the models of
 //! `wrapped_keys_models.rs` under a Swift toolchain and reads a payload of each.
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
 
 use super::wrapped_keys_models::{
     adjacent_squadron_swift, armada_swift, burgee_swift, callsign_swift, dockage_swift,
@@ -11,6 +17,25 @@ use super::wrapped_keys_models::{
 };
 #[cfg(feature = "chrono")]
 use super::wrapped_keys_models::{postmark_swift, regatta_swift, stowed_regatta_swift};
+
+/// A brand over a string with a check, which a brand with a check holds.
+#[model_schema(check = ["turning"])]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Sheave(pub String);
+
+/// A brand with a check over [`Sheave`] that a map is keyed by.
+#[model_schema(check = ["raised"])]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Gaff(pub Sheave);
+
+/// A map keyed by the brand over a brand.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Topmast {
+    pub gaffs: HashMap<Gaff, u8>,
+}
 
 /// Each of `written` in `swift`.
 fn holds(swift: &str, written: &[&str]) {
@@ -184,5 +209,66 @@ fn a_variant_member_and_a_generic_holder_read_the_key_the_same_way() {
     holds(
         &logroll_swift::swift_definition(),
         &["let key = Callsign(value: wireKey); "],
+    );
+}
+
+/// The check of [`Sheave`]: a sheave that turns.
+fn turning(value: &Sheave) -> Result<(), Vec<String>> {
+    if value.0 == "seized" {
+        Err(vec!["seized does not turn".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// The check of [`Gaff`]: a gaff that is raised.
+fn raised(value: &Gaff) -> Result<(), Vec<String>> {
+    if value.0.0 == "lowered" {
+        Err(vec!["lowered is not raised".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_wrapper_judges_the_brand_a_brand_key_holds_and_the_walk_the_key_itself() {
+    let swift = topmast_swift::swift_definition();
+    holds(
+        &swift,
+        &[
+            "let key = Gaff(value: Sheave(value: wireKey)); do { let violations = \
+             key.value.validate(); if !violations.isEmpty { throw \
+             DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \
+             violations.joined(separator: \"; \")) } }; result[key] = ",
+            "errors += key.validate().map { Topmast.swiftSchemaUnder(\"gaffs.\\(key.value.value)\", $0) }",
+        ],
+    );
+    assert!(
+        !taskforce_swift::swift_definition().contains("key.value.validate()"),
+        "a brand over a brand with no check judges nothing"
+    );
+}
+
+/// The Rust reference the Swift read is held to: serde refuses a key either brand's check refuses
+/// as it reads the key, and the outer brand's `validate()` runs its own check alone.
+#[test]
+fn serde_judges_each_brand_of_a_key_as_it_reads_it_and_validate_the_brand_s_own_check() {
+    for refused in [r#"{"gaffs":{"seized":1}}"#, r#"{"gaffs":{"lowered":1}}"#] {
+        assert!(
+            serde_json::from_str::<Topmast>(refused).is_err(),
+            "{refused}"
+        );
+    }
+    let raised = Topmast {
+        gaffs: HashMap::from([(Gaff(Sheave("rope".to_owned())), 1)]),
+    };
+    assert_eq!(
+        serde_json::to_string(&raised).unwrap(),
+        r#"{"gaffs":{"rope":1}}"#
+    );
+    assert_eq!(Gaff(Sheave("seized".to_owned())).validate(), Ok(()));
+    assert_eq!(
+        Gaff(Sheave("lowered".to_owned())).validate(),
+        Err(vec!["lowered is not raised".to_owned()])
     );
 }
