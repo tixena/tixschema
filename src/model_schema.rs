@@ -47,11 +47,11 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
-#[cfg(all(feature = "serde", feature = "zod"))]
-use crate::field_type::zod_check_wrap_handing;
 use crate::field_type::{RESULT_ARMS, RangeKind};
+#[cfg(all(feature = "serde", feature = "zod"))]
+use crate::field_type::{ZOD_NAMED_ARM, zod_check_wrap_handing};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
+use crate::field_type::{zod_check_wrap, zod_one_key_union, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
@@ -112,6 +112,8 @@ use crate::utils::{
 
 #[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
+#[cfg(feature = "zod")]
+use crate::utils::record_number_key;
 
 #[cfg(feature = "serde")]
 use crate::utils::{
@@ -153,6 +155,8 @@ use crate::features::serde::{
     tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
     variant_steps, written_and_read_by_the_author,
 };
+#[cfg(feature = "serde")]
+use crate::service_schema::parse::path_text_form;
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
@@ -342,12 +346,12 @@ const INTEGER_RANGES: [(&str, i128, i128, &str); 10] = [
     ),
 ];
 
-/// The text an integer map key is read from, as Zod's record reads it: digits under an optional
-/// sign, then a fraction of zeros at most, which Zod reads as that integer.
-const INTEGER_KEY_PATTERN: &str = "^-?[0-9]+(\\.0+)?$";
+/// The text an integer map key is read from, as serde reads it: a whole number of no leading zero,
+/// `-0` read as a float.
+const INTEGER_KEY_PATTERN: &str = "^(0|-?[1-9][0-9]*)$";
 
-/// The text a floating-point map key is read from, as Zod's record reads it.
-const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
+/// The text a floating-point map key is read from, as serde reads it: a JSON number.
+const NUMBER_KEY_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
 
 /// The text a `bool` map key is read from.
 const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
@@ -483,6 +487,20 @@ const WRITTEN_AS_OBJECT: &str = "a JSON object";
 /// as `None`: every key it was handed, with any value, and none of them in the value read.
 #[cfg(feature = "zod")]
 const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform(() => ({}))";
+
+/// The check a flattened member joins its holder through. serde reads such a member from the keys
+/// its holder buffers and names the holder for a value inside it of the wrong type, so a type
+/// refusal moves to the holder's place; a missing key, an unknown key and a broken bound stay where
+/// Zod puts them.
+#[cfg(feature = "zod")]
+const ZOD_AT_THE_HOLDER: &str = ".superRefine((_read, ctx) => { ctx.issues.splice(0, \
+     ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last \
+     = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above \
+     = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, \
+     step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" \
+     && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && \
+     [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, \
+     path: [] } : issue; })); }, { when: () => true })";
 
 /// A name a Cargo feature of this crate reads: the feature, what the name is read as under it, and
 /// the fewest type arguments it is read with.
@@ -2742,6 +2760,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
+    #[cfg(feature = "zod")]
+    record_number_key(&rust_ident_str, alias_field_def.zod_number_key());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
@@ -3109,7 +3129,7 @@ fn enum_delegate_items(
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
-    build_struct_delegate_items(
+    let mut items = build_struct_delegate_items(
         module_ident,
         item_name,
         &item_enum.ident.to_string(),
@@ -3123,7 +3143,9 @@ fn enum_delegate_items(
         .as_ref(),
         false,
         args,
-    )
+    );
+    items.push(no_wire_keys_item());
+    items
 }
 
 /// The delegates on the type of a plain enum, which match the branded ones, with the
@@ -3148,6 +3170,7 @@ fn plain_enum_delegate_items(
         .into_iter()
         .chain(examples)
         .chain(validate)
+        .chain([no_wire_keys_item()])
         .collect();
     (items, test)
 }
@@ -8716,21 +8739,46 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 }
 
 /// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
-/// reads the member's key on the wire from.
+/// reads the member's key on the wire from, and the form its text is read in.
 #[cfg(feature = "serde")]
 fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
-    let (names, keys): (Vec<String>, Vec<String>) =
-        read_member_keys(item_struct).into_iter().unzip();
+    wire_keys_const(
+        read_member_keys(item_struct)
+            .into_iter()
+            .map(|(name, key, ty)| (name, key, path_text_form(ty)))
+            .collect(),
+    )
+}
+
+/// The constant [`wire_keys_item`] writes, listing no member: an enum and a struct of slots hold
+/// none a path placeholder binds.
+#[cfg(feature = "serde")]
+fn no_wire_keys_item() -> TokenStream {
+    wire_keys_const(Vec::new())
+}
+
+#[cfg(feature = "serde")]
+fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
+    let listed = members
+        .into_iter()
+        .map(|(name, key, form)| quote! { (#name, #key, #form) });
     quote! {
-        #[doc = " Each member serde reads under a key of its own, as its name in Rust and that key."]
-        pub const WIRE_KEYS: ::core::option::Option<&'static [(&'static str, &'static str)]> =
-            ::core::option::Option::Some(&[#((#names, #keys)),*]);
+        #[doc = " Each member serde reads under a key of its own, as its name in Rust, that key and"]
+        #[doc = " the form a path placeholder's text is read in for it."]
+        pub const WIRE_KEYS: ::core::option::Option<
+            &'static [(&'static str, &'static str, &'static str)],
+        > = ::core::option::Option::Some(&[#(#listed),*]);
     }
 }
 
 /// Nothing, where no `serde` feature reads the attributes a key is written from.
 #[cfg(not(feature = "serde"))]
 fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
+    TokenStream::new()
+}
+
+#[cfg(not(feature = "serde"))]
+fn no_wire_keys_item() -> TokenStream {
     TokenStream::new()
 }
 
@@ -9815,13 +9863,14 @@ fn process_tuple_struct(
 
     let schema_impl_items = tuple_struct_schema_impl_items(&item_struct, &item_name, &slots, args);
 
-    let delegate_impl_items = struct_delegate_items(
+    let mut delegate_impl_items = struct_delegate_items(
         &module_ident,
         &item_name,
         &item_struct,
         tuple_struct_shows_sibling_examples(&slots.shape),
         args,
     );
+    delegate_impl_items.push(no_wire_keys_item());
 
     // Read after every slot carries the serde attributes generation hangs on it.
     let decode_with = struct_decode_with(&item_struct, args);
@@ -11373,6 +11422,11 @@ fn register_branded_newtype(
     // A brand adds a name to its inner's wire and nothing else, so a key written under it renders
     // in whatever form the inner writes.
     record_key_wire(rust_ident, branded_key_wire(inner_field));
+    #[cfg(feature = "zod")]
+    record_number_key(
+        rust_ident,
+        get_field_def("", &inner_field.ty, "").zod_number_key(),
+    );
     record_inexact_key(
         rust_ident,
         get_field_def("", &inner_field.ty, "").writes_an_inexact_key(),
@@ -11477,8 +11531,9 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         args,
     );
 
-    let delegate_impl_items =
+    let mut delegate_impl_items =
         build_branded_delegate_items(&module_ident, !schema_example_tokens.is_empty(), args);
+    delegate_impl_items.push(no_wire_keys_item());
 
     let display_tokens =
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
@@ -13312,15 +13367,17 @@ fn join_external_union(
     #[cfg(not(feature = "typescript"))]
     let type_code = String::new();
 
+    // serde reads the enum from a string or an object of one key, and refuses any other value as
+    // text that is not the document.
     #[cfg(feature = "zod")]
-    let schema_code = format!(
-        "z.union([{}])",
+    let schema_code = zod_one_key_union(&format!(
+        "z.union([{}]){ZOD_NAMED_ARM}",
         members
             .iter()
             .map(|(_, zod, _)| zod.as_str())
             .collect::<Vec<_>>()
             .join(", ")
-    );
+    ));
     #[cfg(not(feature = "zod"))]
     let schema_code = String::new();
 
@@ -13867,14 +13924,15 @@ fn render_internal_variant(
         return (typescript, zod, json, true);
     }
 
-    // The content joins the member through [`deferred_zod_operand`] for the reason a flattened
-    // base does: it names a `const` of its own, and one macro invocation sees one type.
+    // The content joins the member through [`flattened_zod_operand`] for the reasons a flattened
+    // base does: it names a `const` of its own, one macro invocation sees one type, and serde reads
+    // it from the keys the tag's object buffers.
     #[cfg(feature = "zod")]
     let zod = format!(
         "{}({}).and({})",
         zod_own_object(),
         parts.schema_code,
-        deferred_zod_operand(&inner.zod_type())
+        flattened_zod_operand(&inner.zod_type())
     );
     #[cfg(not(feature = "zod"))]
     let zod = String::new();
@@ -21989,6 +22047,13 @@ fn deferred_zod_operand(schema: &str) -> String {
     format!("z.lazy(() => {schema})")
 }
 
+/// [`deferred_zod_operand`] of a member serde reads from the keys its holder buffers, read through
+/// [`ZOD_AT_THE_HOLDER`]: a flattened member, and a newtype variant's content beside its tag.
+#[cfg(feature = "zod")]
+fn flattened_zod_operand(schema: &str) -> String {
+    format!("{}{ZOD_AT_THE_HOLDER}", deferred_zod_operand(schema))
+}
+
 /// The suffix the binding an item publishes is named with. A generic type publishes a factory —
 /// one schema per filling, built on demand — where a type that declares no parameter publishes the
 /// one schema it has.
@@ -22651,7 +22716,7 @@ fn zod_merged_joins(operands: &[MergedOperand]) -> Vec<(String, bool)> {
                     .into_iter()
                     .map(|schema| {
                         (
-                            format!("{join}.and({})", deferred_zod_operand(schema)),
+                            format!("{join}.and({})", flattened_zod_operand(schema)),
                             *closed || operand.closes,
                         )
                     })
@@ -22737,7 +22802,7 @@ fn zod_merged_object(own: &str, operands: &[MergedOperand]) -> String {
 }
 
 #[cfg(feature = "zod")]
-/// Each flattened base joins an intersection through [`deferred_zod_operand`]: a base names a
+/// Each flattened base joins an intersection through [`flattened_zod_operand`]: a base names a
 /// `const` of its own, and one macro invocation sees one type, so nothing here can know whether
 /// that `const` is declared above this module or below it.
 fn generate_zod_schema_method(
@@ -22894,7 +22959,7 @@ fn generate_plain_enum_zod_schema_method(
         // ahead of it, and `closed` after it.
         let around = zod_preprocess_wrap(String::new(), &args.preprocess);
         let opened = around.trim_end_matches(')');
-        let closed = ")".repeat(args.preprocess.len());
+        let closed = &around[opened.len()..];
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {

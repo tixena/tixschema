@@ -87,16 +87,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         NARROW_REFUSED,
     ),
     row("ConveyedI64", "-9007199254740991", "read", ALL_HANDED),
-    // TypeScript holds a map's key of an `i64` as a `number`, which does not hold this one.
-    row(
-        "ConveyedI64",
-        "1152921504606846976",
-        "read",
-        Clients {
-            typescript: Sends::Unheld,
-            ..ALL_HANDED
-        },
-    ),
+    row("ConveyedI64", "1152921504606846976", "read", ALL_HANDED),
     row("ConveyedIsize", "9007199254740991", "read", ALL_HANDED),
     row(
         "ConveyedIsize",

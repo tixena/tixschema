@@ -1,5 +1,6 @@
 //! Operations whose path binds a field of a declared message, under each way serde names the
-//! field: the implementation gets the path's value, whatever the body carries.
+//! field and in each form a path reads it in: the implementation gets the path's value, whatever
+//! the body carries.
 
 #![cfg(feature = "serde")]
 
@@ -82,12 +83,41 @@ pub struct BoundKeyword {
     pub r#type: String,
 }
 
-/// A message no `#[model_schema]` wrote, which publishes no key of its members: its placeholder's
-/// own text is the key it is read from.
+/// A message no `#[model_schema]` wrote, which publishes no key of its members: a path with no
+/// placeholder reads it from the body whole.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BoundUnlisted {
     pub document_id: String,
     pub title: String,
+}
+
+/// An enum message, which a path with no placeholder reads from the body whole.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all_fields = "camelCase")]
+pub enum BoundTagged {
+    Only { document_id: String },
+}
+
+/// A brand over a number, declared above the message that holds it.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct BoundBerth(pub u32);
+
+/// A message whose members a path reads as a number, a `bool`, an `i64`, a brand over a number and
+/// a list.
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoundTyped {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub berth: Option<BoundBerth>,
+    pub label: String,
+    pub page_size: u32,
+    pub pages: Vec<u16>,
+    pub pinned: bool,
+    pub tally: i64,
 }
 
 /// The id an implementation was handed.
@@ -105,8 +135,9 @@ pub enum BoundRefused {
     Nope,
 }
 
-/// One operation for each way serde names a member, one whose path binds two, and one whose
-/// message the macro generates.
+/// One operation for each way serde names a member, one whose path binds two, one whose message
+/// the macro generates, ones whose path reads a member that is no text, and ones whose path binds
+/// none.
 #[service_schema(transports = ["http_rest"])]
 pub trait RenamedPathBoundService<Ctx> {
     #[service_schema_op(http(method = "PUT", path = "/aliased/{document_id}"))]
@@ -154,6 +185,9 @@ pub trait RenamedPathBoundService<Ctx> {
     ))]
     async fn renamed(&self, ctx: &Ctx, req: BoundRenamed) -> Result<BoundAnswer, BoundRefused>;
 
+    #[service_schema_op(http(method = "PUT", path = "/tagged"))]
+    async fn tagged(&self, ctx: &Ctx, req: BoundTagged) -> Result<BoundAnswer, BoundRefused>;
+
     #[service_schema_op(http(method = "PUT", path = "/two/{document_id}/{title}"))]
     async fn two_placeholders(
         &self,
@@ -161,7 +195,13 @@ pub trait RenamedPathBoundService<Ctx> {
         req: BoundRenamed,
     ) -> Result<BoundAnswer, BoundRefused>;
 
-    #[service_schema_op(http(method = "PUT", path = "/unlisted/{document_id}"))]
+    #[service_schema_op(http(
+        method = "PUT",
+        path = "/typed/{page_size}/{pinned}/{tally}/{berth}"
+    ))]
+    async fn typed(&self, ctx: &Ctx, req: BoundTyped) -> Result<BoundAnswer, BoundRefused>;
+
+    #[service_schema_op(http(method = "PUT", path = "/unlisted"))]
     async fn unlisted(&self, ctx: &Ctx, req: BoundUnlisted) -> Result<BoundAnswer, BoundRefused>;
 }
 
@@ -222,6 +262,12 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         answered(req.document_id)
     }
 
+    async fn tagged(&self, _ctx: &(), req: BoundTagged) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        let BoundTagged::Only { document_id } = req;
+        answered(document_id)
+    }
+
     async fn two_placeholders(
         &self,
         _ctx: &(),
@@ -229,6 +275,17 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
     ) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
         answered(format!("{}|{}", req.document_id, req.title))
+    }
+
+    async fn typed(&self, _ctx: &(), req: BoundTyped) -> Result<BoundAnswer, BoundRefused> {
+        ready(()).await;
+        answered(format!(
+            "{}|{}|{}|{:?}",
+            req.page_size,
+            req.pinned,
+            req.tally,
+            req.berth.map(|berth| berth.0)
+        ))
     }
 
     async fn unlisted(&self, _ctx: &(), req: BoundUnlisted) -> Result<BoundAnswer, BoundRefused> {
@@ -355,11 +412,6 @@ fn the_path_value_reaches_the_implementation_whatever_the_body_carries() {
             r#"{"TITLE":"t"}"#,
         ),
         (
-            "/unlisted/d1",
-            r#"{"document_id":"elsewhere","title":"t"}"#,
-            r#"{"title":"t"}"#,
-        ),
-        (
             "/generated/d1",
             r#"{"documentId":"elsewhere","title":"t"}"#,
             r#"{"title":"t"}"#,
@@ -373,6 +425,46 @@ fn the_path_value_reaches_the_implementation_whatever_the_body_carries() {
             );
         }
     }
+}
+
+/// Each member a path reads that is no text reaches the implementation as the value its text
+/// holds, whatever the body carries, as a placeholder of a generated message is read.
+#[test]
+fn a_path_value_reaches_a_member_in_the_form_it_publishes() {
+    assert_eq!(
+        put(
+            "/typed/7/true/-9123456789012345/12",
+            r#"{"berth":1,"label":"l","pageSize":9,"pages":[],"pinned":false,"tally":1}"#
+        ),
+        (
+            200,
+            r#"{"id":"7|true|-9123456789012345|Some(12)"}"#.to_owned()
+        )
+    );
+}
+
+#[test]
+fn a_path_text_its_form_does_not_read_is_refused_on_the_member() {
+    let (status, body) = put("/typed/many/true/1/12", r#"{"label":"l","pages":[]}"#);
+    assert_eq!(status, 400, "{body}");
+    let refused: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(refused["field"], "pageSize", "{body}");
+    assert_eq!(
+        refused["detail"],
+        r#"'pageSize': invalid type: string "many", expected u32"#
+    );
+}
+
+#[test]
+fn a_message_on_a_path_with_no_placeholder_is_read_from_the_body() {
+    assert_eq!(
+        put("/unlisted", r#"{"document_id":"d1","title":"t"}"#),
+        (200, r#"{"id":"d1"}"#.to_owned())
+    );
+    assert_eq!(
+        put("/tagged", r#"{"kind":"Only","documentId":"d1"}"#),
+        (200, r#"{"id":"d1"}"#.to_owned())
+    );
 }
 
 #[test]
@@ -390,24 +482,62 @@ fn each_placeholder_of_a_path_reaches_its_own_member() {
 fn a_struct_publishes_the_key_serde_reads_each_member_from() {
     assert_eq!(
         BoundRenamed::WIRE_KEYS,
-        Some(&[("document_id", "documentId"), ("title", "title")][..])
+        Some(
+            &[
+                ("document_id", "documentId", "text"),
+                ("title", "title", "text")
+            ][..]
+        )
     );
     assert_eq!(
         BoundOwnKey::WIRE_KEYS,
-        Some(&[("document_id", "doc-id"), ("title", "title")][..])
+        Some(
+            &[
+                ("document_id", "doc-id", "text"),
+                ("title", "title", "text")
+            ][..]
+        )
     );
     assert_eq!(
         BoundBesideFlatten::WIRE_KEYS,
-        Some(&[("document_id", "docId")][..])
+        Some(&[("document_id", "docId", "text")][..])
     );
     assert_eq!(
         BoundKeyword::WIRE_KEYS,
-        Some(&[("title", "TITLE"), ("type", "TYPE")][..])
+        Some(&[("title", "TITLE", "text"), ("type", "TYPE", "text")][..])
     );
     assert_eq!(
         BoundGeneric::<String>::WIRE_KEYS,
-        Some(&[("document_id", "documentId"), ("held", "held")][..])
+        Some(
+            &[
+                ("document_id", "documentId", "text"),
+                ("held", "held", "text")
+            ][..]
+        )
     );
+}
+
+#[test]
+fn a_struct_publishes_the_form_each_member_is_read_in() {
+    assert_eq!(
+        BoundTyped::WIRE_KEYS,
+        Some(
+            &[
+                ("berth", "berth", "number"),
+                ("label", "label", "text"),
+                ("page_size", "pageSize", "number"),
+                ("pages", "pages", "list of number"),
+                ("pinned", "pinned", "boolean"),
+                ("tally", "tally", "bigint"),
+            ][..]
+        )
+    );
+}
+
+#[test]
+fn an_enum_and_a_brand_publish_no_member() {
+    assert_eq!(BoundTagged::WIRE_KEYS, Some(&[][..]));
+    assert_eq!(BoundBerth::WIRE_KEYS, Some(&[][..]));
 }
 
 #[test]
@@ -447,6 +577,9 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
             document_id: id.clone(),
             title: title.clone(),
         })),
+        poll_once(client.tagged(BoundTagged::Only {
+            document_id: id.clone(),
+        })),
         poll_once(client.generated(id.clone(), title.clone())),
     ];
     for answer in called {
@@ -461,6 +594,30 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
         Some(BoundAnswer {
             id: "d1|t".to_owned()
         })
+    );
+}
+
+#[test]
+fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
+    let client = RenamedPathBoundServiceClient::new(Dispatched::default());
+    let answer = poll_once(client.typed(BoundTyped {
+        berth: Some(BoundBerth(12)),
+        label: "l".to_owned(),
+        page_size: 7,
+        pages: Vec::new(),
+        pinned: true,
+        tally: -9_123_456_789_012_345,
+    }))
+    .unwrap();
+    assert_eq!(
+        answer.ok(),
+        Some(BoundAnswer {
+            id: "7|true|-9123456789012345|Some(12)".to_owned()
+        })
+    );
+    assert_eq!(
+        *client.transport().carried.lock().unwrap(),
+        ["/typed/7/true/-9123456789012345/12"]
     );
 }
 

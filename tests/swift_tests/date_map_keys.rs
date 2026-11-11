@@ -23,6 +23,7 @@ use super::date_map_keys_models::{
     timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
 };
 use super::swift_fitted::FITTED;
+use super::swift_key_number::{KEY_NUMBER, integer_key_bound};
 use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
 
 /// The two formatters a wrapper of a date key declares ahead of its coding key: one reads and
@@ -341,6 +342,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
 /// A wrapper of a key Swift parses from its text declares no formatter, and is written as it was.
 #[test]
 fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
+    let bound = integer_key_bound("UInt32(number)", "u32");
     assert_eq!(
         read_back(&Muster {
             by_count: HashMap::from([(7, "m".to_owned())]),
@@ -349,44 +351,38 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
     );
     holds(
         &roll_swift::swift_definition(),
-        &["public struct RollByCountKeyedMap: Codable, Sendable { \
-             public var storage: [UInt32: Sailing];  \
-             private struct DynamicCodingKey: CodingKey { var stringValue: String; \
-             init?(stringValue: String) { self.stringValue = stringValue }; \
-             var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
-             public init(storage: [UInt32: Sailing]) { self.storage = storage }; \
-             init(swiftSchemaUnjudged decoder: Decoder) throws { \
+        &[&format!(
+            "public struct RollByCountKeyedMap: Codable, Sendable {{ \
+             public var storage: [UInt32: Sailing];  {KEY_NUMBER}\
+             private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
+             init?(stringValue: String) {{ self.stringValue = stringValue }}; \
+             var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
+             public init(storage: [UInt32: Sailing]) {{ self.storage = storage }}; \
+             init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys { \
-             let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else { \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } \
-             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
-             quotes\") }; \
+             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
              result[key] = try Sailing(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: codingKey)) }; \
-             storage = result }; \
-             public init(from decoder: Decoder) throws { \
+             container.superDecoder(forKey: codingKey)) }}; \
+             storage = result }}; \
+             public init(from decoder: Decoder) throws {{ \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys { \
-             let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else { \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } \
-             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
-             quotes\") }; \
-             result[key] = try container.decode(Sailing.self, forKey: codingKey) }; \
-             storage = result }; \
-             public func encode(to encoder: Encoder) throws { \
+             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try container.decode(Sailing.self, forKey: codingKey) }}; \
+             storage = result }}; \
+             public func encode(to encoder: Encoder) throws {{ \
              var container = encoder.container(keyedBy: DynamicCodingKey.self); \
-             for (key, value) in storage { let wireKey = String(key); \
-             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
-             try container.encode(value, forKey: codingKey) } } }; "],
+             for (key, value) in storage {{ let wireKey = String(key); \
+             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
+             try container.encode(value, forKey: codingKey) }} }} }}; "
+        )],
     );
     holds(
         &muster_swift::swift_definition(),
         &[&format!(
             "public struct MusterByCountKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable {{ \
-             public var storage: [UInt32: Stowed];  {FITTED}; \
+             public var storage: [UInt32: Stowed];  {FITTED}; {KEY_NUMBER}\
              private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
              init?(stringValue: String) {{ self.stringValue = stringValue }}; \
              var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
@@ -394,11 +390,7 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              public init(from decoder: Decoder) throws {{ \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
-             let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-             debugDescription: wireKey.first.map {{ $0 == \"-\" || (\"0\"...\"9\").contains($0) }} \
-             == true ? \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in \
-             quotes\") }}; \
+             let wireKey = codingKey.stringValue; {bound}\
              result[key] = try container.decode(SwiftSchemaFit<Stowed>.self, forKey: codingKey).value }}; \
              storage = result }}; \
              public func encode(to encoder: Encoder) throws {{ \

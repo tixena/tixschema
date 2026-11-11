@@ -9,15 +9,16 @@ use super::service;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
-    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, error_declared_type, held_as_a_bigint,
-    is_scalar_named_type, option_inner, service_declares_a_stream, service_declares_multipart,
+    BIGINT_FORM, BOOLEAN_FORM, BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, LIST_FORM,
+    NUMBER_FORM, OperationDef, OperationInputs, OperationOutcome, PathSegment, ServiceDef,
+    error_declared_type, held_as_a_bigint, is_scalar_named_type, option_inner,
+    path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
     tuple_elements, type_leaf_name, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::{is_recorded_untagged_enum, ts_quoted};
 use core::fmt::Write as _;
-use syn::Type;
+use syn::{Type, parse_quote};
 
 /// The text `ts_http_service()` replaces with the service's `OpenAPI` document, quoted as a string
 /// literal. No other generated text holds it.
@@ -59,8 +60,12 @@ pub fn emit(service: &ServiceDef, openapi_path: Option<&str>) -> Vec<String> {
         parse_query_fn(&prefix),
         coerce_number_fn(&prefix),
     ]);
-    if service.operations.iter().any(reads_a_bigint_from_text) {
+    let binds_a_declared_member = service.operations.iter().any(path_reads_a_named_field);
+    if binds_a_declared_member || service.operations.iter().any(reads_a_bigint_from_text) {
         items.push(coerce_bigint_fn(&prefix));
+    }
+    if binds_a_declared_member {
+        items.push(path_text_fn(&prefix));
     }
     if service_writes_a_response_header(service) {
         items.push(legal_response_header_value_fn(&prefix));
@@ -344,6 +349,41 @@ fn coerce_bigint_fn(prefix: &str) -> String {
     )
 }
 
+/// The twin of the Rust dispatcher's `path_text_value`: a path placeholder that binds a member of a
+/// declared message, read as [`message::decode_ts_expr`] reads a placeholder of a generated message,
+/// in the form the message publishes for the member.
+fn path_text_fn(prefix: &str) -> String {
+    let boolean = message::decode_ts_expr(&parse_quote!(bool), "raw", prefix);
+    let number = message::decode_ts_expr(&parse_quote!(f64), "raw", prefix);
+    let bigint = message::decode_ts_expr(&parse_quote!(u64), "raw", prefix);
+    let (list, boolean_form, number_form, bigint_form) = (
+        ts_quoted(LIST_FORM),
+        ts_quoted(BOOLEAN_FORM),
+        ts_quoted(NUMBER_FORM),
+        ts_quoted(BIGINT_FORM),
+    );
+    format!(
+        "/** A path placeholder's text read in `form`, a form a declared message publishes for \
+         one of its members. */\n\
+         function {prefix}HttpPathText(raw: string, form: string): unknown {{\n  \
+         if (form.startsWith({list})) {{\n    \
+         const item = form.slice({list}.length);\n    \
+         return raw.split(\",\").map((piece: string) => {prefix}HttpPathText(piece, item));\n  \
+         }}\n  \
+         switch (form) {{\n    \
+         case {boolean_form}:\n      \
+         return {boolean};\n    \
+         case {number_form}:\n      \
+         return {number};\n    \
+         case {bigint_form}:\n      \
+         return {bigint};\n    \
+         default:\n      \
+         return raw;\n  \
+         }}\n\
+         }}"
+    )
+}
+
 /// Whether `operation` reads a `u64` or an `i64` from the text of a path, a query, a header or a
 /// text part: what [`coerce_bigint_fn`] is written for.
 fn reads_a_bigint_from_text(operation: &OperationDef) -> bool {
@@ -491,8 +531,9 @@ fn empty_message_build(
 }
 
 /// A `Named` message, TypeScript side: the whole body, the one placeholder's decoded value when
-/// the type is a scalar bound whole, or the body with each placeholder's value over the key
-/// `ts_http_service()` writes over [`message::wire_key_marker`].
+/// the type is a scalar bound whole, or the body with each placeholder's value, read in the form
+/// `ts_http_service()` writes over [`message::wire_form_marker`], over the key it writes over
+/// [`message::wire_key_marker`].
 fn named_message_build(
     operation: &OperationDef,
     named_type: &Type,
@@ -519,9 +560,10 @@ fn named_message_build(
     for name in placeholder_names {
         let _ = writeln!(
             setup,
-            "        message[{}] = {};",
+            "        message[{}] = {prefix}HttpPathText({}, {});",
             message::wire_key_marker(operation, name),
-            message::placeholder_local(name)
+            message::placeholder_local(name),
+            message::wire_form_marker(operation, name)
         );
     }
     (setup, "message".to_owned())

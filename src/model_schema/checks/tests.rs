@@ -426,8 +426,8 @@ fn a_fields_check_is_written_on_the_schema_of_its_own_value() {
             wrap("shortList")
         ),
         format!(
-            "z.preprocess(trimmed, z.string().max(9, {{ error: (issue) => `too long: maximum \
-             length is 9, got ${{String(issue.input).length}}` }}){}), z.undefined()])",
+            "z.preprocess(function unboxed(held) {{ if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : {{ ...held }}; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }}, z.preprocess(trimmed, z.string().max(9, {{ error: (issue) => `too long: maximum \
+             length is 9, got ${{String(issue.input).length}}` }}){})), z.undefined()])",
             wrap("known")
         ),
         format!(

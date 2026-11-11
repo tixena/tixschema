@@ -31,6 +31,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         socket_type(&named),
         options_type(&named),
         support_types(&named, has_header_in),
+        waiting_type(&named),
     ];
     if has_header_in {
         published.push(header_in_type(&named));
@@ -190,6 +191,43 @@ fn support_types(named: &str, has_header_in: bool) -> String {
     )
 }
 
+/// One request's wait for its reply, resumed once by whichever settles it first. A lock guards it,
+/// not the actor: a task's cancellation handler runs on the thread that cancels the task, before
+/// `cancel()` returns, and resumes the wait from there.
+fn waiting_type(named: &str) -> String {
+    format!(
+        "/// One `{named}` request waiting on its reply, resumed once by whichever comes first: \
+         the reply,\n\
+         /// the socket closing, or the cancellation of the task that waits.\n\
+         final class {named}WsWaiting: @unchecked Sendable {{\n  \
+         private let lock = NSLock()\n  \
+         private var continuation: CheckedContinuation<Data?, any Error>?\n  \
+         private var reached: Result<Data?, any Error>?\n\n  \
+         func hold(_ continuation: CheckedContinuation<Data?, any Error>) {{\n    \
+         lock.lock()\n    \
+         let early = reached\n    \
+         if early == nil {{\n      \
+         self.continuation = continuation\n    \
+         }}\n    \
+         lock.unlock()\n    \
+         if let early {{\n      \
+         continuation.resume(with: early)\n    \
+         }}\n  \
+         }}\n\n  \
+         func settle(_ outcome: Result<Data?, any Error>) {{\n    \
+         lock.lock()\n    \
+         if reached == nil {{\n      \
+         reached = outcome\n    \
+         }}\n    \
+         let held = continuation\n    \
+         continuation = nil\n    \
+         lock.unlock()\n    \
+         held?.resume(with: outcome)\n  \
+         }}\n\
+         }}"
+    )
+}
+
 /// One outgoing `header_in` value, type-erased so operations with different header types share
 /// one dictionary; an `Optional` writes JSON `null` for `nil` rather than omitting the key.
 /// The value is written through a container, which is where `JSONEncoder` applies its date
@@ -287,7 +325,9 @@ fn transport_failure_helper(named: &str, prefix: &str) -> String {
     format!(
         "/// The fault a `{named}` `ws_rpc` call answers with when the transport could not carry \
          it:\n\
-         /// the frame never went out, or the reply never came back before the socket closed.\n\
+         /// the frame never went out, or the reply never came back before the socket closed or \
+         the task\n\
+         /// that waits was cancelled.\n\
          func {prefix}WsTransportFailure(_ operation: String, _ detail: String) -> {fault} {{\n  \
          {fault}(detail: detail, field: nil, issues: nil, kind: .transportFailure, operation: operation)\n\
          }}"
@@ -341,7 +381,7 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          }}\n  \
          return {prefix}WsFailedValidation(operation, \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))\n\
          }}",
-        listed = NOT_A_DOCUMENT.map(|said| format!("\"{said}\"")).join(", ")
+        listed = NOT_A_DOCUMENT.map(swift_quoted).join(", ")
     )
 }
 
@@ -393,7 +433,7 @@ fn actor_header(named: &str, apart: Option<&str>) -> String {
          private let socket: any {named}WsSocket\n  \
          private let heartbeat: {named}WsOptions.Heartbeat?\n  \
          private var next = 0\n  \
-         private var pending: [String: CheckedContinuation<Data?, Never>] = [:]\n  \
+         private var pending: [String: {named}WsWaiting] = [:]\n  \
          private var pingTask: Task<Void, Never>?\n  \
          private var pongDeadlineTask: Task<Void, Never>?\n  \
          private var inboundContinuation: AsyncStream<String>.Continuation?\n  \
@@ -433,9 +473,10 @@ fn actor_close_method() -> String {
 }
 
 /// Sends a `request` frame and awaits the matching `reply`'s raw bytes, or `nil` once the socket
-/// closes first. Registering the pending continuation and writing the frame happen inside the
-/// same non-suspending closure, so no reply for this id can be read before it is recorded. Takes
-/// `headers` only where the service declares `header_in`.
+/// closes first, and throws `CancellationError` once the task that waits is cancelled. Holding the
+/// continuation and writing the frame happen inside the same non-suspending closure, so no reply
+/// for this id can be read before it is recorded; the id leaves `pending` however the wait ends.
+/// Takes `headers` only where the service declares `header_in`.
 fn actor_correlate(named: &str, prefix: &str, has_header_in: bool) -> String {
     let (headers_param, headers_arg) = if has_header_in {
         (
@@ -459,10 +500,19 @@ fn actor_correlate(named: &str, prefix: &str, has_header_in: bool) -> String {
          return nil\n    \
          }}\n    \
          let text = String(decoding: data, as: UTF8.self)\n    \
-         return await withCheckedContinuation {{ (continuation: CheckedContinuation<Data?, \
-         Never>) in\n      \
-         pending[id] = continuation\n      \
-         socket.send(text)\n    \
+         let waiting = {named}WsWaiting()\n    \
+         pending[id] = waiting\n    \
+         defer {{\n      \
+         pending.removeValue(forKey: id)\n    \
+         }}\n    \
+         return try await withTaskCancellationHandler {{\n      \
+         try await withCheckedThrowingContinuation {{ (continuation: CheckedContinuation<Data?, \
+         any Error>) in\n        \
+         waiting.hold(continuation)\n        \
+         socket.send(text)\n      \
+         }}\n    \
+         }} onCancel: {{\n      \
+         waiting.settle(.failure(CancellationError()))\n    \
          }}\n  \
          }}\n\n"
     )
@@ -509,7 +559,7 @@ fn actor_handle_message(named: &str) -> String {
          case \"reply\":\n      \
          guard probe.service == \"{named}\", let id = probe.id, let waiting = \
          pending.removeValue(forKey: id) else {{ return }}\n      \
-         waiting.resume(returning: data)\n    \
+         waiting.settle(.success(data))\n    \
          default:\n      \
          return\n    \
          }}\n  \
@@ -560,8 +610,8 @@ fn actor_handle_close() -> String {
      pongDeadlineTask = nil\n    \
      let waiting = pending\n    \
      pending.removeAll()\n    \
-     for continuation in waiting.values {\n      \
-     continuation.resume(returning: nil)\n    \
+     for held in waiting.values {\n      \
+     held.settle(.success(nil))\n    \
      }\n  \
      }"
     .to_owned()
@@ -922,6 +972,9 @@ fn reply_method(
          do {{\n\
 {headers_build}      \
          raw = try await correlate(operation: {wire}, payload: {payload}{headers_arg})\n    \
+         }} catch is CancellationError {{\n      \
+         return .failure(.fault({prefix}WsTransportFailure({wire}, \"the task was cancelled \
+         before the reply arrived\")))\n    \
          }} catch {{\n      \
          return .failure(.fault({prefix}WsRefused({wire}, error)))\n    \
          }}\n    \

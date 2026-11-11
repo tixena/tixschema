@@ -10,19 +10,20 @@ use super::amqp_rpc::{
 use super::{OpenApiArguments, Transport};
 use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
-    BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape, MultipartPart, OperationDef,
-    OperationInputs, OperationOutcome, PathSegment, ScalarKind, ServiceDef, argument_local,
-    error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
-    scalar_kind, service_declares_a_placeholder, service_declares_a_stream,
-    service_declares_multipart, tuple_elements, vec_inner, wire_key, written,
+    BIGINT_FORM, BOOLEAN_FORM, BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape,
+    LIST_FORM, MultipartPart, NUMBER_FORM, OperationDef, OperationInputs, OperationOutcome,
+    PathSegment, ScalarKind, ServiceDef, argument_local, error_declared_type, field_ident,
+    is_scalar_named_type, is_unit_type, option_inner, path_reads_a_named_field, scalar_kind,
+    service_declares_a_placeholder, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
     exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
-    message_wire_key_ident, module_ident,
+    message_wire_form_ident, message_wire_key_ident, module_ident,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, Type};
+use syn::{Ident, Type, parse_quote};
 
 /// The fragments [`bytes_answer_block`] and [`stream_answer_block`] both need, bundled into one
 /// argument instead of five.
@@ -276,6 +277,11 @@ fn dispatcher_items(
     } else {
         TokenStream::new()
     };
+    let path_text = if service.operations.iter().any(path_reads_a_named_field) {
+        path_text_helper()
+    } else {
+        TokenStream::new()
+    };
     let dispatch = dispatch_fn(service, has_stream, has_multipart, &module, openapi);
     let refusal_type = if service.operations.is_empty() {
         TokenStream::new()
@@ -295,6 +301,7 @@ fn dispatcher_items(
         #path_token
         #query_helpers
         #decoding_helper
+        #path_text
         #dispatch
     }
 }
@@ -570,6 +577,29 @@ fn percent_decoding_helper() -> TokenStream {
                 index += 1;
             }
             ::std::string::String::from_utf8_lossy(&decoded).into_owned()
+        }
+    }
+}
+
+/// The reader of a path placeholder that binds a member of a declared message: emitted only where
+/// an operation's path binds one. It reads the text as [`decode_expr`] reads a placeholder of a
+/// generated message, in the form the message publishes for the member.
+fn path_text_helper() -> TokenStream {
+    let boolean = decode_expr(&parse_quote!(bool), &quote! { text });
+    let number = decode_expr(&parse_quote!(f64), &quote! { text });
+    quote! {
+        /// `text` read in `form`, a form a declared message publishes for one of its members.
+        fn path_text_value(form: &str, text: &str) -> ::serde_json::Value {
+            if let ::core::option::Option::Some(item) = form.strip_prefix(#LIST_FORM) {
+                return ::serde_json::Value::Array(
+                    text.split(',').map(|piece: &str| path_text_value(item, piece)).collect(),
+                );
+            }
+            match form {
+                #BOOLEAN_FORM => #boolean,
+                #NUMBER_FORM | #BIGINT_FORM => #number,
+                _ => ::serde_json::Value::String(text.to_owned()),
+            }
         }
     }
 }
@@ -1047,8 +1077,9 @@ fn from_body_expr(wire: &str) -> TokenStream {
 }
 
 /// A `OperationInputs::Named` message: the body with no placeholder, the one placeholder's own
-/// coerced value when the type is a scalar bound whole, or the body with each placeholder's value
-/// over the key its member is read from, so the body cannot replace it.
+/// coerced value when the type is a scalar bound whole, or the body with each placeholder's value,
+/// read in the form its member publishes, over the key the member is read from, so the body cannot
+/// replace it.
 fn message_value_for_named(
     module: &Ident,
     operation: &OperationDef,
@@ -1068,6 +1099,7 @@ fn message_value_for_named(
     }
     let base = object_base(true);
     let key_of = message_wire_key_ident(operation);
+    let form_of = message_wire_form_ident(operation);
     let inserts: TokenStream = placeholder_names
         .iter()
         .zip(placeholder_idents)
@@ -1075,7 +1107,7 @@ fn message_value_for_named(
             quote! {
                 object.insert(
                     $crate::#module::#key_of(#name).to_owned(),
-                    ::serde_json::Value::String(#ident.clone()),
+                    path_text_value($crate::#module::#form_of(#name), #ident.as_str()),
                 );
             }
         })

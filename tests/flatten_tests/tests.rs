@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
 
+/// The check an externally tagged enum's union refuses an object of one key through.
+#[cfg(feature = "zod")]
+const NAMED_ARM: &str = ".superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })";
+
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BasePart {
@@ -1416,6 +1420,20 @@ fn closes_on(zod: &str, expression: &str) -> bool {
     zod.contains(&closed)
 }
 
+/// `union`, the union of an externally tagged enum, behind the check that refuses a value that is
+/// neither a string nor an object of one key and before [`NAMED_ARM`], as the enum's own schema
+/// writes it.
+#[cfg(feature = "zod")]
+fn one_key(union: &str) -> String {
+    format!(
+        "z.unknown().check((ctx) => {{ if (ctx.value !== undefined && typeof ctx.value !== \
+         \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
+         Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({{ \
+         code: \"custom\", message: \"expected value\", input: ctx.value, params: {{ \
+         undeserializable: true }} }}); }}).pipe({union}{NAMED_ARM})"
+    )
+}
+
 #[test]
 #[cfg(feature = "zod")]
 fn test_flatten_zod_intersection() {
@@ -1424,7 +1442,7 @@ fn test_flatten_zod_intersection() {
     assert!(zod.contains("dataElementId:"));
     assert!(closes_on(
         &zod,
-        "}).and(z.lazy(() => DataElementSampleValueVariant$Schema))"
+        "}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
     ));
     assert!(!zod.contains("variant:"));
 }
@@ -1435,7 +1453,7 @@ fn test_flatten_zod_multiple_chained() {
     let zod = MultiFlatten::zod_schema();
     assert!(closes_on(
         &zod,
-        "}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema))"
+        "}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
     ));
 }
 
@@ -1471,11 +1489,17 @@ fn test_a_flatten_cycle_defers_both_sides_of_the_pair() {
     let second = CycleSecond::zod_schema();
 
     assert!(
-        closes_on(&first, "}).and(z.lazy(() => CycleSecond$Schema))"),
+        closes_on(
+            &first,
+            "}).and(z.lazy(() => CycleSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+        ),
         "expected a deferred base, got: {first}"
     );
     assert!(
-        closes_on(&second, "}).and(z.lazy(() => CycleFirst$Schema))"),
+        closes_on(
+            &second,
+            "}).and(z.lazy(() => CycleFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+        ),
         "expected a deferred base, got: {second}"
     );
     assert!(
@@ -1495,11 +1519,14 @@ fn test_a_flatten_cycle_through_a_variants_content_defers_both_sides() {
     let host = CycleVariantHost::zod_schema();
 
     assert!(
-        closes_on(&content, "}).and(z.lazy(() => CycleVariantHost$Schema))"),
+        closes_on(
+            &content,
+            "}).and(z.lazy(() => CycleVariantHost$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+        ),
         "expected a deferred base, got: {content}"
     );
     assert!(
-        host.contains("}).and(z.lazy(() => CycleVariantContent$Schema))"),
+        host.contains("}).and(z.lazy(() => CycleVariantContent$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
         "expected a deferred content, got: {host}"
     );
     assert!(
@@ -2221,7 +2248,7 @@ fn test_the_optional_flatten_schema_offers_the_base_and_its_absence() {
     let zod = OptHolder::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  OptHolder$OwnSchema.and(z.lazy(() => OptBase$Schema)),\n  OptHolder$OwnSchema,\n])"
+            "z.union([\n  OptHolder$OwnSchema.and(z.lazy(() => OptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  OptHolder$OwnSchema,\n])"
         ),
         "expected the base beside its absence, got: {zod}"
     );
@@ -2330,7 +2357,7 @@ fn test_the_named_nullable_flatten_schema_offers_the_base_and_its_absence() {
     let zod = NamedMaybeHolder::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  NamedMaybeHolder$OwnSchema.and(z.lazy(() => MaybeOptBase$Schema)),\n  NamedMaybeHolder$OwnSchema,\n])"
+            "z.union([\n  NamedMaybeHolder$OwnSchema.and(z.lazy(() => MaybeOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  NamedMaybeHolder$OwnSchema,\n])"
         ),
         "expected the base beside its absence, got: {zod}"
     );
@@ -2373,9 +2400,9 @@ fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_named_non_nullable_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const NamedPlainHolder$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema));\n\nexport const NamedPlainHolder$Schema: ZodType<NamedPlainHolder> = NamedPlainHolder$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const NamedPlainHolder$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const NamedPlainHolder$Schema: ZodType<NamedPlainHolder> = NamedPlainHolder$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const NamedPlainHolder$Schema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema)).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "export const NamedPlainHolder$Schema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
     assert_eq!(NamedPlainHolder::zod_schema(), EXPECTED);
 }
@@ -2403,9 +2430,9 @@ fn test_a_non_optional_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_non_optional_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const MultiFlatten$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema));\n\nexport const MultiFlatten$Schema: ZodType<MultiFlatten> = MultiFlatten$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const MultiFlatten$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const MultiFlatten$Schema: ZodType<MultiFlatten> = MultiFlatten$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const MultiFlatten$Schema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema)).and(z.lazy(() => ExtraPart$Schema)).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "export const MultiFlatten$Schema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
     assert_eq!(MultiFlatten::zod_schema(), EXPECTED);
 }
@@ -2414,9 +2441,9 @@ fn test_a_non_optional_flatten_schema_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_the_untagged_flatten_schema_multiplies_the_object_over_the_unions_members() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntagged$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]);\n\nexport const FlatOverUntagged$Schema: ZodType<FlatOverUntagged> = FlatOverUntagged$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntagged$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n]);\n\nexport const FlatOverUntagged$Schema: ZodType<FlatOverUntagged> = FlatOverUntagged$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nexport const FlatOverUntagged$Schema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n]).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nexport const FlatOverUntagged$Schema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n]).meta({\n  examples: []\n});";
 
     assert_eq!(FlatOverUntagged::zod_schema(), EXPECTED);
 }
@@ -2447,7 +2474,7 @@ fn test_an_optional_untagged_flatten_multiplies_the_members_and_the_absence() {
     let zod = FlatOverOptionalUntagged::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  FlatOverOptionalUntagged$OwnSchema.and(z.lazy(() => LooseFirst$Schema)),\n  FlatOverOptionalUntagged$OwnSchema.and(z.lazy(() => LooseSecond$Schema)),\n  FlatOverOptionalUntagged$OwnSchema,\n])"
+            "z.union([\n  FlatOverOptionalUntagged$OwnSchema.and(z.lazy(() => LooseFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverOptionalUntagged$OwnSchema.and(z.lazy(() => LooseSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverOptionalUntagged$OwnSchema,\n])"
         ),
         "expected every member beside the absence, got: {zod}"
     );
@@ -2488,7 +2515,7 @@ fn test_an_aliased_untagged_flatten_multiplies_over_the_same_members() {
     let zod = FlatOverAliasedUntagged::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  FlatOverAliasedUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverAliasedUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema)),\n])"
+            "z.union([\n  FlatOverAliasedUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverAliasedUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected the aliased union's members, got: {zod}"
     );
@@ -2500,13 +2527,16 @@ fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
     let nested = NestHolder::zod_schema();
     assert!(
         nested.contains(
-            "z.union([\n  NestHolder$OwnSchema.and(z.lazy(() => NestPlain$Schema)),\n  NestHolder$OwnSchema.and(z.lazy(() => NestTagged$Schema)),\n])"
+            "z.union([\n  NestHolder$OwnSchema.and(z.lazy(() => NestPlain$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  NestHolder$OwnSchema.and(z.lazy(() => NestTagged$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected the leaves of the nesting, got: {nested}"
     );
     let only = NestOnlyHolder::zod_schema();
     assert!(
-        closes_on(&only, "}).and(z.lazy(() => NestOnly$Schema))"),
+        closes_on(
+            &only,
+            "}).and(z.lazy(() => NestOnly$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+        ),
         "expected the one leaf joined directly, got: {only}"
     );
     assert!(
@@ -2520,7 +2550,10 @@ fn test_a_nested_untagged_flatten_multiplies_over_the_leaf_members() {
 fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
     let zod = FlatOverLaterUntagged::zod_schema();
     assert!(
-        closes_on(&zod, "}).and(z.lazy(() => LaterEither$Schema))"),
+        closes_on(
+            &zod,
+            "}).and(z.lazy(() => LaterEither$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+        ),
         "expected the union named as one operand, got: {zod}"
     );
     assert!(
@@ -2534,9 +2567,9 @@ fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const DataElementSampleValueEntry$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema));\n\nexport const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> = DataElementSampleValueEntry$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const DataElementSampleValueEntry$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> = DataElementSampleValueEntry$RawSchema.meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: &str = "export const DataElementSampleValueEntry$Schema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema)).meta({\n  examples: []\n});";
+    const EXPECTED: &str = "export const DataElementSampleValueEntry$Schema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
     assert_eq!(DataElementSampleValueEntry::zod_schema(), EXPECTED);
 }
@@ -2600,7 +2633,7 @@ fn test_a_named_map_member_keeps_its_multiplication() {
     let zod = FlatOverMemberBucketUntagged::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  FlatOverMemberBucketUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverMemberBucketUntagged$OwnSchema.and(z.lazy(() => MemberBucket$Schema)),\n])"
+            "z.union([\n  FlatOverMemberBucketUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverMemberBucketUntagged$OwnSchema.and(z.lazy(() => MemberBucket$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected the map member's branch, got: {zod}"
     );
@@ -2657,7 +2690,7 @@ fn test_an_all_object_tagged_enum_member_keeps_its_multiplication() {
     let zod = FlatOverMemberExtObjUntagged::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  FlatOverMemberExtObjUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema)),\n  FlatOverMemberExtObjUntagged$OwnSchema.and(z.lazy(() => MemberExtObjects$Schema)),\n])"
+            "z.union([\n  FlatOverMemberExtObjUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverMemberExtObjUntagged$OwnSchema.and(z.lazy(() => MemberExtObjects$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected the tagged enum's branch, got: {zod}"
     );
@@ -2671,20 +2704,30 @@ fn test_an_all_object_tagged_enum_member_keeps_its_merged_document() {
 #[test]
 #[cfg(feature = "zod")]
 fn test_the_tagged_enums_are_byte_identical_standing_alone() {
+    let bare = one_key(
+        "z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})])",
+    );
+    let objects = one_key(
+        "z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})])",
+    );
     #[cfg(feature = "typescript")]
-    const EXPECTED: [&str; 2] = [
-        "const MemberExtBare$RawSchema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({\n  examples: []\n});",
-        "const MemberExtObjects$RawSchema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]);\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({\n  examples: []\n});",
+    let expected = [
+        format!(
+            "const MemberExtBare$RawSchema = {bare};\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({{\n  examples: []\n}});"
+        ),
+        format!(
+            "const MemberExtObjects$RawSchema = {objects};\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({{\n  examples: []\n}});"
+        ),
     ];
     #[cfg(not(feature = "typescript"))]
-    const EXPECTED: [&str; 2] = [
-        "export const MemberExtBare$Schema = z.union([z.literal(\"Bare\"), z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})]).meta({\n  examples: []\n});",
-        "export const MemberExtObjects$Schema = z.union([z.strictObject({\n  \"One\": FlatFirst$Schema,\n}), z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})]).meta({\n  examples: []\n});",
+    let expected = [
+        format!("export const MemberExtBare$Schema = {bare}.meta({{\n  examples: []\n}});"),
+        format!("export const MemberExtObjects$Schema = {objects}.meta({{\n  examples: []\n}});"),
     ];
 
     assert_eq!(
         [MemberExtBare::zod_schema(), MemberExtObjects::zod_schema(),],
-        EXPECTED.map(str::to_owned)
+        expected
     );
 }
 
@@ -2750,7 +2793,7 @@ fn test_the_direct_tagged_flatten_schema_multiplies_the_object_over_the_variants
     let zod = ExtBareDirectHolder::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  ExtBareDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Bare\": z.null(),\n}))),\n  ExtBareDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n}))),\n])"
+            "z.union([\n  ExtBareDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Bare\": z.null(),\n})).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  ExtBareDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Wrapped\": FlatSecond$Schema,\n})).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected one operand per variant, got: {zod}"
     );
@@ -2806,7 +2849,7 @@ fn test_the_all_object_tagged_direct_flatten_schema_multiplies_the_object_over_t
     let zod = ExtObjDirectHolder::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  ExtObjDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"One\": FlatFirst$Schema,\n}))),\n  ExtObjDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Two\": FlatSecond$Schema,\n}))),\n])"
+            "z.union([\n  ExtObjDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"One\": FlatFirst$Schema,\n})).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  ExtObjDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({\n  \"Two\": FlatSecond$Schema,\n})).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected one operand per variant, got: {zod}"
     );
@@ -2922,7 +2965,7 @@ fn test_a_flattened_enum_written_with_an_argument_parses_each_entry_at_the_argum
             format!("z.strictObject({{\n  \"Carried\": {argument},\n}})"),
         ] {
             assert!(
-                zod.contains(&format!(".and(z.lazy(() => {entry}))")),
+                zod.contains(&format!(".and(z.lazy(() => {entry}).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }}))")),
                 "{holder}: no operand `{entry}` in: {zod}"
             );
         }
@@ -3065,7 +3108,7 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_parses_each_member_at
     ] {
         for member in members {
             assert!(
-                zod.contains(&format!("$OwnSchema.and(z.lazy(() => {member}))")),
+                zod.contains(&format!("$OwnSchema.and(z.lazy(() => {member}).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }}))")),
                 "{holder}: no operand `{member}` in: {zod}"
             );
         }
@@ -3425,7 +3468,7 @@ fn test_the_inline_untagged_direct_flatten_schema_is_unchanged() {
     let zod = InlineUntagDirectHolder::zod_schema();
     assert!(
         zod.contains(
-            "z.union([\n  InlineUntagDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({ left: z.string(), }))),\n  InlineUntagDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({ right: z.boolean(), }))),\n])"
+            "z.union([\n  InlineUntagDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({ left: z.string(), })).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  InlineUntagDirectHolder$OwnSchema.and(z.lazy(() => z.strictObject({ right: z.boolean(), })).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "expected one operand per member, got: {zod}"
     );
@@ -3545,7 +3588,7 @@ fn test_a_flattened_variant_field_is_a_zod_intersection_inside_the_variant() {
         AdjacentFlatVariant::zod_schema(),
     ] {
         assert!(
-            zod.contains("}).and(z.lazy(() => VariantExtra$Schema))"),
+            zod.contains("}).and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
             "Got: {zod}"
         );
         assert!(!zod.contains("extra:"), "Got: {zod}");
@@ -3562,7 +3605,7 @@ fn test_two_flattened_variant_fields_chain_their_zod_operands() {
     let zod = TwiceFlatVariant::zod_schema();
     assert!(
         zod.contains(
-            "}).and(z.lazy(() => VariantExtra$Schema)).and(z.lazy(() => VariantRank$Schema))"
+            "}).and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
         ),
         "Got: {zod}"
     );
@@ -3727,7 +3770,7 @@ fn test_two_flattened_untagged_variant_fields_join_the_same_member_object() {
 fn test_a_flattened_untagged_variant_field_is_a_zod_intersection_inside_the_member() {
     let zod = UntaggedFlatVariant::zod_schema();
     assert!(
-        zod.contains("}).and(z.lazy(() => VariantExtra$Schema))"),
+        zod.contains("}).and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
         "Got: {zod}"
     );
     assert!(!zod.contains("extra:"), "Got: {zod}");
@@ -3743,7 +3786,7 @@ fn test_two_flattened_untagged_variant_fields_chain_their_zod_operands() {
     let zod = TwiceUntaggedFlatVariant::zod_schema();
     assert!(
         zod.contains(
-            "}).and(z.lazy(() => VariantExtra$Schema)).and(z.lazy(() => VariantRank$Schema))"
+            "}).and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
         ),
         "Got: {zod}"
     );
@@ -3976,8 +4019,8 @@ fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
     assert!(
         external.contains(
             "\"Named\": z.union([\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "Got: {external}"
     );
@@ -3987,9 +4030,9 @@ fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
         internal.contains(
             "z.union([\n  \
              z.object({\n  kind: z.literal(\"Named\"),\n  x: z.string(),\n})\
-             .and(z.lazy(() => ChoiceLeft$Schema)),\n  \
+             .and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
              z.object({\n  kind: z.literal(\"Named\"),\n  x: z.string(),\n})\
-             .and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             .and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "Got: {internal}"
     );
@@ -3998,8 +4041,8 @@ fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
     assert!(
         adjacent.contains(
             "data: z.union([\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "Got: {adjacent}"
     );
@@ -4008,8 +4051,8 @@ fn test_a_multi_branch_variant_source_writes_one_zod_object_per_branch() {
     assert!(
         untagged.contains(
             "z.union([\n  \
-             z.object({ x: z.string(), }).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.object({ x: z.string(), }).and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             z.object({ x: z.string(), }).and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.object({ x: z.string(), }).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "Got: {untagged}"
     );
@@ -4071,7 +4114,7 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
     ];
     for (zod, payload, branch) in cases {
         assert!(
-            zod.contains(&format!(".and(z.lazy(() => {branch}))")),
+            zod.contains(&format!(".and(z.lazy(() => {branch}).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }}))")),
             "nothing joins {branch} for {payload}: {zod}"
         );
         assert!(!zod.contains("choice:"), "Got: {zod}");
@@ -4120,9 +4163,9 @@ fn test_a_three_branch_variant_source_writes_three_zod_objects() {
     assert!(
         zod.contains(
             "\"Named\": z.union([\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceMiddle$Schema)),\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceMiddle$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n])"
         ),
         "Got: {zod}"
     );
@@ -4176,7 +4219,7 @@ fn test_an_optional_variant_source_offers_the_source_and_its_absence_in_zod() {
     assert!(
         zod.contains(
             "\"Named\": z.union([\n  \
-             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => VariantExtra$Schema)),\n  \
+             z.strictObject({\n  x: z.string(),\n}).and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
              z.strictObject({\n  x: z.string(),\n}),\n])"
         ),
         "Got: {zod}"
@@ -4223,10 +4266,10 @@ fn test_two_variant_sources_write_their_cross_product_in_zod() {
     assert!(
         zod.contains(&format!(
             "\"Named\": z.union([\n  \
-             {own}.and(z.lazy(() => ChoiceLeft$Schema)).and(z.lazy(() => ChoiceDown$Schema)),\n  \
-             {own}.and(z.lazy(() => ChoiceLeft$Schema)).and(z.lazy(() => ChoiceUp$Schema)),\n  \
-             {own}.and(z.lazy(() => ChoiceRight$Schema)).and(z.lazy(() => ChoiceDown$Schema)),\n  \
-             {own}.and(z.lazy(() => ChoiceRight$Schema)).and(z.lazy(() => ChoiceUp$Schema)),\n])"
+             {own}.and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})).and(z.lazy(() => ChoiceDown$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n  \
+             {own}.and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})).and(z.lazy(() => ChoiceUp$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n  \
+             {own}.and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})).and(z.lazy(() => ChoiceDown$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n  \
+             {own}.and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})).and(z.lazy(() => ChoiceUp$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n])"
         )),
         "Got: {zod}"
     );
@@ -4267,8 +4310,8 @@ fn test_an_optional_multi_branch_variant_source_offers_its_branches_and_the_abse
     assert!(
         zod.contains(
             "\"Named\": z.union([\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema)),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
+             z.object({\n  x: z.string(),\n}).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  \
              z.object({\n  x: z.string(),\n}),\n])"
         ),
         "Got: {zod}"
@@ -4329,8 +4372,8 @@ fn test_a_multiplying_variant_defers_the_member_that_reaches_the_enum() {
     assert!(
         zod.contains(&format!(
             "z.union([\n  z.object({{\n  {getter}\n}})\
-             .and(z.lazy(() => ChoiceLeft$Schema)),\n  \
-             z.object({{\n  {getter}\n}}).and(z.lazy(() => ChoiceRight$Schema)),\n])"
+             .and(z.lazy(() => ChoiceLeft$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n  \
+             z.object({{\n  {getter}\n}}).and(z.lazy(() => ChoiceRight$Schema).superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => {{ const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ when: () => true }})),\n])"
         )),
         "Got: {zod}"
     );
@@ -4507,30 +4550,36 @@ fn test_the_multiplied_variant_type_is_the_intersection_typescript_distributes()
 #[test]
 #[cfg(feature = "zod")]
 fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
-    for (schema, expression) in [
-        (
-            ExternalFlatVariant::zod_schema(),
-            "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema)),\n}), z.strictObject({\n  \
-             \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])",
+    let external = ExternalFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &external,
+            &one_key(
+                "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
+                 .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n}), z.strictObject({\n  \
+                 \"Plain\": z.strictObject({\n  y: z.string(),\n}),\n})])"
+            )
         ),
+        "Got: {external}"
+    );
+    for (schema, expression) in [
         (
             InternalFlatVariant::zod_schema(),
             "z.union([z.strictObject({\n  kind: z.literal(\"Named\"),\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema)), z.strictObject({\n  \
+             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })), z.strictObject({\n  \
              kind: z.literal(\"Plain\"),\n  y: z.string(),\n})])",
         ),
         (
             AdjacentFlatVariant::zod_schema(),
             "z.discriminatedUnion(\"kind\", [z.strictObject({\n  kind: z.literal(\"Named\"),\n  \
              data: z.strictObject({\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema)),\n}), z.strictObject({\n  \
+             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n}), z.strictObject({\n  \
              kind: z.literal(\"Plain\"),\n  data: z.strictObject({\n  y: z.string(),\n}),\n})])",
         ),
         (
             UntaggedFlatVariant::zod_schema(),
             "z.union([z.strictObject({ x: z.string(), })\
-             .and(z.lazy(() => VariantExtra$Schema)), z.strictObject({ y: z.string(), })])",
+             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })), z.strictObject({ y: z.string(), })])",
         ),
     ] {
         assert!(closes_on(&schema, expression), "Got: {schema}");
@@ -4540,22 +4589,28 @@ fn test_a_single_key_set_variant_flatten_schema_is_byte_identical() {
 #[test]
 #[cfg(feature = "zod")]
 fn test_two_single_key_set_variant_sources_are_byte_identical() {
-    for (schema, expression) in [
-        (
-            TwiceFlatVariant::zod_schema(),
-            "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
-             .and(z.lazy(() => VariantExtra$Schema))\
-             .and(z.lazy(() => VariantRank$Schema)),\n})])",
+    let external = TwiceFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &external,
+            &one_key(
+                "z.union([z.strictObject({\n  \"Named\": z.strictObject({\n  x: z.string(),\n})\
+                 .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))\
+                 .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n})])"
+            )
         ),
-        (
-            TwiceUntaggedFlatVariant::zod_schema(),
+        "Got: {external}"
+    );
+    let untagged = TwiceUntaggedFlatVariant::zod_schema();
+    assert!(
+        closes_on(
+            &untagged,
             "z.union([z.strictObject({ x: z.string(), })\
-             .and(z.lazy(() => VariantExtra$Schema))\
-             .and(z.lazy(() => VariantRank$Schema))])",
+             .and(z.lazy(() => VariantExtra$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))\
+             .and(z.lazy(() => VariantRank$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))])"
         ),
-    ] {
-        assert!(closes_on(&schema, expression), "Got: {schema}");
-    }
+        "Got: {untagged}"
+    );
 }
 
 #[test]
@@ -4565,7 +4620,10 @@ fn test_a_variant_flattening_nothing_is_byte_identical() {
     let plain = &zod[zod.find("\"Plain\"").unwrap()..];
     assert!(
         plain.starts_with("\"Plain\": z.object({\n  y: z.string(),\n}),\n})])")
-            && closes_on(plain, "\"Plain\": z.object({\n  y: z.string(),\n}),\n})])"),
+            && closes_on(
+                plain,
+                "\"Plain\": z.object({\n  y: z.string(),\n}),\n})]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true }))"
+            ),
         "Got: {plain}"
     );
 }

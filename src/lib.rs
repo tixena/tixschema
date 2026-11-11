@@ -1237,7 +1237,9 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - **An untagged enum** (`#[serde(untagged)]`): `A | B` in TypeScript, `z.union` in Zod, `anyOf`
 ///   in JSON Schema. A variant with no data and a tuple variant of several slots are refused.
 /// - **A flattened field** (`#[serde(flatten)]`): `{ ... } & B` in TypeScript,
-///   `.and(z.lazy(() => B$Schema))` in Zod, and one closed object holding both in JSON Schema.
+///   `.and(z.lazy(() => B$Schema).superRefine(...))` in Zod, which refuses a value of the wrong
+///   type inside `B` at the holder as serde does, and one closed object holding both in JSON
+///   Schema.
 ///   Only a value serde writes as an object can be flattened, and an untagged enum is declared
 ///   above the type that flattens it.
 /// - **A unit struct**: `Record<string, never>`, written as `{}`.
@@ -1255,8 +1257,9 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - `u8`, `u16`, `u32`, `i8`, `i16`, `i32`, `usize`, `isize`, `f32` and `f64` are `number` in
 ///   TypeScript, and Zod holds an integer to its type's range.
 /// - `u64` and `i64` are `bigint` in TypeScript, read in Zod through `z.codec`, and
-///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number` and a
-///   Zod `z.number().int()`. `u64` and `usize` are refused under `swift` or `kotlin`.
+///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number`, and
+///   Zod keys the record by each key's digits. `u64` and `usize` are refused under `swift` or
+///   `kotlin`.
 /// - `i128`, `u128`, `f16` and `f128` are refused at expansion. A `serde_json::Value` or
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.
@@ -1941,7 +1944,8 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// the value, and `validate()` judges it. Every serde read calls them, from JSON text, a
 /// `serde_json::Value`, a BSON document or any other format that describes itself, and so do a
 /// holder's read, the recovering decode, a `MongoDB` operation and a service dispatcher. Zod wraps
-/// the schema in `z.preprocess(name, ...)`, the first name outermost. JSON Schema calls no
+/// the schema in `z.preprocess(name, ...)`, the first name outermost, inside one preprocess that
+/// hands the first function each number as a `number`. JSON Schema calls no
 /// function, and a value built in code is never corrected. A key the payload does not hold is read
 /// as serde reads an absent key, without the field's Rust function, where Zod calls the function
 /// with `undefined`.
