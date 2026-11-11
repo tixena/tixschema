@@ -1,9 +1,10 @@
 //! A fixed-width integer through an alias, read by the emitted Swift types compiled with warnings
 //! as errors: [`SixtyReached`] holds an alias of an `i64` as a member and in a list, [`Plumb`] a
-//! newtype variant over an alias of an `Option<u32>`, and [`Echogram`] an alias of a list and one
-//! of a map of an integer. A number written with a fraction or an exponent, and one outside the
-//! integer's range, are refused at the member's coding path in serde's words, as serde refuses
-//! each, and every integer serde reads there is read.
+//! newtype variant over an alias of an `Option<u32>`, [`Echogram`] an alias of a list and one
+//! of a map of an integer, and [`Sonar`] an alias that declares a parameter, of a list of it and of
+//! it alone, filled with a `u8`. A number written with a fraction or an exponent, and one outside
+//! the integer's range, are refused at the member's or the item's coding path in serde's words, as
+//! serde refuses each, and every integer serde reads there is read.
 
 #![cfg(all(feature = "swift", feature = "serde"))]
 
@@ -63,6 +64,23 @@ pub struct Echogram {
     pub pings: Pings,
 }
 
+/// An alias that declares a parameter, of a list of it.
+#[model_schema()]
+pub type Gauged<Held> = Vec<Held>;
+
+/// An alias that declares a parameter, of it alone.
+#[model_schema()]
+pub type Plumbed<Held> = Held;
+
+/// An integer through the aliases that declare a parameter, and a text through one.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sonar {
+    pub gauged: Gauged<u8>,
+    pub named: Plumbed<String>,
+    pub plumbed: Plumbed<u8>,
+}
+
 /// One payload the run reads: its name, the Swift type that reads it, the payload, and the line
 /// the Swift read is held to.
 struct Row {
@@ -116,6 +134,12 @@ where
 /// holds `ping`.
 fn echogram(echo: &str, ping: &str) -> String {
     format!(r#"{{"echoes":[1,{echo}],"pings":{{"a":{ping}}}}}"#)
+}
+
+/// The payload of a [`Sonar`] whose alias of a list holds `item` and whose alias of the integer
+/// alone is written as `alone`.
+fn sonar(item: &str, alone: &str) -> String {
+    format!(r#"{{"gauged":[{item}],"named":"a","plumbed":{alone}}}"#)
 }
 
 /// `payload`, which serde refuses as a [`Plumb`], held to the refusal of an untagged enum no
@@ -180,6 +204,31 @@ fn rows() -> Vec<Row> {
         unmatched_row("1.0 as the alias of an Option", "1.0"),
         unmatched_row("1e2 as the alias of an Option", "1e2"),
         unmatched_row("-1 as the alias of an Option", "-1"),
+        read_row::<Sonar>(
+            "1 through the aliases that declare a parameter",
+            "Sonar",
+            sonar("1", "1"),
+        ),
+        refused_row::<Sonar>(
+            "1.0 in the alias of a list that declares a parameter",
+            "Sonar",
+            sonar("1.0", "1"),
+        ),
+        refused_row::<Sonar>(
+            "a number beyond a u8 in the alias of a list that declares a parameter",
+            "Sonar",
+            sonar("256", "1"),
+        ),
+        refused_row::<Sonar>(
+            "1.0 as the alias that declares a parameter",
+            "Sonar",
+            sonar("1", "1.0"),
+        ),
+        refused_row::<Sonar>(
+            "a number beyond a u8 as the alias that declares a parameter",
+            "Sonar",
+            sonar("1", "256"),
+        ),
     ]
 }
 
@@ -206,6 +255,9 @@ fn an_integer_through_an_alias_is_refused_where_serde_refuses_it_in_swift() {
         echoes_swift::swift_definition(),
         pings_swift::swift_definition(),
         echogram_swift::swift_definition(),
+        gauged_swift::swift_definition(),
+        plumbed_swift::swift_definition(),
+        sonar_swift::swift_definition(),
         HARNESS.to_owned(),
         calls.join("\n"),
     ]

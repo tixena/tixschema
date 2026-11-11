@@ -126,7 +126,9 @@ consumer's view; this is what a change has to keep.
   brand that keys a map is built and judged under the key's text, its value read from the text
   with no step of its own (`judged_key`, `brand_leaf`): a key a brand's `check` refuses is named
   under its map, `pitches.13`, a key that does not read at the map, `pitches`, and a value an arm
-  refuses under the arm, `tally.Ok`, as the Rust dispatcher names each. Each class whose read calls it declares it
+  refuses under the arm, `tally.Ok`, as the Rust dispatcher names each. A brand over a brand is
+  judged by both checks under the key's text, as its `fromJson` reads the inner brand through the
+  inner brand's own judged `fromJson`: `outer.mute` and `outer.soft` in `run_carillon.rs`. Each class whose read calls it declares it
   (`reading_at`, `with_read_at`); a text with no helper, a service's, names its own
   (`read_at_function`), and the read writes no step where none is declared. A refusal carries the
   path of the value refused as its `FormatException`'s `source`, a list of steps the helper puts
