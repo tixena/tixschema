@@ -1802,17 +1802,29 @@ fn a_frame_session_request_whose_send_fails_takes_its_slot_back_out() {
         .find("let frame = request_frame (& id , operation , & payload , headers) ? ;")
         .unwrap();
     let registered = body.find(". insert (id . clone ()").unwrap();
+    let held = body
+        .find("let awaiting = Awaiting { id , pending : & self . inner . pending , slot , } ;")
+        .unwrap();
     let sent = body
-        .find(
-            "if let :: core :: result :: Result :: Err (refused) = (self . inner . send) (frame) \
-             . await { self . inner . pending . lock () . unwrap () . remove (& id) ; return :: \
-             core :: result :: Result :: Err (refused) ; }",
-        )
+        .find("(self . inner . send) (frame) . await ? ; awaiting . await")
         .unwrap();
     assert!(
-        encoded < registered && registered < sent,
-        "a frame that does not encode is refused before a slot waits for its reply, and one the \
-         send function refuses takes its slot back out. Got: {body}"
+        encoded < registered && registered < held && held < sent,
+        "a frame that does not encode is refused before a slot waits for its reply, and the slot \
+         is held by the `Awaiting` that takes it back out before the frame is sent. Got: {body}"
+    );
+}
+
+#[test]
+fn a_frame_session_awaiting_takes_its_id_out_of_the_map_when_it_is_dropped() {
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
+    assert!(
+        body.contains(
+            "impl :: core :: ops :: Drop for Awaiting < '_ > { fn drop (& mut self) { self . \
+             pending . lock () . unwrap_or_else (:: std :: sync :: PoisonError :: into_inner) . \
+             remove (& self . id) ; } }"
+        ),
+        "a call its caller drops leaves nothing waiting for the reply. Got: {body}"
     );
 }
 

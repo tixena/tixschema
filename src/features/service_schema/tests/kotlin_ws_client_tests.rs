@@ -194,17 +194,60 @@ fn request_ids_start_at_one_and_correlate_through_a_completable_deferred() {
 }
 
 #[test]
-fn a_request_whose_send_throws_takes_its_deferred_back_out_of_pending() {
+fn a_request_takes_its_deferred_back_out_of_pending_however_it_ends() {
+    for service in [KOTLIN_WS_SERVICE, SHADOWED_LOCAL_SERVICE] {
+        let written = kotlin_ws_client_of(service);
+        let request_body = body_from(&written, "suspend fun request(");
+        assert!(
+            request_body.contains(
+                "      )\n      return deferred.await()\n    } finally {\n      \
+                 synchronized(this) { pending.remove(id) }\n    }\n  }"
+            ),
+            "a frame the socket refuses, and a caller cancelled while it waits, are answered by no \
+             reply, so nothing is left waiting for one. Got: {request_body}"
+        );
+    }
+}
+
+#[test]
+fn a_client_call_cancelled_while_it_waits_lets_the_cancellation_through() {
     let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
-    let request_body = body_from(&written, "suspend fun request(");
-    assert!(
-        request_body.contains(
-            "} catch (refused: Throwable) {\n      synchronized(this) { pending.remove(id) }\n      \
-             throw refused\n    }\n    return deferred.await()"
+    for (call, uncarried) in [
+        (
+            "suspend fun window(",
+            "return ConversationClientServiceWindowResult.Fault(",
         ),
-        "a frame the socket refuses is answered by no reply, so nothing is left waiting for one. \
-         Got: {request_body}"
-    );
+        (
+            "suspend fun purgeConversation(",
+            "throw ConversationClientServiceWsRefusal(",
+        ),
+    ] {
+        let method = body_from(&written, call);
+        assert!(
+            method.contains(&format!(
+                "}} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
+                 throw cancelled\n    }} catch (uncarried: Throwable) {{\n      {uncarried}"
+            )),
+            "a cancelled caller ends cancelled rather than answering `transport-failure`. \
+             Got: {method}"
+        );
+    }
+}
+
+#[test]
+fn a_handler_cancelled_while_it_runs_lets_the_cancellation_through() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    for arm_marker in ["\"window\" -> {", "\"purge-conversation\" -> {"] {
+        let arm = body_from(&written, arm_marker);
+        assert!(
+            arm.contains(
+                "} catch (cancelled: kotlinx.coroutines.CancellationException) {\n        \
+                 throw cancelled\n      } catch (unexpected: Throwable) {"
+            ),
+            "a dispatch whose scope is cancelled reaches no `onFault` and answers no fault. \
+             Got: {arm}"
+        );
+    }
 }
 
 #[test]

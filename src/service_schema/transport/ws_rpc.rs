@@ -671,8 +671,13 @@ fn frame_session_types() -> TokenStream {
         }
 
         /// The `Future` one `request` call awaits: ready once `deliver` or `close` filled its
-        /// slot, parking its waker there otherwise.
-        struct Awaiting(::std::sync::Arc<::std::sync::Mutex<Slot>>);
+        /// slot, parking its waker there otherwise. Dropped, it takes its id out of the map, so
+        /// a call its caller drops leaves nothing waiting for the reply.
+        struct Awaiting<'session> {
+            id: ::std::string::String,
+            pending: &'session ::std::sync::Mutex<::std::collections::HashMap<::std::string::String, ::std::sync::Arc<::std::sync::Mutex<Slot>>>>,
+            slot: ::std::sync::Arc<::std::sync::Mutex<Slot>>,
+        }
 
         /// What every clone of a [`FrameSession`] shares: the send function, the id counter every
         /// request draws its own id from, and the slot each outstanding request is waiting on,
@@ -693,18 +698,28 @@ fn frame_session_types() -> TokenStream {
     }
 }
 
-/// `impl Future for Awaiting`: ready with whatever `deliver` or `close` left in the slot, or
-/// pending with this poll's own waker parked there to be woken by whichever reaches it first.
+/// `impl Drop for Awaiting`, which takes the request's id out of the map, and `impl Future for
+/// Awaiting`: ready with whatever `deliver` or `close` left in the slot, or pending with this
+/// poll's own waker parked there to be woken by whichever reaches it first.
 fn awaiting_future_impl() -> TokenStream {
     quote! {
-        impl ::core::future::Future for Awaiting {
+        impl ::core::ops::Drop for Awaiting<'_> {
+            fn drop(&mut self) {
+                self.pending
+                    .lock()
+                    .unwrap_or_else(::std::sync::PoisonError::into_inner)
+                    .remove(&self.id);
+            }
+        }
+
+        impl ::core::future::Future for Awaiting<'_> {
             type Output = ::core::result::Result<(::std::vec::Vec<u8>, ::std::vec::Vec<(::std::string::String, ::std::string::String)>), ::std::string::String>;
 
             fn poll(
                 self: ::core::pin::Pin<&mut Self>,
                 context: &mut ::core::task::Context<'_>,
             ) -> ::core::task::Poll<Self::Output> {
-                let mut slot = self.0.lock().unwrap();
+                let mut slot = self.slot.lock().unwrap();
                 match slot.answer.take() {
                     ::core::option::Option::Some(answer) => ::core::task::Poll::Ready(answer),
                     ::core::option::Option::None => {
@@ -784,8 +799,9 @@ fn frame_session_impl() -> TokenStream {
 
 /// `impl Transport for FrameSession`: `notify` writes a notify frame through the send function;
 /// `request` allocates the next id, encodes the request frame, registers a slot, sends the frame
-/// and awaits it, taking the slot back out where the send fails. The two are in alphabetical
-/// order, the same order the trait declares them in.
+/// and awaits it. The slot goes back out with the `Awaiting` that holds it, where the send fails
+/// and where the caller drops the call. The two are in alphabetical order, the same order the
+/// trait declares them in.
 fn frame_session_transport_impl() -> TokenStream {
     quote! {
         impl Transport for FrameSession {
@@ -823,11 +839,13 @@ fn frame_session_transport_impl() -> TokenStream {
                     .lock()
                     .unwrap()
                     .insert(id.clone(), ::std::sync::Arc::clone(&slot));
-                if let ::core::result::Result::Err(refused) = (self.inner.send)(frame).await {
-                    self.inner.pending.lock().unwrap().remove(&id);
-                    return ::core::result::Result::Err(refused);
-                }
-                Awaiting(slot).await
+                let awaiting = Awaiting {
+                    id,
+                    pending: &self.inner.pending,
+                    slot,
+                };
+                (self.inner.send)(frame).await?;
+                awaiting.await
             }
         }
     }
