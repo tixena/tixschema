@@ -262,7 +262,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
             kotlin: Sends::Handed,
             swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
-            typescript: Sends::Handed,
+            typescript: Sends::Apart(r#""2024-01-05T10:20:30Z""#, r#""2024-01-05T10:20:30.000Z""#),
         },
     ),
     row(
@@ -273,7 +273,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
             kotlin: Sends::Handed,
             swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
-            typescript: Sends::Apart(r#""2024-01-05T10:20:30.000Z""#, r#""2024-01-05T10:20:30Z""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:30Z""#),
         },
     ),
     row(
@@ -291,7 +291,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             kotlin: Sends::Handed,
             swift: Sends::As(r#""2024-01-05T08:20:30Z""#),
             typescript: Sends::Apart(
-                r#""2024-01-05T08:20:30.000Z""#,
+                r#""2024-01-05T08:20:30Z""#,
                 r#""2024-01-05T10:20:30+02:00""#,
             ),
         },

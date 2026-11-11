@@ -1101,15 +1101,16 @@ fn writes_a_text(operation: &OperationDef) -> bool {
 }
 
 /// The text a value carries in a path, a query, a header or a part, as the Rust dispatcher reads
-/// it: a `Date` as the RFC 3339 text `JSON.stringify` writes for it, and anything else as
-/// `String` writes it.
+/// it: a `Date` as the RFC 3339 text chrono writes for it, and anything else as `String` writes
+/// it.
 fn wire_text_fn(prefix: &str) -> String {
     format!(
         "/** The text a value carries in a path, a query, a header or a part: a `Date` as the \
          RFC 3339\n \
-         * text `JSON.stringify` writes for it, anything else as `String` writes it. */\n\
+         * text chrono writes for it, anything else as `String` writes it. */\n\
          function {prefix}HttpWireText(value: unknown): string {{\n  \
-         return value instanceof Date ? value.toISOString() : String(value);\n\
+         return value instanceof Date ? value.toISOString().replace(\".000Z\", \"Z\") : \
+         String(value);\n\
          }}"
     )
 }
