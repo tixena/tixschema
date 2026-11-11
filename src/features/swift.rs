@@ -1250,14 +1250,37 @@ fn wrapper_bound_key(key: &FieldDef) -> String {
     } else {
         "\"bad key \\(wireKey)\"".to_owned()
     };
+    let inner = judged_inner_brands(key);
     match read_map_key(key) {
-        KeyRead::Whole(read) => format!("let key = {read}; "),
+        KeyRead::Whole(read) => format!("let key = {read}; {inner}"),
         KeyRead::Parsed(parsed) => format!(
             "guard let key = {parsed} else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: {refusal}) }}; {}",
+             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: {refusal}) }}; {}{inner}",
             refused_repeat_of_a_date_key(key)
         ),
     }
+}
+
+/// What judges each brand the brand of `key` holds, the innermost first, refusing the entry: serde
+/// reads each through its own judged read, and the key's own `validate()`, which the holder's
+/// walk runs, runs its own check alone, as the Rust brand's does.
+fn judged_inner_brands(key: &FieldDef) -> String {
+    let mut judged = Vec::new();
+    let mut held = "key".to_owned();
+    let mut below = keys::brand_of(key).map(|(_, value)| value);
+    while let Some((rust_ident, value)) = below.as_ref().and_then(keys::brand_of) {
+        held.push_str(".value");
+        if validate::validates(&rust_ident) {
+            judged.push(format!(
+                "do {{ let violations = {held}.validate(); if !violations.isEmpty {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                 debugDescription: violations.joined(separator: \"; \")) }} }}; "
+            ));
+        }
+        below = Some(value);
+    }
+    judged.reverse();
+    judged.concat()
 }
 
 /// Whether serde reads `key` as a number, alone or under its aliases and brands.

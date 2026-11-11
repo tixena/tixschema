@@ -1,9 +1,9 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
-//! same payload, but for the cases the TypeScript table of its own records: the message read, a
-//! frame dropped, or the fault's kind and the field it names, and an attachment calls no handler
-//! for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
+//! same payload, but for the cases the TypeScript table of its own records and the one case the
+//! Kotlin surfaces answer apart: the message read, a frame dropped, or the fault's kind and the
+//! field it names, and an attachment calls no handler for a frame it refuses or drops. Each run resolves on the replies it counts, with no clock.
 
 use super::carillon_service::{CASES, STRUCK, frame, payload, rust_answers};
 use core::fmt::Write as _;
@@ -14,8 +14,8 @@ use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_peal_dart, carillon_pitch_dart, carillon_swing_dart,
-    carillon_turn_dart, carillon_yoke_dart,
+    carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart,
+    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -31,6 +31,12 @@ use super::runtime::ran;
 const DART_DRIVER: &str = r#"
 List<String> withinScale(CarillonPitch value) =>
     value.value <= 12 ? const <String>[] : <String>['${value.value} is outside of the scale'];
+
+List<String> audible(CarillonTone value) =>
+    value.value == 'mute' ? const <String>['mute is silent'] : const <String>[];
+
+List<String> loud(CarillonOuterTone value) =>
+    value.value.value == 'soft' ? const <String>['soft is quiet'] : const <String>[];
 
 Object? told(CarillonServiceStrikeResult answered) => switch (answered) {
   CarillonServiceStrikeResultOk() => 'read',
@@ -115,6 +121,12 @@ const KOTLIN_DRIVER: &str = r#"
 fun withinScale(value: CarillonPitch): List<String> =
     if (value.value <= 12u) emptyList() else listOf("${value.value} is outside of the scale")
 
+fun audible(value: CarillonTone): List<String> =
+    if (value.value == "mute") listOf("mute is silent") else emptyList()
+
+fun loud(value: CarillonOuterTone): List<String> =
+    if (value.value.value == "soft") listOf("soft is quiet") else emptyList()
+
 class ManualSocket(private val onSend: (String) -> Unit) : CarillonServiceWsSocket {
     override var onMessage: ((String) -> Unit)? = null
     override var onClose: (() -> Unit)? = null
@@ -195,6 +207,14 @@ func withinScale(_ value: CarillonPitch) -> [String] {
   value.value <= 12 ? [] : ["\(value.value) is outside of the scale"]
 }
 
+func audible(_ value: CarillonTone) -> [String] {
+  value.value == "mute" ? ["mute is silent"] : []
+}
+
+func loud(_ value: CarillonOuterTone) -> [String] {
+  value.value.value == "soft" ? ["soft is quiet"] : []
+}
+
 final class Replying: CarillonServiceWsSocket, @unchecked Sendable {
   var onMessage: (@Sendable (String) -> Void)?
   var onClose: (@Sendable () -> Void)?
@@ -245,6 +265,14 @@ print("[" + read.joined(separator: ",") + "]")
 const NODE_DRIVER: &str = r#"
 function withinScale(value, ctx) {
   if (value > 12) ctx.issues.push({ code: "custom", message: `${value} is outside of the scale`, input: value });
+}
+
+function audible(value, ctx) {
+  if (value === "mute") ctx.issues.push({ code: "custom", message: "mute is silent", input: value });
+}
+
+function loud(value, ctx) {
+  if (value === "soft") ctx.issues.push({ code: "custom", message: "soft is quiet", input: value });
 }
 
 async function main() {
@@ -328,6 +356,11 @@ const NODE_APART: [(&str, Option<&str>); 3] = [
     ),
     ("a text in an arm of a Result", Some("tally")),
 ];
+
+/// The case the Kotlin attachment and client answer apart from the Rust dispatcher: the Kotlin
+/// read refuses a key the inner brand's check refuses with no path, so each names no field.
+#[cfg(feature = "kotlin")]
+const KOTLIN_UNPLACED: &str = "a key the inner brand's check refuses";
 
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
@@ -444,6 +477,8 @@ fn dart_source() -> String {
         carillon_beam_dart::dart_definition(),
         carillon_frame_dart::dart_definition(),
         carillon_yoke_dart::dart_definition(),
+        carillon_tone_dart::dart_definition(),
+        carillon_outer_tone_dart::dart_definition(),
         carillon_chime_dart::dart_definition(),
         carillon_error_dart::dart_definition(),
         CarillonServiceSchema::dart_definition(),
@@ -488,8 +523,9 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
-        carillon_swing_kotlin, carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_error_kotlin, carillon_frame_kotlin, carillon_outer_tone_kotlin,
+        carillon_peal_kotlin, carillon_pitch_kotlin, carillon_swing_kotlin, carillon_tone_kotlin,
+        carillon_turn_kotlin, carillon_yoke_kotlin,
     };
 
     let frames: Vec<String> = payloads()
@@ -515,6 +551,8 @@ fn kotlin_source() -> String {
         carillon_beam_kotlin::kotlin_definition(),
         carillon_frame_kotlin::kotlin_definition(),
         carillon_yoke_kotlin::kotlin_definition(),
+        carillon_tone_kotlin::kotlin_definition(),
+        carillon_outer_tone_kotlin::kotlin_definition(),
         carillon_chime_kotlin::kotlin_definition(),
         carillon_error_kotlin::kotlin_definition(),
         carillon_service_fault_fields_kotlin::kotlin_definition(),
@@ -536,7 +574,20 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source()) else {
         return;
     };
-    let told: Value = serde_json::from_str(wrote.trim()).unwrap();
+    let mut told: Value = serde_json::from_str(wrote.trim()).unwrap();
+    let at = CASES
+        .iter()
+        .position(|case| case.0 == KOTLIN_UNPLACED)
+        .unwrap();
+    for pointer in [
+        format!("/attached/{at}/reply/error/fault"),
+        format!("/read/{at}"),
+    ] {
+        let fault = told.pointer_mut(&pointer).unwrap();
+        assert_eq!(fault["kind"], "failed-validation", "{pointer}");
+        assert!(fault.get("field").is_none_or(Value::is_null), "{pointer}");
+        fault["field"] = json!(CASES[at].1);
+    }
     assert_attached_as_rust(&told["attached"], &[]);
     assert_read_as_rust(&told["read"], &[]);
 }
@@ -549,8 +600,9 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_peal_swift, carillon_pitch_swift,
-        carillon_swing_swift, carillon_turn_swift, carillon_yoke_swift,
+        carillon_error_swift, carillon_frame_swift, carillon_outer_tone_swift, carillon_peal_swift,
+        carillon_pitch_swift, carillon_swing_swift, carillon_tone_swift, carillon_turn_swift,
+        carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
@@ -564,6 +616,8 @@ fn swift_source() -> String {
         carillon_beam_swift::swift_definition(),
         carillon_frame_swift::swift_definition(),
         carillon_yoke_swift::swift_definition(),
+        carillon_tone_swift::swift_definition(),
+        carillon_outer_tone_swift::swift_definition(),
         carillon_chime_swift::swift_definition(),
         carillon_error_swift::swift_definition(),
         carillon_service_fault_fields_swift::swift_definition(),
@@ -602,8 +656,9 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 /// The TypeScript module the attachment and the client run in.
 fn node_bundle() -> String {
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonPeal,
-        CarillonPitch, CarillonServiceSchema, CarillonSwing, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonOuterTone,
+        CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSwing, CarillonTone,
+        CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -623,6 +678,10 @@ fn node_bundle() -> String {
         CarillonFrame::zod_schema(),
         CarillonYoke::ts_definition(),
         CarillonYoke::zod_schema(),
+        CarillonTone::ts_definition(),
+        CarillonTone::zod_schema(),
+        CarillonOuterTone::ts_definition(),
+        CarillonOuterTone::zod_schema(),
         CarillonChime::ts_definition(),
         CarillonChime::zod_schema(),
         CarillonError::ts_definition(),
@@ -650,7 +709,9 @@ fn the_typescript_text_of_the_carillon_service_type_checks() {
     };
     let source = format!(
         "{}\n\nexport function withinScale(value: number, ctx: {{ issues: unknown[] }}): void {{\n  \
-         void value;\n  void ctx;\n}}\n",
+         void value;\n  void ctx;\n}}\n\nexport function audible(value: string, ctx: {{ issues: \
+         unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n\nexport function loud(value: \
+         string, ctx: {{ issues: unknown[] }}): void {{\n  void value;\n  void ctx;\n}}\n",
         node_bundle()
     );
     let Some((succeeded, said)) = compiled_with_modules(

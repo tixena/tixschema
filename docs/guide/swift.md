@@ -45,6 +45,8 @@ A Swift dictionary keeps no order, so a map is walked by its sorted keys. A map'
 for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { Chime.swiftSchemaUnder("pitches.\(key.value)", $0) } }
 ```
 
+A key of a brand over a brand is judged by both checks, each under the key, as serde judges each: the walk runs the outer brand's, and the read the inner brand's, as the read of the brand inside a value judges it. With `outer: BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose `check` refuses `mute`, and `Outer`'s `check` refusing `soft`, `{"outer":{"mute":1}}` is refused at the coding path `outer.mute` with `mute is silent`, and `{"outer":{"soft":1}}` with `'outer.soft': soft is quiet`. The `ws_rpc` client names the field `outer.mute` and `outer.soft`, as the Rust dispatcher names each.
+
 A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
 
 **The path a message names** is the steps serde writes on the way to the value, joined by dots: a key, a position in an array, or nothing where serde writes the value itself.

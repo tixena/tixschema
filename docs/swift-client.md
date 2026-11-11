@@ -77,7 +77,14 @@ to keep.
   to one is added to the other: a value the read leaves unjudged and the walk does not reach is
   judged by nothing. A map's key is walked under its entry's step as its value is
   (`Walk::Reported` and `Walk::Bound`), and never by `reaches` (`Walk::Rules`): every read builds
-  a key unjudged, whichever way it reads the map, so a key changes no read.
+  a key unjudged, whichever way it reads the map, so a key changes no read. A brand over a brand
+  is the one key a read judges in part: the walk runs the key's own `validate()`, which runs the
+  outer brand's check alone, as Rust's does, and serde reads each brand below it through its own
+  judged read. So a map's wrapper (`wrapper_bound_key`, `judged_inner_brands`) runs the
+  `validate()` of each brand below the key's own that runs a rule, the innermost first, and throws
+  `dataCorrupted` at the entry's coding path with its messages joined by `; `: with `outer:
+  BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose check refuses
+  `mute`, `{"outer":{"mute":1}}` is refused at `outer.mute` with `mute is silent`.
 - **Any other value is read through `Decodable` and judges itself**: one behind a type parameter,
   one in a field with a bound of its own, and the value a brand wraps, a brand's `validate()`
   running no `validate()` of what it holds.
