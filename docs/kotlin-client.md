@@ -129,10 +129,17 @@ the consumer's view; this is what a change has to keep.
   shortest digits, plainly from `0.00001` to below `1e16` with `.0` where they hold no fraction,
   and `1e+16` and `1e-6` beyond. An
   integer map key, alone or under a brand, is read through `integer_key_serializer`
-  (`texts::key_serializer`), which refuses a key whose text opens with neither a digit nor `-`
-  with ``invalid value: expected key to be a number in quotes`` and reads any other as the library
-  does. A `Result` of other than one key is refused with ``expected value``. These three messages
-  are `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  (`texts::key_serializer`, and `texts::key_object`, which a declaration names on the key of a map
+  it holds), and a float one through the serializer `number_serializer` declares for it, each as serde reads the text between the key's quotes (`kotlinSchemaKeyNumber`,
+  `key_number_read`): the number, then the type's refusal of it, then the text after it. A text
+  that opens with neither a digit nor `-` is refused with ``invalid value: expected key to be a
+  number in quotes``, one that breaks the number past its first character, `01` or `-`, with
+  ``invalid number``, a float beyond an `f64` with ``number out of range`` and one that goes on
+  after the number, `1x`, with ``expected `"` ``. A float for an integer key, `1e3` or `-0`, is
+  refused at the map, and an integer beyond the type under the number, its message opening with
+  the number between quotes. An externally tagged enum and a `Result` written as neither a string
+  nor an object of one key are refused with ``expected value``. These messages are
+  `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
   `undeserializable-payload` naming no field (`{service}WsRefused`), as the Rust dispatcher answers
   what serde classifies as text that is not the document, and read each frame through
   `{service}WsFrame`, which refuses one that holds a number beyond a `Double`, which kotlinx keeps
@@ -736,3 +743,11 @@ say so.
 - **The client** numbers its requests under `synchronized`, sends `tools/call` and `prompts/get` through `{Service}McpTransport.send`, and answers the sealed result `kotlin_http_client()` declares; a one-way method throws `{Service}McpRefusal`.
 - **Names.** A local the route or the client writes is in the `TAKEN_BY_A_METHOD` list of `kotlin_http_client.rs`, and a class member is reached as `this.transport`, so an argument named after either keeps its name.
 - **The tests.** `tests/service_schema_emitted_client_tests/run_kotlin_mcp.rs` compiles the emitted server and client and holds each answer to the Rust dispatcher's, on the services of `mcp_mobile_service.rs` with the requests of `mcp_mobile_rows.rs` and `mcp_mobile_server_rows.rs`. `run_kotlin_mcp_resources.rs`, `run_kotlin_mcp_scopes.rs`, `run_kotlin_mcp_guide.rs`, `run_kotlin_mcp_asking.rs`, `run_kotlin_mcp_listen.rs`, `run_kotlin_mcp_skills.rs`, `run_kotlin_mcp_tasks.rs` and `run_kotlin_mcp_wire.rs` do the same for resources, scopes, prompts, elicitation, subscriptions, skills, tasks and the value types on the other transports.
+
+#### Cancellation in the Kotlin clients
+
+A coroutine cancelled while it waits at a suspending call throws `CancellationException` there, and every Kotlin client lets it through.
+
+- **Each catch-all around a suspending call rethrows cancellation first.** The `ws_rpc` client method (`client_method` in `kotlin_ws_client.rs`) and the `ws_rpc` attachment's call of a handler (`dispatch_arm`) write `catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }` ahead of their `catch (uncarried: Throwable)` and `catch (unexpected: Throwable)`. The `http_rest` client (`send_stmt_one_way` and `send_stmt_reply` in `kotlin_http_client.rs`) names the class `kotlin.coroutines.cancellation.CancellationException`, the standard library's name for it, because that file names nothing of `kotlinx.coroutines`. The `mcp` client and server rethrow `is CancellationException` inside their catch. A cancelled call returns no fault, throws no refusal and reaches no `onFault`.
+- **The `ws_rpc` transport takes its entry out however the call ends.** `request` (`transport_request_stmt`) sends and awaits inside one `try` whose `finally` removes the id from `pending` under the lock: a reply or the close already removed it, and a `send` that throws or a cancelled wait removes it there.
+- **The tests.** `kotlin_ws_client_tests.rs`, `kotlin_http_client_tests.rs` and `kotlin_mcp_tests.rs` pin each rethrow and the `finally`. `run_carillon.rs` cancels a `ws_rpc` call while it waits and holds that the job ends cancelled with no fault returned, and that a reply naming its id then reaches `frames.inbound`.

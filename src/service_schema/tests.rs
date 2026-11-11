@@ -1796,6 +1796,39 @@ fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies(
 }
 
 #[test]
+fn a_frame_session_request_whose_send_fails_takes_its_slot_back_out() {
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
+    let encoded = body
+        .find("let frame = request_frame (& id , operation , & payload , headers) ? ;")
+        .unwrap();
+    let registered = body.find(". insert (id . clone ()").unwrap();
+    let held = body
+        .find("let awaiting = Awaiting { id , pending : & self . inner . pending , slot , } ;")
+        .unwrap();
+    let sent = body
+        .find("(self . inner . send) (frame) . await ? ; awaiting . await")
+        .unwrap();
+    assert!(
+        encoded < registered && registered < held && held < sent,
+        "a frame that does not encode is refused before a slot waits for its reply, and the slot \
+         is held by the `Awaiting` that takes it back out before the frame is sent. Got: {body}"
+    );
+}
+
+#[test]
+fn a_frame_session_awaiting_takes_its_id_out_of_the_map_when_it_is_dropped() {
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
+    assert!(
+        body.contains(
+            "impl :: core :: ops :: Drop for Awaiting < '_ > { fn drop (& mut self) { self . \
+             pending . lock () . unwrap_or_else (:: std :: sync :: PoisonError :: into_inner) . \
+             remove (& self . id) ; } }"
+        ),
+        "a call its caller drops leaves nothing waiting for the reply. Got: {body}"
+    );
+}
+
+#[test]
 fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_colon_pair_and_tracing_is_not_one()
  {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");

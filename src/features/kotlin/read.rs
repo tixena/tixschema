@@ -110,7 +110,7 @@ const WRITTEN: Annotated = Annotated {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Numbers {
     /// A map's key under a declaration that refuses a number written between quotes: a `bool` key
-    /// is read only as `true` or `false`.
+    /// is read only as `true` or `false`, and a number key as serde reads the text of one.
     Key,
     Plain,
     Refusing,
@@ -167,12 +167,11 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
                     "@Serializable(with = {}::class) {written}",
                     key_object_name(&brand)
                 ),
-                texts::KeyLeaf::Primitive(primitive) => texts::as_key(primitive).map_or_else(
+                texts::KeyLeaf::Primitive(primitive) => texts::key_object(primitive).map_or_else(
                     || primitive.kotlin_type().to_owned(),
-                    |key| {
+                    |named| {
                         format!(
-                            "@Serializable(with = {}::class) {}",
-                            texts::number_serializer(key),
+                            "@Serializable(with = {named}::class) {}",
                             primitive.kotlin_type()
                         )
                     },
@@ -197,13 +196,12 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
             .filter(|_| annotated.texts)
             .map(texts::serializer)
             .or_else(|| {
-                texts::Primitive::of(field)
-                    .and_then(|primitive| match annotated.numbers {
-                        Numbers::Plain => None,
-                        Numbers::Refusing => Some(primitive),
-                        Numbers::Key => texts::as_key(primitive),
-                    })
-                    .map(texts::number_serializer)
+                let primitive = texts::Primitive::of(field)?;
+                match annotated.numbers {
+                    Numbers::Plain => None,
+                    Numbers::Refusing => Some(texts::number_serializer(primitive)),
+                    Numbers::Key => texts::key_object(primitive),
+                }
             });
         serializer.map_or_else(
             || written.clone(),

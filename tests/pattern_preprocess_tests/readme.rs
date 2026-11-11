@@ -21,11 +21,11 @@ pub struct Parcel {
 /// another order than the parcel of the models does.
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
 const WRAPPED: &str = "\
-const Parcel$RawSchema = z.preprocess(withoutFragile, z.strictObject({
-  label: z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })),
+const Parcel$RawSchema = z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(withoutFragile, z.strictObject({
+  label: z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(trimmed, z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` }))),
   itemCodeList: z.array(z.string()),
   fragileItemCodes: z.array(z.string()),
-}));";
+})));";
 
 /// The TypeScript the node test compiles with the bundle and loads.
 fn compiled_typescript() -> &'static str {

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use super::swift_key_number::integer_key_bound;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -72,17 +73,20 @@ fn guarded(parsed: &str) -> String {
     } else {
         ""
     };
-    // A key serde reads as a number is refused in its words where its text opens with no digit.
-    let refusal = if parsed.starts_with("UInt32") || parsed.starts_with("Int64") {
-        "wireKey.first.map { $0 == \"-\" || (\"0\"...\"9\").contains($0) } == true ? \
-         \"bad key \\(wireKey)\" : \"invalid value: expected key to be a number in quotes\""
-    } else {
-        "\"bad key \\(wireKey)\""
-    };
+    // A key serde reads as a number is read from the number of its text, as serde reads it.
+    let integer = [("UInt32", "u32"), ("Int64", "i64")]
+        .into_iter()
+        .find(|(swift, _)| parsed.starts_with(swift));
+    if let Some((_, expected)) = integer {
+        return format!(
+            "let wireKey = codingKey.stringValue; {}result[key] = ",
+            integer_key_bound(parsed, expected)
+        );
+    }
     format!(
         "let wireKey = codingKey.stringValue; guard let key = {parsed} else {{ \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-         debugDescription: {refusal}) }}; {repeated}result[key] = "
+         debugDescription: \"bad key \\(wireKey)\") }}; {repeated}result[key] = "
     )
 }
 
@@ -342,9 +346,9 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
     let swift = keyring_swift::swift_definition();
     for parsed in [
         "Bell(rawValue: wireKey)",
-        "UInt32(wireKey)",
+        "UInt32(number)",
         "(wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil)",
-        "Int64(wireKey)",
+        "Int64(number)",
         "Self.isoFormatterForKeys.date(from: wireKey) ?? \
          Self.isoWholeFormatterForKeys.date(from: wireKey)",
     ] {

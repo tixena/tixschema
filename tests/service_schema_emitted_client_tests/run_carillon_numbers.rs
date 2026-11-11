@@ -408,8 +408,8 @@ fn the_swift_http_client_reads_each_number_as_the_rust_client_reads_it() {
 #[test]
 fn the_swift_mcp_client_reads_each_number_as_the_rust_client_reads_it() {
     let source = super::run_carillon_mcp::swift_source(&number_replies());
-    let Some(read) = swift_ran("swift-carillon-numbers-mcp", &source) else {
+    let Some(report) = swift_ran("swift-carillon-numbers-mcp", &source) else {
         return;
     };
-    assert_read_as(&read, &rust_number_client_answers());
+    assert_read_as(&report["read"], &rust_number_client_answers());
 }

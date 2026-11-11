@@ -131,6 +131,21 @@ pub enum WireScalarKind {
     Unsigned64,
 }
 
+/// The number serde reads a map key of from the text between its quotes: an integer of the type
+/// serde names `expected` in a refusal, held to `range` as decimal digits, or a float where `range`
+/// is `None`.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NumberKey {
+    pub expected: &'static str,
+    pub range: Option<(&'static str, &'static str)>,
+}
+
 /// The form a map key is written in on the two nominal surfaces. The name a key is written under
 /// stands wherever its value form spells a TypeScript property key, and is spent where it does not:
 /// `boolean`, `bigint` and `Date` are no property keys, and the only bindings a brand or alias over
@@ -312,6 +327,10 @@ pub struct AliasInfo {
     pub key_wire: MapKeyWire,
     pub kind: AliasKind,
     pub module_name: String,
+    /// The number a key written under this name is read as, where it is a brand or an alias that
+    /// reaches one.
+    #[cfg(feature = "zod")]
+    pub number_key: Option<NumberKey>,
     /// What an untagged enum's members are spelled as where an object flattens the enum, in the
     /// order the union writes them; empty for every other item.
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -1477,6 +1496,8 @@ pub fn register_alias_info(
                 key_wire: MapKeyWire::Named,
                 kind,
                 module_name: module_name.to_owned(),
+                #[cfg(feature = "zod")]
+                number_key: None,
                 #[cfg(all(feature = "serde", feature = "typescript"))]
                 ts_union_members: Vec::new(),
                 value_shape: PublishedShape::Flat(None),
@@ -1539,6 +1560,17 @@ pub fn record_key_wire(rust_ident: &str, wire: MapKeyWire) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
             info.key_wire = wire;
+        }
+    });
+}
+
+/// Records the number a key written under a name is read as, on the entry that name has just
+/// registered.
+#[cfg(feature = "zod")]
+pub fn record_number_key(rust_ident: &str, number: Option<NumberKey>) {
+    ALIAS_INFO.with(|map| {
+        if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
+            info.number_key = number;
         }
     });
 }

@@ -1,8 +1,8 @@
 //! `CarillonService` on `ws_rpc`, whose one operation takes a message that holds a struct in a
 //! list, in a map, in an externally, an adjacently and an internally tagged enum, beside a
 //! flattened member and in a struct with its own tag, numbers alone and in a list, a map keyed by a
-//! brand with a check and one keyed by a brand with a check over another, a `Result`, a member
-//! with a bound, and answers the message it was handed.
+//! brand with a check, one keyed by a brand with a check over another and one keyed by an `i64`,
+//! a `Result`, a member with a bound, and answers the message it was handed.
 //! What the Rust dispatcher answers to each payload names the field every emitted dispatcher and
 //! client is measured against. Nothing here waits on a clock.
 
@@ -18,11 +18,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1}}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1}}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 63] = [
+pub const CASES: [(&str, &str, Option<&str>); 96] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -162,17 +162,77 @@ pub const CASES: [(&str, &str, Option<&str>); 63] = [
     ("a zero for a u32", "strokes", Some("0")),
     ("a one for an i64", "depth", Some("1")),
     ("a zero for an i64", "depth", Some("0")),
+    ("an external enum of no variant", "peal", Some("{}")),
+    (
+        "an external enum of two variants",
+        "peal",
+        Some(r#"{"Swung":{"arc":1},"Still":null}"#),
+    ),
+    ("a number for an external enum", "peal", Some("1")),
+    ("a list for an external enum", "peal", Some("[]")),
+    ("a null for an external enum", "peal", Some("null")),
+    ("a number for a Result", "tally", Some("1")),
+    ("a list for a Result", "tally", Some("[]")),
+    ("a boolean for a Result", "tally", Some("true")),
+    ("a null for a Result", "tally", Some("null")),
+    (
+        "a brand key with a letter after it",
+        "pitches.1x",
+        Some("1"),
+    ),
+    ("a brand key with a space after it", "pitches.1 ", Some("1")),
+    ("a brand key of a minus alone", "pitches.-", Some("1")),
+    ("a brand key with a leading zero", "pitches.01", Some("1")),
+    ("a brand key beyond an f64", "pitches.1e400", Some("1")),
+    ("a brand key with an exponent", "pitches.1e3", Some("1")),
+    ("a brand key of minus zero", "pitches.-0", Some("1")),
+    ("a brand key of zero", "pitches.0", Some("1")),
+    ("a negative brand key", "pitches.-1", Some("1")),
+    ("the largest brand key", "pitches.4294967295", Some("1")),
+    ("a brand key beyond a u32", "pitches.4294967296", Some("1")),
+    ("an i64 key with a letter after it", "tolls.1x", Some("1")),
+    ("an i64 key with a space after it", "tolls.1 ", Some("1")),
+    ("an i64 key of a minus alone", "tolls.-", Some("1")),
+    ("an i64 key with a leading zero", "tolls.01", Some("1")),
+    ("an i64 key beyond an f64", "tolls.1e400", Some("1")),
+    ("an i64 key with an exponent", "tolls.1e3", Some("1")),
+    ("an i64 key of minus zero", "tolls.-0", Some("1")),
+    ("an i64 key of zero", "tolls.0", Some("1")),
+    ("a negative i64 key", "tolls.-1", Some("1")),
+    (
+        "the largest i64 key",
+        "tolls.9223372036854775807",
+        Some("1"),
+    ),
+    ("the least i64 key", "tolls.-9223372036854775808", Some("1")),
+    (
+        "an i64 key beyond an i64",
+        "tolls.9223372036854775808",
+        Some("1"),
+    ),
+    (
+        "an i64 key below an i64",
+        "tolls.-9223372036854775809",
+        Some("1"),
+    ),
 ];
 
 /// The cases where the Rust dispatcher names a place above the one the case changes: serde reads a
 /// flattened member from the keys its holder buffers, and names the holder for a value inside it
-/// it refuses. Every emitted read names the place the Rust dispatcher names.
-pub const NAMED_AT_THE_HOLDER: [(&str, &str); 1] =
-    [("a text for a number in a flattened member", "frame")];
+/// it refuses, and names the map for a key of an integer type it reads as a float. Every emitted
+/// read names the place the Rust dispatcher names.
+pub const NAMED_AT_THE_HOLDER: [(&str, &str); 6] = [
+    ("a text for a number in a flattened member", "frame"),
+    ("a brand key with an exponent", "pitches"),
+    ("a brand key of minus zero", "pitches"),
+    ("an i64 key with an exponent", "tolls"),
+    ("an i64 key of minus zero", "tolls"),
+    ("an i64 key below an i64", "tolls"),
+];
 
 /// The cases the Rust dispatcher reads: serde reads an `f32` beyond its range as an infinity of the
-/// sign written, and an integer written plainly.
-pub const READ_BY_RUST: [&str; 8] = [
+/// sign written, an integer written plainly, and a key of an integer type within its range.
+pub const READ_BY_RUST: [&str; 13] = [
     "an f32 beyond its range",
     "an f32 just beyond its range",
     "an f32 beyond its range below zero",
@@ -181,14 +241,38 @@ pub const READ_BY_RUST: [&str; 8] = [
     "a zero for a u32",
     "a one for an i64",
     "a zero for an i64",
+    "a brand key of zero",
+    "an i64 key of zero",
+    "a negative i64 key",
+    "the largest i64 key",
+    "the least i64 key",
 ];
 
 /// The cases the Rust dispatcher answers `undeserializable-payload` for, naming no field: `serde_json`
 /// refuses each as text that is not the document, not as a value of the wrong kind.
-pub const NOT_A_DOCUMENT: [&str; 3] = [
+pub const NOT_A_DOCUMENT: [&str; 22] = [
     "a Result of two arms",
     "a Result of no arm",
     "a key that is no number",
+    "an external enum of no variant",
+    "an external enum of two variants",
+    "a number for an external enum",
+    "a list for an external enum",
+    "a null for an external enum",
+    "a number for a Result",
+    "a list for a Result",
+    "a boolean for a Result",
+    "a null for a Result",
+    "a brand key with a letter after it",
+    "a brand key with a space after it",
+    "a brand key of a minus alone",
+    "a brand key with a leading zero",
+    "a brand key beyond an f64",
+    "an i64 key with a letter after it",
+    "an i64 key with a space after it",
+    "an i64 key of a minus alone",
+    "an i64 key with a leading zero",
+    "an i64 key beyond an f64",
 ];
 
 /// The cases whose frame the Rust dispatcher reads as no frame, and answers nothing: a number
@@ -277,6 +361,7 @@ pub struct CarillonChime {
     pub sway: f64,
     pub swing: CarillonSwing,
     pub tally: Result<u32, String>,
+    pub tolls: BTreeMap<i64, u32>,
     pub towers: BTreeMap<String, CarillonBell>,
     pub turn: CarillonTurn,
     pub yoke: CarillonYoke,

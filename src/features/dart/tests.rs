@@ -193,7 +193,10 @@ fn a_brand_key_and_a_result_arm_are_judged_under_their_own_step() {
     let dart = definition(struct_dart_tokens(&item, &plain_args()));
     for expected in [
         "MapEntry(e.key, _readAt(null, e.key, () => ",
-        "MapEntry((switch ((RegExp(r'^[0-9-]').hasMatch(e.key) ? (switch (int.parse(e.key)) {",
+        "MapEntry((switch (((String text) {",
+        "throw FormatException('invalid value: integer `$numeral`, expected u32', \
+         <Object>[numeral]); if (at < text.length) throw const FormatException('expected `\"`'); \
+         return whole.toInt(); })(e.key)) {",
         "{ final held => _readAt(null, e.key, () => Pitch.fromJson(held)) }), _readAt(null, \
          e.key, () => (switch (e.value as int) {",
         "MapEntry(_readAt(null, e.key, () => Tone.fromJson(e.key)), ",

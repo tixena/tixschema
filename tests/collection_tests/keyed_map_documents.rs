@@ -64,7 +64,7 @@ fn a_map_under_a_key_describes_its_values_and_names_its_keys() {
     assert_eq!(
         Marlinspike::json_schema()["properties"],
         json!({
-            "counts": counts(json!({ "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" })),
+            "counts": counts(json!({ "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" })),
             "flags": counts(json!({ "type": "string", "pattern": "^(true|false)$" })),
             "letters": counts(one_character.clone()),
             "turns": counts(one_character),

@@ -758,7 +758,10 @@ fn test_recursive_tuple_single_union_zod_defers_self_reference() {
 fn test_recursive_tuple_single_union_zod_keeps_scalar_members_eager() {
     let zod = JsonValueUnion::zod_schema();
     assert!(zod.contains("z.union([z.boolean(), z.lazy("), "Got:\n{zod}");
-    assert!(zod.contains("z.number(), z.string()])"), "Got:\n{zod}");
+    assert!(
+        zod.contains("z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()), z.string()])"),
+        "Got:\n{zod}"
+    );
     for member in ["z.string()", "z.boolean()", "z.number()"] {
         assert!(
             !zod.contains(&format!("z.lazy(() => {member})")),
