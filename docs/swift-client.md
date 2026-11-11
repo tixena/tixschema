@@ -102,6 +102,14 @@ to keep.
   decoder's coding path in serde's words. `Source::plain`, `keyed_read`, the value of a brand and
   of a struct of one slot, and a map's wrapper write their reads through it, and `read::both` and
   the wrapper declare `FITTED` where a read names it.
+- **A type parameter is read through the fitting read too.** What fills it may be such an integer,
+  which the type's text cannot know, so `fit_held` takes the type parameters in scope and reads each
+  it finds, in the places it finds an integer, as `SwiftSchemaFit<Held>`. Each caller hands them:
+  `keyed_read`, `Shaped::read_whole` and the payload of a variant (`VariantPayload::parameters`) the
+  parameters the value's own `FieldDef` reaches (`parameters_reached`), `held_argument` its
+  wrapper's, and `value_wrapper_tokens` the item's. A value Foundation reads, or refuses with a
+  `DecodingError`, is read once, as it was, and a type that declares no parameter writes the text it
+  wrote.
 - **A refusal inside a flattened member is placed at its holder** (`read::flattened`), as serde
   names the holder: `decode_statement` writes a flattened member's statements in
   `do { ... } catch let refused as DecodingError`, and `swiftSchemaFlattened` (`read::FLATTENED`)

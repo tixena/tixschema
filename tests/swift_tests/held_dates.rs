@@ -324,7 +324,10 @@ fn a_tuple_reads_and_writes_the_date_of_a_slot_as_its_text() {
             "public struct StowedChartPairTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Date; let slot1: Stowed; "
                 .to_owned(),
-            format!("{SLOT_READ}slot1 = try container.decode(Stowed.self); "),
+            format!(
+                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(Stowed.self) \
+                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<Stowed>.self) }}); "
+            ),
             format!("{SLOT_WRITTEN}try container.encode(slot1); "),
         ],
     );
@@ -349,7 +352,10 @@ fn a_tuple_struct_reads_and_writes_the_date_of_a_slot_as_its_text() {
     holds(
         declared(&stowed, "WaypointTuple"),
         &[
-            format!("{SLOT_READ}slot1 = try container.decode(Stowed.self); "),
+            format!(
+                "{SLOT_READ}slot1 = try Self.swiftSchemaFitted({{ try container.decode(Stowed.self) \
+                 }}, again: {{ _ = try container.decode(SwiftSchemaFit<Stowed>.self) }}); "
+            ),
             SLOT_WRITTEN.to_owned(),
         ],
     );
