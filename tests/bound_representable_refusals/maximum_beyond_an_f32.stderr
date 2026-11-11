@@ -1,0 +1,5 @@
+error: model_schema: field `single`: `maximum = 1e39` is beyond what an `f32` holds (3.4028235e38 in size). Write a bound inside that range, or take it off.
+  --> tests/bound_representable_refusals/maximum_beyond_an_f32.rs:10:5
+   |
+10 |     pub single: f32,
+   |     ^^^^^^^^^^^^^^^
