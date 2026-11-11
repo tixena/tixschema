@@ -77,16 +77,18 @@ fn each_member_that_writes_a_map_keyed_by_an_i64_carries_the_note() {
     );
 }
 
-/// Zod reads the key as the integer `number` it read before the note.
+/// Zod keys the record by each key's text, which the check ahead of it reads as serde does, and
+/// types the key a `number`.
 #[cfg(feature = "zod")]
 #[test]
-fn the_zod_schema_of_such_a_map_keys_it_by_an_integer_number() {
+fn the_zod_schema_of_such_a_map_keys_it_by_the_text_of_each_key() {
     let schema = WideKeyed::zod_schema();
     holds_each(
         &schema,
         &[
             "direct: z.unknown().check(".to_owned(),
-            ".pipe(z.record(z.number().int(), z.boolean())),".to_owned(),
+            ".pipe(z.record(z.custom<number>((key) => typeof key === \"string\"), z.boolean())),"
+                .to_owned(),
         ],
     );
     assert!(!schema.contains("@deprecated"), "the note in: {schema}");

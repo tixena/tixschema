@@ -412,7 +412,7 @@ On the two nominal surfaces such a key keeps its own type wherever that type spe
 
 | key | TypeScript | Zod |
 |-----|------------|-----|
-| `u8`–`i64`, `usize`, `isize` | `number` | `z.unknown().check(...).pipe(z.record(z.number().int().min(0).max(255), V))` for a `u8`: each width within its own range, as [the form each client sends](client-forms.md#the-form-each-client-sends) states, each key read first as serde reads it |
+| `u8`–`i64`, `usize`, `isize` | `number` | `z.unknown().check(...).pipe(z.record(z.number().int().min(0).max(255), V))` for a `u8`: each width within its own range, as [the form each client sends](client-forms.md#the-form-each-client-sends) states, each key read first as serde reads it; a `u64` or an `i64` key is `z.custom<number>((key) => typeof key === "string")`, so the record keeps each key's digits |
 | `NaiveDate` / `NaiveTime` / `NaiveDateTime` | `string` | the type's own schema |
 | `bool` | `"true" \| "false"` | `z.partialRecord(z.enum(["true", "false"]), V)` |
 | `DateTime<Tz>` | `string` | `z.record(z.iso.datetime({ offset: true }), V)` |
@@ -616,7 +616,7 @@ const read = (text: string): unknown =>
 ```
 
 - **A text position holds the digits.** A path placeholder, a query parameter, a header and a text part hold the text of the number, which every client writes and every dispatcher reads exactly, a brand, a struct of one slot or an alias over the number declared above the service included. The Rust `http_rest` dispatcher reads a `u64` message, header and path placeholder up to `u64::MAX`.
-- **A map's key is a `number`** in TypeScript, `z.number().int()` in Zod: serde writes the key as the text of the number, and the Zod schema refuses a key beyond `2^53 - 1` in size. The TypeScript writes a `@deprecated` note over each declaration that writes such a map, so an editor strikes the name through where it is read and shows the note. `tsc --strict` prints nothing for it:
+- **A map's key is a `number`** in TypeScript and in `z.infer`: serde writes the key as the text of the number, and the Zod schema reads that text as serde reads it and keys the record by it, so a key beyond `2^53 - 1` in size keeps its digits. `{"counts":{"9223372036854775807":1}}` reads as an object whose `Object.entries` answer `[["9223372036854775807",1]]`; `counts[9223372036854775807]` reads the key `9223372036854776000`, the text of the nearest `number`, and answers `undefined`. The record's key schema is `z.custom<number>((key) => typeof key === "string")`, on which `z.toJSONSchema` throws, as it does on any `z.bigint()`. The TypeScript writes a `@deprecated` note over each declaration that writes such a map, so an editor strikes the name through where it is read and shows the note. `tsc --strict` prints nothing for it:
 
 ```rust
 #[model_schema()]

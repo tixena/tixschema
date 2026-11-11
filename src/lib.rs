@@ -1257,8 +1257,9 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - `u8`, `u16`, `u32`, `i8`, `i16`, `i32`, `usize`, `isize`, `f32` and `f64` are `number` in
 ///   TypeScript, and Zod holds an integer to its type's range.
 /// - `u64` and `i64` are `bigint` in TypeScript, read in Zod through `z.codec`, and
-///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number` and a
-///   Zod `z.number().int()`. `u64` and `usize` are refused under `swift` or `kotlin`.
+///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number`, and
+///   Zod keys the record by each key's digits. `u64` and `usize` are refused under `swift` or
+///   `kotlin`.
 /// - `i128`, `u128`, `f16` and `f128` are refused at expansion. A `serde_json::Value` or
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.
