@@ -3,7 +3,7 @@
 
 use syn::Item;
 
-use super::{JUDGED, Locals, Presence, Source, both, held, takes_keys, unjudged};
+use super::{JUDGED, Locals, Presence, Source, both, fitted, held, takes_keys, unjudged};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::swift::preprocess::{PAYLOAD, Written};
 use crate::features::swift::{SwiftTypeArgs, swift_schema_dispatch};
@@ -419,4 +419,37 @@ fn a_brand_over_an_optional_date_calls_its_closure_with_try() {
         "codingPath: decoder.codingPath) } }() }; ",
     );
     assert!(written.contains(call), "{call} is not in: {written}");
+}
+
+/// A type parameter in scope is read again through `SwiftSchemaFit` alone, in a list, as a map's
+/// value and under an `Optional`, as a fixed-width integer is; a type that is no parameter, and
+/// one that holds a parameter as its argument, are read once.
+#[test]
+fn a_type_parameter_in_scope_is_read_again_through_the_fitting_read() {
+    let parameters = ["Held".to_owned()];
+    for (read_as, fit) in [
+        ("Held", "SwiftSchemaFit<Held>"),
+        ("[Held]", "[SwiftSchemaFit<Held>]"),
+        ("[String: Held]", "[String: SwiftSchemaFit<Held>]"),
+        ("Held?", "SwiftSchemaFit<Held>?"),
+        ("[Held?]", "[SwiftSchemaFit<Held>?]"),
+    ] {
+        assert_eq!(
+            fitted("container.decode(", read_as, ".self)", &parameters),
+            format!(
+                "Self.swiftSchemaFitted({{ try container.decode({read_as}.self) }}, again: {{ _ = \
+                 try container.decode({fit}.self) }})"
+            )
+        );
+    }
+    for read_as in ["Stowed", "Tether<Held>", "String"] {
+        assert_eq!(
+            fitted("container.decode(", read_as, ".self)", &parameters),
+            format!("container.decode({read_as}.self)")
+        );
+    }
+    assert_eq!(
+        fitted("container.decode(", "Held", ".self)", &[]),
+        "container.decode(Held.self)"
+    );
 }

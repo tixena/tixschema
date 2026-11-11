@@ -45,15 +45,23 @@ fn a_set_is_one_list_level_in_the_kotlin_types() {
         main,
         "    row(\"broken\", {broken_name}.serializer(), \"\"\"{broken_json}\"\"\")"
     );
-    main.push_str(
-        "    println(Shelf(listOf(Entry(\"a\")), mapOf(), null, listOf(), KotlinTuple211ServiceSchemaEmittedClientTests(listOf(), 1.toUByte())).validate())\n}\n",
+    // The tuple is numbered by a counter that runs across the items of the crate.
+    let shelf = shelf_kotlin::kotlin_definition();
+    let tuple = shelf
+        .split_once("val slot: ")
+        .and_then(|(_, after)| after.split_once(')'))
+        .map(|(named, _)| named.to_owned())
+        .unwrap();
+    let _ = writeln!(
+        main,
+        "    println(Shelf(listOf(Entry(\"a\")), mapOf(), null, listOf(), {tuple}(listOf(), 1.toUByte())).validate())\n}}",
     );
     let mut parts = vec![
         KOTLIN_IMPORTS.to_owned(),
         entry_kotlin::kotlin_definition(),
         groups_kotlin::kotlin_definition(),
         probe_sets_kotlin::kotlin_definition(),
-        shelf_kotlin::kotlin_definition(),
+        shelf,
         wrappers_kotlin::kotlin_definition(),
     ];
     #[cfg(feature = "indexmap")]

@@ -243,6 +243,8 @@ struct VariantPayload {
     /// Whether Swift holds the payload as an optional, which `try?` reads as `nil` where its read
     /// answered `nil` and where it threw alike.
     optional: bool,
+    /// The type parameters of the enum `held` names.
+    parameters: Vec<String>,
     rules: Vec<String>,
     /// Whether the payload is a type written for the variant that reads the keys the types around
     /// it took.
@@ -428,7 +430,7 @@ impl VariantPayload {
             (None, Some(slot)) => {
                 slot.read(held, from.stem, source, sink, &mut read::Locals::default())
             }
-            (None, None) => sink(&format!("try {}", source.plain(held))),
+            (None, None) => sink(&format!("try {}", source.plain(held, &self.parameters))),
         }
     }
 
@@ -499,13 +501,14 @@ impl Shaped {
         source: &read::Source,
         sink: &dyn Fn(&str) -> String,
     ) -> String {
+        let parameters = parameters_reached(&[&self.def]);
         if !self.converts() {
-            return sink(&format!("try {}", source.plain(real_type)));
+            return sink(&format!("try {}", source.plain(real_type, &parameters)));
         }
         let local = format!("wire{}", swift_upper_camel(stem));
         format!(
             "let {local} = try {}; {}",
-            source.plain(&wire_type(&self.def, &self.shape)),
+            source.plain(&wire_type(&self.def, &self.shape), &parameters),
             sink(&self.converted(&local))
         )
     }
@@ -1881,7 +1884,8 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
             "Fixed"
         }
     );
-    let generic_params = bounded_generic_params(&parameters_reached(&[&argument.def]));
+    let parameters = parameters_reached(&[&argument.def]);
+    let generic_params = bounded_generic_params(&parameters);
     let read = if counted {
         read::counted(
             argument,
@@ -1897,7 +1901,8 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
             read::fitted(
                 "container.decode(",
                 &wire_type(&argument.def, &argument.shape),
-                ".self)"
+                ".self)",
+                &parameters
             ),
             argument.converted("wireValue")
         )
@@ -2779,6 +2784,7 @@ fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
     let keyed = format!(".self, forKey: {key})");
     let decode = format!("{container}.decode(");
     let decode_if_present = format!("{container}.decodeIfPresent(");
+    let parameters = parameters_reached(&[&field.field_def]);
     if matches!(field.shape.leaf_conversion, LeafConversion::None) {
         return if absent_is_nil {
             let inner = field
@@ -2788,13 +2794,13 @@ fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
             format!(
                 "self.{} = try {}",
                 field.swift_name,
-                read::fitted(&decode_if_present, inner, &keyed)
+                read::fitted(&decode_if_present, inner, &keyed, &parameters)
             )
         } else {
             format!(
                 "self.{} = try {}",
                 field.swift_name,
-                read::fitted(&decode, &field.real_type, &keyed)
+                read::fitted(&decode, &field.real_type, &keyed, &parameters)
             )
         };
     }
@@ -2803,15 +2809,18 @@ fn keyed_read(field: &SwiftField, own: &str, absent_is_nil: bool) -> String {
         if field.field_def.is_optional() {
             format!(
                 "try {}",
-                read::fitted(&decode, &format!("{wire_array}?"), &keyed)
+                read::fitted(&decode, &format!("{wire_array}?"), &keyed, &parameters)
             )
         } else {
-            format!("try {}", read::fitted(&decode, &wire_array, &keyed))
+            format!(
+                "try {}",
+                read::fitted(&decode, &wire_array, &keyed, &parameters)
+            )
         }
     } else {
         format!(
             "try {}",
-            read::fitted(&decode_if_present, &wire_array, &keyed)
+            read::fitted(&decode_if_present, &wire_array, &keyed, &parameters)
         )
     };
     let local = format!("wire{}", swift_upper_camel(swift_bare(&field.swift_name)));
@@ -3827,7 +3836,8 @@ fn value_wrapper_tokens(
         note_value_entries(&rust_ident, value_field);
     }
 
-    let generic_params = swift_generic_params(generics);
+    let type_parameters = type_parameters_in_scope(generics);
+    let generic_params = bounded_generic_params(&type_parameters);
     let hashable = note_brand_key(&rust_ident, wrapped, value_field, &generic_params, hashes);
     let mut aux = Vec::new();
     let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
@@ -3858,14 +3868,15 @@ fn value_wrapper_tokens(
             read::fitted(
                 "container.decode(",
                 &wire_type(&shaped.def, &shaped.shape),
-                ".self)"
+                ".self)",
+                &type_parameters
             ),
             shaped.converted("wireValue")
         )
     } else {
         format!(
             "try {}",
-            read::fitted("container.decode(", &real_type, ".self)")
+            read::fitted("container.decode(", &real_type, ".self)", &type_parameters)
         )
     };
     let encode = wrapper_write(&shaped);
@@ -4182,6 +4193,7 @@ fn resolve_variant_payload(
             held: None,
             keys: Some(Vec::new()),
             optional: false,
+            parameters: Vec::new(),
             rules: Vec::new(),
             takes_keys: false,
             walked: None,
@@ -4268,6 +4280,7 @@ fn named_payload(
         held: Some(held_at(&struct_name, &generic_params)),
         keys,
         optional: false,
+        parameters: named_parameters,
         rules: validate::payload_rules(export_name, step, !members.is_empty()),
         takes_keys,
         walked: None,
@@ -4333,6 +4346,7 @@ fn slot_payload(
         held: Some(held),
         keys: flattened_contribution(&field_def),
         optional: held_as_optional(&field_def),
+        parameters: parameters_reached(&[&field_def]),
         rules,
         takes_keys: false,
         walked,
@@ -4389,6 +4403,7 @@ fn slots_payload(
         held: Some(held),
         keys: None,
         optional: false,
+        parameters: parameters_reached(&[&tuple_field]),
         rules: validate::payload_rules(export_name, step, checked),
         takes_keys: false,
         walked: None,
