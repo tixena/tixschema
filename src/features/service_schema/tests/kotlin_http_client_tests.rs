@@ -359,9 +359,9 @@ fn a_unit_success_answers_a_bare_ok_object() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = kotlin_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written.contains("mediaClientServiceHttpWireText(req.sha256)")
+        written.contains("val text = mediaClientServiceHttpPathText(req.sha256)")
             && written.contains(
-                "private inline fun <reified T> mediaClientServiceHttpWireText(value: T): String ="
+                "private inline fun <reified T> mediaClientServiceHttpPathText(value: T): String? ="
             ),
         "got: {written}"
     );
@@ -389,7 +389,7 @@ fn a_hard_keyword_is_written_between_backticks_in_the_method_and_the_requests_me
         "suspend fun `for`(req: ForRequest, default: String?)",
         "${req.`in`}",
         "suspend fun `object`(req: Thing)",
-        "WireText(req.`class`)",
+        "PathText(req.`class`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
     }
