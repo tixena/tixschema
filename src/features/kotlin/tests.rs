@@ -73,6 +73,27 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
     )
 }
 
+/// The serializer of a map keyed by the brand `named`: each key read from its text at the map's
+/// path, and each value from its text under the key's text.
+fn mapped(named: &str) -> String {
+    format!(
+        "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
+         KSerializer<{named}>, private val valueSerializer: KSerializer<KotlinSchemaValue>) : \
+         KSerializer<Map<{named}, KotlinSchemaValue>> {{ private val whole = \
+         MapSerializer(keySerializer, valueSerializer); override val descriptor: SerialDescriptor \
+         = whole.descriptor; override fun serialize(encoder: Encoder, value: Map<{named}, \
+         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}override fun \
+         deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
+         as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
+         {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
+         \" + element)).entries.associate {{ entry -> kotlinSchemaDecoded(input.json, \
+         keySerializer, JsonPrimitive(entry.key), entry.key, \"\") to \
+         kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + \
+         entry.key) }} }} }} }}",
+        PATHED = read::PATHED
+    )
+}
+
 /// The annotations of a type the plugin reads, which keeps the plugin's serializer.
 fn kept(named: &str) -> String {
     format!(
@@ -296,6 +317,50 @@ fn a_key_of_a_declared_type_is_written_as_its_serializer_writes_it() {
         ),
         "got: {kotlin}"
     );
+}
+
+/// A brand that keys a map writes the serializer of a map keyed by it, and a member of such a map
+/// names it on the map: a value is refused under the key's text, which kotlinx would state as the
+/// brand's `toString()`. The key keeps the serializer it is read through.
+#[cfg(feature = "serde")]
+#[test]
+fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
+    let pitch: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Pitch(u32);
+    };
+    let tone: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Tone(String);
+    };
+    let held: ItemStruct = syn::parse_quote! {
+        #[serde(transparent)]
+        struct Held(Vec<String>);
+    };
+    for (brand, named) in [(&pitch, "Pitch"), (&tone, "Tone")] {
+        let kotlin = plain(brand);
+        assert!(kotlin.ends_with(&mapped(named)), "got: {kotlin}");
+    }
+    assert!(
+        !plain(&held).contains("MapSerializer"),
+        "a list keys no map"
+    );
+    let item: ItemStruct = syn::parse_quote! {
+        struct Chime {
+            pitches: BTreeMap<Pitch, String>,
+            tones: BTreeMap<Tone, String>,
+            names: BTreeMap<String, String>,
+        }
+    };
+    let kotlin = plain(&item);
+    for declared in [
+        "val pitches: @Serializable(with = PitchMapSerializer::class) Map<@Serializable(with = \
+         PitchKeySerializer::class) Pitch, String>",
+        "val tones: @Serializable(with = ToneMapSerializer::class) Map<Tone, String>",
+        "val names: Map<String, String>",
+    ] {
+        assert!(kotlin.contains(declared), "{declared} is not in: {kotlin}");
+    }
 }
 
 /// Only a brand that holds a string, or a brand or an alias that answers one, answers its text.
@@ -580,9 +645,10 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
              value.codePointCount(0, value.length); fun validate(): List<String> {{ val \
              violations = mutableListOf<String>(); {bound}; violations.addAll(unreserved(this)); \
              return violations }}; fun kotlinSchemaBound(): List<String> {{ val violations = \
-             mutableListOf<String>(); {bound}; return violations }} }} {} {}",
+             mutableListOf<String>(); {bound}; return violations }} }} {} {} {}",
             generated("Code"),
-            judged("Code")
+            judged("Code"),
+            mapped("Code")
         )
     );
     let unbounded = plain(&item);
