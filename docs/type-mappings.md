@@ -596,7 +596,9 @@ change has to keep.
   `IncomingRequest::new` the path as the request carried it. The Kotlin `ws_rpc` attachment writes
   a reply's value, its declared error and each `header_out` through the serializer the client
   reads them with (`read_serializer`), and answers a text of another form as `handler-panic`, as
-  the Dart attachment does.
+  the Dart attachment does. Each writes an `f32` or an `f64` there that is not finite as `null`,
+  as serde writes it (`{service}WsWritten`): the Kotlin one through a `Json` that writes such a
+  float, the Dart one over what `toJson` answers, which holds it as the `double` it is.
 - **What no client changes is reported, not changed**: an `i64`, `isize`, `u64` or `usize`
   beyond `2^53 - 1` in size, which a JavaScript number does not hold exactly. Years outside 0000
   to 9999 and leap seconds are out of scope.

@@ -1244,19 +1244,42 @@ fn map_key_wrapper_struct(
 
 /// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
 fn wrapper_bound_key(key: &FieldDef) -> String {
+    let inner = judged_inner_brands(key);
     match read_map_key(key) {
-        KeyRead::Whole(read) => format!("let key = {read}; "),
+        KeyRead::Whole(read) => format!("let key = {read}; {inner}"),
         KeyRead::Parsed(parsed) => keys::leaf(key).field_type.number_key().map_or_else(
             || {
                 format!(
                     "guard let key = {parsed} else {{ \
-                     throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; {}",
+                     throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; {}{inner}",
                     refused_repeat_of_a_date_key(key)
                 )
             },
-            |number| number_bound_key(number, &parsed),
+            |number| format!("{}{inner}", number_bound_key(number, &parsed)),
         ),
     }
+}
+
+/// What judges each brand the brand of `key` holds, the innermost first, refusing the entry: serde
+/// reads each through its own judged read, and the key's own `validate()`, which the holder's
+/// walk runs, runs its own check alone, as the Rust brand's does.
+fn judged_inner_brands(key: &FieldDef) -> String {
+    let mut judged = Vec::new();
+    let mut held = "key".to_owned();
+    let mut below = keys::brand_of(key).map(|(_, value)| value);
+    while let Some((rust_ident, value)) = below.as_ref().and_then(keys::brand_of) {
+        held.push_str(".value");
+        if validate::validates(&rust_ident) {
+            judged.push(format!(
+                "do {{ let violations = {held}.validate(); if !violations.isEmpty {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                 debugDescription: violations.joined(separator: \"; \")) }} }}; "
+            ));
+        }
+        below = Some(value);
+    }
+    judged.reverse();
+    judged.concat()
 }
 
 /// The static function a map's wrapper reads the number of a key's text with, as serde reads the
@@ -4255,6 +4278,7 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     } else {
         real_type
     };
+    read::note_alias(&export_name, &type_parameters, &target_type);
     let body = format!("public typealias {export_name}{generic_params} = {target_type};");
     let rust_ident = item_type.ident.to_string();
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);

@@ -53,8 +53,9 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let written = dart_ws_client_of(MIXED_SERVICE);
     let body = body_from(&written, "} on BalanceError catch (declared) {");
     assert!(
-        body.contains("'error': (declared).toJson(),"),
-        "the dispatcher writes the declared error through its own `toJson`, whole. Got: {body}"
+        body.contains("'error': _billingServiceWsWritten((declared).toJson()),"),
+        "the dispatcher writes the declared error through its own `toJson`, whole, as serde \
+         writes it. Got: {body}"
     );
     assert!(
         !written.contains("errorMessage"),
@@ -437,9 +438,9 @@ fn a_reply_dispatch_arm_answers_a_reply_frame_on_every_outcome() {
             && reply_arm
                 .contains("final answered = await handlers.listTransactions(ctx, decoded);")
             && reply_arm.contains("'ok': true,")
-            && reply_arm.contains("'value': (answered).toJson(),")
+            && reply_arm.contains("'value': _ledgerWsWritten((answered).toJson()),")
             && reply_arm.contains("} on ListError catch (declared) {")
-            && reply_arm.contains("'error': (declared).toJson(),"),
+            && reply_arm.contains("'error': _ledgerWsWritten((declared).toJson()),"),
         "got: {reply_arm}"
     );
     assert!(
@@ -522,7 +523,10 @@ fn a_primitive_message_and_success_ride_the_frame_as_their_own_json_values() {
         arm.contains("decoded = frame['payload'] as String;"),
         "got: {arm}"
     );
-    assert!(arm.contains("'value': answered,"), "got: {arm}");
+    assert!(
+        arm.contains("'value': _shelvesWsWritten(answered),"),
+        "got: {arm}"
+    );
 }
 
 #[test]
@@ -672,8 +676,10 @@ fn the_attachment_splits_a_handler_s_header_tuple_answer_omitting_a_null_element
                  final number => throw FormatException('expected an integer from 0 to 4294967295, \
                  found $number') });\n            }"
             )
-            && arm.contains("'value': (bodyOut).toJson(),")
-            && arm.contains("if (headersOut.isNotEmpty) 'headers': headersOut,"),
+            && arm.contains("'value': _versionServiceWsWritten((bodyOut).toJson()),")
+            && arm.contains(
+                "if (headersOut.isNotEmpty) 'headers': _versionServiceWsWritten(headersOut),"
+            ),
         "the handler's own record is split: its head under `value`, every other element under \
          `headers`, a null one omitted rather than written. Got: {arm}"
     );
@@ -685,8 +691,11 @@ fn the_attachment_splits_a_handler_s_header_tuple_answer_omitting_a_null_element
                 "if (errorHeadersOut0 != null) {\n              errorHeadersOut['x-reason'] = \
                  errorHeadersOut0;\n            }"
             )
-            && arm.contains("'error': (declaredHead).toJson(),")
-            && arm.contains("if (errorHeadersOut.isNotEmpty) 'headers': errorHeadersOut,"),
+            && arm.contains("'error': _versionServiceWsWritten((declaredHead).toJson()),")
+            && arm.contains(
+                "if (errorHeadersOut.isNotEmpty) 'headers': \
+                 _versionServiceWsWritten(errorHeadersOut),"
+            ),
         "the declared error a handler throws splits the same way. Got: {arm}"
     );
 }

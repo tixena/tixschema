@@ -18,6 +18,9 @@ use crate::service_schema::support::fault_fields_typescript_name;
 use core::fmt::Write as _;
 use syn::Type;
 
+/// A JSON string, or a `-0` that is neither an exponent's nor followed by more of its number.
+const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
+
 /// The seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher` takes, spelled
 /// identically for every service so one service's attachment composes over another's transport.
 const FRAMES_RECORD_TYPE: &str =
@@ -63,6 +66,13 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         published.push(refused_at_fn(&fn_prefix));
         published.push(refused_fn(&named, &fn_prefix));
     }
+    if service
+        .operations
+        .iter()
+        .any(|operation| !matches!(operation.outcome, OperationOutcome::OneWay))
+    {
+        published.push(written_fn(&fn_prefix));
+    }
     if helper_called {
         published.push(read_at_function(&helper));
     }
@@ -101,6 +111,21 @@ fn refused_at_fn(fn_prefix: &str) -> String {
          FormatException(:final String message) when message.startsWith(\"'\") && message.indexOf(\"'\", 1) > 0 =>\n    \
          message.substring(1, message.indexOf(\"'\", 1)),\n  \
          _ => null,\n\
+         }};"
+    )
+}
+
+/// The function the attachment writes a reply's value, its declared error and each `header_out`
+/// through, as serde writes them: a `double` that is not finite as `null`, where `jsonEncode`
+/// refuses it.
+fn written_fn(fn_prefix: &str) -> String {
+    format!(
+        "/// `value` as serde writes it: a `double` that is not finite as `null`.\n\
+         Object? _{fn_prefix}WsWritten(Object? value) => switch (value) {{\n  \
+         final double number when !number.isFinite => null,\n  \
+         final Map<dynamic, dynamic> map => map.map((key, item) => MapEntry(key, _{fn_prefix}WsWritten(item))),\n  \
+         final List<dynamic> list => <Object?>[for (final item in list) _{fn_prefix}WsWritten(item)],\n  \
+         _ => value,\n\
          }};"
     )
 }
@@ -250,8 +275,20 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     )
 }
 
+/// The transport's `_signedZeros`, which answers a JSON text with each `-0` outside a string
+/// written `-0.0`: serde reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
+fn signed_zeros_fn() -> String {
+    format!(
+        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n  \
+         static String _signedZeros(String text) => !text.contains('-0')\n      \
+         ? text\n      \
+         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
+    )
+}
+
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
+    let signed_zeros = signed_zeros_fn();
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -267,10 +304,11 @@ fn transport_class_rest(named: &str) -> String {
          /// beyond a `double` as: serde reads no frame that holds one, and neither does this.\n  \
          static Object? _held(Object? key, Object? value) =>\n      \
          value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n  \
+         {signed_zeros}\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(raw as String, reviver: _held) as Map<String, dynamic>;\n    \
+         frame = jsonDecode(_signedZeros(raw as String), reviver: _held) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \
@@ -760,18 +798,19 @@ fn handlers_class(service: &ServiceDef, apart: Option<&str>) -> String {
     )
 }
 
-/// Writes a reply frame back over `frames.send`, guarded on `replyId != null`. `headers_expr`,
-/// where given, is written under `headers` only when non-empty.
-fn reply_write_stmt(
+/// Writes a reply frame back over `frames.send`, guarded on `replyId != null`.
+fn reply_write_stmt(named: &str, key: &str, ok: &str, value_expr: &str) -> String {
+    reply_frame_stmt(named, key, ok, value_expr, "")
+}
+
+/// [`reply_write_stmt`] with `headers_line` written after its `key`.
+fn reply_frame_stmt(
     named: &str,
     key: &str,
     ok: &str,
     value_expr: &str,
-    headers_expr: Option<&str>,
+    headers_line: &str,
 ) -> String {
-    let headers_line = headers_expr.map_or_else(String::new, |expr| {
-        format!("              if ({expr}.isNotEmpty) 'headers': {expr},\n")
-    });
     format!(
         "          if (replyId != null) {{\n            \
          frames.send({{\n              \
@@ -783,6 +822,31 @@ fn reply_write_stmt(
 {headers_line}            \
          }});\n          \
          }}\n"
+    )
+}
+
+/// [`reply_write_stmt`] for what a handler answered: its value and its headers, each written under
+/// `headers` only when there is one, written through [`written_fn`].
+fn answer_write_stmt(
+    named: &str,
+    key: &str,
+    ok: &str,
+    value_expr: &str,
+    headers_expr: Option<&str>,
+) -> String {
+    let written = format!(
+        "_{}WsWritten",
+        RenameRule::CamelCase.apply_to_variant(named)
+    );
+    let headers_line = headers_expr.map_or_else(String::new, |expr| {
+        format!("              if ({expr}.isNotEmpty) 'headers': {written}({expr}),\n")
+    });
+    reply_frame_stmt(
+        named,
+        key,
+        ok,
+        &format!("{written}({value_expr})"),
+        &headers_line,
     )
 }
 
@@ -885,7 +949,6 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
         "error",
         "false",
         "{'isServiceFault': true, 'fault': fault.toJson()}",
-        None,
     ));
     written.push_str(
         "          }\n      \
@@ -936,7 +999,6 @@ fn header_in_read_stmts(
             "error",
             "false",
             "{'isServiceFault': true, 'fault': fault.toJson()}",
-            None,
         ));
         stmt.push_str("            return;\n          }\n");
         idents.push(parameter);
@@ -973,7 +1035,6 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
         "error",
         "false",
         "{'isServiceFault': true, 'fault': fault.toJson()}",
-        None,
     ));
     arm.push_str("            return;\n          }\n");
     let (header_reads, header_locals) = header_in_read_stmts(named, fn_prefix, wire, &shape);
@@ -1020,7 +1081,7 @@ fn one_way_dispatch_arm(
         "          try {{\n            \
          await handlers.{call}(ctx, decoded{header_args});\n"
     );
-    arm.push_str(&reply_write_stmt(named, "value", "true", "null", None));
+    arm.push_str(&reply_write_stmt(named, "value", "true", "null"));
     let _ = write!(
         arm,
         "          }} catch (unexpected) {{\n            \
@@ -1032,7 +1093,6 @@ fn one_way_dispatch_arm(
         "error",
         "false",
         "{'isServiceFault': true, 'fault': fault.toJson()}",
-        None,
     ));
     arm.push_str("          }\n          return;\n        }\n");
     arm
@@ -1075,7 +1135,7 @@ fn reply_dispatch_arm(
         )
     };
     arm.push_str(&value_pre);
-    arm.push_str(&reply_write_stmt(
+    arm.push_str(&answer_write_stmt(
         named,
         "value",
         "true",
@@ -1091,7 +1151,7 @@ fn reply_dispatch_arm(
         &shape.error_header_out,
     );
     arm.push_str(&error_pre);
-    arm.push_str(&reply_write_stmt(
+    arm.push_str(&answer_write_stmt(
         named,
         "error",
         "false",
@@ -1109,7 +1169,6 @@ fn reply_dispatch_arm(
         "error",
         "false",
         "{'isServiceFault': true, 'fault': fault.toJson()}",
-        None,
     ));
     arm.push_str("          }\n          return;\n        }\n");
     arm
