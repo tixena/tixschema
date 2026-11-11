@@ -132,7 +132,7 @@ pub fn dart_at_utc(named: &str, source: &str) -> Option<(bool, String)> {
 
 /// Every value handed as the table's Dart column states, every payload any client sends read
 /// back, and the payload of each value Dart refuses to send refused by its read, a JSON number
-/// among them: Dart holds no `NaN` in JSON.
+/// among them, but for an `f32` beyond its range, which serde reads: Dart holds no `NaN` in JSON.
 #[test]
 fn each_value_is_sent_by_dart_in_the_form_every_target_reads() {
     let rows = handed(|row| row.dart);
@@ -152,10 +152,20 @@ fn each_value_is_sent_by_dart_in_the_form_every_target_reads() {
         .iter()
         .filter(|row| row.dart == Sends::Refused && row.handed != "NaN")
     {
-        let _ = writeln!(expected, "refused");
+        // serde reads an `f32` beyond its range, which Dart refuses to send, as an infinity.
+        let printer = if row.held_by == "ConveyedF32" {
+            "read"
+        } else {
+            "refusing"
+        };
+        let _ = writeln!(
+            expected,
+            "{}",
+            if printer == "read" { "read" } else { "refused" }
+        );
         let _ = writeln!(
             main,
-            "  print(refusing(() => {}.fromJson(jsonDecode(r'{}'))));",
+            "  print({printer}(() => {}.fromJson(jsonDecode(r'{}'))));",
             row.held_by,
             row.payload(Sends::Handed).unwrap()
         );

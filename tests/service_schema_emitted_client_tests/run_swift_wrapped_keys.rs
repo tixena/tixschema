@@ -55,8 +55,11 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 }
 "#;
 
-/// What the Swift read prints for a payload whose key `1` is `x`.
+/// What the Swift read prints for a payload whose key `true` is `x`.
 const BAD_KEY: &str = "refused\n    bad key x";
+
+/// What the Swift read prints for a payload whose key `1` is `x`: serde's words.
+const NO_NUMBER: &str = "refused\n    invalid value: expected key to be a number in quotes";
 
 /// One payload the run reads: its name, the Swift type that reads it, the payload, and what the
 /// Swift read is held to.
@@ -84,7 +87,7 @@ where
 }
 
 /// The payload serde writes for `held` with its first key `written` replaced by `x`, which the
-/// serde read refuses, held to [`BAD_KEY`].
+/// serde read refuses, held to [`NO_NUMBER`] for a number key and to [`BAD_KEY`] for any other.
 fn refused_row<Held>(name: &'static str, read_as: &'static str, held: &Held, written: &str) -> Row
 where
     Held: DeserializeOwned + Serialize,
@@ -94,8 +97,13 @@ where
     assert!(text.contains(&key), "{text}");
     let payload = text.replacen(&key, r#""x":"#, 1);
     assert!(serde_json::from_str::<Held>(&payload).is_err(), "{payload}");
+    let said = if written.parse::<f64>().is_ok() {
+        NO_NUMBER
+    } else {
+        BAD_KEY
+    };
     Row {
-        expected: format!("{name}: {BAD_KEY}\n"),
+        expected: format!("{name}: {said}\n"),
         name,
         payload,
         read_as,

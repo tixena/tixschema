@@ -2,13 +2,18 @@
 //! emitter writes it.
 
 /// `SwiftSchemaFit`, which reads one value and refuses an integer that does not fit, or one
-/// written with a fraction or an exponent.
+/// written with a fraction or an exponent, and reads a `Float` beyond its range as an infinity.
 pub const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
-     value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where !(refused is \
+     value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where \
+     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) { do { value = \
+     Float(try single.decode(Double.self)) as! SwiftSchemaLeaf } catch let wider where !(wider is \
      DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-     decoder.codingPath, debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
+     decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: wider)) } } \
+     catch let refused where !(refused is DecodingError) { throw \
+     DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+     debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
      if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
      written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \

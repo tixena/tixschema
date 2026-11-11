@@ -96,8 +96,8 @@ fn a_result_is_described_as_the_object_serde_writes() {
     }
     let zod = Reply::zod_schema();
     for member in [
-        "outcome: z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]),",
-        "stored: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]),",
+        "outcome: z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })])),",
+        "stored: z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })])),",
     ] {
         assert!(zod.contains(member), "{member} in: {zod}");
     }
@@ -125,8 +125,8 @@ fn an_arm_of_unit_is_null_on_every_surface() {
     }
     let zod = Summary::zod_schema();
     for member in [
-        "both: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.null() })]),",
-        "err: z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.null() })]),",
+        "both: z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.null() })])),",
+        "err: z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.null() })])),",
     ] {
         assert!(zod.contains(member), "{member} in: {zod}");
     }
@@ -148,7 +148,7 @@ fn unit_outside_an_arm_is_described_as_the_null_an_arm_is() {
     let zod = Bare::zod_schema();
     assert!(zod.contains("unit: z.null(),"), "{zod}");
     assert!(
-        zod.contains("armed: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.number().int().min(0).max(4294967295) })]),"),
+        zod.contains("armed: z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.number().int().min(0).max(4294967295) })])),"),
         "{zod}"
     );
     let document = Bare::json_schema();
@@ -173,7 +173,7 @@ fn a_result_is_the_object_in_every_position_that_holds_a_value() {
     ] {
         assert!(typescript.contains(&member), "{member} in: {typescript}");
     }
-    let schema = "z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })])";
+    let schema = "z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]))";
     let zod = Postbox::zod_schema();
     for member in [
         format!("filled: Mailbag$SchemaFactory({schema}),"),
@@ -183,7 +183,7 @@ fn a_result_is_the_object_in_every_position_that_holds_a_value() {
             "maybe: z.union([z.null().transform(() => undefined), {schema}, z.undefined()]).prefault(undefined),"
         ),
         format!(
-            "nested: z.union([z.strictObject({{ Ok: {schema} }}), z.strictObject({{ Err: z.string() }})]),"
+            "nested: z.unknown().check((ctx) => {{ if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({{ code: \"custom\", message: \"expected value\", input: ctx.value, params: {{ undeserializable: true }} }}); }}).pipe(z.union([z.strictObject({{ Ok: {schema} }}), z.strictObject({{ Err: z.string() }})])),"
         ),
         format!("paired: z.tuple([{schema}, z.string()]),"),
     ] {
@@ -223,7 +223,7 @@ fn a_result_is_the_object_as_a_brand_an_alias_and_a_variant_slot() {
     );
     assert!(
         Ruling::zod_schema().contains(
-            "z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]).brand<\"Ruling\">()"
+            "z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })])).brand<\"Ruling\">()"
         ),
         "{}",
         Ruling::zod_schema()
@@ -244,7 +244,7 @@ fn a_result_is_the_object_as_a_brand_an_alias_and_a_variant_slot() {
     }
     let zod = Turn::<u32>::zod_schema();
     assert!(
-        zod.contains("\"Slot\": z.union([z.strictObject({ Ok: held }), z.strictObject({ Err: z.string() })]),"),
+        zod.contains("\"Slot\": z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: held }), z.strictObject({ Err: z.string() })])),"),
         "{zod}"
     );
     assert_eq!(
@@ -266,7 +266,7 @@ fn an_arm_renders_as_its_type_renders_anywhere_else() {
     );
     let zod = Missive::zod_schema();
     assert!(
-        zod.contains("z.union([z.strictObject({ Ok: Masthead$Schema }), z.strictObject({ Err: Unparsed$Schema })])"),
+        zod.contains("z.unknown().check((ctx) => { if (typeof ctx.value === \"object\" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: \"custom\", message: \"expected value\", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: Masthead$Schema }), z.strictObject({ Err: Unparsed$Schema })]))"),
         "{zod}"
     );
     let document = Missive::json_schema();

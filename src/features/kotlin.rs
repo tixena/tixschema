@@ -49,8 +49,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def, is_plain_enum,
-    is_sequence_wrapper,
+    EXPECTED_VALUE, FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
+    is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::{
@@ -196,6 +196,17 @@ enum Tagging<'tag> {
     External,
     /// A tag alone, or no tag at all: a member is written beside the tag, or as the value.
     Unwrapped,
+}
+
+/// How the serializer of a map keyed by a brand reads each key.
+#[derive(Clone, Copy)]
+enum KeyRead {
+    /// By the brand's `{Brand}KeySerializer`, which judges it.
+    Keyed,
+    /// As `Unjudged`, where the brand holds a brand whose own serializer judges the key first.
+    OverABrand,
+    /// Through `{Brand}Unjudged`, then judged by the brand's `validate()`.
+    Unjudged,
 }
 
 /// What [`flatten_plan`] builds from a struct's fields: one `serialize_stmts` entry per field
@@ -1214,10 +1225,7 @@ pub fn key_serializer_expr(key: &FieldDef, type_parameters: &[String]) -> String
         .or_else(|| texts::key_leaf(key));
     match leaf {
         Some(texts::KeyLeaf::Brand(brand)) => key_object_name(&brand),
-        Some(texts::KeyLeaf::Primitive(primitive)) => texts::as_key(primitive).map_or_else(
-            || format!("serializer<{}>()", primitive.kotlin_type()),
-            texts::number_serializer,
-        ),
+        Some(texts::KeyLeaf::Primitive(primitive)) => texts::key_serializer(primitive),
         None => kotlin_serializer_expr(key, type_parameters),
     }
 }
@@ -1258,10 +1266,7 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
         ),
         texts::KeyLeaf::Primitive(primitive) => (
             primitive.kotlin_type().to_owned(),
-            texts::as_key(*primitive).map_or_else(
-                || format!("serializer<{}>()", primitive.kotlin_type()),
-                texts::number_serializer,
-            ),
+            texts::key_serializer(*primitive),
         ),
     };
     let deserialize = format!(
@@ -1285,26 +1290,49 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
 /// The class that reads a map keyed by the brand `export_name` entry by entry: the key from its
 /// text at the map's path, as serde names a key that does not read, and the value under the key's
 /// text, which kotlinx would state as the brand's `toString()`. It writes the map as kotlinx
-/// writes it.
-fn map_object(export_name: &str) -> String {
+/// writes it. A key read unjudged is judged here, each message under the key's text at the map's
+/// path, and a refusal the brand it holds throws, told by its `validate()` cause, is thrown there.
+fn map_object(export_name: &str, key_read: KeyRead) -> String {
     let own = format!("Map<{export_name}, KotlinSchemaValue>");
+    let value = read::decoded(
+        "input.json",
+        "valueSerializer",
+        "entry.value",
+        "entry.key",
+        &read::keyed_step("entry.key"),
+    );
+    let unjudged = read::decoded(
+        "input.json",
+        &format!("{export_name}Unjudged"),
+        "JsonPrimitive(entry.key)",
+        "entry.key",
+        "\"\"",
+    );
+    let judged = "val violations = key.validate(); if (violations.isNotEmpty()) throw \
+                  SerializationException(violations.joinToString(\"; \") { \"'\" + entry.key + \
+                  \"': \" + it })";
+    let entry = match key_read {
+        KeyRead::Keyed => format!(
+            "{} to {value}",
+            read::decoded(
+                "input.json",
+                "keySerializer",
+                "JsonPrimitive(entry.key)",
+                "entry.key",
+                "\"\""
+            )
+        ),
+        KeyRead::Unjudged => format!("val key = {unjudged}; {judged}; key to {value}"),
+        KeyRead::OverABrand => format!(
+            "val key = try {{ {unjudged} }} catch (refused: SerializationException) {{ if \
+             (refused.cause?.message != \"validate()\") throw refused; throw \
+             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}; \
+             {judged}; key to {value}"
+        ),
+    };
     let read = format!(
         "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" + \
-         element)).entries.associate {{ entry -> {} to {} }}",
-        read::decoded(
-            "input.json",
-            "keySerializer",
-            "JsonPrimitive(entry.key)",
-            "entry.key",
-            "\"\""
-        ),
-        read::decoded(
-            "input.json",
-            "valueSerializer",
-            "entry.value",
-            "entry.key",
-            &read::keyed_step("entry.key")
-        ),
+         element)).entries.associate {{ entry -> {entry} }}"
     );
     let deserialize = format!(
         "override fun deserialize(decoder: Decoder): {own} {{ val input = decoder as JsonDecoder; \
@@ -1727,7 +1755,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
     let covariant = listed(&|arm| format!("out {arm}Value"));
     let invariant = listed(&|arm| format!("{arm}Value"));
     let serializer = format!("{named}Serializer");
-    let refusal = "throw SerializationException(\"Not one key, Ok or Err, of a Result\")";
+    let refusal = format!("throw SerializationException(\"{EXPECTED_VALUE}\")");
     let (mut arms, mut elements, mut writes, mut reads) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for (index, (arm, unit)) in RESULT_ARMS.into_iter().zip(shape).enumerate() {
@@ -1794,7 +1822,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
         format!("class {serializer}{invariant}({})", handed.join(", "))
     };
     let own = format!("{named}{invariant}");
-    let deserialize = result_read(&own, refusal, &reads);
+    let deserialize = result_read(&own, &refusal, &reads);
     format!(
         "@Serializable(with = {serializer}::class) sealed interface {named}{covariant} {} \
          {opened} : KSerializer<{own}> {{ \
@@ -3026,13 +3054,20 @@ fn value_class_tokens(
         read::transforming_inline(&export_name, &generic_params, &type_parameters, &correction)
     };
     let (keyed, mapped) = if type_parameters.is_empty() {
-        let mapped = texts::keys_a_map(&value_field).then(|| {
-            texts::note_mapped(&rust_ident);
-            map_object(&export_name)
-        });
         let keyed = texts::key_leaf(&value_field).map(|leaf| {
             texts::note_keyed(&rust_ident);
             key_object(&export_name, &leaf)
+        });
+        let mapped = texts::keys_a_map(&value_field).then(|| {
+            texts::note_mapped(&rust_ident);
+            let key_read = if keyed.is_some() {
+                KeyRead::Keyed
+            } else if texts::mapped_by(&value_field).is_some() {
+                KeyRead::OverABrand
+            } else {
+                KeyRead::Unjudged
+            };
+            map_object(&export_name, key_read)
         });
         (keyed, mapped)
     } else {

@@ -772,12 +772,12 @@ export type Reply = {
 
 ```typescript
 const Reply$RawSchema = z.strictObject({
-  outcome: z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]),
-  stored: z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]),
+  outcome: z.unknown().check((ctx) => { if (typeof ctx.value === "object" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })])),
+  stored: z.unknown().check((ctx) => { if (typeof ctx.value === "object" && ctx.value !== null && !Array.isArray(ctx.value) && Object.keys(ctx.value).length !== 1) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })])),
 });
 ```
 
-The JSON Schema of a `Result` is a `oneOf` of the two objects, each with its one key `required` and `additionalProperties: false`. An arm is described as its type is anywhere else, and an arm of `()` as `{"type": "null"}`, as [`()`](#the-unit-) is wherever it is held. An object of both keys, of neither or of another key is refused, as serde refuses it. A `Result` is that object wherever it is held: in an `Option`, a list, a map's value, a tuple's position, a type argument, the arm of another `Result`, a brand, an alias and a variant's slot.
+The JSON Schema of a `Result` is a `oneOf` of the two objects, each with its one key `required` and `additionalProperties: false`. An arm is described as its type is anywhere else, and an arm of `()` as `{"type": "null"}`, as [`()`](#the-unit-) is wherever it is held. An object of both keys, of neither or of another key is refused, as serde refuses it; Zod's check refuses one of other than one key with serde's words, ``expected value``, which a service answers as `undeserializable-payload`, as the Rust dispatcher does. A `Result` is that object wherever it is held: in an `Option`, a list, a map's value, a tuple's position, a type argument, the arm of another `Result`, a brand, an alias and a variant's slot.
 
 Dart, Swift and Kotlin each read and write the object through a type of their own, written for the field that holds the `Result`: Dart a sealed class, `DartResult{N}{Crate}`, with an `Ok` and an `Err` subclass, Swift an enum of two cases named after the type and the field, `ReplyOutcomeResult`, and Kotlin a sealed interface, `KotlinResult{N}`, with a class per arm and a serializer of its own. `{N}` numbers the shapes an item writes, by which of the arms hold `()`. An arm of `()` is a case, a subclass or an object that holds no value. Each refuses an object of both keys, of neither or of another key, as serde does. None of them is named `Result`: Swift has its own, and Kotlin imports `kotlin.Result` into every file.
 

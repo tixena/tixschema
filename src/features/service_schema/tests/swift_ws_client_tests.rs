@@ -273,16 +273,27 @@ fn a_reply_still_waiting_when_the_socket_closes_answers_a_transport_failure_faul
 }
 
 #[test]
-fn a_reply_decode_failure_is_a_failed_validation_fault() {
+fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal() {
     let written = swift_ws_client_of(SWIFT_WS_SERVICE);
     let method = body_from(&written, "public func window(_ req: WindowRequest)");
     assert!(
         method
-            .matches("conversationClientServiceWsFailedValidation(\"window\",")
+            .matches("conversationClientServiceWsRefused(\"window\", error)")
             .count()
             >= 3,
-        "an outbound encode failure, a bad success value and a bad declared error all decode to \
-         `failedValidation`. Got: {method}"
+        "an outbound encode failure, a bad success value and a bad declared error are answered \
+         through one seam. Got: {method}"
+    );
+    let refused = body_from(
+        &written,
+        "func conversationClientServiceWsRefused(_ operation: String, _ refusal: Error)",
+    );
+    assert!(
+        refused.contains("kind: .undeserializablePayload")
+            && refused.contains("\"expected value\"")
+            && refused.contains("conversationClientServiceWsFailedValidation(operation, \"\\(refusal)\", field: conversationClientServiceWsRefusedAt(refusal))"),
+        "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
+         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
     );
 }
 

@@ -471,7 +471,8 @@ fn test_edge_cases_ts_definition() {
             ("medium_number", "z.number().int().min(0).max(4294967295)"),
             (
                 "float_number",
-                "z.number().gt(-3.4028235677973366e38).lt(3.4028235677973366e38)",
+                "z.number().transform((read) => Math.abs(read) < 3.4028235677973366e38 ? read : \
+                 read < 0 ? -Infinity : Infinity)",
             ),
             ("strings", "z.array(z.string())"),
             (

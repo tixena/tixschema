@@ -118,6 +118,19 @@ The serializer of a Kotlin type throws for a payload whose value breaks a bound 
 `src/features/kotlin/read.rs` writes it. `docs/guide/kotlin.md`'s "The read in the Kotlin client" section is
 the consumer's view; this is what a change has to keep.
 
+- **A number is read as serde reads it.** The serializer `texts::number_serializer` declares for
+  an `f32` reads one beyond its range, which kotlinx refuses, as an infinity of its sign, and the
+  ones for an `f32` and an `f64` refuse a number beyond an `f64` with ``number out of range``. An
+  integer map key, alone or under a brand, is read through `integer_key_serializer`
+  (`texts::key_serializer`), which refuses a key whose text opens with neither a digit nor `-`
+  with ``invalid value: expected key to be a number in quotes`` and reads any other as the library
+  does. A `Result` of other than one key is refused with ``expected value``. These three messages
+  are `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  `undeserializable-payload` naming no field (`{service}WsRefused`), as the Rust dispatcher answers
+  what serde classifies as text that is not the document, and read each frame through
+  `{service}WsFrame`, which refuses one that holds a number beyond a `Double`, which kotlinx keeps
+  as its text, so the frame is dropped, as the Rust transports drop it.
+
 - **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
   `@Serializable(with = ...)`: it reads through the first and throws
@@ -449,10 +462,21 @@ the consumer's view; this is what a change has to keep.
   names a key that does not read, and each value from its text under the key's step: kotlinx records a map entry's step as the decoded key and prints it with
   `toString()`, which is `Pitch(value=3)` for a value class. `annotated_base` names it on a map the
   plugin reads, the key keeping the serializer it names, and `map_serializer` composes it where
-  the emitter writes the read. `run_kotlin_brand_key_paths.rs` holds a value refused under a key
-  over a text, a number and a date to the path serde names. `{Type}KeySerializer` refuses a key its brand's `validate()`
-  refuses inside `kotlinSchemaAt(decoder)`, which states the map's path, each message under the
-  key's text, so the field names the key below its map. A flattened member is read
+  the emitter writes the read. `{Type}KeySerializer`, which a brand over a number or a `bool`
+  declares, refuses a key its brand's `validate()` refuses inside `kotlinSchemaAt(decoder)`, which
+  states the map's path, each message under the key's text, so the field names the key below its
+  map. Any other brand, one over a text or a date, has none: `map_object`, told so by
+  `value_class_tokens`, reads its key through `{Brand}Unjudged` and throws what the key's
+  `validate()` answers inside the map's `kotlinSchemaAt`, in the same form, `'mute': mute is
+  silent at path: $.tones`, so each key is judged once. A brand over such a brand, one whose value
+  `texts::mapped_by` answers, reads its value through the inner brand's own serializer, which
+  throws `read::JUDGED`: `map_object` (`KeyRead::OverABrand`) catches a refusal whose cause is
+  `validate()` around the key's read and throws its message under the key's text, so the inner
+  brand's check answers `'mute': mute is silent at path: $.outer` as the outer brand's own answers
+  `'soft': soft is quiet at path: $.outer`. `run_kotlin_brand_key_paths.rs` holds a value refused
+  under a key over a text, a number and a date, a key each brand's check refuses, and a key of a
+  brand over the brand over a text refused by either brand's check, to the field serde names. A
+  flattened member is read
   through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
   `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the fault's field

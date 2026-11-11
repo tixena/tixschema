@@ -33,8 +33,8 @@ use crate::features::serde::{
 use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
-    FieldDef, FieldDefType, MissingKey, RESULT_ARMS, RangeKind, Scope, VariantKind, get_field_def,
-    is_plain_enum, is_sequence_wrapper,
+    EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, FieldDef, FieldDefType, MissingKey, RESULT_ARMS,
+    RangeKind, Scope, VariantKind, get_field_def, is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::flattened_keys;
@@ -1238,16 +1238,45 @@ fn map_key_wrapper_struct(
     )
 }
 
-/// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is.
+/// What a map's wrapper binds the key of one entry with, read from `wireKey` as `key` is. A key
+/// read as a number whose text opens with neither a digit nor `-` is refused in serde's words for
+/// text that is not the document.
 fn wrapper_bound_key(key: &FieldDef) -> String {
+    let refusal = if numeric_key(key) {
+        format!(
+            "wireKey.first.map {{ $0 == \"-\" || (\"0\"...\"9\").contains($0) }} == true ? \
+             \"bad key \\(wireKey)\" : \"{EXPECTED_NUMERIC_KEY}\""
+        )
+    } else {
+        "\"bad key \\(wireKey)\"".to_owned()
+    };
     match read_map_key(key) {
         KeyRead::Whole(read) => format!("let key = {read}; "),
         KeyRead::Parsed(parsed) => format!(
             "guard let key = {parsed} else {{ \
-             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"bad key \\(wireKey)\") }}; {}",
+             throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: {refusal}) }}; {}",
             refused_repeat_of_a_date_key(key)
         ),
     }
+}
+
+/// Whether serde reads `key` as a number, alone or under its aliases and brands.
+fn numeric_key(key: &FieldDef) -> bool {
+    matches!(
+        keys::leaf(key).field_type,
+        FieldDefType::U8
+            | FieldDefType::U16
+            | FieldDefType::U32
+            | FieldDefType::U64
+            | FieldDefType::I8
+            | FieldDefType::I16
+            | FieldDefType::I32
+            | FieldDefType::I64
+            | FieldDefType::Usize
+            | FieldDefType::Isize
+            | FieldDefType::F32
+            | FieldDefType::F64
+    )
 }
 
 /// A date key Swift holds to its millisecond: two keys finer than that read as one, so the read
@@ -1713,7 +1742,8 @@ fn result_case(arm: &str) -> String {
 /// A `Result` leaf: an enum of its own, `{hint}Result`, of one case per arm, read from and written
 /// as the object whose one key names the arm, and walked by its `validate()` under that key. An
 /// arm of `()` is a case with no value, written as `null`. Any other object is refused, as serde
-/// refuses it. The enum declares the parameters its arms reach.
+/// refuses it: one of other than one key in serde's words for text that is not the document. The
+/// enum declares the parameters its arms reach.
 fn result_shape(
     ok: &FieldDef,
     err: &FieldDef,
@@ -1775,12 +1805,16 @@ fn result_shape(
         shapes.push(slot.shape);
     }
     let generic_params = bounded_generic_params(&parameters_reached(&[ok, err]));
+    let not_a_document = format!(
+        "throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"{EXPECTED_VALUE}\"))"
+    );
     let both = read::both(
         &format!(
             "let container = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); \
              guard container.allKeys.count == 1, let key = container.allKeys.first else {{ {} }}; \
              switch key.stringValue {{ {reads}default: {} }}",
-            refused("Not one key, Ok or Err, of a Result"),
+            not_a_document,
             refused("Not one key, Ok or Err, of a Result")
         ),
         &preprocess::Written {
