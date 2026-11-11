@@ -104,27 +104,27 @@ const READS: [(&str, ReadAs); 7] = [
 pub const PRINTED: &str = "\
 alone: read
 alone, a count of text: refused
-    'north': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 beside a member serde skips: read
 beside a member serde skips, a count of text: refused
-    'north': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 keyed by a brand: read
 keyed by a brand, a count of text: refused
-    'north': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 in a variant: read
 in a variant, a count of text: refused
-    'Open.north': Invalid input: expected number, received string
+    'Open': Invalid input: expected number, received string
 in a variant under a content key: read
 in a variant under a content key, a count of text: refused
-    'held.north': Invalid input: expected number, received string
+    'held': Invalid input: expected number, received string
 in an untagged variant: read
 in an untagged variant, a count of text: refused
-    'north': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 keyed by a char: read
 keyed by a char, a key of two chars: refused
     Unrecognized key: \"nn\"
 keyed by a char, a count of text: refused
-    'n': Invalid input: expected number, received string
+    Invalid input: expected number, received string
 ";
 
 /// Each payload of [`Hawser`]: its name, the JSON, and what serde reads of it. serde reads every

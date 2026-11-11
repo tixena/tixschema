@@ -867,13 +867,21 @@ fn test_boolean_literal_zod() {
 #[cfg(feature = "zod")]
 #[test]
 fn test_number_literal_zod_has_no_trailing_zero() {
+    let boxed = |written: &str| {
+        format!(
+            ".check(z.superRefine((_read, ctx) => {{ ctx.value = {written}; ctx.issues.splice(0, \
+             ctx.issues.length, ...ctx.issues.filter((issue) => issue.code !== \"invalid_value\")); \
+             }}, {{ when: (payload) => payload.value instanceof Number && payload.value.valueOf() \
+             === {written} }}))"
+        )
+    };
     assert_eq!(
         field(FieldDefType::NumberLiteral(214.0)).zod_type(),
-        "z.literal(214)"
+        format!("z.literal(214){}", boxed("214"))
     );
     assert_eq!(
         field(FieldDefType::NumberLiteral(3.5)).zod_type(),
-        "z.literal(3.5)"
+        format!("z.literal(3.5){}", boxed("3.5"))
     );
 }
 

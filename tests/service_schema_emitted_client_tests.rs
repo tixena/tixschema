@@ -2221,6 +2221,21 @@ use carillon_service::CarillonServiceSchema;
 #[path = "service_schema_emitted_client_tests/run_carillon.rs"]
 mod run_carillon;
 
+/// `SoundingService`, whose message holds an integer and a float of each width the reader tells
+/// apart, and the TypeScript surfaces handed a number written with a fraction or an exponent in
+/// each, measured against its Rust dispatcher.
+#[cfg(test)]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/run_node_integral_floats.rs"]
+mod run_node_integral_floats;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/sounding_ws_rpc_transport.rs"]
+mod sounding_ws_rpc_transport;
+
+#[cfg(test)]
+use run_node_integral_floats::{SoundingService, sounding_service_schema};
+
 /// Structs that hold no key on the wire, strict and `nonstrict`.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/empty_struct_models.rs"]
