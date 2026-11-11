@@ -424,6 +424,12 @@ mod integral_float_models;
 #[path = "service_schema_emitted_client_tests/run_swift_integral_floats.rs"]
 mod run_swift_integral_floats;
 
+/// A fixed-width integer through an alias, refused by the emitted Swift types where serde refuses
+/// it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_aliased_integers.rs"]
+mod run_swift_aliased_integers;
+
 /// The models a tuple struct that declares one slot is written on.
 #[cfg(test)]
 #[path = "swift_tests/lone_slots_models.rs"]

@@ -1,7 +1,8 @@
-//! A map keyed by a brand over a text, a number and a date, each with a check, read by the emitted
-//! Kotlin types compiled with `-Werror`: a value refused under a key, and a key the brand's check
-//! refuses, are refused at the field serde names, read off the refusal as the `ws_rpc` attachment
-//! and client read it, and a map that reads is written back as serde writes it.
+//! A map keyed by a brand over a text, a number and a date, and by a brand over the brand over a
+//! text, each with a check, read by the emitted Kotlin types compiled with `-Werror`: a value
+//! refused under a key, and a key a brand's check refuses, are refused at the field serde names,
+//! read off the refusal as the `ws_rpc` attachment and client read it, and a map that reads is
+//! written back as serde writes it.
 
 #![cfg(feature = "kotlin")]
 
@@ -27,6 +28,9 @@ fun audible(value: KeyedTone): List<String> =
 
 fun inScale(value: KeyedPitch): List<String> =
     if (value.value <= 12u) emptyList() else listOf("${value.value} is outside of the scale")
+
+fun loud(value: OuterTone): List<String> =
+    if (value.value.value == "soft") listOf("soft is quiet") else emptyList()
 "#;
 
 /// The check the brand over a date names.
@@ -70,6 +74,12 @@ fun <T> said(at: String, serializer: KSerializer<T>, payload: String) {
 #[serde(transparent)]
 pub struct KeyedTone(pub String);
 
+/// A brand over the brand over a text a map is keyed by.
+#[model_schema(check = ["loud"])]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct OuterTone(pub KeyedTone);
+
 /// A brand over a number a map is keyed by.
 #[model_schema(check = ["inScale"])]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -89,6 +99,13 @@ pub struct KeyedDay(pub chrono::NaiveDate);
 pub struct Keyring {
     pub pitches: BTreeMap<KeyedPitch, u32>,
     pub tones: BTreeMap<KeyedTone, u32>,
+}
+
+/// A map keyed by the brand over the brand over a text.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Nested {
+    pub outer: BTreeMap<OuterTone, u32>,
 }
 
 /// A map keyed by the brand over a date.
@@ -112,6 +129,15 @@ struct Row {
 fn audible(value: &KeyedTone) -> Result<(), Vec<String>> {
     if value.0 == "mute" {
         Err(vec!["mute is silent".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// The check of [`OuterTone`]: a tone louder than soft.
+fn loud(value: &OuterTone) -> Result<(), Vec<String>> {
+    if value.0.0 == "soft" {
+        Err(vec!["soft is quiet".to_owned()])
     } else {
         Ok(())
     }
@@ -173,8 +199,9 @@ where
 }
 
 /// Each payload: the maps read, a negative number under a number key and under a text key, a text
-/// under a text key, a key each check refuses and one it reads, and under the `chrono` feature the
-/// same under a date key.
+/// under a text key, a key each check refuses and one it reads, the same under a key of the brand
+/// over the brand over a text, refused by either brand's check, and under the `chrono` feature
+/// the same under a date key.
 fn rows() -> Vec<Row> {
     let mut rows = vec![
         row::<Keyring>("Keyring", r#"{"pitches":{"3":1},"tones":{"low":2}}"#),
@@ -191,6 +218,18 @@ fn rows() -> Vec<Row> {
             "Keyring",
             r#"{"pitches":{"13":1},"tones":{"low":2}}"#,
             "'13': 13 is outside of the scale at path: $.pitches",
+        ),
+        row::<Nested>("Nested", r#"{"outer":{"ring":1}}"#),
+        row::<Nested>("Nested", r#"{"outer":{"ring":-1}}"#),
+        refused_key::<Nested>(
+            "Nested",
+            r#"{"outer":{"soft":1}}"#,
+            "'soft': soft is quiet at path: $.outer",
+        ),
+        refused_key::<Nested>(
+            "Nested",
+            r#"{"outer":{"mute":1}}"#,
+            "'mute': mute is silent at path: $.outer",
         ),
     ];
     #[cfg(feature = "chrono")]
@@ -217,6 +256,10 @@ fn a_value_and_a_key_under_a_brand_key_are_refused_at_the_field_serde_names() {
         "refused at tones.mute",
         r#"read {"pitches":{"3":1},"tones":{"ring":1}}"#,
         "refused at pitches.13",
+        r#"read {"outer":{"ring":1}}"#,
+        "refused at outer.ring",
+        "refused at outer.soft",
+        "refused at outer.mute",
     ];
     #[cfg(feature = "chrono")]
     serde_said.extend([
@@ -255,6 +298,8 @@ fn a_value_and_a_key_under_a_brand_key_are_refused_at_the_field_serde_names() {
         keyed_tone_kotlin::kotlin_definition(),
         keyed_pitch_kotlin::kotlin_definition(),
         keyring_kotlin::kotlin_definition(),
+        outer_tone_kotlin::kotlin_definition(),
+        nested_kotlin::kotlin_definition(),
         CHECKS.to_owned(),
     ];
     #[cfg(feature = "chrono")]
