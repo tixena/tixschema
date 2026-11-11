@@ -783,8 +783,9 @@ fn frame_session_impl() -> TokenStream {
 }
 
 /// `impl Transport for FrameSession`: `notify` writes a notify frame through the send function;
-/// `request` allocates the next id, registers a slot, sends the request frame and awaits it - in
-/// that alphabetical order, the same order the trait declares them in.
+/// `request` allocates the next id, encodes the request frame, registers a slot, sends the frame
+/// and awaits it, taking the slot back out where the send fails. The two are in alphabetical
+/// order, the same order the trait declares them in.
 fn frame_session_transport_impl() -> TokenStream {
     quote! {
         impl Transport for FrameSession {
@@ -812,6 +813,7 @@ fn frame_session_transport_impl() -> TokenStream {
                 let id =
                     (self.inner.next.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed) + 1)
                         .to_string();
+                let frame = request_frame(&id, operation, &payload, headers)?;
                 let slot = ::std::sync::Arc::new(::std::sync::Mutex::new(Slot {
                     answer: ::core::option::Option::None,
                     waker: ::core::option::Option::None,
@@ -821,7 +823,10 @@ fn frame_session_transport_impl() -> TokenStream {
                     .lock()
                     .unwrap()
                     .insert(id.clone(), ::std::sync::Arc::clone(&slot));
-                (self.inner.send)(request_frame(&id, operation, &payload, headers)?).await?;
+                if let ::core::result::Result::Err(refused) = (self.inner.send)(frame).await {
+                    self.inner.pending.lock().unwrap().remove(&id);
+                    return ::core::result::Result::Err(refused);
+                }
                 Awaiting(slot).await
             }
         }

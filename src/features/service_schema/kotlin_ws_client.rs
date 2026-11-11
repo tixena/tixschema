@@ -207,13 +207,13 @@ fn transport_header_stmt(named: &str) -> String {
 }
 
 /// Assigns the next id and registers the pending deferred under one lock, then sends the request
-/// frame and awaits the reply outside it.
+/// frame and awaits the reply outside it. A `send` that throws drops the deferred again.
 fn transport_request_stmt(named: &str, has_headers: bool) -> String {
     if has_headers {
         return format!(
             "/// Sends `operation` with `payload` and `headers` as a `request` frame and answers\n  \
              /// with the matching `reply` frame's own fields, or `null` once the connection closes\n  \
-             /// before one arrives.\n  \
+             /// before one arrives. Throws what the socket's `send` throws, and then waits on nothing.\n  \
              suspend fun request(operation: String, payload: JsonElement?, headers: JsonObject): JsonObject? {{\n    \
              val deferred = CompletableDeferred<JsonObject?>()\n    \
              val id = synchronized(this) {{\n      \
@@ -221,16 +221,21 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
              pending[assigned] = deferred\n      \
              assigned\n    \
              }}\n    \
-             send(\n      \
-             buildJsonObject {{\n        \
-             put(\"kind\", \"request\")\n        \
-             put(\"id\", id)\n        \
-             put(\"service\", \"{named}\")\n        \
-             put(\"operation\", operation)\n        \
-             put(\"payload\", payload ?: JsonNull)\n        \
-             if (headers.isNotEmpty()) put(\"headers\", headers)\n      \
-             }},\n    \
+             try {{\n      \
+             send(\n        \
+             buildJsonObject {{\n          \
+             put(\"kind\", \"request\")\n          \
+             put(\"id\", id)\n          \
+             put(\"service\", \"{named}\")\n          \
+             put(\"operation\", operation)\n          \
+             put(\"payload\", payload ?: JsonNull)\n          \
+             if (headers.isNotEmpty()) put(\"headers\", headers)\n        \
+             }},\n      \
              )\n    \
+             }} catch (refused: Throwable) {{\n      \
+             synchronized(this) {{ pending.remove(id) }}\n      \
+             throw refused\n    \
+             }}\n    \
              return deferred.await()\n  \
              }}\n\n  "
         );
@@ -238,6 +243,7 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
     format!(
         "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
          /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+         /// Throws what the socket's `send` throws, and then waits on nothing.\n  \
          suspend fun request(operation: String, payload: JsonElement?): JsonObject? {{\n    \
          val deferred = CompletableDeferred<JsonObject?>()\n    \
          val id = synchronized(this) {{\n      \
@@ -245,15 +251,20 @@ fn transport_request_stmt(named: &str, has_headers: bool) -> String {
          pending[assigned] = deferred\n      \
          assigned\n    \
          }}\n    \
-         send(\n      \
-         buildJsonObject {{\n        \
-         put(\"kind\", \"request\")\n        \
-         put(\"id\", id)\n        \
-         put(\"service\", \"{named}\")\n        \
-         put(\"operation\", operation)\n        \
-         put(\"payload\", payload ?: JsonNull)\n      \
-         }},\n    \
+         try {{\n      \
+         send(\n        \
+         buildJsonObject {{\n          \
+         put(\"kind\", \"request\")\n          \
+         put(\"id\", id)\n          \
+         put(\"service\", \"{named}\")\n          \
+         put(\"operation\", operation)\n          \
+         put(\"payload\", payload ?: JsonNull)\n        \
+         }},\n      \
          )\n    \
+         }} catch (refused: Throwable) {{\n      \
+         synchronized(this) {{ pending.remove(id) }}\n      \
+         throw refused\n    \
+         }}\n    \
          return deferred.await()\n  \
          }}\n\n  "
     )

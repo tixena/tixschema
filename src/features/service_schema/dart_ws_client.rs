@@ -216,17 +216,23 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
         return format!(
             "/// Sends `operation` with `payload` as a `request` frame and answers with the matching\n  \
              /// `reply` frame's own fields, or `null` once the connection closes before one arrives.\n  \
+             /// Throws what `send` throws, and then waits on nothing.\n  \
              Future<Map<String, dynamic>?> request(String operation, Object? payload) {{\n    \
              final id = '${{_nextId++}}';\n    \
              final completer = Completer<Map<String, dynamic>?>();\n    \
              _pending[id] = completer;\n    \
-             send({{\n      \
-             'kind': 'request',\n      \
-             'id': id,\n      \
-             'service': '{named}',\n      \
-             'operation': operation,\n      \
-             'payload': payload,\n    \
+             try {{\n      \
+             send({{\n        \
+             'kind': 'request',\n        \
+             'id': id,\n        \
+             'service': '{named}',\n        \
+             'operation': operation,\n        \
+             'payload': payload,\n      \
              }});\n    \
+             }} catch (_) {{\n      \
+             _pending.remove(id);\n      \
+             rethrow;\n    \
+             }}\n    \
              return completer.future;\n  \
              }}\n\n  \
              /// Sends `operation` with `payload` as a `notify` frame. No reply is expected.\n  \
@@ -239,6 +245,7 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     format!(
         "/// Sends `operation`, `payload` and `headers` as a `request` frame (`headers` written only\n  \
          /// when non-empty) and answers with the matching `reply` frame, or `null` once closed.\n  \
+         /// Throws what `send` throws, and then waits on nothing.\n  \
          Future<Map<String, dynamic>?> request(\n    \
          String operation,\n    \
          Object? payload,\n    \
@@ -247,14 +254,19 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
          final id = '${{_nextId++}}';\n    \
          final completer = Completer<Map<String, dynamic>?>();\n    \
          _pending[id] = completer;\n    \
-         send({{\n      \
-         'kind': 'request',\n      \
-         'id': id,\n      \
-         'service': '{named}',\n      \
-         'operation': operation,\n      \
-         'payload': payload,\n      \
-         if (headers.isNotEmpty) 'headers': headers,\n    \
+         try {{\n      \
+         send({{\n        \
+         'kind': 'request',\n        \
+         'id': id,\n        \
+         'service': '{named}',\n        \
+         'operation': operation,\n        \
+         'payload': payload,\n        \
+         if (headers.isNotEmpty) 'headers': headers,\n      \
          }});\n    \
+         }} catch (_) {{\n      \
+         _pending.remove(id);\n      \
+         rethrow;\n    \
+         }}\n    \
          return completer.future;\n  \
          }}\n\n  \
          /// Sends `operation`, `payload` and `headers` as a `notify` frame. No reply is expected.\n  \

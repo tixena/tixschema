@@ -1796,6 +1796,27 @@ fn frame_writer_and_frame_session_publish_the_constructors_the_design_specifies(
 }
 
 #[test]
+fn a_frame_session_request_whose_send_fails_takes_its_slot_back_out() {
+    let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");
+    let encoded = body
+        .find("let frame = request_frame (& id , operation , & payload , headers) ? ;")
+        .unwrap();
+    let registered = body.find(". insert (id . clone ()").unwrap();
+    let sent = body
+        .find(
+            "if let :: core :: result :: Result :: Err (refused) = (self . inner . send) (frame) \
+             . await { self . inner . pending . lock () . unwrap () . remove (& id) ; return :: \
+             core :: result :: Result :: Err (refused) ; }",
+        )
+        .unwrap();
+    assert!(
+        encoded < registered && registered < sent,
+        "a frame that does not encode is refused before a slot waits for its reply, and one the \
+         send function refuses takes its slot back out. Got: {body}"
+    );
+}
+
+#[test]
 fn every_runtime_crate_the_ws_rpc_client_body_calls_is_written_with_a_leading_colon_pair_and_tracing_is_not_one()
  {
     let body = macro_body_over_ws_rpc(MIXED_SERVICE, "billing_service_ws_rpc_client");

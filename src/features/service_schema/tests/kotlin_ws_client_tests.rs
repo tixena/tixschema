@@ -194,6 +194,20 @@ fn request_ids_start_at_one_and_correlate_through_a_completable_deferred() {
 }
 
 #[test]
+fn a_request_whose_send_throws_takes_its_deferred_back_out_of_pending() {
+    let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
+    let request_body = body_from(&written, "suspend fun request(");
+    assert!(
+        request_body.contains(
+            "} catch (refused: Throwable) {\n      synchronized(this) { pending.remove(id) }\n      \
+             throw refused\n    }\n    return deferred.await()"
+        ),
+        "a frame the socket refuses is answered by no reply, so nothing is left waiting for one. \
+         Got: {request_body}"
+    );
+}
+
+#[test]
 fn closing_settles_every_pending_call_and_cancels_the_scope_frames_hands_out() {
     let written = kotlin_ws_client_of(KOTLIN_WS_SERVICE);
     let close_body = body_from(&written, "fun close() {");

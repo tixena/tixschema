@@ -175,6 +175,20 @@ fn the_transport_holds_pending_completers_keyed_by_frame_id_and_can_close() {
 }
 
 #[test]
+fn a_request_whose_send_throws_takes_its_completer_back_out_of_pending() {
+    let written = dart_ws_client_of(DART_WS_SERVICE);
+    let request_body = body_from(&written, "Future<Map<String, dynamic>?> request(");
+    assert!(
+        request_body.contains(
+            "} catch (_) {\n      _pending.remove(id);\n      rethrow;\n    }\n    \
+             return completer.future;"
+        ),
+        "a frame `jsonEncode` or the sink refuses is answered by no reply, so nothing is left \
+         waiting for one. Got: {request_body}"
+    );
+}
+
+#[test]
 fn request_ids_start_at_one() {
     let written = dart_ws_client_of(DART_WS_SERVICE);
     assert!(written.contains("int _nextId = 1;"), "got: {written}");
