@@ -1,12 +1,13 @@
-//! `CarillonMcpService` on `mcp`, whose one tool takes the message of `CarillonService` and
-//! answers it, and what its Rust dispatcher and client answer to the cases of [`MCP_CASES`]: the
-//! answers every emitted `mcp` server and client is measured against. Nothing here waits on a
-//! clock.
+//! `CarillonMcpService` on `mcp`, whose first tool takes the message of `CarillonService` and
+//! answers it, and whose second answers a bell beside a header, and what its Rust dispatcher and
+//! client answer to the cases of [`MCP_CASES`] and [`TOLL_CASES`]: the answers every emitted `mcp`
+//! server and client is measured against. Nothing here waits on a clock.
 
 use super::carillon_mcp_client::{CarillonMcpServiceClient, McpMessage, Transport};
 use super::carillon_mcp_dispatcher;
 use super::carillon_service::{
-    CASES, CarillonChime, CarillonError, STRUCK, carillon_chime_schema, payload,
+    CASES, CarillonBell, CarillonChime, CarillonError, STRUCK, carillon_bell_schema,
+    carillon_chime_schema, payload,
 };
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
@@ -28,11 +29,37 @@ pub const MCP_CASES: [&str; 6] = [
     "an f64 beyond its range",
 ];
 
+/// The answers each `mcp` client is handed as the answer of `toll`: a success and a declared
+/// error, each beside a header it reads and beside a header that holds no number.
+pub const TOLL_CASES: [&str; 4] = [
+    "a rung read",
+    "a rung that is no number",
+    "a crack read",
+    "a crack that is no number",
+];
+
+/// The heaviest bell that tolls; a heavier one cracks.
+const CRACKS_ABOVE: u32 = 50;
+
 /// Strikes the bells of a carillon over `mcp`.
 #[service_schema(transports = ["mcp"])]
 pub trait CarillonMcpService<Ctx> {
     /// Strikes the chime the arguments name, and answers it.
     async fn strike(&self, ctx: &Ctx, req: CarillonChime) -> Result<CarillonChime, CarillonError>;
+
+    /// Tolls the bell the arguments name, and answers it beside its weight, or that it cracked
+    /// beside the weight it cracked at.
+    #[service_schema_op(http(
+        method = "POST",
+        path = "/tolls",
+        header_out("x-rung"),
+        error_header_out("x-cracked-at")
+    ))]
+    async fn toll(
+        &self,
+        ctx: &Ctx,
+        req: CarillonBell,
+    ) -> Result<(CarillonBell, u32), (CarillonError, u32)>;
 }
 
 /// Counts the strikes it is handed.
@@ -49,6 +76,19 @@ impl CarillonMcpService<()> for McpCarillon {
     ) -> impl Future<Output = Result<CarillonChime, CarillonError>> {
         *self.struck.lock().unwrap() += 1;
         ready(Ok(req))
+    }
+
+    fn toll(
+        &self,
+        _ctx: &(),
+        req: CarillonBell,
+    ) -> impl Future<Output = Result<(CarillonBell, u32), (CarillonError, u32)>> {
+        let weight = req.weight;
+        ready(if weight > CRACKS_ABOVE {
+            Err((CarillonError::Cracked, weight))
+        } else {
+            Ok((req, weight))
+        })
     }
 }
 
@@ -90,8 +130,13 @@ pub fn mcp_payload(name: &str) -> String {
 /// The `tools/call` request `id` that carries `arguments` to `strike`, written as text: a number
 /// beyond an `f64` is held by no `Value`.
 pub fn call(id: u32, arguments: &str) -> String {
+    tool_call(id, "strike", arguments)
+}
+
+/// The `tools/call` request `id` that carries `arguments` to `tool`, written as text.
+fn tool_call(id: u32, tool: &str, arguments: &str) -> String {
     format!(
-        r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"strike","arguments":{arguments},"_meta":{{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{{}}}}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{arguments},"_meta":{{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{{}}}}}}}}"#
     )
 }
 
@@ -151,7 +196,7 @@ pub fn reply(structured: &str) -> String {
 /// What the Rust client answers `answered` as the answer of a call that sends the message read
 /// whole: `"read"` for the message read, and the fault's kind and field otherwise; and what it
 /// handed the transport.
-fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
+pub fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
     let whole: CarillonChime = serde_json::from_str(STRUCK).unwrap();
     let client = CarillonMcpServiceClient::new(Canned {
         answer: answered,
@@ -159,10 +204,7 @@ fn rust_client_answer(answered: String) -> (Value, Vec<Value>) {
     });
     let answer = match poll_once(client.strike(whole)).unwrap() {
         Ok(_) => json!("read"),
-        Err(carillon_mcp_service_schema::CallError::Fault(fault)) => {
-            let written = serde_json::to_value(&fault).unwrap();
-            json!({ "kind": written["kind"], "field": fault.field() })
-        }
+        Err(carillon_mcp_service_schema::CallError::Fault(fault)) => fault_told(&fault),
         Err(declared) => json!({ "declared": format!("{declared:?}") }),
     };
     (answer, client.transport().sent.lock().unwrap().clone())
@@ -174,6 +216,64 @@ pub fn rust_client_answers() -> Vec<Value> {
     MCP_CASES
         .into_iter()
         .map(|name| rust_client_answer(reply(&mcp_payload(name))).0)
+        .collect()
+}
+
+/// The kind and the field of a fault the Rust client answered.
+fn fault_told(fault: &carillon_mcp_service_schema::ServiceFault) -> Value {
+    let written = serde_json::to_value(fault).unwrap();
+    json!({ "kind": written["kind"], "field": fault.field() })
+}
+
+/// The answer each case of [`TOLL_CASES`] hands a client: the Rust dispatcher's answer to a toll
+/// of a bell that tolls or of one that cracks, its header written as a text where the case holds
+/// no number.
+pub fn toll_replies() -> Vec<String> {
+    TOLL_CASES
+        .into_iter()
+        .map(|name| {
+            let cracked = name.starts_with("a crack");
+            let weight = if cracked { CRACKS_ABOVE + 1 } else { 3 };
+            let (answer, _) = over_mcp(&tool_call(
+                1,
+                "toll",
+                &json!({ "weight": weight }).to_string(),
+            ));
+            let mut answered: Value = serde_json::from_str(&answer.unwrap()).unwrap();
+            if name.ends_with("no number") {
+                let result = &mut answered["result"];
+                let text = &mut result["content"][0]["text"];
+                let mut carried: Value = serde_json::from_str(text.as_str().unwrap()).unwrap();
+                let header = if cracked { "x-cracked-at" } else { "x-rung" };
+                carried[header] = json!("x");
+                *text = json!(carried.to_string());
+                if !cracked {
+                    result["structuredContent"] = carried;
+                }
+            }
+            answered.to_string()
+        })
+        .collect()
+}
+
+/// What the Rust client answers each case of [`TOLL_CASES`] as the answer of a toll: the header
+/// it read beside the success or the declared error, and the fault's kind and field otherwise.
+pub fn rust_toll_answers() -> Vec<Value> {
+    toll_replies()
+        .into_iter()
+        .map(|answered| {
+            let client = CarillonMcpServiceClient::new(Canned {
+                answer: answered,
+                sent: Mutex::new(Vec::new()),
+            });
+            match poll_once(client.toll(CarillonBell { weight: 3 })).unwrap() {
+                Ok((_, rung)) => json!({ "rung": rung }),
+                Err(carillon_mcp_service_schema::CallError::Operation((_, at))) => {
+                    json!({ "crackedAt": at })
+                }
+                Err(carillon_mcp_service_schema::CallError::Fault(fault)) => fault_told(&fault),
+            }
+        })
         .collect()
 }
 
@@ -321,6 +421,20 @@ fn the_rust_client_answers_every_success_it_cannot_read_with_no_field() {
     assert_eq!(
         message["text"]["params"]["arguments"],
         serde_json::from_str::<Value>(STRUCK).unwrap()
+    );
+}
+
+#[test]
+fn the_rust_client_answers_a_header_it_cannot_read_with_no_field() {
+    let unread = json!({ "kind": "undeserializable-payload", "field": null });
+    assert_eq!(
+        rust_toll_answers(),
+        [
+            json!({ "rung": 3_u32 }),
+            unread.clone(),
+            json!({ "crackedAt": CRACKS_ABOVE + 1 }),
+            unread,
+        ]
     );
 }
 

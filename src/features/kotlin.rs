@@ -1837,12 +1837,14 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
 }
 
 /// The `deserialize` of the serializer of a `Result` typed `own`: the object of one key, read under
-/// it by the arm of `reads` that names it, `refusal` for an object of any other number of keys, and
-/// an unknown variant in serde's words for a key no arm names.
+/// it by the arm of `reads` that names it, `refusal` for an object of any other number of keys, a
+/// value that is neither a string nor an object in serde's words for text that is not the
+/// document, and an unknown variant in serde's words for a key no arm names.
 fn result_read(own: &str, refusal: &str, reads: &[String]) -> String {
     let read = format!(
-        "val entry = (element as? JsonObject ?: throw SerializationException(\"expected an \
-         object, found \" + element)).entries.singleOrNull() ?: {refusal}; when (entry.key) {{ \
+        "val entry = (element as? JsonObject ?: throw SerializationException(if (element is \
+         JsonPrimitive && element.isString) \"expected an object, found \" + element else \
+         \"{EXPECTED_VALUE}\")).entries.singleOrNull() ?: {refusal}; when (entry.key) {{ \
          {}; else -> throw SerializationException(\"unknown variant `\" + entry.key + \"`, \
          expected `Ok` or `Err`\") }}",
         reads.join("; ")
@@ -3801,12 +3803,13 @@ fn tag_read(tagging: Tagging<'_>, tag_key: &str, arms: &str) -> String {
             kotlin_quoted(content),
             unknown_key_refused(&format!("(obj - {key} - {}).keys", kotlin_quoted(content)))
         ),
+        // serde reads the variant from a string or an object of one key, and refuses any other
+        // value as text that is not the document.
         Tagging::External => format!(
-            "val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-             else ({}).entries.singleOrNull()?.let {{ it.key to it.value }} ?: throw \
-             SerializationException(\"expected an object of one key, found \" + element); \
-             when (tag) {{ {arms} else -> {unknown} }}",
-            read_as("element", JsonKind::Object)
+            "val (tag, data) = if (element is JsonPrimitive && element.isString) element.content \
+             to JsonNull else (element as? JsonObject)?.entries?.singleOrNull()?.let {{ it.key to \
+             it.value }} ?: throw SerializationException(\"{EXPECTED_VALUE}\"); when (tag) {{ \
+             {arms} else -> {unknown} }}"
         ),
         Tagging::Unwrapped => format!(
             "val obj = {obj}; val tag = ({} as? JsonPrimitive)?.content; \

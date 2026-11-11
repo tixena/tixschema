@@ -40,7 +40,12 @@ fn the_wrap_opens_the_expression_of_every_shape() {
         (
             Transfer::zod_schema(),
             if cfg!(feature = "serde") {
-                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.union([z.literal(\"Held\"), "
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, \
+                 z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== \
+                 \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
+                 Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ \
+                 code: \"custom\", message: \"expected value\", input: ctx.value, params: { \
+                 undeserializable: true } }); }).pipe(z.union([z.literal(\"Held\"), "
             } else {
                 "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion("
             },
@@ -194,7 +199,7 @@ fn a_flattened_type_is_handed_the_payload_without_its_holders_keys() {
         pinned.contains(
             ".and(z.lazy(() => z.preprocess((held) => typeof held === \"object\" && held !== null \
              && !Array.isArray(held) ? Object.fromEntries(Object.entries(held).filter(([key]) => \
-             ![\"dock\"].includes(key))) : held, Tagged$Schema)).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
+             ![\"dock\"].includes(key))) : held, Tagged$Schema)).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"
         ),
         "got: {pinned}"
     );

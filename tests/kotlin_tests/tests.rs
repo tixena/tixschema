@@ -658,10 +658,7 @@ fn test_external_tagged_enum() {
     );
     assert!(kotlin.contains("element is JsonPrimitive"), "got: {kotlin}");
     assert!(
-        kotlin.contains(
-            "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" \
-             + element)).entries.singleOrNull()"
-        ),
+        kotlin.contains("(element as? JsonObject)?.entries?.singleOrNull()"),
         "got: {kotlin}"
     );
 }
@@ -675,10 +672,9 @@ fn test_external_tagged_unit_variant_round_trip_source() {
     );
     assert!(
         kotlin.contains(
-            "val (tag, data) = if (element is JsonPrimitive) element.content to JsonNull \
-             else (element as? JsonObject ?: throw SerializationException(\"expected an object, \
-             found \" + element)).entries.singleOrNull()?.let { it.key to it.value } ?: throw \
-             SerializationException(\"expected an object of one key, found \" + element);"
+            "val (tag, data) = if (element is JsonPrimitive && element.isString) \
+             element.content to JsonNull else (element as? JsonObject)?.entries?.singleOrNull()\
+             ?.let { it.key to it.value } ?: throw SerializationException(\"expected value\");"
         ),
         "the reader branches on the decoded element's own shape rather than assuming an object. \
          got: {kotlin}"

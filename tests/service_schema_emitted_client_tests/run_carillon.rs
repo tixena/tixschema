@@ -4,7 +4,11 @@
 //! same payload: the message read, a frame dropped, or the fault's kind and the field it names,
 //! and an attachment calls no handler for a frame it refuses or drops and replies to a message it
 //! reads as the Rust dispatcher does. Each client then refuses to send an `f32` read as an
-//! infinity. Each run resolves on the replies it counts, with no clock.
+//! infinity, and the Dart and Kotlin transports, handed a reply naming a request whose frame they
+//! did not write, hold no call for it and hand the reply to `frames`. A Kotlin call cancelled
+//! while it waits ends cancelled and a reply naming it reaches `frames`, and a Swift one answers
+//! the cancellation, not the reply delivered after it. Each run resolves on the replies it
+//! counts, with no clock.
 
 use super::carillon_service::{CASES, STRUCK, frame, over_ws, payload, rust_answers};
 use core::fmt::Write as _;
@@ -26,10 +30,11 @@ use super::runtime::ran;
 
 /// The attachment handed each frame through a transport, and what it replied and how many strikes
 /// reached the handler; then the client handed each payload as the reply; then the client handed an
-/// `f32` it reads as an infinity to send, over a socket that counts what it is sent. A frame the
-/// transport hands no attachment is told by the one sent after it, which names another service,
-/// reaching the attachments first; a reply the client drops, and a message it sends, by the
-/// declared error sent after it settling the call.
+/// `f32` it reads as an infinity to send, over a socket that counts what it is sent, and then a
+/// reply naming the id of that unsent request. A frame the transport hands no attachment is told by
+/// the one sent after it, which names another service, reaching the attachments first; a reply the
+/// client drops, and a message it sends, by the declared error sent after it settling the call; a
+/// reply the transport holds a request for, by the frame sent after it reaching `frames` first.
 #[cfg(feature = "dart")]
 const DART_DRIVER: &str = r#"
 List<String> withinScale(CarillonPitch value) =>
@@ -128,6 +133,14 @@ void main() async {
   );
   final infinite = CarillonChime.fromJson(jsonDecode(whole.replaceFirst('"ring":1.5', '"ring":1e39')) as Map<String, dynamic>);
   final unsent = await CarillonServiceWsClient(refusing).strike(infinite);
+  final firstPassed = Completer<Object?>();
+  final passing = refusing.frames.inbound.listen((passed) {
+    if (!firstPassed.isCompleted) firstPassed.complete(passed['id']);
+  });
+  answering.add('{"kind":"reply","id":"1","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}');
+  answering.add(elsewhere);
+  final passedFirst = await firstPassed.future;
+  await passing.cancel();
   refusing.close();
   await counted.close();
   await answering.close();
@@ -136,6 +149,7 @@ void main() async {
       'kind': fault.kind.toJson(),
       'detail': fault.detail,
       'sent': sent,
+      'passedFirst': passedFirst,
     },
     _ => told(unsent),
   };
@@ -145,7 +159,9 @@ void main() async {
 
 /// The attachment handed each frame, then the client handed each payload as the reply, then the
 /// client handed an `f32` it reads as an infinity to send, each told apart as the Dart driver tells
-/// them.
+/// them; then the client over a socket whose `send` throws, and a reply naming the id of the
+/// request it did not write, told as the Dart driver tells the reply to its unsent request; then a
+/// call cancelled while it waits, and a reply naming its id, told the same way.
 #[cfg(feature = "kotlin")]
 const KOTLIN_DRIVER: &str = r#"
 fun withinScale(value: CarillonPitch): List<String> =
@@ -244,16 +260,51 @@ fun main() = runBlocking {
         put("detail", unsent.fault.detail)
         put("sent", counted.sent)
     } else told(unsent)
+    val throwing = ManualSocket { throw IllegalStateException("the socket is closed") }
+    val unwriting = CarillonServiceWsTransport(throwing, CarillonServiceWsOptions(heartbeat = null))
+    val unwritten = CarillonServiceWsClient(unwriting).strike(whole)
+    val passedOn = Channel<String>(Channel.UNLIMITED)
+    val passingOn = launch(start = CoroutineStart.UNDISPATCHED) { unwriting.frames.inbound.collect { passedOn.send(it) } }
+    throwing.deliver("""{"kind":"reply","id":"1","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
+    throwing.deliver(ELSEWHERE)
+    val passedFirst = idOf(passedOn.receive())
+    passingOn.cancel()
+    unwriting.close()
+    val thrown = if (unwritten is CarillonServiceStrikeResult.Fault) buildJsonObject {
+        put("kind", Json.encodeToJsonElement(serializer<CarillonServiceFaultKind>(), unwritten.fault.kind))
+        put("detail", unwritten.fault.detail)
+        put("passedFirst", passedFirst)
+    } else told(unwritten)
+    val waiting = ManualSocket {}
+    val abandoning = CarillonServiceWsTransport(waiting, CarillonServiceWsOptions(heartbeat = null))
+    var answered: JsonElement? = null
+    val call = launch(start = CoroutineStart.UNDISPATCHED) { answered = told(CarillonServiceWsClient(abandoning).strike(whole)) }
+    call.cancel()
+    call.join()
+    val passedAbandoned = Channel<String>(Channel.UNLIMITED)
+    val passingAbandoned = launch(start = CoroutineStart.UNDISPATCHED) { abandoning.frames.inbound.collect { passedAbandoned.send(it) } }
+    waiting.deliver("""{"kind":"reply","id":"1","service":"CarillonService","ok":false,"error":{"errorCode":"cracked"}}""")
+    waiting.deliver(ELSEWHERE)
+    val abandonedFirst = idOf(passedAbandoned.receive())
+    passingAbandoned.cancel()
+    abandoning.close()
     println(buildJsonObject {
         put("attached", JsonArray(attached))
         put("read", JsonArray(read))
         put("refused", refused)
+        put("thrown", thrown)
+        put("abandoned", buildJsonObject {
+            put("cancelled", call.isCancelled)
+            put("answered", answered ?: JsonNull)
+            put("passedFirst", abandonedFirst)
+        })
     }.toString())
 }
 "#;
 
 /// The client handed each payload as the reply, a reply it drops told by the declared error sent
-/// after it settling the call.
+/// after it settling the call; then a call cancelled once its frame is written, and a reply naming
+/// its id delivered after the cancel, told by what the call answers.
 #[cfg(feature = "swift")]
 const SWIFT_DRIVER: &str = r#"
 func withinScale(_ value: CarillonPitch) -> [String] {
@@ -289,6 +340,24 @@ final class Replying: CarillonServiceWsSocket, @unchecked Sendable {
   }
 }
 
+final class Waiting: CarillonServiceWsSocket, @unchecked Sendable {
+  var onMessage: (@Sendable (String) -> Void)?
+  var onClose: (@Sendable () -> Void)?
+  let written: AsyncStream<String>.Continuation
+
+  init(_ written: AsyncStream<String>.Continuation) {
+    self.written = written
+  }
+
+  func send(_ text: String) {
+    written.yield(text)
+  }
+
+  func close() {
+    onClose?()
+  }
+}
+
 func told(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> String {
   switch answered {
   case .success:
@@ -301,6 +370,11 @@ func told(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> St
   }
 }
 
+func toldWithDetail(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> String {
+  guard case .failure(.fault(let fault)) = answered else { return told(answered) }
+  return "{\"kind\":\"\(fault.kind.rawValue)\",\"detail\":\"\(fault.detail)\"}"
+}
+
 let whole = try! JSONDecoder().decode(CarillonChime.self, from: Data(wholeText.utf8))
 var read: [String] = []
 for value in payloads {
@@ -308,7 +382,17 @@ for value in payloads {
   read.append(told(await ws.strike(whole)))
   await ws.close()
 }
-print("[" + read.joined(separator: ",") + "]")
+let (written, writing) = AsyncStream<String>.makeStream()
+let waiting = Waiting(writing)
+let abandoning = CarillonServiceWsClient(socket: waiting, options: .init(heartbeat: nil))
+let call = Task { await abandoning.strike(whole) }
+var sent = written.makeAsyncIterator()
+_ = await sent.next()
+call.cancel()
+waiting.onMessage?("{\"kind\":\"reply\",\"id\":\"0\",\"service\":\"CarillonService\",\"ok\":true,\"value\":\(wholeText)}")
+let abandoned = toldWithDetail(await call.value)
+await abandoning.close()
+print("{\"read\":[" + read.joined(separator: ",") + "],\"abandoned\":" + abandoned + "}")
 "#;
 
 /// The TypeScript attachment handed each frame, then the client handed each payload as the reply,
@@ -557,6 +641,7 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
             "kind": "transport-failure",
             "detail": "Converting object to an encodable object failed: Infinity",
             "sent": 0_i32,
+            "passedFirst": "1",
         })
     );
 }
@@ -645,6 +730,18 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         }),
         "{refused}"
     );
+    assert_eq!(
+        told["thrown"],
+        json!({
+            "kind": "transport-failure",
+            "detail": "java.lang.IllegalStateException: the socket is closed",
+            "passedFirst": "1",
+        })
+    );
+    assert_eq!(
+        told["abandoned"],
+        json!({ "cancelled": true, "answered": null, "passedFirst": "1" })
+    );
 }
 
 /// The Swift program the client runs in.
@@ -706,7 +803,15 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
         "`swift -warnings-as-errors main.swift` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
         run.stdout, run.stderr
     );
-    assert_read_as_rust(&serde_json::from_str(run.stdout.trim()).unwrap(), &[]);
+    let told: Value = serde_json::from_str(run.stdout.trim()).unwrap();
+    assert_read_as_rust(&told["read"], &[]);
+    assert_eq!(
+        told["abandoned"],
+        json!({
+            "kind": "transport-failure",
+            "detail": "the task was cancelled before the reply arrived",
+        })
+    );
 }
 
 /// The TypeScript module the attachment and the client run in.

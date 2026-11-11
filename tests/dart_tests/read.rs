@@ -338,10 +338,9 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &freight,
         &format!(
             "{}{{ if (json is String) {{ switch (json) {{ case 'Held': return FreightHeld(); \
-             default: throw FormatException('Unknown Freight: ' + json); }} }} final map = json as \
-             Map<String, dynamic>; if (map.isEmpty) {{ throw FormatException('empty object for \
-             Freight'); }} if (map.length > 1) {{ throw FormatException('more than one key for \
-             Freight'); }} final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
+             default: throw FormatException('Unknown Freight: ' + json); }} }} final map = json is \
+             Map<String, dynamic> && json.length == 1 ? json : throw const \
+             FormatException('expected value'); final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
              return _readAt(null, tag, () => \
              FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed']))); case 'Held': return \
              _readAt(null, tag, () => map[tag] == null ? FreightHeld() : throw \

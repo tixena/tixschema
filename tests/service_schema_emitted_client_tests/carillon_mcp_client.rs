@@ -4,6 +4,6 @@
 //! The `use` is what resolves the types the author declared: the macro spells them exactly as
 //! they were written.
 
-use super::carillon_service::{CarillonChime, CarillonError};
+use super::carillon_service::{CarillonBell, CarillonChime, CarillonError};
 
 carillon_mcp_service_mcp_client!();

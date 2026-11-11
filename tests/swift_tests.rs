@@ -26,6 +26,12 @@ mod tests;
 #[path = "support/swift_fitted.rs"]
 mod swift_fitted;
 
+/// What the emitter writes into the wrapper of a map keyed by a number.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "support/swift_key_number.rs"]
+mod swift_key_number;
+
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/validate.rs"]

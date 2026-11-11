@@ -195,6 +195,21 @@ fn a_mapped_status_answers_declared_and_a_transport_throw_answers_fault() {
 }
 
 #[test]
+fn a_cancelled_call_lets_the_cancellation_through_ahead_of_the_transport_failure() {
+    let written = kotlin_http_client_of(KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE);
+    for call in ["window", "purgeConversation"] {
+        let method = method_body(&written, call);
+        assert!(
+            method.contains(
+                "} catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {\n      \
+                 throw cancelled\n    } catch (thrown: Throwable) {"
+            ),
+            "a caller cancelled while `send` waits ends cancelled, with no fault. Got: {method}"
+        );
+    }
+}
+
+#[test]
 fn a_one_way_method_throws_only_the_refusal() {
     let written = kotlin_http_client_of(KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE);
     assert!(

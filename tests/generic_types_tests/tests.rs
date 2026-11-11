@@ -364,7 +364,10 @@ mod zod {
             "Got: {zod}"
         );
         assert!(
-            zod.contains("stringified_number_key: z.record(z.number().int().min(0).max(4294967295), z.string())"),
+            zod.contains("stringified_number_key: z.unknown().check(")
+                && zod.contains(
+                    ".pipe(z.record(z.number().int().min(0).max(4294967295), z.string()))"
+                ),
             "Got: {zod}"
         );
     }
@@ -620,7 +623,7 @@ mod zod {
         );
         assert!(zod.contains("id: idType,"), "Got: {zod}");
         assert!(
-            zod.contains(".and(z.lazy(() => Envelope$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
+            zod.contains(".and(z.lazy(() => Envelope$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
             "Got: {zod}"
         );
     }
@@ -971,7 +974,7 @@ mod jsonschema {
             serde_json::json!({
                 "type": "object",
                 "additionalProperties": { "type": "string" },
-                "propertyNames": { "type": "string", "pattern": "^-?[0-9]+(\\.0+)?$" }
+                "propertyNames": { "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" }
             })
         );
     }

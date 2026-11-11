@@ -1221,11 +1221,11 @@ const Event$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   type: z.literal("userCreated"),
   timestamp: z.string(),
   user_id: z.string(),
-}).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }), z.strictObject({
+}), z.strictObject({
   type: z.literal("userDeleted"),
   reason: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),
   user_id: z.string(),
-}).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })]);
+})]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
 export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
   examples: []
@@ -1257,8 +1257,9 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 /// - `u8`, `u16`, `u32`, `i8`, `i16`, `i32`, `usize`, `isize`, `f32` and `f64` are `number` in
 ///   TypeScript, and Zod holds an integer to its type's range.
 /// - `u64` and `i64` are `bigint` in TypeScript, read in Zod through `z.codec`, and
-///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number` and a
-///   Zod `z.number().int()`. `u64` and `usize` are refused under `swift` or `kotlin`.
+///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number`, and
+///   Zod keys the record by each key's digits. `u64` and `usize` are refused under `swift` or
+///   `kotlin`.
 /// - `i128`, `u128`, `f16` and `f128` are refused at expansion. A `serde_json::Value` or
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.

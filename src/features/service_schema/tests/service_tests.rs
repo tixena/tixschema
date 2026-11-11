@@ -201,7 +201,7 @@ fn the_payload_is_parsed_before_the_implementation_is_called() {
 fn a_payload_that_parsed_and_then_failed_is_answered_as_the_rust_dispatcher_answers_it() {
     let written = service_of(MIXED_SERVICE);
     assert!(
-        written.contains("first.params?.undeserializable === true")
+        written.contains("first?.params?.undeserializable === true")
             && written.contains(
                 "kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\","
             ),

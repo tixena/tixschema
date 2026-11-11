@@ -1132,10 +1132,7 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
     };
     assert_eq!(
         printed,
-        format!(
-            "{}\nexpected an object of one key, found {} at path: $\n",
-            serde_read[0], r#"{"Bay":{"label":"n"},"north":2}"#
-        )
+        format!("{}\nexpected value at path: $\n", serde_read[0])
     );
 }
 

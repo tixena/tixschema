@@ -613,7 +613,8 @@ fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_
         "const [in_] = captured;",
         "message[\"in\"] = in_;",
         "const [class_] = captured;",
-        "message[/*__TIXSCHEMA_WIRE_KEY:object:class__*/] = class_;",
+        "message[/*__TIXSCHEMA_WIRE_KEY:object:class__*/] = \
+         lookupServiceHttpPathText(class_, /*__TIXSCHEMA_WIRE_FORM:object:class__*/);",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
     }

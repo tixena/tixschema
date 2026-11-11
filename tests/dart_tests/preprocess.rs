@@ -630,9 +630,8 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
         &format!(
             "{}{{ final json = unwrapped(payload); if (json is String) {{ switch (json) {{ case \
              'Held': return TransferHeld(); default: throw FormatException('Unknown Transfer: ' + \
-             json); }} }} final map = json as Map<String, dynamic>; if (map.isEmpty) {{ throw \
-             FormatException('empty object for Transfer'); }} if (map.length > 1) {{ throw \
-             FormatException('more than one key for Transfer'); }} final tag = map.keys.first; \
+             json); }} }} final map = json is Map<String, dynamic> && json.length == 1 ? json : throw \
+             const FormatException('expected value'); final tag = map.keys.first; \
              switch (tag) {{ case 'Held': return _readAt(null, tag, () => map[tag] == null ? \
              TransferHeld() : throw FormatException('Transfer: ' + tag + ' takes no value')); \
              case 'Rail': return _readAt(null, tag, () => TransferRail(trimmed(map['Rail']) as \
@@ -790,9 +789,8 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
         &format!(
             "{}{{ final json = tag(payload); if (json is String) {{ switch (json) {{ case 'Held': \
              return RoutedHeld(); default: throw FormatException('Unknown Routed: ' + json); }} }} \
-             final map2 = json as Map<String, dynamic>; if (map2.isEmpty) {{ throw \
-             FormatException('empty object for Routed'); }} if (map2.length > 1) {{ throw \
-             FormatException('more than one key for Routed'); }} final tag2 = map2.keys.first; \
+             final map2 = json is Map<String, dynamic> && json.length == 1 ? json : throw const \
+             FormatException('expected value'); final tag2 = map2.keys.first; \
              switch (tag2) {{ case 'Held': return _readAt(null, tag2, () => map2[tag2] == null ? \
              RoutedHeld() : throw FormatException('Routed: ' + tag2 + ' takes no value')); case \
              'Rail': return _readAt(null, tag2, () => RoutedRail(map(map2['Rail']) as String)); \

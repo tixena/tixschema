@@ -8,8 +8,8 @@
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, has_one_way, header_call_args, header_out_push_stmt,
-    message_dart_typename, message_decode, message_encode, split_reply_record,
-    success_decode_block,
+    header_refused_fault, message_dart_typename, message_decode, message_encode, signed_zeros_call,
+    signed_zeros_fn, split_reply_record, success_decode_block,
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
@@ -644,7 +644,12 @@ Object? _@P@McpSorted(Object? value) {
   return value;
 }
 
-String _@P@McpJson(Object? value) => jsonEncode(_@P@McpSorted(jsonDecode(jsonEncode(value))));
+String _@P@McpJson(Object? value) =>
+    jsonEncode(_@P@McpSorted(jsonDecode(jsonEncode(value, toEncodable: _@P@McpEncodable))));
+
+/// What `jsonEncode` writes for a value it does not write itself: a `double` that is not finite as
+/// `null`, as serde writes it, and anything else as its `toJson()`.
+Object? _@P@McpEncodable(dynamic value) => value is double ? null : value.toJson();
 
 String _@P@McpObject(Map<String, String> members) {
   final keys = members.keys.toList()..sort();
@@ -801,7 +806,7 @@ Future<({String? text, int status})> _@P@McpRespond(
       );
   final Object? parsed;
   try {
-    parsed = jsonDecode(text, reviver: _@P@WsHeld);
+    parsed = jsonDecode(_@P@WsSignedZeros(text), reviver: _@P@WsHeld);
   } catch (_) {
     return failed(null, 400, -32600, 'Invalid Request');
   }
@@ -1025,7 +1030,7 @@ Future<({String? text, int status})> _@P@McpRespond(
 
 Map<String, dynamic>? _@P@McpMessage(String text) {
   try {
-    final parsed = jsonDecode(text, reviver: _@P@WsHeld);
+    final parsed = jsonDecode(_@P@WsSignedZeros(text), reviver: _@P@WsHeld);
     return parsed is Map<String, dynamic> ? parsed : null;
   } catch (_) {
     return null;
@@ -1199,7 +1204,7 @@ Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   final ctx = admitted.ctx as Ctx;
   final Object? parsed;
   try {
-    parsed = jsonDecode(utf8.decode(request.body), reviver: _@P@WsHeld);
+    parsed = jsonDecode(_@P@WsSignedZeros(utf8.decode(request.body)), reviver: _@P@WsHeld);
   } catch (_) {
     return respond(400, error(null, -32600, 'Invalid Request'));
   }
@@ -1287,11 +1292,11 @@ const CLIENT_CALL: &str = "class _@N@McpCallFault implements Exception {
   final @F@ fault;
 }
 
-@F@ _@P@McpClientFault(@N@FaultKind kind, String operation, String detail, {String? field}) =>
-    @F@(detail: detail, field: field, kind: kind, operation: operation);
+@F@ _@P@McpClientFault(@N@FaultKind kind, String operation, String detail) =>
+    @F@(detail: detail, kind: kind, operation: operation);
 
-@F@ _@P@McpReadFailed(String operation, String detail, {String? field}) =>
-    _@P@McpClientFault(@N@FaultKind.undeserializablePayload, operation, detail, field: field);";
+@F@ _@P@McpReadFailed(String operation, String detail) =>
+    _@P@McpClientFault(@N@FaultKind.undeserializablePayload, operation, detail);";
 
 const CLIENT_PAIR: &str =
     "/// The bytes and the content type an answer's one image or audio block holds, written as the
@@ -1346,7 +1351,7 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
     }
     final Object? parsed;
     try {
-      parsed = jsonDecode(answer);
+      parsed = jsonDecode(_@P@McpSignedZeros(answer));
     } catch (rejected) {
       throw _@N@McpCallFault(_@P@McpReadFailed(operation, '$rejected'));
     }
@@ -1408,7 +1413,7 @@ const CLIENT_PROMPT_METHOD: &str = "  Future<Map<String, dynamic>> _prompt(
 const CLIENT_FAULT_OF: &str = "@F@ _@P@McpFaultOf(Map<String, dynamic> result, String operation) {
   final Object? parsed;
   try {
-    parsed = jsonDecode(((result['content'] as List).first as Map<String, dynamic>)['text'] as String);
+    parsed = jsonDecode(_@P@McpSignedZeros(((result['content'] as List).first as Map<String, dynamic>)['text'] as String));
   } catch (rejected) {
     return _@P@McpReadFailed(operation, '$rejected');
   }
@@ -1906,7 +1911,9 @@ fn scopes_table(table: &ScopeTable) -> String {
 /// it from the arguments read out of a value: a key that is no number names no field, a `Result`
 /// of other than one key names the path the read refused at, and every other refusal names the
 /// path of each value the message does not read at, from the JSON schema the catalog holds for it:
-/// the first one, or with `every` all of them, a key of `passed` read past at the top.
+/// the first one, or with `every` all of them, a key of `passed` read past at the top. A refusal
+/// the schema finds no such value for, `1.0` or `-0` for an integer, names the path the read
+/// refused at.
 fn unread_helpers(named: &str, prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let issue = fault_issue_name(named);
@@ -1917,7 +1924,7 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          if (detail == '{EXPECTED_NUMERIC_KEY}') return _{prefix}McpFault({named}FaultKind.undeserializablePayload, operation, detail);\n  \
          final found = <(String, String)>[];\n  \
          _{prefix}McpMismatches(schema, source, null, passed, const <String>[], found);\n  \
-         final at = detail == '{EXPECTED_VALUE}' ? _{prefix}WsRefusedAt(refused) : null;\n  \
+         final at = detail == '{EXPECTED_VALUE}' || found.isEmpty ? _{prefix}WsRefusedAt(refused) : null;\n  \
          if (at != null) found..removeWhere((entry) => entry.$1 == at)..insert(0, (at, detail));\n  \
          if (found.isEmpty || found.first.$1.isEmpty) {{\n    \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
@@ -3524,6 +3531,7 @@ pub fn client_text(declared: &ServiceDef) -> String {
         return published.join("\n\n");
     }
     published.push(with_fields(CLIENT_CALL));
+    published.push(signed_zeros_fn(&signed_zeros_call(&prefix, "Mcp")));
     if service.operations.iter().any(is_content_pair) {
         published.push(with_fields(CLIENT_PAIR));
     }
@@ -3714,15 +3722,23 @@ fn reply_method(
     let result = result_name(named, operation).unwrap_or_default();
     let fields = fault_fields_typescript_name(named);
     let read_failed = format!("_{prefix}McpReadFailed");
-    let ws_failed = format!("_{prefix}WsFailedValidation");
-    // The `ws_rpc` reads answer a refused read through their own classifier; this transport
-    // answers every one it reads as the Rust client does, naming no field.
+    // The `ws_rpc` reads answer a refused read through their own classifier, and name the header
+    // a refused header value was read from; this transport answers every one it reads as the
+    // Rust client does, naming no field.
     let ws_refused = format!("_{prefix}WsRefused({wire}, rejected)");
-    let read_refused = format!("_{prefix}McpReadFailed({wire}, '$rejected')");
+    let read_refused = format!("{read_failed}({wire}, '$rejected')");
+    let as_read = |block: String, headers: &[String]| {
+        headers
+            .iter()
+            .fold(block.replace(&ws_refused, &read_refused), |read, header| {
+                read.replace(&header_refused_fault(prefix, wire, header), &read_refused)
+            })
+    };
     let unit_ok = is_unit_type(success) && shape.header_out.is_empty();
-    let success_block = success_decode_block(&result, prefix, wire, success, &shape.header_out)
-        .replace(&ws_refused, &read_refused)
-        .replace(&ws_failed, &read_failed);
+    let success_block = as_read(
+        success_decode_block(&result, prefix, wire, success, &shape.header_out),
+        &shape.header_out,
+    );
     let reply = if unit_ok {
         String::new()
     } else if shape.header_out.is_empty() {
@@ -3747,10 +3763,10 @@ fn reply_method(
          };\n"
             .to_owned()
     };
-    let error_block =
-        declared_error_decode_stmts(&result, prefix, wire, error, &shape.error_header_out)
-            .replace(&ws_refused, &read_refused)
-            .replace(&ws_failed, &read_failed);
+    let error_block = as_read(
+        declared_error_decode_stmts(&result, prefix, wire, error, &shape.error_header_out),
+        &shape.error_header_out,
+    );
     let error_source = if shape.error_header_out.is_empty() {
         "    final dynamic error = parsed;\n".to_owned()
     } else {
@@ -3765,6 +3781,7 @@ fn reply_method(
          final dynamic error = parsed is Map<String, dynamic> ? parsed['value'] : null;\n"
             .to_owned()
     };
+    let signed_zeros = signed_zeros_call(prefix, "Mcp");
     format!(
         "{doc}\n  \
          Future<{result}> {call}({parameters}) async {{\n\
@@ -3780,7 +3797,7 @@ fn reply_method(
          }}\n    \
          final Object? parsed;\n    \
          try {{\n      \
-         parsed = jsonDecode(((result['content'] as List).first as Map<String, dynamic>)['text'] as String);\n    \
+         parsed = jsonDecode({signed_zeros}(((result['content'] as List).first as Map<String, dynamic>)['text'] as String));\n    \
          }} catch (rejected) {{\n      \
          return {result}Fault({read_failed}({wire}, '$rejected'));\n    \
          }}\n    \

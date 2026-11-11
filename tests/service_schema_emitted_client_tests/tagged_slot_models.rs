@@ -59,17 +59,16 @@ pub const WRITTEN: [(&str, &str); 29] = [
 /// with: the tag alone, the entries of two variants, and a unit variant's entry over a number.
 pub const ENTRIES_REFUSED: [Refused; 3] = [
     Refused {
-        dart: "FormatException: empty object for Palleted",
+        dart: "FormatException: expected value",
         json: r#"{"kind":"External"}"#,
-        kotlin: "refused: expected an object of one key, found {} at path: $",
-        swift: "empty object for Palleted",
+        kotlin: "refused: expected value at path: $",
+        swift: "expected value",
     },
     Refused {
-        dart: "FormatException: more than one key for Palleted",
+        dart: "FormatException: expected value",
         json: r#"{"kind":"External","Stacked":{"layers":5},"Loose":null}"#,
-        kotlin: "refused: expected an object of one key, found \
-                 {\"Stacked\":{\"layers\":5},\"Loose\":null} at path: $",
-        swift: "more than one key for Palleted",
+        kotlin: "refused: expected value at path: $",
+        swift: "expected value",
     },
     Refused {
         dart: "FormatException: Palleted: Loose takes no value",

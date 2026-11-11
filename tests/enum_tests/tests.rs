@@ -334,8 +334,8 @@ fn a_braced_variant_of_an_internally_tagged_enum_is_read_at_its_enum() {
     let zod_schema = PaymentMethod::zod_schema();
     let read_through = zod_schema.matches("{ when: () => true }").count();
     assert_eq!(
-        read_through, 3,
-        "each braced variant ends on the check, and the union stays a discriminatedUnion: {zod_schema}"
+        read_through, 1,
+        "the union ends on the check and stays a discriminatedUnion: {zod_schema}"
     );
     assert!(zod_schema.contains("z.discriminatedUnion(\"type\", [z.strictObject({"));
 }

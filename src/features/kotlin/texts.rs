@@ -18,11 +18,13 @@ use core::fmt::Write as _;
 use std::collections::{HashMap, HashSet};
 
 use super::read::PATHED;
-use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_template_text, validate};
-use crate::features::JSON_NUMBER;
+use super::{
+    KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text, validate,
+};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
-    EXPECTED_NUMERIC_KEY, FieldDef, FieldDefType, NUMBER_OUT_OF_RANGE, is_sequence_wrapper,
+    EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, FieldDef, FieldDefType, INVALID_NUMBER,
+    NUMBER_OUT_OF_RANGE, is_sequence_wrapper,
 };
 use crate::utils::crate_tag;
 
@@ -212,15 +214,19 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
     if matches!(primitive, Primitive::F32Key | Primitive::F64Key) {
         return format!(
             "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
-             private val grammar = Regex(\"{JSON_NUMBER}\"); override val descriptor: \
-             SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, value: \
-             {kotlin}) = held.serialize(encoder, value); {PATHED}override fun deserialize(decoder: \
-             Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: return \
-             held.deserialize(decoder); val element = json.decodeJsonElement(); return \
-             kotlinSchemaAt(json) {{ val text = (element as? JsonPrimitive)?.takeIf {{ it.isString \
-             }}?.content; val read = text?.takeIf {{ grammar.matches(it) }}?.to{kotlin}(); if (read \
-             == null || !read.isFinite()) throw SerializationException(\"invalid type: \" + element \
-             + \", expected {expected}\"); read }} }} }}"
+             override val descriptor: SerialDescriptor = held.descriptor; override fun \
+             serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
+             {PATHED}{}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder \
+             as? JsonDecoder ?: return held.deserialize(decoder); val element = \
+             json.decodeJsonElement(); return kotlinSchemaAt(json) {{ val text = (element as? \
+             JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: throw \
+             SerializationException(\"invalid type: \" + element + \", expected {expected}\"); val \
+             (number, _) = kotlinSchemaKeyNumber(text); val read = number.to{kotlin}(); if \
+             (text.length > number.length) throw SerializationException({}); if \
+             (!read.isFinite()) throw SerializationException(\"invalid type: \" + element + \", \
+             expected {expected}\"); read }} }} }}",
+            key_number_read(),
+            kotlin_quoted(EXPECTED_QUOTE),
         );
     }
     // serde reads an `f32` beyond its range as an infinity of its sign, which kotlinx refuses, and
@@ -577,21 +583,46 @@ pub const fn as_key(primitive: Primitive) -> Option<Primitive> {
 /// The serializer a map key of `primitive` is read through: a `bool` and a float from text, an
 /// integer through [`integer_key_serializer`], and a timestamp as the library reads it.
 pub fn key_serializer(primitive: Primitive) -> String {
+    key_object(primitive).unwrap_or_else(|| format!("serializer<{}>()", primitive.kotlin_type()))
+}
+
+/// The `object` a map key of `primitive` names as its serializer, and `None` for a timestamp,
+/// which the library reads.
+pub fn key_object(primitive: Primitive) -> Option<String> {
     as_key(primitive).map_or_else(
-        || {
-            if is_epoch(primitive) {
-                format!("serializer<{}>()", primitive.kotlin_type())
-            } else {
-                integer_key_serializer(primitive)
-            }
-        },
-        number_serializer,
+        || (!is_epoch(primitive)).then(|| integer_key_serializer(primitive)),
+        |key| Some(number_serializer(key)),
     )
 }
 
-/// The serializer an integer map key is read through, declared once per item: the text serde
-/// reads, which opens with a digit or `-`, read as the library reads it, and any other text refused
-/// in serde's words for text that is not the document.
+/// The private function a key serializer reads the number of a map key's text with, as serde
+/// reads the text between a key's quotes: the text of the number and whether serde reads it as a
+/// float. A text that is no number, and a float beyond an `f64`, are refused in serde's words for
+/// text that is not the document; what follows the number is the caller's to refuse, after the
+/// type refuses the number.
+fn key_number_read() -> String {
+    format!(
+        "private fun kotlinSchemaKeyNumber(text: String): Pair<String, Boolean> {{ fun digit(at: \
+         Int): Boolean {{ return text.getOrNull(at) in '0'..'9' }}; fun digits(from: Int): Int {{ if \
+         (!digit(from)) throw SerializationException(\"{INVALID_NUMBER}\"); var at = from; while \
+         (digit(at)) at++; return at }}; if (text.firstOrNull()?.let {{ it == '-' || it in '0'..'9' \
+         }} != true) throw SerializationException(\"{EXPECTED_NUMERIC_KEY}\"); val sign = if \
+         (text[0] == '-') 1 else 0; val zero = text.getOrNull(sign) == '0'; var at = if (zero) sign \
+         + 1 else digits(sign); if (zero && digit(at)) throw \
+         SerializationException(\"{INVALID_NUMBER}\"); var float = false; if (text.getOrNull(at) \
+         == '.') {{ at = digits(at + 1); float = true }}; if (text.getOrNull(at) == 'e' || \
+         text.getOrNull(at) == 'E') {{ at = digits(if (text.getOrNull(at + 1) == '+' || \
+         text.getOrNull(at + 1) == '-') at + 2 else at + 1); float = true }}; val number = \
+         text.substring(0, at); val wide = float || if (sign == 1) number == \"-0\" || \
+         number.toLongOrNull() == null else number.toULongOrNull() == null; if (wide && \
+         number.toDouble().isInfinite()) throw SerializationException(\"{NUMBER_OUT_OF_RANGE}\"); \
+         return number to wide }}; "
+    )
+}
+
+/// The serializer an integer map key is read through, declared once per item, which reads the text
+/// as serde reads it: a float refused at the map, an integer beyond the type under the number, and
+/// the text after the number in serde's words for text that is not the document.
 fn integer_key_serializer(primitive: Primitive) -> String {
     KOTLIN_NUMBER_KEYS.with(|numbers| {
         let mut written = numbers.borrow_mut();
@@ -604,19 +635,24 @@ fn integer_key_serializer(primitive: Primitive) -> String {
             next
         });
         let named = format!("KotlinNumber{index}Key{}", crate_tag());
-        let kotlin = primitive.kotlin_type();
+        let (kotlin, expected) = primitive.words();
         KOTLIN_TUPLE_AUX.with(|aux| {
             aux.borrow_mut().push(format!(
                 "object {named} : KSerializer<{kotlin}> {{ private val held = \
                  serializer<{kotlin}>(); override val descriptor: SerialDescriptor = \
                  held.descriptor; override fun serialize(encoder: Encoder, value: {kotlin}) = \
-                 held.serialize(encoder, value); {PATHED}override fun deserialize(decoder: \
+                 held.serialize(encoder, value); {PATHED}{}override fun deserialize(decoder: \
                  Decoder): {kotlin} {{ val json = decoder as? JsonDecoder ?: return \
                  held.deserialize(decoder); val element = json.decodeJsonElement(); return \
-                 kotlinSchemaAt(json) {{ if ((element as? JsonPrimitive)?.content?.firstOrNull()\
-                 ?.let {{ it == '-' || it in '0'..'9' }} != true) throw \
-                 SerializationException(\"{EXPECTED_NUMERIC_KEY}\"); \
-                 json.json.decodeFromJsonElement(held, element) }} }} }}"
+                 kotlinSchemaAt(json) {{ val text = (element as? JsonPrimitive)?.content.orEmpty(); \
+                 val (number, wide) = kotlinSchemaKeyNumber(text); if (wide) throw \
+                 SerializationException(\"invalid type: floating point `\" + number + \"`, expected \
+                 {expected}\"); val read = number.to{kotlin}OrNull() ?: throw \
+                 SerializationException(\"'\" + number + \"': invalid value: integer `\" + number + \
+                 \"`, expected {expected}\"); if (text.length > number.length) throw \
+                 SerializationException({}); read }} }} }}",
+                key_number_read(),
+                kotlin_quoted(EXPECTED_QUOTE),
             ));
         });
         written.push((primitive, named.clone()));
