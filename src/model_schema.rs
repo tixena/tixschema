@@ -2446,7 +2446,8 @@ fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let form = mcp_form::items(item);
     let flattened = flatten_order::tokens(item, args);
     let units = strict::unit_reads(item, args);
-    quote! { #wrapper #form #flattened #units }
+    let braced = strict::braced_reads(item, args);
+    quote! { #wrapper #form #flattened #units #braced }
 }
 
 #[cfg(not(feature = "serde"))]
@@ -8896,6 +8897,8 @@ fn enum_output_with_decode(
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
+    #[cfg(feature = "serde")]
+    strict::unskip_braced_members(&mut read);
     let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of_enum(parts.item);

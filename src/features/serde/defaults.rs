@@ -470,15 +470,11 @@ pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> T
         .iter()
         .filter_map(|field| {
             let member = field.ident.as_ref()?;
-            let value = match (written_default(&field.attrs), &whole) {
-                (Some(Written::Function(path)), _) => quote! { #path() },
-                (None, Some(_)) => {
-                    reads_the_whole = true;
-                    quote! { #container.#member }
-                }
-                (Some(Written::Bare), _) | (None, None) => {
-                    quote! { ::core::default::Default::default() }
-                }
+            let value = if written_default(&field.attrs).is_none() && whole.is_some() {
+                reads_the_whole = true;
+                quote! { #container.#member }
+            } else {
+                unread_member_built(field).0
             };
             let built_in = field
                 .attrs
@@ -497,6 +493,17 @@ pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> T
     quote! {
         #held
         ::core::result::Result::Ok(Self { #(#members),* })
+    }
+}
+
+/// The value serde's derive builds for `field`, a member it does not read, where no container's
+/// default answers for it: from the function its `default` names, else from `Default`, and
+/// whether `Default` builds it.
+#[cfg(feature = "serde")]
+pub fn unread_member_built(field: &Field) -> (TokenStream, bool) {
+    match written_default(&field.attrs) {
+        Some(Written::Function(path)) => (quote! { #path() }, false),
+        Some(Written::Bare) | None => (quote! { ::core::default::Default::default() }, true),
     }
 }
 

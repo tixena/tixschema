@@ -384,6 +384,21 @@ Nor does an enum that declares no variant, under a tag or not:
 error: model_schema: type `Becalm`: declares no variant, so serde writes no value of it and reads none, and no surface can describe it. Declare a variant serde writes or reads.
 ```
 
+#### A Braced Variant of No Member
+
+A braced variant serde reads no member of, one that declares none or one whose every member serde neither writes nor reads, is written as an empty object under every tagging: `{"Off":{}}` with no tag attribute, `{"kind":"Off"}` under a tag alone and `{"kind":"Off","body":{}}` under a tag and a content key. It refuses a key in that object, and so does every other variant of a strict enum that holds it:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+pub enum Signal {
+    Off {},
+    On { level: u8 },
+}
+```
+
+serde, Zod, the JSON Schema and the Dart, Kotlin and Swift reads refuse `{"Off":{"stray":1}}` and `{"On":{"level":1,"stray":1}}`, and read `{"Off":{}}` and `{"On":{"level":1}}`; serde names the key, ``unknown field `stray`, there are no fields``. The macro reads the variant through a read it writes, hung on it with `#[serde(deserialize_with = "...")]`, which builds a member serde skips from its `#[serde(default = "...")]`, else from `Default`. Kotlin declares the variant as a plain `class`, which kotlinc takes with no property. Marked `#[model_schema(nonstrict)]`, the enum reads past the key on every surface.
+
 #### A Variant Under `#[serde(untagged)]`
 
 serde writes a variant under `#[serde(untagged)]` as its content alone, under no name, inside an enum it writes with names too: `Loose("x")` below is written `"x"`. No surface describes such a variant, so an enum with no `untagged` of its own does not build with one, with no tag attribute, under a `tag`, and under a `tag` and a `content` key, a plain enum among them:
