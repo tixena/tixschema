@@ -19,7 +19,7 @@ use core::fmt::Write as _;
 use syn::Type;
 
 /// A JSON string, or a `-0` that is neither an exponent's nor followed by more of its number.
-const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
+pub(super) const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
 
 /// The seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher` takes, spelled
 /// identically for every service so one service's attachment composes over another's transport.
@@ -106,12 +106,16 @@ fn declares_header_in(service: &ServiceDef) -> bool {
 
 /// The reviver every text a frame or an `mcp` message is read from passes `jsonDecode`: it refuses
 /// the infinity `jsonDecode` reads a number beyond a `double` as, since serde reads no text that
-/// holds one.
+/// holds one; and the function that writes each `-0` of such a text as the float serde reads.
 fn held_fn(fn_prefix: &str) -> String {
     format!(
         "/// Each value as `jsonDecode` reads it, but for the infinity it reads a number beyond a `double` as: serde reads no text that holds one.\n\
          Object? _{fn_prefix}WsHeld(Object? key, Object? value) =>\n    \
-         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;"
+         value is double && value.isInfinite ? throw const FormatException('{NUMBER_OUT_OF_RANGE}') : value;\n\n\
+         /// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as, where `jsonDecode` reads the `int` 0.\n\
+         String _{fn_prefix}WsSigned(String text) => !text.contains('-0')\n    \
+         ? text\n    \
+         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
     )
 }
 
@@ -290,21 +294,9 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     )
 }
 
-/// The transport's `_signedZeros`, which answers a JSON text with each `-0` outside a string
-/// written `-0.0`: serde reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
-fn signed_zeros_fn() -> String {
-    format!(
-        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n  \
-         static String _signedZeros(String text) => !text.contains('-0')\n      \
-         ? text\n      \
-         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
-    )
-}
-
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
-    let signed_zeros = signed_zeros_fn();
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -316,11 +308,10 @@ fn transport_class_rest(named: &str) -> String {
          /// exposes the same shape, so an attachment for any service sharing this connection\n  \
          /// reaches it here rather than through a transport type of its own.\n  \
          {FRAMES_RECORD_TYPE} get frames => (inbound: _controller.stream, send: send);\n\n  \
-         {signed_zeros}\n\n  \
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode(_signedZeros(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
+         frame = jsonDecode(_{fn_prefix}WsSigned(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \

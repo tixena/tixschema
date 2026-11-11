@@ -6,8 +6,10 @@
 //! an integer's member, which the HTTP client answers as the body it cannot read, and reads a
 //! float's number. A runtime whose reviver hands no source text reads each as a number, as before.
 //! What serde reads beside such a number still reads through the reader those surfaces share: a
-//! literal on an `f64` and on a `u32`, a discriminated union told apart by a numeric literal, and
-//! each `preprocess` and `check` function is handed a `number`, as `JSON.parse` hands it.
+//! literal on an `f64`, a discriminated union told apart by a numeric literal on an `f64` key, and
+//! each `preprocess` and `check` function is handed a `number`, as `JSON.parse` hands it. What
+//! serde refuses is refused beside it: a literal on a `u32`, a discriminated union told apart by a
+//! numeric literal on a `u32` key, and an integer a `preprocess` function answers unchanged.
 
 use core::fmt::Write as _;
 use core::future::{Future, ready};
@@ -132,7 +134,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 
 /// The payloads read through the service's reader beside an integer written as a float: the name,
 /// the type that reads it, and the payload.
-const HELD_APART: [(&str, &str, &str); 7] = [
+const HELD_APART: [(&str, &str, &str); 19] = [
     (
         "an f64 literal written as a float",
         "Leveled",
@@ -168,6 +170,66 @@ const HELD_APART: [(&str, &str, &str); 7] = [
         "Plumbed",
         r#"{"depth":1,"gauge":{"level":4},"marks":[2,3],"reading":5}"#,
     ),
+    (
+        "a u32 literal written whole",
+        "Leveled",
+        r#"{"float_level":2.0,"whole_level":2}"#,
+    ),
+    (
+        "a u32 key written as a float",
+        "Ranked",
+        r#"{"grade":2.0,"gain":1}"#,
+    ),
+    (
+        "a u32 key written whole",
+        "Ranked",
+        r#"{"grade":2,"gain":1}"#,
+    ),
+    (
+        "the f64 key of a union beside a u32 key, written as a float",
+        "Mixed",
+        r#"{"grade":3.0,"note":"a"}"#,
+    ),
+    (
+        "the u32 key of a union beside an f64 key, written as a float",
+        "Mixed",
+        r#"{"grade":2.0,"gain":1}"#,
+    ),
+    (
+        "integers under a function, written as floats",
+        "Counted",
+        r#"{"count":1.0,"level":4,"marks":[2],"tail":{"depth":3}}"#,
+    ),
+    (
+        "integers under a function, in a list, written as a float",
+        "Counted",
+        r#"{"count":1,"level":4,"marks":[2.0],"tail":{"depth":3}}"#,
+    ),
+    (
+        "integers under a function, in an object, written as a float",
+        "Counted",
+        r#"{"count":1,"level":4,"marks":[2],"tail":{"depth":3.0}}"#,
+    ),
+    (
+        "integers under a function, written whole",
+        "Counted",
+        r#"{"count":1,"level":4,"marks":[2],"tail":{"depth":3}}"#,
+    ),
+    (
+        "an integer a function changed, written as a float",
+        "Replaced",
+        r#"{"count":1.0}"#,
+    ),
+    (
+        "an integer a function reads from text, written as text",
+        "Replaced",
+        r#"{"count":"9"}"#,
+    ),
+    (
+        "an f64 under a function, written as a float",
+        "Counted",
+        r#"{"count":1,"level":4.0,"marks":[2],"tail":{"depth":3}}"#,
+    ),
 ];
 
 /// Reads each of [`HELD_APART`] through the reader the `ws_rpc` attachment and client share, and
@@ -191,7 +253,18 @@ function checkedReading(value, ctx) {
   handed.push(["checkedReading", typeof value]);
   if (Number.isNaN(value)) ctx.issues.push({ code: "custom", message: "a reading is a number", input: value });
 }
-const schemas = { Leveled: Leveled$Schema, Graded: Graded$Schema, Plumbed: Plumbed$Schema };
+function typedTally(value) {
+  handed.push(["typedTally", typeof value.count, typeof value.marks[0], typeof value.tail.depth, typeof value.level]);
+  return value;
+}
+function typedCount(value) {
+  handed.push(["typedCount", typeof value]);
+  return value;
+}
+function replacedCount(value) {
+  return typeof value === "string" ? Number(value) : 3;
+}
+const schemas = { Leveled: Leveled$Schema, Graded: Graded$Schema, Plumbed: Plumbed$Schema, Ranked: Ranked$Schema, Mixed: Mixed$Schema, Counted: Counted$Schema, Replaced: Replaced$Schema };
 const answered = [];
 for (const [name, read, text] of HELD_APART) {
   handed.length = 0;
@@ -231,6 +304,67 @@ pub enum Graded {
         grade: f64,
         note: String,
     },
+}
+
+/// A grade told apart by a numeric literal on the key `grade`, an integer.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Ranked {
+    High {
+        #[model_schema_prop(literal = 2)]
+        grade: u32,
+        gain: u32,
+    },
+    Low {
+        #[model_schema_prop(literal = 1)]
+        grade: u32,
+        note: String,
+    },
+}
+
+/// A grade told apart by a numeric literal on the key `grade`, an integer in one variant and a
+/// float in the other.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Mixed {
+    Fractional {
+        #[model_schema_prop(literal = 3)]
+        grade: f64,
+        note: String,
+    },
+    Whole {
+        #[model_schema_prop(literal = 2)]
+        grade: u32,
+        gain: u32,
+    },
+}
+
+/// A depth, an integer.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Reach {
+    pub depth: u32,
+}
+
+/// Integers at each depth, under a function of the type's own and a function of a member's.
+#[model_schema(preprocess = ["typedTally"])]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Counted {
+    #[model_schema_prop(preprocess = ["typedCount"])]
+    pub count: u32,
+    pub level: f64,
+    pub marks: Vec<u32>,
+    pub tail: Reach,
+}
+
+/// An integer a function answers another number for, or reads from text.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Replaced {
+    #[model_schema_prop(preprocess = ["replacedCount"])]
+    pub count: u32,
 }
 
 /// A gauge whose level is a float.
@@ -305,6 +439,29 @@ const fn typed_whole(payload: Value) -> Value {
 /// The function of [`Plumbed::depth`]: it hands the payload on.
 const fn typed_depth(payload: Value) -> Value {
     payload
+}
+
+/// The function of [`Counted`]: it hands the payload on.
+const fn typed_tally(payload: Value) -> Value {
+    payload
+}
+
+/// The function of [`Counted::count`]: it hands the payload on.
+const fn typed_count(payload: Value) -> Value {
+    payload
+}
+
+/// The function of [`Replaced::count`]: it answers a text as the number it holds and any other
+/// payload as 3.
+fn replaced_count(payload: Value) -> Value {
+    match payload {
+        Value::String(text) => text
+            .parse::<u32>()
+            .map_or(Value::Null, |number| json!(number)),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => {
+            json!(3)
+        }
+    }
 }
 
 /// The check of [`Plumbed`]: a plumb line holds a mark.
@@ -403,6 +560,16 @@ fn emitted_beside_held_apart() -> String {
         Reading::zod_schema(),
         Plumbed::ts_definition(),
         Plumbed::zod_schema(),
+        Ranked::ts_definition(),
+        Ranked::zod_schema(),
+        Mixed::ts_definition(),
+        Mixed::zod_schema(),
+        Reach::ts_definition(),
+        Reach::zod_schema(),
+        Counted::ts_definition(),
+        Counted::zod_schema(),
+        Replaced::ts_definition(),
+        Replaced::zod_schema(),
     ]
     .join("\n\n")
 }
@@ -427,6 +594,10 @@ fn serde_reads(read_as: &str, text: &str) -> Value {
     let written = match read_as {
         "Leveled" => serde_json::from_str::<Leveled>(text).map(|read| json!(read)),
         "Graded" => serde_json::from_str::<Graded>(text).map(|read| json!(read)),
+        "Ranked" => serde_json::from_str::<Ranked>(text).map(|read| json!(read)),
+        "Mixed" => serde_json::from_str::<Mixed>(text).map(|read| json!(read)),
+        "Counted" => serde_json::from_str::<Counted>(text).map(|read| json!(read)),
+        "Replaced" => serde_json::from_str::<Replaced>(text).map(|read| json!(read)),
         _ => serde_json::from_str::<Plumbed>(text).map(|read| json!(read)),
     };
     written.map_or_else(|_| json!("refused"), |read| as_floats(&read))
@@ -562,22 +733,41 @@ fn what_reads_beside_an_integer_written_as_a_float_reads_as_before() {
         .iter()
         .map(|answered| json!({ "name": answered["name"], "read": as_floats(&answered["read"]) }))
         .collect();
-    let read_as_serde: Vec<Value> = HELD_APART
-        .iter()
-        .map(|(name, read_as, text)| match serde_reads(read_as, text) {
-            refused if refused == "refused" => {
-                json!({ "name": name, "read": as_floats(&serde_json::from_str(text).unwrap()) })
-            }
-            read => json!({ "name": name, "read": read }),
-        })
-        .collect();
-    assert_eq!(told, read_as_serde, "what the schemas read: {ran}");
     let refused: Vec<&str> = HELD_APART
         .iter()
         .filter(|(_, read_as, text)| serde_reads(read_as, text) == "refused")
         .map(|(name, _, _)| *name)
         .collect();
-    assert_eq!(refused, ["a u32 literal written as a float"]);
+    assert_eq!(
+        refused,
+        [
+            "a u32 literal written as a float",
+            "a u32 key written as a float",
+            "the u32 key of a union beside an f64 key, written as a float",
+            "integers under a function, written as floats",
+            "integers under a function, in a list, written as a float",
+            "integers under a function, in an object, written as a float",
+        ]
+    );
+    let read_as_serde: Vec<Value> = HELD_APART
+        .iter()
+        .zip(ran.as_array().unwrap())
+        .map(|((name, read_as, text), answered)| {
+            let read = serde_reads(read_as, text);
+            if read == "refused" {
+                assert!(
+                    answered["read"]
+                        .as_array()
+                        .is_some_and(|issues| !issues.is_empty()),
+                    "{name} must be refused: {answered}"
+                );
+                json!({ "name": name, "read": answered["read"] })
+            } else {
+                json!({ "name": name, "read": read })
+            }
+        })
+        .collect();
+    assert_eq!(told, read_as_serde, "what the schemas read: {ran}");
     for answered in ran.as_array().unwrap() {
         for handed in answered["handed"].as_array().unwrap() {
             let types = handed.as_array().unwrap();
@@ -621,6 +811,15 @@ fn the_float_schemas_read_into_the_types_they_read_into_before() {
          export const gradedAsBefore: Same<z.infer<typeof Graded$RawSchema>, Graded> = true;\n\
          export function narrowed(value: z.infer<typeof Graded$RawSchema>): number {{\n  \
          return value.grade === 2 ? value.gain : value.note.length;\n}}\n\
+         export const rankedAsBefore: Same<z.infer<typeof Ranked$RawSchema>, Ranked> = true;\n\
+         export const mixedAsBefore: Same<z.infer<typeof Mixed$RawSchema>, Mixed> = true;\n\
+         export const countedAsBefore: Same<z.infer<typeof Counted$RawSchema>, Counted> = true;\n\
+         export const replacedAsBefore: Same<z.infer<typeof Replaced$RawSchema>, Replaced> = true;\n\
+         export function narrowedRank(value: z.infer<typeof Ranked$RawSchema>): number {{\n  \
+         return value.grade === 2 ? value.gain : value.note.length;\n}}\n\
+         export function typedTally(value: unknown): unknown {{\n  return value;\n}}\n\
+         export function typedCount(value: unknown): unknown {{\n  return value;\n}}\n\
+         export function replacedCount(value: unknown): unknown {{\n  return value;\n}}\n\
          export function typedWhole(value: unknown): unknown {{\n  return value;\n}}\n\
          export function typedDepth(value: unknown): unknown {{\n  return value;\n}}\n\
          export function checkedWhole(value: Plumbed, ctx: {{ issues: unknown[] }}): void {{\n  \

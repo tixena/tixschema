@@ -170,12 +170,14 @@ consumer's view; this is what a change has to keep.
   answers what serde classifies as text that is not the document, and the transport's `_onFrame`
   reads a frame through `_{service}WsHeld`, a reviver that refuses an infinity, so a frame that
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
-  after `_signedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
+  after `_{service}WsSigned` writes each `-0` outside a string as `-0.0` (`held_fn`,
   `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
   cast of an integer's read refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
   reads as a `double`. A read of a value `jsonDecode` hands, `fromJson` called by hand and the
   `http_rest` client's among them, reads `-0` as 0. The `mcp` server reads each message through
-  the same reviver, and answers one that holds such a number with `-32600`. A `DateTime<Tz>` is written
+  `_{service}WsSigned` and the same reviver, and answers one that holds a number beyond an `f64` with
+  `-32600`; a refusal whose `FormatException` carries a path names it as the fault's field
+  (`_{service}WsRefusedAt`), so `1.0` for a `u32` names its member. A `DateTime<Tz>` is written
   `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
