@@ -84,7 +84,10 @@ fn the_zod_schema_of_such_a_map_keys_it_by_an_integer_number() {
     let schema = WideKeyed::zod_schema();
     holds_each(
         &schema,
-        &["direct: z.record(z.number().int(), z.boolean()),".to_owned()],
+        &[
+            "direct: z.unknown().check(".to_owned(),
+            ".pipe(z.record(z.number().int(), z.boolean())),".to_owned(),
+        ],
     );
     assert!(!schema.contains("@deprecated"), "the note in: {schema}");
 }

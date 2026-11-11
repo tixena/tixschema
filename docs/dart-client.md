@@ -103,11 +103,11 @@ consumer's view; this is what a change has to keep.
   text, with no declaration shared between two types. In `src/features/dart.rs`,
   `tagged_enum_dart_source` writes `Unknown {Enum}: {tag}` for a tag no variant has, under every
   tagging, `{Enum}: {tag} takes no value` for a unit variant's entry over a value, and
-  `empty object for {Enum}` and `more than one key for {Enum}` for an externally tagged object
-  of no key and of several, as serde and Zod refuse each; `tagged_variant_tokens` the same words
+  ``expected value`` for an externally tagged enum written as neither a string nor an object of
+  one key, serde's words for text that is not the document; `tagged_variant_tokens` the same words
   for its content under a content key; `untagged_enum_dart_source` `No variant of {Enum}
   matched`; `plain_enum_dart_source` `Unknown {Enum}: {name}`; `range_decode` `Unknown key of a
-  {kind}: {keys}`; `result_decode` ``expected value`` for an object of other than one key, serde's words for text that is not the document, and `Not a Result: {keys}` for a key no arm names; `tuple_decode`, the read of every
+  {kind}: {keys}`; `result_decode` ``expected value`` for a value that is neither a string nor an object of one key, serde's words for text that is not the document, and `Not a Result: {keys}` for a key no arm names; `tuple_decode`, the read of every
   tuple (a member's, a tuple struct's, a variant's slots), `invalid length {n}, expected {m}`
   for an array of another length, a longer one among them, as serde and Zod refuse it;
   `dart_decode_at` the same words for a level written as `[T; N]` (`FieldDef::fixed_length_at`),
@@ -163,9 +163,14 @@ consumer's view; this is what a change has to keep.
   attachment writes it as `null` (`_{service}WsWritten`). `float_read` reads an `f32` or an
   `f64` value as serde does: an `f32` beyond `F32_READ_BOUND` as an infinity of its sign, and the
   infinity `jsonDecode` reads a number beyond an `f64` as refused with ``number out of range``.
-  `number_key_read` refuses a number key whose text opens with neither a digit nor `-` with
-  ``invalid value: expected key to be a number in quotes``. These three messages are
-  `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  `number_key_read` reads a number key, alone or under a brand, as serde reads the text between
+  its quotes: the number, then the type's refusal of it, then the text after it. A text that opens
+  with neither a digit nor `-` is refused with ``invalid value: expected key to be a number in
+  quotes``, one that breaks the number past its first character, `01` or `-`, with ``invalid
+  number``, a float beyond an `f64` with ``number out of range`` and one that goes on after the
+  number, `1x`, with ``expected `"` ``. A float for an integer key, `1e3` or `-0`, is refused at
+  the map, and an integer beyond the type under the number, the `source` of its
+  `FormatException`. These messages are `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
   `undeserializable-payload` naming no field (`_{service}WsRefused`), as the Rust dispatcher
   answers what serde classifies as text that is not the document, and the transport's `_onFrame`
   reads a frame through `_{service}WsHeld`, a reviver that refuses an infinity, so a frame that

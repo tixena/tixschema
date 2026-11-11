@@ -49,7 +49,7 @@ use super::fault;
 use super::left_to_http_rest;
 use super::message;
 use super::result::result_name;
-use crate::field_type::{EXPECTED_NUMERIC_KEY, get_field_def};
+use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
@@ -287,9 +287,9 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
 /// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
 /// failing key, and a key no member declares by the path of the object that holds it and the key,
 /// as the Rust dispatcher names it. A first refusal in serde's words for text that is not the
-/// document, or of a key read as a number whose text opens with neither a digit nor `-`, is the
-/// `undeserializable-payload` the Rust dispatcher answers for it, naming no field. `doc` is the
-/// body of its `JSDoc`. Every TypeScript client and dispatcher folds a failed parse through it.
+/// document, which the schema marks `undeserializable`, is the `undeserializable-payload` the Rust
+/// dispatcher answers for it, naming no field. `doc` is the body of its `JSDoc`. Every TypeScript
+/// client and dispatcher folds a failed parse through it.
 pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
     format!(
         "/**\n\
@@ -299,7 +299,6 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          operation: string,\n  \
          issues: ReadonlyArray<{{\n    \
          code?: string;\n    \
-         issues?: ReadonlyArray<{{ expected?: unknown; message: string }}>;\n    \
          keys?: ReadonlyArray<string>;\n    \
          params?: {{ undeserializable?: unknown }};\n    \
          path: ReadonlyArray<PropertyKey>;\n    \
@@ -307,16 +306,7 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          }}>,\n\
          ): {named}Fault {{\n  \
          const [first] = issues;\n  \
-         const unread =\n    \
-         first === undefined\n      \
-         ? undefined\n      \
-         : first.params?.undeserializable === true\n        \
-         ? first.message\n        \
-         : first.code === \"invalid_key\" &&\n            \
-         first.issues?.some((issue) => issue.expected === \"number\") === true &&\n            \
-         !/^[0-9-]/.test(String(first.path[first.path.length - 1]))\n          \
-         ? \"{EXPECTED_NUMERIC_KEY}\"\n          \
-         : undefined;\n  \
+         const unread = first?.params?.undeserializable === true ? first.message : undefined;\n  \
          const steps =\n    \
          first === undefined\n      \
          ? []\n      \

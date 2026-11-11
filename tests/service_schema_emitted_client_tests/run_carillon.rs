@@ -1,7 +1,7 @@
 //! `CarillonService`'s message, read whole and refused in each case of [`CASES`], by the
 //! TypeScript, Dart and Kotlin `ws_rpc` attachments and by the TypeScript, Dart, Kotlin and Swift
 //! `ws_rpc` clients handed it as a reply. Each answers what the Rust dispatcher answers for the
-//! same payload: the message read, a frame dropped, or the fault's kind and the field it names,
+//! same payload, but for the cases the TypeScript table of its own records: the message read, a frame dropped, or the fault's kind and the field it names,
 //! and an attachment calls no handler for a frame it refuses or drops and replies to a message it
 //! reads as the Rust dispatcher does. Each client then refuses to send an `f32` read as an
 //! infinity, and the Dart and Kotlin transports, handed a reply naming a request whose frame they
@@ -481,6 +481,14 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
+/// The cases the TypeScript attachment and client answer apart from the Rust dispatcher, and the
+/// field each names: Zod refuses an `i64` key a JavaScript `number` holds no exact integer of under
+/// the key, which the Rust dispatcher reads.
+const NODE_APART: [(&str, Option<&str>); 2] = [
+    ("the largest i64 key", Some("tolls.9223372036854775807")),
+    ("the least i64 key", Some("tolls.-9223372036854775808")),
+];
+
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
     CASES.into_iter().map(payload).collect()
@@ -923,8 +931,8 @@ fn the_typescript_attachment_and_client_name_the_field_the_rust_dispatcher_names
             answered["reply"] = serde_json::from_str(text).unwrap();
         }
     }
-    assert_attached_as_rust(&told["attached"], &[]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &NODE_APART);
+    assert_read_as_rust(&told["read"], &NODE_APART);
     assert_eq!(
         told["refused"],
         json!({

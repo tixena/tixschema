@@ -1220,7 +1220,7 @@ fn frame_read_fn(fn_prefix: &str) -> String {
 /// it, and `failed-validation` naming the field for any other.
 fn refused_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
-    let listed = NOT_A_DOCUMENT.map(|said| format!("\"{said}\"")).join(", ");
+    let listed = NOT_A_DOCUMENT.map(kotlin_quoted).join(", ");
     format!(
         "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
          private fun {fn_prefix}WsRefused(operation: String, rejected: Throwable): {fields} {{\n  \

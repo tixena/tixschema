@@ -40,7 +40,12 @@ fn the_wrap_opens_the_expression_of_every_shape() {
         (
             Transfer::zod_schema(),
             if cfg!(feature = "serde") {
-                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.union([z.literal(\"Held\"), "
+                "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, \
+                 z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== \
+                 \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
+                 Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ \
+                 code: \"custom\", message: \"expected value\", input: ctx.value, params: { \
+                 undeserializable: true } }); }).pipe(z.union([z.literal(\"Held\"), "
             } else {
                 "z.preprocess(function unboxed(held) { if (held instanceof Number) return held.valueOf(); if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return held; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, unboxed(item)); return copied; }, z.preprocess(unwrapped, z.discriminatedUnion("
             },

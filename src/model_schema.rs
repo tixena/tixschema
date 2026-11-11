@@ -51,7 +51,7 @@ use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(all(feature = "serde", feature = "zod"))]
 use crate::field_type::{ZOD_NAMED_ARM, zod_check_wrap_handing};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_preprocess_wrap};
+use crate::field_type::{zod_check_wrap, zod_one_key_union, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
@@ -112,6 +112,8 @@ use crate::utils::{
 
 #[cfg(feature = "indexmap")]
 use crate::utils::record_indexed_set;
+#[cfg(feature = "zod")]
+use crate::utils::record_number_key;
 
 #[cfg(feature = "serde")]
 use crate::utils::{
@@ -342,12 +344,12 @@ const INTEGER_RANGES: [(&str, i128, i128, &str); 10] = [
     ),
 ];
 
-/// The text an integer map key is read from, as Zod's record reads it: digits under an optional
-/// sign, then a fraction of zeros at most, which Zod reads as that integer.
-const INTEGER_KEY_PATTERN: &str = "^-?[0-9]+(\\.0+)?$";
+/// The text an integer map key is read from, as serde reads it: a whole number of no leading zero,
+/// `-0` read as a float.
+const INTEGER_KEY_PATTERN: &str = "^(0|-?[1-9][0-9]*)$";
 
-/// The text a floating-point map key is read from, as Zod's record reads it.
-const NUMBER_KEY_PATTERN: &str = "^-?[0-9]+(\\.[0-9]+)?$";
+/// The text a floating-point map key is read from, as serde reads it: a JSON number.
+const NUMBER_KEY_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
 
 /// The text a `bool` map key is read from.
 const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
@@ -2756,6 +2758,8 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     }
     // An alias *is* its target, so a key written under its name renders in the target's wire form.
     record_key_wire(&rust_ident_str, alias_field_def.map_key_wire());
+    #[cfg(feature = "zod")]
+    record_number_key(&rust_ident_str, alias_field_def.zod_number_key());
     record_inexact_key(&rust_ident_str, alias_field_def.writes_an_inexact_key());
     // An alias's schema *is* its target's, so it publishes whatever the target publishes.
     Surface::written(&alias_field_def, &type_parameters_in_scope(&alias.generics))
@@ -11387,6 +11391,11 @@ fn register_branded_newtype(
     // A brand adds a name to its inner's wire and nothing else, so a key written under it renders
     // in whatever form the inner writes.
     record_key_wire(rust_ident, branded_key_wire(inner_field));
+    #[cfg(feature = "zod")]
+    record_number_key(
+        rust_ident,
+        get_field_def("", &inner_field.ty, "").zod_number_key(),
+    );
     record_inexact_key(
         rust_ident,
         get_field_def("", &inner_field.ty, "").writes_an_inexact_key(),
@@ -13326,15 +13335,17 @@ fn join_external_union(
     #[cfg(not(feature = "typescript"))]
     let type_code = String::new();
 
+    // serde reads the enum from a string or an object of one key, and refuses any other value as
+    // text that is not the document.
     #[cfg(feature = "zod")]
-    let schema_code = format!(
+    let schema_code = zod_one_key_union(&format!(
         "z.union([{}]){ZOD_NAMED_ARM}",
         members
             .iter()
             .map(|(_, zod, _)| zod.as_str())
             .collect::<Vec<_>>()
             .join(", ")
-    );
+    ));
     #[cfg(not(feature = "zod"))]
     let schema_code = String::new();
 

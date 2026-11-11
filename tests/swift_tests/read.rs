@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use crate::swift_key_number::integer_key_bound;
 use crate::tests::{
     FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
     by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
@@ -531,17 +532,13 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
                 "self.byNumber = try StowageByNumberKeyedMap(swiftSchemaUnjudged: ",
                 "container.superDecoder(forKey: .byNumber)).storage; ",
             ),
-            concat!(
-                "init(swiftSchemaUnjudged decoder: Decoder) throws { ",
-                "let container = try decoder.container(keyedBy: DynamicCodingKey.self); ",
-                "var result: [UInt32: Parcel] = [:]; for codingKey in container.allKeys { ",
-                "let wireKey = codingKey.stringValue; guard let key = UInt32(wireKey) else { ",
-                "throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, ",
-                r#"debugDescription: wireKey.first.map { $0 == "-" || ("0"..."9").contains($0) } "#,
-                r#"== true ? "bad key \(wireKey)" : "invalid value: expected key to be a number in "#,
-                r#"quotes") }; "#,
-                "result[key] = try Parcel(swiftSchemaUnjudged: ",
-                "container.superDecoder(forKey: codingKey)) }; storage = result }; ",
+            &format!(
+                "init(swiftSchemaUnjudged decoder: Decoder) throws {{ let container = try \
+                 decoder.container(keyedBy: DynamicCodingKey.self); var result: [UInt32: Parcel] \
+                 = [:]; for codingKey in container.allKeys {{ let wireKey = codingKey.stringValue; \
+                 {}result[key] = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: \
+                 codingKey)) }}; storage = result }}; ",
+                integer_key_bound("UInt32(number)", "u32")
             ),
             concat!(
                 "_ = try container.decodeNil(forKey: .deckPair); ",
@@ -760,12 +757,13 @@ fn an_enum_with_no_tag_attribute_reads_an_object_of_one_key() {
         &[concat!(
             "if let single = try? decoder.singleValueContainer(), let tag = try? ",
             r#"single.decode(String.self) { switch tag { case "Unladen": self = .unladen; return; "#,
-            " default: break } }; let container = try decoder.container(keyedBy: ",
-            "SwiftSchemaExternalCodingKey.self); guard container.allKeys.count == 1, ",
-            "let key = container.allKeys.first else { throw DecodingError.dataCorrupted(",
+            " default: break } }; guard let container = try? decoder.container(keyedBy: ",
+            "SwiftSchemaExternalCodingKey.self), container.allKeys.count == 1, let key = ",
+            "container.allKeys.first else { if (try? decoder.singleValueContainer().decode(",
+            "String.self)) != nil { _ = try decoder.container(keyedBy: ",
+            "SwiftSchemaExternalCodingKey.self) }; throw DecodingError.dataCorrupted(",
             "DecodingError.Context(codingPath: decoder.codingPath, debugDescription: ",
-            r#"container.allKeys.isEmpty ? "empty object for Carried" : "#,
-            r#""more than one key for Carried")) }; switch key.stringValue { "#,
+            r#""expected value")) }; switch key.stringValue { "#,
         )],
     );
 }

@@ -129,10 +129,17 @@ the consumer's view; this is what a change has to keep.
   shortest digits, plainly from `0.00001` to below `1e16` with `.0` where they hold no fraction,
   and `1e+16` and `1e-6` beyond. An
   integer map key, alone or under a brand, is read through `integer_key_serializer`
-  (`texts::key_serializer`), which refuses a key whose text opens with neither a digit nor `-`
-  with ``invalid value: expected key to be a number in quotes`` and reads any other as the library
-  does. A `Result` of other than one key is refused with ``expected value``. These three messages
-  are `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
+  (`texts::key_serializer`, and `texts::key_object`, which a declaration names on the key of a map
+  it holds), and a float one through the serializer `number_serializer` declares for it, each as serde reads the text between the key's quotes (`kotlinSchemaKeyNumber`,
+  `key_number_read`): the number, then the type's refusal of it, then the text after it. A text
+  that opens with neither a digit nor `-` is refused with ``invalid value: expected key to be a
+  number in quotes``, one that breaks the number past its first character, `01` or `-`, with
+  ``invalid number``, a float beyond an `f64` with ``number out of range`` and one that goes on
+  after the number, `1x`, with ``expected `"` ``. A float for an integer key, `1e3` or `-0`, is
+  refused at the map, and an integer beyond the type under the number, its message opening with
+  the number between quotes. An externally tagged enum and a `Result` written as neither a string
+  nor an object of one key are refused with ``expected value``. These messages are
+  `NOT_A_DOCUMENT`: the `ws_rpc` client and attachment answer a refusal of one of them with
   `undeserializable-payload` naming no field (`{service}WsRefused`), as the Rust dispatcher answers
   what serde classifies as text that is not the document, and read each frame through
   `{service}WsFrame`, which refuses one that holds a number beyond a `Double`, which kotlinx keeps
