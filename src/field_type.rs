@@ -1946,7 +1946,7 @@ impl FieldDef {
         };
         (0..self.array_depth).fold(result, |wrapped, level| {
             if level == 0 && self.writes_bytes() {
-                return "Uint8Array".to_owned();
+                return "Uint8Array<ArrayBuffer>".to_owned();
             }
             let item = if self.is_nullable_at(level) {
                 format!("{wrapped} | null")
@@ -2339,9 +2339,12 @@ impl FieldDef {
             } else {
                 String::new()
             };
-            let held = format!("z.instanceof(Uint8Array){counted_bytes}");
+            let read = format!("z.instanceof(Uint8Array){counted_bytes}");
+            let held = format!(
+                "z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array){counted_bytes}"
+            );
             return format!(
-                "z.codec(z.union([{held}, {array}]), {held}, {{ decode: (value) => \
+                "z.codec(z.union([{read}, {array}]), {held}, {{ decode: (value) => \
                  Uint8Array.from(value), encode: (value) => Array.from(value) }})"
             );
         }

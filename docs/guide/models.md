@@ -653,7 +653,7 @@ export type Histogram = {
 
 ### A `Vec<u8>` is a `Uint8Array` in TypeScript and a `Uint8List` in Dart
 
-A `Vec<u8>` travels as the JSON array serde writes: `[137,80,78,71]`. TypeScript holds it as a `Uint8Array`, which `fetch`, `Blob`, `TextDecoder`, `crypto.subtle` and Node's `Buffer` take, and Dart as a `Uint8List`:
+A `Vec<u8>` travels as the JSON array serde writes: `[137,80,78,71]`. TypeScript holds it as a `Uint8Array<ArrayBuffer>`, which `fetch`, `Blob`, `TextDecoder`, `crypto.subtle` and Node's `Buffer` take, and Dart as a `Uint8List`:
 
 ```rust
 #[model_schema()]
@@ -671,18 +671,20 @@ pub struct ImageBytes {
 
 | Target | `Vec<u8>` |
 |---|---|
-| TypeScript | `Uint8Array` |
-| Zod | `z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.instanceof(Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })` |
+| TypeScript | `Uint8Array<ArrayBuffer>` |
+| Zod | `z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })` |
 | JSON Schema | `{"type": "array", "items": {"type": "integer"}}`, as before |
 | Dart | `Uint8List` |
 | Swift | `[UInt8]`, as before |
 | Kotlin | `List<UByte>`, as before |
 
-The Zod schema reads the JSON array, or a `Uint8Array` itself, and answers the `Uint8Array`: `JSON.parse('{"data":[137,80,78,71]}')` reads as `{ data: Uint8Array(4) [137, 80, 78, 71] }`, and a value read once reads again to an equal value. An item that is no byte is refused before the `Uint8Array` is built, as `Uint8Array.from([256])` would build `[0]`: `[256]` and `[-1]` are refused at the item's index, with the sentence a `z.array(z.number().int().min(0).max(255))` reports, and `[1.5]` and `["1"]` are refused at the field. `Schema.encode` answers the plain array.
+The Zod schema reads the JSON array, or a `Uint8Array` itself, and answers the `Uint8Array<ArrayBuffer>`: `JSON.parse('{"data":[137,80,78,71]}')` reads as `{ data: Uint8Array(4) [137, 80, 78, 71] }`, and a value read once reads again to an equal value. An item that is no byte is refused before the `Uint8Array` is built, as `Uint8Array.from([256])` would build `[0]`: `[256]` and `[-1]` are refused at the item's index, with the sentence a `z.array(z.number().int().min(0).max(255))` reports, and `[1.5]` and `["1"]` are refused at the field. `Schema.encode` answers the plain array.
+
+- **It needs TypeScript 5.7 or later.** Typed arrays are generic from 5.7, and the bare `Uint8Array` is `Uint8Array<ArrayBufferLike>`, which `Blob`, `fetch` and `crypto.subtle` refuse; `z.infer` of the schema is the published type.
 
 - **A count holds the bytes.** `minLength` and `maxLength` on a `Vec<u8>` count the bytes of the `Uint8Array` and of the array, with the same sentences.
 - **The TypeScript service code writes the JSON array.** The client and the dispatcher of every transport write a `Uint8Array` as `[137,80,78,71]`, where `JSON.stringify` alone writes `{"0":137,"1":80,"2":78,"3":71}`. A `body = "bytes"` reply is answered as a `Uint8Array` too.
-- **Only a `Vec<u8>` is bytes.** A `[u8; N]`, a `[u8]` behind a reference or a `Box`, a `VecDeque<u8>`, a `BinaryHeap<u8>`, a set of `u8`, a `Vec<Option<u8>>`, a `Vec<u8>` under a `literal`, a `Vec` of any other number and a `Vec<T>` of a type parameter stay `Array<…>` in TypeScript and `List<…>` in Dart. A `Vec<Vec<u8>>` is `Array<Uint8Array>` and `List<Uint8List>`.
+- **Only a `Vec<u8>` is bytes.** A `[u8; N]`, a `[u8]` behind a reference or a `Box`, a `VecDeque<u8>`, a `BinaryHeap<u8>`, a set of `u8`, a `Vec<Option<u8>>`, a `Vec<u8>` under a `literal`, a `Vec` of any other number and a `Vec<T>` of a type parameter stay `Array<…>` in TypeScript and `List<…>` in Dart. A `Vec<Vec<u8>>` is `Array<Uint8Array<ArrayBuffer>>` and `List<Uint8List>`.
 - **Dart reads and writes the same JSON.** `fromJson` reads `[137,80,78,71]` into a `Uint8List` and refuses `256` and `-1` with `expected an integer from 0 to 255, found 256`, and `toJson` writes the JSON array. `validate()` counts it as it counts a list.
 
 ### Pointers and Borrowed Values

@@ -10,12 +10,15 @@ use super::models::{
 
 /// The Zod schema of a `Vec<u8>`: the array serde writes, or a `Uint8Array`, read as a `Uint8Array`.
 #[cfg(feature = "zod")]
-const BYTES: &str = "z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.instanceof(Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })";
+const BYTES: &str = "z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })";
 
 #[test]
 fn a_vec_of_u8_is_a_uint8array() {
     let published = BytesImage::ts_definition();
-    assert!(published.contains("  data: Uint8Array;"), "{published}");
+    assert!(
+        published.contains("  data: Uint8Array<ArrayBuffer>;"),
+        "{published}"
+    );
     assert!(published.contains("  contentType: string;"), "{published}");
 }
 
@@ -24,27 +27,30 @@ fn a_vec_of_u8_is_a_uint8array_in_every_place_a_member_holds_one() {
     let published = BytesHolder::ts_definition();
     for line in [
         "  aliased: BytesPayloadType;",
-        "  data: Uint8Array;",
-        "  filled: BytesBox<Uint8Array>;",
-        "  keyed: Partial<Record<string, Uint8Array>>;",
-        "  outcome: { Ok: Uint8Array } | { Err: string };",
-        "  paired: [Uint8Array, string];",
-        "  rows: Array<Uint8Array>;",
+        "  data: Uint8Array<ArrayBuffer>;",
+        "  filled: BytesBox<Uint8Array<ArrayBuffer>>;",
+        "  keyed: Partial<Record<string, Uint8Array<ArrayBuffer>>>;",
+        "  outcome: { Ok: Uint8Array<ArrayBuffer> } | { Err: string };",
+        "  paired: [Uint8Array<ArrayBuffer>, string];",
+        "  rows: Array<Uint8Array<ArrayBuffer>>;",
     ] {
         assert!(published.contains(line), "{line}\n{published}");
     }
     let alias = bytes_payload_schema::Schema::ts_definition();
     assert!(
-        alias.contains("export type BytesPayloadType = Uint8Array;"),
+        alias.contains("export type BytesPayloadType = Uint8Array<ArrayBuffer>;"),
         "{alias}"
     );
     assert!(
-        BytesEither::ts_definition().contains("export type BytesEither = Uint8Array | string;"),
+        BytesEither::ts_definition()
+            .contains("export type BytesEither = Uint8Array<ArrayBuffer> | string;"),
         "{}",
         BytesEither::ts_definition()
     );
     assert!(BytesBox::<String>::ts_definition().contains("  held: Held;"));
-    assert!(BytesOptional::ts_definition().contains("  maybe: Uint8Array | undefined;"));
+    assert!(
+        BytesOptional::ts_definition().contains("  maybe: Uint8Array<ArrayBuffer> | undefined;")
+    );
 }
 
 #[test]

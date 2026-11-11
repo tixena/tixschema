@@ -805,8 +805,8 @@ fn test_tuple_with_vec() {
     let ts = TupleWithVec::ts_definition();
 
     assert!(
-        ts.contains("\"Image\": [string, Uint8Array]"),
-        "Image should have [string, Uint8Array]. Got: {ts}"
+        ts.contains("\"Image\": [string, Uint8Array<ArrayBuffer>]"),
+        "Image should have [string, Uint8Array<ArrayBuffer>]. Got: {ts}"
     );
 
     assert!(
@@ -830,7 +830,7 @@ fn test_tuple_with_vec_zod() {
 
     assert!(
         zod.contains(
-            "\"Image\": z.tuple([z.string(), z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.instanceof(Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })])"
+            "\"Image\": z.tuple([z.string(), z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })])"
         ),
         "Image should have z.tuple. Got: {zod}"
     );
@@ -995,7 +995,7 @@ fn test_fixed_value_original_issue() {
     );
 
     assert!(
-        ts.contains("\"Image\": [string, Uint8Array]"),
+        ts.contains("\"Image\": [string, Uint8Array<ArrayBuffer>]"),
         "Image should have tuple. Got: {ts}"
     );
 
@@ -1040,7 +1040,7 @@ fn test_fixed_value_ext_comprehensive() {
     );
 
     assert!(
-        ts.contains("\"Image\": [string, Uint8Array]"),
+        ts.contains("\"Image\": [string, Uint8Array<ArrayBuffer>]"),
         "Missing Image. Got: {ts}"
     );
     assert!(
