@@ -2162,6 +2162,17 @@ mod empty_struct_models;
 #[path = "service_schema_emitted_client_tests/run_empty_structs.rs"]
 mod run_empty_structs;
 
+/// Enums with a braced variant serde reads no member of, under each tagging, strict and
+/// `nonstrict`.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/empty_variant_models.rs"]
+mod empty_variant_models;
+
+/// Those enums read by Zod, Dart, Kotlin and Swift beside serde.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_empty_variants.rs"]
+mod run_empty_variants;
+
 /// Five MCP services of one operation each, whose emitted servers and clients write each helper
 /// only where something calls it.
 #[cfg(test)]

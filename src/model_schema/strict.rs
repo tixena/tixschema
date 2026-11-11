@@ -8,25 +8,30 @@
 //! past one, is refused, so that it is marked `nonstrict`, and so is a strict enum a variant of
 //! which flattens such a member. A strict struct serde reads no member of is read through a read
 //! the macro writes, which refuses every key, and is refused where serde reads it through a
-//! conversion.
+//! conversion; so is a braced variant serde reads no member of, of an enum serde reads closed.
 
 use super::flatten_order::{
     Culprit, a_variant_refuses_a_stray, held_open_refusal, open_member_refusal,
     open_variant_refusal, refused_by_a_member, takes_only,
 };
+use super::judged_read::unclaimed_parameter;
 use super::{ModelSchemaArgs, prefixed_guard_message};
+use crate::features::serde::defaults::unread_member_built;
+use crate::features::serde::read_bounds::undeclared_bounds;
 use crate::features::serde::{
     Tagging, derived_serde_attributes, derives_deserialize, has_serde_transparent,
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes, read_hook,
     struct_tag, variant_on_the_wire,
 };
-use crate::utils::{record_unconsumed, to_snake_case};
+use crate::utils::{record_unconsumed, to_snake_case, written_names};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::token::Paren;
-use syn::{Attribute, Fields, Item, ItemEnum, ItemStruct, Token};
+use syn::{
+    Attribute, Fields, GenericParam, Item, ItemEnum, ItemStruct, Token, Variant, WherePredicate,
+};
 
 /// The path of the `deny_unknown_fields` serde reads on a container, where its author wrote it.
 fn written_deny(attrs: &[Attribute]) -> Option<syn::Path> {
@@ -229,15 +234,27 @@ pub(super) fn closes_enum(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool 
 }
 
 /// Whether the macro would write `#[serde(deny_unknown_fields)]` on `item_enum` but for a member
-/// a variant flattens that reads every key still left.
+/// a variant flattens that reads every key still left. A braced variant serde reads no member of
+/// keeps the enum open but where serde never reads it, reads it through its author's function, or
+/// the macro reads it.
 pub(super) fn closable_but_for_flattening(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool {
     !item_enum.variants.is_empty()
         && writes_deny(&item_enum.attrs, args)
         && item_enum.variants.iter().all(|variant| {
             !written_not_read(&variant.attrs)
                 && !writes_an_unread_key(&variant.fields)
-                && (!matches!(variant.fields, Fields::Named(_)) || reads_a_member(&variant.fields))
+                && (!matches!(variant.fields, Fields::Named(_))
+                    || reads_a_member(&variant.fields)
+                    || parse_serde_key_omission(&variant.attrs).skips_deserializing
+                    || read_hook(&variant.attrs).is_some()
+                    || braced_read_by_the_macro(variant))
         })
+}
+
+/// Whether serde reads `item_enum` under `deny_unknown_fields`, which the macro or its author
+/// writes.
+fn read_closed(item_enum: &ItemEnum, args: &ModelSchemaArgs) -> bool {
+    closes_enum(item_enum, args) || (closed_by_hand(&item_enum.attrs) && !args.nonstrict)
 }
 
 /// The unit variants of `item_enum` the macro reads through [`unit_read_name`], so that they refuse
@@ -247,9 +264,9 @@ fn refusing_units<'item>(
     item_enum: &'item ItemEnum,
     args: &ModelSchemaArgs,
 ) -> Vec<&'item syn::Variant> {
-    let closed =
-        closes_enum(item_enum, args) || (closed_by_hand(&item_enum.attrs) && !args.nonstrict);
-    if !matches!(Tagging::of(item_enum), Tagging::Internal { tag: _tag }) || !closed {
+    if !matches!(Tagging::of(item_enum), Tagging::Internal { tag: _tag })
+        || !read_closed(item_enum, args)
+    {
         return Vec::new();
     }
     item_enum
@@ -358,6 +375,207 @@ pub(super) fn unit_reads(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     }
 }
 
+/// Whether the macro reads `variant` through a read of its own where the enum is closed: a braced
+/// variant serde reads no member of and writes none of it does not read, which names no read of
+/// its author's. Under `deny_unknown_fields`, serde's derive would declare an enum of no variant for
+/// its keys, which `clippy::empty_enums` refuses in the consumer's crate. A member under a `cfg`
+/// has no place in the tuple that read answers.
+fn braced_read_by_the_macro(variant: &Variant) -> bool {
+    matches!(variant.fields, Fields::Named(_))
+        && !reads_a_member(&variant.fields)
+        && !writes_an_unread_key(&variant.fields)
+        && !parse_serde_key_omission(&variant.attrs).skips_deserializing
+        && read_hook(&variant.attrs).is_none()
+        && variant
+            .fields
+            .iter()
+            .all(|field| !field.attrs.iter().any(|attr| attr.path().is_ident("cfg")))
+}
+
+/// The braced variants of `item_enum` the macro reads through [`braced_read_name`], so that they
+/// refuse every key: each one [`braced_read_by_the_macro`] names, of an enum serde reads that the
+/// macro or its author closes.
+fn refusing_braced<'item>(
+    item_enum: &'item ItemEnum,
+    args: &ModelSchemaArgs,
+) -> Vec<&'item Variant> {
+    if !derives_deserialize(&item_enum.attrs) || !read_closed(item_enum, args) {
+        return Vec::new();
+    }
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| braced_read_by_the_macro(variant))
+        .collect()
+}
+
+/// The name of the read the macro writes for `variant`, an associated function of its enum.
+fn braced_read_name(variant: &Variant) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(
+        &format!(
+            "model_schema_{}_refuses_a_key",
+            to_snake_case(&variant.ident.unraw().to_string())
+        ),
+        proc_macro2::Span::call_site(),
+    )
+}
+
+/// The path `#[serde(deserialize_with = "...")]` names the read of `variant` of `item_enum` by,
+/// with the enum's own parameters, which are in scope wherever serde's derive calls it.
+fn braced_read_path(item_enum: &ItemEnum, variant: &Variant) -> String {
+    let name = &item_enum.ident;
+    let read = braced_read_name(variant);
+    if item_enum.generics.params.is_empty() {
+        return quote! { #name::#read }.to_string();
+    }
+    let arguments = item_enum.generics.params.iter().map(|param| match param {
+        GenericParam::Lifetime(held) => {
+            let lifetime = &held.lifetime;
+            quote! { #lifetime }
+        }
+        GenericParam::Type(held) => {
+            let ident = &held.ident;
+            quote! { #ident }
+        }
+        GenericParam::Const(held) => {
+            let ident = &held.ident;
+            quote! { #ident }
+        }
+    });
+    quote! { #name::<#(#arguments),*>::#read }.to_string()
+}
+
+/// The reads [`refusing_braced`] hang on the braced variants of `item`, in an `impl` of the enum:
+/// each reads `{}`, refuses the first key it is handed, and answers each member as serde's derive
+/// builds it, under a `Default` bound of each member `Default` builds whose type names a parameter.
+pub(super) fn braced_reads(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let Item::Enum(item_enum) = item else {
+        return TokenStream::new();
+    };
+    let variants = refusing_braced(item_enum, args);
+    if variants.is_empty() {
+        return TokenStream::new();
+    }
+    let name = &item_enum.ident;
+    let reader = unclaimed_parameter(
+        "D",
+        &written_names(quote::ToTokens::to_token_stream(item_enum)),
+    );
+    let parameters: Vec<String> = item_enum
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Lifetime(held) => held.lifetime.ident.to_string(),
+            GenericParam::Type(held) => held.ident.to_string(),
+            GenericParam::Const(held) => held.ident.to_string(),
+        })
+        .collect();
+    let reads = variants.iter().map(|variant| {
+        let read = braced_read_name(variant);
+        let doc = format!(
+            " The read of variant `{}` of `{}`, which refuses every key.",
+            variant.ident.unraw(),
+            name.unraw()
+        );
+        let types: Vec<&syn::Type> = variant.fields.iter().map(|field| &field.ty).collect();
+        let built: Vec<(TokenStream, bool)> =
+            variant.fields.iter().map(unread_member_built).collect();
+        let values: Vec<&TokenStream> = built.iter().map(|(value, _)| value).collect();
+        let (answered, value) = match (types.as_slice(), values.as_slice()) {
+            ([only], [value]) => (quote! { #only }, quote! { #value }),
+            _ => (quote! { (#(#types),*) }, quote! { (#(#values),*) }),
+        };
+        let defaulted: Vec<WherePredicate> = types
+            .iter()
+            .zip(&built)
+            .filter(|(ty, (_, by_default))| {
+                *by_default
+                    && written_names(quote::ToTokens::to_token_stream(ty))
+                        .iter()
+                        .any(|written| parameters.contains(written))
+            })
+            .map(|(ty, _)| syn::parse_quote! { #ty: ::core::default::Default })
+            .collect();
+        let asked = undeclared_bounds(&item_enum.generics, defaulted);
+        let bounds = (!asked.is_empty()).then(|| quote! { where #(#asked),* });
+        let body = super::unit_struct_body(
+            &variant.ident,
+            true,
+            &quote! { ::core::result::Result::Ok(#value) },
+        );
+        quote! {
+            #[doc = #doc]
+            fn #read<'de, #reader: ::serde::Deserializer<'de>>(deserializer: #reader) -> ::core::result::Result<#answered, #reader::Error> #bounds {
+                #body
+            }
+        }
+    });
+    let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #(#reads)*
+        }
+    }
+}
+
+/// Rewrites, on `item_enum` as serde's derive reads it, each member of a variant the macro reads
+/// through [`braced_reads`] from `skip` to `skip_serializing` under a `default`: serde refuses
+/// `skip_deserializing` on a member of a variant read through `deserialize_with`, and the `default`
+/// asks the bound its derive asked of the member.
+pub(super) fn unskip_braced_members(item_enum: &mut ItemEnum) {
+    let hung: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| braced_read_path(item_enum, variant))
+        .collect();
+    for (variant, path) in item_enum.variants.iter_mut().zip(hung) {
+        if read_hook(&variant.attrs).is_none_or(|(_, written)| written.value() != path) {
+            continue;
+        }
+        for field in &mut variant.fields {
+            unskipped(&mut field.attrs);
+        }
+    }
+}
+
+/// `attrs` with `skip` written `skip_serializing`, `skip_deserializing` dropped, and a bare
+/// `default` where they write none.
+fn unskipped(attrs: &mut Vec<Attribute>) {
+    let mut defaulted = false;
+    let mut kept = Vec::with_capacity(attrs.len());
+    for attr in attrs.drain(..) {
+        let listed = attr
+            .path()
+            .is_ident("serde")
+            .then(|| attr.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated));
+        let Some(Ok(keys)) = listed else {
+            kept.push(attr);
+            continue;
+        };
+        let rewritten: Vec<syn::Meta> = keys
+            .into_iter()
+            .filter_map(|key| {
+                if key.path().is_ident("skip") {
+                    Some(syn::parse_quote! { skip_serializing })
+                } else if key.path().is_ident("skip_deserializing") {
+                    None
+                } else {
+                    defaulted |= key.path().is_ident("default");
+                    Some(key)
+                }
+            })
+            .collect();
+        if !rewritten.is_empty() {
+            kept.push(syn::parse_quote! { #[serde(#(#rewritten),*)] });
+        }
+    }
+    if !defaulted {
+        kept.push(syn::parse_quote! { #[serde(default)] });
+    }
+    *attrs = kept;
+}
+
 /// Whether every surface describes `item`'s own object as reading past a key no member declares:
 /// where it is `nonstrict`, but for a struct a member of which it flattens refuses the key, and an
 /// enum a variant of which refuses it, as serde refuses it there.
@@ -412,11 +630,25 @@ pub(super) fn close_struct(item_struct: &mut ItemStruct, args: &ModelSchemaArgs)
 }
 
 /// Writes `#[serde(deny_unknown_fields)]` on `item_enum` where the macro closes it, and hangs the
-/// read of [`unit_reads`] on each of its unit variants [`refusing_units`] names.
+/// read of [`unit_reads`] on each of its unit variants [`refusing_units`] names, and that of
+/// [`braced_reads`] on each braced variant [`refusing_braced`] names.
 pub(super) fn close_enum(item_enum: &mut ItemEnum, args: &ModelSchemaArgs) {
+    let closes = closes_enum(item_enum, args);
     let units: Vec<String> = refusing_units(item_enum, args)
         .iter()
         .map(|variant| variant.ident.to_string())
+        .collect();
+    let braced: Vec<(proc_macro2::Ident, syn::LitStr)> = refusing_braced(item_enum, args)
+        .iter()
+        .map(|variant| {
+            (
+                variant.ident.clone(),
+                syn::LitStr::new(
+                    &braced_read_path(item_enum, variant),
+                    proc_macro2::Span::call_site(),
+                ),
+            )
+        })
         .collect();
     if !units.is_empty() {
         let read = syn::LitStr::new(&unit_read_name(item_enum), proc_macro2::Span::call_site());
@@ -428,7 +660,14 @@ pub(super) fn close_enum(item_enum: &mut ItemEnum, args: &ModelSchemaArgs) {
             }
         }
     }
-    if closes_enum(item_enum, args) {
+    for variant in &mut item_enum.variants {
+        if let Some((_, read)) = braced.iter().find(|(named, _)| *named == variant.ident) {
+            variant
+                .attrs
+                .push(syn::parse_quote! { #[serde(deserialize_with = #read)] });
+        }
+    }
+    if closes {
         item_enum
             .attrs
             .push(syn::parse_quote! { #[serde(deny_unknown_fields)] });

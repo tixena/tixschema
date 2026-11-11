@@ -3338,8 +3338,14 @@ fn variant_subclass(
         ),
         VariantPayload::Named(fields) => (
             format!(
-                "{annotation}{}@Serializable data class {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
+                "{annotation}{}@Serializable {} {subclass_name}{generic_params}({}) : {export_name}{generic_params}",
                 read::opted_in_ignoring_unknown_keys(),
+                // kotlinc refuses a data class of no property.
+                if fields.is_empty() {
+                    "class"
+                } else {
+                    "data class"
+                },
                 data_class_params(fields, Some(plugin))
             ),
             None,

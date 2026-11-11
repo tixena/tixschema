@@ -23430,3 +23430,96 @@ fn a_strict_struct_serde_reads_no_member_of_is_refused_under_a_conversion() {
         );
     }
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_braced_variant_serde_reads_no_member_of_is_read_by_the_macro_and_closes_its_enum() {
+    for tagging in [
+        "",
+        "#[serde(tag = \"kind\")]",
+        "#[serde(tag = \"kind\", content = \"body\")]",
+    ] {
+        let written = expansion_over(&format!(
+            "#[derive(Serialize, Deserialize)] {tagging} pub enum Signal {{ Off {{}}, On {{ level: \
+             u8 }} }}"
+        ))
+        .to_string();
+        assert!(written.contains("deny_unknown_fields"), "{tagging}");
+        assert!(
+            written.contains("deserialize_with = \"Signal :: model_schema_off_refuses_a_key\""),
+            "{tagging}"
+        );
+        assert!(
+            written.contains("fn model_schema_off_refuses_a_key"),
+            "{tagging}"
+        );
+    }
+    let lenient = expansion_with_args_over(
+        "nonstrict",
+        "#[derive(Serialize, Deserialize)] pub enum Signal { Off {}, On { level: u8 } }",
+    )
+    .to_string();
+    assert!(!lenient.contains("deny_unknown_fields"));
+    assert!(!lenient.contains("model_schema_off_refuses_a_key"));
+    let written_alone =
+        expansion_over("#[derive(Serialize)] pub enum Signal { Off {}, On { level: u8 } }")
+            .to_string();
+    assert!(!written_alone.contains("model_schema_off_refuses_a_key"));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_braced_variant_of_no_member_beside_one_that_flattens_a_map_holds_its_enum_open() {
+    let tokens = expansion_over(
+        "#[derive(Serialize, Deserialize)] pub enum Tally { Off {}, Counted { #[serde(flatten)] \
+         counts: BTreeMap<String, u8> } }",
+    );
+    let refused = refusal_texts(&tokens);
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    assert!(
+        refused[0].contains(
+            "it then reads past a key no member declares in variant `Off` as well. Mark `Tally` \
+             `#[model_schema(nonstrict)]`"
+        ),
+        "{refused:?}"
+    );
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_braced_variant_serde_never_reads_or_reads_through_its_authors_function_leaves_its_enum_closed()
+{
+    for tagging in [
+        "",
+        "#[serde(tag = \"kind\")]",
+        "#[serde(tag = \"kind\", content = \"body\")]",
+        "#[serde(untagged)]",
+    ] {
+        for variant in [
+            "#[serde(skip)] Closed {}",
+            "#[serde(skip)] Closed { #[serde(skip)] held: u32 }",
+            "#[serde(deserialize_with = \"hooked\")] Closed {}",
+        ] {
+            let written = expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] {tagging} pub enum Signal {{ {variant}, On {{ \
+                 level: u8 }} }}"
+            ))
+            .to_string();
+            assert!(
+                written.contains("deny_unknown_fields"),
+                "{tagging} {variant}"
+            );
+            assert!(
+                !written.contains("model_schema_closed_refuses_a_key"),
+                "{tagging} {variant}"
+            );
+        }
+    }
+    let lenient = expansion_with_args_over(
+        "nonstrict",
+        "#[derive(Serialize, Deserialize)] pub enum Signal { #[serde(deserialize_with = \"hooked\")] \
+         Closed {}, On { level: u8 } }",
+    )
+    .to_string();
+    assert!(!lenient.contains("deny_unknown_fields"));
+}
