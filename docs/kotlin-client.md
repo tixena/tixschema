@@ -120,7 +120,14 @@ the consumer's view; this is what a change has to keep.
 
 - **A number is read as serde reads it.** The serializer `texts::number_serializer` declares for
   an `f32` reads one beyond its range, which kotlinx refuses, as an infinity of its sign, and the
-  ones for an `f32` and an `f64` refuse a number beyond an `f64` with ``number out of range``. An
+  ones for an `f32` and an `f64` refuse a number beyond an `f64` with ``number out of range``. The
+  one for an integer, and for a `DateTime<Tz>` under `as_number`, reads the element's text, which
+  kotlinx keeps as written, and refuses one with a fraction or an exponent, or `-0`, ahead of the
+  library's read (`texts::integral`), as serde refuses the float it reads it as: ``invalid type:
+  floating point `100.0`, expected i64`` for `1e2`, where kotlinx reads `1e2` and `-0` as a
+  `Long`. Its private `floating` (`texts::FLOATING`) spells the float as `serde_json` does: the
+  shortest digits, plainly from `0.00001` to below `1e16` with `.0` where they hold no fraction,
+  and `1e+16` and `1e-6` beyond. An
   integer map key, alone or under a brand, is read through `integer_key_serializer`
   (`texts::key_serializer`), which refuses a key whose text opens with neither a digit nor `-`
   with ``invalid value: expected key to be a number in quotes`` and reads any other as the library
@@ -129,7 +136,10 @@ the consumer's view; this is what a change has to keep.
   `undeserializable-payload` naming no field (`{service}WsRefused`), as the Rust dispatcher answers
   what serde classifies as text that is not the document, and read each frame through
   `{service}WsFrame`, which refuses one that holds a number beyond a `Double`, which kotlinx keeps
-  as its text, so the frame is dropped, as the Rust transports drop it.
+  as its text, so the frame is dropped, as the Rust transports drop it. The attachment writes what
+  a handler answers through `{service}WsWritten` (`written_fn`), a `Json` that writes a `Float` or
+  a `Double` that is not finite, each such value then written as `null`, as serde writes it; the
+  client writes a message through the plain `Json`, which refuses one before it is sent.
 
 - **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
