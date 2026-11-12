@@ -200,6 +200,47 @@ pub fn judged(
     })
 }
 
+/// Writes `files` into a workspace of its own and type-checks them together as one module with
+/// the compiler beside the runtime `var` names (`swiftc` beside `swift`), `flags` ahead of them. A
+/// check that fails is the caller's to judge. `None` and a runtime named in `var` that cannot be
+/// started are what they are to [`run_in`].
+#[cfg(feature = "swift")]
+pub fn checked_together(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    flags: &[&str],
+    files: &[(&str, &str)],
+) -> Option<Judged> {
+    let at = workspace(named);
+    let chosen = env::var(var).ok();
+    let compiler = format!("{}c", chosen.clone().unwrap_or_else(|| fallback.to_owned()));
+    for (called, written) in files {
+        fs::write(at.join(called), written).unwrap();
+    }
+    let run = Command::new(&compiler)
+        .arg("-typecheck")
+        .args(flags)
+        .args(files.iter().map(|(called, _)| called))
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{var} names a runtime whose compiler `{compiler}` could not be started: {}",
+            run.unwrap_err()
+        );
+        stand_down(var, fallback);
+        return None;
+    };
+    Some(Judged {
+        stderr: String::from_utf8_lossy(&reported.stderr).into_owned(),
+        stdout: String::from_utf8_lossy(&reported.stdout).into_owned(),
+        succeeded: reported.status.success(),
+    })
+}
+
 /// Like [`ran`], but first symlinks `<workspace>/node_modules` to `modules` (as returned by
 /// [`node_modules`]) so the entry's ESM imports resolve — Node's ESM resolver ignores `NODE_PATH`.
 pub fn ran_with_modules(
