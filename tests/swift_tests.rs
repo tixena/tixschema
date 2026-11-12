@@ -257,3 +257,15 @@ mod unwired_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/unwired.rs"]
 mod unwired;
+
+/// A `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "kotlin_tests/usize_positions_models.rs"]
+mod usize_positions_models;
+
+/// What the Swift emitter writes for a `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/usize_positions.rs"]
+mod usize_positions;

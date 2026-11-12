@@ -1113,6 +1113,7 @@ impl FieldDef {
     /// describes as `null`.
     #[cfg(any(
         feature = "serde",
+        feature = "zod",
         feature = "dart",
         feature = "swift",
         feature = "kotlin"

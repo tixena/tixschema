@@ -6,7 +6,7 @@
 //! Swift toolchain, against an in-memory socket, separately from this file's own assertions.
 
 use super::{
-    MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE,
+    MIXED_SERVICE, OFFSET_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE,
     STREAMING_ONLY_SERVICE, SWIFT_SEQUENCE_SERVICE, SWIFT_UNIT_SUCCESS_SERVICE,
     SWIFT_WS_HEADERS_SERVICE, SWIFT_WS_SERVICE, swift_ws_client_of,
 };
@@ -704,4 +704,18 @@ fn the_actor_has_no_method_for_an_operation_only_http_rest_carries() {
         ) && !alone.contains("func fetch"),
         "got: {alone}"
     );
+}
+
+/// A `usize` argument and answer are a `UInt64`.
+#[test]
+fn a_usize_argument_and_answer_are_a_uint64() {
+    let written = swift_ws_client_of(OFFSET_SERVICE);
+    for expected in [
+        "public func seek(_ req: UInt64, bound: UInt64) async -> Result<UInt64, \
+         OffsetServiceSeekFailure> {",
+        "public func count(_ req: UInt64) async -> Result<UInt64, OffsetServiceCountFailure> {",
+        "decode(OffsetServiceWsValueEnvelope<UInt64>.self, from: raw)",
+    ] {
+        assert!(written.contains(expected), "no `{expected}` in: {written}");
+    }
 }

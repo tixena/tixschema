@@ -6963,16 +6963,12 @@ fn collect_swift_scanned_fields<'item>(
 }
 
 /// The refused primitive `field_def`, or anything it directly contains (a map's key or value, a
-/// tuple's slots, a generic argument), names — `None` where nothing under it is a `u64` or
-/// `usize`. [`refuses_swift`] answers only for one `FieldDef`'s own type; this walks every one.
+/// tuple's slots, a generic argument), names — `None` where nothing under it is a `u64`.
+/// [`refuses_swift`] answers only for one `FieldDef`'s own type; this walks every one.
 #[cfg(feature = "swift")]
 fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
     if refuses_swift(field_def) {
-        return Some(if matches!(field_def.field_type, FieldDefType::Usize) {
-            "usize"
-        } else {
-            "u64"
-        });
+        return Some("u64");
     }
     match &field_def.field_type {
         FieldDefType::Map(key, value) => {
@@ -7016,8 +7012,8 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
     }
 }
 
-/// The `compile_error!` tokens an item earns for a `u64` or `usize` field, under `swift` — one
-/// per declared field or slot that names one anywhere in its type, spanned on that declared type.
+/// The `compile_error!` tokens an item earns for a `u64` field, under `swift` — one per declared
+/// field or slot that names one anywhere in its type, spanned on that declared type.
 #[cfg(feature = "swift")]
 fn swift_width_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
     swift_scanned_fields(item)
@@ -7026,8 +7022,7 @@ fn swift_width_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
             let field_def = get_field_def("", ty, "");
             let refused = swift_refused_primitive_name(&field_def)?;
             let message = format!(
-                "{label}: `{refused}` has no Swift mapping; the Swift target refuses unsigned \
-                 64-bit and pointer-sized integers"
+                "{label}: `{refused}` has no Swift mapping; the Swift target refuses `u64`"
             );
             Some(syn::Error::new_spanned(ty, prefixed_guard_message(&message)).to_compile_error())
         })
@@ -19672,9 +19667,9 @@ fn collect_field_guard_errors(
         .collect()
 }
 
-/// Rejects a field that reaches `u64` or `usize` at any depth, under the `kotlin` feature. Kotlin
-/// has a `ULong` that could carry `u64`; the refusal exists instead for parity with the Swift
-/// target, which refuses the same two widths.
+/// Rejects a field that reaches `u64` at any depth, under the `kotlin` feature. Kotlin has a
+/// `ULong` that could carry `u64`; the refusal exists instead for parity with the Swift target,
+/// which refuses the same width.
 #[cfg(feature = "kotlin")]
 fn check_kotlin_width_field(
     field: &Field,
@@ -19687,8 +19682,7 @@ fn check_kotlin_width_field(
     Err(syn::Error::new_spanned(
         field,
         prefixed_guard_message(&format!(
-            "{label}: `{width}` has no Kotlin mapping; the Kotlin target refuses unsigned 64-bit \
-             and pointer-sized integers"
+            "{label}: `{width}` has no Kotlin mapping; the Kotlin target refuses `u64`"
         )),
     ))
 }

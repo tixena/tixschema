@@ -593,7 +593,7 @@ pub struct Tally {
 | Zod | `z.codec(z.union([z.bigint(), z.number().int()]), z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { decode: (value) => BigInt(value), encode: (value) => value })` | the same with `.min(0n).max(18446744073709551615n)` |
 | JSON Schema | `{"type": "integer"}` | `{"type": "integer"}` |
 | Dart | `int`, on the Dart VM | `int`, on the Dart VM |
-| Swift | `Int64` | refused, as every `u64` is: see [`u64` or `usize` Under `swift` or `kotlin`](troubleshooting.md#u64-or-usize-under-swift-or-kotlin) |
+| Swift | `Int64` | refused, as every `u64` is: see [`u64` Under `swift` or `kotlin`](troubleshooting.md#u64-under-swift-or-kotlin) |
 | Kotlin | `Long` | refused, as in Swift |
 
 The Zod schema reads a `bigint`, and a `number` that holds the integer exactly, and answers the `bigint`: `JSON.parse('{"signed":1719624000000}')` reads as `{ signed: 1719624000000n }`. It refuses a `number` beyond `2^53 - 1` in size, which `JSON.parse` has already rounded: `9007199254740993` is read as `9007199254740992`, refused with `Too big: expected int to be <=9007199254740991`. Read such a payload with a reviver that rebuilds the integer from its source text, as the TypeScript service code does (below).

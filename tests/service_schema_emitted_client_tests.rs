@@ -1163,6 +1163,28 @@ mod run_swift_wide_integers;
 #[path = "service_schema_emitted_client_tests/run_kotlin_wide_integers.rs"]
 mod run_kotlin_wide_integers;
 
+/// A `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "kotlin_tests/usize_positions_models.rs"]
+mod usize_positions_models;
+
+/// A `usize` held as a member, under a bound, as a map's key and as a range's bound.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/usize_models.rs"]
+mod usize_models;
+
+/// A `usize`, read and written as a `UInt64` by the emitted Swift type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_usize.rs"]
+mod run_swift_usize;
+
+/// A `usize`, read and written as a `ULong` by the emitted Kotlin type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_usize.rs"]
+mod run_kotlin_usize;
+
 /// What each `http_rest` client sends and reads of a bare `i64`.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/bare_wide_integer_rows.rs"]

@@ -734,10 +734,9 @@ pub fn swift_schema_dispatch(item: &Item, args: &SwiftTypeArgs<'_>) -> TokenStre
     tokens
 }
 
-/// Whether `field`'s own declared type has no Swift mapping — a `u64` or `usize`, refused rather
-/// than mapped because a decoder in the wild could disagree about the top half of the range.
+/// Whether `field`'s own declared type has no Swift mapping: a `u64`.
 pub const fn refuses_swift(field: &FieldDef) -> bool {
-    matches!(field.field_type, FieldDefType::U64 | FieldDefType::Usize)
+    matches!(field.field_type, FieldDefType::U64)
 }
 
 /// The Swift name registered for `rust_ident`, or `None` for a type declared below the one
@@ -1034,6 +1033,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         FieldDefType::U8 => "UInt8".to_owned(),
         FieldDefType::U16 => "UInt16".to_owned(),
         FieldDefType::U32 => "UInt32".to_owned(),
+        FieldDefType::Usize => "UInt64".to_owned(),
         FieldDefType::I8 => "Int8".to_owned(),
         FieldDefType::I16 => "Int16".to_owned(),
         FieldDefType::I32 => "Int32".to_owned(),
@@ -1054,8 +1054,7 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         | FieldDefType::Range(_, _)
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
-        | FieldDefType::U64
-        | FieldDefType::Usize => "String".to_owned(),
+        | FieldDefType::U64 => "String".to_owned(),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => "String".to_owned(),
         #[cfg(feature = "chrono")]
@@ -1088,6 +1087,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
         FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -1119,8 +1119,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
         | FieldDefType::Range(_, _)
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
-        | FieldDefType::U64
-        | FieldDefType::Usize => (None, held.to_owned()),
+        | FieldDefType::U64 => (None, held.to_owned()),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => (None, held.to_owned()),
         #[cfg(feature = "chrono")]
@@ -1586,12 +1585,12 @@ fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -
         FieldDefType::U8 => direct_shape("UInt8".to_owned()),
         FieldDefType::U16 => direct_shape("UInt16".to_owned()),
         FieldDefType::U32 => direct_shape("UInt32".to_owned()),
-        FieldDefType::U64 => direct_shape("UInt64".to_owned()),
+        FieldDefType::U64 | FieldDefType::Usize => direct_shape("UInt64".to_owned()),
         FieldDefType::I8 => direct_shape("Int8".to_owned()),
         FieldDefType::I16 => direct_shape("Int16".to_owned()),
         FieldDefType::I32 => direct_shape("Int32".to_owned()),
         FieldDefType::I64 => direct_shape("Int64".to_owned()),
-        FieldDefType::Usize | FieldDefType::Isize => direct_shape("Int".to_owned()),
+        FieldDefType::Isize => direct_shape("Int".to_owned()),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => direct_shape("ObjectId".to_owned()),
         #[cfg(feature = "chrono")]
