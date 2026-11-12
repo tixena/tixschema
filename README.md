@@ -30,6 +30,8 @@ A crate that declares any `pattern` also names `regex`, because the generated ch
 
 ### Frontend Dependencies (Zod v4)
 
+**TypeScript 5.7 or later** reads the generated types: a `Vec<u8>` is `Uint8Array<ArrayBuffer>`, which earlier releases do not parse.
+
 **Important:** This crate requires Zod 4.3.2 or later. Zod v3 is not supported. An earlier Zod 4 release refuses every payload of a variant that holds a struct under `#[serde(tag = "...")]`: the schema intersects the tag's strict object with the struct's, and before 4.3.2 each side refuses the other's keys.
 
 ```bash

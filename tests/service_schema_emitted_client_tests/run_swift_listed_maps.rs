@@ -5,8 +5,8 @@
 //! map's value and in a variant's slot, in a type that declares a parameter and in one that
 //! declares none. Each payload the serde read reads prints what it prints, and a key that is no
 //! number is refused, as the serde read refuses it. A null as the value of a map under a key Swift
-//! wraps is kept, as serde keeps it; a null in the one slot of an untagged variant is left out:
-//! Swift reads it otherwise than serde for a reason of its own.
+//! wraps is kept, as serde keeps it, and a null in the one slot of an untagged variant is read as
+//! the variant holding none.
 
 #![cfg(feature = "swift")]
 
@@ -595,6 +595,11 @@ fn buffered_rows() -> Vec<Row> {
             &UntaggedGalley::Maybe(Some(rungs(&text()))),
         ),
         read_row(
+            "an absent optional in a variant's one slot, untagged",
+            "UntaggedGalley",
+            &UntaggedGalley::Maybe(None),
+        ),
+        read_row(
             "each shape as a member of a variant, untagged",
             "UntaggedGalley",
             &UntaggedGalley::Stocked {
@@ -618,6 +623,11 @@ fn buffered_rows() -> Vec<Row> {
             "an optional in a variant's one slot, untagged, a parameter",
             "UntaggedStowedGalley<String>",
             &UntaggedStowedGalley::Maybe(Some(rungs(&text()))),
+        ),
+        read_row(
+            "an absent optional in a variant's one slot, untagged, a parameter",
+            "UntaggedStowedGalley<String>",
+            &UntaggedStowedGalley::<String>::Maybe(None),
         ),
         read_row(
             "each shape as a member of a variant, untagged, a parameter",

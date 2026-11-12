@@ -26,14 +26,16 @@ Generated Zod for `username` -- each check carrying the sentence the Rust valida
 
 ```text
 z.string()
-  .min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })
-  .max(30, { error: (issue) => `too long: maximum length is 30, got ${String(issue.input).length}` })
+  .min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })
+  .max(30, { error: (issue) => `too long: maximum length is 30, got ${[...String(issue.input)].length}` })
   .check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" }))
 ```
 
 Generated JSON Schema for `username`: `{ "type": "string", "minLength": 3, "maxLength": 30, "pattern": "^[a-z0-9_]+$" }`
 
 The TypeScript type is unchanged -- still just `string`.
+
+`minLength` and `maxLength` on a string count Unicode characters, its code points, on every surface: Rust (`chars().count()`), Zod, the JSON Schema, Dart (`runes`), Swift (`unicodeScalars`) and Kotlin (`codePointCount`), in the check and in the number a message reports. `"é"` and `"😀"` count 1, `"e\u{301}"` and `"😀😀"` count 2; a grapheme cluster is not the unit. The same holds for a brand, for the name of a unit variant under a length written on its enum, and for the rendering of a path.
 
 A value breaking more than one of a field's bounds is reported once per bound on both sides, in the order the bounds were declared: `validate()` collects every violation rather than stopping at the first, and every check on the Zod schema runs. So `"A!"` in the field above reads `'username': too short: minimum length is 3, got 2; 'username': does not match pattern '^[a-z0-9_]+$'` from a Rust service and from a TypeScript one alike.
 
@@ -275,6 +277,8 @@ error: model_schema: field `tags`: `pattern` cannot apply to a `Vec<String>` fie
 The refusal names the keys of the wrong kind and no other: `minimum` written beside a refused `minLength` on a number is not named, and neither is a `minLength` written beside a refused `pattern` on a list.
 
 A `minimum` or `maximum` that is a whole number outside the range of the field's integer type is refused too, naming the field, the bound and the range: `#[model_schema_prop(minimum = -1)] pub count: u32` answers ``error: model_schema: field `count`: `minimum = -1` is outside what `u32` holds (0 to 4294967295). Write a bound inside that range, or take it off.`` It holds under `Option` and `Box`, on a variant's field and on a slot of a tuple.
+
+A `minimum` or `maximum` with a fraction on an integer field is refused too, naming the whole limit that states the same bound: `#[model_schema_prop(minimum = 1.5)] pub least: i32` answers ``error: model_schema: field `least`: `minimum = 1.5` holds a fraction, and `i32` holds whole numbers only. Write `minimum = 2`.``, and `maximum = -1.5` answers ``Write `maximum = -2`.`` A limit written whole, `maximum = 10.0`, is not a fraction. A limit no float of the field's type holds is refused as well: `#[model_schema_prop(maximum = 1e39)] pub single: f32` answers ``error: model_schema: field `single`: `maximum = 1e39` is beyond what an `f32` holds (3.4028235e38 in size). Write a bound inside that range, or take it off.`` An `f64` is held to `1.7976931348623157e308`, and `maximum = 3e38` on an `f32` and `maximum = 1e39` on an `f64` build.
 
 A bound no value meets is refused too, on a field and on a brand's own `minLength` and `maxLength`: a lower bound above its upper bound answers ``error: model_schema: field `name`: `minLength = 5` is above `maxLength = 2`, so no value passes``. On a fixed array `[T; N]`, a `maxLength` below `N` or a `minLength` above `N` is refused (``field `pair`: `maxLength = 1` cannot hold a `[String; 2]`, which always has 2 items``), and so is a count that only repeats the length (``field `pair`: `minLength = 2` repeats the length of `[String; 2]`, which always has 2 items. Take it off.``). An equal pair, a count the length always meets, and a length the expansion cannot read build as before.
 

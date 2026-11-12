@@ -15,9 +15,10 @@ use crate::field_type::{FieldDefType, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ServiceDef, is_scalar_named_type, is_unit_type, option_inner,
-    path_reads_a_named_field, service_declares_a_stream, service_declares_multipart,
-    tuple_elements, vec_inner, wire_key, written,
+    OperationOutcome, PATH_ITEM_HOLDS_A_COMMA, PathSegment, ServiceDef, is_scalar_named_type,
+    is_unit_type, option_inner, path_reads_a_named_field, path_writes_a_list,
+    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
+    written,
 };
 use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::{WireScalarKind, wire_scalar_kind};
@@ -481,7 +482,7 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
             .map(|header| &header.parameter)
             .chain(shape.multipart_parts.iter().map(|part| &part.parameter)),
     );
-    let path_build = path_build_stmt(operation, &shape, fn_prefix);
+    let path_build = path_build_stmt(named, operation, &shape, fn_prefix);
     let query_build = query_build_stmt(operation, &shape, fn_prefix);
     let headers_build = header_in_build_stmt(named, fn_prefix, operation, &shape);
     let body_build = body_build_stmt(&shape, operation);
@@ -518,33 +519,48 @@ fn method(named: &str, fn_prefix: &str, operation: &OperationDef, has_multipart:
     )
 }
 
+/// The value one path placeholder reads off `req`: the field the placeholder names, or the whole
+/// message where that message is itself a wire scalar. A `String?` expression that answers `null`
+/// for a list one of whose items holds a comma, said by the flag beside it, or a `String`.
 fn placeholder_value_kotlin_expr(
     fn_prefix: &str,
     operation: &OperationDef,
     shape: &HttpShape,
     placeholder: &str,
-) -> String {
+) -> (String, bool) {
     let prop = kotlin_property_name(placeholder);
+    let of_type = |ty: &Type, expr: &str, promoted: bool| {
+        let base = option_inner(ty).unwrap_or(ty);
+        (
+            kotlin_path_text(fn_prefix, ty, expr, promoted),
+            vec_inner(base).is_some(),
+        )
+    };
     match &operation.inputs {
-        OperationInputs::Empty => format!("\"${{req.{prop}}}\""),
+        OperationInputs::Empty => (format!("\"${{req.{prop}}}\""), false),
         OperationInputs::Generated(fields) => fields
             .iter()
             .find(|(field, _)| written(field) == placeholder)
             .map_or_else(
-                || format!("\"${{req.{prop}}}\""),
-                |(_, ty)| kotlin_wire_text(fn_prefix, ty, &format!("req.{prop}"), false),
+                || (format!("\"${{req.{prop}}}\""), false),
+                |(_, ty)| of_type(ty, &format!("req.{prop}"), false),
             ),
         OperationInputs::Named(declared) => {
             if shape.placeholder_names().len() == 1 && is_scalar_named_type(declared) {
-                kotlin_wire_text(fn_prefix, declared, "req", true)
+                of_type(declared, "req", true)
             } else {
-                format!("{}(req.{prop})", wire_text_call(fn_prefix))
+                (format!("{}(req.{prop})", path_text_call(fn_prefix)), true)
             }
         }
     }
 }
 
-fn path_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str) -> String {
+fn path_build_stmt(
+    named: &str,
+    operation: &OperationDef,
+    shape: &HttpShape,
+    fn_prefix: &str,
+) -> String {
     let mut stmt = String::from("    var path = \"\"\n");
     for segment in &shape.path {
         match segment {
@@ -552,12 +568,51 @@ fn path_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str)
                 let _ = writeln!(stmt, "    path += {}", kotlin_quoted(text));
             }
             PathSegment::Placeholder(name) => {
-                let value = placeholder_value_kotlin_expr(fn_prefix, operation, shape, name);
-                let _ = writeln!(stmt, "    path += {fn_prefix}HttpPercentEncode({value})");
+                let (value, refusable) =
+                    placeholder_value_kotlin_expr(fn_prefix, operation, shape, name);
+                if !refusable {
+                    let _ = writeln!(stmt, "    path += {fn_prefix}HttpPercentEncode({value})");
+                    continue;
+                }
+                let fault_expr = format!(
+                    "{fn_prefix}HttpOutboundFault({}, {}, {})",
+                    kotlin_quoted(&operation.wire_name),
+                    kotlin_quoted(name),
+                    kotlin_quoted(PATH_ITEM_HOLDS_A_COMMA),
+                );
+                let refusal = outbound_refusal_stmt(named, operation, &fault_expr);
+                let _ = write!(
+                    stmt,
+                    "    run {{\n      val text = {value}\n      if (text == null) {{\n        \
+                     {refusal}\n      }}\n      path += {fn_prefix}HttpPercentEncode(text)\n    }}\n"
+                );
             }
         }
     }
     stmt
+}
+
+/// The Kotlin expression that renders `ty`'s value at `expr` as the text a path placeholder
+/// carries, a `String?` that is `null` where a list's item holds a comma: [`kotlin_wire_text`],
+/// with a list's items written one by one and handed to the path-items helper to join.
+fn kotlin_path_text(fn_prefix: &str, ty: &Type, expr: &str, promoted: bool) -> String {
+    if let Some(inner) = option_inner(ty) {
+        let narrowed = if promoted {
+            expr.to_owned()
+        } else {
+            format!("{expr}!!")
+        };
+        let rendered = kotlin_path_text(fn_prefix, inner, &narrowed, promoted);
+        return format!("(if ({expr} == null) \"\" else {rendered})");
+    }
+    if let Some(inner) = vec_inner(ty) {
+        let element = kotlin_wire_text(fn_prefix, inner, "it", true);
+        return format!(
+            "{}(({expr}).map {{ {element} }})",
+            path_items_call(fn_prefix)
+        );
+    }
+    kotlin_wire_text(fn_prefix, ty, expr, promoted)
 }
 
 fn query_build_stmt(operation: &OperationDef, shape: &HttpShape, fn_prefix: &str) -> String {
@@ -1073,8 +1128,12 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     if reads_a_response_header(service) {
         helpers.push(find_header_fn(fn_prefix));
     }
+    let writes_a_list = service.operations.iter().any(path_writes_a_list);
+    if writes_a_list {
+        helpers.push(path_items_fn(fn_prefix));
+    }
     if service.operations.iter().any(path_reads_a_named_field) {
-        helpers.push(wire_text_fn(fn_prefix));
+        helpers.push(path_text_fn(fn_prefix));
     }
     if service.operations.iter().any(|operation| {
         text_types(operation)
@@ -1090,6 +1149,8 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
     ]);
     if declares_header_in(service) {
         helpers.push(legal_header_value_fn(fn_prefix));
+    }
+    if declares_header_in(service) || writes_a_list {
         helpers.push(outbound_fault_fn(named, fn_prefix));
     }
     helpers
@@ -1135,7 +1196,7 @@ fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
-         /// own safety check, before the transport is ever reached.\n\
+         /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          private fun {fn_prefix}HttpOutboundFault(operation: String, field: String, detail: \
          String): {fields} =\n  \
          {fields}(\n    \
@@ -1187,21 +1248,38 @@ fn find_header_call(fn_prefix: &str) -> String {
     format!("{fn_prefix}HttpFindHeader")
 }
 
-/// A named message's field as the text a path segment carries, as the Rust client writes it: a
-/// string as itself, anything else as its JSON, through the field's own serializer.
-fn wire_text_fn(fn_prefix: &str) -> String {
+/// Joins a path list's items with commas as the dispatchers split them, or answers `null` where
+/// an item holds a comma, which a dispatcher would split in two.
+fn path_items_fn(fn_prefix: &str) -> String {
     format!(
-        "private inline fun <reified T> {}(value: T): String =\n  \
-         when (val encoded = Json.encodeToJsonElement(serializer<T>(), value)) {{\n    \
-         is JsonPrimitive -> encoded.content\n    \
-         else -> encoded.toString()\n  \
-         }}",
-        wire_text_call(fn_prefix)
+        "private fun {}(items: List<String>): String? =\n  \
+         if (items.any {{ it.contains(',') }}) null else items.joinToString(\",\")",
+        path_items_call(fn_prefix)
     )
 }
 
-fn wire_text_call(fn_prefix: &str) -> String {
-    format!("{fn_prefix}HttpWireText")
+fn path_items_call(fn_prefix: &str) -> String {
+    format!("{fn_prefix}HttpPathItems")
+}
+
+/// A named message's field as the text a path segment carries, as the Rust client writes it: a
+/// string as itself, a list's items each so and joined, anything else as its JSON, through the
+/// field's own serializer.
+fn path_text_fn(fn_prefix: &str) -> String {
+    format!(
+        "private inline fun <reified T> {}(value: T): String? =\n  \
+         when (val encoded = Json.encodeToJsonElement(serializer<T>(), value)) {{\n    \
+         is JsonPrimitive -> encoded.content\n    \
+         is JsonArray -> {}(encoded.map {{ if (it is JsonPrimitive) it.content else it.toString() }})\n    \
+         else -> encoded.toString()\n  \
+         }}",
+        path_text_call(fn_prefix),
+        path_items_call(fn_prefix)
+    )
+}
+
+fn path_text_call(fn_prefix: &str) -> String {
+    format!("{fn_prefix}HttpPathText")
 }
 
 /// A value as the text a path segment, a query, a header or a part carries, written through
@@ -1384,6 +1462,7 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
                 WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => {
                     format!("({raw}).toLong()")
                 }
+                WireScalarKind::UnsignedSize => format!("({raw}).toULong()"),
                 WireScalarKind::Float => format!("({raw}).toDouble()"),
             };
             format!(

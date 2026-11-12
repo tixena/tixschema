@@ -83,6 +83,11 @@ pub const TEXT_FORM: &str = "text";
 /// Written ahead of the form of a list's item: the text is split on `,`.
 pub const LIST_FORM: &str = "list of ";
 
+/// What every client answers, before sending, for a list whose item holds the comma a path divides
+/// its items with.
+pub const PATH_ITEM_HOLDS_A_COMMA: &str =
+    "a list item holds a comma, which a path would read as two items";
+
 /// One service, read once.
 #[derive(Clone)]
 pub struct ServiceDef {
@@ -759,7 +764,8 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
         WireScalarKind::Float
         | WireScalarKind::Integer
         | WireScalarKind::Signed64
-        | WireScalarKind::Unsigned64 => ScalarKind::Number,
+        | WireScalarKind::Unsigned64
+        | WireScalarKind::UnsignedSize => ScalarKind::Number,
         WireScalarKind::Text => ScalarKind::Text,
     }
 }
@@ -773,7 +779,9 @@ pub fn path_text_form(ty: &Type) -> String {
     }
     match wire_scalar_kind(base) {
         WireScalarKind::Bool => BOOLEAN_FORM,
-        WireScalarKind::Float | WireScalarKind::Integer => NUMBER_FORM,
+        WireScalarKind::Float | WireScalarKind::Integer | WireScalarKind::UnsignedSize => {
+            NUMBER_FORM
+        }
         WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => BIGINT_FORM,
         WireScalarKind::Text => TEXT_FORM,
     }
@@ -797,7 +805,8 @@ pub fn wide_integer_range(ty: &Type) -> Option<(&'static str, &'static str)> {
         WireScalarKind::Bool
         | WireScalarKind::Float
         | WireScalarKind::Integer
-        | WireScalarKind::Text => None,
+        | WireScalarKind::Text
+        | WireScalarKind::UnsignedSize => None,
     }
 }
 
@@ -807,7 +816,10 @@ pub fn wide_integer_range(ty: &Type) -> Option<(&'static str, &'static str)> {
 pub fn is_integer_scalar(ty: &Type) -> bool {
     matches!(
         wire_scalar_kind(ty),
-        WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64
+        WireScalarKind::Integer
+            | WireScalarKind::Signed64
+            | WireScalarKind::Unsigned64
+            | WireScalarKind::UnsignedSize
     )
 }
 
@@ -827,6 +839,27 @@ pub fn path_reads_a_named_field(operation: &OperationDef) -> bool {
     };
     let placeholders = HttpShape::of(operation).placeholder_names();
     !placeholders.is_empty() && (placeholders.len() != 1 || !is_scalar_named_type(declared))
+}
+
+/// Whether a path placeholder of the operation may bind a list: a `Vec` the macro sees, or a field
+/// of a `Named` message whose type it never sees. A client writes such a placeholder through the
+/// join of a list's items, which refuses an item that holds a comma.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub fn path_writes_a_list(operation: &OperationDef) -> bool {
+    let placeholders = HttpShape::of(operation).placeholder_names();
+    if placeholders.is_empty() {
+        return false;
+    }
+    let is_list = |ty: &Type| vec_inner(option_inner(ty).unwrap_or(ty)).is_some();
+    match &operation.inputs {
+        OperationInputs::Empty => false,
+        OperationInputs::Generated(fields) => fields
+            .iter()
+            .any(|(field, ty)| placeholders.contains(&written(field)) && is_list(ty)),
+        OperationInputs::Named(declared) => {
+            placeholders.len() != 1 || !is_scalar_named_type(declared) || is_list(declared)
+        }
+    }
 }
 
 /// The one generic argument inside `Option<...>` or `Vec<...>`, if `ty` is written as that generic.

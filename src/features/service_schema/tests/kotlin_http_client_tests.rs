@@ -9,8 +9,8 @@ use super::{
     KOTLIN_BYTES_HEADER_OUT_SERVICE, KOTLIN_HTTP_SERVICE, KOTLIN_MULTIPART_HTTP_SERVICE,
     KOTLIN_NUMERIC_HEADER_OUT_SERVICE, KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE,
     KOTLIN_STREAM_HTTP_SERVICE, KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, MIXED_SERVICE,
-    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, RESERVED_WORD_SERVICE,
-    SHADOWED_LOCAL_SERVICE, kotlin_http_client_of,
+    NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE, OFFSET_SERVICE,
+    RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, kotlin_http_client_of,
 };
 
 /// A service whose reply is a bare date, whose reply header is a `char`, and whose reply is a
@@ -359,9 +359,9 @@ fn a_unit_success_answers_a_bare_ok_object() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = kotlin_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written.contains("mediaClientServiceHttpWireText(req.sha256)")
+        written.contains("val text = mediaClientServiceHttpPathText(req.sha256)")
             && written.contains(
-                "private inline fun <reified T> mediaClientServiceHttpWireText(value: T): String ="
+                "private inline fun <reified T> mediaClientServiceHttpPathText(value: T): String? ="
             ),
         "got: {written}"
     );
@@ -389,7 +389,7 @@ fn a_hard_keyword_is_written_between_backticks_in_the_method_and_the_requests_me
         "suspend fun `for`(req: ForRequest, default: String?)",
         "${req.`in`}",
         "suspend fun `object`(req: Thing)",
-        "WireText(req.`class`)",
+        "PathText(req.`class`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
     }
@@ -433,4 +433,22 @@ fn a_bare_char_or_date_message_is_read_through_the_serializer_of_its_form() {
         written.ends_with(" text } } }"),
         "the serializers are declared last. Got: {written}"
     );
+}
+
+/// A `usize` argument, in a path, a header and a body, and a `usize` answer are a `ULong`, read and
+/// written through the serializer of one.
+#[test]
+fn a_usize_argument_and_answer_are_a_ulong() {
+    let written = kotlin_http_client_of(OFFSET_SERVICE);
+    for expected in [
+        "suspend fun seek(req: ULong, bound: ULong): OffsetServiceSeekResult {",
+        "suspend fun count(req: ULong): OffsetServiceCountResult {",
+        "data class Ok(val value: ULong) : OffsetServiceSeekResult",
+        "object KotlinNumber1 : KSerializer<ULong> {",
+        "offsetServiceHttpSentText(KotlinNumber1, bound)",
+        "OffsetServiceSeekResult.Ok(Json.decodeFromString(KotlinNumber1, \
+         response.body.decodeToString()))",
+    ] {
+        assert!(written.contains(expected), "no `{expected}` in: {written}");
+    }
 }

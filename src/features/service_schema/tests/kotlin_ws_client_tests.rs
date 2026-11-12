@@ -6,8 +6,9 @@
 //! scenarios separately, outside this crate's own test suite.
 
 use super::{
-    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE,
-    SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE, STREAMING_ONLY_SERVICE, kotlin_ws_client_of,
+    KOTLIN_UNIT_SUCCESS_HTTP_SERVICE, KOTLIN_WS_SERVICE, MIXED_SERVICE, OFFSET_SERVICE,
+    RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SHELVING_SERVICE, STREAMING_ONLY_SERVICE,
+    kotlin_ws_client_of,
 };
 
 /// A service whose reply is a bare date, and whose request carries a `char` header.
@@ -784,4 +785,20 @@ fn neither_the_client_nor_the_handlers_hold_an_operation_only_http_rest_carries(
         ),
         "got: {alone}"
     );
+}
+
+/// A `usize` argument and answer are a `ULong`, read and written through the serializer of one.
+#[test]
+fn a_usize_argument_and_answer_are_a_ulong() {
+    let written = kotlin_ws_client_of(OFFSET_SERVICE);
+    for expected in [
+        "suspend fun seek(req: ULong, bound: ULong): OffsetServiceSeekResult {",
+        "suspend fun count(req: ULong): OffsetServiceCountResult {",
+        "object KotlinNumber1 : KSerializer<ULong> {",
+        "Json.encodeToJsonElement(KotlinNumber1, req)",
+        "OffsetServiceSeekResult.Ok(Json.decodeFromString(KotlinNumber1, \
+         reply.getValue(\"value\").toString()))",
+    ] {
+        assert!(written.contains(expected), "no `{expected}` in: {written}");
+    }
 }

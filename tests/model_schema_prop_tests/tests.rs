@@ -324,8 +324,8 @@ fn test_string_literal_zod() {
 
     assert!(zod_schema.contains("aud: z.string()"));
 
-    assert!(zod_schema.contains("sub: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
-    assert!(zod_schema.contains("jti: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
+    assert!(zod_schema.contains("sub: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })"));
+    assert!(zod_schema.contains("jti: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })"));
 
     assert!(zod_schema.contains("exp: z.codec(z.union([z.bigint(), z.number().int()])"));
     assert!(zod_schema.contains("iat: z.codec(z.union([z.bigint(), z.number().int()])"));
@@ -534,15 +534,15 @@ fn test_min_length_typescript() {
 fn test_min_length_zod() {
     let zod_schema = MinLengthTest::zod_schema();
 
-    assert!(zod_schema.contains("name: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"));
-    assert!(zod_schema.contains("username: z.string().min(5, { error: (issue) => `too short: minimum length is 5, got ${String(issue.input).length}` })"));
-    assert!(zod_schema.contains("password: z.string().min(10, { error: (issue) => `too short: minimum length is 10, got ${String(issue.input).length}` })"));
+    assert!(zod_schema.contains("name: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })"));
+    assert!(zod_schema.contains("username: z.string().min(5, { error: (issue) => `too short: minimum length is 5, got ${[...String(issue.input)].length}` })"));
+    assert!(zod_schema.contains("password: z.string().min(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` })"));
     assert!(zod_schema.contains("tags: z.array(z.string()).min(2, { error: (issue) => `too short: minimum length is 2, got ${Array.isArray(issue.input) ? issue.input.length : 0}` }),"));
 
     assert!(zod_schema.contains("description: z.string(),"));
 
     assert!(zod_schema.contains(
-        "nickname: z.union([z.null().transform(() => undefined), z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }), z.undefined()])"
+        "nickname: z.union([z.null().transform(() => undefined), z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }), z.undefined()])"
     ));
 }
 
@@ -601,12 +601,12 @@ fn test_combined_literal_minlength_zod() {
     #[cfg(feature = "serde")]
     let (fixed_field, normal_field) = (
         "fixed_field: z.literal(\"fixed\", { error: ",
-        "normal_field: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })",
+        "normal_field: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })",
     );
     #[cfg(not(feature = "serde"))]
     let (fixed_field, normal_field) = (
         "fixedField: z.literal(\"fixed\", { error: ",
-        "normalField: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })",
+        "normalField: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })",
     );
 
     assert!(zod_schema.contains(fixed_field));
@@ -663,7 +663,7 @@ fn an_enums_check_leaves_a_literal_field_alone_in_zod() {
         zod_schema.contains("word: z.literal(\"x\", { error: "),
         "{zod_schema}"
     );
-    assert!(zod_schema.contains("note: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` })"), "{zod_schema}");
+    assert!(zod_schema.contains("note: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${[...String(issue.input)].length}` })"), "{zod_schema}");
 }
 
 #[cfg(feature = "serde")]

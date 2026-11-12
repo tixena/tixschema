@@ -962,39 +962,41 @@ fn a_brand_over_a_brand_is_measured_on_its_text() {
     assert_eq!(wrote, report(&cases));
 }
 
-/// A string's length is its Unicode code points: a letter with an accent and a character outside
-/// the Basic Multilingual Plane each count one.
+/// A string held to one character, in the four values that tell a byte, a UTF-16 unit and a code
+/// point apart, each held to what Rust's `validate()` answers.
+pub fn code_point_cases() -> Vec<Case> {
+    [
+        ("a letter with an accent", "\u{e9}"),
+        ("a letter and a combining accent", "e\u{301}"),
+        ("a character outside the plane", "\u{1f600}"),
+        ("two characters outside the plane", "\u{1f600}\u{1f600}"),
+    ]
+    .into_iter()
+    .map(|(name, letter)| {
+        let held = Initial {
+            letter: letter.to_owned(),
+        };
+        compared(name, &held, held.validate(), "Initial.fromJsonUnjudged(@)")
+    })
+    .collect()
+}
+
+/// A string's length is its Unicode code points, the unit and the sentence Rust's `validate()`
+/// answers.
 #[test]
 fn a_length_counts_code_points() {
-    let initial = |letter: &str| Initial {
-        letter: letter.to_owned(),
-    };
-    let cases = [
-        pinned(
-            "a letter with an accent",
-            &initial("\u{e9}"),
-            &[],
-            "Initial.fromJsonUnjudged(@)",
-        ),
-        pinned(
-            "a character outside the plane",
-            &initial("\u{1f600}"),
-            &[],
-            "Initial.fromJsonUnjudged(@)",
-        ),
-        pinned(
-            "two letters",
-            &initial("ab"),
-            &["'letter': too long: maximum length is 1, got 2"],
-            "Initial.fromJsonUnjudged(@)",
-        ),
-        pinned(
-            "two characters outside the plane",
-            &initial("\u{1f600}\u{1f600}"),
-            &["'letter': too long: maximum length is 1, got 2"],
-            "Initial.fromJsonUnjudged(@)",
-        ),
-    ];
+    let cases = code_point_cases();
+    assert_eq!(
+        report(&cases),
+        "\
+a letter with an accent: passes
+a letter and a combining accent: refused
+    'letter': too long: maximum length is 1, got 2
+a character outside the plane: passes
+two characters outside the plane: refused
+    'letter': too long: maximum length is 1, got 2
+"
+    );
     let Some(wrote) = printed("code_points.dart", &cases) else {
         return;
     };

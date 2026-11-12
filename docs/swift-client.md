@@ -23,8 +23,7 @@ the Swift client" section is the consumer's view; this is what a change to the e
   `Bound::stated()`, as `rust_violation` is, and
   `the_swift_sentence_is_the_one_rust_writes_for_each_bound` holds the two together.
 - **The unit of a length is the Unicode code point** (`unicodeScalars.count`), and a list is
-  counted by `count`. Rust measures a string with `len()`, its bytes: a test of a non-ASCII string
-  pins this client's own text.
+  counted by `count`. Rust counts the same unit, and a test holds each sentence over a non-ASCII string to Rust's.
 - **A range is written where a value can break it.** `Number::least` and `Number::most` answer no
   literal for a bound outside the range of the field's integer type: `x < 0` on an unsigned
   integer is a warning in Swift. A float field's limit is a float literal (`float_literal`),
@@ -119,7 +118,8 @@ to keep.
   ``invalid type: floating point `1.0`, expected u32``, the number spelled from its `Double`, and
   the integer named as serde names it: `expected` peels each `Optional<...>` off
   `String(describing: SwiftSchemaLeaf.self)`, so a parameter filled with `UInt32?` names `u32`
-  where it named `Optional<UInt32>`. It tells such a number from the decoder `JSONDecoder` hands
+  where it named `Optional<UInt32>`, and a `UInt64`, which a `usize` is held as, names `usize`
+  (a `u64` is refused). It tells such a number from the decoder `JSONDecoder` hands
   `init(from:)`, the private `FoundationEssentials.JSONDecoderImpl`, read through `Mirror`: the last of its stored `values` is
   the number being read, `number(Region, containsExponent: Bool)`, and `Region.count` is the byte
   count of its text, which differs from that of the integer written plainly where it holds a

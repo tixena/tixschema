@@ -12,9 +12,10 @@ use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, DEFAULT_BINDING_ERROR_STATUS, HttpShape, OperationDef, OperationInputs,
-    OperationOutcome, PathSegment, ScalarKind, ServiceDef, held_as_a_bigint, is_integer_scalar,
-    is_scalar_named_type, is_unit_type, option_inner, scalar_kind, service_declares_a_stream,
-    service_declares_multipart, tuple_elements, vec_inner, wide_integer_range, wire_key, written,
+    OperationOutcome, PATH_ITEM_HOLDS_A_COMMA, PathSegment, ScalarKind, ServiceDef,
+    held_as_a_bigint, is_integer_scalar, is_scalar_named_type, is_unit_type, option_inner,
+    scalar_kind, service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner,
+    wide_integer_range, wire_key, written,
 };
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
@@ -290,27 +291,9 @@ fn wire_text_expr(prefix: &str, ty: &Type, value: &str) -> String {
     )
 }
 
-/// The type a path placeholder reads off `sending`, where the macro sees it: a generated field's,
-/// or the whole message bound to the one placeholder.
-fn placeholder_type<'operation>(
-    operation: &'operation OperationDef,
-    shape: &HttpShape,
-    placeholder: &str,
-) -> Option<&'operation Type> {
-    match &operation.inputs {
-        OperationInputs::Empty => None,
-        OperationInputs::Generated(fields) => fields
-            .iter()
-            .find(|(field, _)| written(field) == placeholder)
-            .map(|(_, ty)| ty),
-        OperationInputs::Named(declared) => (shape.placeholder_names().len() == 1
-            && is_scalar_named_type(declared))
-        .then_some(declared.as_ref()),
-    }
-}
-
 fn path_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> String {
     let mut stmt = String::from("      let path = \"\";\n");
+    let wire = ts_quoted(&operation.wire_name);
     for segment in &shape.path {
         match segment {
             PathSegment::Literal(text) => {
@@ -318,11 +301,22 @@ fn path_build_stmt(prefix: &str, operation: &OperationDef, shape: &HttpShape) ->
             }
             PathSegment::Placeholder(name) => {
                 let value = placeholder_value_expr(operation, shape, name);
-                let rendered = placeholder_type(operation, shape, name).map_or_else(
-                    || format!("{prefix}HttpWireText({value})"),
-                    |ty| wire_text_expr(prefix, option_inner(ty).unwrap_or(ty), &value),
+                let fault_expr = format!(
+                    "{prefix}HttpOutboundFault({wire}, [{{ path: [{}], message: {} }}])",
+                    ts_quoted(name),
+                    ts_quoted(PATH_ITEM_HOLDS_A_COMMA),
                 );
-                let _ = writeln!(stmt, "      path += encodeURIComponent({rendered});");
+                let refusal =
+                    message::deeper(&outbound_fault_stmt(prefix, operation, &fault_expr), 2);
+                let _ = write!(
+                    stmt,
+                    "      {{\n        \
+                     const text = {prefix}HttpPathListText({value});\n        \
+                     if (text === undefined) {{\n{refusal}        \
+                     }}\n        \
+                     path += encodeURIComponent(text);\n      \
+                     }}\n"
+                );
             }
         }
     }
@@ -1082,6 +1076,13 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
     if service.operations.iter().any(writes_a_text) {
         helpers.push(wire_text_fn(&prefix));
     }
+    if service
+        .operations
+        .iter()
+        .any(|operation| !HttpShape::of(operation).placeholder_names().is_empty())
+    {
+        helpers.push(path_text_fn(&prefix));
+    }
     helpers
 }
 
@@ -1100,15 +1101,31 @@ fn writes_a_text(operation: &OperationDef) -> bool {
 }
 
 /// The text a value carries in a path, a query, a header or a part, as the Rust dispatcher reads
-/// it: a `Date` as the RFC 3339 text `JSON.stringify` writes for it, and anything else as
-/// `String` writes it.
+/// it: a `Date` as the RFC 3339 text chrono writes for it, and anything else as `String` writes
+/// it.
 fn wire_text_fn(prefix: &str) -> String {
     format!(
         "/** The text a value carries in a path, a query, a header or a part: a `Date` as the \
          RFC 3339\n \
-         * text `JSON.stringify` writes for it, anything else as `String` writes it. */\n\
+         * text chrono writes for it, anything else as `String` writes it. */\n\
          function {prefix}HttpWireText(value: unknown): string {{\n  \
-         return value instanceof Date ? value.toISOString() : String(value);\n\
+         return value instanceof Date ? value.toISOString().replace(\".000Z\", \"Z\") : \
+         String(value);\n\
+         }}"
+    )
+}
+
+/// The text a path placeholder carries of `value`: a list's items each through
+/// [`wire_text_fn`], joined by commas as the dispatchers split them, or `undefined` where an item
+/// holds a comma, which no dispatcher could tell from the divider.
+fn path_text_fn(prefix: &str) -> String {
+    format!(
+        "/** The text a path placeholder carries of `value`: a list's items joined by commas, or\n \
+         * `undefined` where an item holds a comma, which a dispatcher would split in two. */\n\
+         function {prefix}HttpPathListText(value: unknown): string | undefined {{\n  \
+         if (!Array.isArray(value)) return {prefix}HttpWireText(value);\n  \
+         const items = value.map((item) => {prefix}HttpWireText(item));\n  \
+         return items.some((item) => item.includes(\",\")) ? undefined : items.join(\",\");\n\
          }}"
     )
 }

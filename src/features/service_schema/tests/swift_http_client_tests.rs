@@ -6,7 +6,7 @@
 
 use super::{
     MIXED_SERVICE, NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE, NEWTYPE_HEADER_OUT_HTTP_SERVICE,
-    RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE,
+    OFFSET_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE, SWIFT_BYTES_HEADER_OUT_SERVICE,
     SWIFT_HEADER_VEC_OF_OPTIONS_SERVICE, SWIFT_HTTP_SERVICE, SWIFT_MULTIPART_HTTP_SERVICE,
     SWIFT_NUMERIC_HEADER_OUT_SERVICE, SWIFT_SINGLE_PLACEHOLDER_HTTP_SERVICE,
     SWIFT_STREAM_HTTP_SERVICE, SWIFT_UNIT_SUCCESS_HTTP_SERVICE, swift_http_client_of,
@@ -675,7 +675,10 @@ fn a_unit_success_answers_void() {
 fn a_named_message_field_in_the_path_crosses_through_the_wire_text_helper() {
     let written = swift_http_client_of(NAMED_FIELD_PLACEHOLDER_HTTP_SERVICE);
     assert!(
-        written.contains("rendered = try mediaClientServiceWireText(req.sha256)")
+        written.contains("rendered = try mediaClientServicePathText(req.sha256)")
+            && written.contains(
+                "func mediaClientServicePathText<Value: Encodable>(_ value: Value) throws -> String? {"
+            )
             && written.contains(
                 "func mediaClientServiceWireText<Value: Encodable>(_ value: Value) throws -> String {"
             )
@@ -709,7 +712,7 @@ fn a_reserved_word_is_written_between_backticks_in_the_method_the_parameter_and_
         "req.`in`",
         "if let `default` = `default` {",
         "public func object(_ req: Thing) async",
-        "WireText(req.`class`)",
+        "PathText(req.`class`)",
     ] {
         assert!(written.contains(escaped), "no `{escaped}` in: {written}");
     }
@@ -724,5 +727,19 @@ fn an_argument_named_after_a_local_of_the_method_keeps_its_label_and_is_read_by_
         "if let path_ = path_ {",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");
+    }
+}
+
+/// A `usize` argument, in a path, a header and a body, and a `usize` answer are a `UInt64`.
+#[test]
+fn a_usize_argument_and_answer_are_a_uint64() {
+    let written = swift_http_client_of(OFFSET_SERVICE);
+    for expected in [
+        "public func seek(_ req: UInt64, bound: UInt64) async -> Result<UInt64, \
+         OffsetServiceSeekFailure> {",
+        "public func count(_ req: UInt64) async -> Result<UInt64, OffsetServiceCountFailure> {",
+        "value = try offsetServiceDatedDecoder().decode(UInt64.self, from: response.body)",
+    ] {
+        assert!(written.contains(expected), "no `{expected}` in: {written}");
     }
 }

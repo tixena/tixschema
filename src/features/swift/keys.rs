@@ -119,6 +119,7 @@ pub(super) fn hashable(value: &FieldDef) -> bool {
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -143,7 +144,6 @@ pub(super) fn hashable(value: &FieldDef) -> bool {
         | FieldDefType::Range(_, _)
         | FieldDefType::Result(_, _)
         | FieldDefType::Tuple(_)
-        | FieldDefType::U64
-        | FieldDefType::Usize => false,
+        | FieldDefType::U64 => false,
     }
 }

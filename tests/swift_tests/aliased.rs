@@ -8,6 +8,7 @@ use super::aliased_models::{
     careening_swift, fairleading_swift, gybing_swift, hawsing_swift, lulling_swift, pennon_swift,
     scending_swift, surging_swift, swell_swift, veering_swift,
 };
+use super::swift_plain_enum::plain_enum_reads;
 
 /// What finds the name a payload holds `label` under, of `label` and `name`, and refuses the two
 /// together.
@@ -25,7 +26,7 @@ const LABEL_OR_NAME: &str = "let aliased = try decoder.container(keyedBy: \
 fn a_tagged_enum_reads_a_variant_under_each_alias() {
     let surging = surging_swift::swift_definition();
     for held in [
-        "switch tag { case \"Calm\", \"Still\", \"Slack\": self = .calm; return;  default: break }",
+        "switch tag { case \"Berth\", \"Pier\": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: \"invalid type: unit variant, expected struct variant\")); case \"Calm\", \"Still\", \"Slack\": self = .calm; return; case \"Held\", \"Tied\": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: \"invalid type: unit variant, expected newtype variant\"));  default: break }",
         "case \"Berth\", \"Pier\": self = .berth(try \
          SurgingBerthPayload(swiftSchemaUnjudged: container.superDecoder(forKey: key)));",
         "case \"Held\", \"Tied\": self = .held(try container.decode(String.self, forKey: key));",
@@ -58,12 +59,14 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_swift::swift_definition(),
-        "public enum Swell: String, Codable, Sendable { case ebb = \"Ebb\"; case flood = \
-         \"Flood\"; public init?(rawValue: String) { switch rawValue { case \"Ebb\", \"Low\", \
-         \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil } }; public \
-         init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }; \
-         public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> \
-         [String] { [] } }",
+        format!(
+            "public enum Swell: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
+             \"Flood\"; public init?(rawValue: String) {{ switch rawValue {{ case \"Ebb\", \"Low\", \
+             \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil }} }}; {} \
+             public func validate() -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> \
+             [String] {{ [] }} }}",
+            plain_enum_reads("Swell")
+        ),
         "the text of a plain enum with a variant under two aliases"
     );
     let lulling = lulling_swift::swift_definition();

@@ -249,7 +249,7 @@ mod a_check_on_a_slot {
         assert!(
             pair.contains(
                 "z.tuple([z.string().min(1, { error: (issue) => `too short: minimum length is 1, \
-                 got ${String(issue.input).length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
+                 got ${[...String(issue.input)].length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
                  => `too small: minimum is 1, got ${String(issue.input)}` })])"
             ),
             "Got:\n{pair}"
@@ -264,7 +264,7 @@ mod a_check_on_a_slot {
         assert!(
             lone.contains(&format!(
                 " = z.string().min(1, {{ error: (issue) => `too short: minimum length is 1, got \
-                 ${{String(issue.input).length}}` }}){closed}"
+                 ${{[...String(issue.input)].length}}` }}){closed}"
             )),
             "Got:\n{lone}"
         );
@@ -272,7 +272,7 @@ mod a_check_on_a_slot {
         assert!(
             wrapped.contains(
                 "z.tuple([z.nullable(z.string().min(2, { error: (issue) => `too short: minimum \
-                 length is 2, got ${String(issue.input).length}` })), z.array(z.string()).min(2, \
+                 length is 2, got ${[...String(issue.input)].length}` })), z.array(z.string()).min(2, \
                  { error: (issue) => `too short: minimum length is 2, got \
                  ${Array.isArray(issue.input) ? issue.input.length : 0}` }), z.boolean()])"
             ),

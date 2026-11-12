@@ -1,5 +1,4 @@
-//! The reproduction: a field of `Range<usize>`, with `Range` brought in by `use`. Swift and Kotlin
-//! refuse a `usize` wherever it is written, so the model is declared where neither is on.
+//! The reproduction: a field of `Range<usize>`, with `Range` brought in by `use`.
 
 use alloc::collections::BTreeMap;
 use core::ops::Range;

@@ -60,7 +60,10 @@ comparison in the macro alone: past `2^53` it is rounded, so two integer limits 
 `i128` (`limit_above`) and the range guard reads an integer limit as one (`check_bound_in_range`).
 The JSON Schema writes an integer limit through `limit_json`, suffixed, since `json!` reads a bare
 integer as an `i32`, and a float as an `f64`. Zod's `bigint` bound and Swift's comparison with an
-integer drop a float's fraction, as the Rust cast does, Swift compares a float with a float
+integer drop a float's fraction, as the Rust cast does, which only a limit written whole reaches:
+`check_bound_representable` refuses a fraction on an integer field, naming the whole limit (the
+next integer up for a `minimum`, down for a `maximum`), and a limit an `f32` or an `f64` reads as
+infinity, which `str::parse` answers as the compiler reads a literal. Swift compares a float with a float
 literal, `3000000000.0`, and Kotlin writes an integer limit of the least `Long` as
 `Long.MIN_VALUE`, its digits being no literal `kotlinc` reads.
 `tests/validation_tests/integer_limits.rs` pins the surfaces' text, and `integer_limit_models.rs`

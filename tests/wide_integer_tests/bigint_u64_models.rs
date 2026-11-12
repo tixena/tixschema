@@ -1,5 +1,5 @@
-//! Models whose examples and defaults hold a `u64`, a `usize` or an `isize`, declared where
-//! neither `swift` nor `kotlin` is on, which refuse them.
+//! Models whose examples and defaults hold a `u64`, declared where neither `swift` nor `kotlin` is
+//! on, which refuse it.
 
 use alloc::collections::BTreeMap;
 
@@ -33,19 +33,6 @@ pub struct AccountNumber {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Greatest {
     pub top: u64,
-}
-
-/// A `usize` and an `isize`, which publish a `number` up to what it holds exactly.
-///
-/// ```rust example
-/// Sizes { count: 3, far: 9_007_199_254_740_993, step: -3 }
-/// ```
-#[model_schema()]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Sizes {
-    pub count: usize,
-    pub far: usize,
-    pub step: isize,
 }
 
 /// A map keyed by a `u64`, whose key is a JSON string.

@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
+use crate::swift_plain_enum::plain_enum_read;
+
 /// What opens the payload type, written into each type that names a function.
 const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable { let value: Any; ";
 
@@ -857,19 +859,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
 #[test]
 fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
     let tier = tier_swift::swift_definition();
-    let read = corrected_reads(
-        "Tier",
-        "unwrapped(",
-        ")",
-        concat!(
-            "let container = try decoder.singleValueContainer(); ",
-            "let raw = try container.decode(String.self); ",
-            "guard let read = Tier(rawValue: raw) else { ",
-            "throw DecodingError.dataCorruptedError(in: container, ",
-            r#"debugDescription: "Cannot initialize Tier from invalid String value \(raw)") }; "#,
-            "self = read",
-        ),
-    );
+    let read = corrected_reads("Tier", "unwrapped(", ")", &plain_enum_read("Tier"));
     assert!(tier.contains(&read), "{read} is not in: {tier}");
 
     for (named, swift, opening) in [
