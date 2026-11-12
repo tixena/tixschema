@@ -173,7 +173,7 @@ fn plain(item: &ItemStruct) -> String {
     definition(struct_kotlin_tokens(item, &plain_args()))
 }
 
-/// The object that reads a number of Kotlin type `kotlin`, which serde words as `expected`,
+/// The object that reads a `u8` of Kotlin type `kotlin`, which serde words as `expected`,
 /// declared under `named`.
 fn number(named: &str, kotlin: &str, expected: &str) -> String {
     format!(
@@ -189,7 +189,16 @@ fn number(named: &str, kotlin: &str, expected: &str) -> String {
          text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if (wide.isInfinite()) throw \
          SerializationException(\"number out of range\"); throw \
          SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
-         expected {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
+         expected {expected}\") }}; if (wide != null && text.removePrefix(\"-\").let {{ \
+         it.isNotEmpty() && it.all {{ digit -> digit in '0'..'9' }} }}) {{ if \
+         (wide.isInfinite()) throw SerializationException(\"number out of range\"); val whole \
+         = java.math.BigInteger(text); if (whole < \
+         java.math.BigInteger(\"-9223372036854775808\") || whole > \
+         java.math.BigInteger(\"18446744073709551615\")) throw SerializationException(\"invalid \
+         type: floating point `\" + floating(wide) + \"`, expected {expected}\"); if (whole < \
+         java.math.BigInteger(\"0\") || whole > java.math.BigInteger(\"255\")) throw \
+         SerializationException(\"invalid value: integer `\" + text + \"`, expected \
+         {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
          (refused: SerializationException) {{ throw \
          SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}",

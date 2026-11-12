@@ -1175,6 +1175,17 @@ mod usize_positions_models;
 #[path = "service_schema_emitted_client_tests/usize_models.rs"]
 mod usize_models;
 
+/// Each integer width below 64 bits as a member.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "service_schema_emitted_client_tests/narrow_integer_models.rs"]
+mod narrow_integer_models;
+
+/// Each integer width below 64 bits, read by the emitted Kotlin type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_narrow_integers.rs"]
+mod run_kotlin_narrow_integers;
+
 /// A `usize`, read and written as a `UInt64` by the emitted Swift type.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_usize.rs"]

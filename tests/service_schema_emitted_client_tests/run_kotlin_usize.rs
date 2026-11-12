@@ -43,14 +43,12 @@ fun validated(at: Int, bounded: ULong) {
 }
 "#;
 
-/// The Kotlin read of each payload of [`REFUSED`], in its order. The read refuses a fraction and
-/// a value a bound or a `literal` refuses in serde's words, and a number outside a `ULong` in
-/// kotlinx's, at the path of the number.
+/// The Kotlin read of each payload of [`REFUSED`], in its order: each refusal in serde's words, at
+/// the path of the number.
 const KOTLIN_REFUSED: [&str; 6] = [
-    "SerializationException: Failed to parse type 'ULong' for input '-1' at path: $.at\nJSON \
-     input: -1",
-    "SerializationException: Failed to parse type 'ULong' for input '18446744073709551616' at \
-     path: $.at\nJSON input: 18446744073709551616",
+    "SerializationException: invalid value: integer `-1`, expected usize at path: $.at",
+    "SerializationException: invalid type: floating point `1.8446744073709552e+19`, expected \
+     usize at path: $.at",
     "SerializationException: invalid type: floating point `1.5`, expected usize at path: $.at",
     "SerializationException: 'bounded': too small: minimum is 1, got 0",
     "SerializationException: 'bounded': too large: maximum is 4096, got 4097",
@@ -79,6 +77,10 @@ fn a_usize_is_read_and_written_as_a_ulong_in_kotlin() {
             serde_refusal(read_as, json).as_deref(),
             Some(said),
             "serde no longer refuses {json}"
+        );
+        assert!(
+            refused.contains(said),
+            "the row does not hold serde's {said}"
         );
         let _ = writeln!(
             main,
