@@ -66,7 +66,7 @@ fn unit_is_one_object_per_item_read_from_null_and_written_as_null() {
     );
     assert!(
         nothing.contains(&format!(
-            "value class ProbeNothing(val value: {brand_unit})"
+            "value class ProbeNothing private constructor(val value: {brand_unit})"
         )),
         "got: {nothing}"
     );

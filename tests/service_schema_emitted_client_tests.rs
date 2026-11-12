@@ -816,6 +816,10 @@ mod run_kotlin_wrong_kinds;
 #[path = "service_schema_emitted_client_tests/run_kotlin_generic_bounds.rs"]
 mod run_kotlin_generic_bounds;
 
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_sealed_brands.rs"]
+mod run_kotlin_sealed_brands;
+
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its
 /// twin under `nullable`, and a member flattened after a struct or beside a member of its holder's

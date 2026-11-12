@@ -41,8 +41,8 @@ fn a_brand_over_a_char_names_the_serializer_of_its_form_on_its_value() {
     assert!(
         kotlin.starts_with(&format!(
             "{} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
-             InitialSerializer::class) @KeepGeneratedSerializer value class Initial(val value: \
-             @Serializable(with = KotlinText1::class) String) {{",
+             InitialSerializer::class) @KeepGeneratedSerializer value class Initial private \
+             constructor(val value: @Serializable(with = KotlinText1::class) String) {{",
             letter("KotlinText1")
         )),
         "got: {kotlin}"

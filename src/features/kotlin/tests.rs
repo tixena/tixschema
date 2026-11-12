@@ -47,6 +47,22 @@ fn generated(named: &str) -> String {
     )
 }
 
+/// The companion `of` of the sealed brand `named` over `value`, which `declared` lists the type
+/// parameters of.
+fn factory(named: &str, declared: &str, value: &str) -> String {
+    let (parameters, arguments) = if declared.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (format!("<{declared}> "), format!("<{declared}>"))
+    };
+    format!(
+        "companion object {{ fun {parameters}of(value: {value}): {named}{arguments} {{ val read = \
+         {named}{arguments}(value); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read }} }}"
+    )
+}
+
 /// The unjudged serializer of the plain enum `named` of `variants`, which reads the payload
 /// `correction` answers.
 fn plain_enum_unjudged(named: &str, members: &[&str], correction: &str) -> String {
@@ -521,7 +537,7 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
                 length is 3, got ${value.codePointCount(0, value.length)}\") }; return violations }";
     assert!(
         bounded(&[]).contains(&format!(
-            "{{ fun validate(): List<String> {held}; fun kotlinSchemaBound(): List<String> {held} }}"
+            "{{ fun validate(): List<String> {held}; fun kotlinSchemaBound(): List<String> {held}; "
         )),
         "a parameter with no declared type is bounded as a string"
     );
@@ -532,7 +548,7 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
     );
     let filled = bounded(&[(parameter, syn::parse_quote!(Other<String>))]);
     assert!(
-        filled.contains("{ fun validate(): List<String> = emptyList() }"),
+        filled.contains("{ fun validate(): List<String> = emptyList(); companion object"),
         "got: {filled}"
     );
 }
@@ -741,13 +757,15 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
         definition(struct_kotlin_tokens(&item, &args)),
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
-             CodeSerializer::class) @KeepGeneratedSerializer value class Code(val value: String) \
-             {{ fun kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
-             value.codePointCount(0, value.length); fun validate(): List<String> {{ val \
-             violations = mutableListOf<String>(); {bound}; violations.addAll(unreserved(this)); \
-             return violations }}; fun kotlinSchemaBound(): List<String> {{ val violations = \
-             mutableListOf<String>(); {bound}; return violations }} }} {} {} {}",
-            generated("Code"),
+             CodeSerializer::class) @KeepGeneratedSerializer value class Code private \
+             constructor(val value: String) {{ fun kotlinSchemaText(): String = value; fun \
+             kotlinSchemaLength(): Int = value.codePointCount(0, value.length); fun validate(): \
+             List<String> {{ val violations = mutableListOf<String>(); {bound}; \
+             violations.addAll(unreserved(this)); return violations }}; fun kotlinSchemaBound(): \
+             List<String> {{ val violations = mutableListOf<String>(); {bound}; return \
+             violations }}; {} }} {} {} {}",
+            factory("Code", "", "String"),
+            generated("Code").replacen("object", "private object", 1),
             judged("Code"),
             mapped_judging("Code")
         )
@@ -769,11 +787,12 @@ fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
         kotlin,
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
-             UserIdSerializer::class) @KeepGeneratedSerializer value class UserId<IdType>(val \
-             value: IdType) {{ fun validate(): List<String> = emptyList() }} \
-             @OptIn(ExperimentalSerializationApi::class) class \
+             UserIdSerializer::class) @KeepGeneratedSerializer value class UserId<IdType> \
+             private constructor(val value: IdType) {{ fun validate(): List<String> = \
+             emptyList(); {} }} @OptIn(ExperimentalSerializationApi::class) private class \
              UserIdUnjudged<IdType>(idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {}",
+            factory("UserId", "IdType", "IdType"),
             judged_over("UserId", "IdType", "", "idTypeSerializer")
         )
     );

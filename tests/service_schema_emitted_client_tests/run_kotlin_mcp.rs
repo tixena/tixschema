@@ -617,7 +617,7 @@ suspend fun clientReport(input: JsonObject): JsonObject {
     lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
     lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
     lines.add(
-        when (val looked = client.lookup(DocumentId("doc-1"))) {
+        when (val looked = client.lookup(DocumentId.of("doc-1"))) {
             is MobileDocumentServiceLookupResult.Ok -> "ok version=${looked.value.version}"
             is MobileDocumentServiceLookupResult.Declared -> "declared not-found"
             is MobileDocumentServiceLookupResult.Fault -> "fault ${kind(looked.fault)}"

@@ -504,6 +504,12 @@ pub fn kept_inline(export_name: &str) -> String {
     )
 }
 
+/// `declaration`, an unjudged serializer written by this module, made private to the file the
+/// emitted types are joined into, which every holder is in.
+pub fn made_private(declaration: &str) -> String {
+    declaration.replacen(&format!("{OPTED_IN} "), &format!("{OPTED_IN} private "), 1)
+}
+
 /// The annotations of a plain enum that names a function: the one serializer it has is the
 /// unjudged one, over the plugin's.
 pub fn kept_plain(export_name: &str) -> String {
