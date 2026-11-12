@@ -120,7 +120,8 @@ pub enum Counted {
 }
 
 /// What a bare wire scalar is read from the text of: text, a `bool`, a float, an integer, or a
-/// `u64` or an `i64`, which TypeScript holds as a `bigint`.
+/// `u64` or an `i64`, which TypeScript holds as a `bigint`, or a `usize`, an unsigned 64-bit
+/// integer on the targets that read one as such and a number in TypeScript.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WireScalarKind {
     Bool,
@@ -129,6 +130,7 @@ pub enum WireScalarKind {
     Signed64,
     Text,
     Unsigned64,
+    UnsignedSize,
 }
 
 /// The number serde reads a map key of from the text between its quotes: an integer of the type
@@ -1828,7 +1830,8 @@ pub fn wire_scalar_kind(ty: &Type) -> WireScalarKind {
         "bool" => WireScalarKind::Bool,
         "u64" if leaf.arguments.is_none() => WireScalarKind::Unsigned64,
         "i64" if leaf.arguments.is_none() => WireScalarKind::Signed64,
-        "u8" | "u16" | "u32" | "u128" | "usize" | "i8" | "i16" | "i32" | "i128" | "isize" => {
+        "usize" => WireScalarKind::UnsignedSize,
+        "u8" | "u16" | "u32" | "u128" | "i8" | "i16" | "i32" | "i128" | "isize" => {
             WireScalarKind::Integer
         }
         "f32" | "f64" => WireScalarKind::Float,

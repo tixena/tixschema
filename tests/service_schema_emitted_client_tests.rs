@@ -1185,6 +1185,18 @@ mod run_swift_usize;
 #[path = "service_schema_emitted_client_tests/run_kotlin_usize.rs"]
 mod run_kotlin_usize;
 
+/// A brand over a `usize`, answered in a reply header.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/usize_header_service.rs"]
+mod usize_header_service;
+
+/// A brand over a `usize` in a reply header, read by the emitted Swift and Kotlin clients.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_usize_header.rs"]
+mod run_usize_header;
+
 /// What each `http_rest` client sends and reads of a bare `i64`.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/bare_wide_integer_rows.rs"]
@@ -1655,6 +1667,8 @@ use tests::{
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};
+#[cfg(all(test, any(feature = "swift", feature = "kotlin")))]
+use usize_header_service::{QuotaClientService, quota_client_service_schema};
 
 /// A struct whose every member is flattened, and an enum whose variant holds only a flattened
 /// member, under each tagging.

@@ -1321,9 +1321,10 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
                 WireScalarKind::Bool => format!(
                     "switch ({raw}) {{ 'true' => true, 'false' => false, _ => throw const FormatException('not a bool') }}"
                 ),
-                WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => {
-                    format!("int.parse({raw})")
-                }
+                WireScalarKind::Integer
+                | WireScalarKind::Signed64
+                | WireScalarKind::Unsigned64
+                | WireScalarKind::UnsignedSize => format!("int.parse({raw})"),
                 WireScalarKind::Float => format!("double.parse({raw})"),
             };
             (
