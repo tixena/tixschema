@@ -71,6 +71,9 @@ just test-slow
 # Install the Kotlin jars test-emitted compiles against, into ~/.local/share/tixschema/kotlin-libs
 just kotlin-libs
 
+# Install zod, ws and typescript at CI's versions, into ~/.local/share/tixschema/node-modules
+just node-libs
+
 # Run the MongoDB operations against the server TIXSCHEMA_MONGODB_URI names; refuses to stand down
 just test-mongodb
 ```
@@ -107,6 +110,10 @@ just docs
 just all
 # Runs, with every feature on: one clippy lint and one test run
 ```
+
+A pull request merges once `just premerge` passes on its branch merged with master: the gate,
+`just check-mix` and `just test-emitted`, which together run what CI runs. A merge does not wait
+for CI. CI still runs on every pull request and on master, and a red CI on master is fixed at once.
 
 The code is developed on Rust beta, which `rust-toolchain.toml` pins, and CI lints and tests on
 beta. The floor, `rust-version` in `Cargo.toml` (1.91.1), is checked by whoever runs the full runs:
