@@ -200,6 +200,47 @@ pub fn judged(
     })
 }
 
+/// Writes `files` into a workspace of its own and type-checks them together as one module with
+/// the compiler beside the runtime `var` names (`swiftc` beside `swift`), `flags` ahead of them. A
+/// check that fails is the caller's to judge. `None` and a runtime named in `var` that cannot be
+/// started are what they are to [`run_in`].
+#[cfg(feature = "swift")]
+pub fn checked_together(
+    named: &str,
+    var: &str,
+    fallback: &'static str,
+    flags: &[&str],
+    files: &[(&str, &str)],
+) -> Option<Judged> {
+    let at = workspace(named);
+    let chosen = env::var(var).ok();
+    let compiler = format!("{}c", chosen.clone().unwrap_or_else(|| fallback.to_owned()));
+    for (called, written) in files {
+        fs::write(at.join(called), written).unwrap();
+    }
+    let run = Command::new(&compiler)
+        .arg("-typecheck")
+        .args(flags)
+        .args(files.iter().map(|(called, _)| called))
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{var} names a runtime whose compiler `{compiler}` could not be started: {}",
+            run.unwrap_err()
+        );
+        stand_down(var, fallback);
+        return None;
+    };
+    Some(Judged {
+        stderr: String::from_utf8_lossy(&reported.stderr).into_owned(),
+        stdout: String::from_utf8_lossy(&reported.stdout).into_owned(),
+        succeeded: reported.status.success(),
+    })
+}
+
 /// Like [`ran`], but first symlinks `<workspace>/node_modules` to `modules` (as returned by
 /// [`node_modules`]) so the entry's ESM imports resolve — Node's ESM resolver ignores `NODE_PATH`.
 pub fn ran_with_modules(
@@ -382,21 +423,25 @@ fn kotlin_toolchain() -> Option<KotlinToolchain> {
 /// workspace is gone; a compiler named explicitly that cannot be started is a failure instead,
 /// matching [`run_in`]'s rule.
 #[cfg(feature = "kotlin")]
-fn kotlin_compiled(toolchain: &KotlinToolchain, at: &Path, source: &str) -> Option<Output> {
+fn kotlin_compiled(
+    toolchain: &KotlinToolchain,
+    at: &Path,
+    source: &str,
+    beside: Option<&str>,
+) -> Option<Output> {
     fs::write(at.join("main.kt"), source).unwrap();
+    let mut files = vec!["main.kt"];
+    if let Some(other) = beside {
+        fs::write(at.join("beside.kt"), other).unwrap();
+        files.push("beside.kt");
+    }
 
     let named_kotlinc = env::var(KOTLINC_VAR).ok();
     let compile = Command::new(&toolchain.kotlinc)
         .arg(format!("-Xplugin={}", toolchain.plugin.display()))
-        .args([
-            "-Werror",
-            "-cp",
-            &toolchain.classpath,
-            "main.kt",
-            "-include-runtime",
-            "-d",
-            "main.jar",
-        ])
+        .args(["-Werror", "-cp", &toolchain.classpath])
+        .args(&files)
+        .args(["-include-runtime", "-d", "main.jar"])
         .current_dir(at)
         .output();
     let Ok(compiled) = compile else {
@@ -421,9 +466,15 @@ fn kotlin_compiled(toolchain: &KotlinToolchain, at: &Path, source: &str) -> Opti
 /// `None` says no toolchain piece was reachable.
 #[cfg(feature = "kotlin")]
 pub fn refused_by_kotlinc(source: &str) -> Option<String> {
+    refused_by_kotlinc_beside(source, None)
+}
+
+/// [`refused_by_kotlinc`] of `source` compiled with `beside`, a second file of the same package.
+#[cfg(feature = "kotlin")]
+pub fn refused_by_kotlinc_beside(source: &str, beside: Option<&str>) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
     let at = workspace("kotlin");
-    let compiled = kotlin_compiled(&toolchain, &at, source)?;
+    let compiled = kotlin_compiled(&toolchain, &at, source, beside)?;
     fs::remove_dir_all(&at).unwrap();
     assert!(
         !compiled.status.success(),
@@ -444,7 +495,7 @@ pub fn refused_by_kotlinc(source: &str) -> Option<String> {
 pub fn ran_kotlin(source: &str) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
     let at = workspace("kotlin");
-    let compiled = kotlin_compiled(&toolchain, &at, source)?;
+    let compiled = kotlin_compiled(&toolchain, &at, source, None)?;
     assert!(
         compiled.status.success(),
         "`{} main.kt` failed to compile.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",

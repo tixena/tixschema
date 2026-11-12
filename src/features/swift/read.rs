@@ -15,10 +15,6 @@ use crate::field_type::{
     BUFFERED_WORDS, EXPECTED_VALUE, FieldDef, FieldDefType, is_sequence_wrapper,
 };
 
-/// The read of a type alone, where it has one that takes the keys the types around it took.
-const ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { \
-     try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }";
-
 /// The key type a map is read entry by entry under, and a flattened unit variant's entry written
 /// under, written into each type that names it.
 const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; \
@@ -789,6 +785,15 @@ pub(super) fn refusing_unknown(keys: &[String]) -> String {
     )
 }
 
+/// The read of a type alone, declared under `reach`, where it has one that takes the keys the types
+/// around it took.
+fn alone(reach: &str) -> String {
+    format!(
+        "{reach} init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
+         try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }}"
+    )
+}
+
 /// The reads of a type whose own statements are `body`: its own, and the one that judges. Its own
 /// is written twice where it takes the keys the types around the type took, and reads `body`
 /// from what the type's functions answer where it names some. The types they name come first.
@@ -816,21 +821,29 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         String::new()
     };
     let taking = names_taken(body) || names_taken(written.beside);
+    let reach = if written.sealed {
+        "fileprivate"
+    } else {
+        "public"
+    };
     let opened = format!(
         "{key}{payload}{twins}{}",
         helpers_for(&format!("{read}{payload}"))
     );
     if let Some(refusing) = refused {
         return format!(
-            "{opened}public {TAKING} {{ {body} }}; public {UNJUDGED} {{ {refusing}\
+            "{opened}{reach} {TAKING} {{ {body} }}; {reach} {UNJUDGED} {{ {refusing}\
              try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }}; {JUDGED}; "
         );
     }
     if written.own.is_empty() {
         return if taking {
-            format!("{opened}public {TAKING} {{ {body} }}; {ALONE}; {JUDGED}; ")
+            format!(
+                "{opened}{reach} {TAKING} {{ {body} }}; {}; {JUDGED}; ",
+                alone(reach)
+            )
         } else {
-            format!("{opened}public {UNJUDGED} {{ {body} }}; {JUDGED}; ")
+            format!("{opened}{reach} {UNJUDGED} {{ {body} }}; {JUDGED}; ")
         };
     }
     let owner = written.named;
@@ -847,8 +860,9 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         "{opened}private struct SwiftSchemaRead: Decodable {{ let value: {owner}; \
          init(from decoder: Decoder) throws {{ value = try {owner}(swiftSchemaCorrected: decoder) }} }}; \
          private init(swiftSchemaCorrected decoder: Decoder) throws {{ {untaken}{body} }}; \
-         public {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
-         from: {corrected}, at: decoder.codingPath).value }}; {ALONE}; {JUDGED}; "
+         {reach} {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
+         from: {corrected}, at: decoder.codingPath).value }}; {}; {JUDGED}; ",
+        alone(reach)
     )
 }
 
