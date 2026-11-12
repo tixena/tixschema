@@ -1,6 +1,6 @@
 #### What an upgrade asks of your crate
 
-One hundred and sixty-eight rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+One hundred and seventy rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 
 
