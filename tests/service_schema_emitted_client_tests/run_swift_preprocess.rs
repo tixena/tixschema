@@ -586,7 +586,8 @@ each held: read {\"note\":\"n\",\"spare\":\"s\"}
 }
 
 /// A function is handed the Swift values of a JSON value, each JSON kind as one Swift type. A
-/// number an `Int64` holds is one, written with a fraction or an exponent or with none.
+/// number written with a fraction or an exponent is a `Double`, and one written with none an
+/// `Int64`.
 #[test]
 fn a_function_is_handed_the_swift_values_of_a_json_value() {
     let each = r#"{"kinds":[null,true,5,2.5,"s",[],{}]}"#;
@@ -612,7 +613,7 @@ fn a_function_is_handed_the_swift_values_of_a_json_value() {
         swift,
         format!(
             "{expected}{}\n",
-            r#"numbers: read {"kinds":["Int64","Int64","Int64","Double"]}"#
+            r#"numbers: read {"kinds":["Double","Double","Int64","Double"]}"#
         )
     );
 }
