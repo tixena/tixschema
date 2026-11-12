@@ -2521,13 +2521,14 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
         "a violation report's field is the first line's, read by the one reader. Got: {emitted}"
     );
     assert!(
-        emitted.contains(
-            "if let :: core :: option :: Option :: Some (field) = $ crate :: \
-             billing_service_schema :: named_field (said)"
-        ) && emitted.contains("serde_named_field (said)"),
+        emitted.contains("if $ crate :: billing_service_schema :: named_field (said) . is_some ()")
+            && emitted.contains(
+                "$ crate :: billing_service_schema :: refused_at (& refusal . path , said)"
+            )
+            && emitted.contains("serde_named_field (said)"),
         "a serde refusal is read for a field by the reader a violation is read by — a hook hands \
-         serde a validator's message verbatim — and, failing that, by serde's own naming. \
-         Got: {emitted}"
+         serde a validator's message verbatim — placed at the path serde tracked, and, failing \
+         that, by serde's own naming. Got: {emitted}"
     );
     assert!(
         emitted.contains(

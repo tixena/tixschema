@@ -1551,6 +1551,58 @@ fn violation_readers() -> TokenStream {
         pub fn violated_field(reported: &[::std::string::String]) -> ::core::option::Option<&str> {
             named_field(reported.first()?)
         }
+
+        /// The field and the detail of a refusal serde raised at `path`, the place it tracked,
+        /// where `said` names each violation by the holders' fields alone, with no list index and
+        /// no map key: each name is placed at `path`, so `'shipment.tags'` raised at
+        /// `shipment.tags.1` names `shipment.tags.1`, and `'shipment.parcelCount'` raised at
+        /// `shipment` names `shipment.parcelCount`.
+        pub fn refused_at(path: &str, said: &str) -> (::std::string::String, ::std::string::String) {
+            let mut field = ::core::option::Option::None;
+            let lines: ::std::vec::Vec<::std::string::String> = said
+                .split("; '")
+                .enumerate()
+                .map(|(at, piece)| {
+                    let line = if at == 0 { piece.to_owned() } else { ::std::format!("'{piece}") };
+                    let ::core::option::Option::Some(named) = named_field(&line) else {
+                        return line;
+                    };
+                    let placed = placed_at(path, named);
+                    let rest = line.strip_prefix(&::std::format!("'{named}'")).unwrap_or_default();
+                    let rewritten = ::std::format!("'{placed}'{rest}");
+                    field.get_or_insert(placed);
+                    rewritten
+                })
+                .collect();
+            (field.unwrap_or_else(|| path.to_owned()), lines.join("; "))
+        }
+
+        /// `named` placed at `path`: each of its steps is found in `path`, in order, and the
+        /// steps `path` does not reach are added after it.
+        fn placed_at(path: &str, named: &str) -> ::std::string::String {
+            if path.is_empty() {
+                return named.to_owned();
+            }
+            let tracked: ::std::vec::Vec<&str> = path.split('.').collect();
+            let mut reached = 0;
+            let mut placed = path.to_owned();
+            let mut steps = named.split('.');
+            while let ::core::option::Option::Some(step) = steps.next() {
+                let found = tracked
+                    .get(reached..)
+                    .and_then(|rest| rest.iter().position(|held| *held == step));
+                match found {
+                    ::core::option::Option::Some(offset) => reached += offset + 1,
+                    ::core::option::Option::None => {
+                        for added in ::core::iter::once(step).chain(steps.by_ref()) {
+                            placed.push('.');
+                            placed.push_str(added);
+                        }
+                    }
+                }
+            }
+            placed
+        }
     }
 }
 
