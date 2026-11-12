@@ -4,8 +4,8 @@ use bson::doc;
 use bson::oid::ObjectId;
 
 use super::{
-    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatus, InvoiceStatusDraft,
-    LineItem, LineItemDraft, Point, PointDraft, invoice_schema, shown,
+    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatusDraft, LineItem,
+    LineItemDraft, Point, PointDraft, invoice_schema, shown,
 };
 
 fn line_item() -> LineItem {
@@ -60,7 +60,10 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         shown(
             invoice
                 .status()
-                .not_in([InvoiceStatusDraft::Draft, InvoiceStatusDraft::Paid])
+                .not_in([
+                    InvoiceStatusDraft::Draft.validate().unwrap(),
+                    InvoiceStatusDraft::Paid.validate().unwrap()
+                ])
                 .unwrap()
         ),
         r#"{ "status": { "$nin": ["draft", "paid"] } }"#
@@ -390,8 +393,8 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
             invoice
                 .origin()
                 .is_in([
-                    PointDraft(18.47_f64, -69.9_f64),
-                    PointDraft(0.0_f64, 0.0_f64)
+                    PointDraft(18.47_f64, -69.9_f64).validate().unwrap(),
+                    PointDraft(0.0_f64, 0.0_f64).validate().unwrap()
                 ])
                 .unwrap()
         ),
@@ -401,7 +404,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
         shown(
             invoice
                 .origin()
-                .not_in([PointDraft(0.0_f64, 0.0_f64)])
+                .not_in([PointDraft(0.0_f64, 0.0_f64).validate().unwrap()])
                 .unwrap()
         ),
         r#"{ "origin": { "$nin": [[Double(0.0), Double(0.0)]] } }"#

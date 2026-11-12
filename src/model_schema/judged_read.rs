@@ -92,6 +92,7 @@ pub struct Drafted {
     /// What sits beside the draft: its own unjudged read, which holders and the valid type call.
     pub draft: TokenStream,
     /// Whether `draft` is the refusal of a conversion the macro cannot put a read behind.
+    #[cfg(feature = "serde")]
     pub refused: bool,
     /// What sits beside the valid type, where it can build one.
     pub valid: TokenStream,
@@ -566,6 +567,8 @@ impl HookScope {
         let name = &super::valid_type::declared_name(&input.ident);
         let (_, type_generics, _) = generics.split_for_impl();
         let named = quote! { #name #type_generics };
+        let draft = super::valid_type::draft_ident(name);
+        let draft_named = quote! { #draft #type_generics };
         let parameters: Vec<Ident> = generics
             .type_params()
             .map(|declared| declared.ident.clone())
@@ -586,7 +589,7 @@ impl HookScope {
             })
         });
         let mut declared: Vec<Predicate> = inline
-            .map(|written| Predicate::of(written, &named, &parameters_written, &lifetimes))
+            .map(|written| Predicate::of(written, &draft_named, &parameters_written, &lifetimes))
             .collect();
         for predicate in generics
             .where_clause
@@ -595,7 +598,7 @@ impl HookScope {
         {
             declared.extend(Predicate::split(
                 predicate,
-                &named,
+                &draft_named,
                 &parameters_written,
                 &lifetimes,
             ));
@@ -604,7 +607,7 @@ impl HookScope {
             .predicates
             .iter()
             .flat_map(|predicate| {
-                Predicate::split(predicate, &named, &parameters_written, &lifetimes)
+                Predicate::split(predicate, &draft_named, &parameters_written, &lifetimes)
             })
             .collect();
         Self {
@@ -2165,17 +2168,20 @@ pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &I
             leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
             Drafted {
                 draft,
+                #[cfg(feature = "serde")]
                 refused: false,
                 valid: wrapper,
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
             draft: refusal,
+            #[cfg(feature = "serde")]
             refused: true,
             valid: TokenStream::new(),
         },
         None => Drafted {
             draft: TokenStream::new(),
+            #[cfg(feature = "serde")]
             refused: false,
             valid: TokenStream::new(),
         },
@@ -2201,17 +2207,20 @@ pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident
             );
             Drafted {
                 draft,
+                #[cfg(feature = "serde")]
                 refused: false,
                 valid: wrapper,
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
             draft: refusal,
+            #[cfg(feature = "serde")]
             refused: true,
             valid: TokenStream::new(),
         },
         None => Drafted {
             draft: TokenStream::new(),
+            #[cfg(feature = "serde")]
             refused: false,
             valid: TokenStream::new(),
         },

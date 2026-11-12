@@ -485,7 +485,7 @@ fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     }
 }
 
-fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
+fn upper_case(value: &Code) -> Result<(), Vec<String>> {
     if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
@@ -493,14 +493,14 @@ fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
 }
 
 fn routed(value: &FreightDraft) -> Result<(), Vec<String>> {
-    if matches!(value, Freight::Held) {
+    if matches!(value, FreightDraft::Held) {
         return Err(vec!["a held freight has no route".to_owned()]);
     }
     Ok(())
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Unrated) {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
@@ -522,7 +522,7 @@ fn with_entries<IdType>(value: &CasketDraft<IdType>) -> Result<(), Vec<String>> 
     Ok(())
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -544,13 +544,11 @@ pub fn texts(written: &[&str]) -> Vec<String> {
 }
 
 pub fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A parcel that keeps every rule.
@@ -787,13 +785,20 @@ pub fn table_cases() -> Vec<Case> {
     let mut cases: Vec<Case> = ["case 1", "case 2", "case 3", "case 4", "case 5"]
         .into_iter()
         .zip(parcels)
-        .map(|(name, held)| compared(name, &held, held.validate(), "Parcel.fromJsonUnjudged(@)"))
+        .map(|(name, held)| {
+            compared(
+                name,
+                &held,
+                crate::judged_issues(held.validation_issues()),
+                "Parcel.fromJsonUnjudged(@)",
+            )
+        })
         .collect();
     let manifest = ManifestDraft { parcel: outside() };
     cases.push(compared(
         "case 6",
         &manifest,
-        manifest.validate(),
+        crate::judged_issues(manifest.validation_issues()),
         "Manifest.fromJsonUnjudged(@)",
     ));
     cases
@@ -871,7 +876,7 @@ fn gauge(
     spare_count: Option<u32>,
     unit_weight: f64,
 ) -> Gauge {
-    GaugeDraft {
+    Gauge::model_schema_wrap_unjudged(GaugeDraft {
         code_list: texts(code_list),
         item_count,
         item_label: item_label.to_owned(),
@@ -879,9 +884,7 @@ fn gauge(
         sort_mark: short_note.map(|_| Mark::new(String::new()).unwrap()),
         spare_count,
         unit_weight,
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// Each of the five keys, broken below, broken above and held, on a string, a list, a number and
@@ -895,16 +898,21 @@ fn each_bound_prints_the_sentence_rust_prints() {
         compared(
             "below",
             &below,
-            below.validate(),
+            crate::judged_issues(below.validation_issues()),
             "Gauge.fromJsonUnjudged(@)",
         ),
         compared(
             "above",
             &above,
-            above.validate(),
+            crate::judged_issues(above.validation_issues()),
             "Gauge.fromJsonUnjudged(@)",
         ),
-        compared("held", &held, held.validate(), "Gauge.fromJsonUnjudged(@)"),
+        compared(
+            "held",
+            &held,
+            crate::judged_issues(held.validation_issues()),
+            "Gauge.fromJsonUnjudged(@)",
+        ),
     ];
     assert_eq!(
         report(&cases),
@@ -978,7 +986,12 @@ pub fn code_point_cases() -> Vec<Case> {
         let held = InitialDraft {
             letter: letter.to_owned(),
         };
-        compared(name, &held, held.validate(), "Initial.fromJsonUnjudged(@)")
+        compared(
+            name,
+            &held,
+            crate::judged_issues(held.validation_issues()),
+            "Initial.fromJsonUnjudged(@)",
+        )
     })
     .collect()
 }
@@ -1029,13 +1042,13 @@ fn a_holder_reports_what_it_holds_at_the_place_rust_names() {
         compared(
             "four broken parcels",
             &terminal,
-            terminal.validate(),
+            crate::judged_issues(terminal.validation_issues()),
             "Terminal.fromJsonUnjudged(@)",
         ),
         compared(
             "nothing held",
             &empty,
-            empty.validate(),
+            crate::judged_issues(empty.validation_issues()),
             "Terminal.fromJsonUnjudged(@)",
         ),
     ];
@@ -1065,8 +1078,8 @@ nothing held: passes
 fn a_nested_place_and_a_members_order_are_rusts() {
     let yard = YardDraft {
         by_dock: BTreeMap::from([
-            (DockDraft::North, unlabelled()),
-            (DockDraft::South, sound()),
+            (DockDraft::North.validate().unwrap(), unlabelled()),
+            (DockDraft::South.validate().unwrap(), sound()),
         ]),
         by_number: BTreeMap::from([(7, unlabelled())]),
         code_list: Some(texts(&["a", "b", "c"])),
@@ -1083,11 +1096,16 @@ fn a_nested_place_and_a_members_order_are_rusts() {
         spares: vec![None],
     };
     let cases = [
-        compared("a yard", &yard, yard.validate(), "Yard.fromJsonUnjudged(@)"),
+        compared(
+            "a yard",
+            &yard,
+            crate::judged_issues(yard.validation_issues()),
+            "Yard.fromJsonUnjudged(@)",
+        ),
         compared(
             "a bare yard",
             &bare,
-            bare.validate(),
+            crate::judged_issues(bare.validation_issues()),
             "Yard.fromJsonUnjudged(@)",
         ),
     ];
@@ -1208,37 +1226,37 @@ pub fn counted_name_cases() -> Vec<Case> {
         compared(
             "Archive<String>, no entry",
             &archived(&[]),
-            archived(&[]).validate(),
+            crate::judged_issues(archived(&[]).validation_issues()),
             "Archive<String>.fromJsonUnjudged(@, (e) => e as String)",
         ),
         compared(
             "Archive<String>",
             &archived(&["a"]),
-            archived(&["a"]).validate(),
+            crate::judged_issues(archived(&["a"]).validation_issues()),
             "Archive<String>.fromJsonUnjudged(@, (e) => e as String)",
         ),
         compared(
             "Archive<int>, no entry",
             &archived_by_number,
-            archived_by_number.validate(),
+            crate::judged_issues(archived_by_number.validation_issues()),
             "Archive<int>.fromJsonUnjudged(@, (e) => e as int)",
         ),
         compared(
             "Poster",
             &kept,
-            kept.validate(),
+            crate::judged_issues(kept.validation_issues()),
             "Poster.fromJsonUnjudged(@)",
         ),
         compared(
             "Poster, no item",
             &empty,
-            empty.validate(),
+            crate::judged_issues(empty.validation_issues()),
             "Poster.fromJsonUnjudged(@)",
         ),
         compared(
             "Poster, too many items",
             &wide,
-            wide.validate(),
+            crate::judged_issues(wide.validation_issues()),
             "Poster.fromJsonUnjudged(@)",
         ),
     ]
@@ -1265,49 +1283,49 @@ pub fn named_shape_cases() -> Vec<Case> {
         compared(
             "Crate<String>, empty and unlabelled",
             &filled(&[], ""),
-            filled(&[], "").validate(),
+            crate::judged_issues(filled(&[], "").validation_issues()),
             text_filled,
         ),
         compared(
             "Crate<String>",
             &filled(&["a"], "c"),
-            filled(&["a"], "c").validate(),
+            crate::judged_issues(filled(&["a"], "c").validation_issues()),
             text_filled,
         ),
         compared(
             "Crate<int>, empty",
             &counted,
-            counted.validate(),
+            crate::judged_issues(counted.validation_issues()),
             "Crate<int>.fromJsonUnjudged(@, (e) => e as int)",
         ),
         compared(
             "ClosedDock",
             &ClosedDockDraft,
-            ClosedDockDraft.validate(),
+            crate::judged_issues(ClosedDockDraft.validation_issues()),
             "ClosedDock.fromJsonUnjudged(@)",
         ),
         compared(
             "Rating, unrated",
-            &Rating::Unrated,
-            Rating::Unrated.validate(),
+            &RatingDraft::Unrated,
+            crate::judged_issues(RatingDraft::Unrated.validation_issues()),
             "Rating.fromJsonUnjudged(@)",
         ),
         compared(
             "Rating, express",
-            &Rating::Express,
-            Rating::Express.validate(),
+            &RatingDraft::Express,
+            crate::judged_issues(RatingDraft::Express.validation_issues()),
             "Rating.fromJsonUnjudged(@)",
         ),
         compared(
             "Docket, a parcel written beside its code",
             &docket,
-            docket.validate(),
+            crate::judged_issues(docket.validation_issues()),
             "Docket.fromJsonUnjudged(@)",
         ),
         compared(
             "Consignment",
             &consignment,
-            consignment.validate(),
+            crate::judged_issues(consignment.validation_issues()),
             "Consignment.fromJsonUnjudged(@)",
         ),
     ]
@@ -1439,19 +1457,19 @@ pub fn named_variant_cases() -> Vec<Case> {
     vec![
         pinned(
             "no tag, a model in the one slot",
-            &Freight::Boxed(unlabelled()),
+            &FreightDraft::Boxed(unlabelled()),
             &["'Boxed.label': too short: minimum length is 1, got 0"],
             "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a renamed variant",
-            &Freight::Crated(unlabelled()),
+            &FreightDraft::Crated(unlabelled()),
             &["'crated.label': too short: minimum length is 1, got 0"],
             "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, no value",
-            &Freight::Held,
+            &FreightDraft::Held,
             &["a held freight has no route"],
             "Freight.fromJsonUnjudged(@)",
         ),
@@ -1465,13 +1483,13 @@ pub fn named_variant_cases() -> Vec<Case> {
         ),
         pinned(
             "no tag, the one slot",
-            &Freight::Sealed(String::new()),
+            &FreightDraft::Sealed(String::new()),
             &["'Sealed': too short: minimum length is 1, got 0"],
             "Freight.fromJsonUnjudged(@)",
         ),
         pinned(
             "no tag, a slot of several",
-            &Freight::Split(String::new(), 0),
+            &FreightDraft::Split(String::new(), 0),
             &[
                 "'Split.0': too short: minimum length is 1, got 0",
                 "'Split.1': too small: minimum is 1, got 0",
@@ -1480,7 +1498,7 @@ pub fn named_variant_cases() -> Vec<Case> {
         ),
         pinned(
             "no tag, held",
-            &Freight::Split("a".to_owned(), 1),
+            &FreightDraft::Split("a".to_owned(), 1),
             &[],
             "Freight.fromJsonUnjudged(@)",
         ),
@@ -1502,7 +1520,7 @@ pub fn tagged_and_untagged_variant_cases() -> Vec<Case> {
     vec![
         pinned(
             "tag and content, the one slot",
-            &Haul::Boxed(String::new()),
+            &HaulDraft::Boxed(String::new()),
             &["'held': too short: minimum length is 1, got 0"],
             "Haul.fromJsonUnjudged(@)",
         ),
@@ -1516,13 +1534,13 @@ pub fn tagged_and_untagged_variant_cases() -> Vec<Case> {
         ),
         pinned(
             "tag and content, a slot of several",
-            &Haul::Split("a".to_owned(), 0),
+            &HaulDraft::Split("a".to_owned(), 0),
             &["'held.1': too small: minimum is 1, got 0"],
             "Haul.fromJsonUnjudged(@)",
         ),
         pinned(
             "tag alone, the one slot",
-            &Lift::Boxed(unlabelled()),
+            &LiftDraft::Boxed(unlabelled()),
             &["'label': too short: minimum length is 1, got 0"],
             "Lift.fromJsonUnjudged(@)",
         ),
@@ -1546,7 +1564,7 @@ pub fn tagged_and_untagged_variant_cases() -> Vec<Case> {
         },
         pinned(
             "untagged, held",
-            &Reference::Numbered(1),
+            &ReferenceDraft::Numbered(1),
             &[],
             "Reference.fromJsonUnjudged(@)",
         ),
@@ -1711,9 +1729,24 @@ fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
     let reader = "Lineup.fromJsonUnjudged(@)";
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
     let cases = [
-        compared("Lineup", &kept, kept.validate(), reader),
-        compared("Lineup, no item", &empty, empty.validate(), reader),
-        compared("Lineup, too many items", &wide, wide.validate(), reader),
+        compared(
+            "Lineup",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+            reader,
+        ),
+        compared(
+            "Lineup, no item",
+            &empty,
+            crate::judged_issues(empty.validation_issues()),
+            reader,
+        ),
+        compared(
+            "Lineup, too many items",
+            &wide,
+            crate::judged_issues(wide.validation_issues()),
+            reader,
+        ),
     ];
     assert_eq!(
         report(&cases),

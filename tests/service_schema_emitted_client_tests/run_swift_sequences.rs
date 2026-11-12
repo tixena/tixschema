@@ -5,7 +5,7 @@
 #![cfg(feature = "swift")]
 
 use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
-use core::fmt::Write as _;
+use core::fmt::{Debug, Write as _};
 use std::collections::HashSet;
 
 use serde::de::DeserializeOwned;
@@ -99,11 +99,9 @@ struct Row {
 
 /// A beacon with `mark`.
 fn beacon(mark: &str) -> Beacon {
-    BeaconDraft {
+    Beacon::model_schema_wrap_unjudged(BeaconDraft {
         mark: mark.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// What the serde read prints of `payload`: the value written back, or each message of the
@@ -139,14 +137,15 @@ where
 
 /// The payload serde writes for `held`, which breaks a bound, held to what the Rust `validate()`
 /// answers of it.
-fn refused_row<Held>(
+fn refused_row<Draft, Held>(
     name: &'static str,
     read_as: &'static str,
-    held: &Held,
-    answered: Result<(), Vec<String>>,
+    held: &Draft,
+    answered: Result<Held, Vec<String>>,
 ) -> Row
 where
-    Held: DeserializeOwned + Serialize,
+    Draft: Serialize,
+    Held: Debug + DeserializeOwned,
 {
     let payload = serde_json::to_string(held).unwrap();
     assert!(serde_json::from_str::<Held>(&payload).is_err(), "{payload}");
@@ -180,7 +179,7 @@ fn rows() -> Vec<Row> {
         "an empty mark in each sequence",
         "Flotilla",
         &empty_marks,
-        empty_marks.validate().map(|_valid| ()),
+        empty_marks.clone().validate(),
     ));
     rows.extend(indexed_rows());
     rows
@@ -200,7 +199,7 @@ fn indexed_rows() -> Vec<Row> {
         "an empty mark in an IndexSet",
         "IndexedFlotilla",
         &empty_mark,
-        empty_mark.validate(),
+        empty_mark.clone().validate(),
     ));
     rows
 }

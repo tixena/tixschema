@@ -395,15 +395,15 @@ fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     }
 }
 
-fn unreserved(value: &TagDraft) -> Result<(), Vec<String>> {
+fn unreserved(value: &Tag) -> Result<(), Vec<String>> {
     if value.as_inner() == "NONE" {
         return Err(vec!["a tag is not NONE".to_owned()]);
     }
     Ok(())
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Unrated) {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a slip is rated".to_owned()]);
     }
     Ok(())
@@ -414,13 +414,11 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn held() -> Parcel {
@@ -438,14 +436,12 @@ fn outside() -> Parcel {
 }
 
 fn manifest(first: Parcel, second: Parcel, north: Parcel, spare: Option<Parcel>) -> Manifest {
-    ManifestDraft {
+    Manifest::model_schema_wrap_unjudged(ManifestDraft {
         first_parcel: first,
         parcel_list: vec![held(), second],
         parcels_by_dock: BTreeMap::from([("north".to_owned(), north)]),
         spare_parcel: spare,
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn four_broken() -> Manifest {
@@ -453,49 +449,39 @@ fn four_broken() -> Manifest {
 }
 
 fn sealed_crate<CodeType>(codes: Vec<CodeType>, label: &str, seal: &str) -> Crate<CodeType> {
-    CrateDraft {
+    Crate::model_schema_wrap_unjudged(CrateDraft {
         codes,
         label: label.to_owned(),
         seal: Code::model_schema_read_unjudged(serde_json::to_value(seal.to_owned()).unwrap())
             .unwrap(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn by_air(stops: &[&str]) -> Shipment {
-    ShipmentDraft::Air {
+    Shipment::model_schema_wrap_unjudged(ShipmentDraft::Air {
         flight: "F1".to_owned(),
         stops: texts(stops),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn by_ground() -> Shipment {
-    ShipmentDraft::Ground {
+    Shipment::model_schema_wrap_unjudged(ShipmentDraft::Ground {
         stops: texts(&["a"]),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn loose(label: &str) -> Haul {
-    HaulDraft::Loose {
+    Haul::model_schema_wrap_unjudged(HaulDraft::Loose {
         haul_label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn route(hauled: Vec<Haul>, legs: Vec<Shipment>, loads: Vec<Freight>) -> Route {
-    RouteDraft {
+    Route::model_schema_wrap_unjudged(RouteDraft {
         hauled,
         legs,
         loads,
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn two_legs_broken() -> Route {
@@ -514,7 +500,10 @@ fn broken_under_each_tagging() -> Route {
     route(
         vec![loose(""), HaulDraft::Parked.validate().unwrap()],
         vec![by_air(&["a", "b", "c"])],
-        vec![Freight::Empty, Freight::Boxed(unlabelled())],
+        vec![
+            FreightDraft::Empty.validate().unwrap(),
+            Freight::model_schema_wrap_unjudged(FreightDraft::Boxed(unlabelled())),
+        ],
     )
 }
 
@@ -522,45 +511,40 @@ fn route_held() -> Route {
     route(
         vec![loose("l"), HaulDraft::Parked.validate().unwrap()],
         vec![by_air(&["a"]), by_ground()],
-        vec![Freight::Empty, Freight::Boxed(held())],
+        vec![
+            FreightDraft::Empty.validate().unwrap(),
+            FreightDraft::Boxed(held()).validate().unwrap(),
+        ],
     )
 }
 
 fn stack() -> Stack<i32> {
-    StackDraft {
+    Stack::model_schema_wrap_unjudged(StackDraft {
         crates: vec![
             sealed_crate(vec![1_i32], "A", "ab"),
             sealed_crate(vec![2_i32], "", "ab"),
         ],
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn docket() -> Docket {
-    DocketDraft {
+    Docket::model_schema_wrap_unjudged(DocketDraft {
         code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
             .unwrap(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn hitch() -> Hitch {
-    HitchDraft {
+    Hitch::model_schema_wrap_unjudged(HitchDraft {
         hook: String::new(),
-        trailer: HitchedTrailerDraft {
+        trailer: HitchedTrailer::model_schema_wrap_unjudged(HitchedTrailerDraft {
             plate: String::new(),
-        }
-        .validate()
-        .unwrap(),
-    }
-    .validate()
-    .unwrap()
+        }),
+    })
 }
 
-const fn mark_class(read: &Mark) -> &'static str {
-    match read {
+fn mark_class(read: &Mark) -> &'static str {
+    match &**read {
         MarkDraft::Brief(_) => "MarkBrief",
         MarkDraft::Coded(_) => "MarkCoded",
         MarkDraft::Plain(_) => "MarkPlain",
@@ -722,7 +706,7 @@ fn judged_rows() -> Vec<Sample> {
 
 /// The rows of an enum under each tagging, alone and in a list, and of the two untagged enums.
 fn enum_rows() -> Vec<Sample> {
-    let mark = |text: &str| MarkDraft::Plain(text.to_owned());
+    let mark = |text: &str| Mark::model_schema_wrap_unjudged(MarkDraft::Plain(text.to_owned()));
     vec![
         sample(
             "Shipment by air, three stops",
@@ -751,7 +735,7 @@ fn enum_rows() -> Vec<Sample> {
         sample(
             "Freight, a parcel that breaks its bound",
             "Freight",
-            &Freight::Boxed(unlabelled()),
+            &Freight::model_schema_wrap_unjudged(FreightDraft::Boxed(unlabelled())),
             |_| "FreightBoxed",
         ),
         sample(
@@ -787,23 +771,23 @@ fn enum_rows() -> Vec<Sample> {
         sample(
             "Cargo, a pallet that breaks its bound",
             "Cargo",
-            &CargoDraft::Named {
+            &Cargo::model_schema_wrap_unjudged(CargoDraft::Named {
                 label: String::new(),
-            },
+            }),
             |_| "CargoBoxed",
         ),
         sample(
             "Slip, a rating its check refuses",
             "Slip",
-            &SlipDraft {
-                rating: Rating::Unrated,
-            },
+            &Slip::model_schema_wrap_unjudged(SlipDraft {
+                rating: Rating::model_schema_wrap_unjudged(RatingDraft::Unrated),
+            }),
             |_| "Slip",
         ),
         sample(
             "Rating, read on its own, one its check refuses",
             "Rating",
-            &Rating::Unrated,
+            &Rating::model_schema_wrap_unjudged(RatingDraft::Unrated),
             |_| "Rating",
         ),
     ]
@@ -883,7 +867,7 @@ fn unjudged_rows() -> Vec<Sample> {
         pinned(
             "Freight",
             "FreightUnjudged",
-            &Freight::Boxed(unlabelled()),
+            &FreightDraft::Boxed(unlabelled()),
             Ok("FreightBoxed"),
         ),
         pinned("Haul", "HaulUnjudged", &loose(""), Ok("HaulLoose")),
@@ -989,16 +973,20 @@ fn every_fixture_is_written_as_serde_writes_it() {
             sealed_crate(vec![Tag::new("AB".to_owned()).unwrap()], "A", "ab"),
             MarkDraft::Brief("ab".to_owned()),
             MarkDraft::Coded(Tag::new("ABCD".to_owned()).unwrap()),
-            Cargo::Boxed(PalletDraft {
-                label: "p".to_owned()
-            }),
+            CargoDraft::Boxed(
+                PalletDraft {
+                    label: "p".to_owned()
+                }
+                .validate()
+                .unwrap()
+            ),
             hitch(),
             LoadRequestDraft {
                 dock: "north".to_owned()
             },
             LoadErrorDraft::Closed,
             SlipDraft {
-                rating: Rating::Fair
+                rating: RatingDraft::Fair.validate().unwrap()
             },
             docket()
         ))
@@ -1247,8 +1235,8 @@ fn the_backend_answers_the_contract() {
             ),
         )
         .unwrap()
-        .map(|loaded| loaded.label)
-        .map_err(|refused| matches!(refused, LoadErrorDraft::Closed))
+        .map(|loaded| loaded.label.clone())
+        .map_err(|refused| matches!(&*refused, LoadErrorDraft::Closed))
     };
     assert_eq!(asked("north"), Ok("north".to_owned()));
     assert_eq!(asked(""), Err(true));

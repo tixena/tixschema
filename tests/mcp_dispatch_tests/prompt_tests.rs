@@ -113,7 +113,7 @@ mod over_http {
 }
 
 use crate::CounselServiceSchema;
-use crate::counsel::{Counsel, CounselDraft, CounselError, CounselErrorDraft, Counsels};
+use crate::counsel::{CounselDraft, CounselErrorDraft, Counsels};
 use crate::counsel_client::{CounselServiceClient, McpMessage, Transport};
 use crate::counsel_mcp::{
     self, McpEndpoint, McpHost, McpHttpRequest, McpHttpSettings, McpInFlight,
@@ -557,10 +557,9 @@ fn the_client_reads_a_declared_error_and_a_fault() {
     let client = CounselServiceClient::new(Dispatching {
         sent: Mutex::new(Vec::new()),
     });
-    assert!(matches!(
-        &*block_on(client.greet("missing".to_owned())),
-        Err(CallError::Operation(CounselErrorDraft::NotFound))
-    ));
+    assert!(
+        matches!(block_on(client.greet("missing".to_owned())), Err(CallError::Operation(error)) if matches!(&*error, CounselErrorDraft::NotFound))
+    );
     assert!(matches!(
         block_on(client.greet("boom".to_owned())),
         Err(CallError::Fault(fault)) if fault.kind() == ServiceFaultKind::HandlerPanic

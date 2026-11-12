@@ -964,7 +964,7 @@ fn record(numbers: &[i32]) -> Record {
         note: None,
         versions: numbers
             .iter()
-            .map(|&number| VersionDraft { number })
+            .map(|&number| VersionDraft { number }.validate().unwrap())
             .collect(),
     }
     .validate()
@@ -1590,7 +1590,9 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 oid("6a7cc592ca0574e6efdfe217"),
                 oid("6a7cc592ca0574e6efdfe218")
             ],
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -2154,7 +2156,7 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
     let labelled = LabelledDraft {
         owner: OwnerId::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
         ping: PingDraft.validate().unwrap(),
-        pinned: Pinned::new(VersionDraft { number: 3 }).unwrap(),
+        pinned: Pinned::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
     };
     assert_eq!(
@@ -2235,7 +2237,10 @@ fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
         calls += 1;
         pinned_schema::Verdict::Reject
     });
-    assert_eq!(pinned, Ok(Pinned::new(VersionDraft { number: 3 }).unwrap()));
+    assert_eq!(
+        pinned,
+        Ok(Pinned::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap())
+    );
     assert_eq!(calls, 0);
 
     let keyed = Ping::from_bson_with(doc! { "x": 1_i32 }, |_raw, _found| {
@@ -2285,9 +2290,11 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
 fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_holds() {
     let referenced = ReferencedDraft {
         owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
-        pair: PairRef::new(PairDraft("a".to_owned(), 1)).unwrap(),
-        status: StatusRef::new(StatusDraft::Draft).unwrap(),
-    };
+        pair: PairRef::new(PairDraft("a".to_owned(), 1).validate().unwrap()).unwrap(),
+        status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
+    }
+    .validate()
+    .unwrap();
     let stored_row = written(&referenced);
     assert_eq!(
         stored_row,
@@ -2298,7 +2305,7 @@ fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_hol
         calls += 1;
         referenced_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(referenced.validate().unwrap()));
+    assert_eq!(read, Ok(referenced));
     assert_eq!(calls, 0);
 
     let refused_row = doc! { "owner": 5_i32, "pair": ["a", "x"], "status": "Archived" };
@@ -2336,9 +2343,11 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
 #[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
     let assigned = AssignedDraft {
-        current: Current::new(VersionDraft { number: 3 }).unwrap(),
+        current: Current::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         owner: Owner::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         written(&assigned),
         doc! {
@@ -2399,7 +2408,7 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
             mistyped("owner", "ObjectId", string("6a7cc592ca0574e6efdfe217")),
         ]
     );
-    assert_eq!(read, Ok(assigned.validate().unwrap()));
+    assert_eq!(read, Ok(assigned));
 
     let refused = Assigned::from_bson_with(
         doc! { "current": "three", "owner": { "id": oid("6a7cc592ca0574e6efdfe217") } },
@@ -2427,7 +2436,7 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
     });
     assert_eq!(
         current,
-        Ok(Current::new(VersionDraft { number: 3 }).unwrap())
+        Ok(Current::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -2454,12 +2463,14 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
 fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
     let filing = FilingDraft {
         keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-        stamped: Stamped::new(VersionDraft { number: 3 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
-    };
+    }
+    .validate()
+    .unwrap();
     let stored = written(&FilingDraft {
         keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-        stamped: Stamped::new(VersionDraft { number: 3 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     });
     assert_eq!(
@@ -2531,7 +2542,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
             invalid("tags[1]", "String", Bson::Int32(7)),
         ]
     );
-    assert_eq!(read, Ok(filing.validate().unwrap()));
+    assert_eq!(read, Ok(filing));
 
     let refused_row = doc! {
         "keeper": [oid("6a7cc592ca0574e6efdfe217")],
@@ -2564,7 +2575,7 @@ fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_
     });
     assert_eq!(
         stamped,
-        Ok(Stamped::new(VersionDraft { number: 3 }).unwrap())
+        Ok(Stamped::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -2634,11 +2645,17 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
     );
 
     let page = PageDraft {
-        items: vec![PlainDraft {
-            label: "a".to_owned(),
-        }],
+        items: vec![
+            PlainDraft {
+                label: "a".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
         total: 1,
-    };
+    }
+    .validate()
+    .unwrap();
     let mut calls = 0_u32;
     let unflagged = Page::<Plain>::from_bson_with(written(&page), |_raw, _found| {
         calls += 1;
@@ -2681,7 +2698,9 @@ fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
         Ok(PairingDraft {
             left: oid("6a7cc592ca0574e6efdfe217"),
             right: 2_i32,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -2697,7 +2716,9 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
         Ok(LenientDraft {
             extra: String::new(),
             total: 1,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -2715,7 +2736,7 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
 fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
     let listing = ListingDraft {
         page: PageDraft {
-            items: vec![VersionDraft { number: 1 }],
+            items: vec![VersionDraft { number: 1 }.validate().unwrap()],
             total: 1,
         }
         .validate()
@@ -3466,7 +3487,14 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
             calls += 1;
             answer_schema::Verdict::Reject
         });
-    assert_eq!(kept, Ok(AnswerDraft::Value(VersionDraft { number: 3_i32 })));
+    assert_eq!(
+        kept,
+        Ok(
+            AnswerDraft::Value(VersionDraft { number: 3_i32 }.validate().unwrap())
+                .validate()
+                .unwrap()
+        )
+    );
     assert_eq!(calls, 0);
 
     let stored_row = doc! { "Value": "6a7cc592ca0574e6efdfe217" };

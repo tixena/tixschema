@@ -23,7 +23,9 @@ fn the_schema_module_holds_the_librarys_path_and_the_author_keeps_theirs() {
         read,
         Ok(paths::InvoiceLookupDraft {
             number: "INV-1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

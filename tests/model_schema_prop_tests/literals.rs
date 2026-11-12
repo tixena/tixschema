@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::literal_models::{
-    Answered, Assay, AssayDraft, Hallmark, HallmarkDraft, Ingot, IngotDraft, LITERAL_READS,
-    literal_report, names_each_violation, serde_read,
+    Answered, AssayDraft, HallmarkDraft, Ingot, IngotDraft, LITERAL_READS, literal_report,
+    names_each_violation, serde_read,
 };
 
 /// A literal through each wrapper a member reaches it by: a fixed array, a box, a borrow, a path,

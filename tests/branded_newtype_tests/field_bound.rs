@@ -51,7 +51,7 @@ mod bounded_at_the_field {
         many: &[&str],
         dir: &str,
         titled: &str,
-    ) -> BoundHolder {
+    ) -> BoundHolderDraft {
         BoundHolderDraft {
             bare: BoundAbove::new(bare.to_owned()).unwrap(),
             dir: BoundDir::new(PathBuf::from(dir)).unwrap(),
@@ -63,8 +63,6 @@ mod bounded_at_the_field {
             maybe: maybe.map(|text| BoundBelow::new(text.to_owned()).unwrap()),
             titled: titled.to_owned(),
         }
-        .validate()
-        .unwrap()
     }
 
     #[test]
@@ -105,7 +103,12 @@ mod bounded_at_the_field {
             "bare": "ab", "dir": "dir", "free": "", "many": ["abcd"], "maybe": "ab", "titled": "title"
         }))
         .unwrap();
-        assert_eq!(kept, held("ab", Some("ab"), &["abcd"], "dir", "title"));
+        assert_eq!(
+            kept,
+            held("ab", Some("ab"), &["abcd"], "dir", "title")
+                .validate()
+                .unwrap()
+        );
     }
 
     /// The brand itself keeps no bound: a field that writes none beside it holds any value.
@@ -337,7 +340,7 @@ mod bounded_crane {
     }
 
     fn crane(load: &str, spare: &str) -> Crane {
-        CraneDraft {
+        Crane::model_schema_wrap_unjudged(CraneDraft {
             load_code: Code::model_schema_read_unjudged(
                 serde_json::to_value(load.to_owned()).unwrap(),
             )
@@ -346,9 +349,7 @@ mod bounded_crane {
                 serde_json::to_value(spare.to_owned()).unwrap(),
             )
             .unwrap(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]

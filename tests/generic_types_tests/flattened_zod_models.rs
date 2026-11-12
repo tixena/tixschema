@@ -484,7 +484,7 @@ pub struct Wharf {
     pub label: String,
 }
 
-fn a_span(value: &Span) -> Result<(), Vec<String>> {
+fn a_span(value: &SpanDraft) -> Result<(), Vec<String>> {
     let refused = match value {
         SpanDraft::Days { days } => (days == "9").then_some("'days': a span is under nine days"),
         SpanDraft::Hours { hours } => (*hours == 0).then_some("'hours': a span is not empty"),
@@ -516,66 +516,66 @@ where
 pub fn checked_cases() -> Vec<Checked> {
     let booking = |name, span: Span| {
         let value = BookingDraft { number: 1, span };
-        let answered = value.validate();
-        checked(name, "Booking", &value, answered.map(|_valid| ()))
+        let issues = value.validation_issues();
+        let answered = if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(issues)
+        };
+        checked(name, "Booking", &value, answered)
     };
     let tenancy = |name, span: Span| {
         let value = TenancyDraft::Booked { number: 1, span };
-        let answered = value.validate();
-        checked(name, "Tenancy", &value, answered.map(|_valid| ()))
+        let issues = value.validation_issues();
+        let answered = if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(issues)
+        };
+        checked(name, "Tenancy", &value, answered)
     };
     vec![
         booking(
             "booking, no hours",
-            SpanDraft::Hours { hours: 0 }.validate().unwrap(),
+            Span::model_schema_wrap_unjudged(SpanDraft::Hours { hours: 0 }),
         ),
         booking(
             "booking, hours",
-            SpanDraft::Hours { hours: 2 }.validate().unwrap(),
+            Span::model_schema_wrap_unjudged(SpanDraft::Hours { hours: 2 }),
         ),
         booking(
             "booking, no days",
-            SpanDraft::Days {
+            Span::model_schema_wrap_unjudged(SpanDraft::Days {
                 days: String::new(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
         booking(
             "booking, nine days",
-            SpanDraft::Days {
+            Span::model_schema_wrap_unjudged(SpanDraft::Days {
                 days: "9".to_owned(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
         booking(
             "booking, days",
-            SpanDraft::Days {
+            Span::model_schema_wrap_unjudged(SpanDraft::Days {
                 days: "3".to_owned(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
         tenancy(
             "tenancy, no hours",
-            SpanDraft::Hours { hours: 0 }.validate().unwrap(),
+            Span::model_schema_wrap_unjudged(SpanDraft::Hours { hours: 0 }),
         ),
         tenancy(
             "tenancy, no days",
-            SpanDraft::Days {
+            Span::model_schema_wrap_unjudged(SpanDraft::Days {
                 days: String::new(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
         tenancy(
             "tenancy, days",
-            SpanDraft::Days {
+            Span::model_schema_wrap_unjudged(SpanDraft::Days {
                 days: "3".to_owned(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
     ]
 }

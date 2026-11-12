@@ -106,7 +106,7 @@ impl GranaryClientService<()> for Granary {
 
     async fn sift(&self, _ctx: &(), bin: String) -> Result<u32, GranaryError> {
         ready(()).await;
-        u32::try_from(bin.len()).or(Err(GranaryErrorDraft::Empty.validate().unwrap()))
+        u32::try_from(bin.len()).map_err(|_overflow| GranaryErrorDraft::Empty.validate().unwrap())
     }
 }
 
@@ -174,7 +174,9 @@ fn both_services_are_implementable_and_callable() {
         poured,
         Some(Ok(GranaryReceiptDraft {
             label: "tn3".to_owned()
-        })),
+        }
+        .validate()
+        .unwrap())),
         "the pour answers another value"
     );
     let drawn = poll_once(GranaryClientService::draw(&Granary, &(), "b".to_owned()));
@@ -184,7 +186,10 @@ fn both_services_are_implementable_and_callable() {
     );
     let empty = poll_once(SiloClientService::draw(&Granary, &(), String::new()));
     assert!(
-        matches!(&*empty, Some(Err(GranaryErrorDraft::Empty))),
+        matches!(
+            empty,
+            Some(Err(error)) if matches!(&*error, GranaryErrorDraft::Empty)
+        ),
         "the silo's draw answers no refusal"
     );
 }

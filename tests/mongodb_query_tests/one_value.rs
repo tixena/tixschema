@@ -117,7 +117,11 @@ fn a_list_of_a_type_written_as_one_value_is_matched_through_its_elements() {
     );
     let past_ranks: game_schema::ListField<Game, Rank> = game.past_ranks();
     assert_eq!(
-        shown(past_ranks.contains_none([RankDraft::TopSeed]).unwrap()),
+        shown(
+            past_ranks
+                .contains_none([RankDraft::TopSeed.validate().unwrap()])
+                .unwrap()
+        ),
         r#"{ "pastRanks": { "$nin": ["top-seed"] } }"#
     );
 }
@@ -319,7 +323,10 @@ fn a_plain_enum_declared_inside_a_function_builds() {
     assert_eq!(
         shown(
             Standing::MONGO_FIELDS
-                .is_in([StandingDraft::OnHold, StandingDraft::Settled])
+                .is_in([
+                    StandingDraft::OnHold.validate().unwrap(),
+                    StandingDraft::Settled.validate().unwrap()
+                ])
                 .unwrap()
         ),
         r#"{ "": { "$in": ["on-hold", "settled"] } }"#

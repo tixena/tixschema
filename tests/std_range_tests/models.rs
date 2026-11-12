@@ -151,11 +151,9 @@ pub struct Payload {
 
 /// A milestone marked `mark`.
 pub fn milestone(mark: &str) -> Milestone {
-    MilestoneDraft {
+    Milestone::model_schema_wrap_unjudged(MilestoneDraft {
         mark: mark.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A waymark of `code`.
@@ -164,7 +162,7 @@ pub fn waymark(code: &str) -> Waymark {
 }
 
 /// The four ranges of a number.
-pub const fn spanned() -> Spanned {
+pub fn spanned() -> Spanned {
     SpannedDraft {
         closed: 1..=2,
         from: 8..,
@@ -196,51 +194,41 @@ pub fn signposted(broken: bool) -> Signposted {
     } else {
         ("a", "ab", "cd")
     };
-    SignpostedDraft {
+    Signposted::model_schema_wrap_unjudged(SignpostedDraft {
         marks: milestone(mark)..=milestone("b"),
         span: waymark(start)..waymark(end),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// Ranges of a model beside a flattened map of ranges of a brand, every bound broken where
 /// `broken` says so.
 pub fn excursion(broken: bool) -> Excursion {
     let (code, mark) = if broken { ("a", "") } else { ("ab", "a") };
-    ExcursionDraft {
-        atlas: AtlasDraft {
+    Excursion::model_schema_wrap_unjudged(ExcursionDraft {
+        atlas: Atlas::model_schema_wrap_unjudged(AtlasDraft {
             keyed: BTreeMap::from([("k".to_owned(), waymark(code)..waymark("cd"))]),
-        }
-        .validate()
-        .unwrap(),
+        }),
         maybe: Some(milestone(mark)..milestone(mark)),
         span: milestone(mark)..milestone("b"),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A list of ranges of a brand in an internally tagged variant, both bounds broken where `broken`
 /// says so.
 pub fn waypost(broken: bool) -> Waypost {
     let (start, end) = if broken { ("a", "b") } else { ("ab", "cd") };
-    WaypostDraft::Codes {
+    Waypost::model_schema_wrap_unjudged(WaypostDraft::Codes {
         codes: vec![waymark(start)..waymark(end)],
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The two ranges of one bound, each bound broken where `broken` says so.
 pub fn frontier(broken: bool) -> Frontier {
     let code = if broken { "a" } else { "ab" };
-    FrontierDraft {
+    Frontier::model_schema_wrap_unjudged(FrontierDraft {
         from: waymark(code)..,
         to: ..waymark(code),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// What serde writes of `value`, read as `read_as`.

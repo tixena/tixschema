@@ -228,7 +228,7 @@ fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     }
 }
 
-fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
+fn upper_case(value: &Code) -> Result<(), Vec<String>> {
     if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
@@ -242,7 +242,7 @@ fn routed(value: &FreightDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
     if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
@@ -256,7 +256,7 @@ fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>
     Ok(())
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -300,7 +300,9 @@ fn every_declared_type_is_constructible() {
         fragile_item_codes: Vec::new(),
         item_code_list: Vec::new(),
         label: "A".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     let gauge = GaugeDraft {
         code_list: vec!["a".to_owned()],
         item_count: 1,
@@ -311,8 +313,8 @@ fn every_declared_type_is_constructible() {
     };
     assert_eq!(gauge.item_count, 1);
     let manifest = ManifestDraft {
-        first_parcel: parcel.clone().validate().unwrap(),
-        parcel_list: vec![parcel.clone().validate().unwrap()],
+        first_parcel: parcel.clone(),
+        parcel_list: vec![parcel.clone()],
         parcels_by_dock: HashMap::from([("north".to_owned(), parcel.clone())]),
         spare_parcel: None,
     };
@@ -327,7 +329,7 @@ fn every_declared_type_is_constructible() {
     assert_eq!(PairDraft("a".to_owned(), 1).1, 1);
     assert_eq!(SleeveDraft("a".to_owned()).0, "a");
     let freights = [
-        FreightDraft::Boxed(parcel.clone().validate().unwrap()),
+        FreightDraft::Boxed(parcel.clone()),
         FreightDraft::Held,
         FreightDraft::Loose {
             freight_label: "f".to_owned(),
@@ -344,7 +346,7 @@ fn every_declared_type_is_constructible() {
     ];
     assert_eq!(hauls.len(), 3);
     let lifts = [
-        LiftDraft::Boxed(parcel.clone().validate().unwrap()),
+        LiftDraft::Boxed(parcel.clone()),
         LiftDraft::Loose {
             lift_label: "l".to_owned(),
         },
@@ -354,7 +356,7 @@ fn every_declared_type_is_constructible() {
         ReferenceDraft::Named {
             name: "n".to_owned(),
         },
-        Reference::Numbered(1),
+        ReferenceDraft::Numbered(1),
     ];
     assert_eq!(references.len(), 2);
     assert_eq!([GradeDraft::Express, GradeDraft::Standard].len(), 2);
@@ -380,7 +382,7 @@ fn every_declared_type_is_constructible() {
         "{}",
         "a unit struct is written as an empty object"
     );
-    let consignment: Consignment = parcel.validate().unwrap();
+    let consignment: Consignment = parcel;
     assert_eq!(consignment.label, "A");
 }
 
@@ -414,7 +416,9 @@ fn each_named_function_answers_for_its_value() {
         ["a held freight has no route"]
     );
     assert_eq!(
-        routed(&FreightDraft::Boxed(parcel.validate().unwrap())),
+        routed(&FreightDraft::Boxed(Parcel::model_schema_wrap_unjudged(
+            parcel
+        ))),
         Ok(())
     );
     assert_eq!(

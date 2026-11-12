@@ -11,15 +11,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::held_maps_models::{
-    Currents, CurrentsDraft, Haversack, HaversackDraft, Leadline, LeadlineDraft, Plumbline,
-    PlumblineDraft, Pocketing, PocketingDraft, Rucksack, RucksackDraft, StowedHaversack,
-    StowedHaversackDraft, StowedPocketing, StowedPocketingDraft, beaconing_swift, captioning_swift,
+    Currents, CurrentsDraft, HaversackDraft, LeadlineDraft, PlumblineDraft, PocketingDraft,
+    RucksackDraft, StowedHaversackDraft, StowedPocketingDraft, beaconing_swift, captioning_swift,
     currents_swift, haversack_swift, leadline_swift, plumbline_swift, pocketing_swift,
     rucksack_swift, sequencing_swift, soundings_swift, stowed_haversack_swift,
     stowed_pocketing_swift, tabulation_swift,
 };
 #[cfg(feature = "chrono")]
-use super::held_maps_models::{Moonlit, MoonlitDraft, at, moonlit_swift, moonrise_swift};
+use super::held_maps_models::{MoonlitDraft, at, moonlit_swift, moonrise_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 
@@ -83,8 +82,8 @@ where
     Held: Clone,
 {
     HashMap::from([
-        (CurrentsDraft::East, held.clone()),
-        (CurrentsDraft::West, held.clone()),
+        (CurrentsDraft::East.validate().unwrap(), held.clone()),
+        (CurrentsDraft::West.validate().unwrap(), held.clone()),
     ])
 }
 
@@ -185,7 +184,7 @@ fn argument_rows() -> Vec<Row> {
 
 /// The payload of a map of models a rule judges, held as a type argument and named by an alias.
 fn judged_rows() -> Vec<Row> {
-    let kept = LeadlineDraft { label: text() };
+    let kept = LeadlineDraft { label: text() }.validate().unwrap();
     vec![read_row(
         "a map of models held",
         "Plumbline",
@@ -193,24 +192,6 @@ fn judged_rows() -> Vec<Row> {
             argument: RucksackDraft {
                 held: numbered(&kept),
             }
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
-            .validate()
-            .unwrap()
             .validate()
             .unwrap(),
             sounded: numbered(&kept),

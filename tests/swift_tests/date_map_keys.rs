@@ -15,12 +15,10 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentShiftDraft, AdjacentWatch, AdjacentWatchDraft, Chronicle, Convoy,
-    ConvoyDraft, Daybook, Daybooks, Diary, Logbook, LogbookDraft, Moment, MomentDraft, Reminder,
-    ReminderDraft, Sailing, SailingDraft, Shift, ShiftDraft, StowedLogbook, StowedLogbookDraft,
-    TaggedShift, TaggedShiftDraft, TaggedWatch, TaggedWatchDraft, Tidetable, TidetableDraft,
-    Timetable, TimetableDraft, UntaggedShift, UntaggedShiftDraft, UntaggedWatch,
-    UntaggedWatchDraft, Watch, WatchDraft, adjacent_shift_swift, adjacent_watch_swift,
+    AdjacentShiftDraft, AdjacentWatchDraft, Chronicle, ConvoyDraft, Daybook, Daybooks, Diary,
+    LogbookDraft, MomentDraft, ReminderDraft, Sailing, SailingDraft, ShiftDraft,
+    StowedLogbookDraft, TaggedShiftDraft, TaggedWatchDraft, TidetableDraft, TimetableDraft,
+    UntaggedShiftDraft, UntaggedWatchDraft, WatchDraft, adjacent_shift_swift, adjacent_watch_swift,
     chronicle_swift, daybook_swift, daybooks_swift, diary_swift, first, logbook_swift, second,
     shift_swift, stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift,
     timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
@@ -420,6 +418,8 @@ fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
                 SailingDraft {
                     label: "s".to_owned()
                 }
+                .validate()
+                .unwrap()
             )]),
             by_day: HashMap::from([(first().date_naive(), "d".to_owned())]),
             flags: HashMap::from([(true, 1)]),

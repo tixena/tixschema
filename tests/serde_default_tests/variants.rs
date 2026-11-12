@@ -159,7 +159,7 @@ pub enum WrittenOnly {
 
 impl From<Berthing> for ReadThroughDraft {
     fn from(read: Berthing) -> Self {
-        if let BerthingDraft::Docked { dock, pier } = read {
+        if let BerthingDraft::Docked { dock, pier } = BerthingDraft::from(read) {
             Self::Docked { dock, pier }
         } else {
             Self::Docked {
@@ -174,7 +174,7 @@ impl TryFrom<Berthing> for TriedThroughDraft {
     type Error = String;
 
     fn try_from(read: Berthing) -> Result<Self, Self::Error> {
-        if let BerthingDraft::Docked { dock, pier } = read {
+        if let BerthingDraft::Docked { dock, pier } = BerthingDraft::from(read) {
             Ok(Self::Docked { dock, pier })
         } else {
             Err("not docked".to_owned())
@@ -707,7 +707,9 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
         read(r#"{"harbour":"h"}"#),
         Ok(AnchorageDraft::Named {
             harbour: "h".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read(r#"{"harbour":"h","line":""}"#),
@@ -722,6 +724,8 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
             }
             .validate()
             .unwrap()
-        ))
+        )
+        .validate()
+        .unwrap())
     );
 }

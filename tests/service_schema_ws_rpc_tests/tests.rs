@@ -134,12 +134,14 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(RangeResult, String), RangeError>> {
         self.reach(format!("read_range {document_id} {byte_range:?}"));
         let outcome = if document_id == "missing" {
-            Err(RangeErrorDraft::NotFound)
+            Err(RangeErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok((
                 RangeResultDraft {
                     content: format!("range-of-{document_id}"),
-                },
+                }
+                .validate()
+                .unwrap(),
                 "etag-1".to_owned(),
             ))
         };
@@ -158,7 +160,7 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(), UnwatchError>> {
         self.reach(format!("unwatch {}", req.document_id));
         let outcome = if req.document_id == "missing" {
-            Err(UnwatchErrorDraft::NotFound)
+            Err(UnwatchErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok(())
         };
@@ -172,11 +174,13 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<WatchResult, WatchError>> {
         self.reach(format!("watch {}", req.document_id));
         let outcome = match req.document_id.as_str() {
-            "missing" => Err(WatchErrorDraft::NotFound),
+            "missing" => Err(WatchErrorDraft::NotFound.validate().unwrap()),
             "revoked" => Err(WatchErrorDraft::Revoked {
                 reason: "the session ended".to_owned(),
-            }),
-            _ => Ok(WatchResultDraft { accepted: true }),
+            }
+            .validate()
+            .unwrap()),
+            _ => Ok(WatchResultDraft { accepted: true }.validate().unwrap()),
         };
         ready(outcome)
     }
@@ -562,7 +566,7 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Ok(WatchResultDraft { accepted: true })),
+        Poll::Ready(Ok(WatchResultDraft { accepted: true }.validate().unwrap())),
     );
 }
 
@@ -589,7 +593,9 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Err(CallError::Operation(WatchErrorDraft::NotFound))),
+        Poll::Ready(Err(CallError::Operation(
+            WatchErrorDraft::NotFound.validate().unwrap()
+        ))),
     );
 }
 
@@ -622,9 +628,13 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     );
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Err(CallError::Operation(WatchErrorDraft::Revoked {
-            reason: "the session ended".to_owned(),
-        }))),
+        Poll::Ready(Err(CallError::Operation(
+            WatchErrorDraft::Revoked {
+                reason: "the session ended".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        ))),
     );
 }
 
@@ -666,10 +676,16 @@ fn a_frame_writer_push_writes_a_notify_frame() {
     let (writer, sent) = events_frame_writer();
     let client = SessionEventsClient::new(writer);
     let outcome = poll_by_hand(
-        pin!(client.document_changed(DocumentChangedRequestDraft {
-            document_id: "doc-1".to_owned(),
-            version: 3_u32,
-        }))
+        pin!(
+            client.document_changed(
+                DocumentChangedRequestDraft {
+                    document_id: "doc-1".to_owned(),
+                    version: 3_u32,
+                }
+                .validate()
+                .unwrap()
+            )
+        )
         .as_mut(),
     );
     assert_eq!(outcome, Poll::Ready(Ok(())));
@@ -864,11 +880,11 @@ fn read_range_round_trips_header_in_and_header_out() {
         Poll::Ready(Ok((
             RangeResultDraft {
                 content: "range-of-doc-1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             "etag-1".to_owned(),
-        )))
-        .validate()
-        .unwrap(),
+        ))),
     );
 }
 
@@ -905,11 +921,15 @@ fn a_document_session_client_exposes_the_transport_it_was_bound_to() {
 #[test]
 fn the_session_events_trait_is_implementable_the_way_a_browser_would() {
     let browser = SessionEventsBrowser;
-    poll_once(browser.document_changed(
-        &(),
-        DocumentChangedRequestDraft {
-            document_id: "doc-1".to_owned(),
-            version: 1,
-        },
-    ));
+    poll_once(
+        browser.document_changed(
+            &(),
+            DocumentChangedRequestDraft {
+                document_id: "doc-1".to_owned(),
+                version: 1,
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
 }

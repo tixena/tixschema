@@ -147,7 +147,9 @@ fn under_bson_a_lookup_reads_from_bson() {
         InvoiceLookup::from_bson_piped(bson::doc! { "number": "INV-1" }, &[]),
         Ok(InvoiceLookupDraft {
             number: "INV-1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

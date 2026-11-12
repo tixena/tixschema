@@ -511,7 +511,7 @@ where
 #[test]
 fn serde_hands_a_map_alone_every_key() {
     assert_eq!(written(&read::<Stopping>(COUNTS).rest), COUNTS);
-    let ClewingDraft::Held { rest } = read::<Clewing>(CLEWING);
+    let ClewingDraft::Held { rest } = &*read::<Clewing>(CLEWING);
     assert_eq!(written(&rest), r#"{"north":2}"#);
     assert_eq!(
         written(&read::<Parceling>(PARCELING).rest),
@@ -520,7 +520,7 @@ fn serde_hands_a_map_alone_every_key() {
     assert_eq!(
         read::<Toggling<u8>>(PARCELING),
         TogglingDraft {
-            rest: BTreeMap::from([(QuarterDraft::North, 2)]),
+            rest: BTreeMap::from([(QuarterDraft::North.validate().unwrap(), 2)]),
         }
         .validate()
         .unwrap()
@@ -658,8 +658,8 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
             PointingDraft::Notched(mark().validate().unwrap()),
         ),
     ] {
-        assert_eq!(read::<Pointing>(text), read_as.validate().unwrap());
         assert_eq!(written(&read_as), text);
+        assert_eq!(read::<Pointing>(text), read_as.validate().unwrap());
     }
 }
 
@@ -676,7 +676,8 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
     let dock = || CareenDraft::Dock {
         label: "s".to_owned(),
     };
-    let anchored = |text: &str| serde_json::from_str::<Anchoring>(text).map(|read| read.careen);
+    let anchored =
+        |text: &str| serde_json::from_str::<Anchoring>(text).map(|read| read.careen.clone());
     assert_eq!(
         anchored(ANCHORING[0]).unwrap_err().to_string(),
         "unknown field `north` at line 1 column 42"
@@ -699,9 +700,9 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
     let dredging = read::<Dredging>(DREDGING);
     assert_eq!(dredging.careen, dock().validate().unwrap());
     assert_eq!(dredging.tally.keys, ["north"]);
-    let fended = |text: &str| serde_json::from_str::<Fending>(text).map(|read| read.careen);
+    let fended = |text: &str| serde_json::from_str::<Fending>(text).map(|read| read.careen.clone());
     assert_eq!(fended(FENDING[0]).unwrap(), None);
-    assert_eq!(fended(FENDING[1]).unwrap(), Some(bay()));
+    assert_eq!(fended(FENDING[1]).unwrap(), Some(bay().validate().unwrap()));
     assert_eq!(
         fended(FENDING[2]).unwrap_err().to_string(),
         "'Bay.label': too short: minimum length is 1, got 0"

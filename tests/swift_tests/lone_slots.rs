@@ -14,25 +14,22 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::lone_slots_models::{
-    AdjacentStow, AdjacentStowDraft, Bale, BaleDraft, BalePair, BalePairDraft, Baled, BaledDraft,
-    Bales, BalesByName, BalesByNameDraft, BalesByNumber, BalesByNumberDraft, BalesDraft, Clipped,
-    ClippedDraft, Count, CountDraft, Girth, Girthed, GirthedDraft, LabelsByNumber,
-    LabelsByNumberDraft, Laden, LadenDraft, MaybeBale, MaybeBaleDraft, Moniker, MonikerDraft,
-    Rigger, RiggerDraft, Sack, SackDraft, Sacked, SackedDraft, Single, SingleDraft, Sling,
-    SlingDraft, Slung, SlungDraft, Stow, StowDraft, StowedByName, StowedByNameDraft,
-    StowedByNumber, StowedByNumberDraft, StowedList, StowedListDraft, StowedMaybe,
-    StowedMaybeDraft, StowedPair, StowedPairDraft, Strop, StropDraft, TaggedStow, TaggedStowDraft,
-    Tote, ToteDraft, Twine, TwineDraft, Twined, Unskipped, UnskippedDraft, UntaggedStow,
-    UntaggedStowDraft, bale_pair_swift, baled_swift, bales_by_name_swift, bales_by_number_swift,
-    bales_swift, clipped_swift, count_swift, girthed_swift, labels_by_number_swift, laden_swift,
+    AdjacentStowDraft, Bale, BaleDraft, BalePairDraft, BaledDraft, BalesByNameDraft,
+    BalesByNumberDraft, BalesDraft, Clipped, ClippedDraft, CountDraft, Girth, GirthedDraft,
+    LabelsByNumberDraft, LadenDraft, MaybeBaleDraft, MonikerDraft, RiggerDraft, Sack, SackDraft,
+    SackedDraft, SingleDraft, SlingDraft, SlungDraft, StowDraft, StowedByNameDraft,
+    StowedByNumberDraft, StowedListDraft, StowedMaybeDraft, StowedPairDraft, StropDraft,
+    TaggedStowDraft, ToteDraft, TwineDraft, Twined, UnskippedDraft, UntaggedStowDraft,
+    bale_pair_swift, baled_swift, bales_by_name_swift, bales_by_number_swift, bales_swift,
+    clipped_swift, count_swift, girthed_swift, labels_by_number_swift, laden_swift,
     maybe_bale_swift, moniker_swift, rigger_swift, sacked_swift, single_swift,
     stowed_by_name_swift, stowed_by_number_swift, stowed_list_swift, stowed_maybe_swift,
     stowed_pair_swift, strop_swift, twined_swift, unskipped_swift,
 };
 #[cfg(feature = "chrono")]
 use super::lone_slots_models::{
-    StowedStamp, StowedStampDraft, Ticked, TickedDraft, TickedMillis, TickedMillisDraft,
-    stowed_stamp_swift, ticked_millis_swift, ticked_swift,
+    StowedStampDraft, TickedDraft, TickedMillisDraft, stowed_stamp_swift, ticked_millis_swift,
+    ticked_swift,
 };
 
 /// What opens the read of a type alone.
@@ -153,11 +150,15 @@ fn serde_writes_a_date_in_one_slot_as_the_slots_value() {
 
 #[test]
 fn a_holder_writes_a_struct_of_one_slot_as_the_slots_value() {
+    let baled = || BaledDraft(bale()).validate().unwrap();
+    let moniker = || MonikerDraft("a".to_owned()).validate().unwrap();
+    let sacked = || SackedDraft(sack()).validate().unwrap();
+    let counted = |count| CountDraft(count).validate().unwrap();
     let tote = ToteDraft {
-        baled: BaledDraft(bale()).validate().unwrap(),
-        counts: vec![CountDraft(1).validate().unwrap()],
-        moniker: MonikerDraft("a".to_owned()).validate().unwrap(),
-        sacked: SackedDraft(sack()).validate().unwrap(),
+        baled: baled(),
+        counts: vec![counted(1)],
+        moniker: moniker(),
+        sacked: sacked(),
         single: SingleDraft(9).validate().unwrap(),
     };
     for (written, expected) in [
@@ -166,93 +167,58 @@ fn a_holder_writes_a_struct_of_one_slot_as_the_slots_value() {
             r#"{"baled":{"label":"l"},"counts":[1],"moniker":"a","sacked":{"label":"l","stowed":7},"single":9}"#,
         ),
         (
-            read_back(&StowDraft::Counted(CountDraft(5).validate().unwrap())),
+            read_back(&StowDraft::Counted(counted(5))),
             r#"{"Counted":5}"#,
         ),
         (
-            read_back(&StowDraft::Listed(vec![
-                BaledDraft(bale()).validate().unwrap(),
-            ])),
+            read_back(&StowDraft::Listed(vec![baled()])),
             r#"{"Listed":[{"label":"l"}]}"#,
         ),
+        (read_back(&StowDraft::Named(moniker())), r#"{"Named":"a"}"#),
         (
-            read_back(&StowDraft::Named(
-                MonikerDraft("a".to_owned()).validate().unwrap(),
-            )),
-            r#"{"Named":"a"}"#,
-        ),
-        (
-            read_back(&StowDraft::Packed(BaledDraft(bale()).validate().unwrap())),
+            read_back(&StowDraft::Packed(baled())),
             r#"{"Packed":{"label":"l"}}"#,
         ),
         (
-            read_back(&StowDraft::Sacked(SackedDraft(sack()).validate().unwrap())),
+            read_back(&StowDraft::Sacked(sacked())),
             r#"{"Sacked":{"label":"l","stowed":7}}"#,
         ),
         (
-            read_back(&AdjacentStowDraft::Counted(
-                CountDraft(5).validate().unwrap(),
-            )),
+            read_back(&AdjacentStowDraft::Counted(counted(5))),
             r#"{"kind":"Counted","held":5}"#,
         ),
         (
-            read_back(&AdjacentStowDraft::Listed(vec![
-                BaledDraft(bale()).validate().unwrap(),
-            ])),
+            read_back(&AdjacentStowDraft::Listed(vec![baled()])),
             r#"{"kind":"Listed","held":[{"label":"l"}]}"#,
         ),
         (
-            read_back(&AdjacentStowDraft::Named(
-                MonikerDraft("a".to_owned()).validate().unwrap(),
-            )),
+            read_back(&AdjacentStowDraft::Named(moniker())),
             r#"{"kind":"Named","held":"a"}"#,
         ),
         (
-            read_back(&AdjacentStowDraft::Packed(
-                BaledDraft(bale()).validate().unwrap(),
-            )),
+            read_back(&AdjacentStowDraft::Packed(baled())),
             r#"{"kind":"Packed","held":{"label":"l"}}"#,
         ),
         (
-            read_back(&AdjacentStowDraft::Sacked(
-                SackedDraft(sack()).validate().unwrap(),
-            )),
+            read_back(&AdjacentStowDraft::Sacked(sacked())),
             r#"{"kind":"Sacked","held":{"label":"l","stowed":7}}"#,
         ),
+        (read_back(&UntaggedStowDraft::Counted(counted(5))), "5"),
         (
-            read_back(&UntaggedStowDraft::Counted(
-                CountDraft(5).validate().unwrap(),
-            )),
-            "5",
-        ),
-        (
-            read_back(&UntaggedStowDraft::Listed(vec![
-                BaledDraft(bale()).validate().unwrap(),
-            ])),
+            read_back(&UntaggedStowDraft::Listed(vec![baled()])),
             r#"[{"label":"l"}]"#,
         ),
+        (read_back(&UntaggedStowDraft::Named(moniker())), r#""a""#),
         (
-            read_back(&UntaggedStowDraft::Named(
-                MonikerDraft("a".to_owned()).validate().unwrap(),
-            )),
-            r#""a""#,
-        ),
-        (
-            read_back(&UntaggedStowDraft::Packed(
-                BaledDraft(bale()).validate().unwrap(),
-            )),
+            read_back(&UntaggedStowDraft::Packed(baled())),
             r#"{"label":"l"}"#,
         ),
         (
-            read_back(&TaggedStowDraft::Packed(
-                BaledDraft(bale()).validate().unwrap(),
-            )),
+            read_back(&TaggedStowDraft::Packed(baled())),
             r#"{"kind":"Packed","label":"l"}"#,
         ),
         (
-            read_back(&TaggedStowDraft::Sacked(
-                SackedDraft(sack()).validate().unwrap(),
-            )),
+            read_back(&TaggedStowDraft::Sacked(sacked())),
             r#"{"kind":"Sacked","label":"l","stowed":7}"#,
         ),
     ] {
@@ -271,25 +237,25 @@ fn a_flattened_struct_of_one_slot_and_brand_join_their_keys_to_the_holder() {
         bales: bales().validate().unwrap(),
         carried_bales: SackDraft {
             label: "c".to_owned(),
-            stowed: bales(),
+            stowed: bales().validate().unwrap(),
         }
         .validate()
         .unwrap(),
         carried_count: SackDraft {
             label: "c".to_owned(),
-            stowed: CountDraft(2),
+            stowed: CountDraft(2).validate().unwrap(),
         }
         .validate()
         .unwrap(),
         carried_model: SackDraft {
             label: "c".to_owned(),
-            stowed: BaledDraft(bale()),
+            stowed: BaledDraft(bale()).validate().unwrap(),
         }
         .validate()
         .unwrap(),
         carried_moniker: SackDraft {
             label: "c".to_owned(),
-            stowed: MonikerDraft("a".to_owned()),
+            stowed: MonikerDraft("a".to_owned()).validate().unwrap(),
         }
         .validate()
         .unwrap(),
@@ -301,9 +267,13 @@ fn a_flattened_struct_of_one_slot_and_brand_join_their_keys_to_the_holder() {
         monikers_by_name: HashMap::new(),
         stacks: Vec::new(),
         stacks_by_name: HashMap::new(),
-        twined: Twined::new(TwineDraft {
-            twine: "t".to_owned(),
-        })
+        twined: Twined::new(
+            TwineDraft {
+                twine: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .unwrap(),
     };
     let written = read_back(&laden);
@@ -338,7 +308,7 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
     assert_eq!(
         read_back(&GirthedDraft {
             count: 1,
-            girth: Girth::new(SlingDraft::Slack).unwrap(),
+            girth: Girth::new(SlingDraft::Slack.validate().unwrap()).unwrap(),
         }),
         r#"{"count":1,"Slack":null}"#
     );

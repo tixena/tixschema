@@ -25,7 +25,7 @@ use serde_json::Value;
 use super::flattened_models::{
     BELTING, Belting, BeltingDraft, CHAFING, CLEATING, Chafing, Cleating, FRAYING, Fraying,
     HEAVING, Heaving, Luffing, SCUDDING, STOWING, Scudding, Stowing, StowingDraft, Tacking,
-    TackingDraft, UNDER_AN_ALIAS, Yawing, YawingDraft, belting_swift, bunting_swift, chafing_swift,
+    TackingDraft, UNDER_AN_ALIAS, YawingDraft, belting_swift, bunting_swift, chafing_swift,
     cleating_swift, fraying_swift, heaving_swift, jibing_swift, luffing_swift, quaying_swift,
     scudding_swift, snubber_swift, stowing_swift, tacking_swift, yawing_swift,
 };

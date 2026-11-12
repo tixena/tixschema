@@ -299,7 +299,10 @@ fn test_every_declared_type_is_constructible() {
     let _barcode: Barcode = "0000".to_owned();
 
     let lookup = ProductLookupDraft {
-        by_slot: HashMap::from([(StockStatusDraft::InStock, "A1".to_owned())]),
+        by_slot: HashMap::from([(
+            StockStatusDraft::InStock.validate().unwrap(),
+            "A1".to_owned(),
+        )]),
     };
     assert_eq!(lookup.by_slot.len(), 1);
 }

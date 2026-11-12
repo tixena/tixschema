@@ -23,11 +23,11 @@ use super::swift_preprocess_models::shipping_client_service_schema::{
     shipping_client_service_fault_fields_swift, shipping_client_service_fault_kind_swift,
 };
 use super::swift_preprocess_models::{
-    Ahead, Barged, Binned, Boxed, BoxedDraft, Branch, Choice, ChoiceDraft, Chosen, Dated, Docked,
-    Duplexed, Ferried, Hull, Loaded, Lodged, Lone, Loosed, Marked, MarkedDraft, Moved, Paired,
-    Quayside, Sampled, Sealing, Shifted, ShippingBackEnd, ShippingClientService as _,
-    ShippingClientServiceSchema, ShippingError, ShippingErrorDraft, Shouldered, Spared, Stamped,
-    Sticker, Stowed, Strapped, Tallied, ahead_swift, banded_swift, barged_swift, behind_swift,
+    Ahead, Barged, Binned, Boxed, BoxedDraft, Branch, ChoiceDraft, Chosen, Dated, Docked, Duplexed,
+    Ferried, Hull, Loaded, Lodged, Lone, Loosed, Marked, MarkedDraft, Moved, Paired, Quayside,
+    Sampled, Sealing, Shifted, ShippingBackEnd, ShippingClientService as _,
+    ShippingClientServiceSchema, ShippingErrorDraft, Shouldered, Spared, Stamped, Sticker, Stowed,
+    StowedDraft, Strapped, Tallied, ahead_swift, banded_swift, barged_swift, behind_swift,
     binned_swift, boxed_swift, branch_swift, choice_swift, chosen_swift, dated_swift, docked_swift,
     duplexed_swift, ferried_swift, hull_swift, listing_swift, loaded_swift, lodged_swift,
     lone_swift, loosed_swift, marked_swift, moved_swift, paired_swift, quayside_swift,
@@ -662,14 +662,14 @@ fn rust_keys_report() -> String {
         rust_keys::<Docked>("a flattened member's own function", flat, &|held| {
             listed(&held.listing.keys)
         }),
-        rust_keys::<Stowed>("a variant under a tag", tagged, &|held| match held {
-            Stowed::Held(inner) => listed(&inner.keys),
-            Stowed::Lost => String::new(),
+        rust_keys::<Stowed>("a variant under a tag", tagged, &|held| match &**held {
+            StowedDraft::Held(inner) => listed(&inner.keys),
+            StowedDraft::Lost => String::new(),
         }),
         rust_keys::<Marked>(
             "a slot's own function, under a tag",
             tagged,
-            &|held| match held {
+            &|held| match &**held {
                 MarkedDraft::Held(inner) => listed(&inner.keys),
                 MarkedDraft::Lost => String::new(),
             },
@@ -677,7 +677,7 @@ fn rust_keys_report() -> String {
         rust_keys::<Boxed>(
             "a variant under a tag that flattens",
             r#"{"kind":"Held","dock":"north","tag":"t"}"#,
-            &|held| match held {
+            &|held| match &**held {
                 BoxedDraft::Held {
                     dock,
                     tagged: inner,
@@ -688,7 +688,7 @@ fn rust_keys_report() -> String {
         rust_keys::<Chosen>(
             "a flattened choice that holds the type",
             r#"{"choice_dock":"north","tag":"t"}"#,
-            &|held| match &held.taken {
+            &|held| match &*held.taken {
                 ChoiceDraft::Tagged(inner) => listed(&inner.keys),
                 ChoiceDraft::Named { name } => name.clone(),
             },
@@ -696,9 +696,9 @@ fn rust_keys_report() -> String {
         rust_keys::<Lodged>(
             "a flattened enum under a tag that holds the type",
             r#"{"dock":"north","kind":"Held","tag":"t"}"#,
-            &|held| match &held.stowed {
-                Stowed::Held(inner) => listed(&inner.keys),
-                Stowed::Lost => String::new(),
+            &|held| match &*held.stowed {
+                StowedDraft::Held(inner) => listed(&inner.keys),
+                StowedDraft::Lost => String::new(),
             },
         ),
         rust_keys::<Strapped>("a flattened brand over the type", flat, &|held| {
@@ -1102,8 +1102,8 @@ fn the_http_client_reads_a_reply_through_its_functions() {
     assert_eq!(
         poll_once(ShippingBackEnd.shipped(&(), String::new()))
             .unwrap()
-            .map(|parcel| parcel.label),
-        Err(ShippingErrorDraft::NotFound)
+            .map(|parcel| parcel.label.clone()),
+        Err(ShippingErrorDraft::NotFound.validate().unwrap())
     );
     let Some(swift) = answered_by(String::new(), HTTP_DRIVER) else {
         return;

@@ -464,11 +464,11 @@ fn test_transparent_wrapper_structs_constructible() {
     // Not `Deref`: each reads its guarded value through its own accessor instead of `*value`.
     assert_eq!(*ref_cell_fields().count.borrow(), plain_fields().count);
     assert_eq!(
-        mutex_fields().count.into_inner().unwrap(),
+        mutex_fields().into_draft().count.into_inner().unwrap(),
         plain_fields().count
     );
     assert_eq!(
-        rwlock_fields().count.into_inner().unwrap(),
+        rwlock_fields().into_draft().count.into_inner().unwrap(),
         plain_fields().count
     );
     assert_eq!(cell_fields().count.get(), plain_copy_fields().count);

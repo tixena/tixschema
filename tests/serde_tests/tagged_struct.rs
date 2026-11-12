@@ -79,15 +79,14 @@ mod on_a_schema_surface {
     fn serde_reads_the_struct_with_the_key_and_without_it() {
         let expected = TaggedDraft {
             name: "x".to_owned(),
-        };
+        }
+        .validate()
+        .unwrap();
         for stored in [
             serde_json::json!({ "kind": "Tagged", "name": "x" }),
             serde_json::json!({ "name": "x" }),
         ] {
-            assert_eq!(
-                serde_json::from_value::<Tagged>(stored).unwrap(),
-                expected.validate().unwrap()
-            );
+            assert_eq!(serde_json::from_value::<Tagged>(stored).unwrap(), expected);
         }
     }
 

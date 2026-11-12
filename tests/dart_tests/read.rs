@@ -124,11 +124,13 @@ fn assert_written(definition: &str, fragment: &str) {
 fn every_declared_type_is_constructible() {
     let item = ItemDraft {
         label: "A".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     let hold = HoldDraft {
         by_dock: HashMap::from([
-            (DockDraft::North, item.clone()),
-            (DockDraft::South, item.clone()),
+            (DockDraft::North.validate().unwrap(), item.clone()),
+            (DockDraft::South.validate().unwrap(), item.clone()),
         ]),
         filled: BinDraft {
             held: vec![item.clone()],
@@ -139,13 +141,8 @@ fn every_declared_type_is_constructible() {
     assert_eq!(hold.by_dock.len(), 2);
     assert_eq!(hold.filled.held.len(), 1);
     assert_eq!(Wrapped::new(item.clone()).unwrap().as_inner().label, "A");
-    assert_eq!(
-        LotDraft("a".to_owned(), item.clone().validate().unwrap())
-            .1
-            .label,
-        "A"
-    );
-    let load: Load = vec![item.validate().unwrap()];
+    assert_eq!(LotDraft("a".to_owned(), item.clone()).1.label, "A");
+    let load: Load = vec![item];
     assert_eq!(load.len(), 1);
     let shelfmarks = [
         ShelfmarkDraft::Coded(Slip::new("AB".to_owned()).unwrap()),

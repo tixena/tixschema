@@ -77,6 +77,8 @@ fn element_null_fields() -> ElementNullFields {
         set_items: BTreeSet::from([None]),
         vec_items: vec![None],
     }
+    .validate()
+    .unwrap()
 }
 
 fn slot_null_fields() -> SlotNullFields {

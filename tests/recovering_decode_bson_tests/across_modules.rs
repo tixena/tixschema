@@ -138,7 +138,7 @@ fn one_resolver_serves_the_types_of_both_modules() {
     );
     assert_eq!(
         Customer::from_bson_piped(doc! { "name": "Ada", "openInvoices": "3" }, resolvers).ok(),
-        Some(settled().customer)
+        Some(settled().into_draft().customer)
     );
 }
 

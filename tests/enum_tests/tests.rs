@@ -142,7 +142,7 @@ enum UserStatus {
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
         ActionWithLiteralEnumDraft::Generate {
-            value: DocumentLiteralValue::Document,
+            value: DocumentLiteralValueDraft::Document.validate().unwrap(),
         },
         ActionWithLiteralEnumDraft::Upload {
             value: String::new(),
@@ -150,12 +150,12 @@ fn test_ts_zod_serde_enums_constructible() {
     ];
     assert_eq!(actions.len(), 2);
     let operators = [
-        CalculatedExpressionOperator::Add,
-        CalculatedExpressionOperator::Divide,
-        CalculatedExpressionOperator::Modulus,
-        CalculatedExpressionOperator::Multiply,
-        CalculatedExpressionOperator::None,
-        CalculatedExpressionOperator::Subtract,
+        CalculatedExpressionOperatorDraft::Add,
+        CalculatedExpressionOperatorDraft::Divide,
+        CalculatedExpressionOperatorDraft::Modulus,
+        CalculatedExpressionOperatorDraft::Multiply,
+        CalculatedExpressionOperatorDraft::None,
+        CalculatedExpressionOperatorDraft::Subtract,
     ];
     assert_eq!(operators.len(), 6);
     let statuses = [
@@ -171,8 +171,8 @@ fn test_ts_zod_serde_enums_constructible() {
 #[test]
 fn test_serde_mime_enums_constructible() {
     let distributions = [
-        DistributionValidMimeType::ApplicationDocx,
-        DistributionValidMimeType::ApplicationPdf,
+        DistributionValidMimeTypeDraft::ApplicationDocx,
+        DistributionValidMimeTypeDraft::ApplicationPdf,
     ];
     assert_eq!(distributions.len(), 2);
     let mimes = [

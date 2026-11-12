@@ -181,7 +181,7 @@ fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     assert!(
         accepted.validation_issues().is_empty(),
         "A payload the wire admits must be one validate() admits: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
     let short = ConstrainedPathDraft {
@@ -231,7 +231,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
     assert!(
         accepted.validation_issues().is_empty(),
         "the payload every bound admits has to pass: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
     for (field, short) in SPELLINGS {

@@ -52,7 +52,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         South,
     }
 
-    impl fmt::Display for Dock {
+    impl fmt::Display for DockDraft {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.write_str(match *self {
                 Self::North => "the north dock",
@@ -258,11 +258,9 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     }
 
     fn unlabelled() -> Parcel {
-        ParcelDraft {
+        Parcel::model_schema_wrap_unjudged(ParcelDraft {
             item_label: String::new(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     /// The message of an unlabelled parcel held at `path`.
@@ -291,27 +289,26 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
 
     /// A yard with one unlabelled parcel under a key of each kind that is no string.
     fn keyed_yard() -> Yard {
-        YardDraft {
+        Yard::model_schema_wrap_unjudged(YardDraft {
             by_brand: BTreeMap::from([(Bay::new("b2".to_owned()).unwrap(), unlabelled())]),
-            by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
+            by_dock: BTreeMap::from([
+                (DockDraft::North.validate().unwrap(), unlabelled()),
+                (DockDraft::South.validate().unwrap(), sound()),
+            ]),
             by_flag: BTreeMap::from([(true, unlabelled())]),
             by_letter: BTreeMap::from([('q', unlabelled())]),
             by_number: BTreeMap::from([(7, unlabelled())]),
             ..empty_yard().into()
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     /// A yard with one unlabelled parcel in a map of lists and in a list of maps.
     fn nested_yard() -> Yard {
-        YardDraft {
+        Yard::model_schema_wrap_unjudged(YardDraft {
             docks_in_order: vec![BTreeMap::new(), at_north()],
             lists_by_dock: BTreeMap::from([("north".to_owned(), vec![sound(), unlabelled()])]),
             ..empty_yard().into()
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     fn empty_yard() -> Yard {
@@ -427,7 +424,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 unlabelled_at("byNumber.7.itemLabel"),
             ]
         );
-        assert_eq!(Dock::North.to_string(), "the north dock");
+        assert_eq!(DockDraft::North.to_string(), "the north dock");
         let written = serde_json::to_value(&yard).unwrap();
         for (field, key) in [
             ("byBrand", "b2"),
@@ -474,11 +471,9 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn a_struct_whose_one_field_is_a_map_of_models_reports_them() {
         let depot = DepotDraft {
-            depot_racks: RacksDraft {
+            depot_racks: Racks::model_schema_wrap_unjudged(RacksDraft {
                 by_aisle: at_north(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         };
         assert_eq!(
             depot.validation_issues(),
@@ -523,39 +518,39 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn a_value_is_named_by_the_steps_serde_writes_on_the_way_to_it() {
         let crane = CraneDraft {
-            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
+            sealed_load: Sealed::model_schema_wrap_unjudged(SealedDraft(unlabelled())),
         };
-        let split = Freight::Split(String::new(), unlabelled());
+        let split = FreightDraft::Split(String::new(), unlabelled());
         let loose = FreightDraft::Loose {
             freight_label: String::new(),
         };
         let printed = [
             placed(
                 &SealedDraft(unlabelled()),
-                SealedDraft(unlabelled()).validate().map(|_valid| ()),
+                crate::judged_issues(SealedDraft(unlabelled()).validation_issues()),
             ),
-            placed(&crane, crane.validate().map(|_valid| ())),
+            placed(&crane, crate::judged_issues(crane.validation_issues())),
             placed(
-                &Freight::Boxed(unlabelled()),
-                Freight::Boxed(unlabelled()).validate(),
+                &FreightDraft::Boxed(unlabelled()),
+                crate::judged(FreightDraft::Boxed(unlabelled()).validation_issues()),
             ),
-            placed(&split, split.validate()),
-            placed(&loose, loose.validate().map(|_valid| ())),
+            placed(&split, crate::judged(split.validation_issues())),
+            placed(&loose, crate::judged_issues(loose.validation_issues())),
             placed(
-                &Haul::Boxed(unlabelled()),
-                Haul::Boxed(unlabelled()).validate(),
-            ),
-            placed(
-                &Lift::Boxed(unlabelled()),
-                Lift::Boxed(unlabelled()).validate(),
+                &HaulDraft::Boxed(unlabelled()),
+                crate::judged(HaulDraft::Boxed(unlabelled()).validation_issues()),
             ),
             placed(
-                &Seal::Stamped(String::new()),
-                Seal::Stamped(String::new()).validate(),
+                &LiftDraft::Boxed(unlabelled()),
+                crate::judged(LiftDraft::Boxed(unlabelled()).validation_issues()),
+            ),
+            placed(
+                &SealDraft::Stamped(String::new()),
+                crate::judged(SealDraft::Stamped(String::new()).validation_issues()),
             ),
             placed(
                 &DocketDraft(String::new(), 0),
-                DocketDraft(String::new(), 0).validate().map(|_valid| ()),
+                crate::judged_issues(DocketDraft(String::new(), 0).validation_issues()),
             ),
         ]
         .concat();
@@ -574,7 +569,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             r#"{"itemLabel":""}"#
         );
         let crane = CraneDraft {
-            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
+            sealed_load: Sealed::model_schema_wrap_unjudged(SealedDraft(unlabelled())),
         };
         assert_eq!(
             crane.validation_issues(),
@@ -586,9 +581,11 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     fn a_model_held_in_the_one_slot_of_a_variant_is_reported_under_the_variants_name() {
         assert_eq!(
             [
-                Freight::Boxed(unlabelled()).validate(),
-                Freight::Stacked(vec![sound(), unlabelled()]).validate(),
-                Freight::Boxed(sound()).validate(),
+                crate::judged(FreightDraft::Boxed(unlabelled()).validation_issues()),
+                crate::judged(
+                    FreightDraft::Stacked(vec![sound(), unlabelled()]).validation_issues(),
+                ),
+                crate::judged(FreightDraft::Boxed(sound()).validation_issues()),
             ],
             [
                 Err(vec![unlabelled_at("Boxed.itemLabel")]),
@@ -601,7 +598,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn a_member_of_a_variant_of_several_is_reported_under_the_variants_name() {
         assert_eq!(
-            Freight::Split(String::new(), unlabelled()).validation_issues(),
+            FreightDraft::Split(String::new(), unlabelled()).validation_issues(),
             vec![unlabelled_at("Split.0"), unlabelled_at("Split.1.itemLabel")]
         );
         let loose = FreightDraft::Loose {
@@ -623,11 +620,11 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         };
         assert_eq!(
             [
-                Haul::Boxed(unlabelled()).validate(),
-                Haul::Split("a".to_owned(), unlabelled()).validate(),
-                Lift::Boxed(unlabelled()).validate(),
-                loose.validate(),
-                lifted.validate(),
+                crate::judged(HaulDraft::Boxed(unlabelled()).validation_issues()),
+                crate::judged(HaulDraft::Split("a".to_owned(), unlabelled()).validation_issues()),
+                crate::judged(LiftDraft::Boxed(unlabelled()).validation_issues()),
+                crate::judged(loose.validation_issues()),
+                crate::judged(lifted.validation_issues()),
             ],
             [
                 Err(vec![unlabelled_at("held.itemLabel")]),
@@ -644,7 +641,10 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             lift_label: String::new(),
         };
         assert_eq!(
-            [unlabelled_haul.validate(), unlabelled_lift.validate()],
+            [
+                crate::judged(unlabelled_haul.validation_issues()),
+                crate::judged(unlabelled_lift.validation_issues())
+            ],
             [
                 Err(vec![unlabelled_at("held.haulLabel")]),
                 Err(vec![unlabelled_at("liftLabel")]),
@@ -677,7 +677,10 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             parcels_by_gate: at_north(),
         };
         assert_eq!(
-            [Stock::Keyed(at_north()).validate(), annex.validate()],
+            [
+                crate::judged(StockDraft::Keyed(at_north()).validation_issues()),
+                crate::judged(annex.validation_issues())
+            ],
             [
                 Err(vec![unlabelled_at("north.itemLabel")]),
                 Err(vec![unlabelled_at("north.itemLabel")]),
@@ -701,7 +704,10 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             top_parcel: sound(),
         };
         assert_eq!(
-            [rack.validate(), shelf.validate()],
+            [
+                crate::judged(rack.validation_issues()),
+                crate::judged(shelf.validation_issues())
+            ],
             [
                 Err(vec![unlabelled_at("byKey.north.itemLabel")]),
                 Err(vec![
@@ -744,19 +750,19 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             ]
         );
         let crane = CraneDraft {
-            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
+            sealed_load: Sealed::model_schema_wrap_unjudged(SealedDraft(unlabelled())),
         };
         let named: Vec<String> = [
-            freight.validate(),
-            Freight::Boxed(unlabelled()).validate(),
-            Freight::Split("a".to_owned(), unlabelled()).validate(),
-            haul.validate(),
-            Haul::Boxed(unlabelled()).validate(),
-            Haul::Split("a".to_owned(), unlabelled()).validate(),
-            lift.validate(),
-            Lift::Boxed(unlabelled()).validate(),
-            SealedDraft(unlabelled()).validate(),
-            crane.validate(),
+            crate::judged(freight.validation_issues()),
+            crate::judged(FreightDraft::Boxed(unlabelled()).validation_issues()),
+            crate::judged(FreightDraft::Split("a".to_owned(), unlabelled()).validation_issues()),
+            crate::judged(haul.validation_issues()),
+            crate::judged(HaulDraft::Boxed(unlabelled()).validation_issues()),
+            crate::judged(HaulDraft::Split("a".to_owned(), unlabelled()).validation_issues()),
+            crate::judged(lift.validation_issues()),
+            crate::judged(LiftDraft::Boxed(unlabelled()).validation_issues()),
+            crate::judged(SealedDraft(unlabelled()).validation_issues()),
+            crate::judged(crane.validation_issues()),
         ]
         .into_iter()
         .flat_map(Result::unwrap_err)
@@ -798,8 +804,8 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             parcels_by_dock: at_north(),
         };
         let shown = [
-            terminal.validate(),
-            ConsignmentDraft(String::new(), unlabelled()).validate(),
+            crate::judged(terminal.validation_issues()),
+            crate::judged(ConsignmentDraft(String::new(), unlabelled()).validation_issues()),
         ];
         assert_eq!(
             shown,
@@ -837,12 +843,12 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             top_parcel: sound(),
         };
         let named: Vec<String> = [
-            keyed_yard().validate(),
-            nested_yard().validate(),
-            barge.validate(),
-            Stock::Keyed(at_north()).validate(),
-            rack.validate(),
-            shelf.validate(),
+            crate::judged(keyed_yard().validation_issues()),
+            crate::judged(nested_yard().validation_issues()),
+            crate::judged(barge.validation_issues()),
+            crate::judged(StockDraft::Keyed(at_north()).validation_issues()),
+            crate::judged(rack.validation_issues()),
+            crate::judged(shelf.validation_issues()),
         ]
         .into_iter()
         .flat_map(Result::unwrap_err)

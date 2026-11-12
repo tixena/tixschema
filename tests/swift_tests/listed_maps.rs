@@ -14,15 +14,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::listed_maps_models::{
-    AdjacentGalley, AdjacentGalleyDraft, AdjacentStowedGalley, Attic, AtticDraft, Caddy,
-    CaddyDraft, Cellar, CellarDraft, Creel, Cupboard, CupboardDraft, Dresser, DresserDraft, Galley,
-    GalleyDraft, Hopper, Larder, LarderDraft, Pantry, PantryDraft, Rung, RungDraft, Sideboard,
-    SideboardDraft, StowedAttic, StowedAtticDraft, StowedCaddy, StowedCaddyDraft, StowedCellar,
-    StowedCellarDraft, StowedCreel, StowedCupboard, StowedCupboardDraft, StowedDresser,
-    StowedDresserDraft, StowedGalley, StowedLarder, StowedLarderDraft, StowedPantry,
-    StowedPantryDraft, StowedSideboard, StowedSideboardDraft, TaggedGalley, TaggedGalleyDraft,
-    TaggedStowedGalley, TaggedStowedGalleyDraft, Trug, UntaggedGalley, UntaggedGalleyDraft,
-    UntaggedStowedGalley, UntaggedStowedGalleyDraft, adjacent_galley_swift,
+    AdjacentGalleyDraft, AdjacentStowedGalleyDraft, AtticDraft, CaddyDraft, CellarDraft, Creel,
+    CupboardDraft, DresserDraft, GalleyDraft, Hopper, LarderDraft, PantryDraft, Rung, RungDraft,
+    SideboardDraft, StowedAtticDraft, StowedCaddyDraft, StowedCellarDraft, StowedCreel,
+    StowedCupboardDraft, StowedDresserDraft, StowedGalleyDraft, StowedLarderDraft,
+    StowedPantryDraft, StowedSideboardDraft, TaggedGalleyDraft, TaggedStowedGalleyDraft, Trug,
+    UntaggedGalleyDraft, UntaggedStowedGalleyDraft, adjacent_galley_swift,
     adjacent_stowed_galley_swift, attic_swift, caddy_swift, cellar_swift, creel_swift,
     cupboard_swift, dresser_swift, galley_swift, hopper_swift, larder_swift, pantry_swift,
     sideboard_swift, stowed_attic_swift, stowed_caddy_swift, stowed_cellar_swift,
@@ -32,8 +29,7 @@ use super::listed_maps_models::{
 };
 #[cfg(feature = "chrono")]
 use super::listed_maps_models::{
-    Dateline, DatelineDraft, Plank, PlankDraft, Timeline, TimelineDraft, dateline_swift,
-    timeline_swift,
+    DatelineDraft, PlankDraft, TimelineDraft, dateline_swift, timeline_swift,
 };
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
@@ -101,7 +97,7 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Rung::Low`].
 fn at_low<Held>(held: Held) -> HashMap<Rung, Held> {
-    HashMap::from([(RungDraft::Low, held)])
+    HashMap::from([(RungDraft::Low.validate().unwrap(), held)])
 }
 
 /// The text `a`.
@@ -280,7 +276,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"Paired":[[{"true":"a"}],null]}"#.to_owned(),
         ),
         (
-            read_back(&StowedGalley::<String>::Maybe(None)),
+            read_back(&StowedGalleyDraft::<String>::Maybe(None)),
             r#"{"Maybe":null}"#.to_owned(),
         ),
         (
@@ -290,7 +286,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"kind":"MaybeListed","held":[{"1":"a"}]}"#.to_owned(),
         ),
         (
-            read_back(&AdjacentStowedGalley::<String>::Stocked {
+            read_back(&AdjacentStowedGalleyDraft::<String>::Stocked {
                 flag_lists: Vec::new(),
                 maybe_number_lists: None,
                 maybe_rungs: None,
@@ -801,9 +797,13 @@ fn an_optional_value_is_stored_with_update_value_so_a_null_entry_is_kept() {
         read_back(&DatelineDraft {
             maybe_by_name: HashMap::from([(
                 "m".to_owned(),
-                Some(PlankDraft {
-                    label: "a".to_owned()
-                })
+                Some(
+                    PlankDraft {
+                        label: "a".to_owned()
+                    }
+                    .validate()
+                    .unwrap()
+                )
             )]),
             maybe_by_number: HashMap::new(),
         }),

@@ -151,7 +151,9 @@ fn a_row_stores_each_i64_its_holder_reaches_as_the_bson_integer() {
         fixed: 214,
         ranged: 1..i64::MAX,
         resulted: Ok(7),
-    };
+    }
+    .validate()
+    .unwrap();
     let integers = doc! {
         "aliased": -(1_i64 << 60_i32),
         "fixed": 214_i64,

@@ -262,7 +262,7 @@ fn invoice(number: &str, customer: &str, total: f64) -> Invoice {
         number: number.to_owned(),
         paid_at: None,
         payment: PaymentDraft::Cash.validate().unwrap(),
-        status: InvoiceStatus::PastDue,
+        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
         tags: Vec::new(),
         total,
     }

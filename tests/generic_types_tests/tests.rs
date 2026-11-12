@@ -1863,7 +1863,7 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
     };
 
     let folder = WireFolderDraft {
-        doc: document("d"),
+        doc: document("d").validate().unwrap(),
         plain: EnvelopeDraft {
             trace: "t".to_owned(),
         }
@@ -1880,7 +1880,9 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
         nested: OuterDraft {
             held: InnerDraft {
                 value: "v".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         }
         .validate()
         .unwrap(),
@@ -1950,22 +1952,22 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
 #[test]
 fn a_generic_enum_expands_to_rust_that_compiles() {
     assert!(matches!(
-        Adjacent::<String>::Nothing,
+        AdjacentDraft::<String>::Nothing,
         AdjacentDraft::Nothing
     ));
     assert!(matches!(
-        Internal::<String>::Nothing,
+        InternalDraft::<String>::Nothing,
         InternalDraft::Nothing
     ));
     assert!(matches!(
-        External::<String>::Nothing,
+        ExternalDraft::<String>::Nothing,
         ExternalDraft::Nothing
     ));
     assert!(matches!(
-        Untagged::<String>::Numbered { count: 1 },
+        UntaggedDraft::<String>::Numbered { count: 1 },
         UntaggedDraft::Numbered { count: _count }
     ));
-    assert!(matches!(PlainConst::<4>::Wide, PlainConstDraft::Wide));
+    assert!(matches!(PlainConstDraft::<4>::Wide, PlainConstDraft::Wide));
 }
 
 #[cfg(feature = "serde")]
@@ -2043,7 +2045,7 @@ fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
     assert!(
         accepted.validation_issues().is_empty(),
         "the value the bound admits has to pass: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
     let empty = LifetimeStructDraft {

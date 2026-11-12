@@ -87,7 +87,7 @@ pub struct Later {
     pub name: String,
 }
 
-fn with_records<IdType>(value: &Vault<IdType>) -> Result<(), Vec<String>> {
+fn with_records<IdType>(value: &VaultDraft<IdType>) -> Result<(), Vec<String>> {
     if value.records.is_empty() {
         return Err(vec!["'records': a vault holds a record".to_owned()]);
     }

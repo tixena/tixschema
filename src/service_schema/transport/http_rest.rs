@@ -21,6 +21,7 @@ use crate::service_schema::parse::{
 use crate::service_schema::support::{
     draft_type_path, exhaustiveness, message_alias_ident, message_reader_ident,
     message_validator_ident, message_wire_form_ident, message_wire_key_ident, module_ident,
+    unit_value,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -2621,7 +2622,10 @@ fn reply_decode(
     } else if shape.header_out.is_empty() {
         if is_unit_type(success) {
             // `#success`, not a literal `()`: answers a recorded unit struct by name too.
-            quote! { return ::core::result::Result::Ok(#success); }
+            {
+                let unit = unit_value(success);
+                quote! { return ::core::result::Result::Ok(#unit); }
+            }
         } else {
             quote! {
                 return match read_reply::<#success>(response.body()) {

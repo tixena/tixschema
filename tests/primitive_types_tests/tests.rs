@@ -136,7 +136,7 @@ struct CharTypesShowcase {
 ))]
 #[test]
 fn test_primitive_structs_constructible() {
-    let large = LargeNumbers {
+    let large = LargeNumbersDraft {
         array_of_i64: Vec::new(),
         array_of_u64: Vec::new(),
         id: String::new(),
@@ -146,7 +146,7 @@ fn test_primitive_structs_constructible() {
         optional_large_unsigned: None,
     };
     assert_eq!(large.id, String::new());
-    let mixed = MixedIntegers {
+    let mixed = MixedIntegersDraft {
         isize_type: 0,
         large_i64: 0,
         large_u64: 0,
@@ -159,7 +159,7 @@ fn test_primitive_structs_constructible() {
         small_u8: 0,
     };
     assert_eq!(mixed.normal_i32, 0_i32);
-    let showcase = PrimitiveTypesShowcase {
+    let showcase = PrimitiveTypesShowcaseDraft {
         arch_signed: 0,
         arch_unsigned: 0,
         array_f64: Vec::new(),
@@ -222,7 +222,7 @@ fn test_char_serde_roundtrip() {
     assert_eq!(json["pair"], serde_json::json!(["p", "q"]));
 
     let round_tripped: CharTypesShowcase = serde_json::from_value(json).unwrap();
-    assert_eq!(round_tripped, showcase);
+    assert_eq!(round_tripped, showcase.validate().unwrap());
 }
 
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]

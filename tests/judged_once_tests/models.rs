@@ -205,7 +205,7 @@ fn counted_tree<IdType>(value: &TreeDraft<IdType>) -> Result<(), Vec<String>> {
     at_most_two_children(value.children.len())
 }
 
-fn counted_defaulted_tree<IdType>(value: &DefaultedTree<IdType>) -> Result<(), Vec<String>> {
+fn counted_defaulted_tree<IdType>(value: &DefaultedTreeDraft<IdType>) -> Result<(), Vec<String>> {
     counted(2);
     at_most_two_children(value.children.len())
 }

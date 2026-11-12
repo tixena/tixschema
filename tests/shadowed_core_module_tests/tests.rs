@@ -113,10 +113,10 @@ fn the_modules_in_scope_are_the_ones_declared_here() {
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Ok(BalanceAnswerDraft { invoices: 7 }))
+        Poll::Ready(Ok(BalanceAnswerDraft { invoices: 7 }.validate().unwrap()))
     );
     assert_eq!(
         balance_of(0),
-        Poll::Ready(Err(BalanceFailureDraft::DbError))
+        Poll::Ready(Err(BalanceFailureDraft::DbError.validate().unwrap()))
     );
 }

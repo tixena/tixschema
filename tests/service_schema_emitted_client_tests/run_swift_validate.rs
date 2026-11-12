@@ -12,21 +12,19 @@ use serde::Serialize;
 
 use super::runtime::judged;
 use super::swift_validate_models::{
-    Archive, ArchiveDraft, Base, BaseDraft, Berth, BerthDraft, Candle, Cargo, Carried, Casket,
-    CasketDraft, ClosedDock, ClosedDockDraft, Code, Consignment, ConsignmentDraft, Crate,
-    CrateDraft, Depot, DepotDraft, Docket, Docking, DockingDraft, Freight, FreightDraft, Gauge,
-    GaugeDraft, Grade, Haul, HaulDraft, Inspection, InspectionDraft, LaterCode, LaterTitle, Ledger,
-    LedgerDraft, Lift, LiftDraft, Manifest, ManifestDraft, Nameplate, NameplateDraft, Package,
-    PackageDraft, Parcel, ParcelDraft, Poster, PosterDraft, Quay, QuayDraft, Sconce, SconceDraft,
-    Sealed, SealedCode, SealedDraft, Slogans, SomeSlogans, Strongbox, StrongboxDraft, Tally,
-    TallyDraft, Title, Waybill, WaybillDraft, Wick, Yard, YardDraft, archive_swift, base_swift,
-    berth_swift, candle_swift, cargo_swift, carried_swift, casket_swift, closed_dock_swift,
-    code_swift, consignment_swift, crate_swift, depot_swift, docket_swift, docking_swift,
-    freight_swift, gauge_swift, grade_swift, haul_swift, inspection_swift, later_code_swift,
-    later_title_swift, ledger_swift, lift_swift, manifest_swift, mottos_swift, nameplate_swift,
-    package_swift, parcel_swift, poster_swift, quay_swift, sconce_swift, sealed_code_swift,
-    sealed_swift, slogans_swift, some_slogans_swift, strongbox_swift, tally_swift, title_swift,
-    waybill_swift, wick_swift, yard_swift,
+    ArchiveDraft, Base, BaseDraft, BerthDraft, Candle, CargoDraft, Carried, CasketDraft,
+    ClosedDockDraft, Code, ConsignmentDraft, Crate, CrateDraft, Depot, DepotDraft, Docket,
+    DockingDraft, FreightDraft, Gauge, GaugeDraft, GradeDraft, HaulDraft, InspectionDraft,
+    LaterCode, LaterTitle, LedgerDraft, LiftDraft, ManifestDraft, NameplateDraft, Package,
+    PackageDraft, Parcel, ParcelDraft, PosterDraft, QuayDraft, SconceDraft, Sealed, SealedCode,
+    SealedDraft, Slogans, SomeSlogans, StrongboxDraft, Tally, TallyDraft, Title, WaybillDraft,
+    Wick, YardDraft, archive_swift, base_swift, berth_swift, candle_swift, cargo_swift,
+    carried_swift, casket_swift, closed_dock_swift, code_swift, consignment_swift, crate_swift,
+    depot_swift, docket_swift, docking_swift, freight_swift, gauge_swift, grade_swift, haul_swift,
+    inspection_swift, later_code_swift, later_title_swift, ledger_swift, lift_swift,
+    manifest_swift, mottos_swift, nameplate_swift, package_swift, parcel_swift, poster_swift,
+    quay_swift, sconce_swift, sealed_code_swift, sealed_swift, slogans_swift, some_slogans_swift,
+    strongbox_swift, tally_swift, title_swift, waybill_swift, wick_swift, yard_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -269,25 +267,21 @@ fn printed(lines: &str) -> Option<String> {
 }
 
 fn parcel(label: &str, codes: &[&str], fragile: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: fragile.iter().map(|&code| code.to_owned()).collect(),
         item_code_list: codes.iter().map(|&code| code.to_owned()).collect(),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 pub fn package(item_label: &str, parcel_code: &str) -> Package {
-    PackageDraft {
+    Package::model_schema_wrap_unjudged(PackageDraft {
         item_label: item_label.to_owned(),
         parcel_code: Code::model_schema_read_unjudged(
             serde_json::to_value(parcel_code.to_owned()).unwrap(),
         )
         .unwrap(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A package that breaks its own bound and its code's.
@@ -296,7 +290,7 @@ pub fn broken() -> Package {
 }
 
 pub fn depot(held: &dyn Fn() -> Package, base_name: &str) -> Depot {
-    DepotDraft {
+    Depot::model_schema_wrap_unjudged(DepotDraft {
         by_number: BTreeMap::from([(10, held()), (7, held())]),
         deck_pair: ("port".to_owned(), held()),
         first_parcel: held(),
@@ -307,18 +301,14 @@ pub fn depot(held: &dyn Fn() -> Package, base_name: &str) -> Depot {
             ("north".to_owned(), held()),
         ]),
         spare_parcel: Some(held()),
-        starting_base: BaseDraft {
+        starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
             base_name: base_name.to_owned(),
-        }
-        .validate()
-        .unwrap(),
-    }
-    .validate()
-    .unwrap()
+        }),
+    })
 }
 
 pub fn gauge(draft_metres: f64, holds: usize, knots: u32, text: &str, spare: bool) -> Gauge {
-    GaugeDraft {
+    Gauge::model_schema_wrap_unjudged(GaugeDraft {
         draft_metres,
         hold_codes: vec!["h".to_owned(); holds],
         knots,
@@ -327,9 +317,7 @@ pub fn gauge(draft_metres: f64, holds: usize, knots: u32, text: &str, spare: boo
         short_name: text.to_owned(),
         spare_knots: spare.then_some(0),
         spare_name: spare.then(|| "s".to_owned()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 #[test]
@@ -345,7 +333,14 @@ fn the_shared_table_prints_the_lines_the_rust_validate_prints() {
     let mut cases: Vec<Case> = names
         .into_iter()
         .zip(&parcels)
-        .map(|(name, held)| case(name, "Parcel", held, held.validate().map(|_valid| ())))
+        .map(|(name, held)| {
+            case(
+                name,
+                "Parcel",
+                held,
+                crate::judged_issues(held.validation_issues()),
+            )
+        })
         .collect();
     let manifest = ManifestDraft {
         parcel: parcel("A", &["x"], &["x", "y"]),
@@ -354,7 +349,7 @@ fn the_shared_table_prints_the_lines_the_rust_validate_prints() {
         "case 6",
         "Manifest",
         &manifest,
-        manifest.validate().map(|_valid| ()),
+        crate::judged_issues(manifest.validation_issues()),
     ));
     let expected = rust_report(&cases);
     assert_eq!(
@@ -396,18 +391,23 @@ fn each_bound_prints_the_sentence_the_rust_validate_states() {
         ("Gauge, a whole float", gauge(1.0, 1, 0, "abc", false)),
         (
             "Gauge, a port code that ends with a line feed",
-            GaugeDraft {
+            Gauge::model_schema_wrap_unjudged(GaugeDraft {
                 port_code: "ABC\n".to_owned(),
                 ..gauge(2.5, 2, 40, "abc", false).into()
-            }
-            .validate()
-            .unwrap(),
+            }),
         ),
         ("Gauge, held", gauge(2.5, 2, 40, "abc", false)),
     ];
     let cases: Vec<Case> = held
         .iter()
-        .map(|(name, gauged)| case(name, "Gauge", gauged, gauged.validate().map(|_valid| ())))
+        .map(|(name, gauged)| {
+            case(
+                name,
+                "Gauge",
+                gauged,
+                crate::judged_issues(gauged.validation_issues()),
+            )
+        })
         .collect();
     let expected = rust_report(&cases);
     assert_eq!(
@@ -454,13 +454,13 @@ fn a_brand_over_a_brand_is_measured_on_its_text() {
             "Sconce, short",
             "Sconce",
             &short,
-            short.validate().map(|_valid| ()),
+            crate::judged_issues(short.validation_issues()),
         ),
         case(
             "Sconce, long",
             "Sconce",
             &long,
-            long.validate().map(|_valid| ()),
+            crate::judged_issues(long.validation_issues()),
         ),
     ];
     let expected = rust_report(&cases);
@@ -498,7 +498,12 @@ fn code_point_cases() -> Vec<Case> {
         let held = NameplateDraft {
             engraved: engraved.to_owned(),
         };
-        case(name, "Nameplate", &held, held.validate().map(|_valid| ()))
+        case(
+            name,
+            "Nameplate",
+            &held,
+            crate::judged_issues(held.validation_issues()),
+        )
     })
     .collect()
 }
@@ -536,13 +541,13 @@ fn a_holder_reports_each_model_it_holds_under_its_full_place() {
             "Depot, every package broken",
             "Depot",
             &unlabelled,
-            unlabelled.validate().map(|_valid| ()),
+            crate::judged_issues(unlabelled.validation_issues()),
         ),
         case(
             "Depot, held",
             "Depot",
             &kept,
-            kept.validate().map(|_valid| ()),
+            crate::judged_issues(kept.validation_issues()),
         ),
     ];
     let expected = rust_report(&cases);
@@ -589,7 +594,10 @@ Depot, held: passes
 #[test]
 fn a_holder_walks_lists_maps_and_optionals_in_any_nesting() {
     let yard = YardDraft {
-        by_grade: BTreeMap::from([(Grade::Standard, broken()), (Grade::Express, broken())]),
+        by_grade: BTreeMap::from([
+            (GradeDraft::Standard.validate().unwrap(), broken()),
+            (GradeDraft::Express.validate().unwrap(), broken()),
+        ]),
         docks_in_order: vec![
             BTreeMap::new(),
             BTreeMap::from([("north".to_owned(), broken())]),
@@ -602,7 +610,7 @@ fn a_holder_walks_lists_maps_and_optionals_in_any_nesting() {
         "Yard",
         "Yard",
         &yard,
-        yard.validate().map(|_valid| ()),
+        crate::judged_issues(yard.validation_issues()),
     )];
     let expected = rust_report(&cases);
     assert_eq!(
@@ -640,7 +648,7 @@ fn a_member_runs_its_bounds_what_it_holds_then_its_checks() {
         "Ledger",
         "Ledger",
         &ledger,
-        ledger.validate().map(|_valid| ()),
+        crate::judged_issues(ledger.validation_issues()),
     )];
     let expected = rust_report(&cases);
     assert_eq!(
@@ -681,10 +689,10 @@ fn a_bound_on_a_named_type_measures_the_string_it_holds() {
             "Waybill, each bound broken",
             "Waybill",
             &broken,
-            broken.validate().map(|_valid| ()),
+            crate::judged_issues(broken.validation_issues()),
         ),
         Case {
-            answered: refused.validate().map(|_valid| ()),
+            answered: crate::judged_issues(refused.validation_issues()),
             name: "Waybill, a code its own type refuses",
             read: concat!(
                 r#"Waybill(laterCode: LaterCode(value: "ab"), "#,
@@ -880,55 +888,51 @@ fn counted_name_cases() -> Vec<Case> {
             "Poster",
             "Poster",
             &poster_kept,
-            poster_kept.validate().map(|_valid| ()),
+            crate::judged_issues(poster_kept.validation_issues()),
         ),
         case(
             "Poster, no item",
             "Poster",
             &empty,
-            empty.validate().map(|_valid| ()),
+            crate::judged_issues(empty.validation_issues()),
         ),
         case(
             "Poster, too many items",
             "Poster",
             &wide,
-            wide.validate().map(|_valid| ()),
+            crate::judged_issues(wide.validation_issues()),
         ),
         case(
             "Archive<String>, no entry",
             "Archive<String>",
             &unfilled,
-            unfilled.validate().map(|_valid| ()),
+            crate::judged_issues(unfilled.validation_issues()),
         ),
         case(
             "Archive<String>",
             "Archive<String>",
             &filled,
-            filled.validate().map(|_valid| ()),
+            crate::judged_issues(filled.validation_issues()),
         ),
         case(
             "Archive<UInt32>, no entry",
             "Archive<UInt32>",
             &archived_by_number,
-            archived_by_number.validate().map(|_valid| ()),
+            crate::judged_issues(archived_by_number.validation_issues()),
         ),
     ]
 }
 
 #[test]
 fn a_check_runs_at_every_filling_and_on_a_type_that_holds_nothing() {
-    let named: Crate<String> = CrateDraft {
+    let named: Crate<String> = Crate::model_schema_wrap_unjudged(CrateDraft {
         codes: Vec::new(),
         label: String::new(),
-    }
-    .validate()
-    .unwrap();
-    let numbered: Crate<u32> = CrateDraft {
+    });
+    let numbered: Crate<u32> = Crate::model_schema_wrap_unjudged(CrateDraft {
         codes: Vec::new(),
         label: "c".to_owned(),
-    }
-    .validate()
-    .unwrap();
+    });
     let kept: Crate<u32> = CrateDraft {
         codes: vec![4],
         label: "c".to_owned(),
@@ -941,25 +945,25 @@ fn a_check_runs_at_every_filling_and_on_a_type_that_holds_nothing() {
             "Crate<String>, empty",
             "Crate<String>",
             &named,
-            named.validate().map(|_valid| ()),
+            crate::judged_issues(named.validation_issues()),
         ),
         case(
             "Crate<UInt32>, empty",
             "Crate<UInt32>",
             &numbered,
-            numbered.validate().map(|_valid| ()),
+            crate::judged_issues(numbered.validation_issues()),
         ),
         case(
             "Crate<UInt32>",
             "Crate<UInt32>",
             &kept,
-            kept.validate().map(|_valid| ()),
+            crate::judged_issues(kept.validation_issues()),
         ),
         case(
             "ClosedDock",
             "ClosedDock",
             &ClosedDockDraft,
-            ClosedDockDraft.validate().map(|_valid| ()),
+            crate::judged_issues(ClosedDockDraft.validation_issues()),
         ),
     ]);
     let expected = rust_report(&cases);
@@ -1008,7 +1012,7 @@ fn a_member_named_after_the_method_or_a_local_of_it_is_read_and_judged() {
         "Inspection",
         "Inspection",
         &inspection,
-        inspection.validate().map(|_valid| ()),
+        crate::judged_issues(inspection.validation_issues()),
     )];
     let expected = rust_report(&cases);
     assert_eq!(
@@ -1033,7 +1037,7 @@ fn a_slot_of_a_struct_is_named_by_the_step_serde_writes() {
     // serde writes a struct of one slot as that slot's value.
     assert_eq!(
         serde_json::to_value(StrongboxDraft {
-            seal: SealedDraft(String::new()).validate().unwrap(),
+            seal: Sealed::model_schema_wrap_unjudged(SealedDraft(String::new())),
         })
         .unwrap(),
         serde_json::json!({ "seal": "" })
@@ -1055,7 +1059,7 @@ fn a_slot_of_a_struct_is_named_by_the_step_serde_writes() {
             read_as(
                 "Strongbox",
                 &StrongboxDraft {
-                    seal: SealedDraft(String::new()).validate().unwrap(),
+                    seal: Sealed::model_schema_wrap_unjudged(SealedDraft(String::new())),
                 },
             ),
         ),
@@ -1085,7 +1089,7 @@ fn a_member_of_a_variant_with_no_tag_is_named_under_the_variant() {
     let read: Vec<(&str, String)> = vec![
         (
             "the one slot",
-            read_as("Freight", &Freight::Boxed(String::new())),
+            read_as("Freight", &FreightDraft::Boxed(String::new())),
         ),
         (
             "a named member",
@@ -1098,14 +1102,14 @@ fn a_member_of_a_variant_with_no_tag_is_named_under_the_variant() {
         ),
         (
             "a slot of several",
-            read_as("Freight", &Freight::Split(String::new(), 0)),
+            read_as("Freight", &FreightDraft::Split(String::new(), 0)),
         ),
-        ("no member", read_as("Freight", &Freight::Unladen)),
+        ("no member", read_as("Freight", &FreightDraft::Unladen)),
         (
             "a model in the one slot",
-            read_as("Cargo", &Cargo::Boxed(package("", "ab"))),
+            read_as("Cargo", &CargoDraft::Boxed(package("", "ab"))),
         ),
-        ("no model", read_as("Cargo", &Cargo::Unladen)),
+        ("no model", read_as("Cargo", &CargoDraft::Unladen)),
         (
             "an enum's check, a named member",
             read_as(
@@ -1118,9 +1122,12 @@ fn a_member_of_a_variant_with_no_tag_is_named_under_the_variant() {
         ),
         (
             "an enum's check, a slot",
-            read_as("Berth", &Berth::Tagged("a".to_owned())),
+            read_as("Berth", &BerthDraft::Tagged("a".to_owned())),
         ),
-        ("an enum's check, no member", read_as("Berth", &Berth::Open)),
+        (
+            "an enum's check, no member",
+            read_as("Berth", &BerthDraft::Open),
+        ),
     ];
     let Some(swift) = printed(&driver(&read)) else {
         return;
@@ -1155,7 +1162,7 @@ an enum's check, no member: passes
 fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
     // No variant of an untagged enum takes a payload that breaks its bound, so the two are built.
     for unread in [
-        Tally::Named(String::new()),
+        TallyDraft::Named(String::new()),
         TallyDraft::Counted { tally_count: 0 },
     ] {
         serde_json::from_value::<Tally>(serde_json::to_value(unread).unwrap()).unwrap_err();
@@ -1163,7 +1170,7 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
     let read: Vec<(&str, String)> = vec![
         (
             "tag and content, the one slot",
-            read_as("Haul", &Haul::Boxed(String::new())),
+            read_as("Haul", &HaulDraft::Boxed(String::new())),
         ),
         (
             "tag and content, a named member",
@@ -1176,11 +1183,11 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
         ),
         (
             "tag and content, a slot of several",
-            read_as("Haul", &Haul::Split(String::new(), 0)),
+            read_as("Haul", &HaulDraft::Split(String::new(), 0)),
         ),
         (
             "tag and content, no member",
-            read_as("Haul", &Haul::Unladen),
+            read_as("Haul", &HaulDraft::Unladen),
         ),
         (
             "tag alone, a named member",
@@ -1193,18 +1200,18 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
         ),
         (
             "tag alone, the one slot",
-            read_as("Lift", &Lift::Boxed(package("", "ab"))),
+            read_as("Lift", &LiftDraft::Boxed(package("", "ab"))),
         ),
         (
             "tag alone, the enum's own check",
-            read_as("Lift", &Lift::Unladen),
+            read_as("Lift", &LiftDraft::Unladen),
         ),
         ("untagged, a slot", r#"Tally.named("")"#.to_owned()),
         (
             "untagged, a named member",
             "Tally.counted(TallyCountedPayload(tallyCount: 0))".to_owned(),
         ),
-        ("a plain enum", read_as("Grade", &Grade::Express)),
+        ("a plain enum", read_as("Grade", &GradeDraft::Express)),
     ];
     let Some(swift) = printed(&driver(&read)) else {
         return;
@@ -1262,7 +1269,7 @@ fn a_check_with_no_swift_function_does_not_build() {
 #[cfg(feature = "indexmap")]
 #[test]
 fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
-    use super::swift_validate_models::{Lineup, LineupDraft, SomeQueue};
+    use super::swift_validate_models::{LineupDraft, SomeQueue};
 
     let items = |count: usize| -> indexmap::IndexSet<String> {
         (0..count).map(|number| number.to_string()).collect()
@@ -1274,18 +1281,23 @@ fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
     };
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
     let cases = [
-        case("Lineup", "Lineup", &kept, kept.validate().map(|_valid| ())),
+        case(
+            "Lineup",
+            "Lineup",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
         case(
             "Lineup, no item",
             "Lineup",
             &empty,
-            empty.validate().map(|_valid| ()),
+            crate::judged_issues(empty.validation_issues()),
         ),
         case(
             "Lineup, too many items",
             "Lineup",
             &wide,
-            wide.validate().map(|_valid| ()),
+            crate::judged_issues(wide.validation_issues()),
         ),
     ];
     let expected = rust_report(&cases);

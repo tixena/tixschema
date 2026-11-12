@@ -236,7 +236,9 @@ impl AskingService<()> for Stand {
         use asking_service_schema::{McpContent, McpResourceContents};
         self.reach(json!(["build-report", req.title]));
         ready(Ok(vec![
-            McpContent::Text { text: req.title },
+            McpContent::Text {
+                text: req.title.clone(),
+            },
             McpContent::Image {
                 data: vec![0x89, b'P', b'N', b'G'],
                 mime_type: "image/png".to_owned(),
@@ -274,7 +276,9 @@ impl AskingService<()> for Stand {
         ready(Err(AskingAdjacentErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 
     fn connect_by_kind(
@@ -286,7 +290,9 @@ impl AskingService<()> for Stand {
         ready(Err(AskingKindErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 
     fn connect_renamed(
@@ -298,7 +304,9 @@ impl AskingService<()> for Stand {
         ready(Err(AskingRenamedErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 
     fn delete_adjacent(
@@ -309,14 +317,14 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingAdjacentError>> {
         self.reach(json!(["delete-adjacent", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingAdjacentErrorDraft::NotFound),
+            ("missing", _) => Err(AskingAdjacentErrorDraft::NotFound.validate().unwrap()),
             (_, None) => Err(AskingAdjacentErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
-            }),
-            (_, Some(AskingConfirmation { confirm: true })) => Ok(()),
-            (_, Some(AskingConfirmation { confirm: false })) => {
-                Err(AskingAdjacentErrorDraft::Refused)
             }
+            .validate()
+            .unwrap()),
+            (_, Some(given)) if given.confirm => Ok(()),
+            (_, Some(_)) => Err(AskingAdjacentErrorDraft::Refused.validate().unwrap()),
         })
     }
 
@@ -328,12 +336,14 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingError>> {
         self.reach(json!(["delete-document", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingErrorDraft::NotFound),
+            ("missing", _) => Err(AskingErrorDraft::NotFound.validate().unwrap()),
             (_, None) => Err(AskingErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
-            }),
-            (_, Some(AskingConfirmation { confirm: true })) => Ok(()),
-            (_, Some(AskingConfirmation { confirm: false })) => Err(AskingErrorDraft::Refused),
+            }
+            .validate()
+            .unwrap()),
+            (_, Some(given)) if given.confirm => Ok(()),
+            (_, Some(_)) => Err(AskingErrorDraft::Refused.validate().unwrap()),
         })
     }
 
@@ -346,12 +356,16 @@ impl AskingService<()> for Stand {
         ready(if file_id == "connected" {
             Ok(AskingLinkedDraft {
                 document_id: format!("doc-{file_id}"),
-            })
+            }
+            .validate()
+            .unwrap())
         } else {
             Err(AskingLinkErrorDraft::NeedsConnection {
                 url: LINK.to_owned(),
                 message: LINK_MESSAGE.to_owned(),
-            })
+            }
+            .validate()
+            .unwrap())
         })
     }
 
@@ -366,7 +380,9 @@ impl AskingService<()> for Stand {
             || {
                 Err(AskingErrorDraft::NeedsConfirmation {
                     message: SHIPPING_MESSAGE.to_owned(),
-                })
+                }
+                .validate()
+                .unwrap())
             },
             |_form| Ok(()),
         ))
@@ -384,7 +400,7 @@ impl PreviewService<()> for Stand {
             "doc-1" => Ok((vec![0x89, b'P', b'N', b'G'], "image/png".to_owned())),
             "voice" => Ok((vec![1, 2, 3, 4, 5], "audio/mpeg".to_owned())),
             "plain" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
-            _ => Err(AskingMissDraft::NotFound),
+            _ => Err(AskingMissDraft::NotFound.validate().unwrap()),
         })
     }
 }

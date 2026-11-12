@@ -15,11 +15,10 @@ use serde_json::Value;
 use serde_path_to_error::Segment;
 
 use super::fitted_parameters_models::{
-    Bollard, BollardDraft, Cleat, Fender, FenderDraft, Hawser, HawserDraft, Knot, KnotDraft,
-    KnotMooring, KnotMooringDraft, Mooring, MooringDraft, Quay, QuayDraft, Tether, TetherDraft,
-    Wharf, WharfDraft, WideMooring, WideMooringDraft, bollard_swift, cleat_swift, fender_swift,
-    hawser_swift, knot_mooring_swift, knot_swift, mooring_swift, quay_swift, tether_swift,
-    wharf_swift, wide_mooring_swift,
+    Bollard, BollardDraft, CleatDraft, FenderDraft, HawserDraft, KnotDraft, KnotMooringDraft,
+    Mooring, MooringDraft, Quay, QuayDraft, TetherDraft, Wharf, WharfDraft, WideMooring,
+    WideMooringDraft, bollard_swift, cleat_swift, fender_swift, hawser_swift, knot_mooring_swift,
+    knot_swift, mooring_swift, quay_swift, tether_swift, wharf_swift, wide_mooring_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -143,7 +142,9 @@ fn read_rows() -> Vec<Row> {
                 inner: TetherDraft {
                     held: KnotDraft {
                         label: "a".to_owned(),
-                    },
+                    }
+                    .validate()
+                    .unwrap(),
                 }
                 .validate()
                 .unwrap(),
@@ -179,14 +180,14 @@ fn read_rows() -> Vec<Row> {
             "a u16 in a variant's one slot",
             "Wharf",
             &WharfDraft {
-                cleat: Cleat::Bare(u16::MAX),
+                cleat: CleatDraft::Bare(u16::MAX).validate().unwrap(),
             },
         ),
         read_row(
             "a u16 in a variant of two",
             "Wharf",
             &WharfDraft {
-                cleat: Cleat::Paired(0, "a".to_owned()),
+                cleat: CleatDraft::Paired(0, "a".to_owned()).validate().unwrap(),
             },
         ),
         read_row(

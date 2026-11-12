@@ -897,7 +897,10 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
     let releases = ReleasesDraft {
-        by_name: BTreeMap::from([("first".to_owned(), VersionDraft { number: 1_i32 })]),
+        by_name: BTreeMap::from([(
+            "first".to_owned(),
+            VersionDraft { number: 1_i32 }.validate().unwrap(),
+        )]),
     };
     let written = serde_json::to_value(&releases).unwrap();
     assert_eq!(written, json!({ "first": { "number": 1_i32 } }));

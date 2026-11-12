@@ -9,16 +9,14 @@ use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
-    Banding, BandingDraft, Bundling, BundlingDraft, Crating, CratingDraft, Grading, GradingDraft,
-    Labelling, LabellingDraft, Lashing, LashingDraft, Palleting, PalletingDraft, Piling,
-    PilingDraft, Racking, RackingDraft, Ranking, RankingDraft, Slotting, SlottingDraft, Spooling,
-    SpoolingDraft, Stacking, StackingDraft, Stencil, StencilDraft, Strapping, StrappingDraft,
-    Wrapping, WrappingDraft, crating_kotlin, grading_kotlin, palleting_kotlin, ranking_kotlin,
-    slotting_kotlin, stacking_kotlin,
+    BandingDraft, BundlingDraft, CratingDraft, GradingDraft, LabellingDraft, LashingDraft,
+    PalletingDraft, PilingDraft, RackingDraft, RankingDraft, SlottingDraft, SpoolingDraft,
+    StackingDraft, Stencil, StencilDraft, Strapping, StrappingDraft, WrappingDraft, crating_kotlin,
+    grading_kotlin, palleting_kotlin, ranking_kotlin, slotting_kotlin, stacking_kotlin,
 };
 use super::tuple_variants_models::{
-    Binning, BinningDraft, Coiling, CoilingDraft, Heaping, HeapingDraft, Tallying, TallyingDraft,
-    coiling_kotlin, heaping_kotlin, tallying_kotlin,
+    BinningDraft, CoilingDraft, HeapingDraft, TallyingDraft, coiling_kotlin, heaping_kotlin,
+    tallying_kotlin,
 };
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::{

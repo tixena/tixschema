@@ -227,7 +227,7 @@ use crate::service_schema::parse::{
 };
 use crate::service_schema::support::{
     exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
-    module_ident,
+    module_ident, unit_value,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -1828,15 +1828,18 @@ fn client_answer_reply(
     success: &Type,
 ) -> TokenStream {
     match header_out_shape(operation) {
-        None if is_unit_type(success) => quote! {
+        None if is_unit_type(success) => {
+            let unit = unit_value(success);
+            quote! {
             match self.transport.request(#wire, sending, headers).await {
-                ::core::result::Result::Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #success),
+                ::core::result::Result::Ok((encoded, _headers)) => read_unit_answer(#wire, &encoded).map(|()| #unit),
                 ::core::result::Result::Err(uncarried) => ::core::result::Result::Err(#call_error::Fault(#fault::transport_failure(
                     #wire,
                     &uncarried,
                 ))),
             }
-        },
+            }
+        }
         None => quote! {
             match self.transport.request(#wire, sending, headers).await {
                 ::core::result::Result::Ok((encoded, _headers)) => read_answer(#wire, &encoded),

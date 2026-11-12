@@ -44,7 +44,10 @@ fn main() {
         json!({ "number": "INV-7", "lineCount": "3", "currency": "EUR" }),
         STORED,
     );
-    assert_eq!(read, Ok(Invoice { number: "INV-7".to_owned(), line_count: 3 }));
+    assert_eq!(
+        read,
+        Ok(InvoiceDraft { number: "INV-7".to_owned(), line_count: 3 }.validate().unwrap())
+    );
 
     // An issue no resolver settles fails the read, and is listed at its path.
     let refused = Invoice::from_value_piped(json!({ "number": 42, "lineCount": 1 }), STORED)

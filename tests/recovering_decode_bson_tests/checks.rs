@@ -90,7 +90,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &CheckedParcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &CheckedParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()

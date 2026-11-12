@@ -13,8 +13,7 @@ use super::shapes::{
 };
 use super::{
     Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceId,
-    InvoiceStatus, InvoiceStatusDraft, LineItem, LineItemDraft, Point, PointDraft, shown,
-    shown_value,
+    InvoiceStatusDraft, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
 };
 
 /// What `key` leads to in `value`: a key of a document, a position in an array, or the key in
@@ -148,8 +147,8 @@ fn plain_paths(stored: &Document) -> Vec<(String, String)> {
     let (place, point) = (Address::MONGO_FIELDS, Point::MONGO_FIELDS);
     let row = invoice();
     vec![
-        looked_up(stored, paths.id().eq(row.id).unwrap()),
-        looked_up(stored, paths.number().eq(row.number).unwrap()),
+        looked_up(stored, paths.id().eq(row.id.clone()).unwrap()),
+        looked_up(stored, paths.number().eq(row.number.clone()).unwrap()),
         looked_up(stored, paths.total().eq(row.total).unwrap()),
         looked_up(stored, paths.status().eq(row.status).unwrap()),
         looked_up(stored, paths.paid_at().exists(true)),

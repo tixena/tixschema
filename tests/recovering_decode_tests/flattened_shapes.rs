@@ -9,7 +9,7 @@ use counts_schema::DecodeWith as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Value, ValueDraft, json};
+use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use super::{Version, VersionDraft, lines};
@@ -357,7 +357,7 @@ struct Draft {
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unpicked {
-    #[serde(flatten, skip_deserializing)]
+    #[serde(flatten, skip_deserializing, default = "pages_by_default")]
     draft: Draft,
     id: String,
 }
@@ -499,7 +499,7 @@ where
 }
 
 /// The entries of `stored`, an object written in a test.
-fn entries(stored: &ValueDraft) -> BTreeMap<String, Value> {
+fn entries(stored: &Value) -> BTreeMap<String, Value> {
     stored
         .as_object()
         .unwrap()
@@ -739,7 +739,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let outer = OuterDraft {
-        body: Wrap::new(VersionDraft { number: 3_i32 }).unwrap(),
+        body: Wrap::new(VersionDraft { number: 3_i32 }.validate().unwrap()).unwrap(),
         id: "i".to_owned(),
     };
     let outer_written = serde_json::to_value(&outer).unwrap();
@@ -879,14 +879,13 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
     let maybe = DirectMaybeDraft {
         id: "i".to_owned(),
         version: None,
-    };
-    assert_eq!(
-        DirectMaybe::deserialize(&number_as_text).unwrap(),
-        maybe.validate().unwrap()
-    );
+    }
+    .validate()
+    .unwrap();
+    assert_eq!(DirectMaybe::deserialize(&number_as_text).unwrap(), maybe);
     assert_eq!(
         read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
-        Ok(maybe.validate().unwrap())
+        Ok(maybe)
     );
     assert_eq!(calls, 0);
 }
@@ -927,15 +926,14 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
     let unread = NeverReadDraft {
         id: "i".to_owned(),
         version: None,
-    };
-    assert_eq!(
-        NeverRead::deserialize(&written).unwrap(),
-        unread.validate().unwrap()
-    );
+    }
+    .validate()
+    .unwrap();
+    assert_eq!(NeverRead::deserialize(&written).unwrap(), unread);
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(NeverRead, never_read_schema, written, calls),
-        Ok(unread.validate().unwrap())
+        Ok(unread)
     );
 
     let paged = serde_json::to_value(UnpickedDraft {
@@ -947,14 +945,17 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
     let unpicked = UnpickedDraft {
         draft: DraftDraft::default().validate().unwrap(),
         id: "i".to_owned(),
-    };
-    assert_eq!(
-        Unpicked::deserialize(&paged).unwrap(),
-        unpicked.validate().unwrap()
-    );
+    }
+    .validate()
+    .unwrap();
+    assert_eq!(Unpicked::deserialize(&paged).unwrap(), unpicked);
     assert_eq!(
         read_counting!(Unpicked, unpicked_schema, paged, calls),
-        Ok(unpicked.validate().unwrap())
+        Ok(unpicked)
     );
     assert_eq!(calls, 0);
+}
+
+fn pages_by_default() -> Draft {
+    DraftDraft::default().validate().unwrap()
 }

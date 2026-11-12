@@ -288,7 +288,7 @@ impl Archive {
         match path {
             "SKILL.md" => Ok((b"# Figures\n".to_vec(), "text/markdown".to_owned())),
             "figures.bin" => Ok((vec![0, 255, 128, 1], "application/octet-stream".to_owned())),
-            _ => Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(not_found()),
         }
     }
 
@@ -301,15 +301,15 @@ impl Archive {
             "SKILL.md" => Ok("# Release notes\n\nRead the changes since 2026-11-01, then write one line per change.\n".to_owned()),
             "references/changes.md" => Ok("- renamed a document\n".to_owned()),
             "panic" => came_apart(),
-            _ => Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(not_found()),
         }
     }
 
     fn version_of(document_id: &str) -> Result<VersionResponse, VersionError> {
         match document_id {
-            "doc-1" => Ok(VersionResponseDraft { version: 7 }.validate().unwrap()),
+            "doc-1" => Ok(version_seven()),
             "panic" => came_apart(),
-            _ => Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(not_found()),
         }
     }
 }
@@ -325,9 +325,9 @@ impl BillingService<()> for Archive {
     ) -> impl Future<Output = Result<BalanceResponse, BalanceError>> {
         self.reach(format!("get-balance {account_id} {ledger}"));
         ready(if account_id == "acct-1" {
-            Ok(BalanceResponseDraft { cents: 1250 })
+            Ok(BalanceResponseDraft { cents: 1250 }.validate().unwrap())
         } else {
-            Err(BalanceErrorDraft::UnknownAccount)
+            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
         })
     }
 
@@ -340,7 +340,7 @@ impl BillingService<()> for Archive {
         ready(if invoice_id == "inv-1" {
             Ok("{\"total\":120}".to_owned())
         } else {
-            Err(BalanceErrorDraft::UnknownAccount)
+            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
         })
     }
 
@@ -382,7 +382,9 @@ impl<Ctx> DocumentService<Ctx> for Archive {
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
         ready(Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 
     fn check_many(
@@ -390,12 +392,10 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         _ctx: &Ctx,
         req: Vec<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(
-            req.first()
-                .map_or(Err(VersionErrorDraft::NotFound), |first| {
-                    Self::version_of(&first.document_id)
-                }),
-        )
+        ready(req.first().map_or_else(
+            || Err(not_found()),
+            |first| Self::version_of(&first.document_id),
+        ))
     }
 
     fn check_maybe(
@@ -403,9 +403,10 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         _ctx: &Ctx,
         req: Option<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.map_or(Err(VersionErrorDraft::NotFound), |found| {
-            Self::version_of(&found.document_id)
-        }))
+        ready(req.map_or_else(
+            || Err(not_found()),
+            |found| Self::version_of(&found.document_id),
+        ))
     }
 
     fn check_named(
@@ -413,12 +414,10 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         _ctx: &Ctx,
         req: HashMap<String, GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(
-            req.get("first")
-                .map_or(Err(VersionErrorDraft::NotFound), |found| {
-                    Self::version_of(&found.document_id)
-                }),
-        )
+        ready(req.get("first").map_or_else(
+            || Err(not_found()),
+            |found| Self::version_of(&found.document_id),
+        ))
     }
 
     fn check_pair(
@@ -447,7 +446,7 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         ready(match document_id.as_str() {
             "doc-1" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
             "panic" => came_apart(),
-            _ => Err(VersionErrorDraft::NotFound),
+            _ => Err(not_found()),
         })
     }
 
@@ -494,7 +493,7 @@ impl<Ctx> DocumentService<Ctx> for Archive {
                 next_cursor: None,
             },
             Some("panic") => came_apart(),
-            Some(_) => return ready(Err(VersionErrorDraft::NotFound)),
+            Some(_) => return ready(Err(not_found())),
         }))
     }
 
@@ -530,7 +529,7 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         ready(match typed.as_str() {
             "many" => Ok((0..150).map(|at| format!("many-{at}")).collect()),
             "panic" => came_apart(),
-            "none" => Err(VersionErrorDraft::NotFound),
+            "none" => Err(not_found()),
             _ => Ok(["doc-1", "doc-2"]
                 .into_iter()
                 .filter(|name| name.starts_with(&typed))
@@ -622,4 +621,12 @@ impl ExportService<Reporting> for Archive {
 /// A handler that panics with the sentence the handler of the document's own sample says.
 fn came_apart() -> ! {
     resume_unwind(Box::new("the handler came apart"))
+}
+
+fn not_found() -> VersionError {
+    VersionErrorDraft::NotFound.validate().unwrap()
+}
+
+fn version_seven() -> VersionResponse {
+    VersionResponseDraft { version: 7 }.validate().unwrap()
 }

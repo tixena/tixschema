@@ -91,15 +91,19 @@ fn one_resolver_serves_the_types_of_both_modules() {
     let settled: &[invoice_schema::Resolver<'_, Value, Value>] = &[&count_as_text];
     assert_eq!(
         Invoice::from_value_piped(stored(), settled).ok(),
-        Some(InvoiceDraft {
-            customer: CustomerDraft {
-                name: "Ada".to_owned(),
-                open_invoices: 3,
+        Some(
+            InvoiceDraft {
+                customer: CustomerDraft {
+                    name: "Ada".to_owned(),
+                    open_invoices: 3,
+                }
+                .validate()
+                .unwrap(),
+                number: "INV-1".to_owned(),
             }
             .validate()
-            .unwrap(),
-            number: "INV-1".to_owned(),
-        })
+            .unwrap()
+        )
     );
     assert_eq!(
         Customer::from_value_piped(json!({ "name": "Ada", "openInvoices": "x" }), settled)

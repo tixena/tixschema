@@ -9,7 +9,6 @@
 /// publish anywhere a sibling can name.
 #[cfg(feature = "serde")]
 mod a_bound_the_fields_own_type_declares {
-    use super::UnpublishedValidate;
     use alloc::borrow::Cow;
     use alloc::sync::Arc;
     use serde::{Deserialize, Serialize};
@@ -75,8 +74,6 @@ mod a_bound_the_fields_own_type_declares {
         pub tags: Vec<String>,
         pub whether: bool,
     }
-
-    impl UnpublishedValidate for RenderedThroughout {}
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
@@ -191,7 +188,7 @@ mod a_bound_the_fields_own_type_declares {
         // admits reads back as the message and then validates clean.
         let read: BrandHolder = serde_json::from_str(r#"{"slug":"abc"}"#).unwrap();
         assert_eq!(read.slug, long());
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
 
         // The README prints this report beside the declaration it comes from, so it is held to a
         // run of the generator rather than to memory.
@@ -246,11 +243,9 @@ mod a_bound_the_fields_own_type_declares {
             "'holds.name': too short: minimum length is 3, got 1"
         );
         let built = HolderDraft {
-            holds: HeldDraft {
+            holds: Held::model_schema_wrap_unjudged(HeldDraft {
                 name: "a".to_owned(),
-            }
-            .validate()
-            .unwrap(),
+            }),
         };
         assert_eq!(
             built.holds.validation_issues(),
@@ -262,7 +257,7 @@ mod a_bound_the_fields_own_type_declares {
         );
 
         let good: Holder = serde_json::from_str(r#"{"holds":{"name":"abc"}}"#).unwrap();
-        good.validate().unwrap();
+        assert_eq!(good.validation_issues(), Vec::<String>::new());
 
         let readme = include_str!("../../docs/guide/validation.md");
         assert!(
@@ -289,14 +284,14 @@ mod a_bound_the_fields_own_type_declares {
     fn test_an_untagged_members_brand_still_chooses_the_variant_on_the_read() {
         let checked: CheckedThenLoose = serde_json::from_str(r#"{"slug":"abc"}"#).unwrap();
         assert!(
-            matches!(&checked, CheckedThenLooseDraft::Checked { slug } if *slug == long()),
+            matches!(&*checked, CheckedThenLooseDraft::Checked { slug } if *slug == long()),
             "got: {checked:?}"
         );
-        checked.validate().unwrap();
+        assert_eq!(checked.validation_issues(), Vec::<String>::new());
 
         let loose: CheckedThenLoose = serde_json::from_str(r#"{"slug":"a"}"#).unwrap();
         assert!(
-            matches!(&loose, CheckedThenLooseDraft::Loose { slug } if slug == "a"),
+            matches!(&*loose, CheckedThenLooseDraft::Loose { slug } if slug == "a"),
             "the bound took the first member out of the running rather than ending the read. \
              Got: {loose:?}"
         );
@@ -308,29 +303,25 @@ mod a_bound_the_fields_own_type_declares {
     }
 
     #[test]
-    fn test_a_message_made_of_values_the_crate_renders_itself_publishes_no_validator() {
-        assert_eq!(
-            RenderedThroughoutDraft {
-                count: 0,
-                name: String::new(),
-                tags: Vec::new(),
-                whether: false,
-            }
-            .validate(),
-            "no inherent validate()"
-        );
+    fn test_a_message_made_of_values_the_crate_renders_itself_has_nothing_to_refuse() {
+        RenderedThroughoutDraft {
+            count: 0,
+            name: String::new(),
+            tags: Vec::new(),
+            whether: false,
+        }
+        .validate()
+        .unwrap();
     }
 
     #[test]
     fn test_a_nested_types_bound_is_reached_through_every_wrapper_the_field_is_written_under() {
         fn held(name: &str) -> Held {
-            HeldDraft {
+            Held::model_schema_wrap_unjudged(HeldDraft {
                 name: name.to_owned(),
-            }
-            .validate()
-            .unwrap()
+            })
         }
-        fn all_good() -> WrappedHeld {
+        fn all_good() -> WrappedHeldDraft {
             WrappedHeldDraft {
                 aud: "acme".to_owned(),
                 boxed: Box::new(held("abc")),
@@ -341,8 +332,6 @@ mod a_bound_the_fields_own_type_declares {
                 plain: held("abc"),
                 shared: Arc::new(held("abc")),
             }
-            .validate()
-            .unwrap()
         }
 
         assert_eq!(all_good().validation_issues(), Vec::<String>::new());
@@ -385,7 +374,7 @@ mod a_bound_the_fields_own_type_declares {
         let none_written = WrappedHeldDraft {
             maybe: None,
             maybe_listed: None,
-            ..all_good().into()
+            ..all_good()
         };
         assert_eq!(
             none_written.validation_issues(),
@@ -487,7 +476,6 @@ mod a_bound_the_fields_own_type_declares {
 /// — one it holds as a field, and one the message itself is.
 #[cfg(feature = "serde")]
 mod a_bound_inside_an_untagged_variant {
-    use super::UnpublishedValidate;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
@@ -599,8 +587,6 @@ mod a_bound_inside_an_untagged_variant {
         Name(String),
     }
 
-    impl UnpublishedValidate for Unbounded {}
-
     #[test]
     fn test_an_untagged_union_dispatches_to_whichever_variant_it_holds() {
         assert_eq!(
@@ -698,12 +684,10 @@ mod a_bound_inside_an_untagged_variant {
         );
         assert_eq!(
             LabelHolderDraft {
-                label: LabelDraft::Bounded(
+                label: Label::model_schema_wrap_unjudged(LabelDraft::Bounded(
                     Tag::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
                         .unwrap()
-                )
-                .validate()
-                .unwrap(),
+                )),
             }
             .validate()
             .unwrap_err(),
@@ -712,29 +696,23 @@ mod a_bound_inside_an_untagged_variant {
 
         let refused: Label = serde_json::from_str(r#""ab""#).unwrap();
         assert!(
-            matches!(&refused, LabelDraft::Free(loose) if loose == "ab"),
+            matches!(&*refused, LabelDraft::Free(loose) if loose == "ab"),
             "the brand's bound took the newtype member out of the running rather than ending the \
              read. Got: {refused:?}"
         );
         assert_eq!(refused.validation_issues(), Vec::<String>::new());
         let admitted: Label = serde_json::from_str(r#""abc""#).unwrap();
         assert!(
-            matches!(&admitted, LabelDraft::Bounded(tag) if tag.as_inner() == "abc"),
+            matches!(&*admitted, LabelDraft::Bounded(tag) if tag.as_inner() == "abc"),
             "got: {admitted:?}"
         );
         assert_eq!(admitted.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
-    fn test_a_union_with_nothing_to_check_publishes_no_validator() {
-        assert_eq!(
-            UnboundedDraft::Count(0).validate(),
-            "no inherent validate()"
-        );
-        assert_eq!(
-            UnboundedDraft::Name(String::new()).validate(),
-            "no inherent validate()"
-        );
+    fn test_a_union_with_nothing_to_check_has_nothing_to_refuse() {
+        UnboundedDraft::Count(0).validate().unwrap();
+        UnboundedDraft::Name(String::new()).validate().unwrap();
     }
 
     #[cfg(feature = "zod")]
@@ -893,11 +871,11 @@ mod a_check_the_enum_declares {
             vec![format!("'Named.label': {long}")]
         );
         assert_eq!(
-            Held::Slot(empty.clone()).validation_issues(),
+            HeldDraft::Slot(empty.clone()).validation_issues(),
             vec![format!("'Slot': {short}")]
         );
         assert_eq!(
-            Held::Pair(six.clone(), 0).validation_issues(),
+            HeldDraft::Pair(six.clone(), 0).validation_issues(),
             vec![format!("'Pair.0': {long}")]
         );
         assert_eq!(
@@ -937,7 +915,7 @@ mod a_check_the_enum_declares {
         }
         .validate()
         .unwrap();
-        Held::Bare.validate().unwrap();
+        HeldDraft::Bare.validate().unwrap();
         HeldInternalDraft::Bare.validate().unwrap();
         HeldAdjacentDraft::Bare.validate().unwrap();
         assert_eq!(
@@ -963,7 +941,7 @@ mod a_check_the_enum_declares {
                 format!("'Cowed.text': {long}"),
             ),
             (
-                Wrapped::Maybe(Some("abcd".into())),
+                WrappedDraft::Maybe(Some("abcd".into())),
                 format!("'Maybe': {long}"),
             ),
             (
@@ -981,7 +959,7 @@ mod a_check_the_enum_declares {
         ] {
             assert_eq!(held.validation_issues(), vec![reported]);
         }
-        Wrapped::Maybe(None).validate().unwrap();
+        WrappedDraft::Maybe(None).validate().unwrap();
         WrappedDraft::Path {
             at: PathBuf::from("/a"),
         }
@@ -1014,13 +992,13 @@ mod a_check_the_enum_declares {
         );
         HeldDraft::Counted { count: 0 }.validate().unwrap();
 
-        Given::<String>::Filled {
+        GivenDraft::<String>::Filled {
             value: "abcdefgh".to_owned(),
         }
         .validate()
         .unwrap();
         assert_eq!(
-            Given::<String>::Text {
+            GivenDraft::<String>::Text {
                 value: "abcdefgh".to_owned()
             }
             .validate()
@@ -1093,8 +1071,8 @@ mod a_check_the_enum_declares {
                     label: String::new(),
                 },
             ),
-            (r#"{"Slot":"abcdef"}"#, Held::Slot("abcdef".to_owned())),
-            (r#"{"Pair":["",0]}"#, Held::Pair(String::new(), 0)),
+            (r#"{"Slot":"abcdef"}"#, HeldDraft::Slot("abcdef".to_owned())),
+            (r#"{"Pair":["",0]}"#, HeldDraft::Pair(String::new(), 0)),
             (
                 r#"{"Own":{"label":"ab"}}"#,
                 HeldDraft::Own {
@@ -1107,9 +1085,12 @@ mod a_check_the_enum_declares {
                     label: "abc".to_owned(),
                 },
             ),
-            (r#"{"Slot":"abc"}"#, Held::Slot("abc".to_owned())),
-            (r#"{"Pair":["abc",0]}"#, Held::Pair("abc".to_owned(), 0)),
-            (r#""Bare""#, Held::Bare),
+            (r#"{"Slot":"abc"}"#, HeldDraft::Slot("abc".to_owned())),
+            (
+                r#"{"Pair":["abc",0]}"#,
+                HeldDraft::Pair("abc".to_owned(), 0),
+            ),
+            (r#""Bare""#, HeldDraft::Bare),
         ] {
             assert_eq!(serde_json::to_string(&read).unwrap(), wire);
             // The value where it keeps the check, and what `validate()` answers of it where it
@@ -1117,7 +1098,7 @@ mod a_check_the_enum_declares {
             let judged = read.validate().map_err(|reported| reported.join("; "));
             assert_eq!(
                 serde_json::from_str::<Held>(wire).map_err(|refused| refused.to_string()),
-                judged.map(|()| read)
+                judged
             );
         }
         let internal = r#"{"kind":"Named","label":"abcdef"}"#;
@@ -1364,16 +1345,6 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
 use tixschema::model_schema;
-
-/// What a type answers when it publishes no inherent `validate()` of its own. An inherent method
-/// takes precedence over a trait's, so reaching this one is what says none was published — the same
-/// question asked of a constraint-free struct, which has never published one either.
-#[cfg(feature = "serde")]
-trait UnpublishedValidate {
-    fn validate(&self) -> &'static str {
-        "no inherent validate()"
-    }
-}
 
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
@@ -2736,7 +2707,7 @@ fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
 
     let accepted = serde_json::from_str::<WireOptional>(r#"{"nickname":"abc"}"#).unwrap();
     assert_eq!(accepted.nickname.as_deref(), Some("abc"));
-    accepted.validate().unwrap();
+    assert_eq!(accepted.validation_issues(), Vec::<String>::new());
 }
 
 /// A `None` puts no string on the wire, so neither spelling of its absence has anything to reject.
@@ -2864,7 +2835,7 @@ fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
         held.tags,
         vec!["ok!".to_owned(), "a".to_owned(), "b".to_owned()]
     );
-    held.validate().unwrap();
+    assert_eq!(held.validation_issues(), Vec::<String>::new());
     assert_eq!(
         serde_json::from_str::<WireVec>(r#"{"tags":[]}"#)
             .unwrap_err()
@@ -2930,7 +2901,7 @@ fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
 
     let accepted = serde_json::from_str::<WireNumeric>(r#"{"age":21,"counts":[1,0]}"#).unwrap();
     assert_eq!(accepted.age, Some(21));
-    accepted.validate().unwrap();
+    assert_eq!(accepted.validation_issues(), Vec::<String>::new());
 }
 
 #[cfg(feature = "serde")]
@@ -2961,7 +2932,7 @@ fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     assert!(
         accepted.validation_issues().is_empty(),
         "the payload every bound admits has to pass: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
     for (field, short) in [
@@ -3012,8 +2983,8 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     assert!(
         serde_json::from_str::<Action>(r#"{"kind":"Delete","note":"abcde"}"#)
             .unwrap()
-            .validate()
-            .is_ok(),
+            .validation_issues()
+            .is_empty(),
         "Delete admits its own minimum"
     );
 
@@ -3026,8 +2997,8 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     assert!(
         serde_json::from_str::<Action>(r#"{"kind":"Upload","note":"abc"}"#)
             .unwrap()
-            .validate()
-            .is_ok(),
+            .validation_issues()
+            .is_empty(),
         "A value Upload admits is not held to Delete's minimum"
     );
 }
@@ -3275,24 +3246,17 @@ fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
         },
     }
 
-    impl UnpublishedValidate for FreeStruct {}
-    impl UnpublishedValidate for FreeTagged {}
-
-    assert_eq!(
-        FreeStructDraft {
-            name: String::new()
-        }
-        .validate(),
-        "no inherent validate()"
-    );
-    assert_eq!(
-        FreeTaggedDraft::One {
-            name: String::new()
-        }
-        .validate(),
-        "no inherent validate()"
-    );
-    assert_eq!(FreeTaggedDraft::Two.validate(), "no inherent validate()");
+    FreeStructDraft {
+        name: String::new(),
+    }
+    .validate()
+    .unwrap();
+    FreeTaggedDraft::One {
+        name: String::new(),
+    }
+    .validate()
+    .unwrap();
+    FreeTaggedDraft::Two.validate().unwrap();
     // An enum whose member carries a bound answers with the accessor's own type: a published
     // `validate()` would shadow the trait's, and none of the above would compile.
     assert_eq!(
@@ -3718,11 +3682,11 @@ fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
         (r#"{"Code":"ABC"}"#, EntryDraft::Code("ABC".to_owned())),
         (r#"{"Pair":["ab",1]}"#, EntryDraft::Pair("ab".to_owned(), 1)),
     ] {
+        assert_eq!(serde_json::to_string(&kept).unwrap(), wire);
         assert_eq!(
             serde_json::from_str::<Entry>(wire).unwrap(),
             kept.validate().unwrap()
         );
-        assert_eq!(serde_json::to_string(&kept).unwrap(), wire);
         assert!(readme.contains(wire), "the README no longer shows {wire}");
     }
     entry_schema::validate_code_0_value("ABC").unwrap();
@@ -3810,7 +3774,8 @@ fn test_crate_rustdoc_quotes_the_messages_the_generator_writes() {
         username: "ab".to_owned(),
     }
     .validate()
-    .unwrap_err();
+    .err()
+    .unwrap();
 
     assert_eq!(
         errors,

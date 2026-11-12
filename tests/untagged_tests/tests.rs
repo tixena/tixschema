@@ -624,7 +624,9 @@ fn test_untagged_entry_constructible() {
         data_element_id: String::new(),
         variant: DataElementSampleValueVariantDraft::Date {
             sample_values: Vec::new(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(entry.data_element_id, String::new());
 }
@@ -855,11 +857,13 @@ fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() 
 #[cfg(feature = "typescript")]
 fn test_recursive_flag_keyed_map_member_writes_and_reads_the_two_string_keys() {
     let flags = FlagTreeUnionDraft::Nested(HashMap::from([(
-        FlagKeyDraft::True,
+        FlagKeyDraft::True.validate().unwrap(),
         FlagTreeUnionDraft::Nested(HashMap::from([(
-            FlagKeyDraft::False,
-            FlagTreeUnionDraft::Leaf("x".to_owned()),
-        )])),
+            FlagKeyDraft::False.validate().unwrap(),
+            FlagTreeUnionDraft::Leaf("x".to_owned()).validate().unwrap(),
+        )]))
+        .validate()
+        .unwrap(),
     )]));
     let written = serde_json::to_string(&flags).unwrap();
     assert_eq!(written, r#"{"true":{"false":"x"}}"#);
@@ -873,11 +877,12 @@ fn test_recursive_flag_keyed_map_member_writes_and_reads_the_two_string_keys() {
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 fn test_recursive_date_time_keyed_map_member_round_trips() {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
-    let stamps = StampTreeUnionDraft::Nested(
-        HashMap::from([(stamp, StampTreeUnionDraft::Leaf("x".to_owned()))])
+    let stamps = StampTreeUnionDraft::Nested(HashMap::from([(
+        stamp,
+        StampTreeUnionDraft::Leaf("x".to_owned())
             .validate()
             .unwrap(),
-    );
+    )]));
     let written = serde_json::to_string(&stamps).unwrap();
     assert_eq!(written, r#"{"2023-11-14T22:13:20Z":"x"}"#);
     assert_eq!(
@@ -940,11 +945,15 @@ fn test_recursive_enum_keyed_map_member_json_schema_refers_to_definition() {
 #[test]
 fn test_serde_round_trip_enum_keyed_recursive_union() {
     let value = BucketTreeUnionDraft::Nested(HashMap::from([(
-        BucketDraft::Large,
+        BucketDraft::Large.validate().unwrap(),
         BucketTreeUnionDraft::Nested(HashMap::from([(
-            BucketDraft::Small,
-            BucketTreeUnionDraft::Leaf("leaf".to_owned()),
-        )])),
+            BucketDraft::Small.validate().unwrap(),
+            BucketTreeUnionDraft::Leaf("leaf".to_owned())
+                .validate()
+                .unwrap(),
+        )]))
+        .validate()
+        .unwrap(),
     )]));
     let json = serde_json::to_string(&value).unwrap();
     assert_eq!(json, r#"{"Large":{"Small":"leaf"}}"#);
@@ -961,7 +970,9 @@ fn test_serde_round_trip_nested_recursive_union() {
             JsonValueUnionDraft::S("a".to_owned()).validate().unwrap(),
             JsonValueUnionDraft::B(true).validate().unwrap(),
             JsonValueUnionDraft::N(1.5).validate().unwrap(),
-        ]),
+        ])
+        .validate()
+        .unwrap(),
     )]));
     let json = serde_json::to_string(&value).unwrap();
     assert_eq!(json, r#"{"items":["a",true,1.5]}"#);
@@ -1272,7 +1283,7 @@ fn test_untagged_map_member_keys_zod() {
 #[test]
 fn test_untagged_map_member_wire() {
     let counts = KeyedUnionDraft::Counts {
-        counts: HashMap::from([(BucketDraft::Large, 3_u32)]),
+        counts: HashMap::from([(BucketDraft::Large.validate().unwrap(), 3_u32)]),
     };
     let labels = KeyedUnionDraft::Labels {
         labels: HashMap::from([("a".to_owned(), "b".to_owned())]),
@@ -1348,7 +1359,10 @@ fn test_untagged_map_member_keys_json_schema() {
 #[test]
 fn test_untagged_map_member_schema_admits_the_captured_wire() {
     let counts = KeyedUnionDraft::Counts {
-        counts: HashMap::from([(BucketDraft::Large, 1_u32), (BucketDraft::Small, 2_u32)]),
+        counts: HashMap::from([
+            (BucketDraft::Large.validate().unwrap(), 1_u32),
+            (BucketDraft::Small.validate().unwrap(), 2_u32),
+        ]),
     };
     let wire = serde_json::to_value(&counts).unwrap();
     let schema = KeyedUnion::json_schema();
@@ -1712,6 +1726,8 @@ fn test_untagged_member_constraint_is_enforced_on_deserialize() {
         SoleConstrainedUnionDraft::Slug {
             slug: "ab".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -1722,12 +1738,16 @@ fn test_untagged_member_constraint_decides_which_variant_is_read() {
         CheckedThenLooseUnionDraft::Checked {
             name: "ab".to_owned()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<CheckedThenLooseUnion>(r#"{"name":"A"}"#).unwrap(),
         CheckedThenLooseUnionDraft::Loose {
             name: "A".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -2181,13 +2201,17 @@ fn test_an_untagged_enums_own_check_decides_which_variant_is_read() {
     let no_variant = "data did not match any variant of untagged enum ContentKind".to_owned();
     assert_eq!(
         read_content_kind("text/csv"),
-        Ok(ContentKindDraft::Other("text/csv".to_owned()))
+        Ok(ContentKindDraft::Other("text/csv".to_owned())
+            .validate()
+            .unwrap())
     );
     assert_eq!(
         read_content_kind("application/pdf"),
-        Ok(ContentKindDraft::Known(
-            KnownKindDraft::Pdf.validate().unwrap()
-        ))
+        Ok(
+            ContentKindDraft::Known(KnownKindDraft::Pdf.validate().unwrap())
+                .validate()
+                .unwrap()
+        )
     );
     for refused in [String::new(), "a".repeat(21)] {
         assert_eq!(read_content_kind(&refused), Err(no_variant.clone()));
@@ -2598,8 +2622,8 @@ fn an_untagged_enum_a_hand_written_deserialize_reads_keeps_the_order_it_declares
     ] {
         let written = serde_json::to_string(&measurement).unwrap();
         assert_eq!(
-            serde_json::from_str::<Measurement>(&written).unwrap(),
-            measurement.validate().unwrap()
+            serde_json::from_str::<MeasurementDraft>(&written).unwrap(),
+            measurement
         );
     }
     for quota in [
@@ -2607,10 +2631,7 @@ fn an_untagged_enum_a_hand_written_deserialize_reads_keeps_the_order_it_declares
         QuotaDraft::Bounded { limit: 3 },
     ] {
         let written = serde_json::to_string(&quota).unwrap();
-        assert_eq!(
-            serde_json::from_str::<Quota>(&written).unwrap(),
-            quota.validate().unwrap()
-        );
+        assert_eq!(serde_json::from_str::<QuotaDraft>(&written).unwrap(), quota);
     }
 }
 

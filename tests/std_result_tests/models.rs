@@ -158,21 +158,17 @@ pub struct Payload {
 
 /// A masthead of `slug` titled `title`.
 pub fn masthead(slug: &str, title: &str) -> Masthead {
-    MastheadDraft {
+    Masthead::model_schema_wrap_unjudged(MastheadDraft {
         slug: slug.to_owned(),
         title: title.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// What does not read, for `reason`.
 pub fn unparsed(reason: &str) -> Unparsed {
-    UnparsedDraft {
+    Unparsed::model_schema_wrap_unjudged(UnparsedDraft {
         reason: reason.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A ballot of `code`.
@@ -181,7 +177,7 @@ pub fn ballot(code: &str) -> Ballot {
 }
 
 /// The README's reply, which reads.
-pub const fn reply() -> Reply {
+pub fn reply() -> Reply {
     ReplyDraft {
         outcome: Ok(7),
         stored: Ok(()),
@@ -197,17 +193,15 @@ pub fn missive(broken: bool) -> Missive {
     } else {
         ("intro", "Intro")
     };
-    MissiveDraft {
+    Missive::model_schema_wrap_unjudged(MissiveDraft {
         frontmatter: Some(Ok(masthead(slug, title))),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A `Result` in each position, with `maybe` holding one where `held` says so.
 pub fn postbox(held: bool) -> Postbox {
     PostboxDraft {
-        filled: MailbagDraft { held: Ok(1) }.validate().unwrap(),
+        filled: Mailbag::model_schema_wrap_unjudged(MailbagDraft { held: Ok(1) }),
         keyed: BTreeMap::from([("a".to_owned(), Err("b".to_owned()))]),
         listed: vec![Ok(2), Err("c".to_owned())],
         maybe: held.then_some(Ok(3)),
@@ -221,16 +215,12 @@ pub fn postbox(held: bool) -> Postbox {
 /// A notebook whose every bound breaks where `broken` says so.
 pub fn notebook(broken: bool) -> Notebook {
     let (code, title) = if broken { ("a", "") } else { ("ab", "Intro") };
-    NotebookDraft {
-        jacket: JacketDraft {
+    Notebook::model_schema_wrap_unjudged(NotebookDraft {
+        jacket: Jacket::model_schema_wrap_unjudged(JacketDraft {
             keyed: BTreeMap::from([("k".to_owned(), Ok(ballot(code)))]),
-        }
-        .validate()
-        .unwrap(),
+        }),
         listed: Ok(vec![masthead("intro", title)]),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// What serde writes of `value`, read as `read_as`.
@@ -296,12 +286,12 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "a Result in a member of a variant",
             "Turn",
-            &Turn::<u32>::Named { outcome: Ok(1) },
+            &TurnDraft::<u32>::Named { outcome: Ok(1) },
         ),
         written(
             "a Result in the slot of a variant",
             "Turn",
-            &Turn::<u32>::Slot(Err("y".to_owned())),
+            &TurnDraft::<u32>::Slot(Err("y".to_owned())),
         ),
         written(
             "arms of unit, Ok",

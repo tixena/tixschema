@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::super::live::{collection, say};
 use super::{
-    Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceStatus,
+    AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceStatusDraft,
     assert_declared_and_documented, assert_documented, customer_schema, invoice, invoice_schema,
 };
 use crate::BSON_MAJOR;
@@ -86,7 +86,7 @@ async fn every_operation(
     let drafts = || {
         paths
             .status()
-            .eq(InvoiceStatus::Draft)
+            .eq(InvoiceStatusDraft::Draft.validate().unwrap())
             .map_err(OperationError::Unwritable)
     };
     let voided = || {
@@ -403,7 +403,7 @@ async fn every_operation(
     let drafts = || {
         paths
             .status()
-            .eq(InvoiceStatus::Draft)
+            .eq(InvoiceStatusDraft::Draft.validate().unwrap())
             .map_err(OperationError::Unwritable)
     };
     let voided = || {
@@ -644,7 +644,9 @@ fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time()
 
     let texted = KeyedDraft::<String> {
         by_key: HashMap::from([("8".to_owned(), "eight".to_owned())]),
-    };
+    }
+    .validate()
+    .unwrap();
     let stored = texted.mongo_written_row().unwrap();
     assert_eq!(stored.to_string(), SHOWN_KEYED_STORED);
     let read = Keyed::<String>::mongo_read_row(stored.clone(), &[]).unwrap();
@@ -652,7 +654,9 @@ fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time()
 
     let numbered = KeyedDraft::<u32> {
         by_key: HashMap::from([(8, "eight".to_owned())]),
-    };
+    }
+    .validate()
+    .unwrap();
     let unwritable = numbered.mongo_written_row().unwrap_err();
     let unreadable = Keyed::<u32>::mongo_read_row(stored, &[]).unwrap_err();
     assert_eq!(
@@ -694,9 +698,11 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
     let roster = TextKeyedRosterDraft {
         initials: HashMap::from([('m', "Moca".to_owned())]),
         names: HashMap::from([("Acme".to_owned(), "Moca".to_owned())]),
-        shifts: HashMap::from([(ShiftDraft::Late, "Moca".to_owned())]),
+        shifts: HashMap::from([(ShiftDraft::Late.validate().unwrap(), "Moca".to_owned())]),
         stations: HashMap::from([(Station::new("north".to_owned()).unwrap(), "Moca".to_owned())]),
-    };
+    }
+    .validate()
+    .unwrap();
     let row = roster.mongo_written_row().unwrap();
     assert_eq!(
         row,
@@ -707,10 +713,7 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
             "stations": { "north": "Moca" },
         }
     );
-    assert_eq!(
-        TextKeyedRoster::mongo_read_row(row, &[]).unwrap(),
-        roster.validate().unwrap()
-    );
+    assert_eq!(TextKeyedRoster::mongo_read_row(row, &[]).unwrap(), roster);
     assert_documented(SHOWN_TEXT_KEYS);
 }
 
@@ -724,7 +727,9 @@ fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
         dates: HashMap::from([(date, "Moca".to_owned())]),
         moments: HashMap::from([(date.and_time(time).and_utc(), "Moca".to_owned())]),
         times: HashMap::from([(time, "Moca".to_owned())]),
-    };
+    }
+    .validate()
+    .unwrap();
     let row = roster.mongo_written_row().unwrap();
     assert_eq!(
         row,
@@ -734,10 +739,7 @@ fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
             "times": { "17:40:00": "Moca" },
         }
     );
-    assert_eq!(
-        DatedRoster::mongo_read_row(row, &[]).unwrap(),
-        roster.validate().unwrap()
-    );
+    assert_eq!(DatedRoster::mongo_read_row(row, &[]).unwrap(), roster);
 }
 
 #[tokio::test]
@@ -761,9 +763,11 @@ async fn live_the_readme_examples_run_against_a_collection() {
         return;
     };
     let draft = InvoiceDraft {
-        status: InvoiceStatus::Draft,
+        status: InvoiceStatusDraft::Draft.validate().unwrap(),
         ..invoice("INV-0000", "Acme", 50.5).into()
-    };
+    }
+    .validate()
+    .unwrap();
     every_operation(&invoices, &draft).await.unwrap();
     let left = Invoice::count(&invoices, Filter::raw(doc! {}))
         .await
@@ -779,7 +783,7 @@ async fn live_the_readme_examples_run_against_a_collection() {
         .insert("openInvoices", "1");
     let paid = InvoiceDraft {
         paid_at: Some("2026-10-07T17:40:00Z".to_owned()),
-        status: InvoiceStatus::Paid,
+        status: InvoiceStatusDraft::Paid.validate().unwrap(),
         ..invoice("INV-0003", "Acme", 500.5).into()
     };
     let rows = vec![
@@ -832,7 +836,9 @@ async fn live_the_readme_examples_run_against_a_collection() {
         .unwrap(),
         name: "Acme".to_owned(),
         open_invoices: 3,
-    };
+    }
+    .validate()
+    .unwrap();
     acme.insert_one(&customers).await.unwrap();
     let named = || Customer::MONGO_FIELDS.name().eq("Acme".to_owned()).unwrap();
     let refused = Customer::find_one(&customers, named()).await.unwrap_err();

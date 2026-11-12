@@ -287,7 +287,7 @@ fn short_list(value: &[String]) -> Result<(), Vec<String>> {
     })
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -295,7 +295,7 @@ fn with_few_stops(value: &ShipmentDraft) -> Result<(), Vec<String>> {
     if let ShipmentDraft::Air {
         flight: _flight,
         stops,
-    } = &**value
+    } = value
         && stops.len() > 2
     {
         return Err(vec![
@@ -305,15 +305,15 @@ fn with_few_stops(value: &ShipmentDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn with_a_stop(value: &Transfer) -> Result<(), Vec<String>> {
-    if let TransferDraft::Road { stops } = &**value
+fn with_a_stop(value: &TransferDraft) -> Result<(), Vec<String>> {
+    if let TransferDraft::Road { stops } = value
         && stops.is_empty()
     {
         return Err(vec![
             "'Road.stops': a road transfer makes a stop".to_owned(),
         ]);
     }
-    if let TransferDraft::Rail(line) = &**value
+    if let TransferDraft::Rail(line) = value
         && line.is_empty()
     {
         return Err(vec!["'Rail': a rail transfer names its line".to_owned()]);
@@ -322,7 +322,7 @@ fn with_a_stop(value: &Transfer) -> Result<(), Vec<String>> {
 }
 
 fn signed_by_someone(value: &HandoverDraft) -> Result<(), Vec<String>> {
-    if let HandoverDraft::Signed { by } = &**value
+    if let HandoverDraft::Signed { by } = value
         && by.is_empty()
     {
         return Err(vec![
@@ -333,12 +333,12 @@ fn signed_by_someone(value: &HandoverDraft) -> Result<(), Vec<String>> {
 }
 
 fn a_reference(value: &ReferenceDraft) -> Result<(), Vec<String>> {
-    if let ReferenceDraft::Named { name } = &**value
+    if let ReferenceDraft::Named { name } = value
         && name.is_empty()
     {
         return Err(vec!["'name': a reference has a name".to_owned()]);
     }
-    if matches!(&**value, ReferenceDraft::Numbered(0)) {
+    if matches!(value, ReferenceDraft::Numbered(0)) {
         return Err(vec!["a reference is not zero".to_owned()]);
     }
     Ok(())
@@ -351,7 +351,7 @@ fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
+fn upper_case(value: &Code) -> Result<(), Vec<String>> {
     if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
@@ -382,12 +382,10 @@ fn with_entries<IdType>(value: &LedgerDraft<IdType>) -> Result<(), Vec<String>> 
 }
 
 fn archived<IdType>(entries: Vec<String>, owner_id: IdType) -> Archive<IdType> {
-    ArchiveDraft {
-        ledger: LedgerDraft { entries, owner_id }.validate().unwrap(),
+    Archive::model_schema_wrap_unjudged(ArchiveDraft {
+        ledger: Ledger::model_schema_wrap_unjudged(LedgerDraft { entries, owner_id }),
         label: "a".to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -406,13 +404,11 @@ where
 }
 
 fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The five parcels of the shared table, in the order of its cases.
@@ -429,7 +425,7 @@ pub fn parcels() -> [Parcel; 5] {
 /// The manifest of the table's last case: its fourth parcel, held under `parcel`.
 pub fn manifest() -> Manifest {
     let [_, _, _, outside, _] = parcels();
-    ManifestDraft { parcel: outside }.validate().unwrap()
+    Manifest::model_schema_wrap_unjudged(ManifestDraft { parcel: outside })
 }
 
 /// Cases 1 to 5 of the shared table.
@@ -437,7 +433,7 @@ pub fn parcel_cases() -> Vec<Case> {
     ["case 1", "case 2", "case 3", "case 4", "case 5"]
         .into_iter()
         .zip(parcels())
-        .map(|(name, held)| case(name, &held, held.validate()))
+        .map(|(name, held)| case(name, &held, crate::judged_issues(held.validation_issues())))
         .collect()
 }
 
@@ -445,7 +441,11 @@ pub fn parcel_cases() -> Vec<Case> {
 #[cfg(feature = "serde")]
 pub fn manifest_case() -> Case {
     let held = manifest();
-    case("case 6", &held, held.validate())
+    case(
+        "case 6",
+        &held,
+        crate::judged_issues(held.validation_issues()),
+    )
 }
 
 /// The cases of the structs: one with named fields, one with slots, and one with neither.
@@ -458,26 +458,46 @@ fn struct_cases() -> Vec<Case> {
         codes: texts(codes),
     };
     vec![
-        case("Route, no stop", &route(&[]), route(&[]).validate()),
-        case("Route", &route(&["a"]), route(&["a"]).validate()),
+        case(
+            "Route, no stop",
+            &route(&[]),
+            crate::judged_issues(route(&[]).validation_issues()),
+        ),
+        case(
+            "Route",
+            &route(&["a"]),
+            crate::judged_issues(route(&["a"]).validation_issues()),
+        ),
         case(
             "Stack, a code twice",
             &stack(&["a", "a"], 5),
-            stack(&["a", "a"], 5).validate(),
+            crate::judged_issues(stack(&["a", "a"], 5).validation_issues()),
         ),
         case(
             "Stack, over its limit",
             &stack(&["a", "b"], 1),
-            stack(&["a", "b"], 1).validate(),
+            crate::judged_issues(stack(&["a", "b"], 1).validation_issues()),
         ),
-        case("Stack", &stack(&["a"], 1), stack(&["a"], 1).validate()),
+        case(
+            "Stack",
+            &stack(&["a"], 1),
+            crate::judged_issues(stack(&["a"], 1).validation_issues()),
+        ),
         case(
             "Pallet, three codes",
             &pallet(&["a", "b", "c"]),
-            pallet(&["a", "b", "c"]).validate(),
+            crate::judged_issues(pallet(&["a", "b", "c"]).validation_issues()),
         ),
-        case("Pallet", &pallet(&["a"]), pallet(&["a"]).validate()),
-        case("ClosedDock", &ClosedDockDraft, ClosedDockDraft.validate()),
+        case(
+            "Pallet",
+            &pallet(&["a"]),
+            crate::judged_issues(pallet(&["a"]).validation_issues()),
+        ),
+        case(
+            "ClosedDock",
+            &ClosedDockDraft,
+            crate::judged_issues(ClosedDockDraft.validation_issues()),
+        ),
     ]
 }
 
@@ -504,48 +524,72 @@ fn enum_cases() -> Vec<Case> {
         case(
             "Shipment, three stops by air",
             &air(&["a", "b", "c"]),
-            air(&["a", "b", "c"]).validate(),
+            crate::judged_issues(air(&["a", "b", "c"]).validation_issues()),
         ),
         case(
             "Shipment, a stop twice",
             &air(&["a", "a"]),
-            air(&["a", "a"]).validate(),
+            crate::judged_issues(air(&["a", "a"]).validation_issues()),
         ),
         case(
             "Shipment, three stops by ground",
             &ground,
-            ground.validate(),
+            crate::judged_issues(ground.validation_issues()),
         ),
-        case("Transfer, a road with no stop", &road, road.validate()),
-        case("Transfer, a rail with no line", &rail, rail.validate()),
+        case(
+            "Transfer, a road with no stop",
+            &road,
+            crate::judged_issues(road.validation_issues()),
+        ),
+        case(
+            "Transfer, a rail with no line",
+            &rail,
+            crate::judged_issues(rail.validation_issues()),
+        ),
         case(
             "Transfer, held",
             &TransferDraft::Held,
-            TransferDraft::Held.validate(),
+            crate::judged_issues(TransferDraft::Held.validation_issues()),
         ),
-        case("Handover, signed by no one", &signed, signed.validate()),
-        case("Handover, left", &left, left.validate()),
+        case(
+            "Handover, signed by no one",
+            &signed,
+            crate::judged_issues(signed.validation_issues()),
+        ),
+        case(
+            "Handover, left",
+            &left,
+            crate::judged_issues(left.validation_issues()),
+        ),
         case(
             "Reference, numbered zero",
             &ReferenceDraft::Numbered(0),
-            ReferenceDraft::Numbered(0).validate(),
+            crate::judged_issues(ReferenceDraft::Numbered(0).validation_issues()),
         ),
-        case("Reference, with no name", &unnamed, unnamed.validate()),
-        case("Reference", &named, named.validate()),
+        case(
+            "Reference, with no name",
+            &unnamed,
+            crate::judged_issues(unnamed.validation_issues()),
+        ),
+        case(
+            "Reference",
+            &named,
+            crate::judged_issues(named.validation_issues()),
+        ),
         case(
             "Grade, unrated",
             &GradeDraft::Unrated,
-            GradeDraft::Unrated.validate(),
+            crate::judged_issues(GradeDraft::Unrated.validation_issues()),
         ),
         case(
             "Grade, express",
             &GradeDraft::Express,
-            GradeDraft::Express.validate(),
+            crate::judged_issues(GradeDraft::Express.validation_issues()),
         ),
         case(
             "Grade, standard",
             &GradeDraft::Standard,
-            GradeDraft::Standard.validate(),
+            crate::judged_issues(GradeDraft::Standard.validation_issues()),
         ),
     ]
 }
@@ -602,19 +646,23 @@ fn brand_and_crate_cases() -> Vec<Case> {
         case(
             "Crate<String>, empty",
             &filled(Vec::new()),
-            filled(Vec::new()).validate(),
+            crate::judged_issues(filled(Vec::new()).validation_issues()),
         ),
         case(
             "Crate<String>",
             &filled(texts(&["a"])),
-            filled(texts(&["a"])).validate(),
+            crate::judged_issues(filled(texts(&["a"])).validation_issues()),
         ),
         case(
             "Crate<u32>, empty",
             &counted(Vec::new()),
-            counted(Vec::new()).validate(),
+            crate::judged_issues(counted(Vec::new()).validation_issues()),
         ),
-        case("Crate<u32>", &counted(vec![7]), counted(vec![7]).validate()),
+        case(
+            "Crate<u32>",
+            &counted(vec![7]),
+            crate::judged_issues(counted(vec![7]).validation_issues()),
+        ),
     ]
 }
 
@@ -628,12 +676,12 @@ fn ledger_and_archive_cases() -> Vec<Case> {
         case(
             "Ledger<String>, no entry",
             &owned(Vec::new()),
-            owned(Vec::new()).validate(),
+            crate::judged_issues(owned(Vec::new()).validation_issues()),
         ),
         case(
             "Ledger<String>",
             &owned(texts(&["a"])),
-            owned(texts(&["a"])).validate(),
+            crate::judged_issues(owned(texts(&["a"])).validation_issues()),
         ),
         case(
             "Ledger<u32>",
@@ -641,31 +689,33 @@ fn ledger_and_archive_cases() -> Vec<Case> {
                 entries: texts(&["a"]),
                 owner_id: 7_u32,
             },
-            LedgerDraft {
-                entries: texts(&["a"]),
-                owner_id: 7_u32,
-            }
-            .validate(),
+            crate::judged_issues(
+                LedgerDraft {
+                    entries: texts(&["a"]),
+                    owner_id: 7_u32,
+                }
+                .validation_issues(),
+            ),
         ),
         case(
             "Archive<String>, no entry",
             &archived(Vec::new(), "o".to_owned()),
-            archived(Vec::new(), "o".to_owned()).validate(),
+            crate::judged_issues(archived(Vec::new(), "o".to_owned()).validation_issues()),
         ),
         case(
             "Archive<String>",
             &archived(texts(&["a"]), "o".to_owned()),
-            archived(texts(&["a"]), "o".to_owned()).validate(),
+            crate::judged_issues(archived(texts(&["a"]), "o".to_owned()).validation_issues()),
         ),
         case(
             "Archive<u32>, no entry",
             &archived(Vec::new(), 7_u32),
-            archived(Vec::new(), 7_u32).validate(),
+            crate::judged_issues(archived(Vec::new(), 7_u32).validation_issues()),
         ),
         case(
             "Archive<u32>",
             &archived(texts(&["a"]), 7_u32),
-            archived(texts(&["a"]), 7_u32).validate(),
+            crate::judged_issues(archived(texts(&["a"]), 7_u32).validation_issues()),
         ),
     ]
 }

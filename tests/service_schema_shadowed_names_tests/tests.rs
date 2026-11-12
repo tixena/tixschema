@@ -84,11 +84,13 @@ fn balance_of(customer_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>> {
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Result::Ok(ShadowAnswerDraft { invoices: 7 }))
+        Poll::Ready(Result::Ok(
+            ShadowAnswerDraft { invoices: 7 }.validate().unwrap()
+        ))
     );
     assert_eq!(
         balance_of(0),
-        Poll::Ready(Result::Err(ShadowFailureDraft::DbError))
+        Poll::Ready(Result::Err(ShadowFailureDraft::DbError.validate().unwrap()))
     );
 }
 

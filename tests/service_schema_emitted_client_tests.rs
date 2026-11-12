@@ -2439,3 +2439,9 @@ mod run_dart_mcp_notes;
 #[cfg(any(feature = "kotlin", feature = "swift"))]
 #[path = "service_schema_emitted_client_tests/mcp_note_declarations.rs"]
 mod mcp_note_declarations;
+
+/// What a draft's issues answer as a `validate()` that makes no value.
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+pub(crate) fn judged_issues(found: Vec<String>) -> Result<(), Vec<String>> {
+    if found.is_empty() { Ok(()) } else { Err(found) }
+}

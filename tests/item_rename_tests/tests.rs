@@ -94,19 +94,30 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
         item: ItemUnderRustNameDraft {
             count: 1,
             label: "one".to_owned(),
-        },
-        pair: PairUnderRustNameDraft("two".to_owned(), 2),
-        shape: ShapeUnderRustNameDraft::Named { side: 4 },
-        slot: SlotUnderRustNameDraft::Primary,
+        }
+        .validate()
+        .unwrap(),
+        pair: PairUnderRustNameDraft("two".to_owned(), 2)
+            .validate()
+            .unwrap(),
+        shape: ShapeUnderRustNameDraft::Named { side: 4 }
+            .validate()
+            .unwrap(),
+        slot: SlotUnderRustNameDraft::Primary.validate().unwrap(),
         tree: TreeUnderRustNameDraft {
             children: vec![],
             label: "five".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(value.item.count, 1);
     assert_eq!(value.pair.1, 2);
     assert_eq!(value.brand.as_inner(), "three");
-    assert_eq!(value.slot, SlotUnderRustNameDraft::Primary);
+    assert_eq!(
+        value.slot,
+        SlotUnderRustNameDraft::Primary.validate().unwrap()
+    );
     assert!(value.tree.children.is_empty());
 }
 
@@ -274,18 +285,24 @@ fn the_module_a_json_reference_resolves_to_is_the_one_named_for_the_rust_ident()
 #[test]
 fn renamed_items_declared_under_their_reference_expand_in_this_feature_combination() {
     let later = NamesRenamedItemsDeclaredLaterDraft {
-        gauge: LaterRenamedGaugeDraft { reading: 7 },
-        grades: vec![LaterRenamedGradeDraft::High],
+        gauge: LaterRenamedGaugeDraft { reading: 7 }.validate().unwrap(),
+        grades: vec![LaterRenamedGradeDraft::High.validate().unwrap()],
     };
     assert_eq!(later.gauge.reading, 7);
-    assert_eq!(later.grades, vec![LaterRenamedGradeDraft::High]);
+    assert_eq!(
+        later.grades,
+        vec![LaterRenamedGradeDraft::High.validate().unwrap()]
+    );
 
     let earlier = NamesRenamedItemsDeclaredEarlierDraft {
-        gauge: LaterRenamedGaugeDraft { reading: 8 },
-        grades: vec![LaterRenamedGradeDraft::Low],
+        gauge: LaterRenamedGaugeDraft { reading: 8 }.validate().unwrap(),
+        grades: vec![LaterRenamedGradeDraft::Low.validate().unwrap()],
     };
     assert_eq!(earlier.gauge.reading, 8);
-    assert_eq!(earlier.grades, vec![LaterRenamedGradeDraft::Low]);
+    assert_eq!(
+        earlier.grades,
+        vec![LaterRenamedGradeDraft::Low.validate().unwrap()]
+    );
 }
 
 #[cfg(feature = "serde")]

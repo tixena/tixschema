@@ -156,12 +156,14 @@ fn a_type_named_like_a_query_type_is_read_as_the_authors() {
 #[test]
 fn the_authors_type_and_the_added_one_of_its_name_are_two_types() {
     let paths = Search::MONGO_FIELDS;
-    let matching: search_schema::Filter<Search> = paths.filter().eq(search().filter).unwrap();
+    let matching: search_schema::Filter<Search> =
+        paths.filter().eq(search().filter.clone()).unwrap();
     assert_eq!(
         shown(matching),
         r#"{ "filter": { "$eq": { "name": "c" } } }"#
     );
-    let changed: search_schema::Update<Search> = paths.update().set(search().update).unwrap();
+    let changed: search_schema::Update<Search> =
+        paths.update().set(search().update.clone()).unwrap();
     assert_eq!(
         shown(changed),
         r#"{ "$set": { "update": { "name": "e" } } }"#

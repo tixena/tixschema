@@ -29,14 +29,14 @@ mod held_by_another {
         pub pouch_tag: Tag,
     }
 
-    fn upper_case(value: &TagDraft) -> Result<(), Vec<String>> {
+    fn upper_case(value: &Tag) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a tag is upper case".to_owned()]);
         }
         Ok(())
     }
 
-    fn sealed(value: &Pouch) -> Result<(), Vec<String>> {
+    fn sealed(value: &PouchDraft) -> Result<(), Vec<String>> {
         if value.open {
             return Err(vec!["a pouch is sealed".to_owned()]);
         }
@@ -65,10 +65,10 @@ mod held_by_another {
     #[test]
     fn a_holder_reports_the_checks_of_what_it_holds_under_the_key_it_holds_it_at() {
         let held = SatchelDraft {
-            first_pouch: PouchDraft { open: true }.validate().unwrap(),
+            first_pouch: Pouch::model_schema_wrap_unjudged(PouchDraft { open: true }),
             pouch_list: vec![
                 PouchDraft { open: false }.validate().unwrap(),
-                PouchDraft { open: true }.validate().unwrap(),
+                Pouch::model_schema_wrap_unjudged(PouchDraft { open: true }),
             ],
             pouch_tag: Tag::model_schema_read_unjudged(
                 serde_json::to_value("ab".to_owned()).unwrap(),
@@ -162,7 +162,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::models::{Ledger, LedgerDraft};
+use super::models::Ledger;
 
 /// A member under each wrapper a check is read through, and one that is a list.
 #[model_schema()]
@@ -290,11 +290,11 @@ fn known_weights(value: &HashMap<String, u32>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn first_of_the_type(value: &Ordered) -> Result<(), Vec<String>> {
+fn first_of_the_type(value: &OrderedDraft) -> Result<(), Vec<String>> {
     Err(vec![format!("first of the type, on {}", value.code)])
 }
 
-fn second_of_the_type(value: &Ordered) -> Result<(), Vec<String>> {
+fn second_of_the_type(value: &OrderedDraft) -> Result<(), Vec<String>> {
     Err(vec![format!("second of the type, on {}", value.code)])
 }
 
@@ -335,7 +335,7 @@ fn a_check_on_an_option_runs_only_where_it_holds_a_value() {
     let held = ConsignmentDraft {
         item_codes: Some(texts(&["a", "b", "c"])),
         spare_carrier: Some("unknown".to_owned()),
-        ..consignment()
+        ..consignment().into()
     };
     #[cfg(feature = "serde")]
     let named = [
@@ -356,7 +356,7 @@ fn a_check_takes_a_list_whole_and_the_value_under_a_wrapper() {
         boxed_carrier: Box::from("unknown"),
         listed_codes: texts(&["a", "b", "c"]),
         weight_by_code: HashMap::from([("a".to_owned(), 0)]),
-        ..consignment()
+        ..consignment().into()
     };
     #[cfg(feature = "serde")]
     let named = [
@@ -556,27 +556,18 @@ fn a_check_is_called_where_the_type_is_declared() {
     );
 }
 
-/// A holder of a map of models names a broken entry by its key: the text serde writes for it, or
-/// the key's `Display` text without `serde`, where a key with no `Display` names no entry.
+/// A holder of a map of models names a broken entry by its key: the text serde writes for it.
+#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_models_names_a_broken_entry_by_its_key() {
-    let empty = || LedgerDraft {
-        entries: Vec::new(),
-        owner_id: "o".to_owned(),
-    };
-    let held = DepotDraft {
-        ledgers: HashMap::from([("main".to_owned(), empty())]),
-        ledgers_by_bay: HashMap::from([(BayDraft::North, empty())]),
-    };
-    #[cfg(feature = "serde")]
-    let by_bay = "'ledgers_by_bay.North.entries': a ledger holds at least one entry";
-    #[cfg(not(feature = "serde"))]
-    let by_bay = "'ledgers_by_bay.entries': a ledger holds at least one entry";
+    let read = serde_json::from_value::<Depot>(serde_json::json!({
+        "ledgers": { "main": { "entries": [], "ownerId": "o" } },
+        "ledgers_by_bay": { "North": { "entries": [], "ownerId": "o" } },
+    }))
+    .unwrap_err();
     assert_eq!(
-        held.validation_issues(),
-        [
-            "'ledgers.main.entries': a ledger holds at least one entry",
-            by_bay
-        ]
+        read.to_string(),
+        "'ledgers.main.entries': a ledger holds at least one entry; \
+         'ledgers_by_bay.North.entries': a ledger holds at least one entry"
     );
 }

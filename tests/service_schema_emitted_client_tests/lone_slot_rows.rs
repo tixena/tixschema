@@ -7,7 +7,7 @@
 //! beside a tag. Each payload the serde read reads prints what it prints, and a value that breaks a
 //! rule is refused as the Rust `validate()` reports it, the one slot under no step.
 
-use core::fmt::Write as _;
+use core::fmt::{Debug, Write as _};
 use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
@@ -17,27 +17,24 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::lone_slots_models::{
-    AdjacentStow, Bale, BaleDraft, BalePair, BalePairDraft, Baled, BaledDraft, Bales, BalesByName,
-    BalesByNameDraft, BalesByNumber, BalesByNumberDraft, BalesDraft, Clipped, ClippedDraft, Count,
-    CountDraft, Girth, Girthed, GirthedDraft, LabelsByNumber, LabelsByNumberDraft, Laden,
-    LadenDraft, MaybeBale, MaybeBaleDraft, Moniker, MonikerDraft, Rigger, RiggerDraft, Sack,
-    SackDraft, Sacked, SackedDraft, Single, SingleDraft, Sling, SlingDraft, Slung, SlungDraft,
-    Stow, StowedByName, StowedByNameDraft, StowedByNumber, StowedByNumberDraft, StowedList,
-    StowedListDraft, StowedMaybe, StowedMaybeDraft, StowedPair, StowedPairDraft, Strop, StropDraft,
-    TaggedStow, TaggedStowDraft, Tote, ToteDraft, Twine, TwineDraft, Twined, Unskipped,
-    UnskippedDraft, UntaggedStow, UntaggedStowDraft,
+    AdjacentStowDraft, Bale, BaleDraft, BalePairDraft, Baled, BaledDraft, Bales, BalesByNameDraft,
+    BalesByNumberDraft, BalesDraft, Clipped, ClippedDraft, Count, CountDraft, Girth, GirthedDraft,
+    LabelsByNumberDraft, Laden, LadenDraft, MaybeBaleDraft, Moniker, MonikerDraft, RiggerDraft,
+    Sack, SackDraft, Sacked, SackedDraft, Single, SingleDraft, SlingDraft, SlungDraft, StowDraft,
+    StowedByNameDraft, StowedByNumberDraft, StowedListDraft, StowedMaybeDraft, StowedPairDraft,
+    StropDraft, TaggedStowDraft, Tote, ToteDraft, Twine, TwineDraft, Twined, UnskippedDraft,
+    UntaggedStowDraft,
 };
 #[cfg(feature = "chrono")]
-use super::lone_slots_models::{
-    StowedStamp, StowedStampDraft, Ticked, TickedDraft, TickedMillis, TickedMillisDraft,
-};
+use super::lone_slots_models::{StowedStampDraft, TickedDraft, TickedMillisDraft};
 
 /// The payload serde writes for the value `$held`, which breaks a rule, held to what the Rust
 /// `validate()` answers of it.
 macro_rules! refused {
     ($name:expr, $read_as:literal, $held:expr) => {{
         let held = $held;
-        refused_row($name, $read_as, &held, held.validate().map(|_valid| ()))
+        let answered = held.clone().validate();
+        refused_row($name, $read_as, &held, answered)
     }};
 }
 
@@ -50,57 +47,73 @@ macro_rules! stow_rows {
             read_row(
                 concat!("a number, ", $tagging),
                 $read_as,
-                &Held::Counted(CountDraft(5)),
+                &Held::Counted(CountDraft(5).validate().unwrap())
+                    .validate()
+                    .unwrap(),
             ),
             read_row(
                 concat!("a list of models, ", $tagging),
                 $read_as,
-                &Held::Listed(vec![BaledDraft(bale("l"))]),
+                &Held::Listed(vec![BaledDraft(bale("l")).validate().unwrap()])
+                    .validate()
+                    .unwrap(),
             ),
             read_row(
                 concat!("a text, ", $tagging),
                 $read_as,
-                &Held::Named(MonikerDraft("a".to_owned())),
+                &Held::Named(MonikerDraft("a".to_owned()).validate().unwrap())
+                    .validate()
+                    .unwrap(),
             ),
             read_row(
                 concat!("a model, ", $tagging),
                 $read_as,
-                &Held::Packed(BaledDraft(bale("l"))),
+                &Held::Packed(BaledDraft(bale("l")).validate().unwrap())
+                    .validate()
+                    .unwrap(),
             ),
             read_row(
                 concat!("a model with a parameter, ", $tagging),
                 $read_as,
-                &Held::Sacked(SackedDraft(sack("l"))),
+                &Held::Sacked(SackedDraft(sack("l")).validate().unwrap())
+                    .validate()
+                    .unwrap(),
             ),
             read_row(
                 concat!("a struct of one slot over a list, ", $tagging),
                 $read_as,
-                &Held::Stacked(BalesDraft(vec![bale("l")])),
+                &Held::Stacked(BalesDraft(vec![bale("l")]).validate().unwrap())
+                    .validate()
+                    .unwrap(),
             ),
             refused!(
                 concat!("a number below its bound, ", $tagging),
                 $read_as,
-                Held::Counted(CountDraft(0))
+                Held::Counted(Count::model_schema_wrap_unjudged(CountDraft(0)))
             ),
             refused!(
                 concat!("a list of models, unlabelled, ", $tagging),
                 $read_as,
-                Held::Listed(vec![BaledDraft(bale(""))])
+                Held::Listed(vec![Baled::model_schema_wrap_unjudged(BaledDraft(bale(
+                    ""
+                )))])
             ),
             refused!(
                 concat!("an empty text, ", $tagging),
                 $read_as,
-                Held::Named(MonikerDraft(String::new()))
+                Held::Named(Moniker::model_schema_wrap_unjudged(MonikerDraft(
+                    String::new()
+                )))
             ),
             refused!(
                 concat!("a model, unlabelled, ", $tagging),
                 $read_as,
-                Held::Packed(BaledDraft(bale("")))
+                Held::Packed(Baled::model_schema_wrap_unjudged(BaledDraft(bale(""))))
             ),
             refused!(
                 concat!("an empty list, ", $tagging),
                 $read_as,
-                Held::Stacked(BalesDraft(Vec::new()))
+                Held::Stacked(Bales::model_schema_wrap_unjudged(BalesDraft(Vec::new())))
             ),
         ]
     }};
@@ -140,14 +153,15 @@ where
 
 /// The payload serde writes for `held`, which breaks a rule, held to what the Rust `validate()`
 /// answers of it.
-fn refused_row<Held>(
+fn refused_row<Draft, Held>(
     name: &'static str,
     read_as: &'static str,
-    held: &Held,
-    answered: Result<(), Vec<String>>,
+    held: &Draft,
+    answered: Result<Held, Vec<String>>,
 ) -> Row
 where
-    Held: DeserializeOwned + Serialize,
+    Draft: Serialize,
+    Held: Debug + DeserializeOwned,
 {
     let payload = serde_json::to_string(held).unwrap();
     assert!(serde_json::from_str::<Held>(&payload).is_err(), "{payload}");
@@ -165,21 +179,17 @@ where
 
 /// A bale labelled `label`.
 fn bale(label: &str) -> Bale {
-    BaleDraft {
+    Bale::model_schema_wrap_unjudged(BaleDraft {
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A sack labelled `label`, holding `stowed`.
 fn sack_of<Stowed>(label: &str, stowed: Stowed) -> Sack<Stowed> {
-    SackDraft {
+    Sack::model_schema_wrap_unjudged(SackDraft {
         label: label.to_owned(),
         stowed,
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A sack labelled `label`, holding `7`.
@@ -352,46 +362,65 @@ fn generic_rows() -> Vec<Row> {
 
 /// [`Tote`] whose models are labelled `label` and whose count is `count`.
 fn tote(label: &str, count: u32) -> Tote {
-    ToteDraft {
-        baled: BaledDraft(bale(label)).validate().unwrap(),
+    Tote::model_schema_wrap_unjudged(ToteDraft {
+        baled: Baled::model_schema_wrap_unjudged(BaledDraft(bale(label))),
         counts: vec![
-            CountDraft(1).validate().unwrap(),
-            CountDraft(count).validate().unwrap(),
+            Count::model_schema_wrap_unjudged(CountDraft(1)),
+            Count::model_schema_wrap_unjudged(CountDraft(count)),
         ],
-        moniker: MonikerDraft(label.to_owned()).validate().unwrap(),
-        sacked: SackedDraft(sack(label)).validate().unwrap(),
-        single: SingleDraft(9).validate().unwrap(),
-    }
-    .validate()
-    .unwrap()
+        moniker: Moniker::model_schema_wrap_unjudged(MonikerDraft(label.to_owned())),
+        sacked: Sacked::model_schema_wrap_unjudged(SackedDraft(sack(label))),
+        single: Single::model_schema_wrap_unjudged(SingleDraft(9)),
+    })
 }
 
 /// [`Laden`] whose models and texts are labelled `label` and whose counts are `count`, but those it
 /// holds as a type argument and the brand, each of which judges itself as it is read.
 fn laden(label: &str, count: u32) -> Laden {
     let bales = || BalesDraft(vec![bale(label)]);
-    LadenDraft {
-        baled: BaledDraft(bale(label)).validate().unwrap(),
-        bales: bales().validate().unwrap(),
-        carried_bales: sack_of("c", BalesDraft(vec![bale("l")]).validate().unwrap()),
-        carried_count: sack_of("c", CountDraft(2).validate().unwrap()),
-        carried_model: sack_of("c", BaledDraft(bale("l")).validate().unwrap()),
-        carried_moniker: sack_of("c", MonikerDraft("l".to_owned()).validate().unwrap()),
-        count: CountDraft(count).validate().unwrap(),
-        counts_by_name: HashMap::from([("n".to_owned(), CountDraft(count))]),
-        models: vec![BaledDraft(bale(label)).validate().unwrap()],
-        models_by_name: HashMap::from([("n".to_owned(), BaledDraft(bale(label)))]),
-        monikers: vec![MonikerDraft(label.to_owned()).validate().unwrap()],
-        monikers_by_name: HashMap::from([("n".to_owned(), MonikerDraft(label.to_owned()))]),
-        stacks: vec![bales().validate().unwrap()],
-        stacks_by_name: HashMap::from([("n".to_owned(), bales())]),
-        twined: Twined::new(TwineDraft {
+    Laden::model_schema_wrap_unjudged(LadenDraft {
+        baled: Baled::model_schema_wrap_unjudged(BaledDraft(bale(label))),
+        bales: Bales::model_schema_wrap_unjudged(bales()),
+        carried_bales: sack_of(
+            "c",
+            Bales::model_schema_wrap_unjudged(BalesDraft(vec![bale("l")])),
+        ),
+        carried_count: sack_of("c", Count::model_schema_wrap_unjudged(CountDraft(2))),
+        carried_model: sack_of(
+            "c",
+            Baled::model_schema_wrap_unjudged(BaledDraft(bale("l"))),
+        ),
+        carried_moniker: sack_of(
+            "c",
+            Moniker::model_schema_wrap_unjudged(MonikerDraft("l".to_owned())),
+        ),
+        count: Count::model_schema_wrap_unjudged(CountDraft(count)),
+        counts_by_name: HashMap::from([(
+            "n".to_owned(),
+            Count::model_schema_wrap_unjudged(CountDraft(count)),
+        )]),
+        models: vec![Baled::model_schema_wrap_unjudged(BaledDraft(bale(label)))],
+        models_by_name: HashMap::from([(
+            "n".to_owned(),
+            Baled::model_schema_wrap_unjudged(BaledDraft(bale(label))),
+        )]),
+        monikers: vec![Moniker::model_schema_wrap_unjudged(MonikerDraft(
+            label.to_owned(),
+        ))],
+        monikers_by_name: HashMap::from([(
+            "n".to_owned(),
+            Moniker::model_schema_wrap_unjudged(MonikerDraft(label.to_owned())),
+        )]),
+        stacks: vec![Bales::model_schema_wrap_unjudged(bales())],
+        stacks_by_name: HashMap::from([(
+            "n".to_owned(),
+            Bales::model_schema_wrap_unjudged(bales()),
+        )]),
+        twined: Twined::new(Twine::model_schema_wrap_unjudged(TwineDraft {
             twine: "t".to_owned(),
-        })
+        }))
         .unwrap(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The payloads of a struct of one slot and a brand over an externally tagged enum with a unit
@@ -423,7 +452,7 @@ fn entry_rows() -> Vec<Row> {
             "Girthed",
             &GirthedDraft {
                 count: 1,
-                girth: Girth::new(SlingDraft::Slack).unwrap(),
+                girth: Girth::new(SlingDraft::Slack.validate().unwrap()).unwrap(),
             },
         ),
         read_row(
@@ -431,7 +460,7 @@ fn entry_rows() -> Vec<Row> {
             "Girthed",
             &GirthedDraft {
                 count: 1,
-                girth: Girth::new(SlingDraft::Taut { tension: 2 }).unwrap(),
+                girth: Girth::new(SlingDraft::Taut { tension: 2 }.validate().unwrap()).unwrap(),
             },
         ),
         read_row(
@@ -446,12 +475,14 @@ fn entry_rows() -> Vec<Row> {
         read_row(
             "a brand over a variant that holds members, beside a tag",
             "Rigger",
-            &RiggerDraft::Girth(Girth::new(SlingDraft::Taut { tension: 2 }).unwrap()),
+            &RiggerDraft::Girth(
+                Girth::new(SlingDraft::Taut { tension: 2 }.validate().unwrap()).unwrap(),
+            ),
         ),
         read_row(
             "a brand over a unit variant, beside a tag",
             "Rigger",
-            &RiggerDraft::Girth(Girth::new(SlingDraft::Slack).unwrap()),
+            &RiggerDraft::Girth(Girth::new(SlingDraft::Slack.validate().unwrap()).unwrap()),
         ),
     ]
 }
@@ -460,7 +491,11 @@ fn entry_rows() -> Vec<Row> {
 fn holder_rows() -> Vec<Row> {
     let mut rows = vec![
         read_row("in a field and in a list", "Tote", &tote("l", 2)),
-        refused!("in a field and in a list, each broken", "Tote", tote("", 0)),
+        refused!(
+            "in a field and in a list, each broken",
+            "Tote",
+            tote("", 0).into_draft()
+        ),
         read_row(
             "under a key, in a list, as a map's value, as a type argument and flattened",
             "Laden",
@@ -469,7 +504,7 @@ fn holder_rows() -> Vec<Row> {
         refused!(
             "under a key, in a list, as a map's value and flattened, each broken",
             "Laden",
-            laden("", 0)
+            laden("", 0).into_draft()
         ),
         // What fills a type parameter judges itself as it is read, and no `validate()` of its
         // holder walks it.
@@ -477,25 +512,28 @@ fn holder_rows() -> Vec<Row> {
             "a number below its bound, as a type argument",
             "Laden",
             &LadenDraft {
-                carried_count: sack_of("c", CountDraft(0).validate().unwrap()),
+                carried_count: sack_of("c", Count::model_schema_wrap_unjudged(CountDraft(0))),
                 ..laden("l", 2).into()
             },
-            CountDraft(0).validate().map(|_valid| ()),
+            Err::<Laden, _>(CountDraft(0).validation_issues()),
         ),
         refused_row(
             "a model, unlabelled, as a type argument",
             "Laden",
             &LadenDraft {
-                carried_model: sack_of("c", BaledDraft(bale("")).validate().unwrap()),
+                carried_model: sack_of(
+                    "c",
+                    Baled::model_schema_wrap_unjudged(BaledDraft(bale(""))),
+                ),
                 ..laden("l", 2).into()
             },
-            BaledDraft(bale("")).validate().map(|_valid| ()),
+            Err::<Laden, _>(BaledDraft(bale("")).validation_issues()),
         ),
     ];
     rows.extend(entry_rows());
-    rows.extend(stow_rows!(Stow, "Stow", "no tag attribute"));
+    rows.extend(stow_rows!(StowDraft, "Stow", "no tag attribute"));
     rows.extend(stow_rows!(
-        AdjacentStow,
+        AdjacentStowDraft,
         "AdjacentStow",
         "a tag and a content key"
     ));
@@ -523,12 +561,12 @@ fn holder_rows() -> Vec<Row> {
         refused!(
             "a number below its bound, untagged",
             "UntaggedStow",
-            UntaggedStowDraft::Counted(CountDraft(0).validate().unwrap())
+            UntaggedStowDraft::Counted(Count::model_schema_wrap_unjudged(CountDraft(0)))
         ),
         refused!(
             "a model, unlabelled, untagged",
             "UntaggedStow",
-            UntaggedStowDraft::Packed(BaledDraft(bale("")).validate().unwrap())
+            UntaggedStowDraft::Packed(Baled::model_schema_wrap_unjudged(BaledDraft(bale(""))))
         ),
         read_row(
             "a model, a tag alone",
@@ -543,7 +581,7 @@ fn holder_rows() -> Vec<Row> {
         refused!(
             "a model, unlabelled, a tag alone",
             "TaggedStow",
-            TaggedStowDraft::Packed(BaledDraft(bale("")).validate().unwrap())
+            TaggedStowDraft::Packed(Baled::model_schema_wrap_unjudged(BaledDraft(bale(""))))
         ),
     ]);
     rows

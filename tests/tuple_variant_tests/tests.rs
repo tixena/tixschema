@@ -1992,16 +1992,18 @@ fn test_adjacent_twin_keeps_its_content_key() {
 #[test]
 fn test_bare_tag_over_an_external_enum_writes_each_variant_as_its_entry() {
     let written = [
-        InternalOverExternal::Held(InternalTackDraft::Bay(
-            InternalFirstDraft { a: "x".to_owned() }.validate().unwrap(),
-        )),
-        InternalOverExternal::Held(InternalTackDraft::Calm),
+        InternalOverExternalDraft::Held(
+            InternalTackDraft::Bay(InternalFirstDraft { a: "x".to_owned() }.validate().unwrap())
+                .validate()
+                .unwrap(),
+        ),
+        InternalOverExternalDraft::Held(InternalTackDraft::Calm.validate().unwrap()),
     ];
     for (value, json) in written.into_iter().zip(EXTERNAL_BESIDE_THE_TAG) {
         assert_eq!(serde_json::to_string(&value).unwrap(), json);
         assert_eq!(
             serde_json::from_str::<InternalOverExternal>(json).unwrap(),
-            value,
+            value.validate().unwrap(),
             "serde no longer reads {json} back"
         );
     }
@@ -2075,14 +2077,14 @@ fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
 #[test]
 fn test_bare_tag_over_an_enum_written_with_an_argument_writes_each_variant_as_its_entry() {
     let written = [
-        InternalOverCarriedDraft::Held(InternalCarriedDraft::Carried(7)),
-        InternalOverCarriedDraft::Held(InternalCarriedDraft::Bare),
+        InternalOverCarriedDraft::Held(InternalCarriedDraft::Carried(7).validate().unwrap()),
+        InternalOverCarriedDraft::Held(InternalCarriedDraft::Bare.validate().unwrap()),
     ];
     for (value, json) in written.into_iter().zip(CARRIED_BESIDE_THE_TAG) {
         assert_eq!(serde_json::to_string(&value).unwrap(), json);
         assert_eq!(
             serde_json::from_str::<InternalOverCarried>(json).unwrap(),
-            value,
+            value.validate().unwrap(),
             "serde no longer reads {json} back"
         );
     }
@@ -2179,16 +2181,22 @@ fn test_bare_tag_over_a_struct_documents_byte_identically() {
 #[test]
 fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
-        serde_json::to_value(InternalOverUntagged::Wrapped(InternalEitherDraft::First(
-            InternalFirstDraft { a: "x".to_owned() }.validate().unwrap()
-        )))
+        serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
+            InternalEitherDraft::First(
+                InternalFirstDraft { a: "x".to_owned() }.validate().unwrap()
+            )
+            .validate()
+            .unwrap()
+        ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "a": "x" })
     );
     assert_eq!(
-        serde_json::to_value(InternalOverUntagged::Wrapped(InternalEitherDraft::Second(
-            InternalSecondDraft { b: true }.validate().unwrap()
-        )))
+        serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
+            InternalEitherDraft::Second(InternalSecondDraft { b: true }.validate().unwrap())
+                .validate()
+                .unwrap()
+        ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "b": true })
     );
@@ -2229,9 +2237,13 @@ fn test_bare_tag_over_a_later_optional_is_unserializable_for_some_and_none() {
         )),
         InternalLaterMaybeDraft(None),
     ] {
-        let refusal = serde_json::to_value(InternalOverLaterMaybe::Held(held))
-            .unwrap_err()
-            .to_string();
+        let refusal = serde_json::to_value(
+            InternalOverLaterMaybeDraft::Held(held.validate().unwrap())
+                .validate()
+                .unwrap(),
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             refusal,
             "cannot serialize tagged newtype variant InternalOverLaterMaybe::Held containing an \
@@ -2253,7 +2265,7 @@ fn test_bare_tag_over_a_later_optional_is_refused_by_the_merge() {
 fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
     let none = FlatOverLaterMaybeDraft {
         id: "i".to_owned(),
-        maybe: InternalLaterMaybeDraft(None),
+        maybe: InternalLaterMaybeDraft(None).validate().unwrap(),
     };
     assert_eq!(
         serde_json::to_value(&none).unwrap(),
@@ -2261,7 +2273,7 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
     );
     assert_eq!(
         serde_json::from_value::<FlatOverLaterMaybe>(serde_json::json!({ "id": "i" })).unwrap(),
-        none
+        none.validate().unwrap()
     );
     assert_eq!(
         FlatOverLaterMaybe::json_schema(),
@@ -2287,12 +2299,15 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
 
 #[test]
 fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
-    let written = serde_json::to_value(ExternalDroppedSlots::Lead("s".to_owned(), 7_u32)).unwrap();
+    let written =
+        serde_json::to_value(ExternalDroppedSlotsDraft::Lead("s".to_owned(), 7_u32)).unwrap();
     assert_eq!(written, serde_json::json!({ "Lead": [7_u32] }));
 
     assert_eq!(
         serde_json::from_value::<ExternalDroppedSlots>(written).unwrap(),
-        ExternalDroppedSlots::Lead(String::new(), 7_u32)
+        ExternalDroppedSlotsDraft::Lead(String::new(), 7_u32)
+            .validate()
+            .unwrap()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lead":["s",7]}"#).is_err(),
@@ -2303,11 +2318,11 @@ fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
 #[test]
 fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Trailing("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Trailing("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!({ "Trailing": ["s"] })
     );
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Middle(
+        serde_json::to_value(ExternalDroppedSlotsDraft::Middle(
             "a".to_owned(),
             Some("s".to_owned()),
             7_u32
@@ -2316,7 +2331,7 @@ fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
         serde_json::json!({ "Middle": ["a", 7_u32] })
     );
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Every("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Every("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!({ "Every": [] })
     );
 }
@@ -2324,12 +2339,14 @@ fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
 #[test]
 fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Lone("s".to_owned())).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Lone("s".to_owned())).unwrap(),
         serde_json::json!("Lone")
     );
     assert_eq!(
         serde_json::from_str::<ExternalDroppedSlots>(r#""Lone""#).unwrap(),
-        ExternalDroppedSlots::Lone(String::new())
+        ExternalDroppedSlotsDraft::Lone(String::new())
+            .validate()
+            .unwrap()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lone":"s"}"#).is_err(),
@@ -2341,11 +2358,11 @@ fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
 fn test_serde_writes_a_dropped_variant_slot_the_same_way_under_a_content_key() {
     for (held, written) in [
         (
-            AdjacentDroppedSlots::Lead("s".to_owned(), 7_u32),
+            AdjacentDroppedSlotsDraft::Lead("s".to_owned(), 7_u32),
             serde_json::json!({ "type": "Lead", "value": [7_u32] }),
         ),
         (
-            AdjacentDroppedSlots::Every("s".to_owned(), 1_u32),
+            AdjacentDroppedSlotsDraft::Every("s".to_owned(), 1_u32),
             serde_json::json!({ "type": "Every", "value": [] }),
         ),
     ] {
@@ -2399,6 +2416,8 @@ fn test_serde_writes_a_dropped_lone_slot_as_the_tag_alone_under_a_bare_tag() {
     assert_eq!(
         serde_json::from_value::<InternalDroppedSlot>(written).unwrap(),
         InternalDroppedSlotDraft::Lone(String::new())
+            .validate()
+            .unwrap()
     );
 }
 
@@ -2508,11 +2527,11 @@ fn test_a_dropped_variant_slot_shrinks_the_content_key_in_json_schema() {
 
 #[test]
 fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote() {
-    let written = serde_json::to_value(AdjacentDroppedSlots::Lone).unwrap();
+    let written = serde_json::to_value(AdjacentDroppedSlotsDraft::Lone).unwrap();
     assert_eq!(written, serde_json::json!({ "type": "Lone" }));
     assert_eq!(
         serde_json::from_value::<AdjacentDroppedSlots>(written).unwrap(),
-        AdjacentDroppedSlots::Lone
+        AdjacentDroppedSlotsDraft::Lone.validate().unwrap()
     );
 }
 

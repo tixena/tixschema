@@ -161,25 +161,21 @@ mod a_message_names_the_path_in_the_payload {
 
     /// A package that breaks one bound, so its report is one line.
     fn unlabelled() -> Package {
-        PackageDraft {
+        Package::model_schema_wrap_unjudged(PackageDraft {
             item_label: String::new(),
             ..sound().into()
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     fn broken() -> Package {
-        PackageDraft {
+        Package::model_schema_wrap_unjudged(PackageDraft {
             item_label: String::new(),
             listed_item_codes: Vec::new(),
             parcel_code: Code::model_schema_read_unjudged(
                 serde_json::to_value("a".to_owned()).unwrap(),
             )
             .unwrap(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     fn sound_manifest() -> Manifest {
@@ -198,18 +194,14 @@ mod a_message_names_the_path_in_the_payload {
     }
 
     fn broken_manifest() -> Manifest {
-        ManifestDraft {
+        Manifest::model_schema_wrap_unjudged(ManifestDraft {
             first_parcel: broken(),
             parcel_list: vec![broken(), broken()],
             spare_parcel: Some(broken()),
-            starting_base: BaseDraft {
+            starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
                 base_name: String::new(),
-            }
-            .validate()
-            .unwrap(),
-        }
-        .validate()
-        .unwrap()
+            }),
+        })
     }
 
     fn sound_hold() -> Hold {
@@ -359,11 +351,11 @@ mod a_message_names_the_path_in_the_payload {
             ]
         );
         assert_eq!(
-            Seal::Stamped(String::new()).validation_issues(),
+            SealDraft::Stamped(String::new()).validation_issues(),
             vec!["'Stamped': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            serde_json::to_string(&Seal::Stamped(String::new())).unwrap(),
+            serde_json::to_string(&SealDraft::Stamped(String::new())).unwrap(),
             r#"{"Stamped":""}"#
         );
         let signed = SealDraft::Signed {
@@ -378,11 +370,9 @@ mod a_message_names_the_path_in_the_payload {
     #[test]
     fn a_flattened_member_and_an_option_add_no_segment() {
         let unnamed = ManifestDraft {
-            starting_base: BaseDraft {
+            starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
                 base_name: String::new(),
-            }
-            .validate()
-            .unwrap(),
+            }),
             ..sound_manifest().into()
         };
         assert_eq!(
@@ -451,15 +441,13 @@ mod a_message_names_the_path_in_the_payload {
             "'firstParcel.parcelCode': too short: minimum length is 2, got 1"
         );
         let held = ManifestDraft {
-            first_parcel: PackageDraft {
+            first_parcel: Package::model_schema_wrap_unjudged(PackageDraft {
                 parcel_code: Code::model_schema_read_unjudged(
                     serde_json::to_value("a".to_owned()).unwrap(),
                 )
                 .unwrap(),
                 ..sound().into()
-            }
-            .validate()
-            .unwrap(),
+            }),
             ..sound_manifest().into()
         };
         assert_eq!(
@@ -495,7 +483,7 @@ mod a_message_names_the_path_in_the_payload {
             },
         ]
         .iter()
-        .flat_map(|hold| hold.validation_issues())
+        .flat_map(HoldDraft::validation_issues)
         .collect();
         assert_eq!(
             reported,
@@ -516,17 +504,17 @@ mod a_message_names_the_path_in_the_payload {
             load_label: String::new(),
             load_parcels: Vec::new(),
         };
-        let stamped = Seal::Stamped(String::new());
+        let stamped = SealDraft::Stamped(String::new());
         for (written, answered, shown) in [
             (
                 serde_json::to_string(&stamped).unwrap(),
-                stamped.validate(),
+                crate::judged(stamped.validation_issues()),
                 "`'Stamped': too short: minimum length is 1, got 0` for the payload \
                  `{\"Stamped\":\"\"}`",
             ),
             (
                 serde_json::to_string(&labelled).unwrap(),
-                labelled.validate(),
+                crate::judged(labelled.validation_issues()),
                 "| `{\"loadLabel\":\"\",\"loadParcels\":[]}` | `'loadLabel'` | `'itemLabel'` |",
             ),
         ] {

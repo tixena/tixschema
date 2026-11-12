@@ -9,11 +9,11 @@ use core::fmt::Write as _;
 use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_kotlin, roster_kotlin, squad_kotlin};
 use super::runtime::ran_kotlin;
 use super::serde_default_models::{
-    Bollard, CASES, Harbour, Jetty, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
-    REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_kotlin, basin_kotlin,
-    berthing_kotlin, bollard_kotlin, config_kotlin, external_berthing_kotlin, filled_cases,
-    filled_expected, filled_report, fleet_kotlin, gangway_kotlin, harbour_kotlin, jetty_kotlin,
-    link_kotlin, logbook_kotlin, manifest_kotlin, marina_kotlin, pontoon_kotlin,
+    Bollard, CASES, Harbour, Jetty, JettyDraft, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT,
+    REQUIRED, REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_kotlin,
+    basin_kotlin, berthing_kotlin, bollard_kotlin, config_kotlin, external_berthing_kotlin,
+    filled_cases, filled_expected, filled_report, fleet_kotlin, gangway_kotlin, harbour_kotlin,
+    jetty_kotlin, link_kotlin, logbook_kotlin, manifest_kotlin, marina_kotlin, pontoon_kotlin,
     preprocessed_values, quay_kotlin, read_values, untagged_berthing_kotlin, unwritten_defaults,
     wharf_kotlin,
 };
@@ -140,7 +140,7 @@ fn the_default_json_leaves_out_a_member_whose_value_is_its_default() {
     let held = serde_json::to_value(serde_json::from_str::<Jetty>(r#"{"dock":"west"}"#).unwrap());
     assert_eq!(
         serde_json::from_str::<Jetty>("{}").unwrap(),
-        Jetty::default(),
+        JettyDraft::default().validate().unwrap(),
         "serde reads the key left out as the default"
     );
     assert_eq!(

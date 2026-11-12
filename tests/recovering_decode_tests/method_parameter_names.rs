@@ -177,7 +177,7 @@ fn a_type_called_as_the_entry_points_own_parameter_is_called_reads_alone_and_in_
 #[test]
 fn the_authors_type_is_walked_under_a_map_a_list_an_option_and_a_tuple() {
     let collected = CollectedDraft {
-        keyed: HashMap::from([("a".to_owned(), IDraft { number: 1 })]),
+        keyed: HashMap::from([("a".to_owned(), IDraft { number: 1 }.validate().unwrap())]),
         listed: vec![IDraft { number: 2 }.validate().unwrap()],
         maybe: Some(IDraft { number: 3 }.validate().unwrap()),
         paired: (IDraft { number: 4 }.validate().unwrap(), 5_i32),

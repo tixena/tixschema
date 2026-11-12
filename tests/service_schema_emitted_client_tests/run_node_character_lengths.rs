@@ -75,12 +75,12 @@ fn a_length_counts_the_characters_rust_counts_under_zod() {
             (
                 "Initial",
                 serde_json::to_string(&initial).unwrap(),
-                initial.validate(),
+                initial.validate().map(|_| ()),
             ),
             (
                 "Pair",
                 serde_json::to_string(&pair).unwrap(),
-                pair.validate(),
+                pair.validate().map(|_| ()),
             ),
         ] {
             let row = format!("{label}, {name}");

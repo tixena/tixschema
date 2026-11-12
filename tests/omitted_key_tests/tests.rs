@@ -53,6 +53,8 @@ fn with_roles() -> PredicateOmittedKey {
         id: "1".to_owned(),
         roles: vec!["admin".to_owned()],
     }
+    .validate()
+    .unwrap()
 }
 
 fn without_roles() -> PredicateOmittedKey {
@@ -60,6 +62,8 @@ fn without_roles() -> PredicateOmittedKey {
         id: "1".to_owned(),
         roles: vec![],
     }
+    .validate()
+    .unwrap()
 }
 
 /// The two payloads every surface below is measured against.

@@ -392,7 +392,7 @@ pub enum Berth {
     Tagged(String),
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -413,7 +413,7 @@ fn with_entries<IdType>(value: &CasketDraft<IdType>) -> Result<(), Vec<String>> 
 }
 
 fn with_a_lift(value: &LiftDraft) -> Result<(), Vec<String>> {
-    if matches!(value, Lift::Unladen) {
+    if matches!(value, LiftDraft::Unladen) {
         return Err(vec!["a lift carries something".to_owned()]);
     }
     Ok(())

@@ -5,10 +5,9 @@
 use super::ShelfWireServiceSchema;
 use super::mcp_streams::through;
 use super::mcp_wire_service::{
-    ShelfCount, ShelfCountDraft, ShelfWireRequest, ShelfWireRequestDraft, Stand, blocks, messages,
-    page, task,
+    ShelfCountDraft, ShelfWireRequestDraft, Stand, blocks, messages, page, task,
 };
-use super::mcp_wire_service::{ShelfWireError, ShelfWireErrorDraft, shelf_wire_service_schema};
+use super::mcp_wire_service::{ShelfWireErrorDraft, shelf_wire_service_schema};
 use super::{
     mcp_wire_amqp_client, mcp_wire_amqp_transport, mcp_wire_http_rest_client,
     mcp_wire_http_rest_transport, mcp_wire_mcp_transport, mcp_wire_ws_rpc_client,
@@ -288,7 +287,7 @@ fn the_http_rest_client_reads_the_blocks_and_the_messages_the_dispatcher_writes(
     assert_eq!(
         missing,
         Err(shelf_wire_service_schema::CallError::Operation(
-            ShelfWireErrorDraft::NotFound
+            ShelfWireErrorDraft::NotFound.validate().unwrap()
         ))
     );
 }
@@ -609,7 +608,7 @@ fn a_task_operation_starts_and_reports_on_every_transport() {
     let counted = || {
         Ok(shelf_wire_service_schema::McpTaskState::Completed {
             task: task(),
-            result: ShelfCountDraft { books: 11 },
+            result: ShelfCountDraft { books: 11 }.validate().unwrap(),
         })
     };
     let request = || ShelfWireRequestDraft {
@@ -643,8 +642,5 @@ fn a_task_operation_starts_and_reports_on_every_transport() {
     let count_frame = sent.lock().unwrap().remove(0);
     let count_reply = once(mcp_wire_ws_rpc_transport::answer(&count_frame, &Stand, &())).unwrap();
     once(session.deliver(&count_reply));
-    assert_eq!(
-        counting.as_mut().poll(context),
-        Poll::Ready(counted()).validate().unwrap()
-    );
+    assert_eq!(counting.as_mut().poll(context), Poll::Ready(counted()));
 }

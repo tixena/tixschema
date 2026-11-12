@@ -119,7 +119,10 @@ fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     let tally = TallyDraft {
         counts: HashMap::from([("a".to_owned(), 1_i32)]),
-        marks: Marks::from([("k".to_owned(), vec![declared::MarkDraft { weight: 2_i32 }])]),
+        marks: Marks::from([(
+            "k".to_owned(),
+            vec![declared::MarkDraft { weight: 2_i32 }.validate().unwrap()],
+        )]),
     };
     let written = serde_json::to_value(&tally).unwrap();
     assert_eq!(
@@ -265,7 +268,7 @@ fn a_type_of_another_crate_is_read_whole() {
     let whole = json!({ "timeout": { "nanos": 0_i32, "secs": 5_i32 } });
     assert_eq!(
         read_counting!(Timed, timed_schema, whole, calls),
-        Ok(Timed {
+        Ok(TimedDraft {
             timeout: Duration::from_secs(5),
         })
     );

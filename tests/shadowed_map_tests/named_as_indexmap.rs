@@ -32,15 +32,15 @@ fn a_field_written_with_either_name_is_read_as_the_type_declared_here() {
     let read: Indexed = serde_json::from_value(stored.clone()).unwrap();
     assert_eq!(
         read,
-        Indexed {
-            held: IndexMap {
+        Indexed::model_schema_wrap_unjudged(IndexedDraft {
+            held: IndexMap::model_schema_wrap_unjudged(IndexMapDraft {
                 key: "k".to_owned(),
                 value: 7_u32,
-            },
-            listed: IndexSet {
+            }),
+            listed: IndexSet::model_schema_wrap_unjudged(IndexSetDraft {
                 only: "o".to_owned(),
-            },
-        }
+            }),
+        })
     );
     let mut calls = 0_u32;
     let walked = Indexed::from_value_with(stored, |_raw, _found| {

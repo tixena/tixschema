@@ -640,7 +640,7 @@ fn an_enums_check_leaves_a_literal_field_alone_in_validate_and_the_read() {
     assert_eq!(
         serde_json::from_str::<LabelledLiteral>(r#"{"kind":"Fixed","word":"x","note":"ab"}"#)
             .map_err(|error| error.to_string()),
-        Ok(fixed)
+        Ok(fixed.validate().unwrap())
     );
     let short = LabelledLiteralDraft::Fixed {
         word: "x".to_owned(),

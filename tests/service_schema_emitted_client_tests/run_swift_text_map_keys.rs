@@ -18,15 +18,13 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentBulletinDraft, AdjacentTidings, AdjacentTidingsDraft, Almanac,
-    AlmanacDraft, Bulletin, BulletinDraft, Datebook, Ephemeris, EphemerisDraft, Gazetteer,
-    GazetteerDraft, Hourbook, Logsheet, Moorage, MoorageDraft, TaggedBulletin, TaggedBulletinDraft,
-    TaggedTidings, TaggedTidingsDraft, Tidings, TidingsDraft, UntaggedBulletin,
-    UntaggedBulletinDraft, UntaggedTidings, UntaggedTidingsDraft, adjacent_bulletin_swift,
-    adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift, day, ephemeris_swift,
-    gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment, moorage_swift,
-    tagged_bulletin_swift, tagged_tidings_swift, tidings_swift, untagged_bulletin_swift,
-    untagged_tidings_swift,
+    AdjacentBulletinDraft, AdjacentTidingsDraft, Almanac, AlmanacDraft, BulletinDraft, Datebook,
+    EphemerisDraft, GazetteerDraft, Hourbook, Logsheet, Moorage, MoorageDraft, TaggedBulletinDraft,
+    TaggedTidingsDraft, TidingsDraft, UntaggedBulletinDraft, UntaggedTidingsDraft,
+    adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
+    day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
+    moorage_swift, tagged_bulletin_swift, tagged_tidings_swift, tidings_swift,
+    untagged_bulletin_swift, untagged_tidings_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -131,10 +129,12 @@ where
 /// [`Almanac`] with each map of two entries, and the model under the later date labelled `label`.
 fn almanac(label: &str) -> Almanac {
     let (days, hours, moments) = dated(&"d".to_owned());
-    let labelled = |text: &str| MoorageDraft {
-        label: text.to_owned(),
+    let labelled = |text: &str| {
+        Moorage::model_schema_wrap_unjudged(MoorageDraft {
+            label: text.to_owned(),
+        })
     };
-    AlmanacDraft {
+    Almanac::model_schema_wrap_unjudged(AlmanacDraft {
         berths: HashMap::from([
             (day(), labelled("m")),
             (day() + TimeDelta::days(1), labelled(label)),
@@ -142,9 +142,7 @@ fn almanac(label: &str) -> Almanac {
         days,
         hours,
         moments,
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The payloads of a struct and of a brand, in a type that declares a parameter and in one that
@@ -158,7 +156,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
             "a struct whose model breaks its rule",
             "Almanac",
             &broken,
-            broken.validate().map(|_valid| ()),
+            crate::judged_issues(broken.validation_issues()),
         ),
         read_row(
             "a struct that declares a parameter",

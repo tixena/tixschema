@@ -28,14 +28,13 @@ use super::swift_flattened_models::{
     BALING, BOWSING, BOXING, Baling, Bowsing, Boxing, CLEWING, COUNTS, Clewing, FAKING, FRAPPING,
     Faking, Frapping, GRAFTING_SLOT, GRIPPING, Grafting, Gripping, GrippingDraft, HANKING, Hanking,
     Kedging, Marling, Mousing, Notch, NotchDraft, PARCELING, POINTING_HELD, POINTING_MARKED,
-    POINTING_NOTCHED, POINTING_NOTED, POINTING_SLOT, Parceling, Pennant, PennantDraft, Pointing,
-    SEAMING, SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling,
-    Twinning, WORMING, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift,
-    counting_swift, faking_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift,
-    hanking_swift, kedging_swift, kinded_swift, marling_swift, mousing_swift, notch_swift,
-    parceling_swift, pennant_swift, pointing_swift, quarter_swift, reeving_swift, seaming_swift,
-    snaking_swift, splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift,
-    worming_swift,
+    POINTING_NOTCHED, POINTING_NOTED, POINTING_SLOT, Parceling, PennantDraft, Pointing, SEAMING,
+    SNAKING, STOPPING, Seaming, Snaking, Splaying, Stopping, Stropping, TEXTS, Toggling, Twinning,
+    WORMING, Worming, baling_swift, bowsing_swift, boxing_swift, clewing_swift, counting_swift,
+    faking_swift, footing_swift, frapping_swift, grafting_swift, gripping_swift, hanking_swift,
+    kedging_swift, kinded_swift, marling_swift, mousing_swift, notch_swift, parceling_swift,
+    pennant_swift, pointing_swift, quarter_swift, reeving_swift, seaming_swift, snaking_swift,
+    splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift, worming_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
@@ -370,11 +369,9 @@ fn after_a_struct() -> String {
         }
         .validate()
         .unwrap(),
-        notch: NotchDraft {
+        notch: Notch::model_schema_wrap_unjudged(NotchDraft {
             mark: String::new(),
-        }
-        .validate()
-        .unwrap(),
+        }),
         note: "a".to_owned(),
     };
     assert_eq!(written(&broken_gripping), BROKEN_GRIPPING);

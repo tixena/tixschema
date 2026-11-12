@@ -2127,10 +2127,10 @@ pub struct DeclaredExampledLabel(String);
 
 /// A generic struct that writes two.
 /// ```rust example
-/// DeclaredExampledPair { id: "x".to_owned() }
+/// DeclaredExampledPairDraft { id: "x".to_owned() }
 /// ```
 /// ```rust example
-/// DeclaredExampledPair { id: "y".to_owned() }
+/// DeclaredExampledPairDraft { id: "y".to_owned() }
 /// ```
 #[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2627,7 +2627,7 @@ const fn as_given(payload: serde_json::Value) -> serde_json::Value {
 }
 
 /// Refuses [`DeclaredLull::Calm`], which [`DeclaredLull`] names on itself.
-fn not_calm_lull(value: &DeclaredLull) -> Result<(), Vec<String>> {
+fn not_calm_lull(value: &DeclaredLullDraft) -> Result<(), Vec<String>> {
     if matches!(value, DeclaredLullDraft::Calm) {
         Err(vec!["a calm lull is refused".to_owned()])
     } else {
@@ -4028,7 +4028,9 @@ fn type_check_every_schema_holds_its_examples_once_loaded() {
     let unwritten: DeclaredUnwrittenCount = 3;
     assert_eq!(unwritten, 3);
     let generic: DeclaredExampledPairAlias<String> =
-        DeclaredExampledPairDraft { id: "x".to_owned() };
+        DeclaredExampledPairDraft { id: "x".to_owned() }
+            .validate()
+            .unwrap();
     assert_eq!(generic.id, "x");
 
     let Some((printed, failed)) = loaded("examples", EXAMPLES_DRIVER) else {
@@ -4119,8 +4121,7 @@ fn deferred_bundle() -> String {
 #[test]
 fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
     use named_counts::{
-        Billboard, BillboardDraft, Carried, LaterSlogans, Mottos, Poster, PosterDraft, Slogans,
-        SomeSlogans,
+        BillboardDraft, Carried, LaterSlogans, Mottos, PosterDraft, Slogans, SomeSlogans,
     };
 
     let words = |count: usize| vec!["w".to_owned(); count];
@@ -4130,28 +4131,31 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
         later: LaterSlogans::new(words(later)).unwrap(),
     };
     let broken: Vec<Vec<String>> = vec![
-        poster(1, words(1), 1).validate(),
-        poster(0, words(1), 1).validate(),
-        poster(3, words(1), 1).validate(),
-        poster(1, Vec::new(), 1).validate(),
-        poster(1, words(1), 0).validate(),
+        poster(1, words(1), 1).validate().map(|_| ()),
+        poster(0, words(1), 1).validate().map(|_| ()),
+        poster(3, words(1), 1).validate().map(|_| ()),
+        poster(1, Vec::new(), 1).validate().map(|_| ()),
+        poster(1, words(1), 0).validate().map(|_| ()),
         SomeSlogans::new(Slogans::new(Vec::new()).unwrap()).map(|_| ()),
         SomeSlogans::new(Slogans::new(words(1)).unwrap()).map(|_| ()),
         BillboardDraft {
             some: SomeSlogans::new(Slogans::new(words(3)).unwrap()).unwrap(),
         }
-        .validate(),
+        .validate()
+        .map(|_| ()),
         BillboardDraft {
             some: SomeSlogans::model_schema_read_unjudged(
                 serde_json::to_value(Slogans::new(Vec::new()).unwrap()).unwrap(),
             )
             .unwrap(),
         }
-        .validate(),
+        .validate()
+        .map(|_| ()),
         BillboardDraft {
             some: SomeSlogans::new(Slogans::new(words(1)).unwrap()).unwrap(),
         }
-        .validate(),
+        .validate()
+        .map(|_| ()),
         Carried::new(Vec::<String>::new()).map(|_| ()),
         Carried::new(words(1)).map(|_| ()),
     ]
@@ -4209,7 +4213,7 @@ fn index_set_counts_bundle() -> String {
 #[test]
 fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
     use indexmap::IndexSet;
-    use named_counts::{Lineup, LineupDraft, SomeOrdered};
+    use named_counts::{LineupDraft, SomeOrdered};
 
     let items = |count: usize| -> IndexSet<String> {
         (0..count).map(|number| number.to_string()).collect()
@@ -4219,9 +4223,9 @@ fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
         some: SomeOrdered::new(items(some)).unwrap(),
     };
     let broken: Vec<Vec<String>> = vec![
-        lineup(1, 1).validate(),
-        lineup(0, 1).validate(),
-        lineup(3, 1).validate(),
+        lineup(1, 1).validate().map(|_| ()),
+        lineup(0, 1).validate().map(|_| ()),
+        lineup(3, 1).validate().map(|_| ()),
         SomeOrdered::new(items(0)).map(|_| ()),
         SomeOrdered::new(items(1)).map(|_| ()),
     ]
@@ -4300,90 +4304,56 @@ fn type_check_an_alias_of_a_map_of_models_loads_and_reads_its_values() {
 #[test]
 fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer() {
     use deferred::{
-        Adjacent, Hasp, HaspDraft, Latch, LatchDraft, Locker, LockerDraft, Maybe, Open, OpenDraft,
-        Pair, Rows, Safe, SafeDraft, Tagged, TaggedDraft, Vault, VaultDraft,
+        AdjacentDraft, HaspDraft, LatchDraft, LockerDraft, Maybe, Open, OpenDraft, Pair, Rows,
+        SafeDraft, TaggedDraft, Vault, VaultDraft,
     };
 
-    let vault = |records: &[&str]| VaultDraft {
-        owner: "o".to_owned(),
-        records: records.iter().map(|&text| text.to_owned()).collect(),
+    let vault = |records: &[&str]| {
+        Vault::model_schema_wrap_unjudged(VaultDraft {
+            owner: "o".to_owned(),
+            records: records.iter().map(|&text| text.to_owned()).collect(),
+        })
     };
-    let answered = |checked: Result<(), Vec<String>>| checked.err().unwrap_or_default();
     assert_eq!(
         [
-            answered(
-                SafeDraft::Named {
-                    vault: vault(&["a"]).validate().unwrap()
-                }
-                .validate()
-            ),
-            answered(
-                SafeDraft::Named {
-                    vault: vault(&[]).validate().unwrap()
-                }
-                .validate()
-            ),
-            answered(SafeDraft::Single(vault(&["a"]).validate().unwrap()).validate()),
-            answered(SafeDraft::Single(vault(&[]).validate().unwrap()).validate()),
-            answered(
-                OpenDraft::Named {
-                    vault: vault(&["a"]).validate().unwrap()
-                }
-                .validate()
-            ),
-            answered(
-                OpenDraft::Named {
-                    vault: vault(&[]).validate().unwrap()
-                }
-                .validate()
-            ),
-            answered(OpenDraft::Single(vault(&["a"]).validate().unwrap()).validate()),
-            answered(OpenDraft::Single(vault(&[]).validate().unwrap()).validate()),
-            answered(
-                HaspDraft {
-                    open: OpenDraft::Named {
-                        vault: vault(&[]).validate().unwrap()
-                    }
-                    .validate()
-                    .unwrap(),
-                    label: "l".to_owned()
-                }
-                .validate()
-            ),
-            answered(
-                HaspDraft {
-                    open: OpenDraft::Single(vault(&[]).validate().unwrap())
-                        .validate()
-                        .unwrap(),
-                    label: "l".to_owned()
-                }
-                .validate()
-            ),
-            answered(
-                LatchDraft {
-                    open: OpenDraft::Single(
-                        VaultDraft {
-                            owner: 7,
-                            records: Vec::new()
-                        }
-                        .validate()
-                        .unwrap()
-                    )
-                    .validate()
-                    .unwrap(),
-                    label: "l".to_owned()
-                }
-                .validate()
-            ),
-            answered(
-                TaggedDraft::Named {
-                    vault: vault(&[]).validate().unwrap()
-                }
-                .validate()
-            ),
-            answered(Adjacent::Single(vault(&[])).validate()),
-            answered(LockerDraft(vault(&["a"]).validate().unwrap(), "x".to_owned()).validate()),
-            answered(LockerDraft(vault(&[]).validate().unwrap(), "x".to_owned()).validate()),
+            SafeDraft::Named {
+                vault: vault(&["a"])
+            }
+            .validation_issues(),
+            SafeDraft::Named { vault: vault(&[]) }.validation_issues(),
+            SafeDraft::Single(vault(&["a"])).validation_issues(),
+            SafeDraft::Single(vault(&[])).validation_issues(),
+            OpenDraft::Named {
+                vault: vault(&["a"])
+            }
+            .validation_issues(),
+            OpenDraft::Named { vault: vault(&[]) }.validation_issues(),
+            OpenDraft::Single(vault(&["a"])).validation_issues(),
+            OpenDraft::Single(vault(&[])).validation_issues(),
+            HaspDraft {
+                open: Open::model_schema_wrap_unjudged(OpenDraft::Named { vault: vault(&[]) }),
+                label: "l".to_owned()
+            }
+            .validation_issues(),
+            HaspDraft {
+                open: Open::model_schema_wrap_unjudged(OpenDraft::Single(vault(&[]))),
+                label: "l".to_owned()
+            }
+            .validation_issues(),
+            LatchDraft {
+                open: Open::model_schema_wrap_unjudged(OpenDraft::Single(
+                    Vault::model_schema_wrap_unjudged(VaultDraft {
+                        owner: 7,
+                        records: Vec::new()
+                    })
+                )),
+                label: "l".to_owned()
+            }
+            .validation_issues(),
+            TaggedDraft::Named { vault: vault(&[]) }.validation_issues(),
+            AdjacentDraft::Single(vault(&[])).validation_issues(),
+            LockerDraft(vault(&["a"]), "x".to_owned()).validation_issues(),
+            LockerDraft(vault(&[]), "x".to_owned()).validation_issues(),
         ],
         [
             Vec::<String>::new(),
@@ -4715,7 +4685,7 @@ fn a_map_of_the_type_itself_is_read_through_the_self_view() {
     );
 }
 
-fn with_its_code<CodeType>(value: &CodedCrate<CodeType>) -> Result<(), Vec<String>> {
+fn with_its_code<CodeType>(value: &CodedCrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }

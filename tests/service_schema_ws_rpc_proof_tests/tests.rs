@@ -468,7 +468,9 @@ fn a_declared_error_round_trips_through_the_wire() {
     let answered = drive(&harness, call.as_mut());
     assert_eq!(
         answered,
-        Err(CallError::Operation(WatchErrorDraft::NotFound))
+        Err(CallError::Operation(
+            WatchErrorDraft::NotFound.validate().unwrap()
+        ))
     );
 }
 
@@ -486,11 +488,11 @@ fn header_in_and_header_out_round_trip_through_the_wire() {
         Ok((
             RangeResultDraft {
                 content: "range-of-doc-1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             Some("etag-1".to_owned()),
-        ))
-        .validate()
-        .unwrap(),
+        )),
     );
     assert_eq!(
         harness.back_end.reached(),
@@ -533,7 +535,9 @@ fn a_none_header_out_value_omits_the_key_from_the_reply_frame_s_own_headers_obje
         Ok((
             RangeResultDraft {
                 content: "range-of-quiet".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             None,
         )),
     );
@@ -569,7 +573,9 @@ fn error_header_out_round_trips_through_the_wire() {
     assert_eq!(
         answered,
         Err(CallError::Operation((
-            CheckRangeErrorDraft::RangeNotSatisfiable,
+            CheckRangeErrorDraft::RangeNotSatisfiable
+                .validate()
+                .unwrap(),
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head and its `error_header_out` element round trip over the \
@@ -588,7 +594,10 @@ fn a_declared_error_with_no_error_header_out_value_carries_none() {
     let answered = drive(&harness, call.as_mut());
     assert_eq!(
         answered,
-        Err(CallError::Operation((CheckRangeErrorDraft::NotFound, None))),
+        Err(CallError::Operation((
+            CheckRangeErrorDraft::NotFound.validate().unwrap(),
+            None
+        ))),
     );
 }
 
@@ -715,13 +724,14 @@ fn a_push_from_the_servers_events_client_reaches_screen() {
     let harness = Harness::new();
     let pushed = poll_by_hand(
         pin!(
-            harness
-                .session
-                .events
-                .document_changed(DocumentChangedRequestDraft {
+            harness.session.events.document_changed(
+                DocumentChangedRequestDraft {
                     document_id: "doc-1".to_owned(),
                     version: 4,
-                })
+                }
+                .validate()
+                .unwrap()
+            )
         )
         .as_mut(),
     );
@@ -729,10 +739,14 @@ fn a_push_from_the_servers_events_client_reaches_screen() {
     pump_once(&harness);
     assert_eq!(
         harness.screen.received(),
-        vec![DocumentChangedRequestDraft {
-            document_id: "doc-1".to_owned(),
-            version: 4,
-        }],
+        vec![
+            DocumentChangedRequestDraft {
+                document_id: "doc-1".to_owned(),
+                version: 4,
+            }
+            .validate()
+            .unwrap()
+        ],
     );
 }
 

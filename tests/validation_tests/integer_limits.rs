@@ -6,12 +6,12 @@
 
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 mod the_top_of_a_u64 {
-    use super::{ScaleTop, written};
+    use super::{ScaleTop, ScaleTopDraft, written};
 
     #[test]
     fn the_limit_at_the_top_builds_and_keeps_its_digits() {
         assert_eq!(
-            ScaleTop { top: u64::MAX }.validation_issues(),
+            ScaleTopDraft { top: u64::MAX }.validation_issues(),
             Vec::<String>::new()
         );
         assert_eq!(
@@ -199,22 +199,20 @@ pub struct ScaleTop {
     pub top: u64,
 }
 
-const fn reading(size: i64) -> ScaleReading {
-    ScaleReadingDraft { size, weight: 2.0 }.validate().unwrap()
+fn reading(size: i64) -> ScaleReadingDraft {
+    ScaleReadingDraft { size, weight: 2.0 }
 }
 
-const fn mixed(count: i64, weight: f64) -> ScaleMixed {
+fn mixed(count: i64, weight: f64) -> ScaleMixedDraft {
     ScaleMixedDraft {
         count,
         weight,
         whole_float: 1.0,
     }
-    .validate()
-    .unwrap()
 }
 
 /// A [`ScaleWide`] with `held`, `spelled` and `whole` at `value`, and `vast` at 2e9.
-const fn wide(value: f64, sunk: f64, single: f32) -> ScaleWide {
+fn wide(value: f64, sunk: f64, single: f32) -> ScaleWideDraft {
     ScaleWideDraft {
         held: Some(value),
         single,
@@ -223,8 +221,6 @@ const fn wide(value: f64, sunk: f64, single: f32) -> ScaleWide {
         vast: 2e9,
         whole: value,
     }
-    .validate()
-    .unwrap()
 }
 
 /// The number the JSON Schema writes for `keyword` of `member`, as its text.
@@ -260,7 +256,7 @@ fn the_read_refuses_what_is_past_the_limit_written_and_no_more() {
 
 #[test]
 fn a_negative_limit_keeps_its_digits() {
-    let depth = |depth: i64| ScaleDepthDraft { depth }.validate();
+    let depth = |depth: i64| ScaleDepthDraft { depth }.validate().map(|_| ());
     assert_eq!(depth(1 - DECLARED), Ok(()));
     assert_eq!(depth(-DECLARED), Ok(()));
     assert_eq!(
@@ -357,9 +353,10 @@ fn a_float_limit_past_what_an_i64_holds_on_an_f32_is_compared_as_an_f32() {
     let vast = |vast: f32| {
         ScaleWideDraft {
             vast,
-            ..wide(1.0, 1.0, 1.0).into()
+            ..wide(1.0, 1.0, 1.0)
         }
         .validate()
+        .map(|_| ())
     };
     assert_eq!(vast(2e9), Ok(()));
     assert_eq!(vast(1e30), Ok(()));
@@ -431,6 +428,7 @@ fn every_written_form_of_an_integer_reads_as_its_digits() {
             suffixed: value,
         }
         .validate()
+        .map(|_| ())
     };
     assert_eq!(spelled(1000), Ok(()));
     assert_eq!(

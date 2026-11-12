@@ -202,7 +202,7 @@ impl CarillonMcpService<()> for McpCarillon {
     ) -> impl Future<Output = Result<(CarillonBell, u32), (CarillonError, u32)>> {
         let weight = req.weight;
         ready(if weight > CRACKS_ABOVE {
-            Err((CarillonErrorDraft::Cracked, weight))
+            Err((CarillonErrorDraft::Cracked.validate().unwrap(), weight))
         } else {
             Ok((req, weight))
         })

@@ -11,7 +11,7 @@ pub struct Shipment {
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ShipmentDraft {
+pub struct Shipment {
     pub label: String,
 }
 

@@ -212,7 +212,12 @@ fn variant_payloads() -> Vec<Payload> {
             Some("Voided"),
             false,
         ),
-        written("Delivery", &Delivery::Labelled(ticket()), None, false),
+        written(
+            "Delivery",
+            &DeliveryDraft::Labelled(ticket().validate().unwrap()),
+            None,
+            false,
+        ),
         written(
             "Remark",
             &RemarkDraft::Ticketed(ticket().validate().unwrap()),

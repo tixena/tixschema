@@ -7,13 +7,12 @@
 #[cfg(all(feature = "typescript", feature = "serde"))]
 mod typescript {
     use super::{
-        ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveEventDraft, ArchiveNode,
-        ArchiveNodeDraft, ArchiveTrunk, ArchiveWire,
+        ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveNode, ArchiveTrunk, ArchiveWire,
     };
     // The brand's intersection is read only where the value surface that writes its marker
     // compiles — see the test below.
     #[cfg(feature = "zod")]
-    use super::{ArchiveId, ArchiveStamp, ArchiveStampDraft};
+    use super::{ArchiveId, ArchiveStamp};
 
     #[test]
     fn a_whole_type_binds_every_parameter_its_members_are_written_under() {
@@ -263,7 +262,7 @@ mod zod {
 mod json_schema {
     use super::{
         ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveId, ArchiveNode, ArchiveStamp,
-        ArchiveTrunk, ArchiveWire, Looped, TwoLoopedFillings,
+        ArchiveTrunk, ArchiveWire, LoopedDraft, TwoLoopedFillings,
     };
 
     /// JSON Schema has no type parameters, so the document exists at one filling: the declared one.
@@ -419,7 +418,7 @@ mod json_schema {
         );
 
         // What each definition actually admits is what serde actually writes for that filling.
-        let string_node = Looped::<String> {
+        let string_node = LoopedDraft::<String> {
             children: Vec::new(),
             value: "leaf".to_owned(),
         };
@@ -427,7 +426,7 @@ mod json_schema {
             serde_json::to_value(&string_node).unwrap()["value"],
             serde_json::json!("leaf")
         );
-        let number_node = Looped::<u32> {
+        let number_node = LoopedDraft::<u32> {
             children: Vec::new(),
             value: 7_u32,
         };
@@ -507,15 +506,20 @@ mod readme {
 /// other two and disagrees with serde describes nothing anyone sends.
 #[cfg(feature = "serde")]
 mod wire {
-    use super::{ArchiveEntry, ArchiveEvent, ArchiveId, ArchiveNode, ArchiveStamp, ArchiveWire};
+    use super::{
+        ArchiveEntryDraft, ArchiveEventDraft, ArchiveId, ArchiveNodeDraft, ArchiveStampDraft,
+        ArchiveWireDraft,
+    };
     use std::collections::HashMap;
 
     #[test]
     fn the_whole_type_writes_the_keys_its_schemas_describe() {
-        let entry = ArchiveEntry::<String, f64, String, u32, String> {
+        let entry = ArchiveEntryDraft::<String, f64, String, u32, String> {
             stamp: ArchiveStampDraft {
                 archive_id: ArchiveId::new("doc-1".to_owned()).unwrap(),
-            },
+            }
+            .validate()
+            .unwrap(),
             created_at: 1.5_f64,
             tags: vec!["a".to_owned()],
             byte_size: None,
@@ -545,19 +549,23 @@ mod wire {
             serde_json::json!({ "kind": "created", "id": "doc-1" })
         );
         assert_eq!(
-            serde_json::to_value(ArchiveWire::<String>::Counted { count: 2_u32 }).unwrap(),
+            serde_json::to_value(ArchiveWireDraft::<String>::Counted { count: 2_u32 }).unwrap(),
             serde_json::json!({ "count": 2_u32 })
         );
     }
 
     #[test]
     fn a_recursive_generic_writes_itself_all_the_way_down() {
-        let node = ArchiveNode::<String> {
+        let node = ArchiveNodeDraft::<String> {
             id: "root".to_owned(),
-            children: vec![ArchiveNodeDraft {
-                id: "leaf".to_owned(),
-                children: Vec::new(),
-            }],
+            children: vec![
+                ArchiveNodeDraft {
+                    id: "leaf".to_owned(),
+                    children: Vec::new(),
+                }
+                .validate()
+                .unwrap(),
+            ],
         };
         assert_eq!(
             serde_json::to_value(&node).unwrap(),
@@ -695,11 +703,11 @@ fn every_fixture_expands_in_this_build() {
     let stamp = ArchiveStampDraft {
         archive_id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
     };
-    let entry = ArchiveEntry::<String, f64, String, u32, String> {
+    let entry = ArchiveEntryDraft::<String, f64, String, u32, String> {
         byte_size: None,
         created_at: 1.5_f64,
         owners_by_role: HashMap::new(),
-        stamp,
+        stamp: stamp.validate().unwrap(),
         tags: Vec::new(),
     };
     assert_eq!(entry.tags, Vec::<String>::new());
@@ -709,27 +717,27 @@ fn every_fixture_expands_in_this_build() {
     };
     assert!(matches!(
         event,
-        ArchiveEvent::<String>::Purged { reason: _reason }
+        ArchiveEventDraft::<String>::Purged { reason: _reason }
     ));
-    let wire = ArchiveWire::<String>::Counted { count: 2_u32 };
+    let wire = ArchiveWireDraft::<String>::Counted { count: 2_u32 };
     assert!(matches!(wire, ArchiveWireDraft::Counted { count: 2_u32 }));
 
-    let node = ArchiveNode::<String> {
+    let node = ArchiveNodeDraft::<String> {
         children: Vec::new(),
         id: "root".to_owned(),
     };
     assert!(node.children.is_empty());
-    let readme_node = Node::<String> {
+    let readme_node = NodeDraft::<String> {
         children: Vec::new(),
         id: "root".to_owned(),
     };
     assert!(readme_node.children.is_empty());
-    let trunk = ArchiveTrunk::<String> {
+    let trunk = ArchiveTrunkDraft::<String> {
         branches: Vec::new(),
         id: "root".to_owned(),
     };
-    let branch = ArchiveBranch::<String> {
-        entries: vec![trunk],
+    let branch = ArchiveBranchDraft::<String> {
+        entries: vec![trunk.validate().unwrap()],
         label: "root".to_owned(),
     };
     assert_eq!(branch.label, "root");

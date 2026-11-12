@@ -32,7 +32,7 @@ fn a_struct_declared_beside_it_builds_reads_and_validates() {
         serde_json::json!({ "inner": { "number": 1_i32 }, "level": 1_i32, "queued": [1_i32] }),
     )
     .unwrap();
-    assert_eq!(read.validation_issues(), Vec::<String>::new());
+    assert_eq!(read.validation_issues().len(), 0);
     let broken = HolderDraft {
         inner: InnerDraft { number: 1 }.validate().unwrap(),
         level: 0,

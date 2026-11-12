@@ -9,9 +9,9 @@
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use super::tests::swift_codec_fixture::{
-    CodecUnitField, CodecUnitFieldDraft, CodecUnitPayload, CodecUnitPayloadDraft, codec_reserved,
-    codec_reserved_dart, codec_reserved_inner_dart, codec_reserved_kind_dart,
-    codec_unit_field_dart, codec_unit_payload_dart,
+    CodecUnitFieldDraft, CodecUnitPayloadDraft, codec_reserved, codec_reserved_dart,
+    codec_reserved_inner_dart, codec_reserved_kind_dart, codec_unit_field_dart,
+    codec_unit_payload_dart,
 };
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,

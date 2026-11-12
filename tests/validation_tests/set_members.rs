@@ -55,16 +55,18 @@ mod a_set_of_values_no_declared_type_describes {
     fn a_type_whose_only_member_is_a_set_of_strings_publishes_no_validate() {
         let own = TallyOwnDraft {
             dock_names: HashSet::from(["north".to_owned()]),
-        };
+        }
+        .validate()
+        .unwrap();
         assert_eq!(own.validate(), 1);
     }
 
     #[test]
     fn a_set_of_declared_types_is_walked_and_named_by_the_index_of_each_item() {
         let fleet = TallyFleetDraft {
-            lines: BTreeSet::from([TallyLineDraft {
+            lines: BTreeSet::from([TallyLine::model_schema_wrap_unjudged(TallyLineDraft {
                 item_label: String::new(),
-            }]),
+            })]),
         };
         assert_eq!(
             fleet.validation_issues(),

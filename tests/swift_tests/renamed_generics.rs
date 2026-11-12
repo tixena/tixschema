@@ -12,12 +12,11 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::renamed_generics_models::{
-    AdjacentScroll, AdjacentScrollDraft, Catalog, Diptych, DiptychDraft, Folio, FolioDraft, Leaves,
-    Lectern, LecternDraft, Library, LibraryDraft, Margin, Quire, Scroll, ScrollDraft, Shelfmark,
-    Spread, TaggedScroll, TaggedScrollDraft, Tome, TomeDraft, UntaggedScroll, UntaggedScrollDraft,
-    Volume, adjacent_scroll_swift, catalog_swift, diptych_swift, leaves_swift, lectern_swift,
-    library_swift, margin_swift, quire_swift, scroll_swift, shelfmark_swift, spread_swift,
-    tagged_scroll_swift, tome_swift, untagged_scroll_swift, volume_swift,
+    AdjacentScrollDraft, Catalog, DiptychDraft, Folio, FolioDraft, Leaves, LecternDraft,
+    LibraryDraft, Margin, Quire, ScrollDraft, Shelfmark, Spread, TaggedScrollDraft, TomeDraft,
+    UntaggedScrollDraft, Volume, adjacent_scroll_swift, catalog_swift, diptych_swift, leaves_swift,
+    lectern_swift, library_swift, margin_swift, quire_swift, scroll_swift, shelfmark_swift,
+    spread_swift, tagged_scroll_swift, tome_swift, untagged_scroll_swift, volume_swift,
 };
 
 /// An alias that declares no parameter.
@@ -118,7 +117,9 @@ fn each_model_is_written_as_serde_writes_it() {
         }
         .validate()
         .unwrap(),
-        untagged_scroll: UntaggedScrollDraft::Sealed("i".to_owned()),
+        untagged_scroll: UntaggedScrollDraft::Sealed("i".to_owned())
+            .validate()
+            .unwrap(),
         volume: folio("j"),
     };
     assert_eq!(
@@ -149,7 +150,9 @@ fn each_model_is_written_as_serde_writes_it() {
         untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("f"),
             leaf: "g".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         volume: lectern.volume,
     };
     assert_eq!(

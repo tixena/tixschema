@@ -108,7 +108,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     let open = || "n".to_owned();
     assert_eq!(
         read::<Stevedorage>(r#"{"Open":{"note":"n"}}"#),
-        Ok(StevedorageDraft::Open { note: open() }),
+        Ok(StevedorageDraft::Open { note: open() }.validate().unwrap()),
         "Stevedorage"
     );
     assert_eq!(
@@ -118,7 +118,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Wharfinger>(r#"{"Open":{"note":"n"}}"#),
-        Ok(WharfingerDraft::Open { note: open() }),
+        Ok(WharfingerDraft::Open { note: open() }.validate().unwrap()),
         "Wharfinger"
     );
     assert_eq!(
@@ -128,7 +128,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Ballastage>(r#"{"kind":"Open","note":"n"}"#),
-        Ok(BallastageDraft::Open { note: open() }),
+        Ok(BallastageDraft::Open { note: open() }.validate().unwrap()),
         "Ballastage"
     );
     assert_eq!(
@@ -158,8 +158,8 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert!(
         matches!(
-            &*read::<Lighterman>(r#"{"Open":{"note":"n"}}"#),
-            Ok(LightermanDraft::Open { note }) if note == "n"
+            read::<Lighterman>(r#"{"Open":{"note":"n"}}"#),
+            Ok(lighterman) if matches!(&*lighterman, LightermanDraft::Open { note } if note == "n")
         ),
         "Lighterman"
     );
@@ -216,20 +216,28 @@ fn a_variant_serde_neither_writes_nor_reads_is_not_written() {
         written.unwrap_or_else(|refused| refused.to_string())
     };
     assert_eq!(
-        said(serde_json::to_string(&StevedorageDraft::Closed {
-            cache: ChandleryDraft {
-                note: "n".to_owned()
+        said(serde_json::to_string(
+            &StevedorageDraft::Closed {
+                cache: ChandleryDraft {
+                    note: "n".to_owned()
+                }
+                .validate()
+                .unwrap()
             }
             .validate()
             .unwrap()
-        })),
+        )),
         "the enum variant Stevedorage::Closed cannot be serialized",
         "Stevedorage"
     );
     assert_eq!(
-        said(serde_json::to_string(&LightermanDraft::Closed {
-            cache: OnceLock::new()
-        })),
+        said(serde_json::to_string(
+            &LightermanDraft::Closed {
+                cache: OnceLock::new()
+            }
+            .validate()
+            .unwrap()
+        )),
         "the enum variant Lighterman::Closed cannot be serialized",
         "Lighterman"
     );

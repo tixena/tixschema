@@ -471,21 +471,21 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
 fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     let mut calls = 0_u32;
     let written = serde_json::to_value(ReviewDraft {
-        status: StatusRef::new(StatusDraft::Draft).unwrap(),
+        status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
     })
     .unwrap();
     assert_eq!(written, json!({ "status": "Draft" }));
     assert_eq!(
         read_counting!(Review, review_schema, written, calls),
         Ok(ReviewDraft {
-            status: StatusRef::new(StatusDraft::Draft).unwrap(),
+            status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
         }
         .validate()
         .unwrap())
     );
     assert_eq!(
         read_counting!(StatusRef, status_ref_schema, json!("Published"), calls),
-        Ok(StatusRef::new(StatusDraft::Published).unwrap())
+        Ok(StatusRef::new(StatusDraft::Published.validate().unwrap()).unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1206,10 +1206,12 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
     );
     let mut calls = 0_u32;
     for (stored, answer) in [
-        (json!("Empty"), AnswerDraft::Empty),
+        (json!("Empty"), AnswerDraft::Empty.validate().unwrap()),
         (
             json!({ "Value": { "number": 3_i32 } }),
-            AnswerDraft::Value(VersionDraft { number: 3_i32 }),
+            AnswerDraft::Value(VersionDraft { number: 3_i32 }.validate().unwrap())
+                .validate()
+                .unwrap(),
         ),
     ] {
         let read = Answer::<Version>::from_value_with(stored, |_raw, _found| {
@@ -1243,7 +1245,9 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
         }),
         Ok(EitherDraft::Left {
             left: "l".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let neither = Either::<String>::from_value_with(json!({ "left": 7_i32 }), |_raw, _found| {
         either_schema::Verdict::Reject
@@ -1462,7 +1466,7 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     );
 
     assert_eq!(
-        serde_json::to_value(TrailDraft::Lost)
+        serde_json::to_value(TrailDraft::Lost.validate().unwrap())
             .unwrap_err()
             .to_string(),
         "the enum variant Trail::Lost cannot be serialized"
@@ -1554,7 +1558,7 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
 #[test]
 fn a_variant_serde_reads_and_never_writes_is_walked() {
     assert_eq!(
-        serde_json::to_value(TrailDraft::Old { length: 3 })
+        serde_json::to_value(TrailDraft::Old { length: 3 }.validate().unwrap())
             .unwrap_err()
             .to_string(),
         "the enum variant Trail::Old cannot be serialized"

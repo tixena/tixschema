@@ -575,17 +575,23 @@ fn a_struct_an_input_repeats_is_defined_once_under_the_input_s_own_defs() {
         "start": { "latitude": 38.7_f64 },
         "finish": { "latitude": 41.1_f64, "longitude": -8.6_f64 },
     })));
-    let planned = answered(Archive.plan_route(
-        &(),
-        WaypointDraft {
-            latitude: 38.0,
-            longitude: -9.0,
-        },
-        WaypointDraft {
-            latitude: 40.0,
-            longitude: -8.0,
-        },
-    ));
+    let planned = answered(
+        Archive.plan_route(
+            &(),
+            WaypointDraft {
+                latitude: 38.0,
+                longitude: -9.0,
+            }
+            .validate()
+            .unwrap(),
+            WaypointDraft {
+                latitude: 40.0,
+                longitude: -8.0,
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     let written = serde_json::to_value(planned.ok().unwrap()).unwrap();
     assert!(
         jsonschema::validator_for(&tool["outputSchema"])
@@ -636,7 +642,12 @@ fn the_stand_in_serves_every_operation_of_every_service() {
     let request = || GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     };
-    answered(DocumentService::get_version(&Archive, &ctx, request())).unwrap_err();
+    answered(DocumentService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
     answered(DocumentService::rename_document(
         &Archive,
         &ctx,
@@ -670,8 +681,18 @@ fn the_stand_in_serves_every_operation_of_every_service() {
         "Title".to_owned(),
     ))
     .unwrap();
-    answered(AnnotatedService::get_version(&Archive, &ctx, request())).unwrap_err();
-    answered(TwoTransportService::get_version(&Archive, &ctx, request())).unwrap_err();
+    answered(AnnotatedService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
+    answered(TwoTransportService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
 }
 
 #[test]

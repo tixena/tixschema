@@ -200,7 +200,7 @@ fn broken() -> Value {
 
 /// The group `broken()` stores, built in code.
 fn broken_group() -> BoundedGroup {
-    BoundedGroupDraft {
+    BoundedGroup::model_schema_wrap_unjudged(BoundedGroupDraft {
         human_name: Some(String::new()),
         labels: Vec::new(),
         level: 0,
@@ -208,9 +208,7 @@ fn broken_group() -> BoundedGroup {
         source: BoundedPath::new("Items".to_owned()).unwrap(),
         tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
         title: "long".to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// Reads `stored` with a callback that rejects, and answers the read with how often it ran.
@@ -339,7 +337,9 @@ fn a_broken_bound_in_a_tagged_variant_is_listed() {
         held,
         Ok(BoundedShapeDraft::Label {
             text: "a".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let label = BoundedShape::from_value_with(json!({ "kind": "Label", "text": "" }), |_, _| {
         bounded_shape_schema::Verdict::Reject
@@ -363,7 +363,12 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_value_with(json!({ "Code": "ABC" }), |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlotsDraft::Code("ABC".to_owned())));
+    assert_eq!(
+        held,
+        Ok(BoundedSlotsDraft::Code("ABC".to_owned())
+            .validate()
+            .unwrap())
+    );
 
     let code = BoundedSlots::from_value_with(json!({ "Code": "abc" }), |_, _| Verdict::Reject);
     let pair =
@@ -413,7 +418,12 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_value_with(json!({ "Many": ["only"] }), |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlotsDraft::Many(vec!["only".to_owned()])));
+    assert_eq!(
+        held,
+        Ok(BoundedSlotsDraft::Many(vec!["only".to_owned()])
+            .validate()
+            .unwrap())
+    );
     let many = BoundedSlots::from_value_with(json!({ "Many": ["a", "b"] }), |_, _| Verdict::Reject);
     assert_eq!(
         lines(&many.unwrap_err()),
@@ -436,7 +446,9 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
             choice: BoundedChoiceDraft::Few(vec!["a".to_owned(), "b".to_owned()])
                 .validate()
                 .unwrap()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let many = BoundedChooser::from_value_with(json!({ "choice": ["a", "b", "c"] }), |_, _| {
         Verdict::Reject
@@ -455,7 +467,12 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     use bounded_by_enum_schema::Verdict;
 
     let held = BoundedByEnum::from_value_with(json!({ "Slot": "abcde" }), |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedByEnumDraft::Slot("abcde".to_owned())));
+    assert_eq!(
+        held,
+        Ok(BoundedByEnumDraft::Slot("abcde".to_owned())
+            .validate()
+            .unwrap())
+    );
     let tags =
         BoundedByEnum::from_value_with(json!({ "Tags": { "tags": ["", "abcdef"] } }), |_, _| {
             Verdict::Reject
@@ -464,7 +481,9 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
         tags,
         Ok(BoundedByEnumDraft::Tags {
             tags: vec![String::new(), "abcdef".to_owned()]
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
     let label =
@@ -506,7 +525,12 @@ fn a_callback_that_sets_a_slot_at_its_path_recovers_the_read() {
         raw.set_at(path, json!(1_u32));
         Verdict::Fixed
     });
-    assert_eq!(read, Ok(BoundedSlotsDraft::Pair("ab".to_owned(), 1)));
+    assert_eq!(
+        read,
+        Ok(BoundedSlotsDraft::Pair("ab".to_owned(), 1)
+            .validate()
+            .unwrap())
+    );
 }
 
 #[test]
@@ -560,7 +584,10 @@ fn the_one_slot_of_a_struct_is_held_to_its_bound_as_its_hook_reads_it() {
     use bounded_trimmed_schema::Verdict;
 
     let held = BoundedTrimmed::from_value_with(json!(" a "), |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedTrimmedDraft("a".to_owned())));
+    assert_eq!(
+        held,
+        Ok(BoundedTrimmedDraft("a".to_owned()).validate().unwrap())
+    );
     let blank = BoundedTrimmed::from_value_with(json!("  "), |_, _| Verdict::Reject);
     assert_eq!(
         lines(&blank.unwrap_err()),
@@ -604,7 +631,9 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
         Ok(BoundedHolderDraft {
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -640,7 +669,9 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
             source: BoundedPath::new("Items".to_owned()).unwrap(),
             tags: vec!["A".to_owned()],
             title: "ok".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -741,12 +772,10 @@ fn a_slot_after_a_skipped_one_is_named_by_its_position_in_the_array() {
     let held = BoundedAfterASkipDraft(
         7,
         "a".to_owned(),
-        BoundedParcelDraft {
+        BoundedParcel::model_schema_wrap_unjudged(BoundedParcelDraft {
             fragile_item_codes: vec!["x".to_owned()],
             item_label: String::new(),
-        }
-        .validate()
-        .unwrap(),
+        }),
     );
     let written = serde_json::to_value(&held).unwrap();
     assert_eq!(

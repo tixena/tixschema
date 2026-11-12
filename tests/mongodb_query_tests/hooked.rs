@@ -110,6 +110,8 @@ struct Template {
 /// What [`Scan`]'s own bound asks of it.
 trait Tracked {}
 
+impl Tracked for ScanDraft {}
+
 impl Tracked for Scan {}
 
 fn leaf(name: &str) -> Node {

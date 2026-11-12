@@ -480,12 +480,14 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     let manifest = ManifestDraft {
-        first_parcel: parcel.clone().validate().unwrap(),
-        parcel_list: vec![parcel.clone().validate().unwrap()],
+        first_parcel: parcel.clone(),
+        parcel_list: vec![parcel.clone()],
         parcels_by_dock: HashMap::from([("north".to_owned(), parcel.clone())]),
-        spare_parcel: Some(parcel.validate().unwrap()),
+        spare_parcel: Some(parcel),
     };
     assert_eq!(
         serde_json::to_value(&manifest).unwrap()["parcelsByDock"]["north"]["label"],

@@ -569,7 +569,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     })
     .unwrap();
     serde_json::to_string(&ByEnumDraft {
-        by_enum: HashMap::from([(PrimaryDraft::Primary, "p".to_owned())]),
+        by_enum: HashMap::from([(PrimaryDraft::Primary.validate().unwrap(), "p".to_owned())]),
     })
     .unwrap();
     serde_json::to_string(&EnvelopeDraft {

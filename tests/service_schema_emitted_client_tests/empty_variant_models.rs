@@ -494,7 +494,7 @@ fn serde_refuses_a_stray_key_in_either_variant_of_a_strict_enum_and_reads_past_i
     assert_eq!(told, expected());
     let read: AdjacentSignal = serde_json::from_str(ADJACENT[0].0).unwrap();
     assert!(
-        matches!(&read, AdjacentSignalDraft::Off { reason, since: 0 } if reason.is_empty()),
+        matches!(&*read, AdjacentSignalDraft::Off { reason, since: 0 } if reason.is_empty()),
         "{read:?}"
     );
 }

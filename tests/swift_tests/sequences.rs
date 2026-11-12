@@ -306,7 +306,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
     );
     assert_eq!(
         read_back(&TetheredDraft {
-            queue: VecDeque::from([TetherDraft { id: "k".to_owned() }]),
+            queue: VecDeque::from([TetherDraft { id: "k".to_owned() }.validate().unwrap()]),
         }),
         read_back(&TetheredAsVecDraft {
             queue: vec![TetherDraft { id: "k".to_owned() }.validate().unwrap()],

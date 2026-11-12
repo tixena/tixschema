@@ -80,10 +80,10 @@ impl ShelfWireService<()> for Stand {
         ready(if task_id == "count-1" {
             Ok(shelf_wire_service_schema::McpTaskState::Completed {
                 task: task(),
-                result: ShelfCountDraft { books: 11 },
+                result: ShelfCountDraft { books: 11 }.validate().unwrap(),
             })
         } else {
-            Err(ShelfWireErrorDraft::NotFound)
+            Err(ShelfWireErrorDraft::NotFound.validate().unwrap())
         })
     }
 
@@ -96,7 +96,7 @@ impl ShelfWireService<()> for Stand {
         ready(if req.shelf == "history" {
             Ok(blocks())
         } else {
-            Err(ShelfWireErrorDraft::NotFound)
+            Err(ShelfWireErrorDraft::NotFound.validate().unwrap())
         })
     }
 
@@ -108,7 +108,7 @@ impl ShelfWireService<()> for Stand {
     {
         ready(match cursor {
             None => Ok(page()),
-            Some(_) => Err(ShelfWireErrorDraft::NotFound),
+            Some(_) => Err(ShelfWireErrorDraft::NotFound.validate().unwrap()),
         })
     }
 
@@ -121,7 +121,7 @@ impl ShelfWireService<()> for Stand {
         ready(if shelf_name == "history" {
             Ok(messages())
         } else {
-            Err(ShelfWireErrorDraft::NotFound)
+            Err(ShelfWireErrorDraft::NotFound.validate().unwrap())
         })
     }
 
@@ -133,7 +133,7 @@ impl ShelfWireService<()> for Stand {
         ready(if req.shelf == "history" {
             Ok(task())
         } else {
-            Err(ShelfWireErrorDraft::NotFound)
+            Err(ShelfWireErrorDraft::NotFound.validate().unwrap())
         })
     }
 }

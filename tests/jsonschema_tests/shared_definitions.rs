@@ -627,7 +627,7 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
     let validator = draft202012::new(&document).unwrap();
     let mut written = serde_json::to_value(EdgeHolderDraft {
         a: BoxedDraft {
-            item: sensors::ProbeDraft { depth: 1 },
+            item: sensors::ProbeDraft { depth: 1 }.validate().unwrap(),
         }
         .validate()
         .unwrap(),
@@ -638,7 +638,9 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
                     item: looped::ProbeDraft {
                         held: sensors::ProbeDraft { depth: 3 }.validate().unwrap(),
                         kids: Vec::new(),
-                    },
+                    }
+                    .validate()
+                    .unwrap(),
                 }
                 .validate()
                 .unwrap(),
@@ -647,7 +649,7 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
         .validate()
         .unwrap(),
         c: BoxedDraft {
-            item: sensors::ProbeDraft { depth: 4 },
+            item: sensors::ProbeDraft { depth: 4 }.validate().unwrap(),
         }
         .validate()
         .unwrap(),

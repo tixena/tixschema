@@ -178,7 +178,7 @@ pub struct Jaws {
     pub pair: [u8; 2],
 }
 
-fn with_a_rating(value: &Rating) -> Result<(), Vec<String>> {
+fn with_a_rating(value: &RatingDraft) -> Result<(), Vec<String>> {
     if matches!(value, RatingDraft::Low) {
         return Err(vec!["a low rating is not carried".to_owned()]);
     }
@@ -866,7 +866,9 @@ fn every_read_struct_is_built_and_written_by_serde() {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     let flattened = FlattenedExtraDraft {
         reason: "r".to_owned(),
     };
@@ -883,7 +885,7 @@ fn every_read_struct_is_built_and_written_by_serde() {
     assert_eq!(
         serde_json::to_value(AnchorageDraft {
             anchor_note: None,
-            flattened.validate().unwrap(),
+            flattened: flattened.validate().unwrap(),
             held_parcel: None,
         })
         .unwrap(),
@@ -892,10 +894,10 @@ fn every_read_struct_is_built_and_written_by_serde() {
     let stowage = StowageDraft {
         by_deck: HashMap::from([(-1, parcel.clone())]),
         by_number: HashMap::from([(7, parcel.clone())]),
-        deck_pair: ("port".to_owned(), parcel.clone().validate().unwrap()),
-        grid: vec![vec![parcel.clone().validate().unwrap()]],
+        deck_pair: ("port".to_owned(), parcel.clone()),
+        grid: vec![vec![parcel.clone()]],
         lists_by_dock: HashMap::from([("north".to_owned(), vec![parcel.clone()])]),
-        maybe_each: vec![None, Some(parcel.clone().validate().unwrap())],
+        maybe_each: vec![None, Some(parcel.clone())],
         spare_list: None,
     };
     let written = serde_json::to_value(&stowage).unwrap();
@@ -905,15 +907,14 @@ fn every_read_struct_is_built_and_written_by_serde() {
     assert_eq!(written["maybeEach"][0], serde_json::Value::Null);
     assert_eq!(
         serde_json::to_value(BerthedDraft {
-            parcel: parcel.clone().validate().unwrap(),
+            parcel: parcel.clone(),
             quay: "north".to_owned(),
         })
         .unwrap()["label"],
         "A"
     );
     assert_eq!(
-        serde_json::to_value(ConsignedDraft("c".to_owned(), parcel.validate().unwrap())).unwrap()
-            [1]["label"],
+        serde_json::to_value(ConsignedDraft("c".to_owned(), parcel)).unwrap()[1]["label"],
         "A"
     );
     assert_eq!(

@@ -618,7 +618,12 @@ fn a_variant_named_as_an_operator_is_asked_through_nest() {
         r#"{ "movement.dock": { "$eq": Int64(4) } }"#
     );
     assert_eq!(
-        shown(transit.movement().is_in([MovementDraft::Out]).unwrap()),
+        shown(
+            transit
+                .movement()
+                .is_in([MovementDraft::Out.validate().unwrap()])
+                .unwrap()
+        ),
         r#"{ "movement": { "$in": [{ "kind": "out" }] } }"#
     );
 }

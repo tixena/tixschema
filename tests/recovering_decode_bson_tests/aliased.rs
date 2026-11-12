@@ -106,7 +106,10 @@ fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     let tally = TallyDraft {
         counts: HashMap::from([("a".to_owned(), 1_i32)]),
-        marks: Marks::from([("k".to_owned(), vec![declared::MarkDraft { weight: 2_i32 }])]),
+        marks: Marks::from([(
+            "k".to_owned(),
+            vec![declared::MarkDraft { weight: 2_i32 }.validate().unwrap()],
+        )]),
     };
     let stored_row = written(&tally);
     assert_eq!(

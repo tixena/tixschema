@@ -164,7 +164,7 @@ mod a_check_on_a_slot {
             vec!["too short: minimum length is 1, got 0".to_owned()]
         );
         let held = CodedDraft {
-            code: LoneDraft(String::new()).validate().unwrap(),
+            code: Lone::model_schema_wrap_unjudged(LoneDraft(String::new())),
         };
         assert_eq!(serde_json::to_string(&held).unwrap(), r#"{"code":""}"#);
         assert_eq!(

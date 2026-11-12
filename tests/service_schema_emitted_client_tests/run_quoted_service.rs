@@ -457,17 +457,17 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
         Some(Ok((
             TollingReceiptDraft {
                 label: "l".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             "t7".to_owned()
-        )))
-        .validate()
-        .unwrap(),
+        ))),
         "toll answers otherwise"
     );
     let levied = poll_once(Tollbooth::default().levy(&(), "l".to_owned(), String::new()));
     assert_eq!(
         levied,
-        Some(Err(TollingErrorDraft::Refused)),
+        Some(Err(TollingErrorDraft::Refused.validate().unwrap())),
         "levy answers otherwise"
     );
     let tollbooth = Tollbooth::default();
@@ -491,7 +491,9 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
         deposited,
         Some(Ok(TollingReceiptDraft {
             label: "tn1".to_owned()
-        })),
+        }
+        .validate()
+        .unwrap())),
         "deposit answers otherwise"
     );
 }

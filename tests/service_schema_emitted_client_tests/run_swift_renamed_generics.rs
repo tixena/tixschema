@@ -13,12 +13,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::renamed_generics_models::{
-    AdjacentScroll, AdjacentScrollDraft, Catalog, Diptych, DiptychDraft, Folio, FolioDraft, Leaves,
-    Lectern, LecternDraft, Library, LibraryDraft, Margin, Quire, Scroll, ScrollDraft, Shelfmark,
-    Spread, TaggedScroll, TaggedScrollDraft, Tome, TomeDraft, UntaggedScroll, UntaggedScrollDraft,
-    Volume, adjacent_scroll_swift, catalog_swift, diptych_swift, folio_swift, leaves_swift,
-    lectern_swift, library_swift, margin_swift, quire_swift, scroll_swift, shelfmark_swift,
-    spread_swift, tagged_scroll_swift, tome_swift, untagged_scroll_swift, volume_swift,
+    AdjacentScrollDraft, Catalog, DiptychDraft, Folio, FolioDraft, Leaves, LecternDraft,
+    LibraryDraft, Margin, Quire, ScrollDraft, Shelfmark, Spread, TaggedScrollDraft, Tome,
+    TomeDraft, UntaggedScrollDraft, Volume, adjacent_scroll_swift, catalog_swift, diptych_swift,
+    folio_swift, leaves_swift, lectern_swift, library_swift, margin_swift, quire_swift,
+    scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift, tome_swift,
+    untagged_scroll_swift, volume_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -256,7 +256,7 @@ fn holder_rows() -> Vec<Row> {
         spread: (owned("f"), 3),
         tagged_scroll: TaggedScrollDraft::Bound(folio("g")).validate().unwrap(),
         tome: tome(),
-        untagged_scroll: UntaggedScrollDraft::Sealed(owned("h")),
+        untagged_scroll: UntaggedScrollDraft::Sealed(owned("h")).validate().unwrap(),
         volume: folio("i"),
     };
     let library = LibraryDraft {
@@ -278,7 +278,9 @@ fn holder_rows() -> Vec<Row> {
         untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("l"),
             leaf: owned("m"),
-        },
+        }
+        .validate()
+        .unwrap(),
         volume: folio("n"),
     };
     vec![

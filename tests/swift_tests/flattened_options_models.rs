@@ -423,6 +423,12 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
             "{json}"
         );
     }
+}
+
+/// serde reads a flattened `Option` that names a function from what it answers, beside a tag, a
+/// gasket, a nippering, a plaiting and a crowning.
+#[test]
+fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
     let sennit: Sennit = serde_json::from_str(SENNIT_MISTYPED).unwrap();
     assert_eq!(
         sennit,
@@ -433,25 +439,47 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
         .validate()
         .unwrap()
     );
-    let painter = |json: &str| serde_json::from_str::<Painter>(json).unwrap().gasket;
+    let painter = |json: &str| {
+        serde_json::from_str::<Painter>(json)
+            .unwrap()
+            .gasket
+            .clone()
+    };
     assert_eq!(painter(FLAKING), None);
     assert_eq!(
         painter(PAINTER),
-        Some(GasketDraft {
-            label: "north".to_owned(),
-            turns: 2,
-        })
+        Some(
+            GasketDraft {
+                label: "north".to_owned(),
+                turns: 2,
+            }
+            .validate()
+            .unwrap()
+        )
     );
     assert_eq!(
         serde_json::from_str::<Ratline>(FLAKING).unwrap().nippering,
-        Some(NipperingDraft {
-            label: "north".to_owned(),
-        })
+        Some(
+            NipperingDraft {
+                label: "north".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
     );
-    let plaiting = Some(PlaitingDraft {
-        label: "north".to_owned(),
-    });
-    let read_tarring = |json: &str| serde_json::from_str::<Tarring>(json).unwrap().plaiting;
+    let plaiting = Some(
+        PlaitingDraft {
+            label: "north".to_owned(),
+        }
+        .validate()
+        .unwrap(),
+    );
+    let read_tarring = |json: &str| {
+        serde_json::from_str::<Tarring>(json)
+            .unwrap()
+            .plaiting
+            .clone()
+    };
     assert_eq!(
         serde_json::from_str::<Kinking>(FLAKING).unwrap().plaiting,
         plaiting
@@ -482,10 +510,14 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
     let fidding: Fidding = serde_json::from_str(LAPPING).unwrap();
     assert_eq!(
         fidding.crowning,
-        Some(CrowningDraft {
-            note: "n".to_owned(),
-            tabling: north(),
-        })
+        Some(
+            CrowningDraft {
+                note: "n".to_owned(),
+                tabling: north(),
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
@@ -508,38 +540,74 @@ fn serde_refuses_a_flattened_option_whose_function_answers_what_its_type_does_no
 /// not read, a unit variant's entry over a number, and a tag that names no variant or is missing.
 #[test]
 fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_read() {
-    let round = || Some(ThimbleDraft::Round { turns: 2 });
-    let easing = EASING.map(|json| serde_json::from_str::<Easing>(json).unwrap().thimble);
+    let round = || Some(ThimbleDraft::Round { turns: 2 }.validate().unwrap());
+    let easing = EASING.map(|json| {
+        serde_json::from_str::<Easing>(json)
+            .unwrap()
+            .thimble
+            .clone()
+    });
     assert_eq!(easing, [None, round(), None, None]);
-    let lowering = LOWERING.map(|json| serde_json::from_str::<Lowering>(json).unwrap().grommet);
+    let lowering = LOWERING.map(|json| {
+        serde_json::from_str::<Lowering>(json)
+            .unwrap()
+            .grommet
+            .clone()
+    });
     assert_eq!(
         lowering,
         [
             None,
-            Some(GrommetDraft::Round { turns: 2 }),
-            Some(GrommetDraft::Calm),
+            Some(GrommetDraft::Round { turns: 2 }.validate().unwrap()),
+            Some(GrommetDraft::Calm.validate().unwrap()),
             None,
             None,
             None,
         ]
     );
-    let squaring = SQUARING.map(|json| serde_json::from_str::<Squaring>(json).unwrap().becket);
+    let squaring = SQUARING.map(|json| {
+        serde_json::from_str::<Squaring>(json)
+            .unwrap()
+            .becket
+            .clone()
+    });
     assert_eq!(
         squaring,
         [
             None,
-            Some(BecketDraft::Round { turns: 2 }),
-            Some(BecketDraft::Calm),
+            Some(BecketDraft::Round { turns: 2 }.validate().unwrap()),
+            Some(BecketDraft::Calm.validate().unwrap()),
             None,
             None,
             None,
         ]
     );
-    let heeling = HEELING.map(|json| serde_json::from_str::<Heeling>(json).unwrap().toggle);
-    assert_eq!(heeling, [None, Some(ToggleDraft::Round { turns: 2 }), None]);
-    let pitching = PITCHING.map(|json| serde_json::from_str::<Pitching>(json).unwrap().shackle);
+    let heeling = HEELING.map(|json| {
+        serde_json::from_str::<Heeling>(json)
+            .unwrap()
+            .toggle
+            .clone()
+    });
+    assert_eq!(
+        heeling,
+        [
+            None,
+            Some(ToggleDraft::Round { turns: 2 }.validate().unwrap()),
+            None
+        ]
+    );
+    let pitching = PITCHING.map(|json| {
+        serde_json::from_str::<Pitching>(json)
+            .unwrap()
+            .shackle
+            .clone()
+    });
     assert_eq!(
         pitching,
-        [None, Some(ShackleDraft::Round { turns: 2 }), None]
+        [
+            None,
+            Some(ShackleDraft::Round { turns: 2 }.validate().unwrap()),
+            None
+        ]
     );
 }

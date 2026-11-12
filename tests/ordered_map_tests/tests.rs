@@ -145,12 +145,18 @@ fn what_each_type_writes_its_std_twin_reads() {
     let again: Nested = serde_json::from_str(&serde_json::to_string(&nested).unwrap()).unwrap();
     assert_eq!(again.by_group.get("odd").map(IndexSet::len), Some(2));
     assert_eq!(again.listed.len(), 1);
-    assert_eq!(again.optional.map(|held| held.len()), Some(2));
+    assert_eq!(again.optional.clone().map(|held| held.len()), Some(2));
 
     let slotted: SlottedTwin = serde_json::from_str(SLOTTED).unwrap();
-    assert_eq!(slotted.counts.get(&SlotDraft::Opening), Some(&2));
+    assert_eq!(
+        slotted.counts.get(&SlotDraft::Opening.validate().unwrap()),
+        Some(&2)
+    );
     let reread: Slotted = serde_json::from_str(&serde_json::to_string(&slotted).unwrap()).unwrap();
-    assert_eq!(reread.counts.get(&SlotDraft::Closing), Some(&1));
+    assert_eq!(
+        reread.counts.get(&SlotDraft::Closing.validate().unwrap()),
+        Some(&1)
+    );
 }
 
 #[cfg(feature = "typescript")]

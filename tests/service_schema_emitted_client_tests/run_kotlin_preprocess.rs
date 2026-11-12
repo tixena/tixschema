@@ -743,7 +743,7 @@ impl PacketClientService<()> for PacketBackEnd {
         Ok(PacketDraft {
             fragile_item_codes: Vec::new(),
             item_code_list: Vec::new(),
-            label: req.dock,
+            label: req.dock.clone(),
         }
         .validate()
         .unwrap())
@@ -1552,8 +1552,8 @@ fn the_backend_answers_the_contract() {
             ),
         )
         .unwrap()
-        .map(|sent| sent.label)
-        .map_err(|refused| matches!(refused, PacketErrorDraft::Closed))
+        .map(|sent| sent.label.clone())
+        .map_err(|refused| matches!(&*refused, PacketErrorDraft::Closed))
     };
     assert_eq!(asked("north"), Ok("north".to_owned()));
     assert_eq!(asked(""), Err(true));

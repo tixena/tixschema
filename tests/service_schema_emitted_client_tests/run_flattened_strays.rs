@@ -10,14 +10,13 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
 use super::flattened_stray_models::{
-    BillingAddress, BillingAddressDraft, BillingContact, BillingContactDraft, BillingCustomer,
-    BillingCustomerDraft, BoxSize, BoxSizeDraft, CheckoutOrder, CheckoutOrderDraft,
-    CheckoutPayment, CheckoutPaymentDraft, Consignment, ConsignmentLabel, ConsignmentLabelDraft,
-    CourierDelivery, CourierDeliveryDraft, CourierShipment, CourierShipmentDraft, DoorFinish,
-    DoorFinishDraft, GiftBox, GiftBoxDraft, GiftOrder, GiftOrderDraft, GiftWrap, GiftWrapDraft,
-    GuestCustomer, GuestCustomerDraft, PackageWeight, PackageWeightDraft, PaintedDoor,
-    PaintedDoorDraft, ShopEvent, ShopEventDraft, SizedCarton, SizedCartonDraft, SizedPallet,
-    SizedPalletDraft, WeighedPackage, WeighedPackageDraft, WeighedParcel, WeighedParcelDraft,
+    BillingAddressDraft, BillingContactDraft, BillingCustomer, BillingCustomerDraft, BoxSizeDraft,
+    CheckoutOrder, CheckoutOrderDraft, CheckoutPaymentDraft, Consignment, ConsignmentDraft,
+    ConsignmentLabelDraft, CourierDeliveryDraft, CourierShipment, CourierShipmentDraft,
+    DoorFinishDraft, GiftBox, GiftBoxDraft, GiftOrder, GiftOrderDraft, GiftWrapDraft,
+    GuestCustomer, GuestCustomerDraft, PackageWeightDraft, PaintedDoor, PaintedDoorDraft,
+    ShopEvent, ShopEventDraft, SizedCarton, SizedCartonDraft, SizedPallet, SizedPalletDraft,
+    WeighedPackageDraft, WeighedParcel, WeighedParcelDraft,
 };
 #[cfg(feature = "dart")]
 use super::flattened_stray_models::{
@@ -80,9 +79,13 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
         ),
         written(
             "Consignment",
-            &Consignment::Labelled(ConsignmentLabelDraft {
-                code: "f1".to_owned(),
-            }),
+            &ConsignmentDraft::Labelled(
+                ConsignmentLabelDraft {
+                    code: "f1".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
         ),
         written(
             "GiftOrder",
@@ -127,6 +130,16 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                 .unwrap(),
             },
         ),
+    ]
+    .into_iter()
+    .chain(delivery_payloads())
+    .collect()
+}
+
+/// Each holder's name and a payload serde writes of it, for the holders of a struct that hold a
+/// payment, a delivery or a weight.
+fn delivery_payloads() -> Vec<(&'static str, String)> {
+    vec![
         written(
             "CheckoutOrder",
             &CheckoutOrderDraft {

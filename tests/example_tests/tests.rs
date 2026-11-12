@@ -125,7 +125,7 @@ fn test_nested_types_example() {
     /// let profile = ProfileDraft {
     ///     tags: vec!["tag1".to_string()],
     ///     metadata: HashMap::from([("key1".to_string(), "value1".to_string())]),
-    ///     optional_field: SomeDraft("present".to_string()),
+    ///     optional_field: Some("present".to_string()),
     /// };
     /// println!("Profile: {:?}", profile);
     /// ```
@@ -511,7 +511,7 @@ fn a_generic_enum_renders_its_example_at_its_declared_fillings() {
     /// A generic enum carrying an example block.
     ///
     /// ```rust example
-    /// TaggedDraft::HeldDraft { held: "x".to_owned(), tag: "t".to_owned() }
+    /// TaggedDraft::Held { held: "x".to_owned(), tag: "t".to_owned() }
     /// ```
     #[model_schema(default_types(HeldType = String, TagType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -551,7 +551,7 @@ fn a_generic_enum_renders_its_example_at_a_filling_that_is_not_a_string() {
     /// A generic enum carrying an example block.
     ///
     /// ```rust example
-    /// MeasuredDraft::HeldDraft { held: 7u32 }
+    /// MeasuredDraft::Held { held: 7u32 }
     /// ```
     #[model_schema(default_types(HeldType = u32))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -709,7 +709,7 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
         pub label: String,
     }
 
-    let slotted = Slotted::<3> {
+    let slotted = SlottedDraft::<3> {
         label: "x".to_owned(),
     };
     assert_eq!(slotted.label, "x");
@@ -916,7 +916,7 @@ fn an_internally_tagged_enum_publishes_one_example_per_variant() {
 fn every_tagging_of_an_enum_carries_its_examples() {
     /// Written under the variant's name
     /// ```rust example
-    /// OuterDraft::HeldDraft { held: 1 }
+    /// OuterDraft::Held { held: 1 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -927,7 +927,7 @@ fn every_tagging_of_an_enum_carries_its_examples() {
 
     /// Written under two keys
     /// ```rust example
-    /// AdjacentDraft::HeldDraft { held: 1 }
+    /// AdjacentDraft::Held { held: 1 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -942,7 +942,7 @@ fn every_tagging_of_an_enum_carries_its_examples() {
     /// BareDraft::Text("x".to_owned())
     /// ```
     /// ```rust example
-    /// BareDraft::CountDraft(2)
+    /// BareDraft::Count(2)
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]

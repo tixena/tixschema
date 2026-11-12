@@ -793,5 +793,5 @@ this is what a change has to keep.
 - The macro adds no bound to a brand's declaration, and a brand's read asks of a parameter what
   serde's derive asks (`read_bounds`). Nothing asks `Display` of a parameter, on the read or in
   `validate()`.
-- A consumer's own `validate` on one filling is a duplicate definition (E0592).
+- A consumer's own `validation_issues` on one filling of the draft is a duplicate definition (E0592).
   `struct_validate_method`'s doc comment holds the run.

@@ -160,6 +160,8 @@ fn external_value() -> ExternalFieldCasing {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn internal_value() -> InternalFieldCasing {
@@ -167,6 +169,8 @@ fn internal_value() -> InternalFieldCasing {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn adjacent_value() -> AdjacentFieldCasing {
@@ -174,6 +178,8 @@ fn adjacent_value() -> AdjacentFieldCasing {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn untagged_value() -> UntaggedFieldCasing {
@@ -181,6 +187,8 @@ fn untagged_value() -> UntaggedFieldCasing {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]

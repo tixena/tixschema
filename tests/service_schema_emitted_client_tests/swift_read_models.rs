@@ -156,7 +156,7 @@ fn signet_pressed(value: &Signet) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn with_an_urgency(value: &Urgency) -> Result<(), Vec<String>> {
+fn with_an_urgency(value: &UrgencyDraft) -> Result<(), Vec<String>> {
     if matches!(value, UrgencyDraft::Low) {
         return Err(vec!["a low urgency is not carried".to_owned()]);
     }

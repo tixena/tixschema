@@ -3368,8 +3368,8 @@ fn a_table_less_http_group_publishes_no_completeness_check() {
     );
     assert!(
         with_table.contains(
-            "const _ : fn (& GateError) -> u16 = | reported | match reported \
-             { GateError :: NotFound { .. } => 404u16 , } ;"
+            "const _ : fn (& GateError) -> u16 = | reported | match & * * reported \
+             { GateErrorDraft :: NotFound { .. } => 404u16 , } ;"
         ),
         "got: {with_table}"
     );
@@ -4038,8 +4038,8 @@ fn the_service_module_carries_one_completeness_check_per_http_error_status() {
     let body = module_body(expanded, "document_service_schema").to_string();
     assert!(
         body.contains(
-            "const _ : fn (& GetVersionError) -> u16 = | reported | match reported \
-             { GetVersionError :: NotFound { .. } => 404u16 , GetVersionError :: VersionGone \
+            "const _ : fn (& GetVersionError) -> u16 = | reported | match & * * reported \
+             { GetVersionErrorDraft :: NotFound { .. } => 404u16 , GetVersionErrorDraft :: VersionGone \
              { .. } => 410u16 , } ;"
         ),
         "got: {body}"
@@ -4074,8 +4074,8 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
     );
     assert!(
         struct_variant.contains(
-            "const _ : fn (& ArchiveError) -> u16 = | reported | match reported \
-             { ArchiveError :: NotFound { .. } => 404u16 , ArchiveError :: Locked { .. } => \
+            "const _ : fn (& ArchiveError) -> u16 = | reported | match & * * reported \
+             { ArchiveErrorDraft :: NotFound { .. } => 404u16 , ArchiveErrorDraft :: Locked { .. } => \
              423u16 , } ;"
         ),
         "got: {struct_variant}"
@@ -4093,8 +4093,8 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
     );
     assert!(
         tuple_variant.contains(
-            "const _ : fn (& GoneError) -> u16 = | reported | match reported \
-             { GoneError :: Gone { .. } => 410u16 , } ;"
+            "const _ : fn (& GoneError) -> u16 = | reported | match & * * reported \
+             { GoneErrorDraft :: Gone { .. } => 410u16 , } ;"
         ),
         "got: {tuple_variant}"
     );

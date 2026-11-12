@@ -2,7 +2,7 @@
 //! the one place the session's correlation map can be read: the dropped call leaves nothing in it.
 
 use super::{DocumentSessionClient, FrameSession};
-use crate::tests::{WatchRequest, WatchRequestDraft};
+use crate::tests::WatchRequestDraft;
 use core::future::{Future as _, pending};
 use core::pin::pin;
 use core::task::{Context as PollContext, Waker};

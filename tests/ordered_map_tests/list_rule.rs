@@ -32,7 +32,7 @@ fn its_items_are_counted() {
         empty.validation_issues(),
         vec!["'labels': too short: minimum length is 1, got 0"]
     );
-    assert_eq!(empty.validate(), twin.validate());
+    assert_eq!(empty.validation_issues(), twin.validation_issues());
     let held = LabelledDraft {
         labels: IndexSet::from(["only".to_owned()]),
     };

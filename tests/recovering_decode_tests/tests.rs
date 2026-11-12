@@ -814,13 +814,15 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     let unread = KeptDraft {
         id: "i".to_owned(),
         note: None,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(read.as_ref(), Ok(&unread));
     let held_back = Kept::from_value_with(json!({ "id": "i" }), |_raw, _found| {
         calls += 1;
         kept_schema::Verdict::Reject
     });
-    assert_eq!(held_back, Ok(unread.validate().unwrap()));
+    assert_eq!(held_back, Ok(unread));
 
     let text = serde_json::to_value(KeptTextDraft {
         id: "i".to_owned(),

@@ -52,12 +52,10 @@ where
 }
 
 fn entry(id: &str, label: &str) -> Entry<String> {
-    EntryDraft {
+    Entry::model_schema_wrap_unjudged(EntryDraft {
         id: id.to_owned(),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 #[test]
@@ -154,7 +152,7 @@ fn a_container_default_does_not_keep_a_member_from_the_unjudged_read() {
         BROKEN_ENTRIES
     );
     let defaulted = serde_json::from_str::<DefaultedPair<String, String>>("{}").unwrap();
-    assert_eq!(defaulted, DefaultedPairDraft::default());
+    assert_eq!(defaulted, DefaultedPairDraft::default().validate().unwrap());
 }
 
 #[test]

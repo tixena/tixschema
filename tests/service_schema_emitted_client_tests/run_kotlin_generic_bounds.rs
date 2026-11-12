@@ -217,11 +217,9 @@ struct Row {
 }
 
 fn item(label: &str) -> Item {
-    ItemDraft {
+    Item::model_schema_wrap_unjudged(ItemDraft {
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn rows() -> Vec<Row> {
@@ -279,9 +277,12 @@ fn rows() -> Vec<Row> {
             kotlin: "Shelf<Slot>(mapOf(Slot.NorthDock to Item(\"\"), Slot.SouthDock to Item(\"a\"))).validate()",
             swift: "Shelf<Slot>(bySlot: [\"north-dock\": Item(label: \"\"), \"south-dock\": Item(label: \"a\")]).validate()",
             name: "a map keyed by a plain enum",
-            rust: shelf(vec![(Slot::NorthDock, ""), (Slot::SouthDock, "a")])
-                .validate()
-                .map(|_valid| ()),
+            rust: shelf(vec![
+                (SlotDraft::NorthDock.validate().unwrap(), ""),
+                (SlotDraft::SouthDock.validate().unwrap(), "a"),
+            ])
+            .validate()
+            .map(|_valid| ()),
         },
         Row {
             dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
@@ -432,20 +433,20 @@ fn held_reads() -> [HeldRead; 6] {
             "tagged variant",
             "Depot<Tag<String>>",
             r#"{"kind":"Stocked","by_slot":{"t":{"label":""}}}"#,
-            DepotDraft::Stocked { by_slot: stocked() }.validate(),
+            crate::judged_issues(DepotDraft::Stocked { by_slot: stocked() }.validation_issues()),
         ),
         (
             "untagged variant",
             "Pallet<Tag<String>>",
             r#"{"by_slot":{"t":{"label":""}}}"#,
-            PalletDraft::Loaded { by_slot: stocked() }.validate(),
+            crate::judged_issues(PalletDraft::Loaded { by_slot: stocked() }.validation_issues()),
         ),
         (
             "held type",
             "Aisle",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
             AisleDraft {
-                shelf: ShelfDraft { by_slot: stocked() }.validate().unwrap(),
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
             }
             .validate()
             .map(|_valid| ()),
@@ -454,17 +455,19 @@ fn held_reads() -> [HeldRead; 6] {
             "generic holder",
             "Annex<Tag<String>>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
-            AnnexDraft {
-                shelf: ShelfDraft { by_slot: stocked() }.validate().unwrap(),
-            }
-            .validate(),
+            crate::judged_issues(
+                AnnexDraft {
+                    shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
+                }
+                .validation_issues(),
+            ),
         ),
         (
             "brand of the holder's parameter",
             "Armoire<String>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
             ArmoireDraft {
-                shelf: ShelfDraft { by_slot: stocked() }.validate().unwrap(),
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
             }
             .validate()
             .map(|_valid| ()),
@@ -474,16 +477,15 @@ fn held_reads() -> [HeldRead; 6] {
             "Wardrobe<String>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
             WardrobeDraft {
-                shelf: ShelfDraft {
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft {
                     by_slot: BTreeMap::from([(
                         Tag::new(Tag::new("t".to_owned()).unwrap()).unwrap(),
                         item(""),
                     )]),
-                }
-                .validate()
-                .unwrap(),
+                }),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         ),
     ]
 }

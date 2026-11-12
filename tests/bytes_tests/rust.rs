@@ -4,9 +4,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::models::{
-    BytesBox, BytesBoxDraft, BytesCounted, BytesCountedDraft, BytesEither, BytesEitherDraft,
-    BytesExample, BytesExampleDraft, BytesHolder, BytesHolderDraft, BytesImage, BytesImageDraft,
-    BytesLookalikes, BytesLookalikesDraft, BytesOptional, BytesOptionalDraft,
+    BytesBoxDraft, BytesCountedDraft, BytesEitherDraft, BytesExample, BytesExampleDraft,
+    BytesHolder, BytesHolderDraft, BytesImage, BytesImageDraft, BytesLookalikes,
+    BytesLookalikesDraft, BytesOptionalDraft,
 };
 
 #[test]

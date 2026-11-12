@@ -159,13 +159,11 @@ fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
 }
 
 fn parcel() -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: vec!["y".to_owned()],
         item_code_list: vec!["x".to_owned(), "x".to_owned()],
         label: String::new(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The statement that holds the text the declared type `read` answers to `least` characters,

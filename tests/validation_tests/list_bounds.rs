@@ -355,8 +355,8 @@ mod a_key_on_a_list {
         assert_eq!(
             OrderDraft {
                 lines: vec![
-                    line("ok").validate().unwrap(),
-                    line("x").validate().unwrap()
+                    Line::model_schema_wrap_unjudged(line("ok")),
+                    Line::model_schema_wrap_unjudged(line("x"))
                 ]
             }
             .validate()
@@ -421,11 +421,11 @@ mod a_key_on_a_list {
             vec!["'Boxes.labels': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Shipment::Pallets(vec![1, 2, 3]).validation_issues(),
+            ShipmentDraft::Pallets(vec![1, 2, 3]).validation_issues(),
             vec!["'Pallets': too long: maximum length is 2, got 3"]
         );
         assert_eq!(
-            Shipment::Pallets(Vec::new()).validation_issues(),
+            ShipmentDraft::Pallets(Vec::new()).validation_issues(),
             Vec::<String>::new()
         );
     }
@@ -704,11 +704,9 @@ mod a_key_on_an_alias_of_a_list {
     }
 
     fn album(count: usize) -> Album {
-        AlbumDraft {
+        Album::model_schema_wrap_unjudged(AlbumDraft {
             captions: vec!["c".to_owned(); count],
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]

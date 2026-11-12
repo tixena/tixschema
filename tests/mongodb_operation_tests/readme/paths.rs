@@ -15,8 +15,9 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::{
-    Address, AddressDraft, Customer, Invoice, InvoiceStatus, LineItem, LineItemDraft, Payment,
-    PaymentDraft, assert_declared_and_documented, assert_documented, readme,
+    Address, AddressDraft, Customer, Invoice, InvoiceStatus, InvoiceStatusDraft, LineItem,
+    LineItemDraft, Payment, PaymentDraft, assert_declared_and_documented, assert_documented,
+    readme,
 };
 use super::{invoice_schema, payment_schema};
 
@@ -112,18 +113,22 @@ fn recouriered(courier: &str) -> Result<booking_schema::Update<Booking>, WriteEr
 const DECLARED_BUILDERS: [&str; 6] = [
     r#"/// The address the examples write.
 fn moca() -> Address {
-    Address {
+    AddressDraft {
         city: "Moca".to_owned(),
         postal_code: "56000".to_owned(),
     }
+    .validate()
+    .unwrap()
 }"#,
     r#"/// The line item the examples write.
 fn bolts() -> LineItem {
-    LineItem {
+    LineItemDraft {
         price: 4.5,
         quantity: 9,
         sku: "C-3".to_owned(),
     }
+    .validate()
+    .unwrap()
 }"#,
     "/// Unpaid invoices of one city that are past due or above an amount.
 fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
@@ -131,7 +136,7 @@ fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
     let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
         .status()
-        .eq(InvoiceStatus::PastDue)?
+        .eq(valid_invoice_status(InvoiceStatusDraft::PastDue))?
         .or(paths.total().gt(above)?)
         .and(paths.customer().nest(customer.address().nest(in_city)))
         .and(paths.paid_at().exists(false)))
@@ -141,7 +146,7 @@ fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
     let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
         .status()
-        .set(InvoiceStatus::Paid)?
+        .set(valid_invoice_status(InvoiceStatusDraft::Paid))?
         .and(paths.paid_at().set(at.to_owned())?)
         .and(paths.customer().nest(customer.open_invoices().set(0)?))
         .and(paths.tags().push("settled".to_owned())?))
@@ -151,7 +156,7 @@ fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .ne(InvoiceStatus::Draft)?
+        .ne(valid_invoice_status(InvoiceStatusDraft::Draft))?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }"#,
     r#"/// A surcharge: `$inc`, an operator the typed paths do not write, beside one they do.
@@ -360,7 +365,7 @@ fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .ne(InvoiceStatus::Draft)?
+        .ne(valid_invoice_status(InvoiceStatusDraft::Draft))?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }
 
@@ -369,7 +374,7 @@ fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
     let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
         .status()
-        .set(InvoiceStatus::Paid)?
+        .set(valid_invoice_status(InvoiceStatusDraft::Paid))?
         .and(paths.paid_at().set(at.to_owned())?)
         .and(paths.customer().nest(customer.open_invoices().set(0)?))
         .and(paths.tags().push("settled".to_owned())?))
@@ -425,7 +430,7 @@ fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
     let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
         .status()
-        .eq(InvoiceStatus::PastDue)?
+        .eq(valid_invoice_status(InvoiceStatusDraft::PastDue))?
         .or(paths.total().gt(above)?)
         .and(paths.customer().nest(customer.address().nest(in_city)))
         .and(paths.paid_at().exists(false)))
@@ -510,13 +515,20 @@ fn written_by_a_value() -> Result<Vec<(&'static str, String)>, WriteError> {
         written!(paths.paid_at().exists(false)),
         written!(paths.paid_at().unset()),
         written!(paths.paid_at().lt("2026-10-01".to_owned())?),
-        written!(paths.status().eq(InvoiceStatus::PastDue)?),
         written!(
             paths
                 .status()
-                .is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?
+                .eq(valid_invoice_status(InvoiceStatusDraft::PastDue))?
         ),
-        written!(paths.status().set(InvoiceStatus::Paid)?),
+        written!(paths.status().is_in([
+            valid_invoice_status(InvoiceStatusDraft::Draft),
+            valid_invoice_status(InvoiceStatusDraft::PastDue)
+        ])?),
+        written!(
+            paths
+                .status()
+                .set(valid_invoice_status(InvoiceStatusDraft::Paid))?
+        ),
     ])
 }
 
@@ -608,11 +620,7 @@ fn written_by_a_model() -> Result<Vec<(&'static str, String)>, WriteError> {
                 .payment()
                 .nest(payment.card().last4().eq("4242".to_owned())?)
         ),
-        written!(
-            paths
-                .payment()
-                .set(PaymentDraft::Cash.validate().unwrap())?
-        ),
+        written!(paths.payment().set(valid_payment(PaymentDraft::Cash))?),
     ])
 }
 
@@ -777,4 +785,12 @@ fn the_readme_changes_the_rows_of_an_arm_through_its_update() {
             "the README has no row for this call:\n| `{call}` | {answered} |"
         );
     }
+}
+
+fn valid_invoice_status(draft: InvoiceStatusDraft) -> InvoiceStatus {
+    draft.validate().unwrap()
+}
+
+fn valid_payment(draft: PaymentDraft) -> Payment {
+    draft.validate().unwrap()
 }

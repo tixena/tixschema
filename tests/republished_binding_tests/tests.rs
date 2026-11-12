@@ -601,7 +601,8 @@ fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
 
 #[test]
 fn every_branded_inner_writes_the_value_its_target_writes() {
-    let slotted: SlotBrandRef = SlotBrand::new(MetricSlotDraft::Weekly).unwrap();
+    let slotted: SlotBrandRef =
+        SlotBrand::new(MetricSlotDraft::Weekly.validate().unwrap()).unwrap();
     assert_eq!(serde_json::to_string(&slotted).unwrap(), "\"Weekly\"");
     let flagged: BoolBrandRef = BoolBrand::new(true).unwrap();
     assert_eq!(serde_json::to_string(&flagged).unwrap(), "true");
@@ -611,9 +612,13 @@ fn every_branded_inner_writes_the_value_its_target_writes() {
         NumBrandOverBrand::new(NumBrand::new(-7_i32).unwrap()).unwrap();
     assert_eq!(serde_json::to_string(&twice).unwrap(), "-7");
 
-    let structured = StructBrand::new(PlainStructDraft {
-        label: "l".to_owned(),
-    })
+    let structured = StructBrand::new(
+        PlainStructDraft {
+            label: "l".to_owned(),
+        }
+        .validate()
+        .unwrap(),
+    )
     .unwrap();
     assert_eq!(
         serde_json::to_string(&structured).unwrap(),

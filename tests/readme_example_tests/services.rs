@@ -158,7 +158,9 @@ impl BillingService<BillingContext> for BillingBackEnd {
             Ok(OpenBalanceResponseDraft {
                 open_invoices: u32::try_from(seen).unwrap_or(0),
                 is_post_paid: true,
-            })
+            }
+            .validate()
+            .unwrap())
         }
     }
 
@@ -177,7 +179,9 @@ impl BillingService<BillingContext> for BillingBackEnd {
         Ok(OpenBalanceResponseDraft {
             open_invoices: u32::try_from(seen).unwrap_or(0),
             is_post_paid: false,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -496,6 +500,8 @@ fn asking() -> OpenBalanceRequest {
     OpenBalanceRequestDraft {
         customer_id: "acme".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The invoices an operation answered with, and `u32::MAX` where it answered its declared error.

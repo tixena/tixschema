@@ -558,7 +558,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         Ok(KeyedAnswerDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
         }
         .validate()
         .unwrap())
@@ -623,7 +623,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
     async fn own_key(&self, _ctx: &(), req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         Ok(KeyedAnswerDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
         }
         .validate()
         .unwrap())
@@ -650,7 +650,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
     async fn plain(&self, _ctx: &(), req: KeyedPlain) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         Ok(KeyedAnswerDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
         }
         .validate()
         .unwrap())
@@ -659,7 +659,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
     async fn quoted_key(&self, _ctx: &(), req: KeyedQuoted) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         Ok(KeyedAnswerDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
         }
         .validate()
         .unwrap())
@@ -671,7 +671,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
             return Err(KeyedRefusedDraft::Nope.validate().unwrap());
         }
         Ok(KeyedAnswerDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
         }
         .validate()
         .unwrap())

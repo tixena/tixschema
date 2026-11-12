@@ -48,7 +48,7 @@ pub struct NoteBackEnd;
 impl PlainService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
     }
 }
 
@@ -60,7 +60,7 @@ impl InboundService<()> for NoteBackEnd {
         _tenant: String,
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
     }
 }
 
@@ -71,20 +71,26 @@ impl OutboundService<()> for NoteBackEnd {
         id: String,
     ) -> Result<(HeaderProbeDocument, String), HeaderProbeError> {
         ready(()).await;
-        Ok((HeaderProbeDocumentDraft { title: id.clone() }, id))
+        Ok((
+            HeaderProbeDocumentDraft { title: id.clone() }
+                .validate()
+                .unwrap(),
+            id,
+        ))
     }
 }
 
 impl BodilessService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
     }
 }
 
 #[test]
 fn the_four_services_are_implementable_and_callable() {
-    let read = |answered: Result<HeaderProbeDocument, HeaderProbeError>| answered.unwrap().title;
+    let read =
+        |answered: Result<HeaderProbeDocument, HeaderProbeError>| answered.unwrap().title.clone();
     assert_eq!(
         read(poll_once(PlainService::read(&NoteBackEnd, &(), "a".to_owned())).unwrap()),
         "a"

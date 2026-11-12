@@ -143,7 +143,7 @@ fn broken() -> Document {
 
 /// The group `broken()` stores, built in code.
 fn broken_group() -> BoundedGroup {
-    BoundedGroupDraft {
+    BoundedGroup::model_schema_wrap_unjudged(BoundedGroupDraft {
         human_name: Some(String::new()),
         labels: Vec::new(),
         level: 0,
@@ -151,9 +151,7 @@ fn broken_group() -> BoundedGroup {
         source: BoundedPath::new("Items".to_owned()).unwrap(),
         tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
         title: "long".to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 #[test]
@@ -269,7 +267,12 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_bson_with(doc! { "Code": "ABC" }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlotsDraft::Code("ABC".to_owned())));
+    assert_eq!(
+        held,
+        Ok(BoundedSlotsDraft::Code("ABC".to_owned())
+            .validate()
+            .unwrap())
+    );
 
     let code = BoundedSlots::from_bson_with(doc! { "Code": "abc" }, |_, _| Verdict::Reject);
     let pair = BoundedSlots::from_bson_with(doc! { "Pair": ["a", 0_i32] }, |_, _| Verdict::Reject);
@@ -326,7 +329,12 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_bson_with(doc! { "Many": ["only"] }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlotsDraft::Many(vec!["only".to_owned()])));
+    assert_eq!(
+        held,
+        Ok(BoundedSlotsDraft::Many(vec!["only".to_owned()])
+            .validate()
+            .unwrap())
+    );
     let many = BoundedSlots::from_bson_with(doc! { "Many": ["a", "b"] }, |_, _| Verdict::Reject);
     assert_eq!(
         many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
@@ -348,7 +356,9 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
             choice: BoundedChoiceDraft::Few(vec!["a".to_owned(), "b".to_owned()])
                 .validate()
                 .unwrap()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let many =
         BoundedChooser::from_bson_with(doc! { "choice": ["a", "b", "c"] }, |_, _| Verdict::Reject);
@@ -366,7 +376,12 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     use bounded_by_enum_schema::Verdict;
 
     let held = BoundedByEnum::from_bson_with(doc! { "Slot": "abcde" }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedByEnumDraft::Slot("abcde".to_owned())));
+    assert_eq!(
+        held,
+        Ok(BoundedByEnumDraft::Slot("abcde".to_owned())
+            .validate()
+            .unwrap())
+    );
     let tags =
         BoundedByEnum::from_bson_with(doc! { "Tags": { "tags": ["", "abcdef"] } }, |_, _| {
             Verdict::Reject
@@ -375,7 +390,9 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
         tags,
         Ok(BoundedByEnumDraft::Tags {
             tags: vec![String::new(), "abcdef".to_owned()]
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
     let label =
@@ -414,7 +431,9 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
         Ok(BoundedHolderDraft {
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
     let broken =
@@ -470,7 +489,9 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
         Ok(BoundedHolderDraft {
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -506,7 +527,9 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
             source: BoundedPath::new("Items".to_owned()).unwrap(),
             tags: vec!["A".to_owned()],
             title: "ok".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

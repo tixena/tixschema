@@ -48,9 +48,10 @@ pub trait Orders<Ctx> {
     async fn archive_order(&self, ctx: &Ctx, order_id: String, archived_by: String);
 }
 
-// `error_status` matches `OrderError` by variant, so the dispatcher's module imports it.
+// `error_status` matches the draft of `OrderError` by variant, so the dispatcher's module imports
+// both.
 mod orders_http {
-    use super::OrderError;
+    use super::{OrderError, OrderErrorDraft};
 
     orders_http_rest_dispatcher!();
 }
@@ -65,9 +66,9 @@ impl Orders<()> for Shop {
         _include_lines: Option<bool>,
     ) -> Result<Order, OrderError> {
         if order_id == "A-1" {
-            Ok(Order { order_id, total_cents: 4250 })
+            Ok(OrderDraft { order_id, total_cents: 4250 }.validate().unwrap())
         } else {
-            Err(OrderError::NotFound)
+            Err(OrderErrorDraft::NotFound.validate().unwrap())
         }
     }
 
@@ -77,7 +78,7 @@ impl Orders<()> for Shop {
         _order_id: String,
         _reason: String,
     ) -> Result<Order, OrderError> {
-        Err(OrderError::AlreadyShipped)
+        Err(OrderErrorDraft::AlreadyShipped.validate().unwrap())
     }
 
     async fn archive_order(&self, _ctx: &(), _order_id: String, _archived_by: String) {}

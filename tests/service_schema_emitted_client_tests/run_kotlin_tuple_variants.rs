@@ -26,7 +26,7 @@ use super::tuple_variants_models::{
     Binning, BinningDraft, Coiling, CoilingDraft, Heaping, HeapingDraft, Tallying, binning_kotlin,
     coiling_kotlin, heaping_kotlin, tallying_kotlin,
 };
-use super::tuple_variants_models::{Labelling, LabellingDraft, Stencil, StencilDraft};
+use super::tuple_variants_models::{LabellingDraft, Stencil, StencilDraft};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -654,7 +654,12 @@ fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in
 /// Rust, the read of a payload that leaves the key out included.
 #[test]
 fn the_refusals_held_here_are_what_the_holders_validate_answers() {
-    let broken = || (StencilDraft::default(), 2);
+    let broken = || {
+        (
+            Stencil::model_schema_wrap_unjudged(StencilDraft::default()),
+            2,
+        )
+    };
     assert_eq!(
         WrappingDraft { pair: broken() }.validation_issues(),
         vec![PAIR_REFUSED.to_owned()]

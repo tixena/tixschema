@@ -88,7 +88,9 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             "d".to_owned(),
             KegDraft {
                 contents: "x".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     for (held, written) in [
@@ -119,7 +121,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         r#"{"Both":{"marked":3,"stowed":"s"}}"#
     );
     assert_eq!(
-        read_back(&Lading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&LadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"Marks":{"marks":[1]}}"#
     );
     assert_eq!(
@@ -130,7 +132,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         r#"{"kind":"Both","held":{"marked":3,"stowed":"s"}}"#
     );
     assert_eq!(
-        read_back(&AdjacentLading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&AdjacentLadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"kind":"Marks","held":{"marks":[1]}}"#
     );
     assert_eq!(
@@ -141,7 +143,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         r#"{"marked":3,"stowed":"s"}"#
     );
     assert_eq!(
-        read_back(&UntaggedLading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&UntaggedLadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"marks":[1]}"#
     );
 }

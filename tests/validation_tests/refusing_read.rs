@@ -377,18 +377,16 @@ mod a_read_refuses_what_validate_refuses {
     }
 
     fn broken() -> Parcel {
-        ParcelDraft {
+        Parcel::model_schema_wrap_unjudged(ParcelDraft {
             fragile_item_codes: vec!["x".to_owned(), "y".to_owned()],
             item_label: String::new(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     /// A manifest that holds `held` in every place it holds a parcel, after a sound one in its
     /// list.
     fn manifest_of(held: &Parcel) -> Manifest {
-        ManifestDraft {
+        Manifest::model_schema_wrap_unjudged(ManifestDraft {
             boxed_parcel: Box::new(held.clone()),
             first_parcel: held.clone(),
             note: NoteDraft {
@@ -399,9 +397,7 @@ mod a_read_refuses_what_validate_refuses {
             parcel_list: vec![sound(), held.clone()],
             parcels_by_dock: BTreeMap::from([("north".to_owned(), held.clone())]),
             spare_parcel: Some(held.clone()),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     /// The text a read is refused with for a value `validate()` answers `reported` of.
@@ -411,19 +407,20 @@ mod a_read_refuses_what_validate_refuses {
 
     /// Holds the read of what serde writes for `value` to what `validate()` answers of `value`:
     /// an error with every message where it reports any, and the value where it reports none.
-    fn read_as_validated<T>(value: &T, validated: Result<(), Vec<String>>)
+    fn read_as_validated<D, V>(value: &D, validated: Result<V, Vec<String>>)
     where
-        T: Debug + DeserializeOwned + PartialEq + Serialize,
+        D: Serialize,
+        V: Debug + DeserializeOwned + PartialEq + Serialize,
     {
         let payload = serde_json::to_string(value).unwrap();
-        let read = serde_json::from_str::<T>(&payload);
-        let from_value = serde_json::from_value::<T>(serde_json::to_value(value).unwrap());
+        let read = serde_json::from_str::<V>(&payload);
+        let from_value = serde_json::from_value::<V>(serde_json::to_value(value).unwrap());
         match validated {
-            Ok(()) => {
-                assert_eq!(read.as_ref().ok(), Some(value), "{payload} is not read");
+            Ok(valid) => {
+                assert_eq!(read.as_ref().ok(), Some(&valid), "{payload} is not read");
                 assert_eq!(
                     from_value.ok().as_ref(),
-                    Some(value),
+                    Some(&valid),
                     "{payload} is not read"
                 );
                 assert_eq!(serde_json::to_string(&read.unwrap()).unwrap(), payload);
@@ -580,13 +577,11 @@ mod a_read_refuses_what_validate_refuses {
     }
 
     fn yard_of(arced: &Parcel, fixed: &Parcel, paired: &Parcel) -> Yard {
-        YardDraft {
+        Yard::model_schema_wrap_unjudged(YardDraft {
             arced_parcel: Arc::new(arced.clone()),
             fixed_parcels: [fixed.clone()],
             paired_parcel: (paired.clone(), 1),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]
@@ -596,9 +591,7 @@ mod a_read_refuses_what_validate_refuses {
         assert_eq!(serde_json::from_str::<Yard>(&written).unwrap(), kept);
 
         assert_eq!(
-            yard_of(&broken(), &broken(), &broken())
-                .validate()
-                .unwrap_err(),
+            yard_of(&broken(), &broken(), &broken()).validation_issues(),
             [
                 "'arcedParcel.itemLabel': too short: minimum length is 1, got 0",
                 "'arcedParcel.fragileItemCodes.1': y is outside of itemCodeList",
@@ -619,18 +612,20 @@ mod a_read_refuses_what_validate_refuses {
                 .to_string();
             let expected = refusal(&held.validation_issues());
             assert!(refused.starts_with(&expected), "got: {refused}");
-            read_as_validated(&held, held.validate().map(|_valid| ()));
+            read_as_validated(&held, held.clone().into_draft().validate());
         }
     }
 
     #[test]
     fn a_model_held_in_an_rc_a_set_or_a_deque_is_refused_with_what_validate_answers() {
-        let lot = |label: &str| LotDraft {
-            lot_label: label.to_owned(),
+        let lot = |label: &str| {
+            Lot::model_schema_wrap_unjudged(LotDraft {
+                lot_label: label.to_owned(),
+            })
         };
         let depot_of = |queued: &[&str], rc: &str, sorted: &[&str]| DepotDraft {
             queued_lots: queued.iter().map(|&label| lot(label)).collect(),
-            rc_lot: Rc::new(lot(rc).validate().unwrap()),
+            rc_lot: Rc::new(lot(rc)),
             sorted_lots: sorted.iter().map(|&label| lot(label)).collect(),
         };
         for held in [
@@ -640,7 +635,7 @@ mod a_read_refuses_what_validate_refuses {
             depot_of(&["a"], "c", &["", "d"]),
             depot_of(&["", ""], "", &[""]),
         ] {
-            read_as_validated(&held, held.validate().map(|_valid| ()));
+            read_as_validated(&held, held.clone().validate());
         }
         assert_eq!(
             refusal(&depot_of(&["", ""], "", &["", "d"]).validation_issues()),
@@ -669,12 +664,12 @@ mod a_read_refuses_what_validate_refuses {
                 "'pairedParcels.1.0.fragileItemCodes.1': y is outside of itemCodeList",
             ]
         );
-        read_as_validated(&held, held.validate().map(|_valid| ()));
+        read_as_validated(&held, held.clone().validate());
         let kept = ConvoyDraft {
             counted_parcels: (vec![sound()], 1),
             paired_parcels: vec![(sound(), 1)],
         };
-        read_as_validated(&kept, kept.validate().map(|_valid| ()));
+        read_as_validated(&kept, kept.clone().validate());
     }
 
     #[test]
@@ -693,7 +688,7 @@ mod a_read_refuses_what_validate_refuses {
             shipment_of(&sound(), &sound(), &broken()),
             shipment_of(&broken(), &broken(), &broken()),
         ] {
-            read_as_validated(&held, held.validate().map(|_valid| ()));
+            read_as_validated(&held, held.clone().validate());
         }
         for parcel in [sound(), broken()] {
             for held in [
@@ -707,7 +702,7 @@ mod a_read_refuses_what_validate_refuses {
                     paired_parcel: (parcel, 1),
                 },
             ] {
-                read_as_validated(&held, held.validate().map(|_valid| ()));
+                read_as_validated(&held, held.clone().validate());
             }
         }
     }
@@ -746,7 +741,7 @@ mod a_read_refuses_what_validate_refuses {
     #[test]
     fn the_readme_shows_what_a_read_answers() {
         let readme = include_str!("../../docs/guide/validation.md");
-        let mut changed = sound();
+        let mut changed = ParcelDraft::from(sound());
         changed.fragile_item_codes.push("y".to_owned());
         for shown in [
             format!(
@@ -781,12 +776,13 @@ mod a_read_refuses_what_validate_refuses {
 
     #[test]
     fn a_value_changed_after_it_was_read_is_judged_by_validate() {
-        let mut parcel: Parcel =
+        let parcel: Parcel =
             serde_json::from_str(r#"{"itemLabel":"A","fragileItemCodes":["x"]}"#).unwrap();
         assert_eq!(parcel.validation_issues(), Vec::<String>::new());
-        parcel.fragile_item_codes.push("y".to_owned());
+        let mut changed = ParcelDraft::from(parcel);
+        changed.fragile_item_codes.push("y".to_owned());
         assert_eq!(
-            parcel.validation_issues(),
+            changed.validation_issues(),
             vec!["'fragileItemCodes.1': y is outside of itemCodeList".to_owned()]
         );
     }
@@ -797,84 +793,83 @@ mod a_read_refuses_what_validate_refuses {
             let labelled = ConsignmentDraft("a".to_owned(), held.clone());
             let unlabelled = ConsignmentDraft(String::new(), held.clone());
             let sealed = SealedDraft(held);
-            read_as_validated(&labelled, labelled.validate().map(|_valid| ()));
-            read_as_validated(&unlabelled, unlabelled.validate().map(|_valid| ()));
-            read_as_validated(&sealed, sealed.validate().map(|_valid| ()));
+            read_as_validated(&labelled, labelled.clone().validate());
+            read_as_validated(&unlabelled, unlabelled.clone().validate());
+            read_as_validated(&sealed, sealed.clone().validate());
         }
-        assert!(
-            !ConsignmentDraft(String::new(), broken())
-                .validation_issues()
-                .is_empty()
+        assert_ne!(
+            ConsignmentDraft(String::new(), broken()).validation_issues(),
+            Vec::<String>::new()
         );
-        assert!(!SealedDraft(broken()).validation_issues().is_empty());
+        assert_ne!(
+            SealedDraft(broken()).validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
     fn a_unit_struct_is_read_as_its_check_answers() {
-        read_as_validated(&DockDraft, DockDraft.validate().map(|_valid| ()));
+        read_as_validated(&DockDraft, DockDraft.clone().validate());
         assert_eq!(
             serde_json::from_str::<Dock>("{}").unwrap_err().to_string(),
             "a closed dock takes no parcel"
         );
         DOCK_IS_OPEN.with(|open| open.set(true));
-        read_as_validated(&DockDraft, DockDraft.validate().map(|_valid| ()));
-        assert_eq!(serde_json::from_str::<Dock>("{}").ok(), Some(DockDraft));
+        read_as_validated(&DockDraft, DockDraft.clone().validate());
+        assert_eq!(
+            serde_json::from_str::<Dock>("{}").ok(),
+            Some(DockDraft.validate().unwrap())
+        );
     }
 
     #[test]
     fn an_enum_under_each_tagging_is_read_as_validate_answers() {
         for held in [sound(), broken()] {
             for freight in [
-                Freight::Boxed(held.clone()),
+                FreightDraft::Boxed(held.clone()),
                 FreightDraft::Loose {
                     freight_label: held.item_label.clone(),
                 },
-                Freight::Split(held.item_label.clone(), held.clone()),
-                Freight::Stacked(vec![sound(), held.clone()]),
+                FreightDraft::Split(held.item_label.clone(), held.clone()),
+                FreightDraft::Stacked(vec![sound(), held.clone()]),
             ] {
-                read_as_validated(&freight, freight.validate());
+                read_as_validated(&freight, freight.clone().validate());
             }
             for haul in [
-                Haul::Boxed(held.clone()),
+                HaulDraft::Boxed(held.clone()),
                 HaulDraft::Loose {
                     haul_label: held.item_label.clone(),
                 },
-                Haul::Split("a".to_owned(), held.clone()),
+                HaulDraft::Split("a".to_owned(), held.clone()),
             ] {
-                read_as_validated(&haul, haul.validate());
+                read_as_validated(&haul, haul.clone().validate());
             }
             for lift in [
-                Lift::Boxed(held.clone()),
+                LiftDraft::Boxed(held.clone()),
                 LiftDraft::Loose {
                     lift_label: held.item_label.clone(),
                 },
             ] {
-                read_as_validated(&lift, lift.validate());
+                read_as_validated(&lift, lift.clone().validate());
             }
             for stock in [
-                Stock::Keyed(BTreeMap::from([("north".to_owned(), held.clone())])),
-                Stock::Listed(vec![sound(), held.clone()]),
-                Stock::Single(held),
+                StockDraft::Keyed(BTreeMap::from([("north".to_owned(), held.clone())])),
+                StockDraft::Listed(vec![sound(), held.clone()]),
+                StockDraft::Single(held),
             ] {
-                read_as_validated(&stock, stock.validate());
+                read_as_validated(&stock, stock.clone().validate());
             }
         }
         for broken_whole in [
-            Freight::Boxed(broken()).validate(),
-            Haul::Boxed(broken()).validate(),
-            Lift::Boxed(broken()).validate(),
-            Stock::Single(broken()).validate(),
+            FreightDraft::Boxed(broken()).validate().map(|_| ()),
+            HaulDraft::Boxed(broken()).validate().map(|_| ()),
+            LiftDraft::Boxed(broken()).validate().map(|_| ()),
+            StockDraft::Single(broken()).validate().map(|_| ()),
         ] {
             assert!(broken_whole.is_err());
         }
-        read_as_validated(
-            &GradeDraft::Express,
-            GradeDraft::Express.validate().map(|_valid| ()),
-        );
-        read_as_validated(
-            &GradeDraft::Unrated,
-            GradeDraft::Unrated.validate().map(|_valid| ()),
-        );
+        read_as_validated(&GradeDraft::Express, GradeDraft::Express.validate());
+        read_as_validated(&GradeDraft::Unrated, GradeDraft::Unrated.validate());
         assert_eq!(
             GradeDraft::Unrated.validate().map_err(|said| said.len()),
             Err(1)
@@ -885,19 +880,19 @@ mod a_read_refuses_what_validate_refuses {
     fn a_member_of_an_untagged_enum_chooses_its_variant_by_its_bound() {
         assert_eq!(
             serde_json::from_str::<Reading>(r#""abc""#).ok(),
-            Some(ReadingDraft::Short("abc".to_owned()))
+            Some(ReadingDraft::Short("abc".to_owned()).validate().unwrap())
         );
         assert_eq!(
             serde_json::from_str::<Reading>(r#""abcd""#).ok(),
-            Some(ReadingDraft::Text("abcd".to_owned()))
+            Some(ReadingDraft::Text("abcd".to_owned()).validate().unwrap())
         );
         // A model an untagged variant holds is read as that variant, and judged with the whole.
-        let listed = serde_json::to_string(&Stock::Listed(vec![broken()])).unwrap();
+        let listed = serde_json::to_string(&StockDraft::Listed(vec![broken()])).unwrap();
         assert_eq!(
             serde_json::from_str::<Stock>(&listed)
                 .unwrap_err()
                 .to_string(),
-            refusal(&Stock::Listed(vec![broken()]).validation_issues())
+            refusal(&StockDraft::Listed(vec![broken()]).validation_issues())
         );
     }
 
@@ -936,7 +931,10 @@ mod a_read_refuses_what_validate_refuses {
             .unwrap(),
         };
         assert_eq!(
-            [coded.validate(), under_a_key.validate()],
+            [
+                crate::judged(coded.validation_issues()),
+                crate::judged(under_a_key.validation_issues())
+            ],
             [
                 Err(vec![
                     "'Coded.parcelCode': too short: minimum length is 2, got 1".to_owned()
@@ -961,7 +959,7 @@ mod a_read_refuses_what_validate_refuses {
         let kept = SortedDraft::Coded {
             parcel_code: Code::new("ab".to_owned()).unwrap(),
         };
-        read_as_validated(&kept, kept.validate().map(|_valid| ()));
+        read_as_validated(&kept, kept.clone().validate());
     }
 
     #[test]
@@ -981,11 +979,11 @@ mod a_read_refuses_what_validate_refuses {
             (vec![], ""),
         ] {
             let held = texts(&codes, label);
-            read_as_validated(&held, held.validate().map(|_valid| ()));
+            read_as_validated(&held, held.clone().validate());
         }
         for (codes, label) in [(vec![7], "c"), (vec![], "c"), (vec![7], ""), (vec![], "")] {
             let held = numbers(&codes, label);
-            read_as_validated(&held, held.validate().map(|_valid| ()));
+            read_as_validated(&held, held.clone().validate());
         }
         assert_eq!(
             refusal(&numbers(&[], "").validation_issues()),

@@ -3,8 +3,8 @@
 //! `validate()` refuses, the model in an arm read unjudged so that the whole value is judged once.
 
 use super::models::{
-    Errata, ErrataDraft, Missive, MissiveDraft, Notebook, Reply, ballot, masthead, missive,
-    notebook, unparsed,
+    ErrataDraft, Missive, MissiveDraft, Notebook, Reply, ballot, masthead, missive, notebook,
+    unparsed,
 };
 
 /// What `validate()` answers of a broken [`Missive`].

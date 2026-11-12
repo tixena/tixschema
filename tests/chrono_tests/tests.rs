@@ -331,8 +331,8 @@ fn test_chrono_types_constructible() {
     assert!(date_map.events.is_empty());
     let slot_schedule = SlotScheduleDraft {
         dates: HashMap::from([
-            (ScheduleSlotDraft::Opening, date),
-            (ScheduleSlotDraft::Closing, date),
+            (ScheduleSlotDraft::Opening.validate().unwrap(), date),
+            (ScheduleSlotDraft::Closing.validate().unwrap(), date),
         ]),
         timestamps: HashMap::new(),
     };
@@ -924,7 +924,7 @@ fn an_as_number_field_crosses_the_wire_as_epoch_milliseconds() {
         "a DateTime without the flag keeps chrono's string. Got: {json}"
     );
     let back: Sample = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, sample.validate().unwrap());
+    assert_eq!(back, sample.clone().validate().unwrap());
     let variant = serde_json::to_string(&DynamicValueDraft::Number(sample.created_at)).unwrap();
     assert_eq!(variant, r#"{"type":"Number","value":1758000000000}"#);
 }
@@ -1235,7 +1235,7 @@ fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
     assert_eq!(written, r#"{"settled":null}"#);
     assert_eq!(
         serde_json::from_str::<DroppedMillis>(&written).unwrap(),
-        empty.validate().unwrap()
+        empty.clone().validate().unwrap()
     );
     assert_eq!(
         serde_json::from_str::<DroppedMillis>("{}").unwrap(),

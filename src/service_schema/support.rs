@@ -10,6 +10,7 @@ use super::parse::{
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
+use crate::utils::is_recorded_drafted_unit_struct_type;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Ident, Type, parse_quote};
@@ -1116,6 +1117,15 @@ pub fn draft_type_path(ty: &Type) -> TokenStream {
         last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
     }
     quote! { #drafted }
+}
+
+/// The value of the unit type `ty`: `()`, or a recorded unit struct.
+pub fn unit_value(ty: &Type) -> TokenStream {
+    if is_recorded_drafted_unit_struct_type(ty) {
+        quote! { <#ty>::model_schema_unit() }
+    } else {
+        quote! { #ty }
+    }
 }
 
 /// One name per operation for the message it receives, so a dispatcher outside this module reaches

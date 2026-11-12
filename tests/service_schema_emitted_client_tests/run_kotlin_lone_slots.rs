@@ -12,7 +12,7 @@ use tixschema::model_schema;
 
 use super::lone_slot_rows::{Row, held_to_rows, rows};
 use super::lone_slots_models::{
-    Bale, BaleDraft, adjacent_stow_kotlin, bale_kotlin, bale_pair_kotlin, baled_kotlin,
+    BaleDraft, adjacent_stow_kotlin, bale_kotlin, bale_pair_kotlin, baled_kotlin,
     bales_by_name_kotlin, bales_by_number_kotlin, bales_kotlin, clipped_kotlin, count_kotlin,
     girth_kotlin, girthed_kotlin, labels_by_number_kotlin, laden_kotlin, maybe_bale_kotlin,
     moniker_kotlin, rigger_kotlin, sack_kotlin, sacked_kotlin, single_kotlin, sling_kotlin,

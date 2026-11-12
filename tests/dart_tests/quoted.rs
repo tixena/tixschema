@@ -4,10 +4,9 @@
 
 use super::held_numbers::u8_held;
 use super::quoted_models::{
-    Dutied, DutiedDraft, Excised, ExcisedDraft, Leveed, LeveedDraft, Levied, LeviedDraft, Mulcted,
-    MulctedDraft, Tariffed, TariffedDraft, Tithed, TithedDraft, Tolled, TolledDraft,
-    UNDER_AN_ALIAS, WRITTEN, dutied_dart, excised_dart, levied_dart, mulcted_dart, serde_written,
-    tariffed_dart, tithed_dart, tolled_dart,
+    DutiedDraft, ExcisedDraft, LeveedDraft, LeviedDraft, MulctedDraft, TariffedDraft, TithedDraft,
+    TolledDraft, UNDER_AN_ALIAS, WRITTEN, dutied_dart, excised_dart, levied_dart, mulcted_dart,
+    serde_written, tariffed_dart, tithed_dart, tolled_dart,
 };
 
 /// Asserts that `definition` holds each of `pieces`.

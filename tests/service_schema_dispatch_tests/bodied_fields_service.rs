@@ -93,7 +93,7 @@ impl BodiedFieldsService<()> for BodiedBackEnd {
     ) -> Result<BodiedDocument, BodiedDocumentError> {
         ready(()).await;
         if title == "taken" {
-            return Err(BodiedDocumentErrorDraft::TitleTaken);
+            return Err(BodiedDocumentErrorDraft::TitleTaken.validate().unwrap());
         }
         Ok(BodiedDocumentDraft {
             id: "doc-1".to_owned(),
@@ -127,9 +127,9 @@ impl BodiedFieldsService<()> for BodiedBackEnd {
     ) -> Result<BodiedDocument, BodiedDocumentError> {
         ready(()).await;
         Ok(BodiedDocumentDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
             tags: Vec::new(),
-            title: req.title,
+            title: req.title.clone(),
         }
         .validate()
         .unwrap())

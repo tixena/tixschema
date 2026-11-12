@@ -34,13 +34,11 @@ mod measured_through_the_inner_brand {
     }
 
     fn held(badge: &str, medal: &str, spare: Option<&str>) -> CordHolder {
-        CordHolderDraft {
+        CordHolder::model_schema_wrap_unjudged(CordHolderDraft {
             badge: Braid::new(Strand::new(badge.to_owned()).unwrap()).unwrap(),
             medal: Cord::new(Braid::new(Strand::new(medal.to_owned()).unwrap()).unwrap()).unwrap(),
             spare: spare.map(|text| Braid::new(Strand::new(text.to_owned()).unwrap()).unwrap()),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]

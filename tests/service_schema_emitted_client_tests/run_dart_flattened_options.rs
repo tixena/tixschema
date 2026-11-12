@@ -194,7 +194,7 @@ fn rows() -> Vec<Row> {
                 let SennitDraft::Laid {
                     tabling,
                     note: _note,
-                } = read;
+                } = &**read;
                 written(tabling)
             },
         )

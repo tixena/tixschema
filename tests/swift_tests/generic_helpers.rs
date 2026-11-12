@@ -262,7 +262,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     assert_eq!(
         read_back(&TaggedSplitDraft::Stacked {
-            by_deck: HashMap::from([(DeckDraft::Upper, "a".to_owned())]),
+            by_deck: HashMap::from([(DeckDraft::Upper.validate().unwrap(), "a".to_owned())]),
             pair: pair.clone(),
         }),
         r#"{"kind":"Stacked","by_deck":{"Upper":"a"},"pair":["b",2]}"#
@@ -296,13 +296,16 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     for (held, written) in [
         (
-            UntaggedSplitDraft::Decked(HashMap::from([(DeckDraft::Lower, "a".to_owned())])),
+            UntaggedSplitDraft::Decked(HashMap::from([(
+                DeckDraft::Lower.validate().unwrap(),
+                "a".to_owned(),
+            )])),
             r#"{"Lower":"a"}"#,
         ),
         (UntaggedSplitDraft::Paired(pair.clone()), r#"["b",2]"#),
         (
             UntaggedSplitDraft::Stacked {
-                by_deck: HashMap::from([(DeckDraft::Lower, "a".to_owned())]),
+                by_deck: HashMap::from([(DeckDraft::Lower.validate().unwrap(), "a".to_owned())]),
                 pair,
             },
             r#"{"by_deck":{"Lower":"a"},"pair":["b",2]}"#,

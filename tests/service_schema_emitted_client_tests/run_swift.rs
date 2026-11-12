@@ -20,17 +20,15 @@ use super::tests::stamp_client_service_schema::{
     stamp_client_service_fault_fields_swift, stamp_client_service_fault_kind_swift,
 };
 use super::tests::swift_codec_fixture::{
-    CodecAdjacentTagged, CodecAdjacentTaggedDraft, CodecEnvelope, CodecEnvelopeDraft,
-    CodecExternalTagged, CodecExternalTaggedDraft, CodecInternalTagged, CodecInternalTaggedDraft,
-    CodecMapKeys, CodecMapKeysDraft, CodecOptionsRow, CodecOptionsRowDraft, CodecPrimary,
-    CodecPrimaryDraft, CodecReservedMap, CodecReservedMapDraft, CodecTuplePoint,
-    CodecTuplePointDraft, CodecUnitField, CodecUnitFieldDraft, CodecUnitPayload,
-    CodecUnitPayloadDraft, CodecUntagged, CodecUntaggedDraft, codec_adjacent_tagged_swift,
-    codec_envelope_swift, codec_external_tagged_swift, codec_internal_tagged_swift,
-    codec_map_keys_swift, codec_options_row_swift, codec_primary_swift, codec_reserved,
-    codec_reserved_inner_swift, codec_reserved_kind_swift, codec_reserved_map_swift,
-    codec_reserved_swift, codec_tuple_point_swift, codec_unit_field_swift,
-    codec_unit_payload_swift, codec_untagged_swift,
+    CodecAdjacentTaggedDraft, CodecEnvelopeDraft, CodecExternalTaggedDraft,
+    CodecInternalTaggedDraft, CodecMapKeysDraft, CodecOptionsRowDraft, CodecPrimaryDraft,
+    CodecReservedMapDraft, CodecTuplePointDraft, CodecUnitFieldDraft, CodecUnitPayloadDraft,
+    CodecUntaggedDraft, codec_adjacent_tagged_swift, codec_envelope_swift,
+    codec_external_tagged_swift, codec_internal_tagged_swift, codec_map_keys_swift,
+    codec_options_row_swift, codec_primary_swift, codec_reserved, codec_reserved_inner_swift,
+    codec_reserved_kind_swift, codec_reserved_map_swift, codec_reserved_swift,
+    codec_tuple_point_swift, codec_unit_field_swift, codec_unit_payload_swift,
+    codec_untagged_swift,
 };
 use super::tests::{
     ContentClientServiceSchema, ConversationClientServiceSchema, EchoClientServiceSchema,
@@ -595,7 +593,10 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             "CodecMapKeys",
             serde_json::to_value(CodecMapKeysDraft {
                 counters: HashMap::from([(7, "seven".to_owned())]),
-                tiers: HashMap::from([(CodecPrimaryDraft::Primary, "p".to_owned())]),
+                tiers: HashMap::from([(
+                    CodecPrimaryDraft::Primary.validate().unwrap(),
+                    "p".to_owned(),
+                )]),
             })
             .unwrap(),
         ),

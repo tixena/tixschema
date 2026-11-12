@@ -13,14 +13,13 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentBulletinDraft, AdjacentTidings, AdjacentTidingsDraft, Almanac,
-    AlmanacDraft, Bulletin, BulletinDraft, Datebook, Ephemeris, EphemerisDraft, Gazetteer,
-    GazetteerDraft, Hourbook, Logsheet, Moorage, MoorageDraft, TaggedBulletin, TaggedBulletinDraft,
-    TaggedTidings, TaggedTidingsDraft, Tidings, TidingsDraft, UntaggedBulletin,
-    UntaggedBulletinDraft, UntaggedTidings, UntaggedTidingsDraft, adjacent_bulletin_swift,
-    adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift, day, ephemeris_swift,
-    gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment, tagged_bulletin_swift,
-    tagged_tidings_swift, tidings_swift, untagged_bulletin_swift, untagged_tidings_swift,
+    AdjacentBulletinDraft, AdjacentTidingsDraft, AlmanacDraft, BulletinDraft, Datebook,
+    EphemerisDraft, GazetteerDraft, Hourbook, Logsheet, MoorageDraft, TaggedBulletinDraft,
+    TaggedTidingsDraft, TidingsDraft, UntaggedBulletinDraft, UntaggedTidingsDraft,
+    adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
+    day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
+    tagged_bulletin_swift, tagged_tidings_swift, tidings_swift, untagged_bulletin_swift,
+    untagged_tidings_swift,
 };
 
 /// How a wrapper binds a key it holds as its text, ahead of the entry it reads.
@@ -138,6 +137,8 @@ fn each_struct_and_brand_is_written_as_serde_writes_it() {
                 MoorageDraft {
                     label: "m".to_owned()
                 }
+                .validate()
+                .unwrap()
             )]),
             days: days.clone(),
             hours: hours.clone(),
@@ -364,7 +365,7 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
     }
     assert_eq!(text_keys(&swift), 0, "{swift}");
     let keyring = KeyringDraft {
-        bells: HashMap::from([(BellDraft::First, "b".to_owned())]),
+        bells: HashMap::from([(BellDraft::First.validate().unwrap(), "b".to_owned())]),
         counts: HashMap::from([(1, "c".to_owned())]),
         flags: HashMap::from([(true, "f".to_owned())]),
         offsets: HashMap::from([(-1, "o".to_owned())]),

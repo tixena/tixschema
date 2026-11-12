@@ -3,6 +3,6 @@
 //! gets. This service declares no query-reading operation at all, so its dispatcher must never
 //! reach for `parse_query`.
 
-use crate::solo_path_bound_service::PathBoundError;
+use crate::solo_path_bound_service::PathBoundErrorDraft;
 
 solo_path_bound_service_http_rest_dispatcher!();

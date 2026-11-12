@@ -36,8 +36,8 @@ pub fn manifest_labels(raw: serde_json::Value) -> Option<Vec<String>> {
     .map(|manifest| {
         manifest
             .parcels
-            .into_iter()
-            .map(|parcel| parcel.label)
+            .iter()
+            .map(|parcel| parcel.label.clone())
             .collect()
     })
 }
@@ -47,5 +47,5 @@ pub fn manifest_labels(raw: serde_json::Value) -> Option<Vec<String>> {
 pub fn parcel_label(raw: bson::Document) -> Option<String> {
     shelving::Parcel::from_bson_with(raw, |_raw, _found| shelving::parcel_schema::Verdict::Reject)
         .ok()
-        .map(|parcel| parcel.label)
+        .map(|parcel| parcel.label.clone())
 }

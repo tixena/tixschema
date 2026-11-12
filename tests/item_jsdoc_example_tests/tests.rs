@@ -6,10 +6,10 @@ use tixschema::model_schema;
 
 /// A documented struct.
 /// ```rust example
-/// let item = DocumentedStruct {
+/// let item = DocumentedStructDraft {
 ///     label: "alpha".to_string(),
 /// };
-/// println!("Item: {:?}", item);.into()
+/// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
@@ -38,7 +38,7 @@ pub struct WrappedImportStruct {
 
 /// A documented tuple struct.
 /// ```rust example
-/// let item = DocumentedTuple("alpha".to_string(), 7);
+/// let item = DocumentedTupleDraft("alpha".to_string(), 7);
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -48,7 +48,7 @@ pub struct DocumentedTuple(pub String, pub u32);
 
 /// A documented adjacently tagged enum.
 /// ```rust example
-/// let item = DocumentedAdjacent::Unit;
+/// let item = DocumentedAdjacentDraft::Unit;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -62,7 +62,7 @@ pub enum DocumentedAdjacent {
 
 /// A documented externally tagged enum.
 /// ```rust example
-/// let item = DocumentedExternal::Unit;
+/// let item = DocumentedExternalDraft::Unit;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -75,7 +75,7 @@ pub enum DocumentedExternal {
 
 /// A documented internally tagged enum.
 /// ```rust example
-/// let item = DocumentedInternal::Unit;
+/// let item = DocumentedInternalDraft::Unit;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -89,7 +89,7 @@ pub enum DocumentedInternal {
 
 /// A documented untagged enum.
 /// ```rust example
-/// let item = DocumentedUntagged::CountDraft(3);
+/// let item = DocumentedUntaggedDraft::Count(3);
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -103,7 +103,7 @@ pub enum DocumentedUntagged {
 
 /// A documented plain enum.
 /// ```rust example
-/// let item = DocumentedSlot::Primary;
+/// let item = DocumentedSlotDraft::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]

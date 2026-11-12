@@ -11,7 +11,12 @@ use tixschema::model_schema;
 
 macro_rules! judged {
     ($name:expr, $read_as:expr, $value:expr) => {
-        validated($name, $read_as, &$value, $value.validate())
+        validated(
+            $name,
+            $read_as,
+            &$value,
+            crate::judged_issues($value.validation_issues()),
+        )
     };
 }
 
@@ -119,8 +124,8 @@ fn refused(message: &str) -> Result<(), Vec<String>> {
     Err(vec![message.to_owned()])
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Rated) {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Rated) {
         return refused("a rating is unrated");
     }
     Ok(())
@@ -168,7 +173,7 @@ fn validate(value: &GaugeDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn value(value: &StampDraft) -> Result<(), Vec<String>> {
+fn value(value: &Stamp) -> Result<(), Vec<String>> {
     if value.as_inner().is_empty() {
         return refused("a stamp is not empty");
     }
@@ -183,7 +188,7 @@ fn tag(value: &CrateDraft) -> Result<(), Vec<String>> {
 }
 
 fn title(value: &FreightDraft) -> Result<(), Vec<String>> {
-    if matches!(&**value, FreightDraft::Held { title } if title.is_empty()) {
+    if matches!(value, FreightDraft::Held { title } if title.is_empty()) {
         return refused("a freight is titled");
     }
     Ok(())
@@ -269,43 +274,35 @@ where
 }
 
 fn parcel(code: &str, label: &str) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         code: code.to_owned(),
         label: label.to_owned(),
         note: "n".to_owned(),
         seal: "s".to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn titled(title: &str) -> Freight {
-    FreightDraft::Held {
+    Freight::model_schema_wrap_unjudged(FreightDraft::Held {
         title: title.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn held(codes: &[&str], spare: Option<&[&str]>) -> Hold<String> {
-    HoldDraft {
+    Hold::model_schema_wrap_unjudged(HoldDraft {
         codes: codes.iter().map(|&code| code.to_owned()).collect(),
         spare: spare.map(|spares| spares.iter().map(|&one| one.to_owned()).collect()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn named(tag: &str) -> Crate {
-    CrateDraft {
+    Crate::model_schema_wrap_unjudged(CrateDraft {
         tag: tag.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn variant_and_member_rows() -> Vec<Row> {
-    let (rated_value, unrated_value) = (Rating::Rated, Rating::Unrated);
+    let (rated_value, unrated_value) = (RatingDraft::Rated, RatingDraft::Unrated);
     let (sound, unlabelled, repeated, both) = (
         parcel("c", "l"),
         parcel("c", ""),
@@ -400,7 +397,7 @@ fn held_member_rows() -> Vec<Row> {
 }
 
 fn shaped_rows() -> Vec<Row> {
-    let (with_title, untitled, free) = (titled("t"), titled(""), Freight::Free);
+    let (with_title, untitled, free) = (titled("t"), titled(""), FreightDraft::Free);
     let (coded, codeless, spares) = (
         held(&["a"], None),
         held(&[], Some(&["x", "y"])),

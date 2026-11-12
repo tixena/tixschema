@@ -159,7 +159,7 @@ impl DatingClientService<()> for DatingBackEnd {
         label
             .chars()
             .next()
-            .ok_or(DatingErrorDraft::Missing.validate().unwrap())
+            .ok_or_else(|| DatingErrorDraft::Missing.validate().unwrap())
     }
 
     async fn letter(&self, _ctx: &(), label: String, initial: char) -> Result<String, DatingError> {
@@ -169,7 +169,8 @@ impl DatingClientService<()> for DatingBackEnd {
 
     async fn stamp(&self, _ctx: &(), _label: String) -> Result<NaiveDate, DatingError> {
         ready(()).await;
-        NaiveDate::from_ymd_opt(2024, 1, 5).ok_or(DatingErrorDraft::Missing.validate().unwrap())
+        NaiveDate::from_ymd_opt(2024, 1, 5)
+            .ok_or_else(|| DatingErrorDraft::Missing.validate().unwrap())
     }
 }
 

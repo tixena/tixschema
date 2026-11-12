@@ -8,7 +8,7 @@ use invoice_schema::DecodeWith as _;
 use bson::{Bson, doc};
 use invoice_lookup_schema::DecodeWith as _;
 use invoice_lookups::{
-    InvoiceLookup, InvoiceLookupDraft, Parcel, ParcelDraft, ParcelRecipient, ParcelRecipientDraft,
+    InvoiceLookup, InvoiceLookupDraft, ParcelDraft, ParcelRecipient, ParcelRecipientDraft,
     ParcelSender, ParcelSenderDraft, invoice_lookup_schema,
 };
 use serde::{Deserialize, Serialize};
@@ -145,15 +145,19 @@ fn a_value_holding_a_type_of_another_crate_reads_where_nothing_is_wrong() {
     );
     assert_eq!(
         read.ok(),
-        Some(InvoiceDraft {
-            customer: CustomerDraft {
-                name: "Ada".to_owned(),
-                open_invoices: 3,
+        Some(
+            InvoiceDraft {
+                customer: CustomerDraft {
+                    name: "Ada".to_owned(),
+                    open_invoices: 3,
+                }
+                .validate()
+                .unwrap(),
+                number: "INV-1".to_owned(),
             }
             .validate()
-            .unwrap(),
-            number: "INV-1".to_owned(),
-        })
+            .unwrap()
+        )
     );
 }
 
@@ -180,21 +184,25 @@ fn a_stored_type_reads_a_type_of_a_crate_whose_types_list_decode_with_alone_from
     let read = LookupLog::from_bson_with(row, |_raw, _found| lookup_log_schema::Verdict::Reject);
     assert_eq!(
         read.ok(),
-        Some(LookupLogDraft {
-            lookup: InvoiceLookupDraft {
-                number: "INV-1".to_owned(),
-                parcels: vec![
-                    ParcelDraft {
-                        label: "fragile".to_owned(),
-                    }
-                    .validate()
-                    .unwrap()
-                ],
+        Some(
+            LookupLogDraft {
+                lookup: InvoiceLookupDraft {
+                    number: "INV-1".to_owned(),
+                    parcels: vec![
+                        ParcelDraft {
+                            label: "fragile".to_owned(),
+                        }
+                        .validate()
+                        .unwrap()
+                    ],
+                }
+                .validate()
+                .unwrap(),
+                number: "L-1".to_owned(),
             }
             .validate()
-            .unwrap(),
-            number: "L-1".to_owned(),
-        })
+            .unwrap()
+        )
     );
     let mut handed: Vec<lookup_log_schema::Issue<Bson>> = Vec::new();
     let broken = doc! {
@@ -224,16 +232,20 @@ fn a_type_of_a_crate_that_names_no_bson_is_read_through_that_crates_library() {
     );
     assert_eq!(
         read.ok(),
-        Some(InvoiceLookupDraft {
-            number: "INV-1".to_owned(),
-            parcels: vec![
-                ParcelDraft {
-                    label: "fragile".to_owned(),
-                }
-                .validate()
-                .unwrap()
-            ],
-        })
+        Some(
+            InvoiceLookupDraft {
+                number: "INV-1".to_owned(),
+                parcels: vec![
+                    ParcelDraft {
+                        label: "fragile".to_owned(),
+                    }
+                    .validate()
+                    .unwrap()
+                ],
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
@@ -331,5 +343,5 @@ fn generic_members_of_another_crate_flattened_at_the_holders_parameter_read_back
     let read = written.and_then(|value| {
         serde_json::from_value::<ParcelParties<String>>(value).map_err(|error| error.to_string())
     });
-    assert_eq!(read, Ok(parties));
+    assert_eq!(read, Ok(parties.validate().unwrap()));
 }

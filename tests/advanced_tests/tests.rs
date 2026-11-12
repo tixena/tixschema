@@ -639,7 +639,7 @@ fn test_roundtrip_serialization() {
     let json_value: Value = serde_json::from_str(&json_str).unwrap();
 
     let deserialized: Employee = serde_json::from_value(json_value).unwrap();
-    assert_eq!(employee, deserialized.into());
+    assert_eq!(employee.validate().unwrap(), deserialized);
 
     assert_eq!(deserialized.id, "emp_123");
     assert_eq!(deserialized.name, "Jane Smith");

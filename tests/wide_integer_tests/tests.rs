@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::models::{
-    WideAdjacent, WideAdjacentDraft, WideBeside, WideBesideDraft, WideBorrowed, WideBorrowedDraft,
-    WideBounded, WideBoundedDraft, WideChosen, WideChosenDraft, WideEvent, WideEventDraft,
-    WideHolder, WideHolderDraft, WideId, WideKept, WideKeptDraft, WideLater, WideLaterDraft,
-    WideLocked, WideLockedDraft, WidePair, WidePairDraft, WideReached, WideReachedDraft,
-    WideTagged, WideTaggedDraft, WideTally, WideTallyDraft, WideUntagged, WideUntaggedDraft,
+    WideAdjacent, WideAdjacentDraft, WideBeside, WideBesideDraft, WideBorrowedDraft, WideBounded,
+    WideBoundedDraft, WideChosen, WideChosenDraft, WideEvent, WideEventDraft, WideHolderDraft,
+    WideId, WideKept, WideKeptDraft, WideLater, WideLaterDraft, WideLocked, WideLockedDraft,
+    WidePair, WidePairDraft, WideReached, WideReachedDraft, WideTagged, WideTaggedDraft, WideTally,
+    WideTallyDraft, WideUntagged, WideUntaggedDraft,
 };
 
 /// The numbers serde writes for [`reached`].
@@ -66,9 +66,9 @@ fn tally() -> WideTally {
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[test]
 fn a_64_bit_member_is_written_as_a_json_number() {
-    use super::models::Stamped;
+    use super::models::{Stamped, StampedDraft};
 
-    let written = serde_json::to_string(&Stamped {
+    let written = serde_json::to_string(&StampedDraft {
         hold_bytes: 0x0040_0000,
         sounded_at: 1_719_624_000_000,
     })
@@ -171,7 +171,11 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
         (WideEventDraft::Reset, r#""Reset""#),
     ] {
         assert_eq!(written(&value), json, "for {value:?}");
-        assert_eq!(read::<WideEvent>(json), Ok(value), "for {json}");
+        assert_eq!(
+            read::<WideEvent>(json),
+            Ok(value.validate().unwrap()),
+            "for {json}"
+        );
     }
     let tagged = WideTaggedDraft::Moved { from: 1, to: 2 };
     assert_eq!(
@@ -181,7 +185,7 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
     );
     assert_eq!(
         read::<WideTagged>(r#"{"kind":"Moved","from":1,"to":2}"#),
-        Ok(tagged),
+        Ok(tagged.validate().unwrap()),
         "under a tag, read"
     );
     for (value, json) in [
@@ -195,7 +199,11 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
         ),
     ] {
         assert_eq!(written(&value), json, "for {value:?}");
-        assert_eq!(read::<WideAdjacent>(json), Ok(value), "for {json}");
+        assert_eq!(
+            read::<WideAdjacent>(json),
+            Ok(value.validate().unwrap()),
+            "for {json}"
+        );
     }
 }
 
@@ -206,7 +214,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     assert_eq!(written(&WideUntaggedDraft::Small(4)), "4", "a slot");
     assert_eq!(
         read::<WideUntagged>("4"),
-        Ok(WideUntaggedDraft::Small(4)),
+        Ok(WideUntaggedDraft::Small(4).validate().unwrap()),
         "within the bound"
     );
     assert_eq!(
@@ -216,7 +224,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     );
     assert_eq!(
         read::<WideUntagged>(r#""40""#),
-        Ok(WideUntaggedDraft::Text("40".to_owned())),
+        Ok(WideUntaggedDraft::Text("40".to_owned()).validate().unwrap()),
         "a string of digits"
     );
     assert_eq!(
@@ -226,7 +234,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     );
     assert_eq!(
         read::<WideUntagged>(r#"{"count":12}"#),
-        Ok(WideUntaggedDraft::Named { count: 12 }),
+        Ok(WideUntaggedDraft::Named { count: 12 }.validate().unwrap()),
         "a named member read"
     );
 }
@@ -239,7 +247,9 @@ fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
         Ok(WideBoundedDraft {
             level: -5,
             start: 7
-        }),
+        }
+        .validate()
+        .unwrap()),
         "within the bound, the default read"
     );
     assert_eq!(
@@ -333,7 +343,9 @@ fn an_i64_beside_the_types_own_parameter_travels_as_a_number() {
     let beside = WideBesideDraft {
         keyed: BTreeMap::from([("a".to_owned(), -7_i64)]),
         paired: ("b".to_owned(), 1_i64 << 60_i32),
-    };
+    }
+    .validate()
+    .unwrap();
     let json = r#"{"keyed":{"a":-7},"paired":["b",1152921504606846976]}"#;
     assert_eq!(written(&beside), json, "the numbers serde writes");
     assert_eq!(
@@ -348,7 +360,9 @@ fn an_i64_beside_the_types_own_parameter_travels_as_a_number() {
 fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_number() {
     let chosen = WideChosenDraft::Listed {
         listed: vec![(i64::MAX, "a".to_owned())],
-    };
+    }
+    .validate()
+    .unwrap();
     let json = r#"{"listed":[[9223372036854775807,"a"]]}"#;
     assert_eq!(written(&chosen), json, "the numbers serde writes");
     assert_eq!(
@@ -358,7 +372,7 @@ fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_nu
     );
     assert_eq!(
         read::<WideChosen<String>>(r#""7""#),
-        Ok(WideChosenDraft::Text("7".to_owned())),
+        Ok(WideChosenDraft::Text("7".to_owned()).validate().unwrap()),
         "a string of digits is the text"
     );
 }
@@ -370,7 +384,11 @@ fn an_i64_through_an_alias_declared_below_is_a_number() {
     let later = WideLaterDraft { revision: -7 };
     let json = r#"{"revision":-7}"#;
     assert_eq!(written(&later), json, "the number serde writes");
-    assert_eq!(read::<WideLater>(json), Ok(later), "the number serde reads");
+    assert_eq!(
+        read::<WideLater>(json),
+        Ok(later.validate().unwrap()),
+        "the number serde reads"
+    );
     #[cfg(feature = "typescript")]
     assert!(
         WideLater::ts_definition().contains("revision: WideLaterRevision;"),
@@ -455,7 +473,11 @@ fn an_integer_literal_no_f64_holds_is_held_exactly() {
     };
     let json = r#"{"exact":9007199254740993}"#;
     assert_eq!(written(&exact), json, "the number serde writes");
-    assert_eq!(read::<WideExact>(json), Ok(exact), "the literal read");
+    assert_eq!(
+        read::<WideExact>(json),
+        Ok(exact.validate().unwrap()),
+        "the literal read"
+    );
     assert_eq!(
         read::<WideExact>(r#"{"exact":9007199254740992}"#),
         Err("'exact': not the literal 9007199254740993, got 9007199254740992".to_owned()),
@@ -492,10 +514,10 @@ fn an_i64_a_reference_borrows_is_written_as_a_number() {
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[test]
 fn serde_writes_each_u64_a_member_holds_as_a_number_and_refuses_one_beyond_its_range() {
-    use super::models::WideUnsigned;
+    use super::models::{WideUnsigned, WideUnsignedDraft};
     use std::collections::HashMap;
 
-    let wide = WideUnsigned {
+    let wide = WideUnsignedDraft {
         big: u64::MAX,
         keyed: HashMap::from([("a".to_owned(), 1_u64 << 60_i32)]),
         listed: vec![7],
@@ -506,7 +528,7 @@ fn serde_writes_each_u64_a_member_holds_as_a_number_and_refuses_one_beyond_its_r
     assert_eq!(written(&wide), json, "the numbers serde writes");
     assert_eq!(
         read::<WideUnsigned>(json),
-        Ok(wide),
+        Ok(WideUnsigned::model_schema_wrap_unjudged(wide)),
         "the numbers serde reads"
     );
     assert!(

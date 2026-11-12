@@ -140,7 +140,7 @@ fn the_five_services_are_implementable_and_callable() {
     let title = || "first".to_owned();
     assert_eq!(
         poll_once(NoteReviewService::review_note(&NoteShelf, &(), title())).unwrap(),
-        Err(NoteMissingDraft::NotFound)
+        Err(NoteMissingDraft::NotFound.validate().unwrap())
     );
     assert_eq!(
         poll_once(NoteGreetingService::greet(&NoteShelf, &(), title())).unwrap(),

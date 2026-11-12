@@ -245,8 +245,8 @@ fn test_nested_ref_maps_constructible() {
 fn test_slotted_refs_constructible() {
     let slotted = SlottedRefsDraft {
         by_slot: HashMap::from([
-            (RefSlotDraft::Author, ObjectId::new()),
-            (RefSlotDraft::Reviewer, ObjectId::new()),
+            (RefSlotDraft::Author.validate().unwrap(), ObjectId::new()),
+            (RefSlotDraft::Reviewer.validate().unwrap(), ObjectId::new()),
         ]),
     };
     assert_eq!(slotted.by_slot.len(), 2);
@@ -389,8 +389,8 @@ fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
         let payload = EveryOidPositionDraft {
             by_name: HashMap::from([("a".to_owned(), ObjectId::new())]),
             by_slot: HashMap::from([
-                (RefSlotDraft::Author, ObjectId::new()),
-                (RefSlotDraft::Reviewer, ObjectId::new()),
+                (RefSlotDraft::Author.validate().unwrap(), ObjectId::new()),
+                (RefSlotDraft::Reviewer.validate().unwrap(), ObjectId::new()),
             ]),
             many: vec![ObjectId::new(), ObjectId::new()],
             nested: HashMap::from([(

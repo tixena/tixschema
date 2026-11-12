@@ -67,10 +67,18 @@ where
         }
         "sweep" => {
             let received: SweepRequest = decoded(operation, body)?;
-            checked(operation, received.validate())?;
+            checked(operation, reported(received.validation_issues()))?;
             encoded(svc.sweep(ctx, received).await)
         }
         other => Err(ServiceFault::unknown_operation(other)),
+    }
+}
+
+fn reported(violations: Vec<String>) -> Result<(), Vec<String>> {
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(violations)
     }
 }
 

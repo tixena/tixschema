@@ -495,13 +495,11 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
 #[test]
 fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
     let broken = declarations::HeldDraft {
-        account: declarations::AccountDraft {
-            claims: declarations::ClaimsDraft { jti: String::new() }
-                .validate()
-                .unwrap(),
-        }
-        .validate()
-        .unwrap(),
+        account: declarations::Account::model_schema_wrap_unjudged(declarations::AccountDraft {
+            claims: declarations::Claims::model_schema_wrap_unjudged(declarations::ClaimsDraft {
+                jti: String::new(),
+            }),
+        }),
         customer_id: declarations::CustomerId::new("acme".to_owned()).unwrap(),
     };
     let rust = broken.validation_issues();

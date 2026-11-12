@@ -98,8 +98,8 @@ struct Dispatch {
     relay: Relay,
 }
 
-fn read_cased() -> ReadCased {
-    ReadCased {
+fn read_cased() -> ReadCasedDraft {
+    ReadCasedDraft {
         first_name: "Ada".to_owned(),
         kept_note: String::new(),
         last_name: "Lovelace".to_owned(),
@@ -109,7 +109,7 @@ fn read_cased() -> ReadCased {
 #[test]
 fn a_record_under_the_keys_serde_reads_lists_no_issue() {
     let stored = json!({ "read_too": 2_u32, "read": 1_u32, "plain": 3_u32 });
-    let renamed = ReadRenamed {
+    let renamed = ReadRenamedDraft {
         both_ways: 2_u32,
         one_way: 1_u32,
         plain: 3_u32,
@@ -155,7 +155,7 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
     );
     assert_eq!(
         read,
-        Ok(ReadRenamed {
+        Ok(ReadRenamedDraft {
             both_ways: 2_u32,
             one_way: 1_u32,
             plain: 3_u32,
@@ -179,7 +179,7 @@ fn a_field_renamed_for_reading_is_missing_under_any_other_key() {
             "one_way: unknown: found Number(1)",
         ]
     );
-    let written = serde_json::to_value(ReadRenamed {
+    let written = serde_json::to_value(ReadRenamedDraft {
         both_ways: 2_u32,
         one_way: 1_u32,
         plain: 3_u32,
@@ -224,7 +224,7 @@ fn a_rule_written_for_reading_cases_the_keys_serde_reads() {
             "firstName: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string"
         ]
     );
-    let written = serde_json::to_value(ReadCased {
+    let written = serde_json::to_value(ReadCasedDraft {
         kept_note: "n".to_owned(),
         ..read_cased()
     })

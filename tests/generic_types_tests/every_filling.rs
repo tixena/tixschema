@@ -17,12 +17,12 @@ Plain<&str> { held: "a" }:                    Ok(())
 Plain<String> { held: "a" }:                  Err(["too short: minimum length is 2, got 1"])"#;
 
     /// The `validate` of a consumer's own on one filling, as the README shows it refused.
-    const OWN_VALIDATE: &str = r#"impl Crate<u32> {
-    pub fn validate(&self) -> Result<(), Vec<String>> {
+    const OWN_VALIDATE: &str = r#"impl CrateDraft<u32> {
+    pub fn validation_issues(&self) -> Vec<String> {
         if self.codes.contains(&0) {
-            return Err(vec!["'codes': no code is zero".to_owned()]);
+            return vec!["'codes': no code is zero".to_owned()];
         }
-        Ok(())
+        Vec::new()
     }
 }"#;
 
@@ -142,12 +142,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     }
 
     fn unlabelled<CodeType>() -> Crate<CodeType> {
-        CrateDraft {
+        Crate::model_schema_wrap_unjudged(CrateDraft {
             codes: Vec::new(),
             label: String::new(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]
@@ -207,7 +205,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     #[test]
     fn an_enum_under_each_tagging_is_held_to_its_bounds_at_two_fillings() {
         assert_eq!(
-            LoadExternal::<String>::Packed {
+            LoadExternalDraft::<String>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -216,7 +214,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ["'Packed.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            LoadExternal::<u32>::Packed {
+            LoadExternalDraft::<u32>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -225,12 +223,12 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ["'Packed.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            LoadExternal::<u32>::Unpacked.validation_issues(),
+            LoadExternalDraft::<u32>::Unpacked.validation_issues(),
             Vec::<String>::new()
         );
 
         assert_eq!(
-            LoadInternal::<String>::Packed {
+            LoadInternalDraft::<String>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -239,7 +237,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             [UNLABELLED]
         );
         assert_eq!(
-            LoadInternal::<u32>::Packed {
+            LoadInternalDraft::<u32>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -248,12 +246,12 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             [UNLABELLED]
         );
         assert_eq!(
-            LoadInternal::<u32>::Unpacked.validation_issues(),
+            LoadInternalDraft::<u32>::Unpacked.validation_issues(),
             Vec::<String>::new()
         );
 
         assert_eq!(
-            LoadAdjacent::<String>::Packed {
+            LoadAdjacentDraft::<String>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -262,7 +260,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ["'load.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            LoadAdjacent::<u32>::Packed {
+            LoadAdjacentDraft::<u32>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -271,12 +269,12 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ["'load.label': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            LoadAdjacent::<u32>::Unpacked.validation_issues(),
+            LoadAdjacentDraft::<u32>::Unpacked.validation_issues(),
             Vec::<String>::new()
         );
 
         assert_eq!(
-            LoadUntagged::<String>::Packed {
+            LoadUntaggedDraft::<String>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -285,7 +283,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             [UNLABELLED]
         );
         assert_eq!(
-            LoadUntagged::<u32>::Packed {
+            LoadUntaggedDraft::<u32>::Packed {
                 codes: vec![],
                 label: String::new()
             }
@@ -294,7 +292,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             [UNLABELLED]
         );
         assert_eq!(
-            LoadUntagged::<u32>::Counted { count: 7 }.validation_issues(),
+            LoadUntaggedDraft::<u32>::Counted { count: 7 }.validation_issues(),
             Vec::<String>::new()
         );
     }
@@ -341,6 +339,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
                     codes: vec![Code::new(1_u32).unwrap()],
                 }
                 .validate()
+                .map(|_| ())
             ),
             format!(
                 r#"Plain<&str> {{ held: "a" }}:                    {:?}"#,
@@ -515,7 +514,14 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             named: unlabelled(),
         };
         for shown in [
-            format!("{:?}", unlabelled::<u32>().validate()),
+            format!(
+                "{:?}",
+                CrateDraft::<u32> {
+                    codes: Vec::new(),
+                    label: String::new(),
+                }
+                .validate()
+            ),
             format!("{:?}", depot.validate()),
         ] {
             assert!(
@@ -524,7 +530,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             );
         }
 
-        let refusal = "error[E0592]: duplicate definitions with name `validate`";
+        let refusal = "error[E0592]: duplicate definitions with name `validation_issues`";
         let emitter = include_str!("../../src/model_schema.rs");
         assert!(
             readme.contains(&format!("```rust,compile_fail\n{OWN_VALIDATE}\n```")),

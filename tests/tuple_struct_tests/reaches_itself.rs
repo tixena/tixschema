@@ -123,7 +123,11 @@ fn serde_writes_each_as_the_nested_arrays_its_schema_describes() {
     assert_eq!(
         serde_json::to_value(NestsUnderAParameterDraft(
             "a".to_owned(),
-            vec![NestsUnderAParameterDraft("b".to_owned(), Vec::new())]
+            vec![
+                NestsUnderAParameterDraft("b".to_owned(), Vec::new())
+                    .validate()
+                    .unwrap()
+            ]
         ))
         .unwrap(),
         serde_json::json!(["a", [["b", []]]])

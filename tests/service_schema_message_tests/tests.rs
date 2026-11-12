@@ -52,7 +52,7 @@ mod the_generated_message_on_json_schema {
 
 #[cfg(feature = "typescript")]
 mod the_generated_message_on_typescript {
-    use super::{BalanceRequest, BalanceRequestDraft, SweepRequest, VoidInvoiceRequest};
+    use super::{BalanceRequest, SweepRequest, VoidInvoiceRequest};
     use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
 
     #[test]
@@ -131,9 +131,7 @@ mod the_generated_message_on_zod {
 
 mod the_context_the_trait_declares {
     use super::BalanceRequest;
-    use super::{
-        ProbeBackEnd, ProbeContext, ProbeError, ProbeErrorDraft, ProbeService as _, poll_once,
-    };
+    use super::{ProbeBackEnd, ProbeContext, ProbeErrorDraft, ProbeService as _, poll_once};
 
     #[test]
     fn an_operation_reads_the_context_rather_than_any_message_field() {
@@ -144,7 +142,10 @@ mod the_context_the_trait_declares {
         let answered =
             poll_once(service.void_invoice(&silent, "acme".to_owned(), "cr-1".to_owned())).unwrap();
         assert!(
-            matches!(answered, Err(ProbeErrorDraft::InsufficientBalance)),
+            matches!(
+                &answered,
+                Err(error) if matches!(&**error, ProbeErrorDraft::InsufficientBalance)
+            ),
             "the operation answered off the context, which no message carries"
         );
     }
@@ -206,12 +207,16 @@ mod the_context_the_trait_declares {
             logger_name: "probe".to_owned(),
         };
 
-        let named = poll_once(service.get_balance(
-            &ctx,
-            BalanceRequestDraft {
-                customer_id: "acme".to_owned(),
-            },
-        ))
+        let named = poll_once(
+            service.get_balance(
+                &ctx,
+                super::BalanceRequestDraft {
+                    customer_id: "acme".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        )
         .unwrap();
         assert_eq!(named.unwrap().invoices, 9);
 
@@ -303,11 +308,13 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeErrorDraft::DbError)
+            Err(ProbeErrorDraft::DbError.validate().unwrap())
         } else {
             Ok(BalanceResponseDraft {
                 invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
-            })
+            }
+            .validate()
+            .unwrap())
         }
     }
 
@@ -315,7 +322,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         let _settled = ready(ctx.logger_name.len()).await;
         Ok(BalanceResponseDraft {
             invoices: self.billed_invoices,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn void_invoice(
@@ -326,11 +335,13 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeErrorDraft::InsufficientBalance)
+            Err(ProbeErrorDraft::InsufficientBalance.validate().unwrap())
         } else {
             Ok(BalanceResponseDraft {
                 invoices: u32::try_from(seen).unwrap_or(0),
-            })
+            }
+            .validate()
+            .unwrap())
         }
     }
 }

@@ -250,7 +250,7 @@ const fn payload(payload: Value) -> Value {
     payload
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
     if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
@@ -378,7 +378,14 @@ fn every_declared_type_is_constructible() {
     };
     assert_eq!(sorted.dock.len() + sorted.pier.len(), 6);
     assert_eq!(sorted.listed.keys, Vec::<String>::new());
-    assert_eq!(AccountDraft { tagged.validate().unwrap() }.tagged.keys, Vec::<String>::new());
+    assert_eq!(
+        AccountDraft {
+            tagged: tagged.validate().unwrap(),
+        }
+        .tagged
+        .keys,
+        Vec::<String>::new()
+    );
     assert_eq!(listed.tag, "t");
     assert_eq!(
         RenamedDraft {
@@ -436,7 +443,7 @@ fn every_declared_variant_is_constructible() {
         ReferenceDraft::Named {
             name: "north".to_owned(),
         },
-        Reference::Numbered(7),
+        ReferenceDraft::Numbered(7),
     ];
     assert_eq!(references.len(), 2);
     let routed = [RoutedDraft::Held, RoutedDraft::Rail("north".to_owned())];

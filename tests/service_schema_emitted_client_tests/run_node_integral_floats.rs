@@ -474,7 +474,7 @@ fn checked_whole(value: &PlumbedDraft) -> Result<(), Vec<String>> {
 }
 
 /// The check of [`Reading`]: a reading is a number.
-fn checked_reading(value: &ReadingDraft) -> Result<(), Vec<String>> {
+fn checked_reading(value: &Reading) -> Result<(), Vec<String>> {
     if value.as_inner().is_nan() {
         Err(vec!["a reading is a number".to_owned()])
     } else {

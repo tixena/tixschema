@@ -7,7 +7,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, argument_local,
     is_unit_type, wire_key, written,
 };
-use crate::service_schema::support::{message_validator_ident, module_ident};
+use crate::service_schema::support::{message_validator_ident, module_ident, unit_value};
 use crate::service_schema::transport::amqp_rpc::{
     Generated, answers, call_message, fault_mirror_readers, fault_wire_types, outbound_refusal,
     placement_doc,
@@ -773,7 +773,10 @@ fn settled(operation: &OperationDef, tool: &str, generated: &Generated) -> Token
             content_read(operation, tool, call_error, &quote!(found)),
         )
     } else if success_carried.unit && is_unit_type(success) {
-        (quote!(_), quote! { ::core::result::Result::Ok(#success) })
+        {
+            let unit = unit_value(success);
+            (quote!(_), quote! { ::core::result::Result::Ok(#unit) })
+        }
     } else {
         (
             quote!(found),

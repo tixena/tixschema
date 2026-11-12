@@ -1,13 +1,15 @@
-error[E0599]: no associated function or constant named `json_schema` found for struct `Signup` in the current scope
+error[E0599]: no associated function or constant named `json_schema` found for struct `__tixschema_valid_signup_schema::Signup<SignupDraft>` in the current scope
   --> tests/foundation_refusals/json_schema_not_listed.rs:14:21
    |
- 8 | pub struct Signup {
+ 6 | #[model_schema()]
    | ----------------- associated function or constant `json_schema` not found for this struct
 ...
 14 |     let _ = Signup::json_schema();
-   |                     ^^^^^^^^^^^ associated function or constant not found in `Signup`
+   |                     ^^^^^^^^^^^ associated function or constant not found in `__tixschema_valid_signup_schema::Signup<SignupDraft>`
    |
-note: if you're trying to build a new `Signup`, consider using `Signup::model_schema_read_unjudged` which returns `Result<Signup, <_ as Deserializer<'_>>::Error>`
+note: if you're trying to build a new `__tixschema_valid_signup_schema::Signup<SignupDraft>` consider using one of the following associated functions:
+      __tixschema_valid_signup_schema::Signup::<ModelSchemaDraft>::model_schema_wrap_unjudged
+      _::<impl __tixschema_valid_signup_schema::Signup<SignupDraft>>::model_schema_read_unjudged
   --> tests/foundation_refusals/json_schema_not_listed.rs:6:1
    |
  6 | #[model_schema()]

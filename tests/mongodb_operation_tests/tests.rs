@@ -69,7 +69,7 @@ fn invoice() -> Invoice {
         id: seeded_id(),
         number: "INV-0042".to_owned(),
         paid_at: None,
-        status: InvoiceStatus::PastDue,
+        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
         total: 1_250_u32,
     }
     .validate()

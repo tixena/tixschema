@@ -34,11 +34,9 @@ pub struct Shelved {
 fn validate_holds_the_members_the_build_keeps() {
     assert_eq!(
         ShelvedDraft {
-            tag: TagDraft {
+            tag: Tag::model_schema_wrap_unjudged(TagDraft {
                 label: String::new()
-            }
-            .validate()
-            .unwrap()
+            })
         }
         .validation_issues(),
         vec!["'tag.label': too short: minimum length is 1, got 0".to_owned()]

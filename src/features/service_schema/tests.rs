@@ -1599,7 +1599,7 @@ fn an_unrecorded_success_type_is_not_treated_as_a_unit_success() {
 #[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_unit_struct_success_result_type_says_the_value_is_undefined() {
-    record_unit_struct("PingAck");
+    record_unit_struct("PingAck", false);
     let published = result::emit(&parsed(TS_UNIT_STRUCT_SUCCESS_SERVICE));
     let found = published
         .iter()

@@ -13,6 +13,31 @@ use tixschema::model_schema;
 
 use super::runtime::ran_kotlin;
 
+/// [`read_row_of`] over the valid type `$held` makes.
+macro_rules! read_row {
+    ($name:expr, $read_as:expr, $held:expr $(,)?) => {{
+        let held = $held;
+        let valid = held.clone().validate();
+        read_row_of($name, $read_as, held, &valid)
+    }};
+}
+
+/// [`read_row`] through the Rust ident, which a typealias republishes, and through the published
+/// name.
+macro_rules! both {
+    ($name:expr, $ident:expr, $published:expr, $held:expr $(,)?) => {{
+        let held = $held;
+        [
+            read_row!(&format!("{}, by its ident", $name), $ident, held),
+            read_row!(
+                &format!("{}, by its published name", $name),
+                $published,
+                held
+            ),
+        ]
+    }};
+}
+
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
      import kotlinx.serialization.descriptors.*\n\
@@ -116,7 +141,7 @@ struct Row {
     kotlin: String,
 }
 
-fn calm(value: &Mood) -> Result<(), Vec<String>> {
+fn calm(value: &MoodDraft) -> Result<(), Vec<String>> {
     if matches!(value, MoodDraft::Frantic) {
         return Err(vec!["a mood is calm".to_owned()]);
     }
@@ -133,8 +158,14 @@ fn kotlin_string(text: &str) -> String {
 }
 
 /// The payload serde writes for `held`, read as `read_as`, held to what the serde read prints.
-fn read_row<Held>(name: &str, read_as: &str, held: &Held) -> Row
+fn read_row_of<Draft, Held>(
+    name: &str,
+    read_as: &str,
+    held: &Draft,
+    _valid: &Result<Held, Vec<String>>,
+) -> Row
 where
+    Draft: Serialize,
     Held: DeserializeOwned + Serialize,
 {
     let payload = serde_json::to_string(held).unwrap();
@@ -162,18 +193,6 @@ where
     }
 }
 
-/// [`read_row`] through the Rust ident, which a typealias republishes, and through the published
-/// name.
-fn both<Held>(name: &str, ident: &str, published: &str, held: &Held) -> [Row; 2]
-where
-    Held: DeserializeOwned + Serialize,
-{
-    [
-        read_row(&format!("{name}, by its ident"), ident, held),
-        read_row(&format!("{name}, by its published name"), published, held),
-    ]
-}
-
 fn leaf(text: &str) -> String {
     text.to_owned()
 }
@@ -181,50 +200,50 @@ fn leaf(text: &str) -> String {
 fn rows() -> Vec<Row> {
     let line = || "a".to_owned();
     let mut rows: Vec<Row> = [
-        both("a plain enum", "Genre", "Category", &GenreDraft::Poetry),
-        both(
+        both!("a plain enum", "Genre", "Category", &GenreDraft::Poetry),
+        both!(
             "a plain enum with a check",
             "Mood",
             "Temper",
             &MoodDraft::Calm,
         ),
-        both(
+        both!(
             "a plain enum, its check refusing",
             "Mood",
             "Temper",
             &MoodDraft::Frantic,
         ),
-        both(
+        both!(
             "a tag alone",
             "Chapter",
             "Excerpt",
             &ChapterDraft::Opening { line: line() },
         ),
-        both(
+        both!(
             "a tag and a content key",
             "Act",
             "Scene",
             &ActDraft::Lowered,
         ),
-        both(
+        both!(
             "a tag and a content key, a payload",
             "Act",
             "Scene",
             &ActDraft::Raised { line: line() },
         ),
-        both(
+        both!(
             "no tag attribute, a parameter",
             "Reel<String>",
             "Spool<String>",
             &ReelDraft::Unrolled { leaf: leaf("b") },
         ),
-        both(
+        both!(
             "no tag attribute, one slot",
             "Reel<String>",
             "Spool<String>",
             &ReelDraft::Sealed(leaf("b")),
         ),
-        both(
+        both!(
             "untagged, a parameter",
             "Cue<String>",
             "Prompt<String>",
@@ -234,7 +253,7 @@ fn rows() -> Vec<Row> {
     .into_iter()
     .flatten()
     .collect();
-    rows.push(read_row(
+    rows.push(read_row!(
         "a holder declared above",
         "Bookcase<String>",
         &BookcaseDraft {
@@ -246,7 +265,7 @@ fn rows() -> Vec<Row> {
             reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
         },
     ));
-    rows.push(read_row(
+    rows.push(read_row!(
         "a holder declared below",
         "Archive<String>",
         &ArchiveDraft {
@@ -258,7 +277,7 @@ fn rows() -> Vec<Row> {
             reel: ReelDraft::Unrolled { leaf: leaf("d") }.validate().unwrap(),
         },
     ));
-    rows.push(read_row(
+    rows.push(read_row!(
         "a holder declared below, its mood refused",
         "Archive<String>",
         &ArchiveDraft {
@@ -266,7 +285,7 @@ fn rows() -> Vec<Row> {
             chapter: ChapterDraft::Closing { line: line() }.validate().unwrap(),
             cue: CueDraft::Sealed(leaf("c")).validate().unwrap(),
             genre: GenreDraft::Prose.validate().unwrap(),
-            mood: MoodDraft::Frantic.validate().unwrap(),
+            mood: Mood::model_schema_wrap_unjudged(MoodDraft::Frantic),
             reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
         },
     ));

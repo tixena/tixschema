@@ -225,7 +225,9 @@ impl ContentClientService<()> for ContentClientBackEnd {
         ready(()).await;
         if byte_range.is_some() {
             return Err((
-                ContentRangeErrorDraft::RangeNotSatisfiable,
+                ContentRangeErrorDraft::RangeNotSatisfiable
+                    .validate()
+                    .unwrap(),
                 Some(format!("bytes */{}", CONTENT.len())),
             ));
         }
@@ -440,12 +442,9 @@ fn a_streamed_operations_mapped_status_still_decodes_into_the_declared_error() {
     let answered = poll_once(client.get_content("missing".to_owned(), None)).unwrap();
     // `StreamedAnswer` holds a boxed trait object and derives neither `Debug` nor `PartialEq`, so
     // the error arm is checked with `matches!` rather than compared with `assert_eq!`.
-    assert!(matches!(
-        &*answered,
-        Err(content_client_service_schema::CallError::Operation(
-            ContentErrorDraft::NotFound
-        ))
-    ));
+    assert!(
+        matches!(answered, Err(content_client_service_schema::CallError::Operation(error)) if matches!(&*error, ContentErrorDraft::NotFound))
+    );
 }
 
 #[test]
@@ -462,9 +461,9 @@ fn a_declared_416_carries_its_content_range_into_the_error_tuple() {
         matches!(
             &answered,
             Err(content_client_service_schema::CallError::Operation((
-                ContentRangeErrorDraft::RangeNotSatisfiable,
+                range_error,
                 Some(content_range),
-            ))) if content_range == "bytes */43"
+            ))) if matches!(&**range_error, ContentRangeErrorDraft::RangeNotSatisfiable) && content_range == "bytes */43"
         ),
         "the declared error carries the complete length"
     );
@@ -476,7 +475,7 @@ fn the_backend_refuses_a_range_with_the_complete_length() {
     assert!(matches!(
         poll_once(ContentClientBackEnd.get_range(&(), "present".to_owned(), Some("bytes=100-".to_owned())))
             .unwrap(),
-        Err((ContentRangeErrorDraft::RangeNotSatisfiable, Some(content_range))) if content_range == "bytes */43"
+        Err((range_error, Some(content_range))) if matches!(&*range_error, ContentRangeErrorDraft::RangeNotSatisfiable) && content_range == "bytes */43"
     ));
 }
 
@@ -491,8 +490,8 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     assert_eq!(body, CONTENT);
     assert!(pulls > 1, "got {pulls} pulls");
     assert!(matches!(
-        &*poll_once(ContentClientBackEnd.get_content(&(), "missing".to_owned(), None)).unwrap(),
-        Err(ContentErrorDraft::NotFound)
+        poll_once(ContentClientBackEnd.get_content(&(), "missing".to_owned(), None)).unwrap(),
+        Err(error) if matches!(&*error, ContentErrorDraft::NotFound)
     ));
     let (with_etag, etag) =
         poll_once(ContentClientBackEnd.get_content_with_etag(&(), "present".to_owned(), None))

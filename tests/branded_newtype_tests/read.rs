@@ -151,21 +151,21 @@ mod a_brand_is_read_as_a_model_is {
         Loose(String),
     }
 
-    fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
+    fn upper_case(value: &Code) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a code is upper case".to_owned()]);
         }
         Ok(())
     }
 
-    fn label_in_upper_case(value: &LabelDraft) -> Result<(), Vec<String>> {
+    fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a label is upper case".to_owned()]);
         }
         Ok(())
     }
 
-    fn above_zero(value: &CountDraft) -> Result<(), Vec<String>> {
+    fn above_zero(value: &Count) -> Result<(), Vec<String>> {
         if *value.as_inner() == 0 {
             return Err(vec!["a count is above zero".to_owned()]);
         }
@@ -187,14 +187,14 @@ mod a_brand_is_read_as_a_model_is {
         }
     }
 
-    fn plain_in_lower_case(value: &PlainDraft) -> Result<(), Vec<String>> {
+    fn plain_in_lower_case(value: &Plain) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_uppercase) {
             return Err(vec!["a plain label is lower case".to_owned()]);
         }
         Ok(())
     }
 
-    fn not_empty<CodeType>(value: &TagDraft<CodeType>) -> Result<(), Vec<String>>
+    fn not_empty<CodeType>(value: &Tag<CodeType>) -> Result<(), Vec<String>>
     where
         CodeType: Default + PartialEq,
     {
@@ -243,15 +243,13 @@ mod a_brand_is_read_as_a_model_is {
 
     /// A shelf that holds `held` in every place it holds a label, after a sound one in its list.
     fn shelf_of(held: &Label) -> Shelf {
-        ShelfDraft {
+        Shelf::model_schema_wrap_unjudged(ShelfDraft {
             boxed_label: Box::new(held.clone()),
             first_label: held.clone(),
             label_list: vec![label("OK"), held.clone()],
             labels_by_dock: BTreeMap::from([("north".to_owned(), held.clone())]),
             spare_label: Some(held.clone()),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     /// The text a read is refused with for a value `validate()` answers `reported` of.
@@ -262,18 +260,19 @@ mod a_brand_is_read_as_a_model_is {
     /// Holds the read of what serde writes for `value`, from a text and from a
     /// `serde_json::Value`, to what `validate()` answers of `value`: an error with every message
     /// where it reports any, and the value where it reports none.
-    fn read_as_validated<T>(value: &T, validated: Result<(), Vec<String>>)
+    fn read_as_validated<D, V>(value: &D, validated: Result<V, Vec<String>>)
     where
-        T: Debug + DeserializeOwned + PartialEq + Serialize,
+        D: Serialize,
+        V: Debug + DeserializeOwned + PartialEq + Serialize,
     {
         let payload = serde_json::to_string(value).unwrap();
-        let read = serde_json::from_str::<T>(&payload).map_err(|refused| refused.to_string());
-        let from_value = serde_json::from_value::<T>(serde_json::to_value(value).unwrap())
+        let read = serde_json::from_str::<V>(&payload).map_err(|refused| refused.to_string());
+        let from_value = serde_json::from_value::<V>(serde_json::to_value(value).unwrap())
             .map_err(|refused| refused.to_string());
         match validated {
-            Ok(()) => {
-                assert_eq!(read.as_ref(), Ok(value), "{payload} is not read");
-                assert_eq!(from_value.as_ref(), Ok(value), "{payload} is not read");
+            Ok(valid) => {
+                assert_eq!(read.as_ref(), Ok(&valid), "{payload} is not read");
+                assert_eq!(from_value.as_ref(), Ok(&valid), "{payload} is not read");
             }
             Err(reported) => {
                 let refused = refusal(&reported);
@@ -292,10 +291,10 @@ mod a_brand_is_read_as_a_model_is {
             lower.validation_issues(),
             vec!["a code is upper case".to_owned()]
         );
-        read_as_validated(&lower, lower.validate());
+        read_as_validated(&lower, lower.validate().map(|()| lower.clone()));
         let upper = Code::new("ABC".to_owned()).unwrap();
         assert_eq!(upper.validation_issues(), Vec::<String>::new());
-        read_as_validated(&upper, upper.validate());
+        read_as_validated(&upper, upper.validate().map(|()| upper.clone()));
     }
 
     #[test]
@@ -306,7 +305,7 @@ mod a_brand_is_read_as_a_model_is {
         );
         for text in ["a", "A", "ab", "AB"] {
             let held = label(text);
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
         assert_eq!(label("AB").validation_issues(), Vec::<String>::new());
     }
@@ -321,7 +320,7 @@ mod a_brand_is_read_as_a_model_is {
             Count::model_schema_read_unjudged(serde_json::to_value(0_u32).unwrap()).unwrap(),
             Count::new(7_u32).unwrap(),
         ] {
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
     }
 
@@ -334,9 +333,9 @@ mod a_brand_is_read_as_a_model_is {
             short.validation_issues(),
             vec!["too short: minimum length is 3, got 2".to_owned()]
         );
-        read_as_validated(&short, short.validate());
+        read_as_validated(&short, short.validate().map(|()| short.clone()));
         let long = Dir::new(PathBuf::from("/etc")).unwrap();
-        read_as_validated(&long, long.validate());
+        read_as_validated(&long, long.validate().map(|()| long.clone()));
     }
 
     #[test]
@@ -355,7 +354,7 @@ mod a_brand_is_read_as_a_model_is {
         );
         for written in [&[][..], &["a"], &["a", "a"], &["a", "b"], &["a", "b", "a"]] {
             let held = codes(written);
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
         assert_eq!(codes(&["a", "b"]).validation_issues(), Vec::<String>::new());
     }
@@ -372,7 +371,7 @@ mod a_brand_is_read_as_a_model_is {
         );
         for text in ["abcd", "abc"] {
             let held = slug(text);
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
     }
 
@@ -388,7 +387,7 @@ mod a_brand_is_read_as_a_model_is {
         );
         for text in ["ABCD", "abcd", "ABC", "abc"] {
             let held = plain(text);
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
     }
 
@@ -404,10 +403,10 @@ mod a_brand_is_read_as_a_model_is {
         );
         let held = Shown::new("ab".to_owned()).unwrap();
         assert_eq!(held.to_string(), "ab");
-        read_as_validated(&held, held.validate());
+        read_as_validated(&held, held.validate().map(|()| held.clone()));
         let spelled = Spelled::new(7_u32).unwrap();
         assert_eq!(spelled.to_string(), "7");
-        read_as_validated(&spelled, spelled.validate());
+        read_as_validated(&spelled, spelled.validate().map(|()| spelled.clone()));
     }
 
     #[test]
@@ -421,12 +420,12 @@ mod a_brand_is_read_as_a_model_is {
                 serde_json::to_value(text.to_owned()).unwrap(),
             )
             .unwrap();
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.validate().map(|()| held.clone()));
         }
         // The bound is the declared default's, so one digit is read at another filling.
         let counted = Tag::new(7_u32).unwrap();
         assert_eq!(counted.validation_issues(), Vec::<String>::new());
-        read_as_validated(&counted, counted.validate());
+        read_as_validated(&counted, counted.validate().map(|()| counted.clone()));
         assert_eq!(
             serde_json::from_str::<Tag<u32>>("7").ok(),
             Some(Tag::new(7_u32).unwrap())
@@ -438,22 +437,22 @@ mod a_brand_is_read_as_a_model_is {
             zero.validation_issues(),
             vec!["a tag is not empty".to_owned()]
         );
-        read_as_validated(&zero, zero.validate());
+        read_as_validated(&zero, zero.validate().map(|()| zero.clone()));
         // A filling with no `Display` is read as well: nothing renders the value there.
         let listed = Tag::new(vec![7_u8]).unwrap();
         assert_eq!(listed.validation_issues(), Vec::<String>::new());
-        read_as_validated(&listed, listed.validate());
+        read_as_validated(&listed, listed.validate().map(|()| listed.clone()));
     }
 
     #[test]
     fn a_holder_names_every_broken_brand_it_holds_at_its_full_path() {
         let held = shelf_of(&label("a"));
         assert_eq!(refusal(&held.validation_issues()), SHELF_REFUSAL);
-        read_as_validated(&held, held.validate());
+        read_as_validated(&held, held.clone().into_draft().validate());
 
         let sound = shelf_of(&label("AB"));
         assert_eq!(sound.validation_issues(), Vec::<String>::new());
-        read_as_validated(&sound, sound.validate());
+        read_as_validated(&sound, sound.clone().into_draft().validate());
         let unspared: Shelf = serde_json::from_str(
             r#"{"boxedLabel":"AB","firstLabel":"AB","labelList":[],"labelsByDock":{}}"#,
         )
@@ -489,16 +488,16 @@ mod a_brand_is_read_as_a_model_is {
     fn a_brand_held_in_a_slot_is_read_as_validate_answers() {
         for text in ["a", "AB"] {
             let lone = CratedDraft::Lone(label(text));
-            read_as_validated(&lone, lone.validate());
+            read_as_validated(&lone, lone.clone().validate());
             let pair = CratedDraft::Pair(label(text), 7);
-            read_as_validated(&pair, pair.validate());
+            read_as_validated(&pair, pair.clone().validate());
             let paired = PairedDraft(label(text), 7);
-            read_as_validated(&paired, paired.validate());
+            read_as_validated(&paired, paired.clone().validate());
         }
         for broken in [
-            CratedDraft::Lone(label("a")).validate(),
-            CratedDraft::Pair(label("a"), 7).validate(),
-            PairedDraft(label("a"), 7).validate(),
+            CratedDraft::Lone(label("a")).validate().map(|_| ()),
+            CratedDraft::Pair(label("a"), 7).validate().map(|_| ()),
+            PairedDraft(label("a"), 7).validate().map(|_| ()),
         ] {
             assert_eq!(broken.map_err(|reported| reported.len()), Err(2));
         }
@@ -538,10 +537,14 @@ mod a_brand_is_read_as_a_model_is {
         );
         assert_eq!(
             serde_json::from_str::<Receipt>(r#"{"inbound":"ab","spare":"abc"}"#).ok(),
-            Some(ReceiptDraft {
-                inbound: inbound("ab"),
-                spare: inbound("abc"),
-            })
+            Some(
+                ReceiptDraft {
+                    inbound: inbound("ab"),
+                    spare: inbound("abc"),
+                }
+                .validate()
+                .unwrap()
+            )
         );
     }
 
@@ -593,15 +596,19 @@ mod a_brand_is_read_as_a_model_is {
     fn the_bound_of_a_brand_chooses_the_variant_of_an_untagged_enum_and_its_check_none() {
         assert_eq!(
             serde_json::from_str::<Marked>(r#""AB""#).ok(),
-            Some(MarkedDraft::Labelled(label("AB")))
+            Some(MarkedDraft::Labelled(label("AB")).validate().unwrap())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#""a""#).ok(),
-            Some(MarkedDraft::Loose("a".to_owned()))
+            Some(MarkedDraft::Loose("a".to_owned()).validate().unwrap())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#"["AB","CD"]"#).ok(),
-            Some(MarkedDraft::Listed(vec![label("AB"), label("CD")]))
+            Some(
+                MarkedDraft::Listed(vec![label("AB"), label("CD")])
+                    .validate()
+                    .unwrap()
+            )
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#"["AB","c"]"#)
@@ -614,7 +621,7 @@ mod a_brand_is_read_as_a_model_is {
             MarkedDraft::Listed(vec![label("AB"), label("cd")]),
         ] {
             assert!(!held.validation_issues().is_empty(), "{held:?} is kept");
-            read_as_validated(&held, held.validate());
+            read_as_validated(&held, held.clone().validate());
         }
     }
 }

@@ -1,11 +1,70 @@
-error[E0428]: the name `ShipmentDraft` is defined multiple times
+error[E0428]: the name `shipment_schema` is defined multiple times
   --> tests/valid_type_refusals/draft_name_taken.rs:12:1
+   |
+ 6 | #[model_schema()]
+   | ----------------- previous definition of the module `shipment_schema` here
+...
+12 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ `shipment_schema` redefined here
+   |
+   = note: `shipment_schema` must be defined only once in the type namespace of this module
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `Shipment` is defined multiple times
+  --> tests/valid_type_refusals/draft_name_taken.rs:12:1
+   |
+ 6 | #[model_schema()]
+   | ----------------- previous definition of the type `Shipment` here
+...
+12 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ `Shipment` redefined here
+   |
+   = note: `Shipment` must be defined only once in the type namespace of this module
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `shipment_dart` is defined multiple times
+  --> tests/valid_type_refusals/draft_name_taken.rs:12:1
+   |
+ 6 | #[model_schema()]
+   | ----------------- previous definition of the module `shipment_dart` here
+...
+12 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ `shipment_dart` redefined here
+   |
+   = note: `shipment_dart` must be defined only once in the type namespace of this module
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `shipment_swift` is defined multiple times
+  --> tests/valid_type_refusals/draft_name_taken.rs:12:1
+   |
+ 6 | #[model_schema()]
+   | ----------------- previous definition of the module `shipment_swift` here
+...
+12 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ `shipment_swift` redefined here
+   |
+   = note: `shipment_swift` must be defined only once in the type namespace of this module
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `shipment_kotlin` is defined multiple times
+  --> tests/valid_type_refusals/draft_name_taken.rs:12:1
+   |
+ 6 | #[model_schema()]
+   | ----------------- previous definition of the module `shipment_kotlin` here
+...
+12 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ `shipment_kotlin` redefined here
+   |
+   = note: `shipment_kotlin` must be defined only once in the type namespace of this module
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `ShipmentDraft` is defined multiple times
+  --> tests/valid_type_refusals/draft_name_taken.rs:14:1
    |
  8 | pub struct Shipment {
    | ------------------- previous definition of the type `ShipmentDraft` here
 ...
-12 | #[model_schema()]
-   | ^^^^^^^^^^^^^^^^^ `ShipmentDraft` redefined here
+14 | pub struct Shipment {
+   | ^^^^^^^^^^^^^^^^^^^ `ShipmentDraft` redefined here
    |
    = note: `ShipmentDraft` must be defined only once in the type namespace of this module
-   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

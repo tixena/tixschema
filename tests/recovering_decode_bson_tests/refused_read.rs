@@ -127,7 +127,7 @@ struct DockedNode {
     children: Vec<Self>,
 }
 
-fn within_docked_parcel(value: &DockedParcel) -> Result<(), Vec<String>> {
+fn within_docked_parcel(value: &DockedParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -154,24 +154,20 @@ fn sound() -> DockedParcel {
 }
 
 fn broken() -> DockedParcel {
-    DockedParcelDraft {
+    DockedParcel::model_schema_wrap_unjudged(DockedParcelDraft {
         fragile_item_codes: vec!["x".to_owned(), "y".to_owned()],
         item_label: String::new(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn manifest_of(held: &DockedParcel) -> DockedManifest {
-    DockedManifestDraft {
+    DockedManifest::model_schema_wrap_unjudged(DockedManifestDraft {
         boxed_parcel: Box::new(held.clone()),
         first_parcel: held.clone(),
         parcel_list: vec![sound(), held.clone()],
         parcels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_parcel: Some(held.clone()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn docked_in_upper_case(value: &DockCode) -> Result<(), Vec<String>> {
@@ -212,15 +208,13 @@ fn docked_once(value: &DockCodes) -> Result<(), Vec<String>> {
 
 /// A shelf that holds `held` in every place it holds a label, after a sound one in its list.
 fn shelf_of(held: &DockLabel) -> DockedShelf {
-    DockedShelfDraft {
+    DockedShelf::model_schema_wrap_unjudged(DockedShelfDraft {
         boxed_label: Box::new(held.clone()),
         first_label: held.clone(),
         label_list: vec![DockLabel::new("OK".to_owned()).unwrap(), held.clone()],
         labels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_label: Some(held.clone()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 fn counted_docked(check: usize) {
@@ -231,7 +225,7 @@ fn counted_docked(check: usize) {
     });
 }
 
-fn counted_docked_entry<IdType>(value: &DockedEntry<IdType>) -> Result<(), Vec<String>> {
+fn counted_docked_entry<IdType>(value: &DockedEntryDraft<IdType>) -> Result<(), Vec<String>> {
     counted_docked(0);
     if value.label.is_empty() {
         return Err(vec!["'label': an entry has a label".to_owned()]);
@@ -239,7 +233,7 @@ fn counted_docked_entry<IdType>(value: &DockedEntry<IdType>) -> Result<(), Vec<S
     Ok(())
 }
 
-fn counted_docked_node(value: &DockedNode) -> Result<(), Vec<String>> {
+fn counted_docked_node(value: &DockedNodeDraft) -> Result<(), Vec<String>> {
     counted_docked(1);
     if value.children.len() > 2 {
         return Err(vec![

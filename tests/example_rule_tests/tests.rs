@@ -45,7 +45,7 @@ use tixschema::model_schema;
 
 /// A tag whose example meets its rule.
 /// ```rust example
-/// use example_rules::Tag;
+/// use example_rules::TagDraft;
 /// let _ = TagDraft { text: "fine".to_string() };
 /// ```
 #[model_schema(enable = ["jsonschema"])]

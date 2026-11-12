@@ -708,7 +708,7 @@ fn an_array_of_its_length_is_read_and_written_back_as_serde_writes_it() {
 /// its length, and the list for any other.
 #[test]
 fn an_untagged_enum_takes_the_fixed_array_for_an_array_of_its_length_alone() {
-    let taken = |json: &str| match serde_json::from_str::<Grappling>(json).unwrap() {
+    let taken = |json: &str| match &*serde_json::from_str::<Grappling>(json).unwrap() {
         GrapplingDraft::Pair(_) => "Pair",
         GrapplingDraft::Spread(_) => "Spread",
     };

@@ -432,15 +432,17 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
             Poll::Ready(())
         ));
     }
-    let receipt = |label: &str| StampReceiptDraft {
-        label: label.to_owned(),
-        tenant: "acme".to_owned(),
+    let receipt = |label: &str| {
+        StampReceiptDraft {
+            label: label.to_owned(),
+            tenant: "acme".to_owned(),
+        }
+        .validate()
+        .unwrap()
     };
     assert_eq!(
         poll_by_hand(first.as_mut()),
         Poll::Ready(Ok((receipt("a"), "etag-acme".to_owned(), Some(8))))
-            .validate()
-            .unwrap()
     );
     assert_eq!(
         poll_by_hand(second.as_mut()),
@@ -449,13 +451,16 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
     assert_eq!(
         poll_by_hand(third.as_mut()),
         Poll::Ready(Err(CallError::Operation((
-            StampErrorDraft::Refused,
+            StampErrorDraft::Refused.validate().unwrap(),
             Some("refused at 3".to_owned())
         ))))
     );
     assert_eq!(
         poll_by_hand(fourth.as_mut()),
-        Poll::Ready(Err(CallError::Operation((StampErrorDraft::Refused, None))))
+        Poll::Ready(Err(CallError::Operation((
+            StampErrorDraft::Refused.validate().unwrap(),
+            None
+        ))))
     );
 }
 

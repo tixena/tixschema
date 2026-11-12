@@ -1084,6 +1084,13 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
         .validate()
         .unwrap()
     );
+}
+
+/// serde reads the aliased, forward-declared and wrapped holders of this file through their
+/// functions.
+#[test]
+fn the_aliased_and_wrapped_holders_of_this_file_are_read_by_serde_through_their_functions() {
+    let written = json!({ "label": "  A  ", "itemCodeList": ["x"] });
     assert_eq!(
         serde_json::from_value::<Aliased>(json!({
             "dock": "north", "itemCodeList": ["x"], "label": " A ",
@@ -1163,11 +1170,13 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Hop>(json!({ "Road": { "plate": "  A  " } })).unwrap(),
         ],
         [
-            HopDraft::Held,
-            HopDraft::Rail("A".to_owned()),
+            HopDraft::Held.validate().unwrap(),
+            HopDraft::Rail("A".to_owned()).validate().unwrap(),
             HopDraft::Road {
                 plate: "A".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ]
     );
     assert_eq!(
@@ -1180,15 +1189,17 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Gated>(json!({ "kind": "Named", "tag": "t" })).unwrap(),
         ],
         [
-            GatedDraft::Held(carton()),
-            GatedDraft::Lost,
+            GatedDraft::Held(carton()).validate().unwrap(),
+            GatedDraft::Lost.validate().unwrap(),
             GatedDraft::Named(
                 BayDraft {
                     keys: vec!["tag".to_owned()],
                 }
                 .validate()
                 .unwrap()
-            ),
+            )
+            .validate()
+            .unwrap(),
         ]
     );
     assert_eq!(
@@ -1199,7 +1210,10 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             serde_json::from_value::<Lane>(json!({ "kind": "Lost" })).unwrap(),
         ],
-        [LaneDraft::Held(carton()), LaneDraft::Lost]
+        [
+            LaneDraft::Held(carton()).validate().unwrap(),
+            LaneDraft::Lost.validate().unwrap()
+        ]
     );
     assert_eq!(
         [
@@ -1211,8 +1225,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [
-            LegDraft::Left("door".to_owned()),
-            LegDraft::Signed { by: "A".to_owned() },
+            LegDraft::Left("door".to_owned()).validate().unwrap(),
+            LegDraft::Signed { by: "A".to_owned() }.validate().unwrap(),
         ]
     );
     assert_eq!(
@@ -1221,7 +1235,10 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Pick>(json!({ "label": " A ", "itemCodeList": ["x"] }))
                 .unwrap(),
         ],
-        [PickDraft::Named("A".to_owned()), PickDraft::Whole(carton())]
+        [
+            PickDraft::Named("A".to_owned()).validate().unwrap(),
+            PickDraft::Whole(carton()).validate().unwrap()
+        ]
     );
     assert_eq!(
         [
@@ -1229,8 +1246,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Culled>(json!("  A  ")).unwrap(),
         ],
         [
-            CulledDraft::Maybe(None),
-            CulledDraft::Maybe(Some("A".to_owned()))
+            CulledDraft::Maybe(None).validate().unwrap(),
+            CulledDraft::Maybe(Some("A".to_owned())).validate().unwrap()
         ]
     );
 }

@@ -259,14 +259,14 @@ fn placement() -> Placement {
 
 fn labelled() -> Labelled {
     LabelledDraft {
-        history: History::new(vec![VersionDraft { number: 1 }]).unwrap(),
+        history: History::new(vec![VersionDraft { number: 1 }.validate().unwrap()]).unwrap(),
         id: RecordId::new("r-1".to_owned()).unwrap(),
         kept: KeptDraft(VersionDraft { number: 2 }.validate().unwrap())
             .validate()
             .unwrap(),
         latest: LatestDraft(None).validate().unwrap(),
         ping: PingDraft.validate().unwrap(),
-        pinned: Pinned::new(VersionDraft { number: 3 }).unwrap(),
+        pinned: Pinned::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
     }
     .validate()
@@ -277,8 +277,8 @@ fn titled() -> Titled {
     TitledDraft {
         cached: Cached::new("c".to_owned()).unwrap(),
         counted: Counted::new(5_u32).unwrap(),
-        current: Current::new(VersionDraft { number: 1 }).unwrap(),
-        revisions: Revisions::new(vec![VersionDraft { number: 2 }]).unwrap(),
+        current: Current::new(VersionDraft { number: 1 }.validate().unwrap()).unwrap(),
+        revisions: Revisions::new(vec![VersionDraft { number: 2 }.validate().unwrap()]).unwrap(),
         slug: Slug::new("s".to_owned()).unwrap(),
     }
     .validate()
@@ -288,7 +288,7 @@ fn titled() -> Titled {
 fn filed() -> Filed {
     FiledDraft {
         measured: Measured::new("m".to_owned()).unwrap(),
-        stamped: Stamped::new(VersionDraft { number: 1 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 1 }.validate().unwrap()).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned()]).unwrap(),
     }
     .validate()
@@ -469,7 +469,7 @@ fn a_tuple_is_walked_by_position_in_a_map() {
     );
     assert_eq!(
         kept,
-        Ok(Keyed {
+        Ok(KeyedDraft {
             by_name: HashMap::from([("first".to_owned(), ("a".to_owned(), 1))]),
         })
     );
@@ -643,7 +643,7 @@ fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
     let mut calls = 0_u32;
     let referenced = ReferencedDraft {
         owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
-        pair: PairRef::new(PairDraft("a".to_owned(), 1)).unwrap(),
+        pair: PairRef::new(PairDraft("a".to_owned(), 1).validate().unwrap()).unwrap(),
     };
     let written = serde_json::to_value(&referenced).unwrap();
     assert_eq!(written, json!({ "owner": "abc", "pair": ["a", 1_i32] }));

@@ -63,7 +63,7 @@ fn record(numbers: &[i32]) -> Record {
         note: None,
         versions: numbers
             .iter()
-            .map(|&number| VersionDraft { number })
+            .map(|&number| VersionDraft { number }.validate().unwrap())
             .collect(),
     }
     .validate()
@@ -386,7 +386,9 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 id("6a7cc592ca0574e6efdfe217"),
                 id("6a7cc592ca0574e6efdfe218")
             ],
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

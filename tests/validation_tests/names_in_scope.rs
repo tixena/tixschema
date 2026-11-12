@@ -201,7 +201,7 @@ mod a_type_named_sized {
             serde_json::json!({ "inner": { "number": 1_i32 }, "level": 1_i32, "listed": [1_i32] }),
         )
         .unwrap();
-        holder.validate().unwrap();
+        assert_eq!(holder.validation_issues(), Vec::<String>::new());
         assert_eq!(
             serde_json::to_value(SizedDraft {
                 text: "t".to_owned()
@@ -273,10 +273,13 @@ mod a_type_named_err {
             "tags": ["t"],
         }))
         .unwrap();
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
         #[cfg(feature = "typescript")]
         assert!(BesideErrHolder::ts_definition().contains("  inner: BesideErrInner;"));
-        assert_eq!(serde_json::to_value(Err).unwrap(), serde_json::json!({}));
+        assert_eq!(
+            serde_json::to_value(ErrDraft).unwrap(),
+            serde_json::json!({})
+        );
     }
 }
 
@@ -324,10 +327,13 @@ mod a_type_named_none {
             "tags": ["t"],
         }))
         .unwrap();
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
         #[cfg(feature = "typescript")]
         assert!(BesideNoneHolder::ts_definition().contains("  inner: BesideNoneInner;"));
-        assert_eq!(serde_json::to_value(None).unwrap(), serde_json::json!({}));
+        assert_eq!(
+            serde_json::to_value(NoneDraft).unwrap(),
+            serde_json::json!({})
+        );
     }
 }
 
@@ -375,10 +381,13 @@ mod a_type_named_ok {
             "tags": ["t"],
         }))
         .unwrap();
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
         #[cfg(feature = "typescript")]
         assert!(BesideOkHolder::ts_definition().contains("  inner: BesideOkInner;"));
-        assert_eq!(serde_json::to_value(Ok).unwrap(), serde_json::json!({}));
+        assert_eq!(
+            serde_json::to_value(OkDraft).unwrap(),
+            serde_json::json!({})
+        );
     }
 }
 
@@ -426,9 +435,12 @@ mod a_type_named_some {
             "tags": ["t"],
         }))
         .unwrap();
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
         #[cfg(feature = "typescript")]
         assert!(BesideSomeHolder::ts_definition().contains("  inner: BesideSomeInner;"));
-        assert_eq!(serde_json::to_value(Some).unwrap(), serde_json::json!({}));
+        assert_eq!(
+            serde_json::to_value(SomeDraft).unwrap(),
+            serde_json::json!({})
+        );
     }
 }

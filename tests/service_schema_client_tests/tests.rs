@@ -203,16 +203,14 @@ pub mod a_bound_the_fields_own_type_declares {
         let transport = ProbeTransport::new(&[]);
         let client = enrol_amqp_client::EnrolServiceClient::new(transport);
         let answered = poll_once(
-            client.enrol(
+            client.enrol(EnrolRequest::model_schema_wrap_unjudged(
                 EnrolRequestDraft {
                     slug: Slug::model_schema_read_unjudged(
                         serde_json::to_value("ab".to_owned()).unwrap(),
                     )
                     .unwrap(),
-                }
-                .validate()
-                .unwrap(),
-            ),
+                },
+            )),
         )
         .unwrap();
         let reported = match &answered {
@@ -281,16 +279,14 @@ pub mod a_bound_the_fields_own_type_declares {
         let refused = ProbeTransport::new(&[]);
         let refusing = enrol_amqp_client::EnrolServiceClient::new(refused);
         let reported = poll_once(
-            refusing.withdraw(
+            refusing.withdraw(EnrolRequest::model_schema_wrap_unjudged(
                 EnrolRequestDraft {
                     slug: Slug::model_schema_read_unjudged(
                         serde_json::to_value("ab".to_owned()).unwrap(),
                     )
                     .unwrap(),
-                }
-                .validate()
-                .unwrap(),
-            ),
+                },
+            )),
         )
         .unwrap()
         .unwrap_err();
@@ -363,14 +359,14 @@ pub trait ProbeService<Ctx> {
 }
 
 impl AdmitRequest {
-    pub fn validate(&self) -> Result<(), Vec<String>> {
+    pub fn validation_issues(&self) -> Vec<String> {
         if self.customer_id.len() < 3 {
-            return Err(vec![format!(
+            return vec![format!(
                 "'customer_id': too short: minimum length is 3, got {}",
                 self.customer_id.len()
-            )]);
+            )];
         }
-        Ok(())
+        Vec::new()
     }
 }
 
@@ -751,7 +747,10 @@ fn an_answer_becomes_the_success_type_the_operation_declared() {
         ),
     )
     .unwrap();
-    assert_eq!(answered, Ok(BalanceResponseDraft { invoices: 7 }));
+    assert_eq!(
+        answered,
+        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
+    );
 }
 
 #[test]
@@ -771,7 +770,7 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
     assert_eq!(
         answered,
         Err(probe_service_schema::CallError::Operation(
-            ProbeErrorDraft::DbError
+            ProbeErrorDraft::DbError.validate().unwrap()
         )),
         "the thing the operation said it could fail at is not a defect"
     );
@@ -1082,7 +1081,7 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
     .unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponseDraft { invoices: 7 }),
+        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap()),
         "one envelope, written by the dispatcher and read by the client"
     );
 
@@ -1099,7 +1098,7 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
     assert_eq!(
         failed,
         Err(probe_service_schema::CallError::Operation(
-            ProbeErrorDraft::DbError
+            ProbeErrorDraft::DbError.validate().unwrap()
         )),
         "and the failure arm survives the round trip as the error the operation declared"
     );
@@ -1140,7 +1139,10 @@ fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its
         ),
     )
     .unwrap();
-    assert_eq!(balance, Ok(BalanceResponseDraft { invoices: 7 }));
+    assert_eq!(
+        balance,
+        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
+    );
     poll_once(client.apply_bundle(AdmitRequest {
         customer_id: "acme".to_owned(),
     }))

@@ -155,17 +155,15 @@ struct Row {
 
 /// A barrel labelled `label` holding `contents`.
 fn barrel<Contents>(label: &str, contents: Contents) -> Barrel<Contents> {
-    BarrelDraft {
+    Barrel::model_schema_wrap_unjudged(BarrelDraft {
         contents,
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A trove whose barrel in the map is labelled `label`.
 fn trove(label: &str) -> Trove<String> {
-    TroveDraft {
+    Trove::model_schema_wrap_unjudged(TroveDraft {
         barrel: barrel("b", ("c".to_owned(), 1)),
         by_barrel: HashMap::from([(2, barrel(label, "d".to_owned()))]),
         by_count: HashMap::from([(3, 4)]),
@@ -174,9 +172,7 @@ fn trove(label: &str) -> Trove<String> {
         marks: (6, 7),
         pair: ("f".to_owned(), 8),
         paired_by_number: HashMap::from([(9, ("g".to_owned(), 10))]),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// The payload serde writes for `held`, which the serde read reads, held to what that read prints:
@@ -230,7 +226,7 @@ fn struct_rows() -> Vec<Row> {
             "a model a map holds, unlabelled",
             "Trove<String>",
             &unlabelled,
-            unlabelled.validate().map(|_valid| ()),
+            crate::judged_issues(unlabelled.validation_issues()),
         ),
         read_row(
             "a map in a tuple's slot",
@@ -255,7 +251,7 @@ fn struct_rows() -> Vec<Row> {
 /// The payloads of each variant that holds a tuple or a map of the parameter, under each tagging.
 fn variant_rows() -> Vec<Row> {
     let by_number = HashMap::from([(1, "a".to_owned())]);
-    let by_hatch = HashMap::from([(Hatch::Fore, "a".to_owned())]);
+    let by_hatch = HashMap::from([(HatchDraft::Fore.validate().unwrap(), "a".to_owned())]);
     let pair = ("b".to_owned(), 2);
     vec![
         read_row(

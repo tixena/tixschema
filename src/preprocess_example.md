@@ -77,7 +77,7 @@ fn main() {
     assert_eq!(missing.to_string(), "missing field `label`");
 
     // A value built in code is never read, so nothing corrects it.
-    let built = Parcel {
+    let built = ParcelDraft {
         label: "  A  ".to_owned(),
         item_code_list: Vec::new(),
         fragile_item_codes: Vec::new(),

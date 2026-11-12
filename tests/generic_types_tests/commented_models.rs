@@ -114,9 +114,13 @@ pub fn written() -> Vec<(&'static str, String)> {
         ("Scholion", json(&Scholion::new("s".to_owned()).unwrap())),
         (
             "MarginaliaType",
-            json::<Marginalia>(&RemarkedDraft {
-                note: "a".to_owned(),
-            }),
+            json::<Marginalia>(
+                &RemarkedDraft {
+                    note: "a".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
         ),
     ]
 }

@@ -7,10 +7,10 @@
 use std::collections::HashMap;
 
 use super::bytes_models::{
-    BytesCounted, BytesCountedDraft, BytesEither, BytesEitherDraft, BytesExample,
-    BytesExampleDraft, BytesHolder, BytesHolderDraft, BytesImage, BytesLookalikes, BytesOptional,
-    BytesOptionalDraft, bytes_box_dart, bytes_counted_dart, bytes_either_dart, bytes_holder_dart,
-    bytes_image_dart, bytes_lookalikes_dart, bytes_optional_dart, bytes_payload_dart,
+    BytesCountedDraft, BytesEither, BytesEitherDraft, BytesExampleDraft, BytesHolder,
+    BytesHolderDraft, BytesImage, BytesLookalikes, BytesOptional, BytesOptionalDraft,
+    bytes_box_dart, bytes_counted_dart, bytes_either_dart, bytes_holder_dart, bytes_image_dart,
+    bytes_lookalikes_dart, bytes_optional_dart, bytes_payload_dart,
 };
 use super::run_dart_validate::{dart, module};
 

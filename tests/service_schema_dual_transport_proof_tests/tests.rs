@@ -562,11 +562,11 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
         Ok((
             VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             Some("v7".to_owned()),
-        ))
-        .validate()
-        .unwrap(),
+        )),
         "the response rides in the body and the header_out value is rejoined from the reply's own \
          headers"
     );
@@ -592,7 +592,9 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
         Ok((
             VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             None,
         )),
         "a `None` `header_out` element must omit the header rather than send it empty, and \
@@ -603,8 +605,14 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_http_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        ("missing", GetVersionErrorDraft::NotFound),
-        ("gone", GetVersionErrorDraft::VersionGone),
+        (
+            "missing",
+            GetVersionErrorDraft::NotFound.validate().unwrap(),
+        ),
+        (
+            "gone",
+            GetVersionErrorDraft::VersionGone.validate().unwrap(),
+        ),
     ] {
         let service = DocumentBackEnd::new();
         let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
@@ -632,7 +640,7 @@ fn the_http_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::RangeNotSatisfiable,
+            RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the body and its `error_header_out` element is \
@@ -651,7 +659,7 @@ fn a_declared_error_with_no_header_value_carries_none_rather_than_an_empty_heade
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::NotFound,
+            RangeErrorDraft::NotFound.validate().unwrap(),
             None,
         ))),
     );
@@ -794,7 +802,7 @@ fn the_http_loop_round_trips_the_no_payload_operation_at_its_overridden_ok_statu
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveErrorDraft::AlreadyArchived
+            ArchiveErrorDraft::AlreadyArchived.validate().unwrap()
         )),
         "the mapped error still answers even though the operation carries no payload of its own"
     );
@@ -835,7 +843,7 @@ fn the_http_loop_round_trips_the_bytes_operation_and_its_content_type() {
     assert_eq!(
         missing,
         Err(document_service_schema::CallError::Operation(
-            ThumbnailErrorDraft::NotFound
+            ThumbnailErrorDraft::NotFound.validate().unwrap()
         )),
         "a bytes operation's declared error still answers JSON, exactly like any other operation's"
     );
@@ -860,7 +868,7 @@ fn the_http_loop_round_trips_the_defaulted_operation_at_its_default_path() {
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepErrorDraft::DbError
+            SweepErrorDraft::DbError.validate().unwrap()
         )),
         "an operation naming no http(...) group still answers its declared error, at the fixed \
          default-binding status"
@@ -964,7 +972,9 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
         (
             VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             Some("v7".to_owned()),
         ),
         "the header_in value rode the message headers table into the implementation, and the \
@@ -988,7 +998,9 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
         (
             VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             None,
         ),
         "a `None` `header_out` element must omit the header, on the AMQP headers table too"
@@ -998,8 +1010,14 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        ("missing", GetVersionErrorDraft::NotFound),
-        ("gone", GetVersionErrorDraft::VersionGone),
+        (
+            "missing",
+            GetVersionErrorDraft::NotFound.validate().unwrap(),
+        ),
+        (
+            "gone",
+            GetVersionErrorDraft::VersionGone.validate().unwrap(),
+        ),
     ] {
         let service = DocumentBackEnd::new();
         let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
@@ -1023,6 +1041,8 @@ fn a_declared_error_crosses_the_amqp_loop_with_every_field_it_carries() {
             ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
+            .validate()
+            .unwrap()
         )),
     );
 }
@@ -1040,6 +1060,8 @@ fn a_declared_error_crosses_the_http_loop_with_every_field_it_carries() {
             ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
+            .validate()
+            .unwrap()
         )),
     );
 }
@@ -1052,7 +1074,7 @@ fn the_amqp_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::RangeNotSatisfiable,
+            RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the envelope's `error` and its `error_header_out` \
@@ -1069,7 +1091,7 @@ fn an_amqp_declared_error_with_no_header_value_carries_none() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::NotFound,
+            RangeErrorDraft::NotFound.validate().unwrap(),
             None,
         ))),
     );
@@ -1083,7 +1105,7 @@ fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveErrorDraft::AlreadyArchived
+            ArchiveErrorDraft::AlreadyArchived.validate().unwrap()
         ))
     );
     assert_eq!(
@@ -1208,7 +1230,7 @@ fn the_amqp_loop_round_trips_the_defaulted_operation() {
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepErrorDraft::DbError
+            SweepErrorDraft::DbError.validate().unwrap()
         ))
     );
 }

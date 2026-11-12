@@ -145,7 +145,7 @@ fn a_generic_enum_reads_its_variant_of_no_member_under_the_bounds_serde_asks() {
         .unwrap()
     );
     let shelved = serde_json::from_str::<Shelved<Unmade>>(r#"{"Cleared":{}}"#).unwrap();
-    assert!(matches!(shelved, ShelvedDraft::Cleared { items } if items.is_empty()));
+    assert!(matches!(&*shelved, ShelvedDraft::Cleared { items } if items.is_empty()));
     for told in [
         refusal::<Kept<u32>>(r#"{"Cleared":{"stray":1}}"#),
         refusal::<Kept<u32>>(r#"{"Stored":{"count":1,"stray":1}}"#),

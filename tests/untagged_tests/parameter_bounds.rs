@@ -87,11 +87,13 @@ fn a_counted_member_that_names_the_parameter_is_read_and_held_to_its_count() {
         read::<ProbeChosen<String>>(r#"{"listed":[[7,"a"]]}"#),
         Ok(ProbeChosenDraft::Listed {
             listed: vec![(7, "a".to_owned())]
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read::<ProbeChosen<String>>(r#""a""#),
-        Ok(ProbeChosenDraft::Text("a".to_owned()))
+        Ok(ProbeChosenDraft::Text("a".to_owned()).validate().unwrap())
     );
     // serde's untagged read drops each variant's own refusal, as it does for a member that names
     // no parameter; the hook and `validate()` answer the count's sentence.
@@ -108,7 +110,7 @@ fn a_counted_member_that_names_the_parameter_is_read_and_held_to_its_count() {
         Err(count.clone())
     );
     assert_eq!(
-        ProbeChosen::<String>::Listed { listed: vec![] }.validation_issues(),
+        ProbeChosenDraft::<String>::Listed { listed: vec![] }.validation_issues(),
         vec![count]
     );
 }
@@ -119,29 +121,39 @@ fn a_list_the_count_refuses_is_read_as_the_next_variant_as_with_no_parameter_nam
         read::<ProbeChosenOrOpen<String>>(r#"{"listed":[[7,"a"]]}"#),
         Ok(ProbeChosenOrOpenDraft::Listed {
             listed: vec![(7, "a".to_owned())]
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read::<ProbeChosenOrOpen<String>>(r#"{"listed":[]}"#),
-        Ok(ProbeChosenOrOpenDraft::Open { listed: vec![] })
+        Ok(ProbeChosenOrOpenDraft::Open { listed: vec![] }
+            .validate()
+            .unwrap())
     );
     assert_eq!(
         read::<ProbeChosenOrOpenText>(r#"{"listed":[[7,"a"]]}"#),
         Ok(ProbeChosenOrOpenTextDraft::Listed {
             listed: vec![(7, "a".to_owned())]
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read::<ProbeChosenOrOpenText>(r#"{"listed":[]}"#),
-        Ok(ProbeChosenOrOpenTextDraft::Open { listed: vec![] })
+        Ok(ProbeChosenOrOpenTextDraft::Open { listed: vec![] }
+            .validate()
+            .unwrap())
     );
     assert_eq!(
         read::<ProbeSlotted<ProbeUndefaulted>>("[7]"),
-        Ok(ProbeSlottedDraft::Listed(vec![ProbeUndefaulted(7)]))
+        Ok(ProbeSlottedDraft::Listed(vec![ProbeUndefaulted(7)])
+            .validate()
+            .unwrap())
     );
     assert_eq!(
         read::<ProbeSlotted<ProbeUndefaulted>>("[]"),
-        Ok(ProbeSlottedDraft::Open(vec![]))
+        Ok(ProbeSlottedDraft::Open(vec![]).validate().unwrap())
     );
 }
 
@@ -152,14 +164,18 @@ fn an_optional_counted_member_asks_no_default_of_the_parameter() {
         Ok(ProbeMaybeListedDraft::Listed {
             listed: Some(vec![ProbeUndefaulted(7)]),
             tag: 1
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read::<ProbeMaybeListed<ProbeUndefaulted>>(r#"{"tag":1}"#),
         Ok(ProbeMaybeListedDraft::Listed {
             listed: None,
             tag: 1
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read::<ProbeMaybeListed<ProbeUndefaulted>>(r#"{"listed":[],"tag":1}"#),

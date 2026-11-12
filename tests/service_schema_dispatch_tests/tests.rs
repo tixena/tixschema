@@ -256,7 +256,7 @@ pub mod a_message_annotated_with_a_constraint {
     impl GateService<()> for GateBackEnd {
         async fn admit(&self, _ctx: &(), req: GateRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.customer_id);
+            self.reached.lock().unwrap().push(req.customer_id.clone());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
 
@@ -272,19 +272,22 @@ pub mod a_message_annotated_with_a_constraint {
 
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.slug.into_inner());
+            self.reached
+                .lock()
+                .unwrap()
+                .push(req.slug.clone().into_inner());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
 
         async fn hold(&self, _ctx: &(), req: HoldRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.holds.name);
+            self.reached.lock().unwrap().push(req.holds.name.clone());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
 
         async fn label(&self, _ctx: &(), req: LabelRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(match req.label {
+            self.reached.lock().unwrap().push(match &*req.label {
                 LabelDraft::Bounded(tag) => format!("tagged:{}", tag.as_inner()),
                 LabelDraft::Free(free) => format!("free:{free}"),
             });
@@ -293,7 +296,7 @@ pub mod a_message_annotated_with_a_constraint {
 
         async fn open_ledger(&self, _ctx: &(), req: LedgerRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.ledger_id);
+            self.reached.lock().unwrap().push(req.ledger_id.clone());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
 
@@ -301,7 +304,7 @@ pub mod a_message_annotated_with_a_constraint {
             ready(()).await;
             // Which variant the read chose, so a test can say the bound still selects rather than
             // merely that a good payload got through.
-            self.reached.lock().unwrap().push(match req.caller {
+            self.reached.lock().unwrap().push(match &*req.caller {
                 CallerDraft::Attributed {
                     name,
                     claims: _claims,
@@ -317,7 +320,7 @@ pub mod a_message_annotated_with_a_constraint {
             req: AdminBalanceRequest,
         ) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.customer_id);
+            self.reached.lock().unwrap().push(req.customer_id.clone());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
 
@@ -327,9 +330,9 @@ pub mod a_message_annotated_with_a_constraint {
             req: BalanceRequest,
         ) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(match req {
-                BalanceRequest::Admin(admin) => admin.customer_id,
-                BalanceRequest::Scoped(scoped) => scoped.customer_id,
+            self.reached.lock().unwrap().push(match &*req {
+                BalanceRequestDraft::Admin(admin) => admin.customer_id.clone(),
+                BalanceRequestDraft::Scoped(scoped) => scoped.customer_id.clone(),
             });
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
@@ -340,7 +343,7 @@ pub mod a_message_annotated_with_a_constraint {
             req: ScopedBalanceRequest,
         ) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.customer_id);
+            self.reached.lock().unwrap().push(req.customer_id.clone());
             Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
     }
@@ -393,7 +396,7 @@ pub mod a_message_annotated_with_a_constraint {
         }
     }
 
-    fn bay_in_upper_case(value: &BayDraft) -> Result<(), Vec<String>> {
+    fn bay_in_upper_case(value: &Bay) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a bay is upper case".to_owned()]);
         }
@@ -888,8 +891,8 @@ thread_local! {
 
 /// A message that publishes a validator of its own, written by hand rather than annotated, so
 /// that what the arm does with a violation is read off the arm rather than off the serde hook
-/// `#[model_schema_prop]` writes. An inherent `validate()` is exactly what `#[model_schema()]`
-/// publishes for a constrained type, and exactly what the arm calls.
+/// `#[model_schema_prop]` writes. An inherent `validation_issues()` is exactly what
+/// `#[model_schema()]` publishes for a constrained type, and exactly what the arm calls.
 #[derive(Deserialize, Serialize)]
 pub struct AdmitRequest {
     pub customer_id: String,
@@ -910,14 +913,14 @@ pub struct BalanceResponse {
 impl AdmitRequest {
     /// The same report shape a generated validator writes: the field first and in single quotes,
     /// which is where the fault reads the name it carries.
-    pub fn validate(&self) -> Result<(), Vec<String>> {
+    pub fn validation_issues(&self) -> Vec<String> {
         if self.customer_id.len() < 3 {
-            return Err(vec![format!(
+            return vec![format!(
                 "'customer_id': too short: minimum length is 3, got {}",
                 self.customer_id.len()
-            )]);
+            )];
         }
-        Ok(())
+        Vec::new()
     }
 }
 
@@ -1467,7 +1470,9 @@ impl DocumentService<()> for DocumentBackEnd {
             .validate()
             .unwrap()),
             "missing" => Err(VaultErrorDraft::NotFound.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }),
+            _ => Ok(CreateDocumentResponseDraft { document_id }
+                .validate()
+                .unwrap()),
         }
     }
 
@@ -1479,11 +1484,13 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("create_document {}", req.title));
         if req.title == "taken" {
-            return Err(CreateDocumentErrorDraft::TitleTaken);
+            return Err(CreateDocumentErrorDraft::TitleTaken.validate().unwrap());
         }
         Ok(CreateDocumentResponseDraft {
             document_id: format!("doc-{}", req.title),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn explode(
@@ -1494,7 +1501,9 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("explode {document_id}"));
         came_apart(&document_id);
-        Ok(CreateDocumentResponseDraft { document_id })
+        Ok(CreateDocumentResponseDraft { document_id }
+            .validate()
+            .unwrap())
     }
 
     async fn flag_document(
@@ -1507,7 +1516,9 @@ impl DocumentService<()> for DocumentBackEnd {
         match document_id.as_str() {
             "missing" => Err(FlagErrorDraft::NotFound.validate().unwrap()),
             "again" => Err(FlagErrorDraft::AlreadyFlagged.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }),
+            _ => Ok(CreateDocumentResponseDraft { document_id }
+                .validate()
+                .unwrap()),
         }
     }
 
@@ -1585,7 +1596,9 @@ impl DocumentService<()> for DocumentBackEnd {
         self.reach(format!("search_documents {verified:?} {limit:?}"));
         Ok(SearchDocumentsResultDraft {
             matches: vec![format!("verified={verified:?}"), format!("limit={limit:?}")],
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {

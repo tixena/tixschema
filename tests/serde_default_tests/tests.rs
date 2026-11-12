@@ -3,9 +3,9 @@
 //! of the Zod schemas under node in `generic_types_tests`.
 
 #[cfg(feature = "serde")]
-use super::models::{Basin, Config, Fleet, Gangway, Logbook, report};
+use super::models::{Basin, Config, Fleet, Gangway, GangwayDraft, Logbook, report};
 use super::models::{
-    Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
+    Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, JettyDraft, Marina, PREPROCESSED,
     PREPROCESSED_REPORT, Pontoon, PontoonDraft, REPORT, REQUIRED, REQUIRED_REPORT, Wharf,
     filled_expected, filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
@@ -67,7 +67,7 @@ fn serde_reads_a_key_left_out_as_its_default_in_every_build() {
     );
     assert_eq!(
         serde_json::from_str::<Jetty>("{}").unwrap(),
-        Jetty::default()
+        JettyDraft::default().validate().unwrap()
     );
 }
 
@@ -209,7 +209,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
     );
     assert_eq!(
         wharf["properties"]["gangway"]["default"],
-        serde_json::to_value(Gangway::default()).unwrap()
+        serde_json::to_value(GangwayDraft::default()).unwrap()
     );
     assert!(
         wharf["properties"]["label"].get("default").is_none(),
@@ -218,7 +218,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
 
     let jetty = Jetty::json_schema();
     assert_eq!(jetty["required"], serde_json::json!([]));
-    let whole = serde_json::to_value(Jetty::default()).unwrap();
+    let whole = serde_json::to_value(JettyDraft::default()).unwrap();
     for key in ["berths", "dock", "moorings"] {
         assert_eq!(jetty["properties"][key]["default"], whole[key], "{jetty}");
     }

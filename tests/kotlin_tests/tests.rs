@@ -23,12 +23,12 @@ use super::flattened_models::{
     CHAFING, CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING,
     DRESSING_TAGS, Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag,
     Fraying, GAFFING, GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching,
-    Jibing, JibingDraft, Knotting, KnottingDraft, LOCKER, Lanyarding, Luffing, MARLINE, Netting,
-    NettingDraft, PAYLOAD, PENNANT_TAGS, Pennant, Quaying, QuayingDraft, Rousing, SCARFING,
-    SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing,
-    SeizingDraft, Semaphore, Sheeting, SheetingDraft, Snubbing, Splicing, SplicingDraft, Stowing,
-    StowingDraft, Striking, Stropping, Swaying, Tacking, TackingDraft, UNDER_AN_ALIAS,
-    UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, YawingDraft, read_of,
+    JibingDraft, KnottingDraft, LOCKER, Lanyarding, Luffing, MARLINE, NettingDraft, PAYLOAD,
+    PENNANT_TAGS, Pennant, QuayingDraft, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
+    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, SeizingDraft, Semaphore, SheetingDraft,
+    Snubbing, SplicingDraft, Stowing, StowingDraft, Striking, Stropping, Swaying, Tacking,
+    TackingDraft, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping,
+    YawingDraft, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -44,7 +44,7 @@ use super::flattened_models::{
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{kept, serializers};
-use super::tuple_variants_models::{Labelling, LabellingDraft};
+use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
     bridling_kotlin, clapping_kotlin, fiddling_kotlin, grommeting_kotlin, slipping_kotlin,
@@ -362,13 +362,16 @@ fn test_every_declared_type_is_constructible() {
 
     let slots = [SlotDraft::North, SlotDraft::South];
     assert_eq!(slots.len(), 2);
+}
 
+#[test]
+fn test_every_declared_type_is_constructible_under_a_key_a_choice_and_an_audit() {
     let alias_key: SlotAliasKey = SlotDraft::North.validate().unwrap();
     assert_eq!(alias_key, SlotDraft::North.validate().unwrap());
 
     let map_keys = MapKeysDraft {
         by_number: HashMap::from([(1_i32, "one".to_owned())]),
-        by_slot: HashMap::from([(SlotDraft::North, "n".to_owned())]),
+        by_slot: HashMap::from([(SlotDraft::North.validate().unwrap(), "n".to_owned())]),
     };
     assert_eq!(map_keys.by_number.len(), 1);
 
@@ -385,7 +388,10 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(wrapper.value, "wrapped");
 
-    let choices = [ChoiceDraft::Value("x".to_owned()), Choice::<String>::None];
+    let choices = [
+        ChoiceDraft::Value("x".to_owned()),
+        ChoiceDraft::<String>::None,
+    ];
     assert_eq!(choices.len(), 2);
 
     let audit = AuditDraft {
@@ -421,7 +427,7 @@ fn test_every_declared_type_is_constructible() {
 fn test_every_generic_enum_variant_is_constructible() {
     let adjacent_choices = [
         AdjacentChoiceDraft::Value("y".to_owned()),
-        AdjacentChoice::<String>::None,
+        AdjacentChoiceDraft::<String>::None,
     ];
     assert_eq!(adjacent_choices.len(), 2);
 
@@ -433,7 +439,7 @@ fn test_every_generic_enum_variant_is_constructible() {
 
     let eithers = [
         EitherDraft::Left("l".to_owned()),
-        Either::<String, i64>::Right(7),
+        EitherDraft::<String, i64>::Right(7),
     ];
     assert_eq!(eithers.len(), 2);
 
@@ -1161,6 +1167,7 @@ fn serde_reads_an_optional_flattened_map_under_a_function_from_what_it_answers()
         serde_json::from_str::<EmptiedLocker>(payload)
             .unwrap()
             .counts
+            .clone()
     });
     assert_eq!(emptied, [None, None, None, None, None]);
 }
@@ -1392,14 +1399,21 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
 /// from the object, and as `None` wherever it does not.
 #[test]
 fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
-    let read = |json: &str| serde_json::from_str::<Scarfing>(json).unwrap().sheeting;
+    let read = |json: &str| {
+        serde_json::from_str::<Scarfing>(json)
+            .unwrap()
+            .sheeting
+            .clone()
+    };
     let held = SheetingDraft {
         labelling: LabellingDraft {
             label: "n".to_owned(),
         }
         .validate()
         .unwrap(),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         SCARFING.map(read),
         [Some(held), None, None],
@@ -1608,7 +1622,7 @@ where
 fn assert_belted(bay: &Tacking) {
     let belted = BELTING.map(|payload| {
         serde_json::from_str::<Belting>(payload)
-            .map(|read| read.tacking)
+            .map(|read| read.tacking.clone())
             .map_err(|refused| refused.to_string())
     });
     assert_eq!(
@@ -1628,15 +1642,9 @@ fn assert_belted(bay: &Tacking) {
 /// variant's entry among them; an optional enum reads no value.
 #[test]
 fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
-    let bay = || TackingDraft::Bay {
-        label: "n".to_owned(),
-    };
-    let dock = || TackingDraft::Dock {
-        label: "s".to_owned(),
-    };
     let stowed: Vec<_> = STOWING
         .iter()
-        .map(|payload| serde_json::from_str::<Stowing>(payload).map(|read| read.tacking))
+        .map(|payload| serde_json::from_str::<Stowing>(payload).map(|read| read.tacking.clone()))
         .collect();
     assert_eq!(
         stowed[..6]
@@ -1648,8 +1656,8 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
             Some(&bay()),
             None,
             None,
-            Some(&TackingDraft::Calm),
-            Some(&TackingDraft::Held("x".to_owned()))
+            Some(&TackingDraft::Calm.validate().unwrap()),
+            Some(&TackingDraft::Held("x".to_owned()).validate().unwrap())
         ]
     );
     assert_refused_keys(&stowed, &[(2, "north"), (3, "Dock")]);
@@ -1660,7 +1668,7 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     assert_belted(&bay());
     let heaved = HEAVING.map(|payload| {
         let read: Heaving = serde_json::from_str(payload).unwrap();
-        (read.tacking, read.tally.keys)
+        (read.tacking.clone(), read.tally.keys.clone())
     });
     assert_eq!(
         heaved,
@@ -1672,9 +1680,9 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
         ]
     );
     let cleated = CLEATING.map(|payload| {
-        serde_json::from_str::<Cleating>(payload).map(|read| (read.jibing, read.tally.keys))
+        serde_json::from_str::<Cleating>(payload)
+            .map(|read| (read.jibing.clone(), read.tally.keys.clone()))
     });
-    let north = || vec!["north".to_owned()];
     assert_eq!(
         cleated[..2]
             .iter()
@@ -1684,13 +1692,17 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
             Some(&(
                 JibingDraft::Jetty {
                     label: "n".to_owned()
-                },
+                }
+                .validate()
+                .unwrap(),
                 north()
             )),
             Some(&(
                 JibingDraft::OpenBay {
                     label: "n".to_owned()
-                },
+                }
+                .validate()
+                .unwrap(),
                 north()
             )),
         ]
@@ -1699,19 +1711,26 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
         cleated[2].as_ref().unwrap_err().to_string(),
         "no variant of enum Jibing found in flattened data at line 1 column 35"
     );
+}
+
+#[test]
+fn serde_hands_a_flattened_enum_under_an_alias_and_a_holder_its_entry() {
     let scudding: Scudding = serde_json::from_str(SCUDDING).unwrap();
     assert_eq!(
         (
-            scudding.hatch,
-            scudding.labelling.label,
-            scudding.tally.keys
+            scudding.hatch.clone(),
+            scudding.labelling.label.clone(),
+            scudding.tally.keys.clone()
         ),
         (bay(), "m".to_owned(), north())
     );
     let stowing: Stowing = serde_json::from_str(UNDER_AN_ALIAS[0]).unwrap();
-    assert_eq!(stowing.tacking, dock().validate().unwrap());
+    assert_eq!(stowing.tacking, dock());
     let heaving: Heaving = serde_json::from_str(UNDER_AN_ALIAS[1]).unwrap();
-    assert_eq!((heaving.tacking, heaving.tally.keys), (dock(), north()));
+    assert_eq!(
+        (heaving.tacking.clone(), heaving.tally.keys.clone()),
+        (dock(), north())
+    );
     let luffing: Luffing = serde_json::from_str(STOWING[0]).unwrap();
     assert_eq!(
         luffing.quaying,
@@ -1733,7 +1752,7 @@ fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_o
     assert_eq!(chafing.tally.keys, ["north"]);
     let frayed = FRAYING.map(|payload| {
         serde_json::from_str::<Fraying>(payload)
-            .map(|read| read.labelling.label)
+            .map(|read| read.labelling.label.clone())
             .map_err(|refused| refused.to_string())
     });
     assert_eq!(
@@ -2366,4 +2385,24 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
     );
+}
+
+fn bay() -> Tacking {
+    TackingDraft::Bay {
+        label: "n".to_owned(),
+    }
+    .validate()
+    .unwrap()
+}
+
+fn dock() -> Tacking {
+    TackingDraft::Dock {
+        label: "s".to_owned(),
+    }
+    .validate()
+    .unwrap()
+}
+
+fn north() -> Vec<String> {
+    vec!["north".to_owned()]
 }

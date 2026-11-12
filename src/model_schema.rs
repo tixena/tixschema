@@ -600,6 +600,8 @@ type StructFieldData = (
 #[derive(Clone)]
 struct ExampleTest {
     blocks: Vec<TokenStream>,
+    /// The type that holds `schema_examples()`.
+    bridged_ty: TokenStream,
     /// Whether each block builds the draft of the type.
     drafted: bool,
     json_schema: bool,
@@ -1705,11 +1707,11 @@ impl ExampleTest {
     /// The values the type's `schema_examples()` builds, handed to its schema module, which cannot
     /// name the type where the type is declared in a function body.
     fn bridged(&self, schema_module: &syn::Ident, seen_from: &TokenStream) -> TokenStream {
-        let value_ty = &self.value_ty;
+        let bridged_ty = &self.bridged_ty;
         quote! {
             impl #schema_module::Schema {
                 #seen_from fn json_examples() -> ::std::vec::Vec<serde_json::Value> {
-                    <#value_ty>::schema_examples()
+                    <#bridged_ty>::schema_examples()
                 }
             }
         }
@@ -1725,8 +1727,14 @@ impl ExampleTest {
         if blocks.is_empty() {
             return None;
         }
+        let value_ty = schema_example_value_type(
+            name,
+            &type_parameters_in_scope(generics),
+            &args.default_types,
+        );
         Some(Self {
             blocks: blocks.to_vec(),
+            bridged_ty: value_ty.clone(),
             drafted: false,
             json_schema: args.enable.jsonschema,
             module: syn::Ident::new(
@@ -1734,11 +1742,7 @@ impl ExampleTest {
                 name.span(),
             ),
             name: name.clone(),
-            value_ty: schema_example_value_type(
-                name,
-                &type_parameters_in_scope(generics),
-                &args.default_types,
-            ),
+            value_ty,
         })
     }
 
@@ -1830,6 +1834,7 @@ impl ExampleTest {
             });
         let Some(Self {
             blocks,
+            bridged_ty: _bridged_ty,
             drafted,
             module,
             name,
@@ -3365,14 +3370,18 @@ where
     let issues = issues_or_none(validate_method.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        conditional: declared.conditional,
+        debugs: declared.debugs,
         derives: declared.derives,
-        deserializes: declared.deserializes && !drafted.refused,
+        #[cfg(feature = "serde")]
+        deserializes: declared.deserializes.unless(drafted.refused),
         draft: valid_type::draft_ident(name),
         generics: parts.generics,
         issues: &issues,
         module_ident,
         name,
         reads: &drafted.valid,
+        #[cfg(feature = "serde")]
         serializes: declared.serializes,
         vis: parts.vis,
     };
@@ -9211,8 +9220,24 @@ fn unit_struct_impls_for(
     args: &ModelSchemaArgs,
 ) -> proc_macro2::TokenStream {
     if matches!(item_struct.fields, syn::Fields::Unit) {
-        record_unit_struct(&item_struct.ident.to_string());
-        return unit_struct_serde_impls(item_struct, read);
+        let declared = valid_type::declared_name(&item_struct.ident);
+        let drafted = valid_type::has_draft();
+        record_unit_struct(&declared.to_string(), drafted);
+        let impls = unit_struct_serde_impls(item_struct, read);
+        if !drafted {
+            return impls;
+        }
+        let draft = valid_type::draft_ident(&declared);
+        return quote! {
+            #impls
+
+            impl #declared {
+                /// The one value of this unit struct, which a service answers an empty reply with.
+                pub fn model_schema_unit() -> Self {
+                    Self::model_schema_wrap_unjudged(#draft)
+                }
+            }
+        };
     }
     if strict::read_by_the_macro(item_struct, args) {
         return empty_struct_read(item_struct, read);
@@ -12856,14 +12881,18 @@ fn plain_enum_output(
     let issues = issues_or_none(added.validate.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        conditional: declared.conditional,
+        debugs: declared.debugs,
         derives: declared.derives,
-        deserializes: declared.deserializes && !judged.refused,
+        #[cfg(feature = "serde")]
+        deserializes: declared.deserializes.unless(judged.refused),
         draft: valid_type::draft_ident(name),
         generics: &item_enum.generics,
         issues: &issues,
         module_ident,
         name,
         reads: &judged.valid,
+        #[cfg(feature = "serde")]
         serializes: declared.serializes,
         vis: &item_enum.vis,
     };

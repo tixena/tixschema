@@ -245,7 +245,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, no tag attribute",
             "Ebb<String>",
-            &Ebb::<String>::Noted { at: second },
+            &EbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, a tag alone",
@@ -258,7 +258,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, a tag alone",
             "TaggedEbb<String>",
-            &TaggedEbb::<String>::Noted { at: second },
+            &TaggedEbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, a tag and a content key",
@@ -271,7 +271,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::<String>::Noted { at: second },
+            &AdjacentEbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, untagged",
@@ -284,7 +284,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, untagged",
             "UntaggedEbb<String>",
-            &UntaggedEbb::<String>::Noted { at: second },
+            &UntaggedEbbDraft::<String>::Noted { at: second },
         ),
     ]
 }
@@ -319,7 +319,7 @@ fn held_rows() -> Vec<Row> {
         read_row(
             "one slot, no tag attribute",
             "Ebb<String>",
-            &Ebb::<String>::Stamped(second),
+            &EbbDraft::<String>::Stamped(second),
         ),
         read_row(
             "several slots, a tag and a content key",
@@ -329,12 +329,12 @@ fn held_rows() -> Vec<Row> {
         read_row(
             "one slot, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::<String>::Stamped(second),
+            &AdjacentEbbDraft::<String>::Stamped(second),
         ),
         read_row(
             "one slot, untagged",
             "UntaggedEbb<String>",
-            &UntaggedEbb::<String>::Stamped(second),
+            &UntaggedEbbDraft::<String>::Stamped(second),
         ),
     ]
 }

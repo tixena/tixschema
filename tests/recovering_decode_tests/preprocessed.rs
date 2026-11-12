@@ -157,7 +157,9 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
         held.map_err(|refused| lines(&refused)),
         Ok(StoredManifestDraft {
             parcel: parcel("A", &[])
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let flattened = StoredCrated::from_value_with(
         json!({ "dock": "north", "label": "A", "itemCodeList": ["x"] }),
@@ -168,7 +170,9 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
         Ok(StoredCratedDraft {
             dock: "north".to_owned(),
             parcel: parcel("A", &[])
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -300,7 +304,9 @@ fn an_enum_is_taken_out_of_its_envelope_by_the_recovering_read() {
         read.map_err(|refused| lines(&refused)),
         Ok(StoredShipmentDraft::Air {
             flight: "F1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -313,7 +319,10 @@ fn a_recovering_read_calls_the_function_of_the_type_once() {
     let read = CountedParcel::from_value_with(json!({ "label": "A" }), |_, _| {
         counted_parcel_schema::Verdict::Reject
     });
-    assert_eq!(read.map(|held| held.label).ok().as_deref(), Some("A"));
+    assert_eq!(
+        read.map(|held| held.label.clone()).ok().as_deref(),
+        Some("A")
+    );
     assert_eq!(
         (PARCEL_CALLS.get(), LABEL_CALLS.get()),
         (before.0 + 1, before.1 + 2)
@@ -323,7 +332,10 @@ fn a_recovering_read_calls_the_function_of_the_type_once() {
         *value = json!({ "label": "A" });
         counted_parcel_schema::Verdict::Fixed
     });
-    assert_eq!(repaired.map(|held| held.label).ok().as_deref(), Some("A"));
+    assert_eq!(
+        repaired.map(|held| held.label.clone()).ok().as_deref(),
+        Some("A")
+    );
     assert_eq!(PARCEL_CALLS.get(), before.0 + 2);
 }
 

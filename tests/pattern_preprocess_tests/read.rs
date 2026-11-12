@@ -10,13 +10,12 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use super::models::{
-    Carrier, CarrierDraft, ClosedDock, ClosedDockDraft, Consigned, ConsignedDraft, Crate,
-    CrateDraft, Crated, CratedDraft, Delivery, DeliveryDraft, Either, EitherDraft, Grade,
-    GradeDraft, Handover, HandoverDraft, Label, Manifest, ManifestDraft, Node, NodeDraft, Parcel,
-    ParcelDraft, Pinned, PinnedDraft, Reference, ReferenceDraft, Routed, RoutedDraft, SAMPLE_ROWS,
-    Shelf, Shipment, ShipmentDraft, Slot, SlotDraft, Stack, StackDraft, Tagged, TaggedDraft,
-    Transfer, TransferDraft, Unnamed, UnnamedDraft, Weighed, WeighedDraft, Wrapped, WrappedDraft,
-    sample_report,
+    CarrierDraft, ClosedDockDraft, Consigned, ConsignedDraft, CrateDraft, Crated, CratedDraft,
+    Delivery, DeliveryDraft, Either, EitherDraft, GradeDraft, HandoverDraft, Label, Manifest,
+    ManifestDraft, Node, NodeDraft, Parcel, ParcelDraft, Pinned, PinnedDraft, ReferenceDraft,
+    Routed, RoutedDraft, SAMPLE_ROWS, Shelf, ShipmentDraft, Slot, SlotDraft, StackDraft,
+    TaggedDraft, TransferDraft, Unnamed, UnnamedDraft, Weighed, WeighedDraft, Wrapped,
+    WrappedDraft, sample_report,
 };
 #[cfg(feature = "serde")]
 use super::models::{POSITIONS, positions};
@@ -57,13 +56,11 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn parcel(label: &str, fragile: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile),
         item_code_list: texts(&["x"]),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// Holds the read of `value` to `value`, from the payload serde writes for it and from that

@@ -48,7 +48,7 @@ impl LessonService<()> for Lessons {
         ready(match path.as_str() {
             "SKILL.md" => Ok((b"# Figures\n".to_vec(), "text/markdown".to_owned())),
             "figures.bin" => Ok((vec![0, 255, 128, 1], "application/octet-stream".to_owned())),
-            _ => Err(BookErrorDraft::NotFound),
+            _ => Err(BookErrorDraft::NotFound.validate().unwrap()),
         })
     }
 
@@ -58,9 +58,9 @@ impl LessonService<()> for Lessons {
         req: BookRequest,
     ) -> impl Future<Output = Result<BookInfo, BookError>> {
         ready(if req.book_id == "lesson-1" {
-            Ok(BookInfoDraft { pages: 3 })
+            Ok(BookInfoDraft { pages: 3 }.validate().unwrap())
         } else {
-            Err(BookErrorDraft::NotFound)
+            Err(BookErrorDraft::NotFound.validate().unwrap())
         })
     }
 
@@ -76,7 +76,7 @@ impl LessonService<()> for Lessons {
             ),
             "references/changes.md" => Ok("- renamed a document\n".to_owned()),
             "panic" => resume_unwind(Box::new("the handler came apart")),
-            _ => Err(BookErrorDraft::NotFound),
+            _ => Err(BookErrorDraft::NotFound.validate().unwrap()),
         })
     }
 }

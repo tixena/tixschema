@@ -19,26 +19,22 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::listed_maps_models::{
-    AdjacentGalley, AdjacentStowedGalley, Attic, AtticDraft, Caddy, CaddyDraft, Cellar,
-    CellarDraft, Creel, Cupboard, CupboardDraft, Dresser, DresserDraft, Galley, Hopper, Larder,
-    LarderDraft, Pantry, PantryDraft, Rung, RungDraft, Sideboard, SideboardDraft, StowedAttic,
-    StowedAtticDraft, StowedCaddy, StowedCaddyDraft, StowedCellar, StowedCellarDraft, StowedCreel,
-    StowedCupboard, StowedCupboardDraft, StowedDresser, StowedDresserDraft, StowedGalley,
-    StowedLarder, StowedLarderDraft, StowedPantry, StowedPantryDraft, StowedSideboard,
-    StowedSideboardDraft, TaggedGalley, TaggedGalleyDraft, TaggedStowedGalley,
-    TaggedStowedGalleyDraft, Trug, UntaggedGalley, UntaggedGalleyDraft, UntaggedStowedGalley,
-    UntaggedStowedGalleyDraft, adjacent_galley_swift, adjacent_stowed_galley_swift, attic_swift,
-    caddy_swift, cellar_swift, creel_swift, cupboard_swift, dresser_swift, galley_swift,
-    hopper_swift, larder_swift, pantry_swift, rung_swift, sideboard_swift, stowed_attic_swift,
-    stowed_caddy_swift, stowed_cellar_swift, stowed_creel_swift, stowed_cupboard_swift,
-    stowed_dresser_swift, stowed_galley_swift, stowed_larder_swift, stowed_pantry_swift,
-    stowed_sideboard_swift, tagged_galley_swift, tagged_stowed_galley_swift, trug_swift,
-    untagged_galley_swift, untagged_stowed_galley_swift,
+    AdjacentGalleyDraft, AdjacentStowedGalleyDraft, AtticDraft, CaddyDraft, CellarDraft, Creel,
+    CupboardDraft, DresserDraft, GalleyDraft, Hopper, LarderDraft, Pantry, PantryDraft, Rung,
+    RungDraft, SideboardDraft, StowedAtticDraft, StowedCaddyDraft, StowedCellarDraft, StowedCreel,
+    StowedCupboardDraft, StowedDresserDraft, StowedGalleyDraft, StowedLarderDraft, StowedPantry,
+    StowedPantryDraft, StowedSideboardDraft, TaggedGalleyDraft, TaggedStowedGalleyDraft, Trug,
+    UntaggedGalleyDraft, UntaggedStowedGalleyDraft, adjacent_galley_swift,
+    adjacent_stowed_galley_swift, attic_swift, caddy_swift, cellar_swift, creel_swift,
+    cupboard_swift, dresser_swift, galley_swift, hopper_swift, larder_swift, pantry_swift,
+    rung_swift, sideboard_swift, stowed_attic_swift, stowed_caddy_swift, stowed_cellar_swift,
+    stowed_creel_swift, stowed_cupboard_swift, stowed_dresser_swift, stowed_galley_swift,
+    stowed_larder_swift, stowed_pantry_swift, stowed_sideboard_swift, tagged_galley_swift,
+    tagged_stowed_galley_swift, trug_swift, untagged_galley_swift, untagged_stowed_galley_swift,
 };
 #[cfg(feature = "chrono")]
 use super::listed_maps_models::{
-    Dateline, DatelineDraft, Plank, PlankDraft, Timeline, TimelineDraft, dateline_swift,
-    plank_swift, timeline_swift,
+    DatelineDraft, PlankDraft, TimelineDraft, dateline_swift, plank_swift, timeline_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -216,8 +212,8 @@ where
     Held: Clone,
 {
     HashMap::from([
-        (RungDraft::Low, held.clone()),
-        (RungDraft::High, held.clone()),
+        (RungDraft::Low.validate().unwrap(), held.clone()),
+        (RungDraft::High.validate().unwrap(), held.clone()),
     ])
 }
 
@@ -314,7 +310,10 @@ fn struct_rows() -> Vec<Row> {
             &DatelineDraft {
                 maybe_by_name: HashMap::from([
                     ("n".to_owned(), None),
-                    ("m".to_owned(), Some(PlankDraft { label: text() })),
+                    (
+                        "m".to_owned(),
+                        Some(PlankDraft { label: text() }.validate().unwrap()),
+                    ),
                 ]),
                 maybe_by_number: HashMap::from([(1, Some(date())), (2, None)]),
             },
@@ -396,8 +395,8 @@ fn holder_rows() -> Vec<Row> {
                     ("n".to_owned(), None),
                 ]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (RungDraft::Low, Some(rungs(&text()))),
-                    (RungDraft::High, None),
+                    (RungDraft::Low.validate().unwrap(), Some(rungs(&text()))),
+                    (RungDraft::High.validate().unwrap(), None),
                 ]),
                 number_lists_by_name: HashMap::from([("n".to_owned(), vec![numbered(&text())])]),
                 rung_lists_or_none_by_name: HashMap::from([(
@@ -413,8 +412,8 @@ fn holder_rows() -> Vec<Row> {
                 flag_lists_by_number: numbered(&vec![flagged(&text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (RungDraft::Low, Some(rungs(&text()))),
-                    (RungDraft::High, None),
+                    (RungDraft::Low.validate().unwrap(), Some(rungs(&text()))),
+                    (RungDraft::High.validate().unwrap(), None),
                 ]),
                 number_lists_by_name: HashMap::new(),
                 rung_lists_or_none_by_name: HashMap::from([("r".to_owned(), vec![None])]),
@@ -534,16 +533,16 @@ fn slot_and_brand_rows() -> Vec<Row> {
 /// The payloads of each variant that holds the maps under no tag attribute and under a tag and a
 /// content key, in a type that declares a parameter and in one that declares none.
 fn variant_rows() -> Vec<Row> {
-    type Stowed = StowedGalley<String>;
-    type AdjacentStowed = AdjacentStowedGalley<String>;
-    let mut rows = galley_rows!(Galley, "Galley", "no tag attribute");
+    type Stowed = StowedGalleyDraft<String>;
+    type AdjacentStowed = AdjacentStowedGalleyDraft<String>;
+    let mut rows = galley_rows!(GalleyDraft, "Galley", "no tag attribute");
     rows.extend(galley_rows!(
         Stowed,
         "StowedGalley<String>",
         "no tag attribute, a parameter"
     ));
     rows.extend(galley_rows!(
-        AdjacentGalley,
+        AdjacentGalleyDraft,
         "AdjacentGalley",
         "a tag and a content key"
     ));
@@ -622,22 +621,22 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "a list in a variant's one slot, untagged, a parameter",
             "UntaggedStowedGalley<String>",
-            &UntaggedStowedGalley::Listed(vec![rungs(&text())]),
+            &UntaggedStowedGalleyDraft::Listed(vec![rungs(&text())]),
         ),
         read_row(
             "a list of optionals in a variant's one slot, untagged, a parameter",
             "UntaggedStowedGalley<String>",
-            &UntaggedStowedGalley::ListedOrNone(vec![None, Some(rungs(&text()))]),
+            &UntaggedStowedGalleyDraft::ListedOrNone(vec![None, Some(rungs(&text()))]),
         ),
         read_row(
             "an optional in a variant's one slot, untagged, a parameter",
             "UntaggedStowedGalley<String>",
-            &UntaggedStowedGalley::Maybe(Some(rungs(&text()))),
+            &UntaggedStowedGalleyDraft::Maybe(Some(rungs(&text()))),
         ),
         read_row(
             "an absent optional in a variant's one slot, untagged, a parameter",
             "UntaggedStowedGalley<String>",
-            &UntaggedStowedGalley::<String>::Maybe(None),
+            &UntaggedStowedGalleyDraft::<String>::Maybe(None),
         ),
         read_row(
             "each shape as a member of a variant, untagged, a parameter",

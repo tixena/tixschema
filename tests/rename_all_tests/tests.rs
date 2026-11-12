@@ -240,7 +240,7 @@ fn internally_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<InternallyTaggedRename>(unmarked_json).unwrap(),
-        unmarked
+        unmarked.validate().unwrap()
     );
 
     let marked = InternallyTaggedRenameDraft::Marked {
@@ -253,7 +253,7 @@ fn internally_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<InternallyTaggedRename>(marked_json).unwrap(),
-        marked
+        marked.validate().unwrap()
     );
 }
 
@@ -269,7 +269,7 @@ fn externally_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<ExternallyTaggedRename>(unmarked_json).unwrap(),
-        unmarked
+        unmarked.validate().unwrap()
     );
 
     let marked = ExternallyTaggedRenameDraft::Marked {
@@ -282,7 +282,7 @@ fn externally_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<ExternallyTaggedRename>(marked_json).unwrap(),
-        marked
+        marked.validate().unwrap()
     );
 }
 
@@ -298,7 +298,7 @@ fn adjacently_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<AdjacentlyTaggedRename>(unmarked_json).unwrap(),
-        unmarked
+        unmarked.validate().unwrap()
     );
 
     let marked = AdjacentlyTaggedRenameDraft::Marked {
@@ -311,7 +311,7 @@ fn adjacently_tagged_rename_all_reaches_the_wire_correctly() {
     );
     assert_eq!(
         serde_json::from_value::<AdjacentlyTaggedRename>(marked_json).unwrap(),
-        marked
+        marked.validate().unwrap()
     );
 }
 

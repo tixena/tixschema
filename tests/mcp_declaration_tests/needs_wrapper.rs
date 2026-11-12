@@ -145,6 +145,8 @@ fn named() -> Named {
     NamedDraft {
         id: "doc-1".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -200,7 +202,7 @@ fn an_externally_tagged_enum_is_a_string_only_where_a_variant_is_a_unit() {
 #[test]
 fn an_enum_under_a_tag_is_an_object() {
     assert!(!Tagged::needs_wrapper());
-    assert!(writes_an_object(&Tagged::Idle));
+    assert!(writes_an_object(&TaggedDraft::Idle));
     assert!(writes_an_object(&TaggedDraft::Busy { jobs: 1 }));
     assert!(!Adjacent::needs_wrapper());
     assert!(writes_an_object(&AdjacentDraft::Idle));

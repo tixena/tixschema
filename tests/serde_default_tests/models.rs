@@ -426,7 +426,7 @@ pub struct Gangway {
 pub struct Wharf {
     #[serde(default)]
     pub dock: String,
-    #[serde(default)]
+    #[serde(default = "main_gangway")]
     pub gangway: Gangway,
     #[serde(default = "north_dock")]
     pub gate: String,
@@ -559,7 +559,7 @@ pub struct IndexedLogbook<IdType> {
     pub index_map: indexmap::IndexMap<String, Link<IdType>>,
 }
 
-impl Default for Gangway {
+impl Default for GangwayDraft {
     fn default() -> Self {
         Self {
             label: "main".to_owned(),
@@ -568,7 +568,7 @@ impl Default for Gangway {
     }
 }
 
-impl Default for Jetty {
+impl Default for JettyDraft {
     fn default() -> Self {
         Self {
             berths: 4,
@@ -588,6 +588,10 @@ where
 }
 
 /// What `gate` is read as where the payload leaves its key out.
+pub fn main_gangway() -> Gangway {
+    GangwayDraft::default().validate().unwrap()
+}
+
 pub fn north_dock() -> String {
     "north".to_owned()
 }
@@ -633,7 +637,7 @@ pub fn read_values() -> (Wharf, Pontoon) {
     (
         WharfDraft {
             dock: String::new(),
-            gangway: Gangway::default(),
+            gangway: GangwayDraft::default().validate().unwrap(),
             gate: north_dock(),
             label: "w".to_owned(),
         }

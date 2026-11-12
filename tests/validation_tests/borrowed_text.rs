@@ -152,12 +152,12 @@ mod a_bound_on_a_borrowed_str {
         )
         .unwrap();
         assert_eq!(read.alias, Some("alf"));
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
 
         let without_alias: Account<'_> =
             serde_json::from_str(r#"{"name":"alice","region":"east","tags":["a","b"]}"#).unwrap();
         assert_eq!(without_alias.alias, None);
-        without_alias.validate().unwrap();
+        assert_eq!(without_alias.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
@@ -254,7 +254,7 @@ mod a_bound_on_a_borrowed_str {
             kept,
             HandleDraft::Long { text: "alice" }.validate().unwrap()
         );
-        kept.validate().unwrap();
+        assert_eq!(kept.validation_issues(), Vec::<String>::new());
     }
 
     /// Nothing is hung beside a reader of the author's own, which serde admits one of per field.

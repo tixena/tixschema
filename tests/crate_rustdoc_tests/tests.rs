@@ -24,10 +24,10 @@ fn assert_rustdoc_shows(surface: &str) {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_usage_section_shows_what_the_struct_emits() {
+    #[model_schema()]
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    #[model_schema()]
-    pub struct UserDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
+    pub struct User {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub age: Option<u32>,
         pub first_name: String,
@@ -44,9 +44,9 @@ fn test_usage_section_shows_what_the_struct_emits() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_enum_section_shows_what_the_enum_emits() {
+    #[model_schema()]
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "lowercase")]
-    #[model_schema()]
     pub enum Status {
         Active,
         Inactive,
@@ -61,9 +61,9 @@ fn test_enum_section_shows_what_the_enum_emits() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_tagged_union_section_shows_what_the_tagged_enum_emits() {
+    #[model_schema()]
     #[derive(Serialize, Deserialize)]
     #[serde(tag = "type", rename_all = "camelCase")]
-    #[model_schema()]
     pub enum Event {
         UserCreated {
             timestamp: String,
@@ -88,9 +88,9 @@ fn test_object_id_section_shows_what_the_object_id_struct_emits() {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct ObjectId(pub String);
 
-    #[derive(Serialize, Deserialize)]
     #[model_schema()]
-    pub struct DocumentDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
+    #[derive(Serialize, Deserialize)]
+    pub struct Document {
         pub author_id: ObjectId,
         pub id: ObjectId,
         pub metadata: HashMap<String, ObjectId>,

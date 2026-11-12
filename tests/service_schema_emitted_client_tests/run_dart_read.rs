@@ -18,11 +18,11 @@ use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
 use super::run_dart_validate::{
-    CHECKS, Case, Crate, CrateDraft, Deck, DeckDraft, Gauge, GaugeDraft, Pair, PairDraft, Parcel,
-    SHAPE_FUNCTIONS, Stamp, StampDraft, Terminal, TerminalDraft, Yard, YardDraft, brand_cases,
-    code_point_cases, compared, dart, from_until, manifest_dart, module, named_shape_cases,
-    named_variant_cases, outside, parcel, parcel_dart, pinned, shape_definitions, sound,
-    table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
+    CHECKS, Case, CrateDraft, DeckDraft, GaugeDraft, PairDraft, Parcel, SHAPE_FUNCTIONS,
+    StampDraft, Terminal, TerminalDraft, YardDraft, brand_cases, code_point_cases, compared, dart,
+    from_until, manifest_dart, module, named_shape_cases, named_variant_cases, outside, parcel,
+    parcel_dart, pinned, shape_definitions, sound, table_cases, tagged_and_untagged_variant_cases,
+    texts, unlabelled,
 };
 use super::runtime::ran;
 use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
@@ -227,13 +227,13 @@ fn known_tray(value: &Tray) -> Result<(), Vec<String>> {
 }
 
 /// The Dart class the variant `taken` is read as.
-const fn class_of(taken: &Sticker) -> &'static str {
-    match taken {
-        Sticker::Boxed(_) => "StickerBoxed",
-        Sticker::Positive(_) => "StickerPositive",
-        Sticker::Trayed(_) => "StickerTrayed",
-        Sticker::Whole(_) => "StickerWhole",
-        Sticker::Written(_) => "StickerWritten",
+fn class_of(taken: &Sticker) -> &'static str {
+    match &**taken {
+        StickerDraft::Boxed(_) => "StickerBoxed",
+        StickerDraft::Positive(_) => "StickerPositive",
+        StickerDraft::Trayed(_) => "StickerTrayed",
+        StickerDraft::Whole(_) => "StickerWhole",
+        StickerDraft::Written(_) => "StickerWritten",
     }
 }
 
@@ -296,15 +296,13 @@ where
 
 /// A terminal that holds a broken parcel in a field, a list, a map and an optional.
 fn broken_terminal() -> Terminal {
-    TerminalDraft {
+    Terminal::model_schema_wrap_unjudged(TerminalDraft {
         first_parcel: unlabelled(),
         lists_by_dock: BTreeMap::new(),
         parcel_list: vec![sound(), outside()],
         parcels_by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
         spare_parcel: Some(outside()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A terminal that holds sound parcels, and no spare one.
@@ -451,13 +449,13 @@ fn measured_cases() -> Vec<Case> {
         compared(
             "a gauge",
             &gauge,
-            gauge.validate().map(|_valid| ()),
+            crate::judged_issues(gauge.validation_issues()),
             "Gauge.fromJson(@)",
         ),
         compared(
             "a yard",
             &yard,
-            yard.validate().map(|_valid| ()),
+            crate::judged_issues(yard.validation_issues()),
             "Yard.fromJson(@)",
         ),
         pinned(

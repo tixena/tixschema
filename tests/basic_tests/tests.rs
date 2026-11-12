@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-#[model_schema(enable = ["jsonschema"])]
-struct BasicUserDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
+struct BasicUser {
     age: u32,
     height: f32,
     id: String,
@@ -62,7 +62,7 @@ struct UserWithOptionals {
 #[cfg(feature = "serde")]
 #[test]
 fn test_basic_structs_constructible() {
-    let basic = BasicUserDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
+    let basic = BasicUserDraft {
         age: 0,
         height: 0.0,
         id: String::new(),
@@ -70,7 +70,7 @@ fn test_basic_structs_constructible() {
         name: String::new(),
     };
     assert_eq!(basic.id, String::new());
-    let empty = EmptyStructDraft;
+    let empty = EmptyStruct::model_schema_unit();
     assert_eq!(format!("{empty:?}"), "EmptyStruct");
     let optionals = UserWithOptionalsDraft {
         age: None,

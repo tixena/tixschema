@@ -56,11 +56,13 @@ impl SoloPathBoundService<()> for SoloBackEnd {
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
         if id == "missing" {
-            return Err(PathBoundError::NotFound);
+            return Err(PathBoundErrorDraft::NotFound.validate().unwrap());
         }
         Ok(PathBoundDocumentDraft {
             title: format!("{org}/{id}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

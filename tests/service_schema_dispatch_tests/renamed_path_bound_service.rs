@@ -241,7 +241,7 @@ pub struct BoundBackEnd;
 impl RenamedPathBoundService<()> for BoundBackEnd {
     async fn aliased(&self, _ctx: &(), req: BoundAliased) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn beside_flatten(
@@ -250,7 +250,7 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         req: BoundBesideFlatten,
     ) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn gen_labelled(
@@ -289,12 +289,12 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         req: BoundGeneric<String>,
     ) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn keyword(&self, _ctx: &(), req: BoundKeyword) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.r#type)
+        answered(req.r#type.clone())
     }
 
     async fn labelled(&self, _ctx: &(), req: BoundLabelled) -> Result<BoundAnswer, BoundRefused> {
@@ -309,23 +309,23 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
 
     async fn own_key(&self, _ctx: &(), req: BoundOwnKey) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn plain(&self, _ctx: &(), req: BoundPlain) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn renamed(&self, _ctx: &(), req: BoundRenamed) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn tagged(&self, _ctx: &(), req: BoundTagged) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        let BoundTaggedDraft::Only { document_id } = req;
-        answered(document_id)
+        let BoundTaggedDraft::Only { document_id } = &*req;
+        answered(document_id.clone())
     }
 
     async fn two_placeholders(
@@ -344,7 +344,7 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
             req.page_size,
             req.pinned,
             req.tally,
-            req.berth.map(BoundBerth::into_inner)
+            req.berth.as_ref().map(|berth| *berth.as_inner())
         ))
     }
 
@@ -394,11 +394,19 @@ impl FaultHandler for Noted {
     }
 }
 
+fn refused() -> BoundRefused {
+    BoundRefusedDraft::Nope.validate().unwrap()
+}
+
+fn answer(id: String) -> BoundAnswer {
+    BoundAnswerDraft { id }.validate().unwrap()
+}
+
 fn answered(id: String) -> Result<BoundAnswer, BoundRefused> {
     if id == "refused" {
-        return Err(BoundRefusedDraft::Nope.validate().unwrap());
+        return Err(refused());
     }
-    Ok(BoundAnswerDraft { id }.validate().unwrap())
+    Ok(answer(id))
 }
 
 /// The back end never suspends, so one poll answers it.
@@ -642,14 +650,18 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
         ),
         poll_once(client.aliased(renamed().validate().unwrap())),
         poll_once(
-            client.beside_flatten(BoundBesideFlattenDraft {
-                document_id: id.clone(),
-                extra: BoundExtraDraft {
-                    title: title.clone(),
+            client.beside_flatten(
+                BoundBesideFlattenDraft {
+                    document_id: id.clone(),
+                    extra: BoundExtraDraft {
+                        title: title.clone(),
+                    }
+                    .validate()
+                    .unwrap(),
                 }
                 .validate()
                 .unwrap(),
-            }),
+            ),
         ),
         poll_once(
             client.keyword(
@@ -679,7 +691,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
     for answer in called {
         assert_eq!(
             answer.unwrap().ok(),
-            Some(BoundAnswerDraft { id: id.clone() }),
+            Some(BoundAnswerDraft { id: id.clone() }.validate().unwrap()),
             "a client call answered another id"
         );
     }
@@ -687,9 +699,13 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
         poll_once(client.two_placeholders(renamed().validate().unwrap()))
             .unwrap()
             .ok(),
-        Some(BoundAnswerDraft {
-            id: "d1|t".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "d1|t".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
@@ -713,9 +729,13 @@ fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
     .unwrap();
     assert_eq!(
         answer.ok(),
-        Some(BoundAnswerDraft {
-            id: "7|true|-9123456789012345|Some(12)".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "7|true|-9123456789012345|Some(12)".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     assert_eq!(
         *client.transport().carried.lock().unwrap(),
@@ -742,16 +762,24 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
     let listed = poll_once(client.listed(typed_with_pages(vec![1, 2, 3]))).unwrap();
     assert_eq!(
         listed.ok(),
-        Some(BoundAnswerDraft {
-            id: "[1, 2, 3]".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "[1, 2, 3]".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     let generated = poll_once(client.gen_list(vec![1, 2, 3], "t".to_owned())).unwrap();
     assert_eq!(
         generated.ok(),
-        Some(BoundAnswerDraft {
-            id: "[1, 2, 3]".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "[1, 2, 3]".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     let labelled = poll_once(
         client.labelled(
@@ -766,9 +794,13 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
     .unwrap();
     assert_eq!(
         labelled.ok(),
-        Some(BoundAnswerDraft {
-            id: "a b|c/d".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "a b|c/d".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     assert_eq!(
         *client.transport().carried.lock().unwrap(),

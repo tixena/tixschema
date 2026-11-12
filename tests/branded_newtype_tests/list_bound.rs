@@ -97,9 +97,13 @@ mod a_length_on_a_brand_over_a_list {
         );
         assert_eq!(
             serde_json::from_str::<NameConfig>(r#"[{"value":"a"}]"#).unwrap(),
-            NameConfig::new(vec![ListPartDraft {
-                value: "a".to_owned()
-            }])
+            NameConfig::new(vec![
+                ListPartDraft {
+                    value: "a".to_owned()
+                }
+                .validate()
+                .unwrap()
+            ])
             .unwrap()
         );
         assert_eq!(
@@ -254,12 +258,10 @@ mod a_length_through_a_name {
     }
 
     fn article(keywords: usize, below: usize) -> Article {
-        ArticleDraft {
+        Article::model_schema_wrap_unjudged(ArticleDraft {
             keywords: Keywords::new(words(keywords)).unwrap(),
             below: LaterKeywords::new(words(below)).unwrap(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]
@@ -418,13 +420,11 @@ mod a_length_through_an_alias_of_an_index_set {
     }
 
     fn roster(queued: usize, some: usize) -> Roster {
-        RosterDraft {
+        Roster::model_schema_wrap_unjudged(RosterDraft {
             queue: queue(queued),
             some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(queue(some)).unwrap())
                 .unwrap(),
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     #[test]

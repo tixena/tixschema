@@ -3,12 +3,11 @@
 //! externally tagged and no struct is a brand.
 
 use crate::models::{
-    AdjacentContact, AdjacentContactDraft, Contact, ContactDraft, Pair, PairDraft, Roster,
-    RosterDraft, Signup, SignupDraft, TaggedContact, TaggedContactDraft, UntaggedContact,
+    AdjacentContactDraft, ContactDraft, PairDraft, RosterDraft, SignupDraft, TaggedContactDraft,
     UntaggedContactDraft,
 };
 #[cfg(feature = "serde")]
-use crate::models::{Profile, ProfileDraft, Username};
+use crate::models::{ProfileDraft, Username};
 
 /// The path `validate()` names `address` by in `Contact`, `TaggedContact`, `AdjacentContact` and
 /// `UntaggedContact`.
@@ -81,10 +80,18 @@ fn an_enum_of_each_tagging_reports_its_members_broken_rule() {
     let address = || "ab".to_owned();
     assert_eq!(
         [
-            ContactDraft::Email { address: address() }.validate(),
-            TaggedContactDraft::Email { address: address() }.validate(),
-            AdjacentContactDraft::Email { address: address() }.validate(),
-            UntaggedContactDraft::Email { address: address() }.validate(),
+            ContactDraft::Email { address: address() }
+                .validate()
+                .map(|_| ()),
+            TaggedContactDraft::Email { address: address() }
+                .validate()
+                .map(|_| ()),
+            AdjacentContactDraft::Email { address: address() }
+                .validate()
+                .map(|_| ()),
+            UntaggedContactDraft::Email { address: address() }
+                .validate()
+                .map(|_| ()),
         ],
         ADDRESS_PATHS.map(|path| Err(vec![format!(
             "'{path}': too short: minimum length is 3, got 2"
@@ -93,10 +100,18 @@ fn an_enum_of_each_tagging_reports_its_members_broken_rule() {
     let kept = || "abc".to_owned();
     assert_eq!(
         [
-            ContactDraft::Email { address: kept() }.validate(),
-            TaggedContactDraft::Email { address: kept() }.validate(),
-            AdjacentContactDraft::Email { address: kept() }.validate(),
-            UntaggedContactDraft::Email { address: kept() }.validate(),
+            ContactDraft::Email { address: kept() }
+                .validate()
+                .map(|_| ()),
+            TaggedContactDraft::Email { address: kept() }
+                .validate()
+                .map(|_| ()),
+            AdjacentContactDraft::Email { address: kept() }
+                .validate()
+                .map(|_| ()),
+            UntaggedContactDraft::Email { address: kept() }
+                .validate()
+                .map(|_| ()),
         ],
         [Ok(()), Ok(()), Ok(()), Ok(())]
     );

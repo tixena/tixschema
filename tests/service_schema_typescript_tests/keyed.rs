@@ -92,7 +92,10 @@ fn the_keyed_probe_service_is_still_implementable_and_callable() {
     );
     let stowed = poll_once(KeyedProbeBackEnd.stow(&(), HashMap::new(), "n".to_owned())).unwrap();
     assert!(
-        matches!(&*stowed, Err(HeaderProbeErrorDraft::Missing)),
+        matches!(
+            &stowed,
+            Err(error) if matches!(&**error, HeaderProbeErrorDraft::Missing)
+        ),
         "got: {stowed:?}"
     );
     assert!(

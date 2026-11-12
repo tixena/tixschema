@@ -70,14 +70,12 @@ mod a_bound_behind_any_reference {
     }
 
     fn broken() -> LentLabels {
-        LentLabelsDraft {
+        LentLabels::model_schema_wrap_unjudged(LentLabelsDraft {
             alias: Some(&EMPTY),
             count: &1,
             label: &EMPTY,
             parts: &TWO_PARTS,
-        }
-        .validate()
-        .unwrap()
+        })
     }
 
     fn kept() -> LentLabels {
@@ -117,7 +115,7 @@ mod a_bound_behind_any_reference {
 
     #[test]
     fn a_value_behind_a_reference_that_keeps_its_bound_passes() {
-        kept().validate().unwrap();
+        assert_eq!(kept().validation_issues(), Vec::<String>::new());
 
         let short_alias = LentLabelsDraft {
             alias: Some(&EMPTY),
@@ -180,11 +178,11 @@ mod a_model_behind_any_reference {
     use serde::Serialize;
     use tixschema::model_schema;
 
-    static BLANK: Stamp = StampDraft {
-        code: String::new(),
-    }
-    .validate()
-    .unwrap();
+    static BLANK: LazyLock<Stamp> = LazyLock::new(|| {
+        Stamp::model_schema_wrap_unjudged(StampDraft {
+            code: String::new(),
+        })
+    });
     static KEPT: LazyLock<Stamp> = LazyLock::new(|| {
         StampDraft {
             code: "abc".to_owned(),
@@ -192,13 +190,11 @@ mod a_model_behind_any_reference {
         .validate()
         .unwrap()
     });
-    static NOTED_BLANK: Option<Stamp> = Some(
-        StampDraft {
+    static NOTED_BLANK: LazyLock<Option<Stamp>> = LazyLock::new(|| {
+        Some(Stamp::model_schema_wrap_unjudged(StampDraft {
             code: String::new(),
-        }
-        .validate()
-        .unwrap(),
-    );
+        }))
+    });
     static NOTED_NONE: Option<Stamp> = None;
     static SECOND_BLANK: LazyLock<Vec<Stamp>> = LazyLock::new(|| vec![KEPT.clone(), BLANK.clone()]);
 
@@ -265,12 +261,12 @@ mod a_model_behind_any_reference {
                 "'stamps.1.code': too short: minimum length is 3, got 0",
             ]
         );
-        assert_eq!(lent.validate(), owned.validate());
+        assert_eq!(lent.validation_issues(), owned.validation_issues());
     }
 
     #[test]
     fn a_model_behind_an_optional_reference_is_walked_where_one_is_held() {
-        kept().validate().unwrap();
+        assert_eq!(kept().validation_issues(), Vec::<String>::new());
         LentStampsDraft {
             maybe: Some(&KEPT),
             ..kept().into()
@@ -282,14 +278,14 @@ mod a_model_behind_any_reference {
                 maybe: Some(&BLANK),
                 ..kept().into()
             }
-            .validate(),
+            .validation_issues(),
             OwnedStampsDraft {
                 maybe: Some(BLANK.clone()),
                 noted: None,
                 stamp: KEPT.clone(),
                 stamps: Vec::new(),
             }
-            .validate()
+            .validation_issues()
         );
     }
 

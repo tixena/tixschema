@@ -102,10 +102,14 @@ fn struct_referencing_an_alias_expands_in_this_feature_combination() {
     assert!(collections.maybe_id.is_none());
 
     let mut by_slot = HashMap::new();
-    by_slot.insert(DocumentSlotDraft::Primary, "doc-3".to_owned());
+    by_slot.insert(
+        DocumentSlotDraft::Primary.validate().unwrap(),
+        "doc-3".to_owned(),
+    );
     let map = UsesAliasAsMapValueDraft { by_slot };
     assert_eq!(
-        map.by_slot.get(&DocumentSlotDraft::Primary),
+        map.by_slot
+            .get(&DocumentSlotDraft::Primary.validate().unwrap()),
         Some(&"doc-3".to_owned())
     );
 }
@@ -118,10 +122,12 @@ fn collection_aliases_expand_in_this_feature_combination() {
     let by_name: DocumentIdsByName = HashMap::from([("n".to_owned(), "doc-6".to_owned())]);
     assert_eq!(by_name.get("n"), Some(&"doc-6".to_owned()));
 
-    let by_slot: DocumentIdsBySlot =
-        HashMap::from([(DocumentSlotDraft::Primary, "doc-7".to_owned())]);
+    let by_slot: DocumentIdsBySlot = HashMap::from([(
+        DocumentSlotDraft::Primary.validate().unwrap(),
+        "doc-7".to_owned(),
+    )]);
     assert_eq!(
-        by_slot.get(&DocumentSlotDraft::Primary),
+        by_slot.get(&DocumentSlotDraft::Primary.validate().unwrap()),
         Some(&"doc-7".to_owned())
     );
 }
@@ -129,13 +135,18 @@ fn collection_aliases_expand_in_this_feature_combination() {
 #[test]
 fn struct_keying_a_map_by_an_alias_of_an_enum_expands_in_this_feature_combination() {
     let mut by_slot = HashMap::new();
-    by_slot.insert(DocumentSlotDraft::Secondary, "doc-4".to_owned());
+    by_slot.insert(
+        DocumentSlotDraft::Secondary.validate().unwrap(),
+        "doc-4".to_owned(),
+    );
     let keyed = UsesAliasAsMapKeyDraft {
         by_slot,
         by_chained_slot: HashMap::new(),
     };
     assert_eq!(
-        keyed.by_slot.get(&DocumentSlotDraft::Secondary),
+        keyed
+            .by_slot
+            .get(&DocumentSlotDraft::Secondary.validate().unwrap()),
         Some(&"doc-4".to_owned())
     );
 }

@@ -871,7 +871,7 @@ impl DocumentService<()> for Stand {
         _title: String,
     ) -> Result<(), VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn touch_document(&self, _ctx: &(), _document_id: String, _reader: String) {
@@ -1633,15 +1633,23 @@ fn the_stand_in_answers_what_the_driver_implementations_do() {
         document_id: "doc-1".to_owned(),
     };
     assert_eq!(
-        answered(DocumentService::get_version(&Stand, &ctx, request()))
-            .unwrap()
-            .version,
+        answered(DocumentService::get_version(
+            &Stand,
+            &ctx,
+            request().validate().unwrap()
+        ))
+        .unwrap()
+        .version,
         7
     );
     assert_eq!(
-        answered(ArchiveService::get_version(&Stand, &ctx, request()))
-            .unwrap()
-            .version,
+        answered(ArchiveService::get_version(
+            &Stand,
+            &ctx,
+            request().validate().unwrap()
+        ))
+        .unwrap()
+        .version,
         7
     );
     assert_eq!(

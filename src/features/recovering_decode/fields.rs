@@ -1766,7 +1766,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     let few_open = f.customer().nest(customer.open_invoices().lte(3)?);
 ///     let _ = f
 ///         .status()
-///         .eq(InvoiceStatus::PastDue)?
+///         .eq(InvoiceStatusDraft::PastDue.validate().unwrap())?
 ///         .or(TOTAL.gt(1000.0)?)
 ///         .and(f.tags().contains("export".to_owned())?.or(few_open))
 ///         .or(f.paid_at().exists(true).negated());

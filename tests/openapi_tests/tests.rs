@@ -445,7 +445,7 @@ impl DocumentService<()> for Archive {
     ) -> Result<Document, CreateDocumentError> {
         ready(()).await;
         if title.is_empty() {
-            return Err(CreateDocumentErrorDraft::TitleTaken);
+            return Err(CreateDocumentErrorDraft::TitleTaken.validate().unwrap());
         }
         Ok(DocumentDraft {
             id: "doc-2".to_owned(),
@@ -487,9 +487,9 @@ impl DocumentService<()> for Archive {
     ) -> Result<Document, DocumentError> {
         ready(()).await;
         Ok(DocumentDraft {
-            id: req.document_id,
+            id: req.document_id.clone(),
             tags: Vec::new(),
-            title: req.title,
+            title: req.title.clone(),
         }
         .validate()
         .unwrap())
@@ -893,13 +893,17 @@ fn a_placeholder_reads_the_schema_of_a_member_under_the_key_serde_reads_it_from(
             "schema": { "type": "string", "minLength": 3_u32 },
         }])
     );
-    let found = answered(Archive.renamed(
-        &(),
-        RenamedMemberRequestDraft {
-            document_id: "doc-1".to_owned(),
-            title: "t".to_owned(),
-        },
-    ));
+    let found = answered(
+        Archive.renamed(
+            &(),
+            RenamedMemberRequestDraft {
+                document_id: "doc-1".to_owned(),
+                title: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     assert!(found.is_ok(), "the implementation refused");
 }
 
@@ -1210,13 +1214,17 @@ fn what_an_implementation_answers_with_json_bodies_is_what_the_document_describe
         json_schema_of(&at["get"]["responses"]["200"]),
         &found.unwrap(),
     );
-    let updated = answered(Archive.update_document(
-        &(),
-        UpdateDocumentRequestDraft {
-            document_id: "doc-1".to_owned(),
-            title: "Minutes".to_owned(),
-        },
-    ));
+    let updated = answered(
+        Archive.update_document(
+            &(),
+            UpdateDocumentRequestDraft {
+                document_id: "doc-1".to_owned(),
+                title: "Minutes".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     assert_described(
         &documents,
         json_schema_of(&at["put"]["responses"]["200"]),

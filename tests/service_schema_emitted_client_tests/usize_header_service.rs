@@ -59,8 +59,14 @@ fn the_quota_backend_answers_the_widest_value() {
     };
     let answered =
         super::tests::poll_once(QuotaBackEnd.ask(&(), ask("a").validate().unwrap())).unwrap();
-    assert_eq!(answered, Ok((ask("a"), Quota::new(usize::MAX).unwrap())));
+    assert_eq!(
+        answered,
+        Ok((
+            ask("a").validate().unwrap(),
+            Quota::new(usize::MAX).unwrap()
+        ))
+    );
     let refused =
         super::tests::poll_once(QuotaBackEnd.ask(&(), ask("").validate().unwrap())).unwrap();
-    assert_eq!(refused, Err(QuotaErrorDraft::Missing));
+    assert_eq!(refused, Err(QuotaErrorDraft::Missing.validate().unwrap()));
 }

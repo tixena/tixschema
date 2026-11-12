@@ -19,22 +19,20 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_keys_models::{
-    AdjacentConvoy, AdjacentConvoyDraft, AdjacentSquadron, AdjacentSquadronDraft, Armada,
-    ArmadaDraft, Berthing, Burgee, Callsign, Cleat, CleatDraft, Convoy, ConvoyDraft, Dockage,
-    DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal, Squadron, SquadronDraft,
-    StowedTaskforce, StowedTaskforceDraft, TaggedConvoy, TaggedConvoyDraft, TaggedSquadron,
-    TaggedSquadronDraft, Taskforce, TaskforceDraft, Unhashed, UntaggedConvoy, UntaggedConvoyDraft,
-    UntaggedSquadron, UntaggedSquadronDraft, adjacent_convoy_swift, adjacent_squadron_swift,
-    armada_swift, berthing_swift, burgee_swift, callsign_swift, cleat_swift, convoy_swift,
-    dockage_swift, greeting_swift, hailer_swift, hull_swift, lanyard_swift, logroll_swift,
-    logroster_swift, signal_swift, squadron_swift, stowed_taskforce_swift, tagged_convoy_swift,
-    tagged_squadron_swift, taskforce_swift, unhashed_swift, untagged_convoy_swift,
-    untagged_squadron_swift,
+    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, BerthingDraft, Burgee, Callsign,
+    Cleat, CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
+    SquadronDraft, StowedTaskforceDraft, TaggedConvoyDraft, TaggedSquadronDraft, Taskforce,
+    TaskforceDraft, Unhashed, UntaggedConvoyDraft, UntaggedSquadronDraft, adjacent_convoy_swift,
+    adjacent_squadron_swift, armada_swift, berthing_swift, burgee_swift, callsign_swift,
+    cleat_swift, convoy_swift, dockage_swift, greeting_swift, hailer_swift, hull_swift,
+    lanyard_swift, logroll_swift, logroster_swift, signal_swift, squadron_swift,
+    stowed_taskforce_swift, tagged_convoy_swift, tagged_squadron_swift, taskforce_swift,
+    unhashed_swift, untagged_convoy_swift, untagged_squadron_swift,
 };
 #[cfg(feature = "chrono")]
 use super::wrapped_keys_models::{
-    Postmark, Regatta, RegattaDraft, StowedRegatta, StowedRegattaDraft, first, postmark_key_swift,
-    postmark_swift, regatta_swift, stowed_regatta_swift,
+    Postmark, Regatta, RegattaDraft, StowedRegattaDraft, first, postmark_key_swift, postmark_swift,
+    regatta_swift, stowed_regatta_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -145,7 +143,11 @@ where
 /// [`Taskforce`] with every map holding entries.
 fn taskforce() -> Taskforce {
     TaskforceDraft {
-        berthing: under(Berthing::Port, Berthing::Starboard, &1),
+        berthing: under(
+            BerthingDraft::Port.validate().unwrap(),
+            BerthingDraft::Starboard.validate().unwrap(),
+            &1,
+        ),
         callsign: callsigns(&1),
         hailer: under(
             Callsign::new("charlie".to_owned()).unwrap(),
@@ -336,9 +338,9 @@ fn date_rows() -> Vec<Row> {
 /// The payload of a [`Dockage`] with an empty label under each key, which the Swift read refuses
 /// with the messages the Rust `validate()` answers, each key named as it is written.
 fn refused_by_rule_row() -> Row {
-    let empty = CleatDraft {
+    let empty = Cleat::model_schema_wrap_unjudged(CleatDraft {
         label: String::new(),
-    };
+    });
     let held = DockageDraft {
         callsign: HashMap::from([(Callsign::new("alpha".to_owned()).unwrap(), empty.clone())]),
         hull: HashMap::from([(7, empty.clone())]),

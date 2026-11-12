@@ -386,7 +386,9 @@ fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_
         (
             VersionResponseDraft {
                 content: "hello".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             "abc123".to_owned(),
         ),
         "the response rides in the payload and the header_out value is rejoined from the reply's \

@@ -631,7 +631,7 @@ struct Draft {
 #[model_schema(enable = ["decode_with", "mongodb"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unpicked {
-    #[serde(flatten, skip_deserializing)]
+    #[serde(flatten, skip_deserializing, default = "pages_by_default")]
     draft: Draft,
     id: String,
 }
@@ -1091,7 +1091,10 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
     let releases = ReleasesDraft {
-        by_name: HashMap::from([("first".to_owned(), VersionDraft { number: 1_i32 })]),
+        by_name: HashMap::from([(
+            "first".to_owned(),
+            VersionDraft { number: 1_i32 }.validate().unwrap(),
+        )]),
     };
     assert_eq!(written(&releases), doc! { "first": { "number": 1_i32 } });
     assert_eq!(
@@ -1625,7 +1628,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let outer = OuterDraft {
-        body: Wrap::new(VersionDraft { number: 3_i32 }).unwrap(),
+        body: Wrap::new(VersionDraft { number: 3_i32 }.validate().unwrap()).unwrap(),
         id: "i".to_owned(),
     };
     assert_eq!(written(&outer), doc! { "number": 3_i32, "id": "i" });
@@ -1723,7 +1726,9 @@ fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it()
             .validate()
             .unwrap(),
         name: "n".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     let row = written(&docket);
     assert_eq!(
         row,
@@ -1740,7 +1745,7 @@ fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it()
         calls += 1;
         docket_schema::Verdict::Reject
     });
-    assert_eq!(from_json, Ok(docket.validate().unwrap()));
+    assert_eq!(from_json, Ok(docket));
     assert_eq!(calls, 0);
 }
 
@@ -1749,47 +1754,81 @@ fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
     let direct = DirectIdDraft {
         id: mark(),
         name: "n".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         written(&direct),
         doc! { "$oid": "6a7cc592ca0574e6efdfe217", "name": "n" }
     );
     reads_what_serde_wrote(&direct);
-    reads_what_serde_wrote(&MaybeIdDraft {
-        name: "n".to_owned(),
-        oid: Some(mark()),
-    });
-    reads_what_serde_wrote(&MaybeIdDraft {
-        name: "n".to_owned(),
-        oid: None,
-    });
-    reads_what_serde_wrote(&IdThroughHookDraft {
-        name: "n".to_owned(),
-        oid: mark(),
-    });
+    reads_what_serde_wrote(
+        &MaybeIdDraft {
+            name: "n".to_owned(),
+            oid: Some(mark()),
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &MaybeIdDraft {
+            name: "n".to_owned(),
+            oid: None,
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &IdThroughHookDraft {
+            name: "n".to_owned(),
+            oid: mark(),
+        }
+        .validate()
+        .unwrap(),
+    );
 }
 
 #[test]
 fn a_flattened_option_not_seen_that_is_absent_is_no_issue() {
-    reads_what_serde_wrote(&PocketDraft {
-        body: Wrap::new(None).unwrap(),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&PocketDraft {
-        body: Wrap::new(Some(BodyDraft {
-            text: "t".to_owned(),
-        }))
+    reads_what_serde_wrote(
+        &PocketDraft {
+            body: Wrap::new(None).unwrap(),
+            id: "i".to_owned(),
+        }
+        .validate()
         .unwrap(),
-        id: "i".to_owned(),
-    });
-    reads_what_serde_wrote(&DirectMaybeDraft {
-        id: "i".to_owned(),
-        version: None,
-    });
-    reads_what_serde_wrote(&DirectMaybeDraft {
-        id: "i".to_owned(),
-        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
-    });
+    );
+    reads_what_serde_wrote(
+        &PocketDraft {
+            body: Wrap::new(Some(
+                BodyDraft {
+                    text: "t".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ))
+            .unwrap(),
+            id: "i".to_owned(),
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &DirectMaybeDraft {
+            id: "i".to_owned(),
+            version: None,
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &DirectMaybeDraft {
+            id: "i".to_owned(),
+            version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
+        }
+        .validate()
+        .unwrap(),
+    );
 }
 
 #[test]
@@ -1827,17 +1866,37 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_docume
 fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     let entries = || HashMap::from([("a".to_owned(), 1_i32)]);
     reads_what_serde_wrote(&counts());
-    reads_what_serde_wrote(&ThroughHookDraft {
-        id: "i".to_owned(),
-        version: VersionDraft { number: 3_i32 }.validate().unwrap(),
-    });
-    reads_what_serde_wrote(&MapThroughHookDraft { entries: entries() });
-    reads_what_serde_wrote(&NeverReadDraft {
-        id: "i".to_owned(),
-        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
-    });
-    reads_what_serde_wrote(&UnpickedDraft {
-        draft: DraftDraft { pages: 3_i32 }.validate().unwrap(),
-        id: "i".to_owned(),
-    });
+    reads_what_serde_wrote(
+        &ThroughHookDraft {
+            id: "i".to_owned(),
+            version: VersionDraft { number: 3_i32 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &MapThroughHookDraft { entries: entries() }
+            .validate()
+            .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &NeverReadDraft {
+            id: "i".to_owned(),
+            version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
+        }
+        .validate()
+        .unwrap(),
+    );
+    reads_what_serde_wrote(
+        &UnpickedDraft {
+            draft: DraftDraft { pages: 3_i32 }.validate().unwrap(),
+            id: "i".to_owned(),
+        }
+        .validate()
+        .unwrap(),
+    );
+}
+
+fn pages_by_default() -> Draft {
+    DraftDraft::default().validate().unwrap()
 }

@@ -2,8 +2,8 @@
 //! names.
 
 use crate::tests::{
-    ArchiveError, CreateDocumentError, ExplodeError, GetVersionError, SearchError, ThumbnailError,
-    VaultError,
+    ArchiveErrorDraft, CreateDocumentErrorDraft, ExplodeErrorDraft, GetVersionErrorDraft,
+    SearchErrorDraft, ThumbnailErrorDraft, VaultErrorDraft,
 };
 
 document_service_http_rest_dispatcher!();

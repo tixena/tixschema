@@ -13,14 +13,12 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::wrapped_maps_models::{
-    AdjacentDrawer, AdjacentDrawerDraft, AdjacentStowedDrawer, Cabinet, CabinetDraft, Cubby,
-    CubbyDraft, Drawer, DrawerDraft, Latch, LatchDraft, Satchel, SatchelDraft, StowedCabinet,
-    StowedCabinetDraft, StowedCubby, StowedCubbyDraft, StowedDrawer, StowedDrawerDraft,
-    TaggedDrawer, TaggedDrawerDraft, TaggedStowedDrawer, TaggedStowedDrawerDraft, UntaggedDrawer,
-    UntaggedDrawerDraft, UntaggedStowedDrawer, adjacent_drawer_swift, adjacent_stowed_drawer_swift,
-    cabinet_swift, cubby_swift, drawer_swift, stowed_cabinet_swift, stowed_cubby_swift,
-    stowed_drawer_swift, tagged_drawer_swift, tagged_stowed_drawer_swift, untagged_drawer_swift,
-    untagged_stowed_drawer_swift,
+    AdjacentDrawerDraft, AdjacentStowedDrawerDraft, CabinetDraft, CubbyDraft, DrawerDraft, Latch,
+    LatchDraft, Satchel, SatchelDraft, StowedCabinetDraft, StowedCubbyDraft, StowedDrawerDraft,
+    TaggedDrawerDraft, TaggedStowedDrawerDraft, UntaggedDrawerDraft, UntaggedStowedDrawerDraft,
+    adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift, cubby_swift, drawer_swift,
+    stowed_cabinet_swift, stowed_cubby_swift, stowed_drawer_swift, tagged_drawer_swift,
+    tagged_stowed_drawer_swift, untagged_drawer_swift, untagged_stowed_drawer_swift,
 };
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
@@ -54,7 +52,7 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Latch::Inner`].
 fn at_inner<Held>(held: Held) -> HashMap<Latch, Held> {
-    HashMap::from([(LatchDraft::Inner, held)])
+    HashMap::from([(LatchDraft::Inner.validate().unwrap(), held)])
 }
 
 /// A satchel labelled `l`.
@@ -156,7 +154,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"kind":"Keyed","held":[{"1":"a"},{"true":"a"},{"Inner":"a"}]}"#,
         ),
         (
-            read_back(&AdjacentStowedDrawer::Numbered(at_one(text()))),
+            read_back(&AdjacentStowedDrawerDraft::Numbered(at_one(text()))),
             r#"{"kind":"Numbered","held":{"1":"a"}}"#,
         ),
         (
@@ -164,7 +162,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"Inner":"a"}"#,
         ),
         (
-            read_back(&UntaggedStowedDrawer::Paired((at_inner(text()), 1))),
+            read_back(&UntaggedStowedDrawerDraft::Paired((at_inner(text()), 1))),
             r#"[{"Inner":"a"},1]"#,
         ),
         (

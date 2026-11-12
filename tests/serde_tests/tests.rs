@@ -242,7 +242,7 @@ fn test_serde_types_constructible() {
         id: String::new(),
     };
     assert!(matches!(
-        envelope.body,
+        &*envelope.body,
         BodyDraft::Reply {
             reply_to: _reply_to
         }
@@ -474,7 +474,7 @@ fn test_compliant_optionals_serialize_absent_and_parse_absent() {
     assert_eq!(json, r#"{"name":"n"}"#);
 
     let parsed: CompliantOptionals = serde_json::from_str(r#"{"name":"n"}"#).unwrap();
-    assert_eq!(parsed, none);
+    assert_eq!(parsed, none.validate().unwrap());
 
     let some = CompliantOptionalsDraft {
         name: "n".to_owned(),
@@ -493,7 +493,9 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
         name: "invoice.pdf".to_owned(),
         generation_token: None,
         template_id: None,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         serde_json::to_string(&entry).unwrap(),
         r#"{"name":"invoice.pdf","templateId":null}"#
@@ -501,15 +503,15 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
 
     let from_absent: IndexEntry =
         serde_json::from_str(r#"{"name":"invoice.pdf","templateId":null}"#).unwrap();
-    assert_eq!(from_absent, entry.validate().unwrap());
+    assert_eq!(from_absent, entry);
 
     let from_null: IndexEntry =
         serde_json::from_str(r#"{"name":"invoice.pdf","generationToken":null,"templateId":null}"#)
             .unwrap();
-    assert_eq!(from_null, entry.validate().unwrap());
+    assert_eq!(from_null, entry);
 
     let both_keys_absent: IndexEntry = serde_json::from_str(r#"{"name":"invoice.pdf"}"#).unwrap();
-    assert_eq!(both_keys_absent, entry.validate().unwrap());
+    assert_eq!(both_keys_absent, entry);
 
     let both_some = IndexEntryDraft {
         name: "invoice.pdf".to_owned(),
@@ -752,7 +754,7 @@ fn test_a_list_form_rename_all_writes_the_rule_both_directions_share() {
     assert_eq!(payload, serde_json::json!({ "myField": 5_u32 }));
 
     let back: ListFormRenameAll = serde_json::from_value(payload).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 #[test]

@@ -44,7 +44,7 @@ mod dated {
             document["properties"]["shift"]["properties"]["end"],
             document["properties"]["at"]
         );
-        let shift = super::super::models::rostered().shift;
+        let shift = super::super::models::rostered().shift.clone();
         let timesheet = TimesheetDraft {
             at: shift.start,
             shift,

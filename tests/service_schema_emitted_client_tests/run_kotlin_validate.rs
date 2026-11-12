@@ -570,14 +570,14 @@ fn sealed_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn unreserved(value: &CodeDraft) -> Result<(), Vec<String>> {
+fn unreserved(value: &Code) -> Result<(), Vec<String>> {
     if value.as_inner() == "NONE" {
         return Err(vec!["a code is not NONE".to_owned()]);
     }
     Ok(())
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -598,14 +598,14 @@ fn with_entries<IdType>(value: &CasketDraft<IdType>) -> Result<(), Vec<String>> 
 }
 
 fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
-    if matches!(value, Grade::Unrated) {
+    if matches!(value, GradeDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
 }
 
 fn labelled(value: &FreightDraft) -> Result<(), Vec<String>> {
-    if let FreightDraft::Loose { freight_label } = &**value
+    if let FreightDraft::Loose { freight_label } = value
         && freight_label.is_empty()
     {
         return Err(vec![
@@ -616,7 +616,7 @@ fn labelled(value: &FreightDraft) -> Result<(), Vec<String>> {
 }
 
 fn a_reference(value: &ReferenceDraft) -> Result<(), Vec<String>> {
-    if matches!(value, Reference::Numbered(7)) {
+    if matches!(value, ReferenceDraft::Numbered(7)) {
         return Err(vec!["a reference is not 7".to_owned()]);
     }
     Ok(())
@@ -627,13 +627,11 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    ParcelDraft {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A parcel that breaks its one bound.
@@ -832,12 +830,24 @@ fn table_rows() -> Vec<Row> {
     ];
     let mut rows: Vec<Row> = parcels
         .iter()
-        .map(|(name, held)| row(name, "Parcel", held, held.validate()))
+        .map(|(name, held)| {
+            row(
+                name,
+                "Parcel",
+                held,
+                crate::judged_issues(held.validation_issues()),
+            )
+        })
         .collect();
     let manifest = ManifestDraft {
         parcel: parcel("A", &["x"], &["x", "y"]),
     };
-    rows.push(row("case 6", "Manifest", &manifest, manifest.validate()));
+    rows.push(row(
+        "case 6",
+        "Manifest",
+        &manifest,
+        crate::judged_issues(manifest.validation_issues()),
+    ));
     rows
 }
 
@@ -883,28 +893,33 @@ fn bound_rows() -> Vec<Row> {
     };
     let far = GaugeDraft {
         load_ratio: 25_000_000.0,
-        ..gauge()
+        ..gauge().into()
     };
     let held = gauge();
     vec![
-        row("Gauge, held", "Gauge", &held, held.validate()),
+        row(
+            "Gauge, held",
+            "Gauge",
+            &held,
+            crate::judged_issues(held.validation_issues()),
+        ),
         row(
             "Gauge, each bound from below",
             "Gauge",
             &low,
-            low.validate(),
+            crate::judged_issues(low.validation_issues()),
         ),
         row(
             "Gauge, each bound from above",
             "Gauge",
             &high,
-            high.validate(),
+            crate::judged_issues(high.validation_issues()),
         ),
         row(
             "Gauge, a ratio of eight digits",
             "Gauge",
             &far,
-            far.validate(),
+            crate::judged_issues(far.validation_issues()),
         ),
     ]
 }
@@ -929,15 +944,20 @@ fn code_point_rows() -> Vec<Row> {
         let held = StampDraft {
             mark: mark.to_owned(),
         };
-        row(name, "Stamp", &held, held.validate())
+        row(
+            name,
+            "Stamp",
+            &held,
+            crate::judged_issues(held.validation_issues()),
+        )
     })
     .collect()
 }
 
 fn depot() -> Depot {
-    DepotDraft {
+    Depot::model_schema_wrap_unjudged(DepotDraft {
         by_number: BTreeMap::from([(7, unlabelled())]),
-        by_wing: BTreeMap::from([(WingDraft::North, unlabelled())]),
+        by_wing: BTreeMap::from([(WingDraft::North.validate().unwrap(), unlabelled())]),
         deck_pair: ("deck".to_owned(), unlabelled()),
         first_parcel: parcel("open", &["x"], &["x", "y"]),
         lists_by_dock: BTreeMap::from([("north".to_owned(), vec![unlabelled()])]),
@@ -945,9 +965,7 @@ fn depot() -> Depot {
         parcel_list: vec![parcel("A", &["x"], &["x"]), unlabelled()],
         parcels_by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
         spare_parcel: Some(unlabelled()),
-    }
-    .validate()
-    .unwrap()
+    })
 }
 
 /// A model held in a field, a nullable, a list, a map and a tuple, and written into its holder.
@@ -965,11 +983,9 @@ fn holder_rows() -> Vec<Row> {
         spare_parcel: None,
     };
     let yard = YardDraft {
-        base: BaseDraft {
+        base: Base::model_schema_wrap_unjudged(BaseDraft {
             base_name: String::new(),
-        }
-        .validate()
-        .unwrap(),
+        }),
         gate: "east".to_owned(),
     };
     let docks = DocksDraft {
@@ -980,11 +996,26 @@ fn holder_rows() -> Vec<Row> {
             "Depot, a broken parcel in each place",
             "Depot",
             &full,
-            full.validate(),
+            crate::judged_issues(full.validation_issues()),
         ),
-        row("Depot, held", "Depot", &empty, empty.validate()),
-        row("Yard", "Yard", &yard, yard.validate()),
-        row("Docks", "Docks", &docks, docks.validate()),
+        row(
+            "Depot, held",
+            "Depot",
+            &empty,
+            crate::judged_issues(empty.validation_issues()),
+        ),
+        row(
+            "Yard",
+            "Yard",
+            &yard,
+            crate::judged_issues(yard.validation_issues()),
+        ),
+        row(
+            "Docks",
+            "Docks",
+            &docks,
+            crate::judged_issues(docks.validation_issues()),
+        ),
     ]
 }
 
@@ -1088,9 +1119,14 @@ fn entry_rows() -> Vec<Row> {
             "Entry, each bound broken",
             "Entry",
             &broken,
-            broken.validate(),
+            crate::judged_issues(broken.validation_issues()),
         ),
-        row("Entry, held", "Entry", &kept, kept.validate()),
+        row(
+            "Entry, held",
+            "Entry",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
     ]
 }
 
@@ -1105,23 +1141,6 @@ fn carried_texts_of(length: usize) -> Carried<Vec<String>> {
 /// The rows of a type that holds another at its own parameter under a check, and of members typed
 /// with the name of a list or of a text under a length.
 fn counted_name_rows() -> Vec<Row> {
-    let archived = |entries: &[&str]| ArchiveDraft::<String> {
-        casket: CasketDraft {
-            entries: texts(entries),
-            owner_id: "o".to_owned(),
-        }
-        .validate()
-        .unwrap(),
-    };
-    let archived_by_number = ArchiveDraft::<u32> {
-        casket: CasketDraft {
-            entries: Vec::new(),
-            owner_id: 7,
-        }
-        .validate()
-        .unwrap(),
-    };
-    let (unfilled, filled) = (archived(&[]), archived(&["a"]));
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| PosterDraft {
         slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),
         mottos: texts(&vec!["w"; mottos]),
@@ -1151,20 +1170,35 @@ fn counted_name_rows() -> Vec<Row> {
         carried_texts_of(0),
     );
     vec![
-        row("Poster", "Poster", &poster_kept, poster_kept.validate()),
-        row("Hauler", "Hauler", &hauler_kept, hauler_kept.validate()),
+        row(
+            "Poster",
+            "Poster",
+            &poster_kept,
+            crate::judged_issues(poster_kept.validation_issues()),
+        ),
+        row(
+            "Hauler",
+            "Hauler",
+            &hauler_kept,
+            crate::judged_issues(hauler_kept.validation_issues()),
+        ),
         row(
             "Hauler, no item",
             "Hauler",
             &hauler_empty,
-            hauler_empty.validate(),
+            crate::judged_issues(hauler_empty.validation_issues()),
         ),
-        row("Loader", "Loader", &loader_kept, loader_kept.validate()),
+        row(
+            "Loader",
+            "Loader",
+            &loader_kept,
+            crate::judged_issues(loader_kept.validation_issues()),
+        ),
         row(
             "Loader, no item",
             "Loader",
             &loader_empty,
-            loader_empty.validate(),
+            crate::judged_issues(loader_empty.validation_issues()),
         ),
         read_alone(
             "Carried<List<Int>>, no item",
@@ -1182,31 +1216,53 @@ fn counted_name_rows() -> Vec<Row> {
             "Poster, no item",
             "Poster",
             &poster_empty,
-            poster_empty.validate(),
+            crate::judged_issues(poster_empty.validation_issues()),
         ),
         row(
             "Poster, too many items",
             "Poster",
             &poster_wide,
-            poster_wide.validate(),
+            crate::judged_issues(poster_wide.validation_issues()),
         ),
+    ]
+    .into_iter()
+    .chain(archive_name_rows())
+    .collect()
+}
+
+/// The rows of a counted name that a generic parameter fills: an archive at a text and at a number.
+fn archive_name_rows() -> Vec<Row> {
+    let archived = |entries: &[&str]| ArchiveDraft::<String> {
+        casket: Casket::model_schema_wrap_unjudged(CasketDraft {
+            entries: texts(entries),
+            owner_id: "o".to_owned(),
+        }),
+    };
+    let archived_by_number = ArchiveDraft::<u32> {
+        casket: Casket::model_schema_wrap_unjudged(CasketDraft {
+            entries: Vec::new(),
+            owner_id: 7,
+        }),
+    };
+    let (unfilled, filled) = (archived(&[]), archived(&["a"]));
+    vec![
         row(
             "Archive<String>, no entry",
             "Archive<String>",
             &unfilled,
-            unfilled.validate(),
+            crate::judged_issues(unfilled.validation_issues()),
         ),
         row(
             "Archive<String>",
             "Archive<String>",
             &filled,
-            filled.validate(),
+            crate::judged_issues(filled.validation_issues()),
         ),
         row(
             "Archive<UInt>, no entry",
             "Archive<UInt>",
             &archived_by_number,
-            archived_by_number.validate(),
+            crate::judged_issues(archived_by_number.validation_issues()),
         ),
     ]
 }
@@ -1221,9 +1277,9 @@ fn chosen_rows() -> Vec<Row> {
     ]
     .into_iter()
     .map(|(name, payload)| {
-        let chosen = match serde_json::from_str::<Cargo>(payload).unwrap() {
-            Cargo::Named(_) => "CargoNamed",
-            Cargo::Numbered(_) => "CargoNumbered",
+        let chosen = match &*serde_json::from_str::<Cargo>(payload).unwrap() {
+            CargoDraft::Named(_) => "CargoNamed",
+            CargoDraft::Numbered(_) => "CargoNumbered",
         };
         let kotlin = format!(
             "Chosen(Json.decodeFromString(serializer<Cargo>(), {}))",
@@ -1247,12 +1303,10 @@ fn struct_rows() -> Vec<Row> {
     };
     let named = crate_of("");
     let probe = ProbeDraft {
-        later: LaterDraft {
+        later: Later::model_schema_wrap_unjudged(LaterDraft {
             label: String::new(),
-        }
-        .validate()
-        .unwrap(),
-        numbered: numbered.clone().validate().unwrap(),
+        }),
+        numbered: Crate::model_schema_wrap_unjudged(numbered.clone()),
         validate: String::new(),
         violations: 0,
     };
@@ -1269,22 +1323,32 @@ fn struct_rows() -> Vec<Row> {
             "ClosedDock",
             "ClosedDock",
             &ClosedDockDraft,
-            ClosedDockDraft.validate(),
+            crate::judged_issues(ClosedDockDraft.validation_issues()),
         ),
         row(
             "Grade, unrated",
             "Grade",
-            &Grade::Unrated,
-            Grade::Unrated.validate(),
+            &GradeDraft::Unrated,
+            crate::judged_issues(GradeDraft::Unrated.validation_issues()),
         ),
         row(
             "Grade, express",
             "Grade",
-            &Grade::Express,
-            Grade::Express.validate(),
+            &GradeDraft::Express,
+            crate::judged_issues(GradeDraft::Express.validation_issues()),
         ),
-        row("Crate<String>", "Crate<String>", &named, named.validate()),
-        row("Crate<UInt>", "Crate<UInt>", &numbered, numbered.validate()),
+        row(
+            "Crate<String>",
+            "Crate<String>",
+            &named,
+            crate::judged_issues(named.validation_issues()),
+        ),
+        row(
+            "Crate<UInt>",
+            "Crate<UInt>",
+            &numbered,
+            crate::judged_issues(numbered.validation_issues()),
+        ),
         // `Later` is declared below `Probe`, which reads it by its own serializer: a probe that
         // holds one that breaks its bound is built, and its read is another run's.
         Row {
@@ -1297,7 +1361,7 @@ fn struct_rows() -> Vec<Row> {
             "Probe, the member typed with a type declared below held",
             "Probe",
             &labelled,
-            labelled.validate(),
+            crate::judged_issues(labelled.validation_issues()),
         ),
     ]
 }
@@ -1338,7 +1402,7 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Freight, a model in the one slot",
             "Freight",
-            &Freight::Boxed(unlabelled()),
+            &FreightDraft::Boxed(unlabelled()),
             &[&format!("'boxed.label': {short}")],
         ),
         pinned(
@@ -1355,13 +1419,13 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Freight, the one slot",
             "Freight",
-            &Freight::Sealed(String::new()),
+            &FreightDraft::Sealed(String::new()),
             &[&format!("'under-seal': {short}")],
         ),
         pinned(
             "Freight, the slots of several",
             "Freight",
-            &Freight::Split(String::new(), 0),
+            &FreightDraft::Split(String::new(), 0),
             &[
                 &format!("'split.0': {short}"),
                 "'split.1': too small: minimum is 1, got 0",
@@ -1370,14 +1434,14 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Freight, the slots of several, held",
             "Freight",
-            &Freight::Split("a".to_owned(), 1),
+            &FreightDraft::Split("a".to_owned(), 1),
             &[],
         ),
-        pinned("Freight, no member", "Freight", &Freight::Held, &[]),
+        pinned("Freight, no member", "Freight", &FreightDraft::Held, &[]),
         pinned(
             "Haul, a model in the one slot",
             "Haul",
-            &Haul::Boxed(unlabelled()),
+            &HaulDraft::Boxed(unlabelled()),
             &[&format!("'held.label': {short}")],
         ),
         pinned(
@@ -1391,13 +1455,13 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Haul, the one slot",
             "Haul",
-            &Haul::Sealed(String::new()),
+            &HaulDraft::Sealed(String::new()),
             &[&format!("'held': {short}")],
         ),
         pinned(
             "Haul, the slots of several",
             "Haul",
-            &Haul::Split("a".to_owned(), 0),
+            &HaulDraft::Split("a".to_owned(), 0),
             &["'held.1': too small: minimum is 1, got 0"],
         ),
         pinned(
@@ -1452,7 +1516,7 @@ fn bare_variant_rows() -> Vec<Row> {
         pinned(
             "Reference, the enum's check",
             "Reference",
-            &Reference::Numbered(7),
+            &ReferenceDraft::Numbered(7),
             &["a reference is not 7"],
         ),
     ]
@@ -1641,7 +1705,7 @@ fn serde_writes_the_two_shapes_a_row_builds_in_kotlin() {
         serde_json::json!("a")
     );
     assert_eq!(
-        serde_json::to_value(Lift::Boxed(parcel("A", &["x"], &["x"]))).unwrap(),
+        serde_json::to_value(LiftDraft::Boxed(parcel("A", &["x"], &["x"]))).unwrap(),
         serde_json::json!({
             "kind": "Boxed", "fragileItemCodes": ["x"], "itemCodeList": ["x"], "label": "A"
         })
@@ -1740,9 +1804,24 @@ fn index_set_rows() -> Vec<Row> {
     };
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
     vec![
-        row("Lineup", "Lineup", &kept, kept.validate()),
-        row("Lineup, no item", "Lineup", &empty, empty.validate()),
-        row("Lineup, too many items", "Lineup", &wide, wide.validate()),
+        row(
+            "Lineup",
+            "Lineup",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
+        row(
+            "Lineup, no item",
+            "Lineup",
+            &empty,
+            crate::judged_issues(empty.validation_issues()),
+        ),
+        row(
+            "Lineup, too many items",
+            "Lineup",
+            &wide,
+            crate::judged_issues(wide.validation_issues()),
+        ),
     ]
 }
 

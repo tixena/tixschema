@@ -110,7 +110,7 @@ mod on_a_schema_surface {
         );
         assert_eq!(
             RawHolderDraft {
-                r#struct: keyed.validate().unwrap()
+                r#struct: RawKeyed::model_schema_wrap_unjudged(keyed)
             }
             .validation_issues(),
             ["'struct.match': too short: minimum length is 2, got 1"]

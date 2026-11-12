@@ -59,14 +59,14 @@ fun main() {
     println(Point(1u, 2u))
 }
 "#;
-    let label = Label {
+    let label = LabelDraft {
         text: LabelText::new("Shipping".to_owned()).unwrap(),
     };
     assert_eq!(
         serde_json::to_string(&label).unwrap(),
         "{\"text\":\"Shipping\"}"
     );
-    assert_eq!(serde_json::to_string(&Point(1, 2)).unwrap(), "[1,2]");
+    assert_eq!(serde_json::to_string(&PointDraft(1, 2)).unwrap(), "[1,2]");
     let Some(printed) = ran_kotlin(&module(main)) else {
         return;
     };

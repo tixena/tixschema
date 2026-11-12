@@ -84,7 +84,7 @@ impl BelfryService<()> for Belfry {
     fn ring_bell(&self, _ctx: &()) -> impl Future<Output = Result<BellPeal, BellError>> {
         let mut rung = self.rung.lock().unwrap();
         *rung += 1;
-        ready(Ok(BellPealDraft { strokes: *rung }))
+        ready(Ok(BellPealDraft { strokes: *rung }.validate().unwrap()))
     }
 
     fn toll_bell(
@@ -95,7 +95,9 @@ impl BelfryService<()> for Belfry {
         *self.rung.lock().unwrap() += 1;
         ready(Ok(BellPealDraft {
             strokes: req.strokes * req.rope.length,
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 }
 

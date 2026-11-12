@@ -279,7 +279,9 @@ impl DartDocumentService<()> for Archive {
         ready(()).await;
         Ok(McpVersionResponseDraft {
             version: u32::try_from(req.document_id.len()).unwrap_or_default(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn lookup(
@@ -314,7 +316,7 @@ impl DartBillingService<()> for Archive {
     ) -> Result<McpInvoiceList, McpVersionError> {
         ready(()).await;
         Ok(McpInvoiceListDraft {
-            invoices: vec![req.organization],
+            invoices: vec![req.organization.clone()],
         }
         .validate()
         .unwrap())
