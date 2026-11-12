@@ -10,6 +10,7 @@ use tixschema::model_schema;
 use super::kotlin_flattened::FLATTENED;
 use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
+use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{DECODED, judged, kept_inline};
 use super::read::{judged_over, kept, mapped, mapped_over_a_brand, serializers};
 #[cfg(feature = "serde")]
@@ -503,8 +504,19 @@ fn a_plain_enum_carries_validate() {
     assert_eq!(
         super::tests::renumbered(&status_kotlin::kotlin_definition()),
         format!(
-            "@Serializable enum class Status {{ @SerialName(\"active\") Active, \
-             @SerialName(\"inactive\") Inactive, @SerialName(\"pending\") Pending; {NO_RULE} }}"
+            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+             StatusUnjudged::class) @KeepGeneratedSerializer enum class Status {{ \
+             @SerialName(\"active\") Active, @SerialName(\"inactive\") Inactive, \
+             @SerialName(\"pending\") Pending; {NO_RULE} }} {}",
+            plain_enum_unjudged(
+                "Status",
+                &[
+                    ("Active", "active", &[]),
+                    ("Inactive", "inactive", &[]),
+                    ("Pending", "pending", &[])
+                ],
+                "element"
+            )
         )
     );
 }

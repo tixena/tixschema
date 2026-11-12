@@ -1,6 +1,6 @@
-//! Models whose examples and defaults hold an `i64`, written into the Zod source as a bigint
-//! literal. The models that hold a `u64`, a `usize` or an `isize` are declared where neither
-//! `swift` nor `kotlin` is on, which refuse them.
+//! Models whose examples and defaults hold an `i64`, a `usize` or an `isize`, written into the Zod
+//! source as a bigint literal where a `number` cannot hold one. The models that hold a `u64` are
+//! declared where neither `swift` nor `kotlin` is on, which refuse it.
 
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -234,6 +234,19 @@ pub enum Entry {
         #[serde(default)]
         lines: Vec<i64>,
     },
+}
+
+/// A `usize` and an `isize`, which publish a `number` up to what it holds exactly.
+///
+/// ```rust example
+/// Sizes { count: 3, far: 9_007_199_254_740_993, step: -3 }
+/// ```
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Sizes {
+    pub count: usize,
+    pub far: usize,
+    pub step: isize,
 }
 
 /// Defaults that stay numbers, and a default list.

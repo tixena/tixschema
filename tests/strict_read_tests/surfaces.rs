@@ -95,6 +95,7 @@ fn the_wrapper_of_an_externally_tagged_variant_stays_closed_around_an_open_conte
     assert_eq!(closed, vec![&Value::Bool(false), &Value::Bool(true)]);
 }
 
+#[cfg(feature = "zod")]
 #[test]
 fn a_nonstrict_type_writes_z_object_and_a_strict_one_z_strict_object() {
     assert!(Closed::zod_schema().contains("z.strictObject({"));
@@ -112,6 +113,7 @@ fn a_nonstrict_type_writes_z_object_and_a_strict_one_z_strict_object() {
     assert!(external.contains("z.strictObject({\n  \"Square\": z.object({"));
 }
 
+#[cfg(feature = "typescript")]
 #[test]
 fn the_typescript_type_of_a_nonstrict_type_is_the_type_of_a_strict_one() {
     let closed = Closed::ts_definition().replace("Closed", "T");

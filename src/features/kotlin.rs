@@ -373,12 +373,11 @@ pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream
     }
 }
 
-/// The `u64`/`usize` width `field` is, or at any depth reaches, or `None`. Kotlin has a `ULong`
-/// that could carry `u64`; the refusal exists for parity with the Swift target instead.
+/// The `u64` width `field` is, or at any depth reaches, or `None`. Kotlin has a `ULong` that could
+/// carry `u64`; the refusal exists for parity with the Swift target instead.
 pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
     match &field.field_type {
         FieldDefType::U64 => Some("u64"),
-        FieldDefType::Usize => Some("usize"),
         FieldDefType::SiblingType(_, generics) => generics.iter().find_map(kotlin_refused_width),
         FieldDefType::Map(key, value) => {
             kotlin_refused_width(key).or_else(|| kotlin_refused_width(value))
@@ -399,6 +398,7 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -979,9 +979,10 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::U8 => "UByte".to_owned(),
         FieldDefType::U16 => "UShort".to_owned(),
         FieldDefType::U32 => "UInt".to_owned(),
+        FieldDefType::Usize => "ULong".to_owned(),
         // Refused under `check_kotlin_width_field` in `model_schema.rs`; a filler rendering keeps
         // this dispatch total for the compile_error! tokens emitted alongside it to stand on.
-        FieldDefType::U64 | FieldDefType::Usize => "Long".to_owned(),
+        FieldDefType::U64 => "Long".to_owned(),
         FieldDefType::I8 => "Byte".to_owned(),
         FieldDefType::I16 => "Short".to_owned(),
         FieldDefType::I32 => "Int".to_owned(),
@@ -1172,6 +1173,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -1190,8 +1192,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::String
-        | FieldDefType::U64
-        | FieldDefType::Usize => format!("serializer<{}>()", kotlin_typename(&held)),
+        | FieldDefType::U64 => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "chrono")]
@@ -1822,7 +1823,7 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
         format!("class {serializer}{invariant}({})", handed.join(", "))
     };
     let own = format!("{named}{invariant}");
-    let deserialize = result_read(&own, &refusal, &reads);
+    let deserialize = result_read(&own, &refusal, &reads, &held);
     format!(
         "@Serializable(with = {serializer}::class) sealed interface {named}{covariant} {} \
          {opened} : KSerializer<{own}> {{ \
@@ -1839,10 +1840,26 @@ fn result_declarations(named: &str, shape: [bool; 2]) -> String {
 /// The `deserialize` of the serializer of a `Result` typed `own`: the object of one key, read under
 /// it by the arm of `reads` that names it, `refusal` for an object of any other number of keys, a
 /// value that is neither a string nor an object in serde's words for text that is not the
-/// document, and an unknown variant in serde's words for a key no arm names.
-fn result_read(own: &str, refusal: &str, reads: &[String]) -> String {
+/// document, a string that names one of `carrying`, the arms that hold a value, as a unit variant
+/// where a newtype variant is expected, and an unknown variant in serde's words for a key no arm
+/// names.
+fn result_read(own: &str, refusal: &str, reads: &[String], carrying: &[&str]) -> String {
+    let named = if carrying.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "if (element is JsonPrimitive && element.isString && element.content in setOf({})) \
+             kotlinSchemaUnder(\".\" + element.content) {{ throw SerializationException(\"invalid \
+             type: unit variant, expected newtype variant\") }}; ",
+            carrying
+                .iter()
+                .map(|arm| kotlin_quoted(arm))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
     let read = format!(
-        "val entry = (element as? JsonObject ?: throw SerializationException(if (element is \
+        "{named}val entry = (element as? JsonObject ?: throw SerializationException(if (element is \
          JsonPrimitive && element.isString) \"expected an object, found \" + element else \
          \"{EXPECTED_VALUE}\")).entries.singleOrNull() ?: {refusal}; when (entry.key) {{ \
          {}; else -> throw SerializationException(\"unknown variant `\" + entry.key + \"`, \
@@ -3659,6 +3676,38 @@ fn unit_variant_read(
     )
 }
 
+/// `data`, the payload a variant's members are read from, corrected by the functions the members
+/// name.
+fn keyed_data(data: &str, payload: &VariantPayload, plugin: &Plugin<'_>) -> String {
+    preprocess::keyed(
+        &aliases::keys_named(data, &members_renamed(payload)),
+        &variant_keyed(payload, plugin),
+    )
+}
+
+/// The read of a variant of members from the object `keyed` names, by the serializer `own`, and
+/// under a tag alone, where serde reads the members from the content the tag's object buffers, with
+/// the refusal of a member it reads from one key worded as a value of the wrong kind.
+fn apart_read(
+    ctx: &DispatchedTaggedContext<'_>,
+    payload: &VariantPayload,
+    own: &str,
+    keyed: &str,
+) -> String {
+    let inner = format!(
+        "kotlinSchemaInner(input.json, {}, {own}, {keyed})",
+        variant_step(ctx.tagging)
+    );
+    let buffers = matches!(ctx.tagging, Tagging::Unwrapped)
+        && matches!(payload, VariantPayload::Named(fields)
+            if fields.iter().any(|field| !field.flatten && field.field_def.reads_one_key()));
+    if buffers {
+        read::buffered(&inner)
+    } else {
+        inner
+    }
+}
+
 /// One variant's own subclass, `serialize` arm and `deserialize` arm, for
 /// [`dispatched_tagged_enum_kotlin_source`] — pulled out of that function's own loop to keep it
 /// under this crate's line budget per function.
@@ -3730,15 +3779,7 @@ fn dispatched_tagged_variant(
         // A variant of members is its subclass's own object.
         (VariantPayload::Named(_) | VariantPayload::Value(_), _) => (
             Some(format!("output.json.encodeToJsonElement({}, value)", own())),
-            format!(
-                "kotlinSchemaInner(input.json, {}, {}, {})",
-                variant_step(ctx.tagging),
-                own(),
-                preprocess::keyed(
-                    &aliases::keys_named(&data, &members_renamed(&payload)),
-                    &variant_keyed(&payload, &plugin)
-                )
-            ),
+            apart_read(ctx, &payload, &own(), &keyed_data(&data, &payload, &plugin)),
         ),
     };
     let decode_expr = under_variant_step(ctx.tagging, read_expr);
@@ -4058,43 +4099,15 @@ fn plain_enum_kotlin_source(
         "enum class {export_name} {{ {members}; {} }}",
         rules.written("")
     );
-    let renamed: Vec<_> = variants
-        .iter()
-        .flat_map(|(_, wire, read_under)| {
-            read_under.iter().map(|alias| (alias.clone(), wire.clone()))
-        })
-        .collect();
-    let correction =
-        aliases::text_named(&preprocess::corrected(args.preprocess, ELEMENT), &renamed);
-    if !args.check.is_empty() {
-        let (kept, unjudged) = if args.preprocess.is_empty() && !renamed.is_empty() {
-            (
-                read::kept(export_name),
-                aliases::plain_enum_serializer(export_name, &variants),
-            )
-        } else {
-            (
-                read::kept(export_name),
-                kept_unjudged(export_name, "", &[], &correction, None),
-            )
-        };
-        format!(
-            "{kept} {body} {unjudged} {}",
-            read::judged(export_name, "", &[], false, (&[], &[]))
-        )
-    } else if !args.preprocess.is_empty() {
-        format!(
-            "{} {body} {}",
-            read::kept_plain(export_name),
-            kept_unjudged(export_name, "", &[], &correction, None)
-        )
-    } else if renamed.is_empty() {
-        format!("@Serializable {body}")
+    let correction = preprocess::corrected(args.preprocess, ELEMENT);
+    let unjudged = aliases::plain_enum_serializer(export_name, &variants, &correction);
+    if args.check.is_empty() {
+        format!("{} {body} {unjudged}", read::kept_plain(export_name))
     } else {
         format!(
-            "{} {body} {}",
-            read::kept_plain(export_name),
-            aliases::plain_enum_serializer(export_name, &variants)
+            "{} {body} {unjudged} {}",
+            read::kept(export_name),
+            read::judged(export_name, "", &[], false, (&[], &[]))
         )
     }
 }

@@ -176,7 +176,7 @@ pub fn zod_error_arg(bound: Bound<'_>) -> String {
             js_template_text(&stated)
         ),
         Some(Observed::Length) => format!(
-            "{{ error: (issue) => `{}, got ${{String(issue.input).length}}` }}",
+            "{{ error: (issue) => `{}, got ${{[...String(issue.input)].length}}` }}",
             js_template_text(&stated)
         ),
         Some(Observed::Value) => format!(
@@ -193,7 +193,7 @@ pub fn zod_error_arg(bound: Bound<'_>) -> String {
 pub fn zod_named_error_arg(bound: Bound<'_>) -> String {
     match bound.observed() {
         Some(Observed::Length) => format!(
-            "{{ error: (issue) => `{}, got ${{Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}}` }}",
+            "{{ error: (issue) => `{}, got ${{Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length}}` }}",
             js_template_text(&bound.stated())
         ),
         _ => zod_error_arg(bound),

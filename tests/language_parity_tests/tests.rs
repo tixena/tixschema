@@ -274,8 +274,8 @@ fn zod_sentence(error_argument: &str, rendered: &str) -> String {
         .unwrap();
     template
         .replace(
-            "${String(issue.input).length}",
-            &rendered.encode_utf16().count().to_string(),
+            "${[...String(issue.input)].length}",
+            &rendered.chars().count().to_string(),
         )
         .replace("${String(issue.input)}", rendered)
 }
@@ -413,6 +413,30 @@ fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
     assert_eq!(
         rust,
         typescript_report(&declarations::Capped::zod_schema(), "bio", "ABCDEFG"),
+    );
+}
+
+/// A character outside the Basic Multilingual Plane is one character in both languages.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_length_over_non_ascii_text_reads_the_same_in_both_languages() {
+    let rendered = "\u{1f600}".repeat(6);
+    let rust = declarations::Capped {
+        bio: rendered.clone(),
+    }
+    .validate()
+    .unwrap_err();
+
+    assert_eq!(
+        rust,
+        vec![
+            "'bio': too long: maximum length is 5, got 6",
+            "'bio': does not match pattern '^[a-z]+$'",
+        ],
+    );
+    assert_eq!(
+        rust,
+        typescript_report(&declarations::Capped::zod_schema(), "bio", &rendered),
     );
 }
 

@@ -1132,7 +1132,10 @@ fn an_enum_declared_below_its_holder_is_read_in_kotlin_from_the_object_it_is_han
     };
     assert_eq!(
         printed,
-        format!("{}\nexpected value at path: $\n", serde_read[0])
+        format!(
+            "{}\ninvalid type: expected string or map at path: $\n",
+            serde_read[0]
+        )
     );
 }
 

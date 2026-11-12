@@ -120,7 +120,8 @@ pub enum Counted {
 }
 
 /// What a bare wire scalar is read from the text of: text, a `bool`, a float, an integer, or a
-/// `u64` or an `i64`, which TypeScript holds as a `bigint`.
+/// `u64` or an `i64`, which TypeScript holds as a `bigint`, or a `usize`, an unsigned 64-bit
+/// integer on the targets that read one as such and a number in TypeScript.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WireScalarKind {
     Bool,
@@ -129,6 +130,7 @@ pub enum WireScalarKind {
     Signed64,
     Text,
     Unsigned64,
+    UnsignedSize,
 }
 
 /// The number serde reads a map key of from the text between its quotes: an integer of the type
@@ -735,6 +737,15 @@ thread_local! {
 
 thread_local! {
     static ALIAS_INFO: RefCell<HashMap<String, AliasInfo>> = RefCell::new(HashMap::new());
+
+    /// The names of the types serde reads from a string or an object of one key.
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    static READS_ONE_KEY: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// What a bound written on a field of each name counts, where it counts anything: a brand over
     /// a text or a list, and an alias of a list.
     static COUNTED: RefCell<HashMap<String, Counted>> = RefCell::new(HashMap::new());
@@ -1483,6 +1494,13 @@ pub fn register_alias_info(
     kind: AliasKind,
 ) {
     record_counted(rust_ident, None);
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    READS_ONE_KEY.with(|names| names.borrow_mut().remove(rust_ident));
     ALIAS_INFO.with(|map| {
         map.borrow_mut().insert(
             rust_ident.to_owned(),
@@ -1496,6 +1514,12 @@ pub fn register_alias_info(
                 key_wire: MapKeyWire::Named,
                 kind,
                 module_name: module_name.to_owned(),
+                #[cfg(any(
+                    feature = "zod",
+                    feature = "dart",
+                    feature = "kotlin",
+                    feature = "swift"
+                ))]
                 #[cfg(feature = "zod")]
                 number_key: None,
                 #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -1542,6 +1566,29 @@ pub fn record_indexed_set(rust_ident: &str) {
             info.indexed_set = true;
         }
     });
+}
+
+/// Records that serde reads a value of the type written under a name from a string or an object of
+/// one key, as it reads a plain enum and an externally tagged enum.
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub fn record_reads_one_key(rust_ident: &str) {
+    READS_ONE_KEY.with(|names| names.borrow_mut().insert(rust_ident.to_owned()));
+}
+
+/// Whether the type written under a name was recorded by [`record_reads_one_key`].
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+pub fn reads_one_key_named(rust_ident: &str) -> bool {
+    READS_ONE_KEY.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records whether the TypeScript type written under a name carries [`INEXACT_KEY_NOTE`] on
@@ -1783,7 +1830,8 @@ pub fn wire_scalar_kind(ty: &Type) -> WireScalarKind {
         "bool" => WireScalarKind::Bool,
         "u64" if leaf.arguments.is_none() => WireScalarKind::Unsigned64,
         "i64" if leaf.arguments.is_none() => WireScalarKind::Signed64,
-        "u8" | "u16" | "u32" | "u128" | "usize" | "i8" | "i16" | "i32" | "i128" | "isize" => {
+        "usize" => WireScalarKind::UnsignedSize,
+        "u8" | "u16" | "u32" | "u128" | "i8" | "i16" | "i32" | "i128" | "isize" => {
             WireScalarKind::Integer
         }
         "f32" | "f64" => WireScalarKind::Float,

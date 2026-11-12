@@ -8,6 +8,7 @@ use super::aliased_models::{
     lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin,
 };
 use super::kotlin_pathed::PATHED;
+use super::kotlin_plain_enum::plain_enum_unjudged;
 
 /// What reads a payload's key `name` as `label`, and refuses the two together.
 const NAME_AS_LABEL: &str = "let { whole: JsonElement -> if (whole is JsonObject) \
@@ -88,15 +89,12 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              SwellUnjudged::class) @KeepGeneratedSerializer enum class Swell {{ Ebb, Flood; \
-             fun validate(): List<String> = emptyList() }} object SwellUnjudged : \
-             KSerializer<Swell> {{ override val descriptor: SerialDescriptor = \
-             Swell.generatedSerializer().descriptor; override fun serialize(encoder: Encoder, \
-             value: Swell) = encoder.encodeString(when (value) {{ Swell.Ebb -> \"Ebb\"; \
-             Swell.Flood -> \"Flood\" }}); {PATHED}override fun deserialize(decoder: \
-             Decoder): Swell {{ val name = decoder.decodeString(); return \
-             kotlinSchemaAt(decoder) {{ when (name) {{ \"Ebb\", \"Low\", \"Neap\" -> \
-             Swell.Ebb; \"Flood\" -> Swell.Flood; else -> throw \
-             SerializationException(\"unknown variant \" + name) }} }} }} }}"
+             fun validate(): List<String> = emptyList() }} {}",
+            plain_enum_unjudged(
+                "Swell",
+                &[("Ebb", "Ebb", &["Low", "Neap"]), ("Flood", "Flood", &[])],
+                "element"
+            )
         )
     );
     assert_eq!(
@@ -104,19 +102,12 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              LullingUnjudged::class) @KeepGeneratedSerializer enum class Lulling {{ Ebb, \
-             Flood; fun validate(): List<String> = emptyList() }} \
-             @OptIn(ExperimentalSerializationApi::class) object LullingUnjudged : \
-             KSerializer<Lulling> {{ private val held = Lulling.generatedSerializer(); \
-             override val descriptor: SerialDescriptor = held.descriptor; override fun \
-             serialize(encoder: Encoder, value: Lulling) = held.serialize(encoder, value); \
-             {PATHED}override fun deserialize(decoder: Decoder): Lulling {{ val input = \
-             decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
-             kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
-             transformDeserialize(element).toString()) }} }}; private fun \
-             transformDeserialize(element: JsonElement): JsonElement = unpadded(element).let \
-             {{ whole: JsonElement -> if (whole is JsonPrimitive && whole.isString) when \
-             (whole.content) {{ \"Low\" -> JsonPrimitive(\"Ebb\"); else -> whole }} else \
-             whole }} }}"
+             Flood; fun validate(): List<String> = emptyList() }} {}",
+            plain_enum_unjudged(
+                "Lulling",
+                &[("Ebb", "Ebb", &["Low"]), ("Flood", "Flood", &[])],
+                "unpadded(element)"
+            )
         )
     );
 }

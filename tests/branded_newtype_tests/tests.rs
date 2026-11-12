@@ -230,11 +230,11 @@ mod constrained_branded_tests {
     fn test_constrained_branded_zod_has_constraints() {
         let zod = SlugId::zod_schema();
         assert!(
-            zod.contains(".min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })"),
+            zod.contains(".min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })"),
             "Should contain minLength constraint. Got:\n{zod}"
         );
         assert!(
-            zod.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` })"),
+            zod.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` })"),
             "Should contain maxLength constraint. Got:\n{zod}"
         );
         assert!(
@@ -985,7 +985,7 @@ mod constrained_generic_branded_tests {
         assert!(
             zod.contains(
                 "const StrictDocumentId$RawSchemaDefault = \
-                 StrictDocumentId$SchemaFactory(z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${String(issue.input).length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${String(issue.input).length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: \"does not match pattern '^[a-f0-9]{24}$'\" })));"
+                 StrictDocumentId$SchemaFactory(z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${[...String(issue.input)].length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: \"does not match pattern '^[a-f0-9]{24}$'\" })));"
             ),
             "Got:\n{zod}"
         );
@@ -1022,7 +1022,7 @@ mod constrained_generic_branded_tests {
         assert!(
             zod.contains(
                 "const OuterId$RawSchemaDefault = OuterId$SchemaFactory(z.lazy(() => \
-                 StrictDocumentId$SchemaDefault.check(z.minLength(10, { error: (issue) => `too short: minimum length is 10, got ${String(issue.input).length}` }))));"
+                 StrictDocumentId$SchemaDefault.check(z.minLength(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }))));"
             ),
             "Got:\n{zod}"
         );
@@ -1137,7 +1137,7 @@ mod constrained_default_names_a_sibling_tests {
         assert!(
             zod.contains(
                 "const OuterBrand$RawSchemaDefault = \
-                 OuterBrand$SchemaFactory(z.lazy(() => InnerString$Schema.check(z.minLength(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }))));"
+                 OuterBrand$SchemaFactory(z.lazy(() => InnerString$Schema.check(z.minLength(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }))));"
             ),
             "Got:\n{zod}"
         );
@@ -2084,7 +2084,7 @@ mod branded_sibling_inner_tests {
         );
         let zod = ShortSlug::zod_schema();
         assert!(
-            zod.contains(r#"const ShortSlug$RawSchema = Slug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"ShortSlug">()"#),
+            zod.contains(r#"const ShortSlug$RawSchema = Slug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"ShortSlug">()"#),
             "Got:\n{zod}"
         );
         assert!(
@@ -2105,7 +2105,7 @@ mod branded_sibling_inner_tests {
         let zod = EarlySlug::zod_schema();
         assert!(
             zod.contains(
-                r#"const EarlySlug$RawSchema = LateSlug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"EarlySlug">()"#
+                r#"const EarlySlug$RawSchema = LateSlug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"EarlySlug">()"#
             ),
             "Got:\n{zod}"
         );
@@ -2124,7 +2124,7 @@ mod branded_sibling_inner_tests {
         #[cfg(feature = "zod")]
         assert!(
             zod.contains(
-                r#"const FixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"FixedTag">()"#
+                r#"const FixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"FixedTag">()"#
             ),
             "Got:\n{zod}"
         );
@@ -2143,7 +2143,7 @@ mod branded_sibling_inner_tests {
         #[cfg(feature = "zod")]
         assert!(
             zod.contains(
-                r#"const TrailingFixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).brand<"TrailingFixedTag">()"#
+                r#"const TrailingFixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"TrailingFixedTag">()"#
             ),
             "Got:\n{zod}"
         );
@@ -2469,7 +2469,7 @@ mod branded_chrono_zod_tests {
             ),
             (
                 "BoundedDay",
-                "z.iso.date().min(10, { error: (issue) => `too short: minimum length is 10, got ${String(issue.input).length}` }).max(10, { error: (issue) => `too long: maximum length is 10, got ${String(issue.input).length}` })",
+                "z.iso.date().min(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }).max(10, { error: (issue) => `too long: maximum length is 10, got ${[...String(issue.input)].length}` })",
                 BoundedDay::zod_schema(),
             ),
             (
@@ -2603,7 +2603,7 @@ mod constrained_path_brand_tests {
     #[test]
     fn test_the_zod_bound_on_a_path_brand_is_the_bound_the_wire_enforces() {
         let zod = AssetPath::zod_schema();
-        assert!(zod.contains("z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })"), "Got:\n{zod}");
+        assert!(zod.contains("z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })"), "Got:\n{zod}");
         assert!(zod.contains(&brand_marker("AssetPath")), "Got:\n{zod}");
         assert!(
             serde_json::from_str::<AssetPath>("\"/a\"").is_err(),
@@ -2989,7 +2989,7 @@ mod untouched_by_the_slot_refusal_tests {
         assert_eq!(
             zod.lines().next(),
             Some(
-                "const TypeLevel$RawSchema = z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` }).max(8, { error: (issue) => `too long: maximum length is 8, got ${String(issue.input).length}` })\
+                "const TypeLevel$RawSchema = z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${[...String(issue.input)].length}` }).max(8, { error: (issue) => `too long: maximum length is 8, got ${[...String(issue.input)].length}` })\
                  .check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" })).brand<\"TypeLevel\">().meta({"
             ),
             "Got:\n{zod}"

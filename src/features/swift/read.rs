@@ -11,7 +11,9 @@ use super::{
     MapKeys, Shaped, arrayed, held_as_optional, held_at, keyed_map_wrapper, map_keys,
     swift_full_real_type, swift_resolve, through_alias,
 };
-use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::field_type::{
+    BUFFERED_WORDS, EXPECTED_VALUE, FieldDef, FieldDefType, is_sequence_wrapper,
+};
 
 /// The read of a type alone, where it has one that takes the keys the types around it took.
 const ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { \
@@ -26,8 +28,8 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
 /// The Swift integers Foundation refuses a number outside the range of in an error no coding path
 /// reaches, and reads a number written with a fraction or an exponent into: [`fitted`] reads them
 /// through [`FITTED`].
-const FIXED_WIDTH: [&str; 8] = [
-    "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32",
+const FIXED_WIDTH: [&str; 9] = [
+    "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
 ];
 
 /// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one value and
@@ -64,7 +66,8 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      leaf.hasPrefix(\"Optional<\"), leaf.hasSuffix(\">\") { leaf = leaf.dropFirst(9).dropLast() \
      }; return [\"Int\": \
      \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
-     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(leaf)] ?? named }; \
+     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\", \"UInt64\": \"usize\"] \
+     [String(leaf)] ?? named }; \
      private static func floating(_ number: Double) -> String { var spelled = \
      number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
      spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
@@ -81,20 +84,6 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
      Double(text), number.isFinite else { return \"number out of range\" }; return \
      floating(number) } }";
-
-/// What a type holds whose flattened members [`flattened`] reads: the refusal of a value inside
-/// one, placed at the holder.
-const FLATTENED: &str = "private static func swiftSchemaFlattened(_ refused: DecodingError, at \
-     path: [CodingKey]) -> DecodingError { func placed(_ context: DecodingError.Context, keeping \
-     kept: [CodingKey] = []) -> DecodingError.Context { DecodingError.Context(codingPath: path + \
-     kept, debugDescription: context.debugDescription, underlyingError: context.underlyingError) \
-     }; if case .keyNotFound(let key, let context) = refused { return .keyNotFound(key, \
-     placed(context)) }; if case .typeMismatch(let type, let context) = refused { return \
-     .typeMismatch(type, placed(context)) }; if case .valueNotFound(let type, let context) = \
-     refused { return .valueNotFound(type, placed(context)) }; if case .dataCorrupted(let context) \
-     = refused { return .dataCorrupted(placed(context, keeping: \
-     context.debugDescription.hasPrefix(\"unknown field `\") ? Array(context.codingPath.suffix(1)) \
-     : [])) }; return refused }";
 
 /// The read every caller makes: the type's own, then `validate()` on the value read.
 pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
@@ -623,6 +612,39 @@ fn narrowed(read_as: &str, wide: &str) -> String {
     format!("({wide}).{mapping}({{ {} }})", narrowed(held, "$0"))
 }
 
+/// What a type holds whose flattened members [`flattened`] reads: the refusal of a value inside
+/// one, placed at the holder, and a value serde refuses as text that is not the document worded
+/// as a value of the wrong kind.
+fn flattened_function() -> String {
+    format!(
+        "private static func swiftSchemaFlattened(_ refused: DecodingError, at \
+         path: [CodingKey]) -> DecodingError {{ func placed(_ context: DecodingError.Context, keeping \
+         kept: [CodingKey] = []) -> DecodingError.Context {{ DecodingError.Context(codingPath: path + \
+         kept, debugDescription: context.debugDescription == \"{EXPECTED_VALUE}\" ? \
+         \"{BUFFERED_WORDS}\" : context.debugDescription, underlyingError: context.underlyingError) \
+         }}; if case .keyNotFound(let key, let context) = refused {{ return .keyNotFound(key, \
+         placed(context)) }}; if case .typeMismatch(let type, let context) = refused {{ return \
+         .typeMismatch(type, placed(context)) }}; if case .valueNotFound(let type, let context) = \
+         refused {{ return .valueNotFound(type, placed(context)) }}; if case .dataCorrupted(let context) \
+         = refused {{ return .dataCorrupted(placed(context, keeping: \
+         context.debugDescription.hasPrefix(\"unknown field `\") ? Array(context.codingPath.suffix(1)) \
+         : [])) }}; return refused }}"
+    )
+}
+
+/// What a type holds whose internally tagged variants [`buffered`] reads: the refusal of a value
+/// serde refuses as text that is not the document, placed at the holder as a value of the wrong
+/// kind. Any other refusal is as it is.
+fn buffered_function() -> String {
+    format!(
+        "private static func swiftSchemaBuffered(_ refused: DecodingError, at path: [CodingKey]) -> \
+         DecodingError {{ if case .dataCorrupted(let context) = refused, context.debugDescription == \
+         \"{EXPECTED_VALUE}\" {{ return .dataCorrupted(DecodingError.Context(codingPath: path, \
+         debugDescription: \"{BUFFERED_WORDS}\", underlyingError: context.underlyingError)) }}; \
+         return refused }}"
+    )
+}
+
 /// `read`, the statements that read a flattened member, placing a refusal inside it at the
 /// holder: serde reads such a member from the keys its holder buffers. An unknown key keeps its
 /// own step, and a missing one its key. Statements that catch every refusal themselves are left
@@ -634,6 +656,16 @@ pub(super) fn flattened(read: &str) -> String {
     format!(
         "do {{ {read} }} catch let refused as DecodingError {{ throw \
          Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }}"
+    )
+}
+
+/// `read`, the statements that read the members of an internally tagged variant, placing the
+/// refusal [`buffered_function`] words at the holder, as serde reads them from the content it
+/// buffers.
+pub(super) fn buffered(read: &str) -> String {
+    format!(
+        "do {{ {read} }} catch let refused as DecodingError {{ throw \
+         Self.swiftSchemaBuffered(refused, at: decoder.codingPath) }}"
     )
 }
 
@@ -677,7 +709,7 @@ fn block_end(statements: &str) -> Option<usize> {
     None
 }
 
-/// The helpers the statements of `read` name: [`FITTED`] and [`FLATTENED`].
+/// The helpers the statements of `read` name: [`FITTED`], [`flattened_function`] and [`buffered_function`].
 pub(super) fn helpers_for(read: &str) -> String {
     let mut helpers = String::new();
     if read.contains("SwiftSchemaFit<") {
@@ -685,7 +717,11 @@ pub(super) fn helpers_for(read: &str) -> String {
         helpers.push_str("; ");
     }
     if read.contains("swiftSchemaFlattened(") {
-        helpers.push_str(FLATTENED);
+        helpers.push_str(&flattened_function());
+        helpers.push_str("; ");
+    }
+    if read.contains("swiftSchemaBuffered(") {
+        helpers.push_str(&buffered_function());
         helpers.push_str("; ");
     }
     helpers

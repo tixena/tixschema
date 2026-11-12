@@ -83,16 +83,16 @@ tixschema = { version = "0.4", features = ["indexmap"] }
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
 
-#### `u64` or `usize` Under `swift` or `kotlin`
+#### `u64` Under `swift` or `kotlin`
 
 **Error:**
 
 ```text
-error: model_schema: field `count`: `u64` has no Swift mapping; the Swift target refuses unsigned 64-bit and pointer-sized integers
-error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin target refuses unsigned 64-bit and pointer-sized integers
+error: model_schema: field `count`: `u64` has no Swift mapping; the Swift target refuses `u64`
+error: model_schema: field `count`: `u64` has no Kotlin mapping; the Kotlin target refuses `u64`
 ```
 
-**Cause:** A member that reaches a `u64` or a `usize` at any depth, under the `swift` or the `kotlin` feature. The Swift and the Kotlin targets each refuse the two widths.
+**Cause:** A member that reaches a `u64` at any depth, under the `swift` or the `kotlin` feature. The Swift and the Kotlin targets each refuse it. A `usize` builds: it is a `UInt64` in Swift and a `ULong` in Kotlin.
 
 **Solution:** Use `i64`, or `u32` where the range allows. A member serde neither writes nor reads, under `#[serde(skip)]` or under `skip_serializing` and `skip_deserializing` together, and every member of a variant serde neither writes nor reads, is not refused: serde writes none of it. A member under one of the two alone is.
 

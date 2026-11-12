@@ -752,7 +752,7 @@ mod a_bound_inside_an_untagged_variant {
         }
         let claims = WireClaims::zod_schema();
         assert!(
-            claims.contains(".min(1, { error: (issue) => `too short: minimum length is 1, got ${String(issue.input).length}` })"),
+            claims.contains(".min(1, { error: (issue) => `too short: minimum length is 1, got ${[...String(issue.input)].length}` })"),
             "the bound the whole chain composes down to: {claims}"
         );
     }
@@ -1128,11 +1128,11 @@ mod a_check_the_enum_declares {
     #[test]
     fn test_an_enums_check_reaches_zod_on_each_string_it_carries() {
         let min = "min(1, { error: (issue) => `too short: minimum length is 1, got \
-                   ${String(issue.input).length}` })";
+                   ${[...String(issue.input)].length}` })";
         let own_min = "min(3, { error: (issue) => `too short: minimum length is 3, got \
-                       ${String(issue.input).length}` })";
+                       ${[...String(issue.input)].length}` })";
         let max = "max(5, { error: (issue) => `too long: maximum length is 5, got \
-                   ${String(issue.input).length}` })";
+                   ${[...String(issue.input)].length}` })";
         let held = format!("z.string().{min}.{max}");
 
         let external = Held::zod_schema();
@@ -1363,7 +1363,7 @@ fn test_max_length_zod() {
 
     let schema = MaxLengthZod::zod_schema();
     assert!(
-        schema.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` })"),
+        schema.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` })"),
         "Expected the maxLength check in Zod schema: {schema}"
     );
 }
@@ -1380,7 +1380,7 @@ fn test_min_length_zod() {
 
     let schema = MinLengthZod::zod_schema();
     assert!(
-        schema.contains(".min(5, { error: (issue) => `too short: minimum length is 5, got ${String(issue.input).length}` })"),
+        schema.contains(".min(5, { error: (issue) => `too short: minimum length is 5, got ${[...String(issue.input)].length}` })"),
         "Expected the minLength check in Zod schema: {schema}"
     );
 }
@@ -1397,11 +1397,11 @@ fn test_min_and_max_length_zod() {
 
     let schema = MinMaxLengthZod::zod_schema();
     assert!(
-        schema.contains(".min(5, { error: (issue) => `too short: minimum length is 5, got ${String(issue.input).length}` })"),
+        schema.contains(".min(5, { error: (issue) => `too short: minimum length is 5, got ${[...String(issue.input)].length}` })"),
         "Expected the minLength check in Zod schema: {schema}"
     );
     assert!(
-        schema.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` })"),
+        schema.contains(".max(50, { error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` })"),
         "Expected the maxLength check in Zod schema: {schema}"
     );
 }
@@ -3526,7 +3526,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     let code = "z.string().check(z.regex(/^[A-Z]{3}$/, { error: \"does not match pattern \
                 '^[A-Z]{3}$'\" })),";
     let pair = "z.tuple([z.string().min(2, { error: (issue) => `too short: minimum length is 2, \
-                got ${String(issue.input).length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
+                got ${[...String(issue.input)].length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
                 => `too small: minimum is 1, got ${String(issue.input)}` })]),";
     let external = ZodExternal::zod_schema();
     let adjacent = ZodAdjacent::zod_schema();

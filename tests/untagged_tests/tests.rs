@@ -1656,7 +1656,7 @@ fn test_untagged_string_array_member_zod() {
 #[test]
 #[cfg(feature = "zod")]
 fn test_untagged_member_constraint_zod() {
-    let expected = "slug: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` }).check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" })),";
+    let expected = "slug: z.string().min(2, { error: (issue) => `too short: minimum length is 2, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" })),";
     let untagged = ConstrainedUnion::zod_schema();
     assert!(untagged.contains(expected), "Got:\n{untagged}");
     assert!(
@@ -1916,9 +1916,9 @@ fn test_untagged_slot_helpers_are_named_by_the_slots_position() {
 fn test_untagged_slot_constraint_zod() {
     let zod = MimeType::zod_schema();
     let member = "z.union([KnownMimeType$Schema, z.string().min(1, { error: (issue) => `too \
-                  short: minimum length is 1, got ${String(issue.input).length}` }).max(127, { \
+                  short: minimum length is 1, got ${[...String(issue.input)].length}` }).max(127, { \
                   error: (issue) => `too long: maximum length is 127, got \
-                  ${String(issue.input).length}` }).check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
+                  ${[...String(issue.input)].length}` }).check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
                   error: \"does not match pattern '^[a-z]+/[a-z0-9.+-]+$'\" }))])";
     assert!(zod.contains(member), "Got:\n{zod}");
 }
@@ -2006,12 +2006,12 @@ fn test_each_untagged_slot_check_reaches_zod_alone() {
         (
             MinLengthArm::zod_schema(),
             "z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
-             ${String(issue.input).length}` })])",
+             ${[...String(issue.input)].length}` })])",
         ),
         (
             MaxLengthArm::zod_schema(),
             "z.string().max(3, { error: (issue) => `too long: maximum length is 3, got \
-             ${String(issue.input).length}` })])",
+             ${[...String(issue.input)].length}` })])",
         ),
         (
             PatternArm::zod_schema(),
@@ -2216,8 +2216,8 @@ fn test_an_untagged_enums_own_check_is_reported_under_no_name() {
 fn test_an_untagged_enums_own_check_zod() {
     let zod = ContentKind::zod_schema();
     let member = "z.union([KnownKind$Schema, z.string().min(1, { error: (issue) => `too short: \
-                  minimum length is 1, got ${String(issue.input).length}` }).max(20, { error: \
-                  (issue) => `too long: maximum length is 20, got ${String(issue.input).length}` \
+                  minimum length is 1, got ${[...String(issue.input)].length}` }).max(20, { error: \
+                  (issue) => `too long: maximum length is 20, got ${[...String(issue.input)].length}` \
                   })])";
     assert!(zod.contains(member), "Got:\n{zod}");
 }
@@ -2296,7 +2296,7 @@ fn test_each_check_of_an_untagged_enum_reaches_zod_alone() {
         (
             MaxLengthKind::zod_schema(),
             "z.union([KnownKind$Schema, z.string().max(20, { error: (issue) => `too long: \
-             maximum length is 20, got ${String(issue.input).length}` })])",
+             maximum length is 20, got ${[...String(issue.input)].length}` })])",
         ),
         (
             PatternKind::zod_schema(),
@@ -2395,7 +2395,7 @@ fn test_two_patterns_on_an_untagged_member_json_schema() {
 fn test_two_patterns_on_an_untagged_member_zod() {
     let zod = TextKind::zod_schema();
     let member = "z.string().max(12, { error: (issue) => `too long: maximum length is 12, got \
-                  ${String(issue.input).length}` }).check(z.regex(/^text\\//, { error: \"does \
+                  ${[...String(issue.input)].length}` }).check(z.regex(/^text\\//, { error: \"does \
                   not match pattern '^text/'\" })).check(z.regex(/^[a-z]+\\/[a-z0-9.+-]+$/, { \
                   error: \"does not match pattern '^[a-z]+/[a-z0-9.+-]+$'\" }))])";
     assert!(zod.contains(member), "Got:\n{zod}");

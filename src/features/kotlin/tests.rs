@@ -47,6 +47,16 @@ fn generated(named: &str) -> String {
     )
 }
 
+/// The unjudged serializer of the plain enum `named` of `variants`, which reads the payload
+/// `correction` answers.
+fn plain_enum_unjudged(named: &str, members: &[&str], correction: &str) -> String {
+    let variants: Vec<(String, String, Vec<String>)> = members
+        .iter()
+        .map(|variant| ((*variant).to_owned(), (*variant).to_owned(), Vec::new()))
+        .collect();
+    aliases::plain_enum_serializer(named, &variants, correction)
+}
+
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 fn judged(named: &str) -> String {
     format!(
@@ -163,7 +173,7 @@ fn plain(item: &ItemStruct) -> String {
     definition(struct_kotlin_tokens(item, &plain_args()))
 }
 
-/// The object that reads a number of Kotlin type `kotlin`, which serde words as `expected`,
+/// The object that reads a `u8` of Kotlin type `kotlin`, which serde words as `expected`,
 /// declared under `named`.
 fn number(named: &str, kotlin: &str, expected: &str) -> String {
     format!(
@@ -179,7 +189,16 @@ fn number(named: &str, kotlin: &str, expected: &str) -> String {
          text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if (wide.isInfinite()) throw \
          SerializationException(\"number out of range\"); throw \
          SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
-         expected {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
+         expected {expected}\") }}; if (wide != null && text.removePrefix(\"-\").let {{ \
+         it.isNotEmpty() && it.all {{ digit -> digit in '0'..'9' }} }}) {{ if \
+         (wide.isInfinite()) throw SerializationException(\"number out of range\"); val whole \
+         = java.math.BigInteger(text); if (whole < \
+         java.math.BigInteger(\"-9223372036854775808\") || whole > \
+         java.math.BigInteger(\"18446744073709551615\")) throw SerializationException(\"invalid \
+         type: floating point `\" + floating(wide) + \"`, expected {expected}\"); if (whole < \
+         java.math.BigInteger(\"0\") || whole > java.math.BigInteger(\"255\")) throw \
+         SerializationException(\"invalid value: integer `\" + text + \"`, expected \
+         {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
          (refused: SerializationException) {{ throw \
          SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}",
@@ -539,7 +558,7 @@ fn a_types_own_check_is_called_on_the_whole_value() {
         format!(
             "{} enum class Grade {{ Express, Unrated; {called} }} {} {}",
             kept("Grade"),
-            generated("Grade"),
+            plain_enum_unjudged("Grade", &["Express", "Unrated"], "element"),
             judged("Grade")
         )
     );
