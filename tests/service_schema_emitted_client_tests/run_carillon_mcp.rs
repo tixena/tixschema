@@ -7,7 +7,7 @@
 
 use super::carillon_mcp_service::{
     MCP_CASES, TOLL_CASES, call, mcp_payload, over_mcp, reply, rust_client_answers,
-    rust_server_answers, rust_toll_answers, told, toll_replies,
+    rust_toll_answers, server_cases, told, toll_replies, written_id,
 };
 use super::carillon_service::STRUCK;
 use core::fmt::Write as _;
@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 
 #[cfg(feature = "dart")]
 use super::CarillonMcpServiceSchema;
+#[cfg(feature = "dart")]
+use super::carillon_mcp_service::{carillon_refrain_dart, carillon_verse_dart};
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_chord_dart,
@@ -45,6 +47,10 @@ async function main() {
   let struck = 0;
   const impl = {
     async strike(ctx, req) {
+      struck += 1;
+      return { ok: true, value: req };
+    },
+    async chant(ctx, req) {
       struck += 1;
       return { ok: true, value: req };
     },
@@ -85,8 +91,7 @@ async function main() {
           : { crackedAt: answered.error[1] },
     );
   }
-  console.log(JSON.stringify({ served, struck: strikes, read, tolled }));
-  process.exit(0);
+  process.stdout.write(JSON.stringify({ served, struck: strikes, read, tolled }) + "\n", () => process.exit(0));
 }
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
@@ -110,6 +115,9 @@ function loud(value, ctx) {
 async function main() {
   const impl = {
     async strike(ctx, req) {
+      return { ok: true, value: req };
+    },
+    async chant(ctx, req) {
       return { ok: true, value: req };
     },
     async toll(ctx, req) {
@@ -171,6 +179,10 @@ void main() async {
       struck += 1;
       return req;
     },
+    chant: (ctx, req) async {
+      struck += 1;
+      return req;
+    },
     toll: (ctx, req) async => (req, req.weight),
   );
   final served = <Object?>[];
@@ -211,6 +223,10 @@ object Handlers : CarillonMcpServiceHandlers {
     override suspend fun strike(req: CarillonChime): CarillonMcpServiceStrikeResult {
         struck.incrementAndGet()
         return CarillonMcpServiceStrikeResult.Ok(req)
+    }
+    override suspend fun chant(req: CarillonVerse): CarillonMcpServiceChantResult {
+        struck.incrementAndGet()
+        return CarillonMcpServiceChantResult.Ok(req)
     }
     override suspend fun toll(req: CarillonBell): CarillonMcpServiceTollResult =
         CarillonMcpServiceTollResult.Ok(CarillonMcpServiceTollResultValue(req, req.weight))
@@ -317,11 +333,11 @@ for text in tolls {
 print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.joined(separator: ",") + "]}")
 "#;
 
-/// Each request a server is handed, in the order of [`MCP_CASES`].
-fn requests() -> Vec<String> {
-    MCP_CASES
+/// Each request a server is handed.
+fn requests(typescript: bool) -> Vec<String> {
+    server_cases(typescript)
         .into_iter()
-        .map(|name| call(1, &mcp_payload(name)))
+        .map(|(_, request)| request)
         .collect()
 }
 
@@ -341,37 +357,36 @@ fn listed(items: &[String], literal: fn(&str) -> String) -> String {
     })
 }
 
-/// Holds what a server answered to each request, and how many strikes reached its handler, to
-/// what the Rust dispatcher answers, and the text of its answer to the message read whole, whose
-/// `i64` is beyond what a JavaScript `number` holds, to the text the Rust dispatcher writes.
-fn assert_served_as_rust(report: &Value) {
-    let whole = MCP_CASES
-        .into_iter()
-        .position(|name| name == "read whole")
-        .unwrap();
+/// Holds what a server answered to each request, the text of its `id`, and how many strikes
+/// reached its handler, to what the Rust dispatcher answers, and the text of its answer to the
+/// message read whole, whose `i64` is beyond what a JavaScript `number` holds, to the text the
+/// Rust dispatcher writes.
+fn assert_served_as_rust(report: &Value, typescript: bool) {
+    let asked = requests(typescript);
+    let served = report["served"].as_array().unwrap();
+    assert_eq!(served.len(), asked.len(), "{report}");
     assert_eq!(
-        report["served"][whole].as_str(),
-        over_mcp(&call(1, &mcp_payload("read whole"))).0.as_deref(),
+        served[0].as_str(),
+        over_mcp(&asked[0]).0.as_deref(),
         "{report}"
     );
-    let answered: Vec<Value> = MCP_CASES
+    let tell = |text: &str, struck: &Value| {
+        let answer: Value = serde_json::from_str(text).unwrap();
+        json!({ "answer": told(&answer), "id": written_id(text), "struck": struck })
+    };
+    let differing: Vec<Value> = server_cases(typescript)
         .into_iter()
-        .zip(report["served"].as_array().unwrap())
-        .zip(report["struck"].as_array().unwrap())
-        .map(|((name, text), struck)| {
-            let answer: Value = serde_json::from_str(text.as_str().unwrap()).unwrap();
-            json!({ "case": name, "answer": told(&answer), "struck": struck })
+        .map(|(name, _)| name)
+        .zip(&asked)
+        .zip(served.iter().zip(report["struck"].as_array().unwrap()))
+        .filter_map(|((name, request), (text, struck))| {
+            let answered = tell(text.as_str().unwrap(), struck);
+            let (held, strikes) = over_mcp(request);
+            let rust = tell(&held.unwrap(), &json!(strikes));
+            (answered != rust).then(|| json!({ "case": name, "answer": answered, "rust": rust }))
         })
         .collect();
-    let expected: Vec<Value> = MCP_CASES
-        .into_iter()
-        .zip(rust_server_answers())
-        .map(|(name, answer)| {
-            let struck = u8::from(answer == "read");
-            json!({ "case": name, "answer": answer, "struck": struck })
-        })
-        .collect();
-    assert_eq!(answered, expected, "{report}");
+    assert!(differing.is_empty(), "{differing:#?}");
 }
 
 /// Each answer beside the case of `cases` it answers.
@@ -401,6 +416,7 @@ fn assert_read_as_rust(read: &Value, tolled: &Value) {
 /// The TypeScript module the server and the client run in.
 fn node_bundle() -> String {
     use super::CarillonMcpServiceSchema;
+    use super::carillon_mcp_service::{CarillonRefrain, CarillonVerse};
     use super::carillon_service::{
         CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonDeep, CarillonError,
         CarillonFrame, CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonSlim,
@@ -440,6 +456,10 @@ fn node_bundle() -> String {
         CarillonChime::zod_schema(),
         CarillonError::ts_definition(),
         CarillonError::zod_schema(),
+        CarillonRefrain::ts_definition(),
+        CarillonRefrain::zod_schema(),
+        CarillonVerse::ts_definition(),
+        CarillonVerse::zod_schema(),
         CarillonMcpServiceSchema::ts_definition(),
         CarillonMcpServiceSchema::ts_service(),
         CarillonMcpServiceSchema::ts_mcp_service(),
@@ -493,7 +513,7 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
     let raw = |text: &str| format!("String.raw`{text}`");
     let source = [
         node_bundle(),
-        format!("const REQUESTS = [\n{}];", listed(&requests(), raw)),
+        format!("const REQUESTS = [\n{}];", listed(&requests(true), raw)),
         format!("const REPLIES = [\n{}];", listed(&replies(), raw)),
         format!("const TOLLS = [\n{}];", listed(&toll_replies(), raw)),
         format!("const WHOLE = {};", raw(STRUCK)),
@@ -511,7 +531,7 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report);
+    assert_served_as_rust(&report, true);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
@@ -593,6 +613,8 @@ pub fn dart_source(requests: &[String], replies: &[String]) -> String {
         carillon_outer_tone_dart::dart_definition(),
         carillon_chime_dart::dart_definition(),
         carillon_error_dart::dart_definition(),
+        carillon_refrain_dart::dart_definition(),
+        carillon_verse_dart::dart_definition(),
         CarillonMcpServiceSchema::dart_definition(),
         CarillonMcpServiceSchema::dart_ws_client(),
         CarillonMcpServiceSchema::dart_mcp_service(),
@@ -617,12 +639,12 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
         "TIXSCHEMA_DART",
         "dart",
         "carillon_mcp.dart",
-        &dart_source(&requests(), &replies()),
+        &dart_source(&requests(false), &replies()),
     ) else {
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report);
+    assert_served_as_rust(&report, false);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
@@ -631,7 +653,7 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
 fn the_dart_text_of_the_carillon_mcp_service_passes_the_analyzer() {
     analyzed(
         "carillon-mcp-analyze",
-        &dart_source(&requests(), &replies()),
+        &dart_source(&requests(false), &replies()),
     );
 }
 
@@ -642,6 +664,7 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
     use super::carillon_mcp_service::carillon_mcp_service_schema::{
         carillon_mcp_service_fault_fields_kotlin, carillon_mcp_service_fault_kind_kotlin,
     };
+    use super::carillon_mcp_service::{carillon_refrain_kotlin, carillon_verse_kotlin};
     use super::carillon_service::{
         carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin, carillon_chord_kotlin,
         carillon_deep_kotlin, carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
@@ -676,6 +699,8 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
         carillon_outer_tone_kotlin::kotlin_definition(),
         carillon_chime_kotlin::kotlin_definition(),
         carillon_error_kotlin::kotlin_definition(),
+        carillon_refrain_kotlin::kotlin_definition(),
+        carillon_verse_kotlin::kotlin_definition(),
         carillon_mcp_service_fault_fields_kotlin::kotlin_definition(),
         carillon_mcp_service_fault_kind_kotlin::kotlin_definition(),
         CarillonMcpServiceSchema::kotlin_http_client(),
@@ -694,11 +719,12 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
 #[cfg(feature = "kotlin")]
 #[test]
 fn the_kotlin_server_and_client_answer_what_the_rust_dispatcher_and_client_answer() {
-    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source(&requests(), &replies())) else {
+    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source(&requests(false), &replies()))
+    else {
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report);
+    assert_served_as_rust(&report, false);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
@@ -709,6 +735,7 @@ pub fn swift_source(replies: &[String]) -> String {
     use super::carillon_mcp_service::carillon_mcp_service_schema::{
         carillon_mcp_service_fault_fields_swift, carillon_mcp_service_fault_kind_swift,
     };
+    use super::carillon_mcp_service::{carillon_refrain_swift, carillon_verse_swift};
     use super::carillon_service::{
         carillon_beam_swift, carillon_bell_swift, carillon_chime_swift, carillon_chord_swift,
         carillon_deep_swift, carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
@@ -735,6 +762,8 @@ pub fn swift_source(replies: &[String]) -> String {
         carillon_outer_tone_swift::swift_definition(),
         carillon_chime_swift::swift_definition(),
         carillon_error_swift::swift_definition(),
+        carillon_refrain_swift::swift_definition(),
+        carillon_verse_swift::swift_definition(),
         carillon_mcp_service_fault_fields_swift::swift_definition(),
         carillon_mcp_service_fault_kind_swift::swift_definition(),
         CarillonMcpServiceSchema::swift_http_client(),

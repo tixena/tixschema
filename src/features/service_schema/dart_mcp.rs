@@ -1913,7 +1913,8 @@ fn scopes_table(table: &ScopeTable) -> String {
 /// the read refused at, and every other refusal names the path of each value the message does not read at, from the JSON schema the catalog holds for it:
 /// the first one, or with `every` all of them, a key of `passed` read past at the top. A refusal
 /// the schema finds no such value for, `1.0` or `-0` for an integer, names the path the read
-/// refused at.
+/// refused at, and one inside a flattened member names the holder the read refused at, as serde
+/// does.
 fn unread_helpers(named: &str, prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let issue = fault_issue_name(named);
@@ -1924,7 +1925,10 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          if ({keys}.contains(detail)) return _{prefix}McpFault({named}FaultKind.undeserializablePayload, operation, detail);\n  \
          final found = <(String, String)>[];\n  \
          _{prefix}McpMismatches(schema, source, null, passed, const <String>[], found);\n  \
-         final at = detail == '{EXPECTED_VALUE}' || found.isEmpty ? _{prefix}WsRefusedAt(refused) : null;\n  \
+         final read = _{prefix}WsRefusedAt(refused);\n  \
+         final holder = read != null && found.isNotEmpty && found.first.$1.startsWith('$read.');\n  \
+         if (holder) found.removeWhere((entry) => entry.$1.startsWith('$read.'));\n  \
+         final at = detail == '{EXPECTED_VALUE}' || found.isEmpty || holder ? read : null;\n  \
          if (at != null) found..removeWhere((entry) => entry.$1 == at)..insert(0, (at, detail));\n  \
          if (found.isEmpty || found.first.$1.isEmpty) {{\n    \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
@@ -1942,7 +1946,17 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          }}\n  \
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, lines.join('; '), field: path, issues: issues);\n\
          }}\n\n\
-         void _{prefix}McpMismatches(Object? schema, Object? value, Object? defs, List<String> passed, List<String> at, \
+         {walk}",
+        keys = not_a_document_keys(),
+        walk = mismatch_walk(prefix),
+    )
+}
+
+/// The Dart that walks a JSON schema beside the value a message refused, collecting each value the
+/// schema does not match.
+fn mismatch_walk(prefix: &str) -> String {
+    format!(
+        "void _{prefix}McpMismatches(Object? schema, Object? value, Object? defs, List<String> passed, List<String> at, \
          List<(String, String)> found) {{\n  \
          if (schema is! Map) return;\n  \
          defs ??= schema['\\$defs'];\n  \
@@ -2013,7 +2027,6 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          if (value is! bool) refuse(at, 'invalid type, expected a boolean');\n  \
          }}\n\
          }}",
-        keys = not_a_document_keys(),
     )
 }
 
