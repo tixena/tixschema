@@ -208,6 +208,9 @@ private fun @P@McpInvalid(detail: String): JsonObject =
 private fun @P@McpIsNumber(primitive: JsonPrimitive): Boolean =
   !primitive.isString && primitive.content != "null" && primitive.content != "true" && primitive.content != "false"
 
+private fun @P@McpIsFloat(id: JsonPrimitive): Boolean =
+  id.content == "-0" || (id.content.toLongOrNull() == null && id.content.toULongOrNull() == null)
+
 private fun @P@McpReadRequest(text: String): Pair<JsonObject?, JsonObject?> {
   val parsed = try {
     Json.parseToJsonElement(text)
@@ -225,6 +228,9 @@ private fun @P@McpReadRequest(text: String): Pair<JsonObject?, JsonObject?> {
   val id = parsed["id"]
   if (id != null && !(id is JsonPrimitive && (id.isString || @P@McpIsNumber(id)))) {
     return null to @P@McpInvalid("`id` is neither a string nor a number")
+  }
+  if (id is JsonPrimitive && !id.isString && @P@McpIsFloat(id)) {
+    return JsonObject(parsed + ("id" to JsonPrimitive(id.content.toDouble()))) to null
   }
   return parsed to null
 }
@@ -834,13 +840,13 @@ private fun <T> @P@McpReceive(
     if (said == "@EXPECTED_NUMERIC_KEY@") refuse("undeserializable-payload", said, null, emptyList())
     val found = mutableListOf<Pair<String, String>>()
     @P@McpMismatches(schema, source, null, passed, emptyList(), found)
-    if (said == "@EXPECTED_VALUE@" || found.isEmpty()) {
-      // Read from its text, the refusal states the path of a `Result`, or of a number the schema admits and serde refuses (`1.0` or `-0` for an integer), which no schema walk finds.
-      val at = runCatching { Json.decodeFromString(twin, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
-      if (at != null) {
-        found.removeAll { it.first == at }
-        found.add(0, at to said)
-      }
+    // Read from its text, the refusal states the path of a `Result`, of a number the schema admits and serde refuses (`1.0` or `-0` for an integer), which no schema walk finds, and of the holder of a flattened member, which the schema names by the member's own path.
+    val read = runCatching { Json.decodeFromString(twin, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
+    val holder = read != null && found.firstOrNull()?.first?.startsWith("$read.") == true
+    if (read != null && (said == "@EXPECTED_VALUE@" || found.isEmpty() || holder)) {
+      if (holder) found.removeAll { it.first.startsWith("$read.") }
+      found.removeAll { it.first == read }
+      found.add(0, read to said)
     }
     val path = found.firstOrNull()?.first.orEmpty()
     if (path.isEmpty()) refuse("failed-validation", detail, null, emptyList())

@@ -99,6 +99,10 @@ class __N__McpRaw {
   constructor(text: string) {
     this.text = text;
   }
+  /** The value the text writes, so that `JSON.stringify` keys a request on the id it was cancelled by. */
+  toJSON(): unknown {
+    return JSON.parse(this.text);
+  }
 }
 
 /**
@@ -280,21 +284,38 @@ function __p__McpParse(
   if (message === undefined) {
     return { ok: false, refused: __p__McpRefused(null, 400, -32600, "Invalid Request") };
   }
-  return { ok: true, message: __p__McpToolArguments(message, text) };
+  return { ok: true, message: __p__McpReread(message, text) };
 }
 
-/** `message`, where it is a `tools/call` request, with its arguments read from `text` again through the reader of a message, so that an integer member refuses a number written as a float. The envelope's own numbers stay as they were read. */
-function __p__McpToolArguments(message: Record<string, unknown>, text: string): Record<string, unknown> {
-  const params = __p__McpObject(message.params);
-  if (message.method !== "tools/call" || params === undefined || params.arguments === undefined) return message;
+/** `value` as serde_json writes a float: a whole number with `.0`, a zero below zero as `-0.0`, and an exponent where ryu writes one. */
+function __p__McpFloatText(value: number): string {
+  if (Object.is(value, -0)) return "-0.0";
+  const magnitude = Math.abs(value);
+  if (magnitude !== 0 && (magnitude < 1e-5 || magnitude >= 1e16)) return value.toExponential().replace("e+", "e");
+  return Number.isInteger(value) ? `${value}.0` : String(value);
+}
+
+/** `message`, with its `id` written as serde writes it where the request wrote a float, and, where it is a `tools/call` request, its arguments read from `text` again through the reader of a message, so that an integer member refuses a number written as a float. The envelope's own numbers stay as they were read. */
+function __p__McpReread(message: Record<string, unknown>, text: string): Record<string, unknown> {
   let again: unknown;
   try {
     again = __p__McpValueRead(text);
   } catch {
     return message;
   }
-  const reread = __p__McpObject(__p__McpObject(again)?.params);
-  return reread === undefined ? message : { ...message, params: { ...params, arguments: reread.arguments } };
+  const reread = __p__McpObject(again);
+  if (reread === undefined) return message;
+  const id = reread.id;
+  const floated =
+    id instanceof Number || (typeof id === "number" && !Number.isInteger(id))
+      ? { ...message, id: new __N__McpRaw(__p__McpFloatText(Number(id))) }
+      : message;
+  const params = __p__McpObject(floated.params);
+  const arguments_ = __p__McpObject(reread.params)?.arguments;
+  if (floated.method !== "tools/call" || params === undefined || params.arguments === undefined || arguments_ === undefined) {
+    return floated;
+  }
+  return { ...floated, params: { ...params, arguments: arguments_ } };
 }
 
 function __p__McpJoined(into: Record<string, unknown>, from: Record<string, unknown>): void {

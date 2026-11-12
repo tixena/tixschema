@@ -12,11 +12,13 @@ use super::carillon_service::{
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
 use crate::mcp_streams::through;
+use core::fmt::Display;
 use core::future::{Future, ready};
 use core::iter::repeat_n;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Mutex;
-use tixschema::service_schema;
+use tixschema::{model_schema, service_schema};
 
 /// The cases of [`CASES`] each `mcp` server is called with and each `mcp` client is answered: the
 /// message read whole, a value of the wrong kind, the three refusals `serde_json` classifies as
@@ -56,9 +58,89 @@ pub const TOLL_CASES: [&str; 4] = [
 /// The heaviest bell that tolls; a heavier one cracks.
 const CRACKS_ABOVE: u32 = 50;
 
+/// The request ids a server echoes, each written as the request writes it: a number serde reads as
+/// an integer, as a float by a fraction, an exponent or a zero below zero, and a text.
+pub const ID_CASES: [&str; 9] = [
+    "7",
+    "-5",
+    "-0",
+    "1e2",
+    "1E+2",
+    "1.0",
+    "0.5",
+    "-0.0",
+    r#""seven""#,
+];
+
+/// The cases of [`CASES`] beyond [`MCP_CASES`] whose field every `mcp` server names as the Rust
+/// dispatcher does: a value inside each shape of tagged enum, inside a flattened member and inside
+/// a struct with a tag of its own.
+const SHAPE_CASES: [&str; 17] = [
+    "a key beside an external variant",
+    "a key beside an adjacent variant",
+    "a key beside an internal variant",
+    "an internal variant without its tag",
+    "an adjacent variant without its content",
+    "a boolean for a number in a variant",
+    "a text for a number in a flattened member",
+    "a text for a number beside a flattened member",
+    "a text for a number in a tagged struct",
+    "a flattened member without its member",
+    "a weight above its bound in a flattened member",
+    "a key beside a flattened member",
+    "an external enum of no variant",
+    "an external enum of two variants",
+    "a number for an external enum",
+    "a list for an external enum",
+    "a null for an external enum",
+];
+
+/// The arguments of `chant` that every `mcp` server answers as the Rust dispatcher does: the verse
+/// read whole, and a refrain that matches no variant.
+const VERSE_CASES: [(&str, &str); 4] = [
+    ("a verse of words", r#"{"refrain":{"text":"a"}}"#),
+    ("a verse of beats", r#"{"refrain":{"beats":3}}"#),
+    ("a verse of no refrain", "{}"),
+    ("a number for a refrain", r#"{"refrain":5}"#),
+];
+
+/// The arguments of `chant` whose refrain holds a key, which the Rust dispatcher refuses at the
+/// refrain as serde names no variant it could have read: the Dart and Kotlin `mcp` servers name the
+/// same field.
+const KEYED_VERSE_CASES: [(&str, &str); 3] = [
+    ("a refrain of no key", r#"{"refrain":{}}"#),
+    (
+        "a text for the beats of a refrain",
+        r#"{"refrain":{"beats":"x"}}"#,
+    ),
+    (
+        "a key beside the words of a refrain",
+        r#"{"refrain":{"text":"a","stray":1}}"#,
+    ),
+];
+
+/// A verse of a carillon: the refrain it sings.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CarillonVerse {
+    pub refrain: CarillonRefrain,
+}
+
+/// A refrain sung as words or as a count of beats, which serde tells apart by the keys alone.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum CarillonRefrain {
+    Beats { beats: u32 },
+    Words { text: String },
+}
+
 /// Strikes the bells of a carillon over `mcp`.
 #[service_schema(transports = ["mcp"])]
 pub trait CarillonMcpService<Ctx> {
+    /// Chants the verse the arguments name, and answers it.
+    async fn chant(&self, ctx: &Ctx, req: CarillonVerse) -> Result<CarillonVerse, CarillonError>;
+
     /// Strikes the chime the arguments name, and answers it.
     async fn strike(&self, ctx: &Ctx, req: CarillonChime) -> Result<CarillonChime, CarillonError>;
 
@@ -77,13 +159,22 @@ pub trait CarillonMcpService<Ctx> {
     ) -> Result<(CarillonBell, u32), (CarillonError, u32)>;
 }
 
-/// Counts the strikes it is handed.
+/// Counts the strikes and chants it is handed.
 #[derive(Default)]
 pub struct McpCarillon {
     struck: Mutex<u32>,
 }
 
 impl CarillonMcpService<()> for McpCarillon {
+    fn chant(
+        &self,
+        _ctx: &(),
+        req: CarillonVerse,
+    ) -> impl Future<Output = Result<CarillonVerse, CarillonError>> {
+        *self.struck.lock().unwrap() += 1;
+        ready(Ok(req))
+    }
+
     fn strike(
         &self,
         _ctx: &(),
@@ -148,8 +239,39 @@ pub fn call(id: u32, arguments: &str) -> String {
     tool_call(id, "strike", arguments)
 }
 
+/// Every request a server is handed beside the Rust dispatcher, with its name: each case of
+/// [`MCP_CASES`] and [`SHAPE_CASES`] with the id `1`, each of [`VERSE_CASES`] to `chant`, and the
+/// message read whole with each id of [`ID_CASES`]; the Dart and Kotlin servers are also handed
+/// [`KEYED_VERSE_CASES`].
+pub fn server_cases(typescript: bool) -> Vec<(String, String)> {
+    let strikes = MCP_CASES.into_iter().chain(SHAPE_CASES).map(|name| {
+        let case = CASES.into_iter().find(|case| case.0 == name).unwrap();
+        (name.to_owned(), call(1, &payload(case)))
+    });
+    let keyed: &[(&str, &str)] = if typescript { &[] } else { &KEYED_VERSE_CASES };
+    let verses = VERSE_CASES
+        .into_iter()
+        .chain(keyed.iter().copied())
+        .map(|(name, arguments)| (name.to_owned(), tool_call(1_u32, "chant", arguments)));
+    let ids = ID_CASES
+        .into_iter()
+        .map(|id| (format!("the id {id}"), tool_call(id, "strike", STRUCK)));
+    strikes.chain(verses).chain(ids).collect()
+}
+
+/// The text a JSON-RPC answer writes for its `id`, `None` where it writes none.
+pub fn written_id(answer: &str) -> Option<&str> {
+    let at = answer.find(r#""id":"#)? + r#""id":"#.len();
+    let rest = &answer[at..];
+    let end = match rest.strip_prefix('"') {
+        Some(quoted) => quoted.find('"')? + 2,
+        None => rest.find([',', '}'])?,
+    };
+    Some(&rest[..end])
+}
+
 /// The `tools/call` request `id` that carries `arguments` to `tool`, written as text.
-fn tool_call(id: u32, tool: &str, arguments: &str) -> String {
+fn tool_call(id: impl Display, tool: &str, arguments: &str) -> String {
     format!(
         r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"{tool}","arguments":{arguments},"_meta":{{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{{}}}}}}}}"#
     )
@@ -250,7 +372,7 @@ pub fn toll_replies() -> Vec<String> {
             let cracked = name.starts_with("a crack");
             let weight = if cracked { CRACKS_ABOVE + 1 } else { 3 };
             let (answer, _) = over_mcp(&tool_call(
-                1,
+                1_u32,
                 "toll",
                 &json!({ "weight": weight }).to_string(),
             ));
@@ -487,4 +609,21 @@ fn the_rust_dispatcher_listens_alike_through_every_entry_point() {
     );
     assert_eq!(alone, served);
     assert!(alone.is_some());
+}
+
+#[test]
+fn the_rust_client_reads_the_verse_the_rust_dispatcher_chants() {
+    let (answer, struck) = over_mcp(&tool_call(1_u32, "chant", r#"{"refrain":{"beats":3}}"#));
+    let client = CarillonMcpServiceClient::new(Canned {
+        answer: answer.unwrap(),
+        sent: Mutex::new(Vec::new()),
+    });
+    let verse = CarillonVerse {
+        refrain: CarillonRefrain::Beats { beats: 3 },
+    };
+    assert_eq!(
+        poll_once(client.chant(verse.clone())).unwrap().unwrap(),
+        verse
+    );
+    assert_eq!(struck, 1);
 }
