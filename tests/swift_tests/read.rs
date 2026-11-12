@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use crate::swift_key_number::integer_key_bound;
+use crate::swift_plain_enum::{plain_enum_read, plain_enum_reads};
 use crate::tests::{
     FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
     by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
@@ -353,13 +354,8 @@ fn every_emitted_type_has_both_reads() {
         let declared = swift.matches("public struct ").count()
             + swift.matches("public enum ").count()
             - swift.matches("KeyedMap: Codable").count();
-        let plain = swift.matches(": String, Codable, Sendable").count();
         assert_eq!(swift.matches(UNJUDGED).count(), declared, "got: {swift}");
-        assert_eq!(
-            swift.matches(JUDGED).count(),
-            declared - plain,
-            "got: {swift}"
-        );
+        assert_eq!(swift.matches(JUDGED).count(), declared, "got: {swift}");
     }
 }
 
@@ -750,8 +746,8 @@ fn an_enum_with_no_tag_attribute_reads_an_object_of_one_key() {
         &carried_swift::swift_definition(),
         &[concat!(
             "if let single = try? decoder.singleValueContainer(), let tag = try? ",
-            r#"single.decode(String.self) { switch tag { case "Unladen": self = .unladen; return; "#,
-            " default: break } }; guard let container = try? decoder.container(keyedBy: ",
+            r#"single.decode(String.self) { switch tag { case "Boxed": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: "invalid type: unit variant, expected newtype variant")); case "Listed": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: "invalid type: unit variant, expected newtype variant")); case "Loose": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: "invalid type: unit variant, expected struct variant")); case "Split": throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [SwiftSchemaExternalCodingKey(stringValue: tag)!], debugDescription: "invalid type: unit variant, expected tuple variant")); "#,
+            r#"case "Unladen": self = .unladen; return;  default: break } }; guard let container = try? decoder.container(keyedBy: "#,
             "SwiftSchemaExternalCodingKey.self), container.allKeys.count == 1, let key = ",
             "container.allKeys.first else { if (try? decoder.singleValueContainer().decode(",
             "String.self)) != nil { _ = try decoder.container(keyedBy: ",
@@ -851,25 +847,11 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
 /// A plain enum that names no check keeps the read Swift synthesizes, and its unjudged
 /// initializer is that read. One that names a check reads its raw value, then judges it.
 #[test]
-fn a_plain_enum_keeps_its_read_and_one_with_a_check_judges() {
+fn a_plain_enum_reads_a_string_or_an_object_of_one_key_and_one_with_a_check_judges() {
     let plain = status_swift::swift_definition();
-    holds(
-        &plain,
-        &[&format!("{UNJUDGED} {{ try self.init(from: decoder) }}; ")],
-    );
-    assert!(!plain.contains("init(from decoder:"), "got: {plain}");
+    holds(&plain, &[&plain_enum_reads("Status")]);
     let checked = rating_swift::swift_definition();
-    let written = format!(
-        "{UNJUDGED} {}; {JUDGED}; ",
-        concat!(
-            "{ let container = try decoder.singleValueContainer(); ",
-            "let raw = try container.decode(String.self); ",
-            "guard let read = Rating(rawValue: raw) else { ",
-            "throw DecodingError.dataCorruptedError(in: container, ",
-            r#"debugDescription: "Cannot initialize Rating from invalid String value \(raw)") }; "#,
-            "self = read }",
-        ),
-    );
+    let written = format!("{UNJUDGED} {{ {} }}; {JUDGED}; ", plain_enum_read("Rating"));
     assert!(checked.contains(&written), "{written} is not in: {checked}");
 }
 

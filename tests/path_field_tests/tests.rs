@@ -293,7 +293,7 @@ fn test_the_zod_bound_on_a_path_is_the_bound_validate_enforces() {
     }
 
     let schema = RenderedBound::zod_schema();
-    assert!(schema.contains("owned: z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })"), "got: {schema}");
+    assert!(schema.contains("owned: z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })"), "got: {schema}");
     assert_eq!(
         serde_json::from_str::<RenderedBound>(r#"{"owned":"/a"}"#)
             .unwrap_err()
@@ -312,7 +312,7 @@ fn test_a_path_that_is_not_utf8_is_measured_by_its_lossy_rendering() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug)]
     struct LossilyMeasured {
-        #[model_schema_prop(minLength = 3)]
+        #[model_schema_prop(maxLength = 1)]
         owned: PathBuf,
     }
 
@@ -321,7 +321,7 @@ fn test_a_path_that_is_not_utf8_is_measured_by_its_lossy_rendering() {
     };
     assert!(
         instance.validate().is_ok(),
-        "one invalid byte renders as the three-byte replacement character: {:?}",
+        "one invalid byte renders as the one replacement character: {:?}",
         instance.validate().err()
     );
     assert!(

@@ -13,7 +13,9 @@ use super::{
     tuple_wrapper_serializer, tuple_wrapper_typename,
 };
 use crate::features::text_forms::TextForm;
-use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
+use crate::field_type::{
+    BUFFERED_WORDS, EXPECTED_VALUE, FieldDef, FieldDefType, is_sequence_wrapper,
+};
 use crate::utils::is_nonstrict;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
@@ -54,17 +56,6 @@ pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: Serialization
      <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): \
      KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw \
      kotlinSchemaRebased(refused, \"\\$\" + step) }; ";
-
-/// What a serializer reads a flattened member through. serde reads such a member from the keys its
-/// holder buffers and places a refusal inside it at the holder, so the refusal states the root as
-/// its path, which the holder's `kotlinSchemaAt` rebases, drops the place it states, and keeps the
-/// key it names as unknown or missing.
-const FLATTENED: &str = "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
-     KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) \
-     { if (refused.cause?.message == \"validate()\") throw refused; throw \
-     SerializationException(refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token \
-     at offset \\\\d+: \"), \"\").replaceFirst(Regex(\"^'[^']*': \"), \"\").replace(Regex(\" at \
-     path: \\\\$[^\\\\n]*\"), \" at path: \\\\$\"), refused) }; ";
 
 /// What a serializer reads a part of the element it took apart with: from its text, where
 /// kotlinx states the path of a value it refuses, rebased onto `step`.
@@ -679,20 +670,66 @@ pub fn helpers_for(declarations: &str) -> String {
         || declarations.contains("kotlinSchemaAt<")
         || declarations.contains("kotlinSchemaUnder(");
     let flattened = declarations.contains("kotlinSchemaFlattened {");
+    let buffered = declarations.contains("kotlinSchemaBuffered {");
     format!(
-        "{}{}{}{}{}",
+        "{}{}{}{}{}{}",
         if decoded { DECODED } else { "" },
         if flat { FLATTENED_NAME } else { "" },
         if pathed { PATHED } else { "" },
         if inner { INNER } else { "" },
-        if flattened { FLATTENED } else { "" }
+        if flattened {
+            flattened_function()
+        } else {
+            String::new()
+        },
+        if buffered {
+            buffered_function()
+        } else {
+            String::new()
+        }
     )
 }
 
-/// `read`, the read of a flattened member, through [`FLATTENED`]: a refusal inside the member
+/// What a serializer reads a flattened member through. serde reads such a member from the keys its
+/// holder buffers and places a refusal inside it at the holder, so the refusal states the root as
+/// its path, which the holder's `kotlinSchemaAt` rebases, drops the place it states, and keeps the
+/// key it names as unknown or missing. A value serde refuses as text that is not the document is
+/// refused there in serde's words for a value of the wrong kind.
+fn flattened_function() -> String {
+    format!(
+        "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
+         KotlinSchemaRead): KotlinSchemaRead = try {{ read() }} catch (refused: \
+         SerializationException) {{ if (refused.cause?.message == \"validate()\") throw refused; \
+         throw SerializationException(refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected \
+         JSON token at offset \\\\d+: \"), \"\").replaceFirst(Regex(\"^'[^']*': \"), \"\").replace(Regex(\" \
+         at path: \\\\$[^\\\\n]*\"), \" at path: \\\\$\").let {{ said -> if (said.substringBefore(\" at \
+         path: \") == \"{EXPECTED_VALUE}\") \"{BUFFERED_WORDS} at path: \\$\" else said }}, \
+         refused) }}; "
+    )
+}
+
+/// What a serializer reads the members of an internally tagged variant through. serde reads them
+/// from the content its holder buffers, where a value it refuses as text that is not the document
+/// is a value of the wrong kind at the holder.
+fn buffered_function() -> String {
+    format!(
+        "private inline fun <KotlinSchemaRead> kotlinSchemaBuffered(read: () -> \
+         KotlinSchemaRead): KotlinSchemaRead = try {{ read() }} catch (refused: \
+         SerializationException) {{ if (refused.message?.substringBefore(\" at path: \") != \
+         \"{EXPECTED_VALUE}\") throw refused; throw \
+         SerializationException(\"{BUFFERED_WORDS} at path: \\$\", refused) }}; "
+    )
+}
+
+/// `read`, the read of a flattened member, through [`flattened_function`]: a refusal inside the member
 /// names its holder, as serde names it.
 pub fn flattened(read: &str) -> String {
     format!("kotlinSchemaFlattened {{ {read} }}")
+}
+
+/// `read`, the read of the members of an internally tagged variant, through [`buffered_function`].
+pub fn buffered(read: &str) -> String {
+    format!("kotlinSchemaBuffered {{ {read} }}")
 }
 
 /// `declarations`, the members of a serializer, behind the private functions its reads name.

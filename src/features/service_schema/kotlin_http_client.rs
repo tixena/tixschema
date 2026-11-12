@@ -1462,6 +1462,7 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
                 WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => {
                     format!("({raw}).toLong()")
                 }
+                WireScalarKind::UnsignedSize => format!("({raw}).toULong()"),
                 WireScalarKind::Float => format!("({raw}).toDouble()"),
             };
             format!(

@@ -120,7 +120,7 @@ mod bounded_at_the_field {
     #[test]
     fn the_zod_schema_checks_the_brand_at_the_field() {
         let zod = BoundHolder::zod_schema();
-        let short = "{ error: (issue) => `too short: minimum length is 2, got ${Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}` }";
+        let short = "{ error: (issue) => `too short: minimum length is 2, got ${Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length}` }";
         for written in [
             format!("  bare: BoundAbove$Schema.check(z.minLength(2, {short})),\n"),
             format!("  get dir() {{ return BoundDir$Schema.check(z.minLength(2, {short})); }},\n"),
@@ -130,7 +130,7 @@ mod bounded_at_the_field {
                 .to_owned(),
             format!(
                 "BoundBelow$Schema.check(z.minLength(2, {short}), z.maxLength(4, {{ error: (issue) \
-                 => `too long: maximum length is 4, got ${{Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}}` }}), \
+                 => `too long: maximum length is 4, got ${{Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length}}` }}), \
                  z.regex(/^[a-z]+$/, {{ error: \"does not match pattern '^[a-z]+$'\" }}))"
             ),
             format!("  titled: BoundTitleType$Schema.check(z.minLength(2, {short})),\n"),

@@ -18,10 +18,10 @@ use serde_json::{Value, json};
 use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
-    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_error_dart,
-    carillon_frame_dart, carillon_gauge_dart, carillon_outer_tone_dart, carillon_peal_dart,
-    carillon_pitch_dart, carillon_slim_dart, carillon_swing_dart, carillon_tone_dart,
-    carillon_turn_dart, carillon_yoke_dart,
+    carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_chord_dart,
+    carillon_error_dart, carillon_frame_dart, carillon_gauge_dart, carillon_outer_tone_dart,
+    carillon_peal_dart, carillon_pitch_dart, carillon_slim_dart, carillon_swing_dart,
+    carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -637,6 +637,7 @@ fn dart_source() -> String {
         "import 'dart:async';".to_owned(),
         "import 'dart:convert';".to_owned(),
         carillon_bell_dart::dart_definition(),
+        carillon_chord_dart::dart_definition(),
         carillon_peal_dart::dart_definition(),
         carillon_gauge_dart::dart_definition(),
         carillon_pitch_dart::dart_definition(),
@@ -701,7 +702,7 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
+        carillon_chord_kotlin, carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
         carillon_outer_tone_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
         carillon_slim_kotlin, carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin,
         carillon_yoke_kotlin,
@@ -723,6 +724,7 @@ fn kotlin_source() -> String {
          import kotlinx.serialization.builtins.*"
             .to_owned(),
         carillon_bell_kotlin::kotlin_definition(),
+        carillon_chord_kotlin::kotlin_definition(),
         carillon_peal_kotlin::kotlin_definition(),
         carillon_gauge_kotlin::kotlin_definition(),
         carillon_pitch_kotlin::kotlin_definition(),
@@ -795,7 +797,7 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
+        carillon_chord_swift, carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
         carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift, carillon_slim_swift,
         carillon_swing_swift, carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
     };
@@ -804,6 +806,7 @@ fn swift_source() -> String {
     [
         "import Foundation".to_owned(),
         carillon_bell_swift::swift_definition(),
+        carillon_chord_swift::swift_definition(),
         carillon_peal_swift::swift_definition(),
         carillon_gauge_swift::swift_definition(),
         carillon_pitch_swift::swift_definition(),
@@ -861,14 +864,16 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 /// The TypeScript module the attachment and the client run in.
 fn node_bundle() -> String {
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonError, CarillonFrame, CarillonGauge,
-        CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSlim,
-        CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonError, CarillonFrame,
+        CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonServiceSchema,
+        CarillonSlim, CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         CarillonBell::ts_definition(),
         CarillonBell::zod_schema(),
+        CarillonChord::ts_definition(),
+        CarillonChord::zod_schema(),
         CarillonPeal::ts_definition(),
         CarillonPeal::zod_schema(),
         CarillonGauge::ts_definition(),

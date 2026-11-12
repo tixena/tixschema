@@ -32,6 +32,12 @@ mod swift_fitted;
 #[path = "support/swift_key_number.rs"]
 mod swift_key_number;
 
+/// What the emitter writes into the read of a plain enum.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_plain_enum.rs"]
+mod swift_plain_enum;
+
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/validate.rs"]
@@ -251,3 +257,15 @@ mod unwired_models;
 #[cfg(all(feature = "swift", feature = "serde"))]
 #[path = "swift_tests/unwired.rs"]
 mod unwired;
+
+/// A `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "kotlin_tests/usize_positions_models.rs"]
+mod usize_positions_models;
+
+/// What the Swift emitter writes for a `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/usize_positions.rs"]
+mod usize_positions;

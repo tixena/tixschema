@@ -52,14 +52,15 @@ async function call(made) {
 /// What the TypeScript client sends of `row` at a text position: its column, which states what it
 /// sends of a model that holds the value, but for a `DateTime<Tz>` the column refuses where the
 /// model's key refuses it. At a text position the value alone is read, as the JavaScript `Date`
-/// the Zod schema coerces it to, and written as `toISOString` writes it: a text of no zone read in
-/// the run's own zone, `UTC`, and an `i64` as the `bigint` the client holds.
+/// the Zod schema coerces it to, and written as chrono writes it, `toISOString` less the `.000` of
+/// whole seconds: a text of no zone read in the run's own zone, `UTC`, and an `i64` as the `bigint`
+/// the client holds.
 fn typescript_at_a_text_position(row: &WireFormRow) -> Sends {
     match (row.held_by, row.handed) {
         ("ConveyedInstant", r#""2026-10-22T13:07:11.032917""#) => {
             Sends::As(r#""2026-10-22T13:07:11.032Z""#)
         }
-        ("ConveyedInstant", r#""2024-01-05T10:20Z""#) => Sends::As(r#""2024-01-05T10:20:00.000Z""#),
+        ("ConveyedInstant", r#""2024-01-05T10:20Z""#) => Sends::As(r#""2024-01-05T10:20:00Z""#),
         _ => row.typescript,
     }
 }

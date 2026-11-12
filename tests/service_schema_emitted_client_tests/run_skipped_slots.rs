@@ -253,7 +253,7 @@ fn the_swift_text_declares_no_slot_serde_drops() {
     ] {
         assert!(bowsed.contains(held), "no `{held}` in: {bowsed}");
     }
-    for dropped in ["UInt64", ": Value"] {
+    for dropped in [": UInt64", ": Value"] {
         assert!(
             !bowsed.contains(dropped),
             "a dropped slot is declared as `{dropped}`: {bowsed}"

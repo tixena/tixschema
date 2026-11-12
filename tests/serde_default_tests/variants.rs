@@ -380,7 +380,7 @@ fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
     let docked = "dock: z.string().prefault(\"\")";
     let moored = "dock: z.string().prefault(\"north\")";
     let line = "line: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
-                ${String(issue.input).length}` }).prefault(\"\")";
+                ${[...String(issue.input)].length}` }).prefault(\"\")";
     for schema in [
         Berthing::zod_schema(),
         ExternalBerthing::zod_schema(),
@@ -669,5 +669,33 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          { val read = TideUnjudged.deserialize(decoder); val violations = read.validate(); if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
          IllegalArgumentException(\"validate()\")); return read } }"
+    );
+}
+
+/// A bound on a member of the inner untagged enum takes its variant out of the candidate set, so
+/// the later variant reads a payload only it names, a stray key the later variant does not name is
+/// refused, and a payload the bound accepts is read as the inner variant.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another() {
+    let read = |payload: &str| {
+        serde_json::from_str::<Anchorage>(payload).map_err(|error| error.to_string())
+    };
+    assert_eq!(
+        read(r#"{"harbour":"h"}"#),
+        Ok(Anchorage::Named {
+            harbour: "h".to_owned()
+        })
+    );
+    assert_eq!(
+        read(r#"{"harbour":"h","line":""}"#),
+        Err("data did not match any variant of untagged enum Anchorage".to_owned())
+    );
+    assert_eq!(
+        read(r#"{"line":"x"}"#),
+        Ok(Anchorage::Held(UntaggedBerthing::Moored {
+            dock: north_dock(),
+            line: "x".to_owned(),
+        }))
     );
 }
