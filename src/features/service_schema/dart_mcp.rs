@@ -1947,6 +1947,7 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          return _{prefix}McpFault({named}FaultKind.failedValidation, operation, lines.join('; '), field: path, issues: issues);\n\
          }}\n\n\
          {walk}",
+        keys = not_a_document_keys(),
         walk = mismatch_walk(prefix),
     )
 }
@@ -2026,7 +2027,6 @@ fn mismatch_walk(prefix: &str) -> String {
          if (value is! bool) refuse(at, 'invalid type, expected a boolean');\n  \
          }}\n\
          }}",
-        keys = not_a_document_keys(),
     )
 }
 
