@@ -118,6 +118,11 @@ mod run_dart_ws_headers;
 #[path = "service_schema_emitted_client_tests/run_dart_validate.rs"]
 mod run_dart_validate;
 
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_sealed_brands.rs"]
+mod run_dart_sealed_brands;
+
 /// The read of each emitted Dart type, which refuses what its `validate()` refuses.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_read.rs"]

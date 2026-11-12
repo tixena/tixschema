@@ -99,7 +99,7 @@ void main() async {
     limit: 10,
   ));
   await client.window(WindowRequest(conversation_id: '652f1a3b4c5d6e7f8a9b0c1d'));
-  await client.purgeConversation(ConversationId('652f1a3b4c5d6e7f8a9b0c1d'));
+  await client.purgeConversation(ConversationId.of('652f1a3b4c5d6e7f8a9b0c1d'));
   final ok = outcome is ConversationClientServiceWindowResultOk;
   print(jsonEncode(<String, dynamic>{
     'sent': recorder.sent,
@@ -297,7 +297,7 @@ class _MediaRecorder implements MediaClientServiceHttpTransport {
 }
 
 void main() async {
-  final upload = MediaUpload(sha256: MediaId('abc123'), caption: 'c');
+  final upload = MediaUpload(sha256: MediaId.of('abc123'), caption: 'c');
   final recorder = _MediaRecorder(<(String, String)>[('x-media-id', 'abc123')]);
   final client = MediaClientServiceHttpClient(recorder);
   await client.upload(upload);

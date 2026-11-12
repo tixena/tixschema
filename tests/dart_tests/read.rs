@@ -112,6 +112,15 @@ fn pair(named: &str, parameters: &str, arguments: &str) -> String {
     )
 }
 
+/// The pair of a brand, which has the factory `of` besides.
+fn sealed_pair(named: &str, parameters: &str, arguments: &str) -> String {
+    format!(
+        "factory {named}.fromJson({parameters}) {{ final read = \
+         {named}.fromJsonUnjudged({arguments}); {JUDGED} factory \
+         {named}.fromJsonUnjudged({parameters}) "
+    )
+}
+
 /// Asserts that `definition` holds `fragment`.
 fn assert_written(definition: &str, fragment: &str) {
     assert!(
@@ -274,15 +283,15 @@ fn a_wrapper_reads_unjudged_what_its_validate_runs() {
     assert_written(
         &code_dart::dart_definition(),
         &format!(
-            "{}=> Code(json as String); dynamic toJson() => value;",
-            pair("Code", "dynamic json", "json")
+            "{}=> Code._(json as String); dynamic toJson() => value;",
+            sealed_pair("Code", "dynamic json", "json")
         ),
     );
     assert_written(
         &wrapped_dart::dart_definition(),
         &format!(
-            "{}=> Wrapped(Item.fromJson(json));",
-            pair("Wrapped", "dynamic json", "json")
+            "{}=> Wrapped._(Item.fromJson(json));",
+            sealed_pair("Wrapped", "dynamic json", "json")
         ),
     );
     assert_written(
