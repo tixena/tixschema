@@ -798,7 +798,7 @@ fn test_branded_newtype() {
     assert!(
         kotlin.contains(
             "@JvmInline @Serializable(with = CorrelationIdSerializer::class) \
-             @KeepGeneratedSerializer value class CorrelationId(val value: String)"
+             @KeepGeneratedSerializer value class CorrelationId private constructor(val value: String)"
         ),
         "got: {kotlin}"
     );

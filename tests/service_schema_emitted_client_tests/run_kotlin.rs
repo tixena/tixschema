@@ -135,7 +135,7 @@ class MediaRecorder(private val statHeaders: List<Pair<String, String>>) : Media
 }
 
 fun main() = runBlocking {
-    val upload = MediaUpload(caption = "c", sha256 = MediaId("abc123"))
+    val upload = MediaUpload(caption = "c", sha256 = MediaId.of("abc123"))
     val recorder = MediaRecorder(listOf("x-media-id" to "abc123"))
     val client = MediaClientServiceHttpClient(recorder)
     client.upload(upload)
@@ -166,7 +166,7 @@ fun main() = runBlocking {
     val client = ConversationClientServiceHttpClient(transport)
     client.window(WindowRequest(conversationId = "652f1a3b4c5d6e7f8a9b0c1d", limit = 10u))
     client.window(WindowRequest(conversationId = "652f1a3b4c5d6e7f8a9b0c1d", limit = null))
-    client.purgeConversation(ConversationId("652f1a3b4c5d6e7f8a9b0c1d"))
+    client.purgeConversation(ConversationId.of("652f1a3b4c5d6e7f8a9b0c1d"))
     val report = buildJsonArray {
         for (request in transport.sent) {
             add(buildJsonObject {
@@ -411,7 +411,7 @@ fun main() = runBlocking {
 
     val oneWayReply = clientTransport.request(
         "purge-conversation",
-        Json.encodeToJsonElement(serializer<ConversationId>(), ConversationId("xyz")),
+        Json.encodeToJsonElement(serializer<ConversationId>(), ConversationId.of("xyz")),
     )
     val oneWayOk = oneWayReply != null &&
         (oneWayReply["ok"] as? JsonPrimitive)?.booleanOrNull == true &&

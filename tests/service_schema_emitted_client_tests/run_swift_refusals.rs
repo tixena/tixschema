@@ -35,11 +35,11 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 const HELPERS: &str = r#"
 func asGiven(_ payload: Any) -> Any { payload }
 
-protocol ReadUnjudged {
+fileprivate protocol ReadUnjudged {
   init(swiftSchemaUnjudged decoder: Decoder) throws
 }
 
-struct Unjudged<Held: ReadUnjudged>: Decodable {
+fileprivate struct Unjudged<Held: ReadUnjudged>: Decodable {
   let held: Held
   init(from decoder: Decoder) throws { held = try Held(swiftSchemaUnjudged: decoder) }
 }
@@ -64,7 +64,7 @@ func told<Read: Encodable>(_ at: String, _ read: () throws -> Read) {
   }
 }
 
-func both<Read: Codable & ReadUnjudged>(_ at: Int, _ type: Read.Type, _ payload: String) {
+fileprivate func both<Read: Codable & ReadUnjudged>(_ at: Int, _ type: Read.Type, _ payload: String) {
   told("\(at)", { try JSONDecoder().decode(type, from: Data(payload.utf8)) })
   told("\(at), unjudged", {
     try JSONDecoder().decode(Unjudged<Read>.self, from: Data(payload.utf8)).held

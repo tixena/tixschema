@@ -113,16 +113,16 @@ func chosen<Read: Decodable>(_ name: String, _ type: Read.Type, _ payload: Strin
 
 /// What a run reads a payload with through the unjudged initializer of the type it names.
 const UNJUDGED: &str = r#"
-protocol ReadUnjudged {
+fileprivate protocol ReadUnjudged {
   init(swiftSchemaUnjudged decoder: Decoder) throws
 }
 
-struct Unjudged<Held: ReadUnjudged>: Decodable {
+fileprivate struct Unjudged<Held: ReadUnjudged>: Decodable {
   let held: Held
   init(from decoder: Decoder) throws { held = try Held(swiftSchemaUnjudged: decoder) }
 }
 
-func built<Read: ReadUnjudged & Encodable>(_ name: String, _ type: Read.Type, _ payload: String, _ judge: (Read) -> [String]) {
+fileprivate func built<Read: ReadUnjudged & Encodable>(_ name: String, _ type: Read.Type, _ payload: String, _ judge: (Read) -> [String]) {
   let held = try! JSONDecoder().decode(Unjudged<Read>.self, from: Data(payload.utf8)).held
   print("\(name), unjudged: built \(written(held))")
   for violation in judge(held) { print("    \(violation)") }

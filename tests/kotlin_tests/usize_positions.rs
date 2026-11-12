@@ -47,7 +47,7 @@ fn a_usize_is_a_ulong_in_each_place_a_member_holds_one() {
     );
     let brand = slot_index_kotlin::kotlin_definition();
     assert!(
-        unannotated(&brand).contains("value class SlotIndex(val value: ULong)"),
+        unannotated(&brand).contains("value class SlotIndex private constructor(val value: ULong)"),
         "got: {brand}"
     );
     // The serializers are declared once each, by the first type of the crate that reads one.

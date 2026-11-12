@@ -88,16 +88,16 @@ func report(_ name: String, _ violations: [String]) {
   }
 }
 
-protocol ReadUnjudged {
+fileprivate protocol ReadUnjudged {
   init(swiftSchemaUnjudged decoder: Decoder) throws
 }
 
-struct Unjudged<Held: ReadUnjudged>: Decodable {
+fileprivate struct Unjudged<Held: ReadUnjudged>: Decodable {
   let held: Held
   init(from decoder: Decoder) throws { held = try Held(swiftSchemaUnjudged: decoder) }
 }
 
-func read<Read: ReadUnjudged>(_ type: Read.Type, _ payload: String) -> Read {
+fileprivate func read<Read: ReadUnjudged>(_ type: Read.Type, _ payload: String) -> Read {
   try! JSONDecoder().decode(Unjudged<Read>.self, from: Data(payload.utf8)).held
 }
 "#;

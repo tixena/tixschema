@@ -32,6 +32,17 @@ fun report(name: String, violations: List<String>) {
 }
 "#;
 
+/// The messages `of` throws for a value that breaks a rule, none for one that keeps them.
+const REFUSED_BY: &str = r#"
+fun refusedBy(build: () -> Any?): List<String> =
+    try {
+        build()
+        emptyList()
+    } catch (refused: SerializationException) {
+        refused.message.orEmpty().split("; ")
+    }
+"#;
+
 /// What the read of a payload prints: `passes`, or `refused` and each message the read throws.
 const READ: &str = r#"
 inline fun <reified T> read(name: String, payload: String) {
@@ -79,7 +90,7 @@ func report(_ name: String, _ violations: [String]) {
 /// default's class that holds a text is judged whatever its argument says.
 const ERASED: [(&str, &str, &[&str]); 1] = [(
     "a filling of the class that holds a text",
-    "Wrapped<Tag<CharSequence>>(Tag<CharSequence>(\"ab\")).validate()",
+    "refusedBy { Wrapped.of<Tag<CharSequence>>(Tag.of<CharSequence>(\"ab\")) }",
     &["too short: minimum length is 3, got 2"],
 )];
 
@@ -223,42 +234,42 @@ fn rows() -> Vec<Row> {
     vec![
         Row {
             dart: "Wrapped<Tag<String>>(Tag<String>('ab')).validate()",
-            kotlin: "Wrapped<Tag<String>>(Tag(\"ab\")).validate()",
+            kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"ab\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"ab\")).validate()",
             name: "the default, below the bound",
             rust: Wrapped::new(Tag::new("ab".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<String>>(Tag<String>('abcdef')).validate()",
-            kotlin: "Wrapped<Tag<String>>(Tag(\"abcdef\")).validate()",
+            kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"abcdef\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abcdef\")).validate()",
             name: "the default, past the bound",
             rust: Wrapped::new(Tag::new("abcdef".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<String>>(Tag<String>('abc')).validate()",
-            kotlin: "Wrapped<Tag<String>>(Tag(\"abc\")).validate()",
+            kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"abc\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abc\")).validate()",
             name: "the default, within the bound",
             rust: Wrapped::new(Tag::new("abc".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<int>>(Tag<int>(1)).validate()",
-            kotlin: "Wrapped<Tag<UInt>>(Tag(1u)).validate()",
+            kotlin: "refusedBy { Wrapped.of<Tag<UInt>>(Tag.of(1u)) }",
             swift: "Wrapped<Tag<UInt32>>(value: Tag<UInt32>(value: 1)).validate()",
             name: "another filling of the class",
             rust: Wrapped::new(Tag::new(1_u32).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<String>('a').validate()",
-            kotlin: "Wrapped<String>(\"a\").validate()",
+            kotlin: "refusedBy { Wrapped.of<String>(\"a\") }",
             swift: "Wrapped<String>(value: \"a\").validate()",
             name: "another type",
             rust: Wrapped::new("a".to_owned()).map(|_| ()),
         },
         Row {
             dart: "Plain<String>('ab').validate()",
-            kotlin: "Plain<String>(\"ab\").validate()",
+            kotlin: "refusedBy { Plain.of<String>(\"ab\") }",
             swift: "Plain<String>(value: \"ab\").validate()",
             name: "a default written with no argument",
             rust: Plain::new("ab".to_owned()).map(|_| ()),
@@ -274,7 +285,7 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
-            kotlin: "Shelf<Berth>(mapOf(Berth(\"b1\") to Item(\"\"))).validate()",
+            kotlin: "Shelf<Berth>(mapOf(Berth.of(\"b1\") to Item(\"\"))).validate()",
             swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
             name: "a map keyed by a brand",
             rust: ShelfDraft {
@@ -362,6 +373,7 @@ fn kotlin_answers_a_generic_brands_bound_and_a_maps_key_as_rust_does() {
         item_kotlin::kotlin_definition(),
         shelf_kotlin::kotlin_definition(),
         REPORT.to_owned(),
+        REFUSED_BY.to_owned(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -393,7 +405,7 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
         REPORT.to_owned(),
         READ.to_owned(),
         "fun main() {\n    read<Shelf<Tag<String>>>(\"read\", \"\"\"{\"by_slot\":{\"t\":{\"label\":\"\"}}}\"\"\")\n    \
-         report(\"hand built\", Shelf<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate())\n}\n"
+         report(\"hand built\", Shelf<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate())\n}\n"
             .to_owned(),
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -485,22 +497,22 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_
     let built = [
         (
             "hand built tagged variant",
-            "DepotStocked<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate()",
+            "DepotStocked<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate()",
             reads[0].3.clone(),
         ),
         (
             "hand built untagged variant",
-            "PalletLoaded<Tag<String>>(mapOf(Tag(\"t\") to Item(\"\"))).validate()",
+            "PalletLoaded<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate()",
             reads[1].3.clone(),
         ),
         (
             "hand built generic holder",
-            "Annex<Tag<String>>(Shelf(mapOf(Tag(\"t\") to Item(\"\")))).validate()",
+            "Annex<Tag<String>>(Shelf(mapOf(Tag.of(\"t\") to Item(\"\")))).validate()",
             reads[3].3.clone(),
         ),
         (
             "hand built brand of the holder's parameter",
-            "Armoire<String>(Shelf(mapOf(Tag(\"t\") to Item(\"\")))).validate()",
+            "Armoire<String>(Shelf(mapOf(Tag.of(\"t\") to Item(\"\")))).validate()",
             reads[4].3.clone(),
         ),
     ];

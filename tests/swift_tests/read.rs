@@ -354,7 +354,11 @@ fn every_emitted_type_has_both_reads() {
         let declared = swift.matches("public struct ").count()
             + swift.matches("public enum ").count()
             - swift.matches("KeyedMap: Codable").count();
-        assert_eq!(swift.matches(UNJUDGED).count(), declared, "got: {swift}");
+        let reads = swift.matches(UNJUDGED).count()
+            + swift
+                .matches(&UNJUDGED.replacen("public", "fileprivate", 1))
+                .count();
+        assert_eq!(reads, declared, "got: {swift}");
         assert_eq!(swift.matches(JUDGED).count(), declared, "got: {swift}");
     }
 }
@@ -593,8 +597,9 @@ fn a_value_behind_a_type_parameter_is_read_through_decodable_and_fitted() {
 fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let swift = slug_swift::swift_definition();
     let unjudged = format!(
-        "{UNJUDGED} {{ let container = try decoder.singleValueContainer(); \
-         self.value = try container.decode(String.self) }}; {JUDGED}; "
+        "{} {{ let container = try decoder.singleValueContainer(); \
+         self.value = try container.decode(String.self) }}; {JUDGED}; ",
+        UNJUDGED.replacen("public", "fileprivate", 1)
     );
     assert!(swift.contains(&unjudged), "{unjudged} is not in: {swift}");
     holds(

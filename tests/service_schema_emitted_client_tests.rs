@@ -309,6 +309,12 @@ mod run_swift_generic_dates;
 #[path = "service_schema_emitted_client_tests/run_swift_brand_reads.rs"]
 mod run_swift_brand_reads;
 
+/// A Swift brand is built through `init(validating:)` alone, and a second file of the module reaches
+/// neither its `init(value:)` nor its unjudged read.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_sealed_brands.rs"]
+mod run_swift_sealed_brands;
+
 /// The models a map under a key Swift holds as its text is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys_models.rs"]
@@ -809,6 +815,10 @@ mod run_kotlin_wrong_kinds;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_generic_bounds.rs"]
 mod run_kotlin_generic_bounds;
+
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_sealed_brands.rs"]
+mod run_kotlin_sealed_brands;
 
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its

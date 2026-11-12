@@ -18,12 +18,12 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// What prints a row: `passes` or each message of `validate()`, and a line more where the read
 /// does not answer what `validate()` answered.
 const REPORTER: &str = r#"
-protocol ReadUnjudged: Decodable {
+fileprivate protocol ReadUnjudged: Decodable {
   init(swiftSchemaUnjudged decoder: Decoder) throws
   func validate() -> [String]
 }
 
-struct Unjudged<Held: ReadUnjudged>: Decodable {
+fileprivate struct Unjudged<Held: ReadUnjudged>: Decodable {
   let held: Held
   init(from decoder: Decoder) throws { held = try Held(swiftSchemaUnjudged: decoder) }
 }
@@ -35,7 +35,7 @@ extension LimitMixed: ReadUnjudged {}
 extension LimitEnds: ReadUnjudged {}
 extension LimitWide: ReadUnjudged {}
 
-func report<Read: ReadUnjudged>(_ name: String, _ type: Read.Type, _ payload: String) throws {
+fileprivate func report<Read: ReadUnjudged>(_ name: String, _ type: Read.Type, _ payload: String) throws {
   let data = Data(payload.utf8)
   let answered = try JSONDecoder().decode(Unjudged<Read>.self, from: data).held.validate()
   if answered.isEmpty {

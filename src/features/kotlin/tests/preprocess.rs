@@ -199,7 +199,7 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
     let branded = corrected_by(&code, &["unwrapped", "trimmed"]);
     assert!(
         branded.contains(&format!(
-            "}} @OptIn(ExperimentalSerializationApi::class) object CodeUnjudged : \
+            "}} }} @OptIn(ExperimentalSerializationApi::class) private object CodeUnjudged : \
              KSerializer<Code> {} object CodeSerializer : ",
             transform(
                 "Code",
@@ -216,7 +216,7 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
     let filled = corrected_by(&user, &["trimmed"]);
     assert!(
         filled.contains(&format!(
-            "}} @OptIn(ExperimentalSerializationApi::class) class \
+            "}} }} @OptIn(ExperimentalSerializationApi::class) private class \
              UserIdUnjudged<IdType>(private val idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {{ \
              {DECODED}{PATHED}override fun deserialize(decoder: Decoder): UserId<IdType> {{ val \
@@ -230,7 +230,7 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
     );
     assert!(
         corrected_by(&user, &[]).contains(
-            "} @OptIn(ExperimentalSerializationApi::class) class \
+            "} } @OptIn(ExperimentalSerializationApi::class) private class \
              UserIdUnjudged<IdType>(idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) class \
              UserIdSerializer<IdType>("

@@ -156,6 +156,25 @@ pub fn serializers(named: &str) -> String {
     format!("{} {}", generated(named), judged(named))
 }
 
+/// The two serializers of the brand `named`, whose unjudged read is private to the file.
+pub fn brand_serializers(named: &str) -> String {
+    format!(
+        "{} {}",
+        generated(named).replacen("object", "private object", 1),
+        judged(named)
+    )
+}
+
+/// The companion of the brand `named` over `value`, which builds a value only through `of`.
+pub fn brand_companion(named: &str, value: &str) -> String {
+    format!(
+        "companion object {{ fun of(value: {value}): {named} {{ val read = {named}(value); val \
+         violations = read.validate(); if (violations.isNotEmpty()) throw \
+         SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return read }} }}"
+    )
+}
+
 /// The serializer of a map keyed by the brand `named`, a brand over a text: each key read
 /// unjudged from its text at the map's path, then judged, each message under the key's text, and
 /// each value from its text under the key's text.
@@ -339,11 +358,12 @@ fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
         super::tests::renumbered(&seal_kotlin::kotlin_definition()),
         format!(
-            "{} value class Seal(val value: String) {{ fun kotlinSchemaText(): String = value; \
-             fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
-             {NO_RULE} }} {} {}",
+            "{} value class Seal private constructor(val value: String) {{ fun \
+             kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
+             value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
             kept_inline("Seal"),
-            serializers("Seal"),
+            brand_companion("Seal", "String"),
+            brand_serializers("Seal"),
             mapped("Seal")
         )
     );

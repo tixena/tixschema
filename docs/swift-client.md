@@ -8,6 +8,13 @@ Every Swift type the emitter writes has `public func validate() -> [String]`, wh
 Rust `validate()` of the type runs, in its order and in its words. `docs/guide/swift.md`'s "`validate()` in
 the Swift client" section is the consumer's view; this is what a change to the emitter has to keep.
 
+- **A brand is sealed.** `value_wrapper_tokens` in `src/features/swift.rs` writes a brand's
+  `init(value:)` and its own reads `fileprivate`, through `Written::sealed`, and adds
+  `public init(validating:)`, which runs `validate()` and throws the `DecodingError.dataCorrupted`
+  that `init(from:)` throws, with codingPath `[]`. A holder in the generated file reads the brand
+  through `init(swiftSchemaUnjudged:)` as before, so every answer is unchanged. A tuple struct and an
+  alias go through the same function and keep a public `init(value:)`.
+
 - **The emitter is handed what it reads.** `swift_suffix_tokens` in `src/model_schema.rs` builds a
   `SwiftTypeArgs`: the `name` override, the type's `check` names, a brand's or an enum's
   `minLength`, `maxLength` and `pattern`, the declared `default_types`, and `member_meta`, which is

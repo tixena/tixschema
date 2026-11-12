@@ -12,7 +12,9 @@ use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{DECODED, judged, kept_inline};
-use super::read::{judged_over, kept, mapped, mapped_over_a_brand, serializers};
+use super::read::{
+    brand_companion, brand_serializers, judged_over, kept, mapped, mapped_over_a_brand, serializers,
+};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -369,22 +371,24 @@ fn a_brand_answers_its_text() {
     assert_eq!(
         super::tests::renumbered(&slug_kotlin::kotlin_definition()),
         format!(
-            "{} value class Slug(val value: String) {{ fun kotlinSchemaText(): String = value; \
-             fun kotlinSchemaLength(): Int = value.codePointCount(0, value.length); \
-             {NO_RULE} }} {} {}",
+            "{} value class Slug private constructor(val value: String) {{ fun \
+             kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
+             value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
             kept_inline("Slug"),
-            serializers("Slug"),
+            brand_companion("Slug", "String"),
+            brand_serializers("Slug"),
             mapped("Slug")
         )
     );
     assert_eq!(
         super::tests::renumbered(&badge_kotlin::kotlin_definition()),
         format!(
-            "{} value class Badge(val value: Slug) {{ fun kotlinSchemaText(): String = \
-             value.kotlinSchemaText(); fun kotlinSchemaLength(): Int = \
-             value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT} }} {} {}",
+            "{} value class Badge private constructor(val value: Slug) {{ fun \
+             kotlinSchemaText(): String = value.kotlinSchemaText(); fun kotlinSchemaLength(): Int \
+             = value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT}; {} }} {} {}",
             kept_inline("Badge"),
-            serializers("Badge"),
+            brand_companion("Badge", "Slug"),
+            brand_serializers("Badge"),
             mapped_over_a_brand("Badge")
         )
     );
@@ -451,11 +455,12 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(
-                "{} value class CorrelationId(val value: String) {{ fun kotlinSchemaText(): \
-                 String = value; fun kotlinSchemaLength(): Int = value.codePointCount(0, \
-                 value.length); {NO_RULE} }} {} {}",
+                "{} value class CorrelationId private constructor(val value: String) {{ \
+                 fun kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
+                 value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
                 kept_inline("CorrelationId"),
-                serializers("CorrelationId"),
+                brand_companion("CorrelationId", "String"),
+                brand_serializers("CorrelationId"),
                 mapped("CorrelationId")
             ),
         ),
