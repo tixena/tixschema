@@ -34,8 +34,8 @@ const I64_ZOD: &str = "z.codec(z.union([z.bigint(), z.number().int()]), \
                        z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { \
                        decode: (value) => BigInt(value), encode: (value) => value })";
 
-/// `u64`/`usize` are the whole point of this sweep, so the item is gated out entirely when the
-/// Swift or Kotlin target refuses those widths, rather than swapped to a signed width.
+/// `u64` is the whole point of this sweep, so the item is gated out entirely when the Swift or
+/// Kotlin target refuses that width, rather than swapped to a signed width.
 #[cfg(all(
     test,
     any(feature = "typescript", feature = "zod", feature = "serde"),

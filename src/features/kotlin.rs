@@ -373,12 +373,11 @@ pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream
     }
 }
 
-/// The `u64`/`usize` width `field` is, or at any depth reaches, or `None`. Kotlin has a `ULong`
-/// that could carry `u64`; the refusal exists for parity with the Swift target instead.
+/// The `u64` width `field` is, or at any depth reaches, or `None`. Kotlin has a `ULong` that could
+/// carry `u64`; the refusal exists for parity with the Swift target instead.
 pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
     match &field.field_type {
         FieldDefType::U64 => Some("u64"),
-        FieldDefType::Usize => Some("usize"),
         FieldDefType::SiblingType(_, generics) => generics.iter().find_map(kotlin_refused_width),
         FieldDefType::Map(key, value) => {
             kotlin_refused_width(key).or_else(|| kotlin_refused_width(value))
@@ -399,6 +398,7 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -979,9 +979,10 @@ fn kotlin_base(field: &FieldDef) -> String {
         FieldDefType::U8 => "UByte".to_owned(),
         FieldDefType::U16 => "UShort".to_owned(),
         FieldDefType::U32 => "UInt".to_owned(),
+        FieldDefType::Usize => "ULong".to_owned(),
         // Refused under `check_kotlin_width_field` in `model_schema.rs`; a filler rendering keeps
         // this dispatch total for the compile_error! tokens emitted alongside it to stand on.
-        FieldDefType::U64 | FieldDefType::Usize => "Long".to_owned(),
+        FieldDefType::U64 => "Long".to_owned(),
         FieldDefType::I8 => "Byte".to_owned(),
         FieldDefType::I16 => "Short".to_owned(),
         FieldDefType::I32 => "Int".to_owned(),
@@ -1172,6 +1173,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::U8
         | FieldDefType::U16
         | FieldDefType::U32
+        | FieldDefType::Usize
         | FieldDefType::I8
         | FieldDefType::I16
         | FieldDefType::I32
@@ -1190,8 +1192,7 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::NumberLiteral(_)
         | FieldDefType::String
-        | FieldDefType::U64
-        | FieldDefType::Usize => format!("serializer<{}>()", kotlin_typename(&held)),
+        | FieldDefType::U64 => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "chrono")]

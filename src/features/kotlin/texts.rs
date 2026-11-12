@@ -83,6 +83,7 @@ pub enum Primitive {
     U16,
     U32,
     U8,
+    Usize,
 }
 
 /// What a map key reaches once its aliases are peeled, where it is read from the text serde writes.
@@ -98,8 +99,8 @@ impl Primitive {
         self.words().0
     }
 
-    /// The primitive a value typed `field` is at its innermost level. A `u64` and a `usize` are
-    /// refused under `kotlin` before they are read.
+    /// The primitive a value typed `field` is at its innermost level. A `u64` is refused under
+    /// `kotlin` before it is read.
     #[cfg(feature = "chrono")]
     pub fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
@@ -112,6 +113,7 @@ impl Primitive {
             FieldDefType::U8 => Some(Self::U8),
             FieldDefType::U16 => Some(Self::U16),
             FieldDefType::U32 => Some(Self::U32),
+            FieldDefType::Usize => Some(Self::Usize),
             FieldDefType::F32 => Some(Self::F32),
             FieldDefType::F64 => Some(Self::F64),
             #[cfg(feature = "chrono")]
@@ -140,6 +142,7 @@ impl Primitive {
             FieldDefType::U8 => Some(Self::U8),
             FieldDefType::U16 => Some(Self::U16),
             FieldDefType::U32 => Some(Self::U32),
+            FieldDefType::Usize => Some(Self::Usize),
             FieldDefType::F32 => Some(Self::F32),
             FieldDefType::F64 => Some(Self::F64),
             #[cfg(feature = "mongodb")]
@@ -156,8 +159,7 @@ impl Primitive {
             | FieldDefType::BooleanLiteral(_)
             | FieldDefType::NumberLiteral(_)
             | FieldDefType::String
-            | FieldDefType::U64
-            | FieldDefType::Usize => None,
+            | FieldDefType::U64 => None,
         }
     }
 
@@ -173,6 +175,7 @@ impl Primitive {
             Self::U8 => ("UByte", "u8"),
             Self::U16 => ("UShort", "u16"),
             Self::U32 => ("UInt", "u32"),
+            Self::Usize => ("ULong", "usize"),
             Self::F32 | Self::F32Key => ("Float", "f32"),
             Self::F64 | Self::F64Key => ("Double", "f64"),
             #[cfg(feature = "chrono")]
@@ -256,7 +259,8 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
         | Primitive::Isize
         | Primitive::U16
         | Primitive::U32
-        | Primitive::U8 => (integral(expected), FLOATING),
+        | Primitive::U8
+        | Primitive::Usize => (integral(expected), FLOATING),
         #[cfg(feature = "chrono")]
         Primitive::Millis => (integral(expected), FLOATING),
         Primitive::Bool | Primitive::BoolKey | Primitive::F32Key | Primitive::F64Key => {
@@ -574,7 +578,8 @@ pub const fn as_key(primitive: Primitive) -> Option<Primitive> {
         | Primitive::Isize
         | Primitive::U16
         | Primitive::U32
-        | Primitive::U8 => None,
+        | Primitive::U8
+        | Primitive::Usize => None,
         #[cfg(feature = "chrono")]
         Primitive::Millis => None,
     }

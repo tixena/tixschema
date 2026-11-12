@@ -6290,10 +6290,11 @@ fn field_map_key_error(field_type: &proc_macro2::TokenStream) -> String {
         .map_or_else(String::new, |err| err.to_compile_error().to_string())
 }
 
-/// A `u64` or `usize` field is refused for Swift; `i64` earns nothing.
+/// A `u64` field is refused for Swift, in a message that names `u64` alone; `usize` and `i64` earn
+/// nothing.
 #[cfg(feature = "swift")]
 #[test]
-fn a_u64_or_usize_field_is_refused_for_swift() {
+fn a_u64_field_is_refused_for_swift() {
     let item: syn::Item = syn::parse_quote! {
         struct Report {
             count: u64,
@@ -6308,35 +6309,29 @@ fn a_u64_or_usize_field_is_refused_for_swift() {
     assert!(
         tokens.contains(
             "model_schema: field `count`: `u64` has no Swift mapping; the Swift target refuses \
-             unsigned 64-bit and pointer-sized integers"
+             `u64`"
         ),
         "got: {tokens}"
     );
 
-    let usize_item: syn::Item = syn::parse_quote! {
-        struct Report {
-            total: usize,
-        }
-    };
-    let usize_tokens = swift_width_refusals(&usize_item)
-        .into_iter()
-        .map(|error| error.to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
-    assert!(
-        usize_tokens.contains(
-            "field `total`: `usize` has no Swift mapping; the Swift target refuses unsigned \
-             64-bit and pointer-sized integers"
-        ),
-        "got: {usize_tokens}"
-    );
-
-    let i64_item: syn::Item = syn::parse_quote! {
-        struct Report {
-            count: i64,
-        }
-    };
-    assert!(swift_width_refusals(&i64_item).is_empty());
+    for earns_nothing in [
+        quote::quote! { usize },
+        quote::quote! { i64 },
+        quote::quote! { Vec<usize> },
+        quote::quote! { HashMap<usize, usize> },
+        quote::quote! { (String, usize) },
+        quote::quote! { core::ops::Range<usize> },
+    ] {
+        let unrefused: syn::Item = syn::parse_quote! {
+            struct Report {
+                count: #earns_nothing,
+            }
+        };
+        assert!(
+            swift_width_refusals(&unrefused).is_empty(),
+            "{earns_nothing} is refused"
+        );
+    }
 }
 
 /// No Swift type declares a member serde neither writes nor reads, nor a member of a variant it
@@ -6348,7 +6343,7 @@ fn the_swift_width_guard_reads_past_what_serde_neither_writes_nor_reads() {
     let unwired: [syn::Item; 4] = [
         syn::parse_quote! { struct Report { note: String, #[serde(skip)] count: u64 } },
         syn::parse_quote! {
-            struct Report { #[serde(skip_serializing, skip_deserializing)] total: usize }
+            struct Report { #[serde(skip_serializing, skip_deserializing)] total: u64 }
         },
         syn::parse_quote! { struct Report(String, #[serde(skip)] u64); },
         syn::parse_quote! {
@@ -9498,16 +9493,16 @@ fn the_constraint_docs_are_silent_for_a_parameter_typed_field() {
     );
 }
 
-/// `u64` and `usize` have no Kotlin mapping, refused the same way Swift's own width refusal is.
+/// `u64` has no Kotlin mapping, refused the same way Swift's own width refusal is, in a message
+/// that names `u64` alone.
 #[cfg(feature = "kotlin")]
 #[test]
-fn a_kotlin_field_reaching_u64_or_usize_is_refused() {
-    for (ty, width) in [
-        (quote::quote! { u64 }, "u64"),
-        (quote::quote! { usize }, "usize"),
-        (quote::quote! { Vec<u64> }, "u64"),
-        (quote::quote! { HashMap<String, usize> }, "usize"),
-        (quote::quote! { (String, u64) }, "u64"),
+fn a_kotlin_field_reaching_u64_is_refused() {
+    for ty in [
+        quote::quote! { u64 },
+        quote::quote! { Vec<u64> },
+        quote::quote! { HashMap<String, u64> },
+        quote::quote! { (String, u64) },
     ] {
         let errors = field_prop_guard_errors(&syn::parse_quote! {
             struct Report {
@@ -9515,15 +9510,32 @@ fn a_kotlin_field_reaching_u64_or_usize_is_refused() {
             }
         });
         assert_eq!(errors.len(), 1, "for {ty}: {errors:?}");
-        let message = format!(
-            "field `count`: `{width}` has no Kotlin mapping; the Kotlin target refuses unsigned \
-             64-bit and pointer-sized integers"
-        );
+        let message = "field `count`: `u64` has no Kotlin mapping; the Kotlin target refuses `u64`";
         assert!(
-            errors[0].contains(&message),
+            errors[0].contains(message),
             "for {ty}, expected {message:?}, got: {}",
             errors[0]
         );
+    }
+}
+
+/// A `usize` earns no Kotlin refusal, wherever the field holds it.
+#[cfg(feature = "kotlin")]
+#[test]
+fn a_kotlin_field_reaching_usize_is_not_refused() {
+    for ty in [
+        quote::quote! { usize },
+        quote::quote! { Vec<usize> },
+        quote::quote! { HashMap<usize, usize> },
+        quote::quote! { (String, usize) },
+        quote::quote! { core::ops::Range<usize> },
+    ] {
+        let errors = field_prop_guard_errors(&syn::parse_quote! {
+            struct Report {
+                count: #ty,
+            }
+        });
+        assert!(errors.is_empty(), "for {ty}: {errors:?}");
     }
 }
 
@@ -9535,7 +9547,7 @@ fn the_kotlin_width_guard_reads_past_a_member_serde_neither_writes_nor_reads() {
     for item in [
         syn::parse_quote! { struct Report { #[serde(skip)] count: u64 } },
         syn::parse_quote! {
-            struct Report { #[serde(skip_serializing, skip_deserializing)] count: usize }
+            struct Report { #[serde(skip_serializing, skip_deserializing)] count: u64 }
         },
     ] {
         let errors = field_prop_guard_errors(&item);
