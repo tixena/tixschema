@@ -342,13 +342,20 @@ fn payload_types(swift: &str) -> usize {
 /// What the three reads of a type that names `called` on itself are, around the statements
 /// `corrected` of its read of a corrected payload.
 fn corrected_reads(named: &str, called: &str, closing: &str, corrected: &str) -> String {
+    reads_reached(named, called, closing, corrected, "public")
+}
+
+/// [`corrected_reads`] of a type whose own reads are declared under `reach`.
+fn reads_reached(named: &str, called: &str, closing: &str, corrected: &str, reach: &str) -> String {
+    let alone = ALONE.replacen("public", reach, 1);
+    let beside = BESIDE.replacen("public", reach, 1);
     format!(
         "private struct SwiftSchemaRead: Decodable {{ let value: {named}; \
          init(from decoder: Decoder) throws {{ value = try {named}(swiftSchemaCorrected: decoder) }} }}; \
          private init(swiftSchemaCorrected decoder: Decoder) throws {{ {corrected} }}; \
-         {BESIDE} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
+         {beside} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
          from: {called}try SwiftSchemaPayload(from: decoder, without: taken).value{closing}, \
-         at: decoder.codingPath).value }}; {ALONE}public init(from decoder: Decoder) throws {{ "
+         at: decoder.codingPath).value }}; {alone}public init(from decoder: Decoder) throws {{ "
     )
 }
 
@@ -669,10 +676,12 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
 fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payload() {
     let wrap = wrap_swift::swift_definition();
     let read = format!(
-        "{BESIDE} {{ self.value = try Carton(swiftSchemaUnjudged: decoder, \
+        "{} {{ self.value = try Carton(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken); let held = value.validate(); if !held.isEmpty {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: held.joined(separator: \"; \"))) }} }}; {ALONE}"
+         debugDescription: held.joined(separator: \"; \"))) }} }}; {}",
+        BESIDE.replacen("public", "fileprivate", 1),
+        ALONE.replacen("public", "fileprivate", 1)
     );
     assert!(wrap.contains(&read), "{read} is not in: {wrap}");
     assert_eq!(payload_types(&wrap), 0, "got: {wrap}");
@@ -726,22 +735,24 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
         ),
         (
             tagline_swift::swift_definition(),
-            corrected_reads(
+            reads_reached(
                 "Tagline",
                 "trimmed(unwrapped(",
                 "))",
                 "let container = try decoder.singleValueContainer(); \
                  self.value = try container.decode(String.self)",
+                "fileprivate",
             ),
         ),
         (
             ticket_swift::swift_definition(),
-            corrected_reads(
+            reads_reached(
                 "Ticket",
                 "unwrapped(",
                 ")",
                 "let container = try decoder.singleValueContainer(); \
                  self.value = try container.decode(SwiftSchemaFit<IdType>.self).value",
+                "fileprivate",
             ),
         ),
         (

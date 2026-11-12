@@ -3381,6 +3381,7 @@ fn struct_body_content(
             beside: "",
             named: owner,
             own: corrects,
+            sealed: false,
             twins,
             closed,
         },
@@ -3987,6 +3988,7 @@ fn value_wrapper_tokens(
     rules: &[String],
     hashes: bool,
 ) -> TokenStream {
+    let sealed = !matches!(wrapped, Wrapped::Slot | Wrapped::Tuple);
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_swift_name(&rust_ident, &export_name);
@@ -4021,23 +4023,7 @@ fn value_wrapper_tokens(
         )
     };
 
-    let decode = if shaped.converts() {
-        format!(
-            "try {{ let wireValue = try {}; return {} }}()",
-            read::fitted(
-                "container.decode(",
-                &wire_type(&shaped.def, &shaped.shape),
-                ".self)",
-                &type_parameters
-            ),
-            shaped.converted("wireValue")
-        )
-    } else {
-        format!(
-            "try {}",
-            read::fitted("container.decode(", &real_type, ".self)", &type_parameters)
-        )
-    };
+    let decode = wrapper_decode(&shaped, &real_type, &type_parameters);
     let encode = wrapper_write(&shaped);
     let helpers = leaf_helpers_for(&export_name, &generic_params, &[&shaped.shape], None);
     let mut twins = Vec::new();
@@ -4051,6 +4037,7 @@ fn value_wrapper_tokens(
         &preprocess::Written {
             named: &export_name,
             own: args.preprocess,
+            sealed,
             twins,
             closed: (matches!(wrapped, Wrapped::Slot)
                 && !is_nonstrict()
@@ -4072,10 +4059,11 @@ fn value_wrapper_tokens(
     } else {
         "Codable, Sendable"
     };
+    let init = value_init(sealed, &real_type);
     let body = format!(
         "public struct {export_name}{generic_params}: {conformances} {{ \
          public let value: {real_type}; \
-         public init(value: {real_type}) {{ self.value = value }}; \
+         {init}\
          {reads}\
          public func encode(to encoder: Encoder) throws {{ {encode} }}; {validate} }}; {helpers}"
     );
@@ -4092,6 +4080,43 @@ fn value_wrapper_tokens(
         &swift_source,
         &SerdeDefaults::none(),
     )
+}
+
+/// The statement that reads the one value of a wrapper from its container.
+fn wrapper_decode(shaped: &Shaped, real_type: &str, type_parameters: &[String]) -> String {
+    if shaped.converts() {
+        format!(
+            "try {{ let wireValue = try {}; return {} }}()",
+            read::fitted(
+                "container.decode(",
+                &wire_type(&shaped.def, &shaped.shape),
+                ".self)",
+                type_parameters
+            ),
+            shaped.converted("wireValue")
+        )
+    } else {
+        format!(
+            "try {}",
+            read::fitted("container.decode(", real_type, ".self)", type_parameters)
+        )
+    }
+}
+
+/// The initializers of a struct of one `value`: a brand's is built through `init(validating:)`
+/// alone, and the `init(value:)` it keeps is `fileprivate`.
+fn value_init(sealed: bool, real_type: &str) -> String {
+    if sealed {
+        format!(
+            "fileprivate init(value: {real_type}) {{ self.value = value }}; \
+             public init(validating value: {real_type}) throws {{ self.init(value: value); \
+             let violations = self.validate(); if !violations.isEmpty {{ throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], \
+             debugDescription: violations.joined(separator: \"; \"))) }} }}; "
+        )
+    } else {
+        format!("public init(value: {real_type}) {{ self.value = value }}; ")
+    }
 }
 
 /// The statements of the `encode(to:)` of a struct of one `value`, `shaped`: the value writes
@@ -4726,6 +4751,7 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             beside: "",
             named: export_name,
             own: args.preprocess,
+            sealed: false,
             twins,
             closed: None,
         },
@@ -4910,6 +4936,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             beside: "",
             named: export_name,
             own: args.preprocess,
+            sealed: false,
             twins,
             closed: closed_when_strict(variant_keys, args.preprocess),
         },
@@ -5069,6 +5096,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
             beside: "",
             named: export_name,
             own: args.preprocess,
+            sealed: false,
             twins,
             closed,
         },
@@ -5168,6 +5196,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             beside: &choosers,
             named: export_name,
             own: args.preprocess,
+            sealed: false,
             twins,
             closed: closed_when_strict(variant_keys, args.preprocess),
         },

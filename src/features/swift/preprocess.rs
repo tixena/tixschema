@@ -181,6 +181,8 @@ pub(super) struct Written<'named> {
     pub named: &'named str,
     /// The functions the type names on itself, in the order written.
     pub own: &'named [FunctionName],
+    /// Whether the type is a brand, whose own read only the generated file reaches.
+    pub sealed: bool,
     /// The types written for the members read from what their functions answer.
     pub twins: Vec<String>,
 }
