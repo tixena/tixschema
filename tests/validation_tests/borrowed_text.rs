@@ -179,8 +179,8 @@ mod a_bound_on_a_borrowed_str {
         assert!(
             zod.contains(
                 "name: z.string().min(3, { error: (issue) => `too short: minimum length is 3, \
-                 got ${String(issue.input).length}` }).max(8, { error: (issue) => `too long: \
-                 maximum length is 8, got ${String(issue.input).length}` }).check(z.regex(\
+                 got ${[...String(issue.input)].length}` }).max(8, { error: (issue) => `too long: \
+                 maximum length is 8, got ${[...String(issue.input)].length}` }).check(z.regex(\
                  /^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))"
             ),
             "{zod}"

@@ -593,7 +593,7 @@ pub struct Tally {
 | Zod | `z.codec(z.union([z.bigint(), z.number().int()]), z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { decode: (value) => BigInt(value), encode: (value) => value })` | the same with `.min(0n).max(18446744073709551615n)` |
 | JSON Schema | `{"type": "integer"}` | `{"type": "integer"}` |
 | Dart | `int`, on the Dart VM | `int`, on the Dart VM |
-| Swift | `Int64` | refused, as every `u64` is: see [`u64` or `usize` Under `swift` or `kotlin`](troubleshooting.md#u64-or-usize-under-swift-or-kotlin) |
+| Swift | `Int64` | refused, as every `u64` is: see [`u64` Under `swift` or `kotlin`](troubleshooting.md#u64-under-swift-or-kotlin) |
 | Kotlin | `Long` | refused, as in Swift |
 
 The Zod schema reads a `bigint`, and a `number` that holds the integer exactly, and answers the `bigint`: `JSON.parse('{"signed":1719624000000}')` reads as `{ signed: 1719624000000n }`. It refuses a `number` beyond `2^53 - 1` in size, which `JSON.parse` has already rounded: `9007199254740993` is read as `9007199254740992`, refused with `Too big: expected int to be <=9007199254740991`. Read such a payload with a reviver that rebuilds the integer from its source text, as the TypeScript service code does (below).
@@ -653,7 +653,7 @@ export type Histogram = {
 
 ### A `Vec<u8>` is a `Uint8Array` in TypeScript and a `Uint8List` in Dart
 
-A `Vec<u8>` travels as the JSON array serde writes: `[137,80,78,71]`. TypeScript holds it as a `Uint8Array`, which `fetch`, `Blob`, `TextDecoder`, `crypto.subtle` and Node's `Buffer` take, and Dart as a `Uint8List`:
+A `Vec<u8>` travels as the JSON array serde writes: `[137,80,78,71]`. TypeScript holds it as a `Uint8Array<ArrayBuffer>`, which `fetch`, `Blob`, `TextDecoder`, `crypto.subtle` and Node's `Buffer` take, and Dart as a `Uint8List`:
 
 ```rust
 #[model_schema()]
@@ -671,18 +671,20 @@ pub struct ImageBytes {
 
 | Target | `Vec<u8>` |
 |---|---|
-| TypeScript | `Uint8Array` |
-| Zod | `z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.instanceof(Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })` |
+| TypeScript | `Uint8Array<ArrayBuffer>` |
+| Zod | `z.codec(z.union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))]), z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array), { decode: (value) => Uint8Array.from(value), encode: (value) => Array.from(value) })` |
 | JSON Schema | `{"type": "array", "items": {"type": "integer"}}`, as before |
 | Dart | `Uint8List` |
 | Swift | `[UInt8]`, as before |
 | Kotlin | `List<UByte>`, as before |
 
-The Zod schema reads the JSON array, or a `Uint8Array` itself, and answers the `Uint8Array`: `JSON.parse('{"data":[137,80,78,71]}')` reads as `{ data: Uint8Array(4) [137, 80, 78, 71] }`, and a value read once reads again to an equal value. An item that is no byte is refused before the `Uint8Array` is built, as `Uint8Array.from([256])` would build `[0]`: `[256]` and `[-1]` are refused at the item's index, with the sentence a `z.array(z.number().int().min(0).max(255))` reports, and `[1.5]` and `["1"]` are refused at the field. `Schema.encode` answers the plain array.
+The Zod schema reads the JSON array, or a `Uint8Array` itself, and answers the `Uint8Array<ArrayBuffer>`: `JSON.parse('{"data":[137,80,78,71]}')` reads as `{ data: Uint8Array(4) [137, 80, 78, 71] }`, and a value read once reads again to an equal value. An item that is no byte is refused before the `Uint8Array` is built, as `Uint8Array.from([256])` would build `[0]`: `[256]` and `[-1]` are refused at the item's index, with the sentence a `z.array(z.number().int().min(0).max(255))` reports, and `[1.5]` and `["1"]` are refused at the field. `Schema.encode` answers the plain array.
+
+- **It needs TypeScript 5.7 or later.** Typed arrays are generic from 5.7, and the bare `Uint8Array` is `Uint8Array<ArrayBufferLike>`, which `Blob`, `fetch` and `crypto.subtle` refuse; `z.infer` of the schema is the published type.
 
 - **A count holds the bytes.** `minLength` and `maxLength` on a `Vec<u8>` count the bytes of the `Uint8Array` and of the array, with the same sentences.
 - **The TypeScript service code writes the JSON array.** The client and the dispatcher of every transport write a `Uint8Array` as `[137,80,78,71]`, where `JSON.stringify` alone writes `{"0":137,"1":80,"2":78,"3":71}`. A `body = "bytes"` reply is answered as a `Uint8Array` too.
-- **Only a `Vec<u8>` is bytes.** A `[u8; N]`, a `[u8]` behind a reference or a `Box`, a `VecDeque<u8>`, a `BinaryHeap<u8>`, a set of `u8`, a `Vec<Option<u8>>`, a `Vec<u8>` under a `literal`, a `Vec` of any other number and a `Vec<T>` of a type parameter stay `Array<…>` in TypeScript and `List<…>` in Dart. A `Vec<Vec<u8>>` is `Array<Uint8Array>` and `List<Uint8List>`.
+- **Only a `Vec<u8>` is bytes.** A `[u8; N]`, a `[u8]` behind a reference or a `Box`, a `VecDeque<u8>`, a `BinaryHeap<u8>`, a set of `u8`, a `Vec<Option<u8>>`, a `Vec<u8>` under a `literal`, a `Vec` of any other number and a `Vec<T>` of a type parameter stay `Array<…>` in TypeScript and `List<…>` in Dart. A `Vec<Vec<u8>>` is `Array<Uint8Array<ArrayBuffer>>` and `List<Uint8List>`.
 - **Dart reads and writes the same JSON.** `fromJson` reads `[137,80,78,71]` into a `Uint8List` and refuses `256` and `-1` with `expected an integer from 0 to 255, found 256`, and `toJson` writes the JSON array. `validate()` counts it as it counts a list.
 
 ### Pointers and Borrowed Values
@@ -772,8 +774,8 @@ export type Reply = {
 
 ```typescript
 const Reply$RawSchema = z.strictObject({
-  outcome: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
-  stored: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
+  outcome: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const carrying = [["Ok", "newtype variant"], ["Err", "newtype variant"]]; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } }); else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
+  stored: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const carrying = [["Err", "newtype variant"]]; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } }); else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
 });
 ```
 

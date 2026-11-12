@@ -8,7 +8,7 @@ use super::aliased_models::{
     scending_dart, surging_dart, swell_dart, veering_dart,
 };
 use super::flattened_aliased_models::riding_dart;
-use super::unknown_keys::READ_AT;
+use super::unknown_keys::{READ_AT, plain_enum_read};
 
 /// What copies a payload's entries into `named` with the key `name` read as `label`, and refuses
 /// the two together.
@@ -41,8 +41,11 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
     holds_each(
         &surging_dart::dart_definition(),
         &[
-            "switch (json) { case 'Calm' || 'Still' || 'Slack': return SurgingCalm(); default: \
-             throw FormatException('Unknown Surging: ' + json); }"
+            "switch (json) { case 'Calm' || 'Still' || 'Slack': return SurgingCalm(); case \
+             'Berth' || 'Pier': throw FormatException('invalid type: unit variant, expected \
+             struct variant', <Object>[json]); case 'Held' || 'Tied': throw \
+             FormatException('invalid type: unit variant, expected newtype variant', \
+             <Object>[json]); default: throw FormatException('Unknown Surging: ' + json); }"
                 .to_owned(),
             "switch (tag) { case 'Berth' || 'Pier': return \
              _readAt(null, tag, () => SurgingBerth.fromJsonUnjudged(map[tag])); case 'Calm' || \
@@ -129,20 +132,31 @@ fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_dart::dart_definition(),
-        "enum Swell { ebb('Ebb'), flood('Flood'); const Swell(this.wireValue); final String \
-         wireValue; static Swell fromJson(String json) => switch (json) { 'Ebb' || 'Low' || \
-         'Neap' => Swell.ebb,'Flood' => Swell.flood, _ => throw FormatException('Unknown Swell: ' \
-         + json) }; static Swell fromJsonUnjudged(String json) => fromJson(json); String toJson() \
-         => wireValue; List<String> validate() => const []; }"
+        format!(
+            "enum Swell {{ ebb('Ebb'), flood('Flood'); const Swell(this.wireValue); final String \
+             wireValue; static Swell fromJson(dynamic json) {{ {} }} static Swell \
+             fromJsonUnjudged(dynamic json) => fromJson(json); String toJson() => wireValue; \
+             List<String> validate() => const []; }}",
+            plain_enum_read(
+                "Swell",
+                "json",
+                "'Ebb' || 'Low' || 'Neap' => Swell.ebb,'Flood' => Swell.flood,"
+            )
+        )
     );
     assert_eq!(
         lulling_dart::dart_definition(),
-        "enum Lulling { ebb('Ebb'), flood('Flood'); const Lulling(this.wireValue); final String \
-         wireValue; static Lulling fromJson(dynamic json) => fromJsonUnjudged(json); static \
-         Lulling fromJsonUnjudged(dynamic payload) { final json = unpadded(payload) as String; \
-         return switch (json) { 'Ebb' || 'Low' => Lulling.ebb,'Flood' => Lulling.flood, _ => \
-         throw FormatException('Unknown Lulling: ' + json) }; } String toJson() => wireValue; \
-         List<String> validate() => const []; }"
+        format!(
+            "enum Lulling {{ ebb('Ebb'), flood('Flood'); const Lulling(this.wireValue); final \
+             String wireValue; static Lulling fromJson(dynamic json) => fromJsonUnjudged(json); \
+             static Lulling fromJsonUnjudged(dynamic payload) {{ final json = unpadded(payload); \
+             {} }} String toJson() => wireValue; List<String> validate() => const []; }}",
+            plain_enum_read(
+                "Lulling",
+                "json",
+                "'Ebb' || 'Low' => Lulling.ebb,'Flood' => Lulling.flood,"
+            )
+        )
     );
 }
 

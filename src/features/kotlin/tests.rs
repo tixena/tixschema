@@ -8,7 +8,7 @@ mod texts;
 
 use proc_macro2::{Span, TokenTree};
 
-use super::read::{DECODED, FLATTENED, INNER};
+use super::read::{DECODED, INNER};
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -45,6 +45,16 @@ fn generated(named: &str) -> String {
         "@OptIn(ExperimentalSerializationApi::class) object {named}Unjudged : \
          KSerializer<{named}> by {named}.generatedSerializer()"
     )
+}
+
+/// The unjudged serializer of the plain enum `named` of `variants`, which reads the payload
+/// `correction` answers.
+fn plain_enum_unjudged(named: &str, members: &[&str], correction: &str) -> String {
+    let variants: Vec<(String, String, Vec<String>)> = members
+        .iter()
+        .map(|variant| ((*variant).to_owned(), (*variant).to_owned(), Vec::new()))
+        .collect();
+    aliases::plain_enum_serializer(named, &variants, correction)
 }
 
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
@@ -163,7 +173,7 @@ fn plain(item: &ItemStruct) -> String {
     definition(struct_kotlin_tokens(item, &plain_args()))
 }
 
-/// The object that reads a number of Kotlin type `kotlin`, which serde words as `expected`,
+/// The object that reads a `u8` of Kotlin type `kotlin`, which serde words as `expected`,
 /// declared under `named`.
 fn number(named: &str, kotlin: &str, expected: &str) -> String {
     format!(
@@ -179,7 +189,16 @@ fn number(named: &str, kotlin: &str, expected: &str) -> String {
          text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if (wide.isInfinite()) throw \
          SerializationException(\"number out of range\"); throw \
          SerializationException(\"invalid type: floating point `\" + floating(wide) + \"`, \
-         expected {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
+         expected {expected}\") }}; if (wide != null && text.removePrefix(\"-\").let {{ \
+         it.isNotEmpty() && it.all {{ digit -> digit in '0'..'9' }} }}) {{ if \
+         (wide.isInfinite()) throw SerializationException(\"number out of range\"); val whole \
+         = java.math.BigInteger(text); if (whole < \
+         java.math.BigInteger(\"-9223372036854775808\") || whole > \
+         java.math.BigInteger(\"18446744073709551615\")) throw SerializationException(\"invalid \
+         type: floating point `\" + floating(wide) + \"`, expected {expected}\"); if (whole < \
+         java.math.BigInteger(\"0\") || whole > java.math.BigInteger(\"255\")) throw \
+         SerializationException(\"invalid value: integer `\" + text + \"`, expected \
+         {expected}\") }}; try {{ json.json.decodeFromJsonElement(held, element) }} catch \
          (refused: SerializationException) {{ throw \
          SerializationException(refused.message.orEmpty().replaceFirst(\" at path: \
          \\$.primitive\", \" at path: \\$\"), refused) }} }} }} }}",
@@ -539,7 +558,7 @@ fn a_types_own_check_is_called_on_the_whole_value() {
         format!(
             "{} enum class Grade {{ Express, Unrated; {called} }} {} {}",
             kept("Grade"),
-            generated("Grade"),
+            plain_enum_unjudged("Grade", &["Express", "Unrated"], "element"),
             judged("Grade")
         )
     );
@@ -1177,6 +1196,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     };
     let parcel = labelled_parcel();
     assert!(parcel.ends_with(&judged("Parcel")), "got: {parcel}");
+    let flattened = read::flattened_function();
     let merged = |variant: &str| {
         format!(
             "is Lift{variant} -> buildJsonObject {{ put(\"kind\", \"{variant}\"); \
@@ -1208,7 +1228,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              SerialDescriptor = buildClassSerialDescriptor(\"Lift\"); override fun \
              serialize(encoder: Encoder, value: Lift) {{ val output = encoder as JsonEncoder; \
              output.encodeJsonElement(when (value) {{ {}; is LiftHeld -> buildJsonObject {{ \
-             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}{FLATTENED}override fun \
+             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}{flattened}override fun \
              deserialize(decoder: Decoder): Lift {{ val input = decoder as JsonDecoder; val \
              element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj = \
              element.let {{ it as? JsonObject ?: throw SerializationException(\"expected an \

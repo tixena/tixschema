@@ -167,7 +167,7 @@ export const Jetty$Schema: ZodType<Jetty> = Jetty$RawSchema.meta({
     assert!(
         Pontoon::zod_schema().contains(
             "  dock: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
-             ${String(issue.input).length}` }).prefault(\"\"),\n"
+             ${[...String(issue.input)].length}` }).prefault(\"\"),\n"
         ),
         "{}",
         Pontoon::zod_schema()

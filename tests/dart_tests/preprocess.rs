@@ -8,7 +8,7 @@ use serde_json::Value;
 use tixschema::model_schema;
 
 use super::held_numbers::u32_held;
-use super::unknown_keys::{READ_AT, READ_FLATTENED, refusing};
+use super::unknown_keys::{READ_AT, READ_BUFFERED, READ_FLATTENED, plain_enum_read, refusing};
 
 /// What a judged read does with the value its unjudged read answered.
 const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
@@ -601,19 +601,28 @@ fn a_type_with_a_parameter_calls_its_function_at_every_filling() {
 fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
     assert_written(
         &grade_dart::dart_definition(),
-        "static Grade fromJson(dynamic json) => fromJsonUnjudged(json); static Grade \
-         fromJsonUnjudged(dynamic payload) { final json = trimmed(payload) as String; return \
-         switch (json) { 'Express' => Grade.express,'Standard' => Grade.standard, _ => throw \
-         FormatException('Unknown Grade: ' + json) }; } String toJson() => wireValue;",
+        &format!(
+            "static Grade fromJson(dynamic json) => fromJsonUnjudged(json); static Grade \
+             fromJsonUnjudged(dynamic payload) {{ final json = trimmed(payload); {} }} String \
+             toJson() => wireValue;",
+            plain_enum_read(
+                "Grade",
+                "json",
+                "'Express' => Grade.express,'Standard' => Grade.standard,"
+            )
+        ),
     );
     assert_written(
         &rating_dart::dart_definition(),
         &format!(
             "static Rating fromJson(dynamic json) {{ final read = Rating.fromJsonUnjudged(json); \
              {JUDGED} static Rating fromJsonUnjudged(dynamic payload) {{ final json = \
-             trimmed(payload) as String; return switch (json) {{ 'Express' => \
-             Rating.express,'Unrated' => Rating.unrated, _ => throw FormatException('Unknown \
-             Rating: ' + json) }}; }} String toJson() => wireValue;"
+             trimmed(payload); {} }} String toJson() => wireValue;",
+            plain_enum_read(
+                "Rating",
+                "json",
+                "'Express' => Rating.express,'Unrated' => Rating.unrated,"
+            )
         ),
     );
 }
@@ -629,7 +638,7 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
         &transfer,
         &format!(
             "{}{{ final json = unwrapped(payload); if (json is String) {{ switch (json) {{ case \
-             'Held': return TransferHeld(); default: throw FormatException('Unknown Transfer: ' + \
+             'Held': return TransferHeld(); case 'Rail': throw FormatException('invalid type: unit variant, expected newtype variant', <Object>[json]); case 'Road': throw FormatException('invalid type: unit variant, expected struct variant', <Object>[json]); case 'Split': throw FormatException('invalid type: unit variant, expected tuple variant', <Object>[json]); default: throw FormatException('Unknown Transfer: ' + \
              json); }} }} final map = json is Map<String, dynamic> && json.length == 1 ? json : throw \
              const FormatException('expected value'); final tag = map.keys.first; \
              switch (tag) {{ case 'Held': return _readAt(null, tag, () => map[tag] == null ? \
@@ -671,7 +680,7 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
              return _readFlattened(() => ShipmentAir.fromJsonUnjudged(json)); case 'Boxed': return \
              ShipmentBoxed(Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('kind'))))); \
              case 'Ground': return ShipmentGround(); default: throw FormatException('Unknown \
-             Shipment: ' + tag); }} }} {READ_AT} {READ_FLATTENED} dynamic toJson();",
+             Shipment: ' + tag); }} }} {READ_AT} {READ_BUFFERED} {READ_FLATTENED} dynamic toJson();",
             plain_pair("Shipment", "dynamic", "payload")
         ),
     );
@@ -681,7 +690,7 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
             "{}=> ShipmentAir(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
              _readFlattened(() => \
              Tagged.fromJsonUnjudged(({{...json}}..remove('kind')..remove('dock')))),); \
-             {READ_AT} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
+             {READ_AT} {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("ShipmentAir", "Map<String, dynamic>", "json")
         ),
     );
@@ -745,7 +754,7 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
         &format!(
             "{}=> Pinned(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
              _readFlattened(() => Tagged.fromJsonUnjudged(({{...json}}..remove('dock')))),); \
-             {READ_AT} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
+             {READ_AT} {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("Pinned", "Map<String, dynamic>", "json")
         ),
     );
@@ -755,7 +764,7 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
             "{}=> Sorted(dock: _readAt(json, 'dock', () => json['dock'] as String),listed: \
              _readFlattened(() => \
              Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('dock')..remove('pier'))))),pier: \
-             _readAt(json, 'pier', () => json['pier'] as String),); {READ_AT} {READ_FLATTENED} \
+             _readAt(json, 'pier', () => json['pier'] as String),); {READ_AT} {READ_BUFFERED} {READ_FLATTENED} \
              Map<String, dynamic> toJson() =>",
             plain_pair("Sorted", "Map<String, dynamic>", "json")
         ),
@@ -764,7 +773,7 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
         &account_dart::dart_definition(),
         &format!(
             "{}=> Account(tagged: _readFlattened(() => Tagged.fromJsonUnjudged(json)),); \
-             {READ_FLATTENED} Map<String, dynamic> toJson() =>",
+             {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
             plain_pair("Account", "Map<String, dynamic>", "json")
         ),
     );
@@ -788,7 +797,7 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
         &routed_dart::dart_definition(),
         &format!(
             "{}{{ final json = tag(payload); if (json is String) {{ switch (json) {{ case 'Held': \
-             return RoutedHeld(); default: throw FormatException('Unknown Routed: ' + json); }} }} \
+             return RoutedHeld(); case 'Rail': throw FormatException('invalid type: unit variant, expected newtype variant', <Object>[json]); default: throw FormatException('Unknown Routed: ' + json); }} }} \
              final map2 = json is Map<String, dynamic> && json.length == 1 ? json : throw const \
              FormatException('expected value'); final tag2 = map2.keys.first; \
              switch (tag2) {{ case 'Held': return _readAt(null, tag2, () => map2[tag2] == null ? \

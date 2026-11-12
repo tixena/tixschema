@@ -26,14 +26,16 @@ Generated Zod for `username` -- each check carrying the sentence the Rust valida
 
 ```text
 z.string()
-  .min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })
-  .max(30, { error: (issue) => `too long: maximum length is 30, got ${String(issue.input).length}` })
+  .min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })
+  .max(30, { error: (issue) => `too long: maximum length is 30, got ${[...String(issue.input)].length}` })
   .check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" }))
 ```
 
 Generated JSON Schema for `username`: `{ "type": "string", "minLength": 3, "maxLength": 30, "pattern": "^[a-z0-9_]+$" }`
 
 The TypeScript type is unchanged -- still just `string`.
+
+`minLength` and `maxLength` on a string count Unicode characters, its code points, on every surface: Rust (`chars().count()`), Zod, the JSON Schema, Dart (`runes`), Swift (`unicodeScalars`) and Kotlin (`codePointCount`), in the check and in the number a message reports. `"é"` and `"😀"` count 1, `"e\u{301}"` and `"😀😀"` count 2; a grapheme cluster is not the unit. The same holds for a brand, for the name of a unit variant under a length written on its enum, and for the rendering of a path.
 
 A value breaking more than one of a field's bounds is reported once per bound on both sides, in the order the bounds were declared: `validate()` collects every violation rather than stopping at the first, and every check on the Zod schema runs. So `"A!"` in the field above reads `'username': too short: minimum length is 3, got 2; 'username': does not match pattern '^[a-z0-9_]+$'` from a Rust service and from a TypeScript one alike.
 

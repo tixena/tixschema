@@ -782,12 +782,12 @@ fn main() {
 //!
 //! - **Zod 4 only.** The schemas use the Zod 4 API (`z.strictObject`, `z.codec`, `.prefault`,
 //!   `.check`), which Zod 3 does not have.
-//! - **`u64` and `usize` stop the build under `swift` or `kotlin`**, in every `#[model_schema]`
-//!   type of the crate and at any depth: `Vec<u64>`, a map's values, a tuple, a generic argument.
-//!   The `mobile` set and `--all-features` turn both features on. Use `i64`, or `u32` where the
-//!   range allows. A member serde neither writes nor reads, under `#[serde(skip)]` or under
-//!   `skip_serializing` and `skip_deserializing` together, and every member of a variant serde
-//!   skips, is not refused.
+//! - **`u64` stops the build under `swift` or `kotlin`**, in every `#[model_schema]` type of the
+//!   crate and at any depth: `Vec<u64>`, a map's values, a tuple, a generic argument. The `mobile`
+//!   set and `--all-features` turn both features on. Use `i64`, or `u32` where the range allows.
+//!   A `usize` builds: it is a `UInt64` in Swift and a `ULong` in Kotlin. A member serde neither
+//!   writes nor reads, under `#[serde(skip)]` or under `skip_serializing` and `skip_deserializing`
+//!   together, and every member of a variant serde skips, is not refused.
 //! - **`u64` and `i64` are `bigint` in TypeScript.** Zod reads them through `z.codec`. A plain
 //!   `JSON.parse` rounds a value above `2^53 - 1`, and the schema then refuses it. As a map's key,
 //!   an `i64` or a `u64` is a `number` in TypeScript and `z.number().int()` in Zod.
@@ -814,8 +814,8 @@ fn main() {
 //! - **A `pattern` must read the same in every engine it reaches**: the Rust `regex` crate, the
 //!   JavaScript regex Zod and JSON Schema use, and Dart, Swift and Kotlin. A construct they read
 //!   differently, such as `.`, `\p{L}`, a negated class or an inline flag, is refused at expansion.
-//! - **Lengths agree on ASCII text only.** Rust counts the UTF-8 bytes of a string, Zod its UTF-16
-//!   code units, and Dart, Swift and Kotlin its code points.
+//! - **A length counts Unicode code points** on every surface: Rust, Zod, the JSON Schema, Dart,
+//!   Swift and Kotlin, in the check and in the count a message reports.
 //! - **The macro writes `Deserialize`** for a type that publishes `validate()` or names a
 //!   `preprocess`. serde's `remote`, `from`, `try_from` and `into` are refused on such a type, and
 //!   a method of your own named `validate` is a duplicate definition (`E0592`).
@@ -871,7 +871,7 @@ fn main() {
 //!   and [arky Frontmatter Conversions](https://github.com/tixena/tixschema/blob/master/docs/guide/arky.md#arky-frontmatter-conversions-arky).
 //! - Setup: [Feature Flags](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#feature-flags),
 //!   [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#generating-typescript-files),
-//!   [`u64` or `usize` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-or-usize-under-swift-or-kotlin)
+//!   [`u64` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-under-swift-or-kotlin)
 //!   and [Error Handling and Troubleshooting](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#error-handling--troubleshooting).
 
 mod bound_message;
@@ -1126,7 +1126,7 @@ export function Status$Variant(value: unknown): string {
 /// `Status::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const Status$RawSchema = z.enum(["active", "inactive", "pending"]).meta({
+const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
   description: "Status",
   examples: [],
 });
@@ -1225,7 +1225,7 @@ const Event$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   type: z.literal("userDeleted"),
   reason: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),
   user_id: z.string(),
-})]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
+})]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.undeserializable === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
 export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
   examples: []
@@ -1258,8 +1258,8 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 ///   TypeScript, and Zod holds an integer to its type's range.
 /// - `u64` and `i64` are `bigint` in TypeScript, read in Zod through `z.codec`, and
 ///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number`, and
-///   Zod keys the record by each key's digits. `u64` and `usize` are refused under `swift` or
-///   `kotlin`.
+///   Zod keys the record by each key's digits. `u64` is refused under `swift` or `kotlin`, where a
+///   `usize` is a `UInt64` in Swift and a `ULong` in Kotlin.
 /// - `i128`, `u128`, `f16` and `f128` are refused at expansion. A `serde_json::Value` or
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.
@@ -1445,8 +1445,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 ///   `#[model_schema_prop(nullable)]` where the wire carries `null`.
 /// - **`E0433`, a `{type}_schema` module that cannot be found**: a type another model names is
 ///   declared inside a function body. Declare it in a module.
-/// - **`u64` or `usize` under `swift` or `kotlin`**: refused at the field, at any depth. Use `i64`,
-///   or `u32` where the range allows.
+/// - **`u64` under `swift` or `kotlin`**: refused at the field, at any depth. Use `i64`, or `u32`
+///   where the range allows.
 /// - **A function of yours named `validate` or `model_schema_read_unjudged`** on a type that
 ///   publishes one: a duplicate definition (`E0592`). serde's `remote`, `from`, `try_from` and
 ///   `into` are refused on a type whose `Deserialize` the macro writes.
@@ -1763,8 +1763,8 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 /// A bound or a literal is held by Rust's `validate()` and the serde read that runs it, in every
 /// build, by Zod and JSON Schema, and by the `validate()` and the read of the Dart, Swift and
 /// Kotlin types, which write Rust's sentences.
-/// Lengths agree on ASCII text only: Rust counts UTF-8 bytes, Zod UTF-16 code units, and Dart,
-/// Swift and Kotlin code points.
+/// A length counts Unicode code points on every surface, in the check and in the count a message
+/// reports.
 ///
 /// Each Rust message opens with where the value sits in the payload, in single quotes: the keys
 /// serde writes on the way to it, joined by dots, with the index of a list item and the key of a

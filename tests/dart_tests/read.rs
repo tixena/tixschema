@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::held_numbers::{u8_held, u32_held};
-use super::unknown_keys::{READ_AT, refusing};
+use super::unknown_keys::{READ_AT, plain_enum_read, refusing};
 use super::validate::{
     closed_dock_dart, code_dart, consignment_dart, crate_dart, depot_dart, freight_dart,
     gauge_dart, grade_dart, haul_dart, lift_dart, manifest_dart, pair_dart, parcel_dart,
@@ -338,7 +338,7 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &freight,
         &format!(
             "{}{{ if (json is String) {{ switch (json) {{ case 'Held': return FreightHeld(); \
-             default: throw FormatException('Unknown Freight: ' + json); }} }} final map = json is \
+             case 'Boxed': throw FormatException('invalid type: unit variant, expected newtype variant', <Object>[json]); case 'Loose': throw FormatException('invalid type: unit variant, expected struct variant', <Object>[json]); case 'Split': throw FormatException('invalid type: unit variant, expected tuple variant', <Object>[json]); default: throw FormatException('Unknown Freight: ' + json); }} }} final map = json is \
              Map<String, dynamic> && json.length == 1 ? json : throw const \
              FormatException('expected value'); final tag = map.keys.first; switch (tag) {{ case 'Boxed': \
              return _readAt(null, tag, () => \
@@ -472,18 +472,27 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
 fn a_plain_enum_judges_where_it_names_a_check() {
     assert_written(
         &grade_dart::dart_definition(),
-        "static Grade fromJson(String json) => switch (json) { 'Express' => \
-         Grade.express,'Standard' => Grade.standard, _ => throw FormatException('Unknown Grade: ' \
-         + json) }; static Grade fromJsonUnjudged(String json) => fromJson(json); String \
-         toJson() => wireValue;",
+        &format!(
+            "static Grade fromJson(dynamic json) {{ {} }} static Grade fromJsonUnjudged(dynamic \
+             json) => fromJson(json); String toJson() => wireValue;",
+            plain_enum_read(
+                "Grade",
+                "json",
+                "'Express' => Grade.express,'Standard' => Grade.standard,"
+            )
+        ),
     );
     assert_written(
         &rating_dart::dart_definition(),
         &format!(
-            "static Rating fromJson(String json) {{ final read = Rating.fromJsonUnjudged(json); \
-             {JUDGED} static Rating fromJsonUnjudged(String json) => switch (json) {{ 'Express' \
-             => Rating.express,'Unrated' => Rating.unrated, _ => throw FormatException('Unknown \
-             Rating: ' + json) }}; String toJson() => wireValue;"
+            "static Rating fromJson(dynamic json) {{ final read = Rating.fromJsonUnjudged(json); \
+             {JUDGED} static Rating fromJsonUnjudged(dynamic json) {{ {} }} String toJson() => \
+             wireValue;",
+            plain_enum_read(
+                "Rating",
+                "json",
+                "'Express' => Rating.express,'Unrated' => Rating.unrated,"
+            )
         ),
     );
 }

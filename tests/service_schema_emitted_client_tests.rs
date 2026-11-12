@@ -275,6 +275,11 @@ mod omitted_models;
 #[path = "service_schema_emitted_client_tests/run_node_serde_default.rs"]
 mod run_node_serde_default;
 
+/// A length on a string, read by the Zod schema under node as Rust's `validate()` reads it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_character_lengths.rs"]
+mod run_node_character_lengths;
+
 /// A std sequence other than `Vec`, read and written by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_sequences.rs"]
@@ -1158,6 +1163,51 @@ mod run_swift_wide_integers;
 #[path = "service_schema_emitted_client_tests/run_kotlin_wide_integers.rs"]
 mod run_kotlin_wide_integers;
 
+/// A `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "kotlin_tests/usize_positions_models.rs"]
+mod usize_positions_models;
+
+/// A `usize` held as a member, under a bound, as a map's key and as a range's bound.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/usize_models.rs"]
+mod usize_models;
+
+/// Each integer width below 64 bits as a member.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "service_schema_emitted_client_tests/narrow_integer_models.rs"]
+mod narrow_integer_models;
+
+/// Each integer width below 64 bits, read by the emitted Kotlin type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_narrow_integers.rs"]
+mod run_kotlin_narrow_integers;
+
+/// A `usize`, read and written as a `UInt64` by the emitted Swift type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_usize.rs"]
+mod run_swift_usize;
+
+/// A `usize`, read and written as a `ULong` by the emitted Kotlin type.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_usize.rs"]
+mod run_kotlin_usize;
+
+/// A brand over a `usize`, answered in a reply header.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/usize_header_service.rs"]
+mod usize_header_service;
+
+/// A brand over a `usize` in a reply header, read by the emitted Swift and Kotlin clients.
+#[cfg(test)]
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/run_usize_header.rs"]
+mod run_usize_header;
+
 /// What each `http_rest` client sends and reads of a bare `i64`.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/bare_wide_integer_rows.rs"]
@@ -1628,6 +1678,8 @@ use tests::{
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};
+#[cfg(all(test, any(feature = "swift", feature = "kotlin")))]
+use usize_header_service::{QuotaClientService, quota_client_service_schema};
 
 /// A struct whose every member is flattened, and an enum whose variant holds only a flattened
 /// member, under each tagging.

@@ -83,6 +83,8 @@ enum Number {
     Float,
     Signed,
     Unsigned,
+    /// A `ULong`, whose literal takes the `uL` suffix.
+    UnsignedLong,
 }
 
 /// How a string bound reads the text of a value.
@@ -231,7 +233,12 @@ impl Number {
             Self::Unsigned if whole && !shown.starts_with('-') => {
                 format!("{read} {operator} {shown}u")
             }
-            Self::Signed | Self::Unsigned => format!("{read}.toDouble() {operator} {double}"),
+            Self::UnsignedLong if whole && !shown.starts_with('-') => {
+                format!("{read} {operator} {shown}uL")
+            }
+            Self::Signed | Self::Unsigned | Self::UnsignedLong => {
+                format!("{read}.toDouble() {operator} {double}")
+            }
         }
     }
 
@@ -246,7 +253,12 @@ impl Number {
         if matches!(self, Self::Signed) && shown == LONG_LEAST {
             return format!("{read} {operator} Long.MIN_VALUE");
         }
-        self.compared(read, operator, &shown, shown.parse::<i64>().is_ok())
+        let whole = if matches!(self, Self::UnsignedLong) {
+            shown.parse::<u64>().is_ok()
+        } else {
+            shown.parse::<i64>().is_ok()
+        };
+        self.compared(read, operator, &shown, whole)
     }
 
     /// The number a field of this type is held as, or `None` for a type that is no number.
@@ -260,6 +272,8 @@ impl Number {
             FieldDefType::U8 | FieldDefType::U16 | FieldDefType::U32
         ) {
             Some(Self::Unsigned)
+        } else if matches!(field_type, FieldDefType::Usize) {
+            Some(Self::UnsignedLong)
         } else if field_type.is_numeric() {
             Some(Self::Signed)
         } else {
@@ -271,7 +285,7 @@ impl Number {
     fn quoted(self, read: &str) -> String {
         match self {
             Self::Double | Self::Float => format!("kotlinSchemaShown({read}.toString())"),
-            Self::Signed | Self::Unsigned => read.to_owned(),
+            Self::Signed | Self::Unsigned | Self::UnsignedLong => read.to_owned(),
         }
     }
 }
@@ -725,6 +739,7 @@ impl<'item> Rules<'item> {
                         format!("{read} != {whole}u")
                     }
                     Some(Number::Unsigned) => format!("{read}.toUInt() != {whole}u"),
+                    Some(Number::UnsignedLong) => format!("{read} != {whole}uL"),
                     Some(Number::Signed) | None => {
                         if matches!(held, FieldDefType::I64 | FieldDefType::Isize) {
                             format!("{read} != {whole}L")

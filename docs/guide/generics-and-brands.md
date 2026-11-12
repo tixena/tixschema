@@ -465,7 +465,7 @@ export const DocumentId$SchemaFactory = <IdType extends ZodType>(idType: IdType)
 
 // $SchemaDefault composes the factory with the constrained default argument.
 export const DocumentId$SchemaDefault = DocumentId$SchemaFactory(
-  z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${String(issue.input).length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${String(issue.input).length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: "does not match pattern '^[a-f0-9]{24}$'" })),
+  z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${[...String(issue.input)].length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: "does not match pattern '^[a-f0-9]{24}$'" })),
 );
 ```
 
@@ -552,7 +552,7 @@ pub struct SlugId(pub String);
 Generated Zod:
 
 ```typescript
-const SlugId$RawSchema = z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }).max(50, { error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` }).check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" })).brand<"SlugId">().meta({
+const SlugId$RawSchema = z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).max(50, { error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" })).brand<"SlugId">().meta({
   description: "SlugId",
   examples: [],
 });

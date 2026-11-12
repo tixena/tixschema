@@ -106,6 +106,22 @@ const MIXED_SERVICE: &str = "
     }
 ";
 
+/// A service that takes a bare `usize` in a path, a header and a body, and answers one.
+#[cfg(any(feature = "swift", feature = "kotlin"))]
+const OFFSET_SERVICE: &str = "
+    pub trait OffsetService<Ctx> {
+        #[service_schema_op(http(
+            method = \"GET\",
+            path = \"/offsets/{at}\",
+            header_in(\"x-bound\" = bound),
+        ))]
+        async fn seek(&self, ctx: &Ctx, at: usize, bound: usize) -> Result<usize, String>;
+
+        #[service_schema_op(http(method = \"POST\", path = \"/offsets\"))]
+        async fn count(&self, ctx: &Ctx, count: usize) -> Result<usize, String>;
+    }
+";
+
 /// A service exercising every `http(...)` shape, beside an operation naming no `http(...)` group at
 /// all.
 #[cfg(all(feature = "typescript", feature = "zod"))]

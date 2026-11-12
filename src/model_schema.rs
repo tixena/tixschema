@@ -48,11 +48,14 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
-use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(all(feature = "serde", feature = "zod"))]
-use crate::field_type::{ZOD_NAMED_ARM, zod_check_wrap_handing};
+use crate::field_type::zod_check_wrap_handing;
+use crate::field_type::{RESULT_ARMS, RangeKind};
 #[cfg(feature = "zod")]
-use crate::field_type::{zod_check_wrap, zod_one_key_union, zod_preprocess_wrap};
+use crate::field_type::{
+    zod_buffered, zod_buffered_issue, zod_check_wrap, zod_one_key_union, zod_plain_enum,
+    zod_preprocess_wrap,
+};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
@@ -79,6 +82,13 @@ use crate::bound_message::zod_error_arg;
 use crate::utils::asking_more;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::escape_js_double_quoted;
+#[cfg(any(
+    feature = "zod",
+    feature = "dart",
+    feature = "kotlin",
+    feature = "swift"
+))]
+use crate::utils::record_reads_one_key;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
 use crate::utils::{
@@ -488,24 +498,6 @@ const WRITTEN_AS_OBJECT: &str = "a JSON object";
 /// as `None`: every key it was handed, with any value, and none of them in the value read.
 #[cfg(feature = "zod")]
 const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform(() => ({}))";
-
-/// The check a flattened member, and a braced variant of an internally tagged enum, is read
-/// through. serde reads such a value from the keys its holder buffers: it names the holder for a
-/// value inside it of the wrong type and for a number beyond its width, and the holder with the
-/// key alone for a key missing below the value's own keys. A missing key of its own, an unknown key
-/// and a broken bound or declared literal stay where Zod puts them. A width is a bound that carries
-/// no message of its own.
-#[cfg(feature = "zod")]
-const ZOD_AT_THE_HOLDER: &str = ".superRefine((_read, ctx) => { ctx.issues.splice(0, \
-     ctx.issues.length, ...ctx.issues.map((issue) => { const steps = issue.path ?? []; const last \
-     = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above \
-     = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, \
-     step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" \
-     && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = \
-     [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = \
-     [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; \
-     if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || \
-     (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })";
 
 /// A name a Cargo feature of this crate reads: the feature, what the name is read as under it, and
 /// the fewest type arguments it is read with.
@@ -6971,16 +6963,12 @@ fn collect_swift_scanned_fields<'item>(
 }
 
 /// The refused primitive `field_def`, or anything it directly contains (a map's key or value, a
-/// tuple's slots, a generic argument), names — `None` where nothing under it is a `u64` or
-/// `usize`. [`refuses_swift`] answers only for one `FieldDef`'s own type; this walks every one.
+/// tuple's slots, a generic argument), names — `None` where nothing under it is a `u64`.
+/// [`refuses_swift`] answers only for one `FieldDef`'s own type; this walks every one.
 #[cfg(feature = "swift")]
 fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
     if refuses_swift(field_def) {
-        return Some(if matches!(field_def.field_type, FieldDefType::Usize) {
-            "usize"
-        } else {
-            "u64"
-        });
+        return Some("u64");
     }
     match &field_def.field_type {
         FieldDefType::Map(key, value) => {
@@ -7024,8 +7012,8 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
     }
 }
 
-/// The `compile_error!` tokens an item earns for a `u64` or `usize` field, under `swift` — one
-/// per declared field or slot that names one anywhere in its type, spanned on that declared type.
+/// The `compile_error!` tokens an item earns for a `u64` field, under `swift` — one per declared
+/// field or slot that names one anywhere in its type, spanned on that declared type.
 #[cfg(feature = "swift")]
 fn swift_width_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
     swift_scanned_fields(item)
@@ -7034,8 +7022,7 @@ fn swift_width_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
             let field_def = get_field_def("", ty, "");
             let refused = swift_refused_primitive_name(&field_def)?;
             let message = format!(
-                "{label}: `{refused}` has no Swift mapping; the Swift target refuses unsigned \
-                 64-bit and pointer-sized integers"
+                "{label}: `{refused}` has no Swift mapping; the Swift target refuses `u64`"
             );
             Some(syn::Error::new_spanned(ty, prefixed_guard_message(&message)).to_compile_error())
         })
@@ -8186,11 +8173,11 @@ fn checks_broken_by(
 ) -> Vec<String> {
     let too_short = args
         .min_length
-        .filter(|min_len| name.len() < *min_len)
+        .filter(|min_len| name.chars().count() < *min_len)
         .map(|min_len| format!("`minLength = {min_len}`"));
     let too_long = args
         .max_length
-        .filter(|max_len| name.len() > *max_len)
+        .filter(|max_len| name.chars().count() > *max_len)
         .map(|max_len| format!("`maxLength = {max_len}`"));
     let unmatched = pattern
         .filter(|built| !built.is_match(name))
@@ -9929,13 +9916,13 @@ fn build_branded_validation(
         let to_string_span = inner_ty.span().resolved_at(proc_macro2::Span::call_site());
         // A brand is the value rather than a member of anything, so its report names no field:
         // whatever holds it writes the name, on both languages' side of the wire.
-        let measured = quote! { value.len() };
+        let measured = quote! { value.chars().count() };
         let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
         if let Some(min_len) = args.min_length {
             let reported = rust_violation(Bound::MinLength(min_len), None, &measured);
             checks.push(quote! {
-                if value.len() < #min_len {
+                if value.chars().count() < #min_len {
                     errors.push(#reported);
                 }
             });
@@ -9943,7 +9930,7 @@ fn build_branded_validation(
         if let Some(max_len) = args.max_length {
             let reported = rust_violation(Bound::MaxLength(max_len), None, &measured);
             checks.push(quote! {
-                if value.len() > #max_len {
+                if value.chars().count() > #max_len {
                     errors.push(#reported);
                 }
             });
@@ -11726,12 +11713,12 @@ fn branded_bound_text_method(
     let (text_read, length_read, counted) = match &shape.leaf {
         ConstraintLeaf::Path => (
             Some(quote! { self.#held.to_string_lossy() }),
-            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(quote! { self.model_schema_bound_text().chars().count() }),
             Some(Counted::Characters),
         ),
         ConstraintLeaf::Str => (
             Some(quote! { ::std::borrow::Cow::Borrowed(&*self.#held) }),
-            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(quote! { self.model_schema_bound_text().chars().count() }),
             Some(Counted::Characters),
         ),
         ConstraintLeaf::List => (
@@ -12336,6 +12323,13 @@ fn process_plain_enum(
     // A plain enum is written as a `z.enum` of its variant names, which takes no string check.
     register_enum(name, item_name, AliasKind::EnumMembers);
     Surface::enumerated().record(&name.to_string());
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    record_reads_one_key(&name.to_string());
     #[cfg(feature = "zod")]
     let rust_ident = name.to_string();
 
@@ -13375,14 +13369,25 @@ fn join_external_union(
     // serde reads the enum from a string or an object of one key, and refuses any other value as
     // text that is not the document.
     #[cfg(feature = "zod")]
-    let schema_code = zod_one_key_union(&format!(
-        "z.union([{}]){ZOD_NAMED_ARM}",
-        members
+    let schema_code = {
+        let carrying: Vec<(String, &str)> = variants
             .iter()
-            .map(|(_, zod, _)| zod.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
+            .filter_map(|variant| {
+                variant
+                    .kind
+                    .carried_as()
+                    .map(|expected| (variant.discriminator_value.clone(), expected))
+            })
+            .collect();
+        zod_one_key_union(
+            &members
+                .iter()
+                .map(|(_, zod, _)| zod.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            &carrying,
+        )
+    };
     #[cfg(not(feature = "zod"))]
     let schema_code = String::new();
 
@@ -13424,6 +13429,13 @@ fn process_externally_tagged_enum(
     // Every other enum shape is written as a union of what its variants render as.
     register_enum(name, item_name, AliasKind::NoEnumMembers);
     Surface::externally_tagged(&item_enum.variants).record(&name.to_string());
+    #[cfg(any(
+        feature = "zod",
+        feature = "dart",
+        feature = "kotlin",
+        feature = "swift"
+    ))]
+    record_reads_one_key(&name.to_string());
 
     #[cfg(feature = "typescript")]
     let docs_vec = get_enum_docs(&item_enum);
@@ -13888,20 +13900,30 @@ fn render_internal_variant(
             .chain(member_names(&variant.field_defs))
             .collect();
         #[cfg(feature = "zod")]
-        let zod = variant_flatten_zod(
-            &format!(
-                "{}({}){}",
-                zod_own_object(),
-                parts.schema_code,
-                if matches!(variant.kind, VariantKind::Named) {
-                    ZOD_AT_THE_HOLDER
-                } else {
-                    ""
-                }
-            ),
-            &own_keys,
-            &variant.flattened_fields,
-        );
+        let zod = {
+            // A member that names the enum itself would make the type of its own schema circular.
+            let buffered = if variant.field_defs.iter().any(|member| {
+                member.reads_one_key() && !member.contains_type_reference(self_type_name)
+            }) {
+                zod_buffered()
+            } else {
+                String::new()
+            };
+            let at_the_holder = if matches!(variant.kind, VariantKind::Named) {
+                zod_at_the_holder()
+            } else {
+                String::new()
+            };
+            variant_flatten_zod(
+                &format!(
+                    "{}({}){buffered}{at_the_holder}",
+                    zod_own_object(),
+                    parts.schema_code
+                ),
+                &own_keys,
+                &variant.flattened_fields,
+            )
+        };
         #[cfg(not(feature = "zod"))]
         let zod = String::new();
 
@@ -14061,11 +14083,12 @@ fn internal_discriminated_union(
     tag_name: &str,
     members: &[(String, String, proc_macro2::TokenStream, bool)],
 ) -> String {
+    let holder = zod_at_the_holder();
     let mut braced = false;
     let joined = members
         .iter()
         .map(|(_, zod, _, _)| {
-            zod.strip_suffix(ZOD_AT_THE_HOLDER)
+            zod.strip_suffix(holder.as_str())
                 .map_or(zod.as_str(), |bare| {
                     braced = true;
                     bare
@@ -14073,7 +14096,7 @@ fn internal_discriminated_union(
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let at_the_holder = if braced { ZOD_AT_THE_HOLDER } else { "" };
+    let at_the_holder = if braced { holder.as_str() } else { "" };
     format!(
         "z.discriminatedUnion({}, [{joined}]){at_the_holder}",
         ts_quoted(tag_name)
@@ -18409,22 +18432,22 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         }
         impl BoundedLength for str {
             fn bounded_length(&self) -> usize {
-                self.len()
+                self.chars().count()
             }
         }
         impl BoundedLength for ::std::string::String {
             fn bounded_length(&self) -> usize {
-                self.len()
+                self.chars().count()
             }
         }
         impl BoundedLength for ::std::path::Path {
             fn bounded_length(&self) -> usize {
-                self.to_string_lossy().len()
+                self.to_string_lossy().chars().count()
             }
         }
         impl BoundedLength for ::std::path::PathBuf {
             fn bounded_length(&self) -> usize {
-                self.to_string_lossy().len()
+                self.to_string_lossy().chars().count()
             }
         }
         impl<Item> BoundedLength for [Item] {
@@ -18537,7 +18560,7 @@ fn generate_string_validation_code(
     let measured = if counts_a_named_length(&shape.leaf, meta) {
         quote! { length }
     } else {
-        quote! { value.len() }
+        quote! { value.chars().count() }
     };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
@@ -19682,9 +19705,9 @@ fn collect_field_guard_errors(
         .collect()
 }
 
-/// Rejects a field that reaches `u64` or `usize` at any depth, under the `kotlin` feature. Kotlin
-/// has a `ULong` that could carry `u64`; the refusal exists instead for parity with the Swift
-/// target, which refuses the same two widths.
+/// Rejects a field that reaches `u64` at any depth, under the `kotlin` feature. Kotlin has a
+/// `ULong` that could carry `u64`; the refusal exists instead for parity with the Swift target,
+/// which refuses the same width.
 #[cfg(feature = "kotlin")]
 fn check_kotlin_width_field(
     field: &Field,
@@ -19697,8 +19720,7 @@ fn check_kotlin_width_field(
     Err(syn::Error::new_spanned(
         field,
         prefixed_guard_message(&format!(
-            "{label}: `{width}` has no Kotlin mapping; the Kotlin target refuses unsigned 64-bit \
-             and pointer-sized integers"
+            "{label}: `{width}` has no Kotlin mapping; the Kotlin target refuses `u64`"
         )),
     ))
 }
@@ -22182,6 +22204,33 @@ fn zod_published_members(
     })
 }
 
+/// The check a flattened member, and a braced variant of an internally tagged enum, is read
+/// through. serde reads such a value from the keys its holder buffers: it names the holder for a
+/// value inside it of the wrong type and for a number beyond its width, and the holder with the
+/// key alone for a key missing below the value's own keys, and a refusal [`zod_buffered_issue`]
+/// reads is a Data refusal there. A missing key of its own, an unknown key and a broken bound or
+/// declared literal stay where Zod puts them. A width is a bound that carries no message of its
+/// own.
+#[cfg(feature = "zod")]
+fn zod_at_the_holder() -> String {
+    format!(
+        ".superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, \
+         ...ctx.issues.map((issue) => {{ const buffered = ({})(issue); if (buffered !== undefined) \
+         return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; \
+         let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \
+         \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : \
+         undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== \
+         null && Object.prototype.hasOwnProperty.call(above, last)); const refused = \
+         [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && \
+         !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const \
+         width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error \
+         === undefined; if (absent && steps.length > 1 && refused) return {{ ...issue, path: [last] \
+         }}; return width || (!absent && refused) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ \
+         when: () => true }})",
+        zod_buffered_issue()
+    )
+}
+
 /// A schema an intersection is built from, written so the name it carries is read when the
 /// intersection is used rather than while the `const` holding it is being initialized.
 #[cfg(feature = "zod")]
@@ -22190,10 +22239,10 @@ fn deferred_zod_operand(schema: &str) -> String {
 }
 
 /// [`deferred_zod_operand`] of a member serde reads from the keys its holder buffers, read through
-/// [`ZOD_AT_THE_HOLDER`]: a flattened member, and a newtype variant's content beside its tag.
+/// [`zod_at_the_holder`]: a flattened member, and a newtype variant's content beside its tag.
 #[cfg(feature = "zod")]
 fn flattened_zod_operand(schema: &str) -> String {
-    format!("{}{ZOD_AT_THE_HOLDER}", deferred_zod_operand(schema))
+    format!("{}{}", deferred_zod_operand(schema), zod_at_the_holder())
 }
 
 /// The suffix the binding an item publishes is named with. A generic type publishes a factory —
@@ -22564,9 +22613,10 @@ fn zod_factory_block_around(
     let arguments = zod_factory_arguments(parameters);
     // The check that places a refusal at its enum is a method call on the builder's result, which
     // would be typed while the builder's own type is being inferred; the factory applies it.
+    let holder = zod_at_the_holder();
     let (expression, at_the_holder) = published
-        .strip_suffix(ZOD_AT_THE_HOLDER)
-        .map_or((published, ""), |bare| (bare, ZOD_AT_THE_HOLDER));
+        .strip_suffix(holder.as_str())
+        .map_or((published, ""), |bare| (bare, holder.as_str()));
     let body = zod_factory_body(item_name, parameters, at_the_holder);
 
     #[cfg(feature = "typescript")]
@@ -23099,6 +23149,7 @@ fn generate_plain_enum_zod_schema_method(
     #[cfg(feature = "zod")]
     {
         let reexport = ident_reexport_zod(rust_ident, item_name, "$Schema");
+        let read = zod_plain_enum(schema_code);
         // The checks the enum names, on the enumeration itself and ahead of its description.
         let checked = zod_check_wrap(String::new(), &args.check);
         // Each function `preprocess` names is written around the checked enumeration: `opened`
@@ -23111,7 +23162,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = {}z.enum([{}]){}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #opened, #schema_code, #checked, #closed, #description, #item_name, #item_name, #item_name, #reexport)
+                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #opened, #read, #checked, #closed, #description, #item_name, #item_name, #item_name, #reexport)
                 }
             }
         }
@@ -23121,7 +23172,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("export const {}$Schema = {}z.enum([{}]){}{}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #opened, #schema_code, #checked, #closed, #description, #reexport)
+                    format!("export const {}$Schema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #opened, #read, #checked, #closed, #description, #reexport)
                 }
             }
         }

@@ -35,6 +35,5 @@ mod decode;
 mod readme;
 
 #[cfg(test)]
-#[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[path = "std_range_tests/reproduction.rs"]
 mod reproduction;

@@ -11,6 +11,10 @@ mod borrowed_text;
 mod borrowed_values;
 
 #[cfg(test)]
+#[path = "validation_tests/character_lengths.rs"]
+mod character_lengths;
+
+#[cfg(test)]
 #[path = "validation_tests/declared_by_macro.rs"]
 mod declared_by_macro;
 

@@ -2,7 +2,7 @@
 //! list, in a map, in an externally, an adjacently and an internally tagged enum, beside a
 //! flattened member and in a struct with its own tag, numbers alone and in a list, a map keyed by a
 //! brand with a check, one keyed by a brand with a check over another and one keyed by an `i64`,
-//! a `Result`, a member with a bound, and answers the message it was handed.
+//! a `Result`, a plain enum, a member with a bound, and answers the message it was handed.
 //! What the Rust dispatcher answers to each payload names the field every emitted dispatcher and
 //! client is measured against. Nothing here waits on a clock.
 
@@ -18,11 +18,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"reach":5,"deep":{"inner":4}},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1}}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3,"echo":{"Err":"x"},"pull":{"Swung":{"arc":6}}},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"reach":5,"deep":{"inner":4},"echo":{"Ok":5},"pull":"Still"},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1},"chord":"Still"}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 102] = [
+pub const CASES: [(&str, &str, Option<&str>); 128] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -241,14 +241,126 @@ pub const CASES: [(&str, &str, Option<&str>); 102] = [
         "tolls.-9223372036854775809",
         Some("1"),
     ),
+    (
+        "a number for a Result in a flattened member",
+        "frame.echo",
+        Some("1"),
+    ),
+    (
+        "a list for a Result in a flattened member",
+        "frame.echo",
+        Some("[]"),
+    ),
+    (
+        "an empty object for a Result in a flattened member",
+        "frame.echo",
+        Some("{}"),
+    ),
+    (
+        "two arms for a Result in a flattened member",
+        "frame.echo",
+        Some(r#"{"Ok":4,"Err":"x"}"#),
+    ),
+    (
+        "a number for an external enum in a flattened member",
+        "frame.pull",
+        Some("1"),
+    ),
+    (
+        "a list for an external enum in a flattened member",
+        "frame.pull",
+        Some("[]"),
+    ),
+    (
+        "an empty object for an external enum in a flattened member",
+        "frame.pull",
+        Some("{}"),
+    ),
+    (
+        "two variants for an external enum in a flattened member",
+        "frame.pull",
+        Some(r#"{"Swung":{"arc":1},"Still":null}"#),
+    ),
+    (
+        "a number for a Result in an internal variant",
+        "turn.echo",
+        Some("1"),
+    ),
+    (
+        "a list for a Result in an internal variant",
+        "turn.echo",
+        Some("[]"),
+    ),
+    (
+        "an empty object for a Result in an internal variant",
+        "turn.echo",
+        Some("{}"),
+    ),
+    (
+        "two arms for a Result in an internal variant",
+        "turn.echo",
+        Some(r#"{"Ok":4,"Err":"x"}"#),
+    ),
+    (
+        "a number for an external enum in an internal variant",
+        "turn.pull",
+        Some("1"),
+    ),
+    (
+        "a list for an external enum in an internal variant",
+        "turn.pull",
+        Some("[]"),
+    ),
+    (
+        "an empty object for an external enum in an internal variant",
+        "turn.pull",
+        Some("{}"),
+    ),
+    (
+        "two variants for an external enum in an internal variant",
+        "turn.pull",
+        Some(r#"{"Swung":{"arc":1},"Still":null}"#),
+    ),
+    (
+        "a text naming an arm of a Result that carries data",
+        "tally",
+        Some(r#""Ok""#),
+    ),
+    (
+        "a text naming a variant that carries data",
+        "peal",
+        Some(r#""Swung""#),
+    ),
+    ("a number for a plain enum", "chord", Some("1")),
+    ("a list for a plain enum", "chord", Some("[]")),
+    ("a boolean for a plain enum", "chord", Some("true")),
+    ("an empty object for a plain enum", "chord", Some("{}")),
+    (
+        "an object of two keys for a plain enum",
+        "chord",
+        Some(r#"{"Still":null,"Rung":null}"#),
+    ),
+    (
+        "an object of one key over null for a plain enum",
+        "chord",
+        Some(r#"{"Still":null}"#),
+    ),
+    (
+        "an object of one key over a number for a plain enum",
+        "chord",
+        Some(r#"{"Still":1}"#),
+    ),
+    ("an unknown text for a plain enum", "chord", Some(r#""x""#)),
 ];
 
 /// The cases where the Rust dispatcher names a place other than the one the case changes: serde
-/// reads a flattened member, and an internally tagged variant, from the content its holder
-/// buffers, and names the holder for a value inside it that it refuses, a number beyond its width
-/// among them, and the key alone for a nested key missing; it names the map for a key of an
-/// integer type it reads as a float. Every emitted read names the place the Rust dispatcher names.
-pub const NAMED_BY_SERDE: [(&str, &str); 10] = [
+/// reads a flattened member, and the members of an internally tagged variant, from the content
+/// their holder buffers, and names the holder for a value inside it that it refuses, a number
+/// beyond its width among them, and the key alone for a nested key missing; it names the map for a
+/// key of an integer type it reads as a float; and it names the variant under a member for a
+/// string naming a variant that carries data and for a value under a plain enum's key. Every
+/// emitted read names the place the Rust dispatcher names.
+pub const NAMED_BY_SERDE: [(&str, &str); 30] = [
     ("a text for a number in a flattened member", "frame"),
     ("a number beyond a u32 in a flattened member", "frame"),
     ("a negative number in a flattened member", "frame"),
@@ -262,11 +374,62 @@ pub const NAMED_BY_SERDE: [(&str, &str); 10] = [
     ("an i64 key with an exponent", "tolls"),
     ("an i64 key of minus zero", "tolls"),
     ("an i64 key below an i64", "tolls"),
+    ("a number for a Result in a flattened member", "frame"),
+    ("a list for a Result in a flattened member", "frame"),
+    (
+        "an empty object for a Result in a flattened member",
+        "frame",
+    ),
+    ("two arms for a Result in a flattened member", "frame"),
+    (
+        "a number for an external enum in a flattened member",
+        "frame",
+    ),
+    ("a list for an external enum in a flattened member", "frame"),
+    (
+        "an empty object for an external enum in a flattened member",
+        "frame",
+    ),
+    (
+        "two variants for an external enum in a flattened member",
+        "frame",
+    ),
+    ("a number for a Result in an internal variant", "turn"),
+    ("a list for a Result in an internal variant", "turn"),
+    (
+        "an empty object for a Result in an internal variant",
+        "turn",
+    ),
+    ("two arms for a Result in an internal variant", "turn"),
+    (
+        "a number for an external enum in an internal variant",
+        "turn",
+    ),
+    ("a list for an external enum in an internal variant", "turn"),
+    (
+        "an empty object for an external enum in an internal variant",
+        "turn",
+    ),
+    (
+        "two variants for an external enum in an internal variant",
+        "turn",
+    ),
+    (
+        "a text naming an arm of a Result that carries data",
+        "tally.Ok",
+    ),
+    ("a text naming a variant that carries data", "peal.Swung"),
+    (
+        "an object of one key over a number for a plain enum",
+        "chord.Still",
+    ),
+    ("an unknown text for a plain enum", "chord"),
 ];
 
 /// The cases the Rust dispatcher reads: serde reads an `f32` beyond its range as an infinity of the
 /// sign written, an integer written plainly, and a key of an integer type within its range.
-pub const READ_BY_RUST: [&str; 13] = [
+pub const READ_BY_RUST: [&str; 14] = [
+    "an object of one key over null for a plain enum",
     "an f32 beyond its range",
     "an f32 just beyond its range",
     "an f32 beyond its range below zero",
@@ -284,7 +447,12 @@ pub const READ_BY_RUST: [&str; 13] = [
 
 /// The cases the Rust dispatcher answers `undeserializable-payload` for, naming no field: `serde_json`
 /// refuses each as text that is not the document, not as a value of the wrong kind.
-pub const NOT_A_DOCUMENT: [&str; 22] = [
+pub const NOT_A_DOCUMENT: [&str; 27] = [
+    "a number for a plain enum",
+    "a list for a plain enum",
+    "a boolean for a plain enum",
+    "an empty object for a plain enum",
+    "an object of two keys for a plain enum",
     "a Result of two arms",
     "a Result of no arm",
     "a key that is no number",
@@ -322,6 +490,13 @@ pub struct CarillonBell {
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CarillonChord {
+    Rung,
+    Still,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CarillonPeal {
     Still,
     Swung { arc: u32 },
@@ -341,6 +516,8 @@ pub enum CarillonTurn {
     Half {
         #[model_schema_prop(maximum = 100)]
         arc: u32,
+        echo: Result<u32, String>,
+        pull: CarillonPeal,
     },
 }
 
@@ -348,8 +525,10 @@ pub enum CarillonTurn {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CarillonBeam {
     pub deep: CarillonDeep,
+    pub echo: Result<u32, String>,
     #[model_schema_prop(maximum = 100)]
     pub oak: u32,
+    pub pull: CarillonPeal,
     pub reach: u32,
 }
 
@@ -393,6 +572,8 @@ pub struct CarillonYoke {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CarillonChime {
     pub bells: Vec<CarillonBell>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chord: Option<CarillonChord>,
     pub depth: i64,
     pub frame: CarillonFrame,
     #[model_schema_prop(minLength = 1)]

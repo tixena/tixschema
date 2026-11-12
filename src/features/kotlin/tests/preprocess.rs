@@ -239,28 +239,27 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
     );
 }
 
-/// A plain enum that names a function is read by `{Type}Unjudged`, the one serializer it has,
-/// over the plugin's. One that names none keeps the plugin's alone.
+/// A plain enum is read by `{Type}Unjudged`, the one serializer it has, over the plugin's, which
+/// reads the payload the functions it names answer.
 #[test]
-fn a_plain_enum_that_names_a_function_is_read_by_its_unjudged_serializer() {
+fn a_plain_enum_is_read_by_its_unjudged_serializer() {
     let grade: ItemEnum = syn::parse_quote! {
         enum Grade { Express, Standard }
     };
     let members = format!("enum class Grade {{ Express, Standard; {NO_RULE} }}");
-    assert_eq!(
-        choice_corrected_by(&grade, &["unwrapped"]),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             GradeUnjudged::class) @KeepGeneratedSerializer {members} \
-             @OptIn(ExperimentalSerializationApi::class) object GradeUnjudged : \
-             KSerializer<Grade> {}",
-            transform("Grade", "Grade.generatedSerializer()", "unwrapped(element)")
-        )
-    );
-    assert_eq!(
-        choice_corrected_by(&grade, &[]),
-        format!("@Serializable {members}")
-    );
+    for (functions, correction) in [
+        (&["unwrapped"][..], "unwrapped(element)"),
+        (&[][..], "element"),
+    ] {
+        assert_eq!(
+            choice_corrected_by(&grade, functions),
+            format!(
+                "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+                 GradeUnjudged::class) @KeepGeneratedSerializer {members} {}",
+                plain_enum_unjudged("Grade", &["Express", "Standard"], correction)
+            )
+        );
+    }
 }
 
 /// A serializer the emitter writes calls the type's functions on the payload it decodes, ahead

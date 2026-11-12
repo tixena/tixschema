@@ -4,6 +4,16 @@
 kotlinx_serialization_version := "1.11.0"
 kotlinx_coroutines_version := "1.11.0"
 kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tixschema/kotlin-libs")
+zod_version := "4.6.5"
+ws_version := "8.21.3"
+typescript_version := "5.9.3"
+node_modules := env("TIXSCHEMA_NODE_MODULES", home_directory() / ".local/share/tixschema/node-modules")
+node_tsc := node_modules / "node_modules/.bin/tsc"
+
+# Every recipe reads the modules `just node-libs` installs, as CI reads its own, unless the
+# environment names others.
+export TIXSCHEMA_NODE_MODULES := node_modules
+export TIXSCHEMA_TSC := env("TIXSCHEMA_TSC", if path_exists(node_tsc) == "true" { node_tsc } else { "tsc" })
 
 # `bson3/` is a package of its own, built against version 3 of the `bson` library: each recipe that
 # tests, lints, checks, formats, audits or cleans this package runs the same line over it.
@@ -132,11 +142,11 @@ lint-sets:
 # to a compiler off PATH, and TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds `zod`
 # and `typescript`, whose language service reads the notes an editor shows.
 typecheck-ts:
-    @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
+    @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: run \`just node-libs\`, put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Type-checking the emitted bundle with $(command -v "${TIXSCHEMA_TSC:-tsc}")..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --test service_schema_typescript_tests type_check
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "serde,typescript" --test service_schema_typescript_tests type_check
-    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/typescript" ] || { echo "No zod/typescript: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod and typescript." >&2; exit 1; }
+    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/typescript" ] || { echo "No zod/typescript: run \`just node-libs\`, or set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod and typescript." >&2; exit 1; }
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Compiling a second package against the bundle's declarations, and loading the bundle..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test --test generic_types_tests type_check
@@ -169,21 +179,27 @@ kotlin-libs:
     fetch kotlinx-coroutines-core-jvm {{kotlinx_coroutines_version}}
     echo "Kotlin jars in $libs"
 
+# Install zod, ws and typescript, which the emitted TypeScript runs and type-checks against, into
+# ~/.local/share/tixschema/node-modules, at the versions CI installs.
+node-libs:
+    npm install --no-save --no-package-lock --prefix "{{node_modules}}" zod@{{zod_version}} ws@{{ws_version}} typescript@{{typescript_version}}
+    @echo "Node modules in {{node_modules}}"
+
 # Run the emitted clients through their own language's runtime; refuses to stand down. Set
 # TIXSCHEMA_NODE, TIXSCHEMA_DART, TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC or TIXSCHEMA_JAVA to one off PATH.
 test-emitted cfg="":
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node::
-    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/ws" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No ws/zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds ws and zod." >&2; exit 1; }
+    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/ws" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No ws/zod: run \`just node-libs\`, or set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds ws and zod." >&2; exit 1; }
     @echo "Running the emitted WebSocket server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_ws_server
-    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
+    @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] || { echo "No zod: run \`just node-libs\`, or set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod." >&2; exit 1; }
     @echo "Running the integer limits of the emitted Zod schemas with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_integer_limits
     @echo "Running the emitted TypeScript REST server with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_http_service
-    @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
+    @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: run \`just node-libs\`, put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript MCP server and client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_node_mcp
     @echo "Running the emitted TypeScript services whose names hold a quote against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
@@ -300,6 +316,11 @@ all:
     cargo clippy --all-targets --all-features -- -D warnings
     cargo test --all-features
     @echo "All checks completed successfully!"
+
+# What a pull request passes before it merges, on its branch merged with master: the gate, every
+# feature by itself and the feature mix, and the emitted clients under their own toolchains. It
+# runs what CI runs, so a merge does not wait for CI.
+premerge: all check-mix test-emitted
 
 # The longer run over both packages: default and all-features lints, the format check and the
 # named feature lists (what `all` ran before). Run every few days, with the feature sets.

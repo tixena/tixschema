@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+use crate::swift_plain_enum::plain_enum_reads;
+
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowRequest {
@@ -621,10 +623,12 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),
-        "public enum ReservedMember: String, Codable, Sendable { case `default` = \"Default\"; \
-         case `in` = \"In\"; case other = \"Other\"; public init(swiftSchemaUnjudged decoder: \
-         Decoder) throws { try self.init(from: decoder) }; public func validate() -> [String] { [] \
-         }; public func swiftSchemaValidateBound() -> [String] { [] } }"
+        format!(
+            "public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
+             \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func validate() \
+             -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> [String] {{ [] }} }}",
+            plain_enum_reads("ReservedMember")
+        )
     );
     assert_eq!(
         serde_json::to_value(ReservedMembers {
