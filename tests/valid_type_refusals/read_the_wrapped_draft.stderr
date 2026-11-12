@@ -1,0 +1,5 @@
+error[E0616]: field `0` of struct `__tixschema_valid_shipment_schema::Shipment` is private
+  --> tests/valid_type_refusals/read_the_wrapped_draft.rs:15:14
+   |
+15 |     shipment.0.parcel_count = 1;
+   |              ^ private field

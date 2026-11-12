@@ -79,14 +79,14 @@ fn outside(list: &[String], fragile: &[String]) -> Result<(), Vec<String>> {
     }
 }
 
-fn within_tote<CodeType>(value: &Tote<CodeType>) -> Result<(), Vec<String>>
+fn within_tote<CodeType>(value: &ToteDraft<CodeType>) -> Result<(), Vec<String>>
 where
     CodeType: Display,
 {
     outside(&value.item_code_list, &value.fragile_item_codes)
 }
 
-fn within_carton(value: &Carton) -> Result<(), Vec<String>> {
+fn within_carton(value: &CartonDraft) -> Result<(), Vec<String>> {
     outside(&value.item_code_list, &value.fragile_item_codes)
 }
 

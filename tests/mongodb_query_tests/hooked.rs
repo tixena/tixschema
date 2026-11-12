@@ -113,10 +113,12 @@ trait Tracked {}
 impl Tracked for Scan {}
 
 fn leaf(name: &str) -> Node {
-    Node {
+    NodeDraft {
         children: Vec::new(),
         name: name.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The instant every case writes: `2026-10-07T17:40:00Z`.
@@ -190,7 +192,7 @@ fn a_date_with_no_hook_is_written_as_text() {
 
 #[test]
 fn a_hooked_path_writes_what_serde_stores_for_the_field() {
-    let window = PublishWindow {
+    let window = PublishWindowDraft {
         announced: now(),
         from_date: now(),
         to_date: Some(now()),
@@ -247,7 +249,7 @@ fn a_date_under_as_number_is_written_as_a_number() {
         shown(stamped.seen_at().exists(false)),
         r#"{ "seenAt": { "$exists": false } }"#
     );
-    let row = Stamped {
+    let row = StampedDraft {
         created_at: now(),
         seen_at: Some(now()),
     }
@@ -298,7 +300,7 @@ fn a_hooked_field_typed_with_self_is_a_path_over_the_type() {
         shown(children.eq(vec![leaf("leaf")]).unwrap()),
         r#"{ "children": { "$eq": [[{ "children": [[]], "name": "leaf" }]] } }"#
     );
-    let root = Node {
+    let root = NodeDraft {
         children: vec![leaf("first"), leaf("second")],
         name: "root".to_owned(),
     };
@@ -315,12 +317,12 @@ fn a_hooked_field_typed_with_self_is_a_path_over_the_type() {
 fn a_hooked_option_of_a_box_of_self_is_an_optional_path() {
     let parent: depot_schema::OptionalField<Depot, Box<Depot>, Depot> =
         Depot::MONGO_FIELDS.parent();
-    let north = Depot {
+    let north = DepotDraft {
         code: "NORTH".to_owned(),
         parent: None,
     };
     assert_eq!(
-        shown(parent.eq(Box::new(north)).unwrap()),
+        shown(parent.eq(Box::new(north.validate().unwrap())).unwrap()),
         r#"{ "parent": { "$eq": [{ "code": "NORTH" }] } }"#
     );
     assert_eq!(shown(parent.unset()), r#"{ "$unset": { "parent": "" } }"#);
@@ -330,11 +332,11 @@ fn a_hooked_option_of_a_box_of_self_is_an_optional_path() {
 fn a_hooked_field_of_a_variant_typed_with_self_is_a_path_over_the_enum() {
     let load = Load::MONGO_FIELDS;
     let parts: load_schema::Field<Load, Vec<Load>> = load.bundle().parts();
-    let item = Load::Item {
+    let item = LoadDraft::Item {
         sku: "A-1".to_owned(),
     };
     assert_eq!(
-        shown(parts.eq(vec![item]).unwrap()),
+        shown(parts.eq(vec![item.validate().unwrap()]).unwrap()),
         r#"{ "parts": { "$eq": [[{ "kind": "item", "sku": "A-1" }]] } }"#
     );
     assert_eq!(

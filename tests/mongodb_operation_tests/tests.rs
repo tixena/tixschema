@@ -59,17 +59,21 @@ fn every_row() -> Filter<Invoice> {
 
 /// What the seeded row reads as.
 fn invoice() -> Invoice {
-    Invoice {
-        customer: Customer {
+    InvoiceDraft {
+        customer: CustomerDraft {
             name: "Acme".to_owned(),
             open_invoices: 3_u32,
-        },
+        }
+        .validate()
+        .unwrap(),
         id: seeded_id(),
         number: "INV-0042".to_owned(),
         paid_at: None,
         status: InvoiceStatus::PastDue,
         total: 1_250_u32,
     }
+    .validate()
+    .unwrap()
 }
 
 /// Whether `refused` is the row [`unreadable`] stores, told by its `_id` and its one issue.
@@ -94,12 +98,14 @@ fn names_the_unreadable_row(refused: &OperationError) -> bool {
 /// its number.
 fn numbered(at: u32) -> Invoice {
     let id = format!("{seeded}{at:08x}", seeded = &SEEDED_ID[..16]);
-    Invoice {
+    InvoiceDraft {
         id: ObjectId::parse_str(id).unwrap(),
         number: format!("INV-{at:04}"),
         total: at * 100_u32,
-        ..invoice()
+        ..invoice().into()
     }
+    .validate()
+    .unwrap()
 }
 
 /// Where the seeded row holds its customer's open invoices.

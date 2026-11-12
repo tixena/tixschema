@@ -142,7 +142,7 @@ where
 }
 
 fn named() -> Named {
-    Named {
+    NamedDraft {
         id: "doc-1".to_owned(),
     }
 }
@@ -158,75 +158,79 @@ fn a_struct_with_named_members_is_an_object() {
 fn a_brand_over_a_string_is_wrapped() {
     assert!(Brand::needs_wrapper());
     assert!(brand_schema::Schema::needs_wrapper());
-    assert!(!writes_an_object(&Brand("doc-1".to_owned())));
+    assert!(!writes_an_object(&BrandDraft("doc-1".to_owned())));
 }
 
 #[test]
 fn a_newtype_is_what_its_slot_is() {
     assert!(!OverMap::needs_wrapper());
-    assert!(writes_an_object(&OverMap(HashMap::new())));
+    assert!(writes_an_object(&OverMapDraft(HashMap::new())));
     assert!(OverList::needs_wrapper());
-    assert!(!writes_an_object(&OverList(vec![])));
+    assert!(!writes_an_object(&OverListDraft(vec![])));
 }
 
 #[test]
 fn a_tuple_struct_is_its_one_slot_or_an_array() {
     assert!(Pair::needs_wrapper());
-    assert!(!writes_an_object(&Pair("a".to_owned(), 1)));
+    assert!(!writes_an_object(&PairDraft("a".to_owned(), 1)));
     assert!(Single::needs_wrapper());
-    assert!(!writes_an_object(&Single(1)));
+    assert!(!writes_an_object(&SingleDraft(1)));
     assert!(!Boxed::needs_wrapper());
-    assert!(writes_an_object(&Boxed(named())));
+    assert!(writes_an_object(&BoxedDraft(named())));
 }
 
 #[test]
 fn a_plain_enum_is_a_string() {
     assert!(Plain::needs_wrapper());
     assert!(plain_schema::Schema::needs_wrapper());
-    assert!(!writes_an_object(&Plain::First));
-    assert!(!writes_an_object(&Plain::Second));
+    assert!(!writes_an_object(&PlainDraft::First));
+    assert!(!writes_an_object(&PlainDraft::Second));
 }
 
 #[test]
 fn an_externally_tagged_enum_is_a_string_only_where_a_variant_is_a_unit() {
     assert!(Mixed::needs_wrapper());
-    assert!(!writes_an_object(&Mixed::Nothing));
-    assert!(writes_an_object(&Mixed::Something(named())));
+    assert!(!writes_an_object(&MixedDraft::Nothing));
+    assert!(writes_an_object(&MixedDraft::Something(named())));
     assert!(!Wrapping::needs_wrapper());
-    assert!(writes_an_object(&Wrapping::Card(named())));
-    assert!(writes_an_object(&Wrapping::Cash { amount: 1 }));
+    assert!(writes_an_object(&WrappingDraft::Card(named())));
+    assert!(writes_an_object(&WrappingDraft::Cash { amount: 1 }));
 }
 
 #[test]
 fn an_enum_under_a_tag_is_an_object() {
     assert!(!Tagged::needs_wrapper());
     assert!(writes_an_object(&Tagged::Idle));
-    assert!(writes_an_object(&Tagged::Busy { jobs: 1 }));
+    assert!(writes_an_object(&TaggedDraft::Busy { jobs: 1 }));
     assert!(!Adjacent::needs_wrapper());
-    assert!(writes_an_object(&Adjacent::Idle));
-    assert!(writes_an_object(&Adjacent::Busy(1)));
+    assert!(writes_an_object(&AdjacentDraft::Idle));
+    assert!(writes_an_object(&AdjacentDraft::Busy(1)));
 }
 
 #[test]
 fn an_untagged_enum_is_an_object_where_every_member_is() {
     assert!(!Objects::needs_wrapper());
-    assert!(writes_an_object(&Objects::Card(named())));
-    assert!(writes_an_object(&Objects::Cash { amount: 1 }));
+    assert!(writes_an_object(&ObjectsDraft::Card(named())));
+    assert!(writes_an_object(&ObjectsDraft::Cash { amount: 1 }));
     assert!(Texts::needs_wrapper());
-    assert!(!writes_an_object(&Texts::Label("a".to_owned())));
+    assert!(!writes_an_object(&TextsDraft::Label("a".to_owned())));
     assert!(Nested::needs_wrapper());
-    assert!(!writes_an_object(&Nested::Inner(Brand("a".to_owned()))));
+    assert!(!writes_an_object(&NestedDraft::Inner(
+        BrandDraft("a".to_owned()).validate().unwrap()
+    )));
 }
 
 #[test]
 fn a_generic_type_answers_with_its_type_filled_in() {
     assert!(!Page::<String>::needs_wrapper());
-    assert!(writes_an_object(&Page::<String> { items: vec![] }));
+    assert!(writes_an_object(&PageDraft::<String> { items: vec![] }));
     assert!(Holder::<String>::needs_wrapper());
     assert!(Holder::<Named>::needs_wrapper());
-    assert!(!writes_an_object(&Holder::<String>("a".to_owned())));
+    assert!(!writes_an_object(&HolderDraft::<String>("a".to_owned())));
     assert!(!Paged::<String>::needs_wrapper());
-    assert!(writes_an_object(&Paged::<String>(Page { items: vec![] })));
+    assert!(writes_an_object(&PagedDraft::<String>(
+        PageDraft { items: vec![] }.validate().unwrap()
+    )));
     assert!(Filled::needs_wrapper());
 }
 

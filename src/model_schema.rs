@@ -18,6 +18,7 @@ pub mod preprocess;
 pub mod ranges;
 #[cfg(feature = "serde")]
 pub mod strict;
+pub mod valid_type;
 
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
@@ -599,6 +600,8 @@ type StructFieldData = (
 #[derive(Clone)]
 struct ExampleTest {
     blocks: Vec<TokenStream>,
+    /// Whether each block builds the draft of the type.
+    drafted: bool,
     json_schema: bool,
     module: syn::Ident,
     name: syn::Ident,
@@ -1177,6 +1180,8 @@ struct ModelSchemaArgs {
     /// The first of `pattern`, `minLength` and `maxLength` written, and where: a refusal of the
     /// check is spanned there.
     string_check: Option<(&'static str, proc_macro2::Span)>,
+    /// The types a service writes for itself, which are declared as written and have no draft.
+    undrafted: bool,
 }
 
 /// How a unit struct's own `Deserialize` reads: whether it judges the value with `validate()`, and
@@ -1637,7 +1642,8 @@ struct PlainEnumAdded<'added> {
     /// The test over the enum's examples, where it publishes `validate()` and writes any.
     example_test: &'added proc_macro2::TokenStream,
     /// The read the macro writes for an enum that publishes `validate()`.
-    judged: &'added proc_macro2::TokenStream,
+    judged: &'added judged_read::Drafted,
+    validate: &'added Option<proc_macro2::TokenStream>,
 }
 
 /// The parts [`assemble_schema_output`] joins.
@@ -1653,6 +1659,7 @@ struct SchemaOutputParts<'parts, T> {
     /// The type's `validate()`, written beside its delegates so every filling has it.
     validate_method: &'parts Option<proc_macro2::TokenStream>,
     validation_fns: &'parts [proc_macro2::TokenStream],
+    vis: &'parts syn::Visibility,
 }
 
 /// What a struct's container says of the members collected under it: whether it answers a missing
@@ -1679,6 +1686,7 @@ impl<'parts, T> SchemaOutputParts<'parts, T> {
             schema_impl_items: self.schema_impl_items,
             validate_method: self.validate_method,
             validation_fns: self.validation_fns,
+            vis: self.vis,
         }
     }
 }
@@ -1719,6 +1727,7 @@ impl ExampleTest {
         }
         Some(Self {
             blocks: blocks.to_vec(),
+            drafted: false,
             json_schema: args.enable.jsonschema,
             module: syn::Ident::new(
                 &format!("{}_schema_examples", to_snake_case(&name.to_string())),
@@ -1733,9 +1742,37 @@ impl ExampleTest {
         })
     }
 
+    /// [`Self::of`] for the examples of a declaration whose examples build its draft.
+    fn of_draft(
+        blocks: &[TokenStream],
+        name: &syn::Ident,
+        generics: &syn::Generics,
+        args: &ModelSchemaArgs,
+    ) -> Option<Self> {
+        Self::of(blocks, name, generics, args).map(|example| Self {
+            value_ty: schema_example_value_type(
+                &valid_type::draft_ident(name),
+                &type_parameters_in_scope(generics),
+                &args.default_types,
+            ),
+            drafted: true,
+            ..example
+        })
+    }
+
+    /// [`Self::of_struct`] for a struct that is not a brand, whose examples build its draft.
+    fn of_drafted_struct(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> Option<Self> {
+        Self::of_draft(
+            &extract_examples_tokens(&item_struct.attrs),
+            &item_struct.ident,
+            &item_struct.generics,
+            args,
+        )
+    }
+
     /// [`Self::of`] for the examples `item_enum` writes.
     fn of_enum(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> Option<Self> {
-        Self::of(
+        Self::of_draft(
             &extract_examples_tokens(&item_enum.attrs),
             &item_enum.ident,
             &item_enum.generics,
@@ -1793,6 +1830,7 @@ impl ExampleTest {
             });
         let Some(Self {
             blocks,
+            drafted,
             module,
             name,
             value_ty,
@@ -1802,6 +1840,14 @@ impl ExampleTest {
             return bridge;
         };
         let name_text = name.to_string();
+        let broken = if *drafted {
+            quote! {
+                let broken = value.validation_issues();
+                let broken = if broken.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(broken) };
+            }
+        } else {
+            quote! { let broken = value.validate(); }
+        };
         let checks = blocks.iter().enumerate().map(|(index, code_tokens)| {
             let number = index + 1;
             quote! {
@@ -1809,7 +1855,8 @@ impl ExampleTest {
                     let value: #value_ty = {
                         #code_tokens
                     };
-                    if let ::core::result::Result::Err(broken) = value.validate() {
+                    #broken
+                    if let ::core::result::Result::Err(broken) = broken {
                         ::core::panic!(
                             "example {} of `{}` breaks its rules: {}",
                             #number,
@@ -2062,6 +2109,8 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("nonstrict") {
         result.nonstrict = flag_arg(meta, "nonstrict")?;
+    } else if path.is_ident("__tixschema_undrafted") {
+        result.undrafted = true;
     } else if path.is_ident("default_types") {
         result.default_types = default_types_arg(meta)?;
     } else if path.is_ident("enable") {
@@ -2477,6 +2526,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
+    valid_type::record(&item, parsed_args.undrafted);
     let expanded = process_item(item, &parsed_args);
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
@@ -2914,7 +2964,7 @@ fn enum_schema_example_method(
     generics: &syn::Generics,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
-    item_schema_example_method(&extract_examples_tokens(attrs), name, generics, args)
+    drafted_schema_example_method(&extract_examples_tokens(attrs), name, generics, args)
 }
 
 /// The type a doc example's value is annotated with: the item's own name, with every type parameter
@@ -2966,6 +3016,21 @@ fn item_schema_example_method(
             &type_parameters_in_scope(generics),
             &args.default_types,
         ),
+    )
+}
+
+/// [`item_schema_example_method`] for a declaration whose examples build its draft.
+fn drafted_schema_example_method(
+    example_tokens: &[proc_macro2::TokenStream],
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    args: &ModelSchemaArgs,
+) -> Option<proc_macro2::TokenStream> {
+    item_schema_example_method(
+        example_tokens,
+        &valid_type::draft_ident(name),
+        generics,
+        args,
     )
 }
 
@@ -3137,7 +3202,7 @@ fn struct_delegate_items(
         item_name,
         &item_struct.ident.to_string(),
         &type_parameters_in_scope(&item_struct.generics),
-        item_schema_example_method(
+        drafted_schema_example_method(
             &extract_examples_tokens(&item_struct.attrs),
             &item_struct.ident,
             &item_struct.generics,
@@ -3184,7 +3249,11 @@ fn plain_enum_delegate_items(
     module_ident: &Ident,
     item_enum: &syn::ItemEnum,
     args: &ModelSchemaArgs,
-) -> (Vec<proc_macro2::TokenStream>, TokenStream) {
+) -> (
+    Vec<proc_macro2::TokenStream>,
+    TokenStream,
+    Option<TokenStream>,
+) {
     let item_checks = checks::ItemChecks::of(&args.check, variant_members(item_enum));
     let validate = validate_method(&[], Some(module_ident), &item_checks);
     let examples = enum_schema_example_method(
@@ -3198,10 +3267,9 @@ fn plain_enum_delegate_items(
     let items = build_branded_delegate_items(module_ident, examples.is_some(), args)
         .into_iter()
         .chain(examples)
-        .chain(validate)
         .chain([no_wire_keys_item()])
         .collect();
-    (items, test)
+    (items, test, validate)
 }
 
 /// Builds the delegating impl methods (on the type itself) that forward to its schema module.
@@ -3267,6 +3335,7 @@ fn build_struct_delegate_items(
 fn assemble_schema_output<T>(
     parts: &SchemaOutputParts<T>,
     decode_with_items: &TokenStream,
+    drafted: &judged_read::Drafted,
 ) -> TokenStream
 where
     T: quote::ToTokens,
@@ -3293,6 +3362,21 @@ where
         },
         decode_with_items,
     );
+    let issues = issues_or_none(validate_method.as_ref());
+    let declared = valid_type::declared();
+    let valid = valid_type::ValidType {
+        derives: declared.derives,
+        deserializes: declared.deserializes && !drafted.refused,
+        draft: valid_type::draft_ident(name),
+        generics: parts.generics,
+        issues: &issues,
+        module_ident,
+        name,
+        reads: &drafted.valid,
+        serializes: declared.serializes,
+        vis: parts.vis,
+    };
+    let (wrapper, alias, plain) = valid_items(&valid, &issues, validate_method.is_some());
 
     let output = quote! {
         #item
@@ -3301,11 +3385,15 @@ where
             use super::*;
 
             #module_items
+
+            #wrapper
         }
+
+        #alias
 
         impl #impl_generics #name #type_generics #where_clause {
             #(#delegate_impl_items)*
-            #validate_method
+            #plain
         }
 
         #example_test
@@ -3367,15 +3455,15 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 /// }
 ///
 /// fn main() {
-///     let unlabelled = Crate::<u32> { codes: vec![], label: String::new() };
+///     let unlabelled = CrateDraft::<u32> { codes: vec![], label: String::new() };
 ///     assert_eq!(
-///         unlabelled.validate().unwrap_err(),
+///         unlabelled.validation_issues(),
 ///         ["'label': too short: minimum length is 1, got 0"]
 ///     );
 /// }
 /// ```
 ///
-/// The run below adds a `validate` of the consumer's own on one filling:
+/// The run below adds a `validation_issues` of the consumer's own on one filling:
 ///
 /// ```rust,compile_fail
 /// use serde::{Deserialize, Serialize};
@@ -3389,12 +3477,12 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 ///     pub label: String,
 /// }
 ///
-/// impl Crate<u32> {
-///     pub fn validate(&self) -> Result<(), Vec<String>> {
+/// impl CrateDraft<u32> {
+///     pub fn validation_issues(&self) -> Vec<String> {
 ///         if self.codes.contains(&0) {
-///             return Err(vec!["'codes': no code is zero".to_owned()]);
+///             return vec!["'codes': no code is zero".to_owned()];
 ///         }
-///         Ok(())
+///         Vec::new()
 ///     }
 /// }
 ///
@@ -3405,14 +3493,14 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 /// standalone as an ordinary test file, and this is the only error it earned:
 ///
 /// ```text
-/// error[E0592]: duplicate definitions with name `validate`
+/// error[E0592]: duplicate definitions with name `validation_issues`
 ///   --> tests/zz_probe.rs:4:1
 ///    |
 ///  4 | #[model_schema(default_types(CodeType = String))]
-///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `validate`
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `validation_issues`
 /// ...
-/// 13 |     pub fn validate(&self) -> Result<(), Vec<String>> {
-///    |     ------------------------------------------------- other definition for `validate`
+/// 13 |     pub fn validation_issues(&self) -> Vec<String> {
+///    |     ---------------------------------------------- other definition for `validation_issues`
 /// ```
 fn struct_validate_method(
     validate_bodies: &[proc_macro2::TokenStream],
@@ -3442,15 +3530,50 @@ fn validate_method(
         .filter(|_| !checks.named)
         .map(|module| quote! { use #module::*; });
     Some(quote! {
-        /// Validates all constrained fields and returns all validation errors.
-        ///
-        /// Returns `Ok(())` if all constraints pass, or `Err(Vec<String>)` with all errors.
-        pub fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
+        /// Lists every rule the value breaks: the constrained members, then the checks.
+        pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
             #imported
             let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             #(#validate_bodies)*
             #(#own)*
-            if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
+            errors
+        }
+    })
+}
+
+/// The wrapper, its alias and the methods the type itself carries, of the declaration being
+/// expanded: a type a service writes for itself has no wrapper, and carries the methods.
+fn valid_items(
+    valid: &valid_type::ValidType<'_>,
+    issues: &proc_macro2::TokenStream,
+    publishes_validate: bool,
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
+    if valid_type::is_undrafted() {
+        return (
+            proc_macro2::TokenStream::new(),
+            proc_macro2::TokenStream::new(),
+            valid_type::undrafted_methods(issues, publishes_validate),
+        );
+    }
+    (
+        valid.module(),
+        valid.items(),
+        proc_macro2::TokenStream::new(),
+    )
+}
+
+/// `method`, or the `validation_issues()` of a type with no rule to run.
+fn issues_or_none(method: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
+    method.cloned().unwrap_or_else(|| {
+        quote! {
+            /// Lists every rule the value breaks, of which this type has none.
+            pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+                ::std::vec::Vec::new()
+            }
         }
     })
 }
@@ -8805,9 +8928,10 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         &SchemaOutputParts {
             delegate_impl_items: &delegate_impl_items,
             enable: args.enable,
-            example_test: ExampleTest::of_struct(&item_struct, args),
+            example_test: ExampleTest::of_drafted_struct(&item_struct, args),
             generics: &item_struct.generics,
             item: &item_struct,
+            vis: &item_struct.vis,
             module_ident: &module_ident,
             name: &name,
             schema_impl_items: &schema_impl_items,
@@ -8892,11 +9016,15 @@ fn struct_output_with_unit_impls(
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
+    read.ident = valid_type::draft_ident(parts.name);
+    valid_type::self_names_the_valid_type(read.fields.iter_mut(), parts.name, parts.generics);
     // The serde attributes go where no derive is left to read them, after every surface above has.
     if matches!(read.fields, syn::Fields::Named(_)) && !unit_struct_impls.is_empty() {
         judged_read::leave_the_read_to_the_macro(&mut read.attrs, read.fields.iter_mut());
     }
-    let judged = judged_read::of_struct(&mut read, parts.validate_method.is_some());
+    valid_type::named_as_declared(&mut read.attrs, parts.name);
+    let judged =
+        judged_read::drafted_struct(&mut read, parts.validate_method.is_some(), parts.name);
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of(parts.item);
     let module_items: Vec<proc_macro2::TokenStream> = parts
@@ -8922,12 +9050,13 @@ fn struct_output_with_unit_impls(
             ..parts.of(&read)
         },
         &decode_with.schema_module,
+        &judged,
     );
-    let decode_with_impl = &decode_with.type_impl;
+    let (drafted_read, decode_with_impl) = (&judged.draft, &decode_with.type_impl);
     quote! {
         #base
         #unit_struct_impls
-        #judged
+        #drafted_read
         #decode_with_impl
         #values
     }
@@ -9028,7 +9157,16 @@ fn enum_output_with_decode(
     let mut read = parts.item.clone();
     #[cfg(feature = "serde")]
     strict::unskip_braced_members(&mut read);
-    let judged = judged_read::of_enum(&mut read, parts.validate_method.is_some());
+    read.ident = valid_type::draft_ident(parts.name);
+    valid_type::self_names_the_valid_type(
+        read.variants
+            .iter_mut()
+            .flat_map(|variant| variant.fields.iter_mut()),
+        parts.name,
+        parts.generics,
+    );
+    valid_type::named_as_declared(&mut read.attrs, parts.name);
+    let judged = judged_read::drafted_enum(&mut read, parts.validate_method.is_some(), parts.name);
     // The defaults are read off the attributes serde's derive reads, which the walk left on.
     let serde_defaults = SerdeDefaults::of_enum(parts.item);
     let module_items: Vec<proc_macro2::TokenStream> = parts
@@ -9054,11 +9192,12 @@ fn enum_output_with_decode(
             ..parts.of(&read)
         },
         &decode_with.schema_module,
+        &judged,
     );
-    let decode_with_impl = &decode_with.type_impl;
+    let (drafted_read, decode_with_impl) = (&judged.draft, &decode_with.type_impl);
     quote! {
         #base
-        #judged
+        #drafted_read
         #decode_with_impl
         #values
     }
@@ -9130,7 +9269,14 @@ fn empty_struct_read(
         }
     }
     item_struct.attrs = kept_attrs;
-    unit_struct_read(&item_struct.ident, &generics, read, &built)
+    let declared = item_struct.ident.clone();
+    unit_struct_read(
+        &valid_type::draft_ident(&declared),
+        &declared,
+        &generics,
+        read,
+        &built,
+    )
 }
 
 /// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
@@ -9150,8 +9296,9 @@ fn unit_struct_serde_impls(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
 ) -> proc_macro2::TokenStream {
-    let name = &item_struct.ident;
-    let type_name = name.to_string();
+    let declared = item_struct.ident.clone();
+    let name = &valid_type::draft_ident(&declared);
+    let type_name = declared.to_string();
     let mut writes = false;
     let mut reads = false;
 
@@ -9200,6 +9347,7 @@ fn unit_struct_serde_impls(
     let deserialize_impl = reads.then(|| {
         unit_struct_read(
             name,
+            &declared,
             &item_struct.generics,
             read,
             &quote! { ::core::result::Result::Ok(#name) },
@@ -9219,6 +9367,7 @@ fn unit_struct_serde_impls(
 #[cfg(feature = "serde")]
 fn unit_struct_read(
     name: &syn::Ident,
+    declared: &syn::Ident,
     generics: &syn::Generics,
     how: UnitRead,
     built: &proc_macro2::TokenStream,
@@ -9231,7 +9380,7 @@ fn unit_struct_read(
         "D",
         &written_names(quote::ToTokens::to_token_stream(generics)),
     );
-    let read = unit_struct_body(name, strict, built);
+    let read = unit_struct_body(declared, strict, built);
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let mut read_at = generics.clone();
     read_at.params.insert(0, syn::parse_quote! { 'de });
@@ -9267,11 +9416,14 @@ fn unit_struct_read(
             }
         },
     );
-    let judged = if publishes_validate {
+    let judged = if publishes_validate && valid_type::is_undrafted() {
         let refusal = refusal_from_violations();
         quote! {
             let read = Self::model_schema_read_unjudged(deserializer)?;
-            read.validate().map_err(#refusal)?;
+            let found = read.validation_issues();
+            if !found.is_empty() {
+                return ::core::result::Result::Err((#refusal)(found));
+            }
             ::core::result::Result::Ok(read)
         }
     } else {
@@ -9960,9 +10112,10 @@ fn process_tuple_struct(
         &SchemaOutputParts {
             delegate_impl_items: &delegate_impl_items,
             enable: args.enable,
-            example_test: ExampleTest::of_struct(&item_struct, args),
+            example_test: ExampleTest::of_drafted_struct(&item_struct, args),
             generics: &item_struct.generics,
             item: &item_struct,
+            vis: &item_struct.vis,
             module_ident: &module_ident,
             name: &name,
             schema_impl_items: &schema_impl_items,
@@ -11404,6 +11557,11 @@ fn branded_validate_method(
             #(#own)*
             if errors.is_empty() { ::core::result::Result::Ok(()) } else { ::core::result::Result::Err(errors) }
         }
+
+        #[doc(hidden)]
+        pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+            self.validate().err().unwrap_or_default()
+        }
     }
 }
 
@@ -12650,14 +12808,16 @@ fn process_plain_enum(
         zod_schema_method,
     ];
 
-    let (delegate_impl_items, example_test) =
+    let (delegate_impl_items, example_test, validate) =
         plain_enum_delegate_items(&module_ident, &item_enum, args);
 
     let decode_with = enum_decode_with(&item_enum, args);
 
     // A plain enum publishes `validate()` for the checks written on it, and for nothing else.
     let mut read = item_enum.clone();
-    let judged = judged_read::of_enum(&mut read, !args.check.is_empty());
+    read.ident = valid_type::draft_ident(name);
+    valid_type::named_as_declared(&mut read.attrs, name);
+    let judged = judged_read::drafted_enum(&mut read, !args.check.is_empty(), name);
 
     plain_enum_output(
         &read,
@@ -12670,6 +12830,7 @@ fn process_plain_enum(
             decode_with: &decode_with,
             example_test: &example_test,
             judged: &judged,
+            validate: &validate,
         },
     )
 }
@@ -12692,6 +12853,22 @@ fn plain_enum_output(
     let module_items =
         schema_module_items(schema_struct(schema_impl_items), &decode_with.schema_module);
     let decode_with_impl = &decode_with.type_impl;
+    let issues = issues_or_none(added.validate.as_ref());
+    let declared = valid_type::declared();
+    let valid = valid_type::ValidType {
+        derives: declared.derives,
+        deserializes: declared.deserializes && !judged.refused,
+        draft: valid_type::draft_ident(name),
+        generics: &item_enum.generics,
+        issues: &issues,
+        module_ident,
+        name,
+        reads: &judged.valid,
+        serializes: declared.serializes,
+        vis: &item_enum.vis,
+    };
+    let (wrapper, alias, plain) = valid_items(&valid, &issues, added.validate.is_some());
+    let drafted_read = &judged.draft;
     let output = quote! {
         #item_enum
 
@@ -12699,10 +12876,15 @@ fn plain_enum_output(
             use super::*;
 
             #module_items
+
+            #wrapper
         }
+
+        #alias
 
         impl #impl_generics #name #type_generics #where_clause {
             #(#delegate_impl_items)*
+            #plain
 
             pub fn enum_members() -> ::std::vec::Vec<::std::string::String> {
                 [
@@ -12712,7 +12894,7 @@ fn plain_enum_output(
         }
 
         #example_test
-        #judged
+        #drafted_read
         #decode_with_impl
     };
     log::trace!("{output}");
@@ -13195,6 +13377,7 @@ fn process_discriminated_enum(
             example_test: ExampleTest::of_enum(&item_enum, args),
             generics: &item_enum.generics,
             item: &item_enum,
+            vis: &item_enum.vis,
             module_ident: &module_ident,
             name,
             schema_impl_items: &schema_impl_items,
@@ -13763,6 +13946,7 @@ fn process_externally_tagged_enum(
             example_test: ExampleTest::of_enum(&item_enum, args),
             generics: &item_enum.generics,
             item: &item_enum,
+            vis: &item_enum.vis,
             module_ident: &module_ident,
             name,
             schema_impl_items: &schema_impl_items,
@@ -14449,6 +14633,7 @@ fn process_internally_tagged_enum(
             example_test: ExampleTest::of_enum(&item_enum, args),
             generics: &item_enum.generics,
             item: &item_enum,
+            vis: &item_enum.vis,
             module_ident: &module_ident,
             name,
             schema_impl_items: &schema_impl_items,
@@ -15681,6 +15866,7 @@ fn process_untagged_enum(
             example_test: ExampleTest::of_enum(&item_enum, args),
             generics: &item_enum.generics,
             item: &item_enum,
+            vis: &item_enum.vis,
             module_ident: &module_ident,
             name,
             schema_impl_items: &schema_impl_items,
@@ -18151,8 +18337,8 @@ fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
 fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
     quote! {
         trait UnpublishedValidate {
-            fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
-                ::core::result::Result::Ok(())
+            fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+                ::std::vec::Vec::new()
             }
         }
         impl<T: ?::core::marker::Sized> UnpublishedValidate for &T {}
@@ -18164,9 +18350,7 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
 fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::TokenStream {
     let Some(named) = named_at(place) else {
         return quote! {
-            if let ::core::result::Result::Err(reported) = #value.validate() {
-                errors.extend(reported);
-            }
+            errors.extend(#value.validation_issues());
         };
     };
     let naming = nested_under_fn();
@@ -18183,7 +18367,8 @@ fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::
         .collect();
     let keyed = (!keys.is_empty()).then(keyed_under_fn);
     quote! {
-        if let ::core::result::Result::Err(reported) = #value.validate() {
+        let reported = #value.validation_issues();
+        if !reported.is_empty() {
             #naming
             #keyed
             #(#keys)*

@@ -6,7 +6,8 @@ use crate::document_mcp;
 use crate::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
 use crate::support::{Lines, assert_valid, block_on};
 use crate::tests::{
-    Archive, DocumentId, Draft, DraftBatch, GetVersionRequest, VersionError, VersionResponse,
+    Archive, DocumentId, Draft, DraftBatch, DraftBatchDraft, DraftDraft, GetVersionRequest,
+    GetVersionRequestDraft, VersionError, VersionErrorDraft, VersionResponse, VersionResponseDraft,
 };
 use core::fmt::Debug;
 use core::future::Future;
@@ -133,7 +134,7 @@ fn ask(
     client: &DocumentServiceClient<impl Transport + Sync>,
     document_id: &str,
 ) -> Result<VersionResponse, CallError<VersionError>> {
-    block_on(client.get_version(GetVersionRequest {
+    block_on(client.get_version(GetVersionRequestDraft {
         document_id: document_id.to_owned(),
     }))
 }
@@ -142,7 +143,10 @@ fn ask(
 fn a_success_is_read_from_the_structured_content() {
     let archive = Archive::default();
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
-    assert_eq!(ask(&client, "doc-1"), Ok(VersionResponse { version: 7 }));
+    assert_eq!(
+        ask(&client, "doc-1"),
+        Ok(VersionResponseDraft { version: 7 })
+    );
 }
 
 #[test]
@@ -151,7 +155,7 @@ fn a_declared_error_is_the_error_the_operation_declared() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     assert_eq!(
         ask(&client, "missing"),
-        Err(CallError::Operation(VersionError::NotFound))
+        Err(CallError::Operation(VersionErrorDraft::NotFound))
     );
 }
 
@@ -169,7 +173,7 @@ fn a_message_the_validator_refuses_is_refused_before_the_seam_is_reached() {
 fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_bound() {
     let archive = Archive::default();
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
-    let broken = || GetVersionRequest {
+    let broken = || GetVersionRequestDraft {
         document_id: String::new(),
     };
     let refusals = [
@@ -184,22 +188,22 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
         assert_eq!(fault.field(), Some("document_id"));
     }
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
-    let read = block_on(client.check_many(vec![GetVersionRequest {
+    let read = block_on(client.check_many(vec![GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     }]));
-    assert_eq!(read, Ok(VersionResponse { version: 7 }));
+    assert_eq!(read, Ok(VersionResponseDraft { version: 7 }));
 }
 
 #[test]
 fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
     let archive = Archive::default();
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
-    let whole = || GetVersionRequest {
+    let whole = || GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     };
     let fault = fault_of(block_on(client.check_pair(
         whole(),
-        GetVersionRequest {
+        GetVersionRequestDraft {
             document_id: String::new(),
         },
     )));
@@ -208,7 +212,7 @@ fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
     assert_eq!(
         block_on(client.check_pair(whole(), whole())),
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 })
     );
 }
 
@@ -216,13 +220,23 @@ fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
 fn a_list_of_drafts_is_read_by_the_server_and_counted() {
     let archive = Archive::default();
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
-    let counted = block_on(client.check_drafts(DraftBatch {
-        drafts: vec![Draft {
-            references: Vec::new(),
-            title: "Plan".to_owned(),
-        }],
-    }));
-    assert_eq!(counted, Ok(VersionResponse { version: 1 }));
+    let counted = block_on(
+        client.check_drafts(
+            DraftBatchDraft {
+                drafts: vec![
+                    DraftDraft {
+                        references: Vec::new(),
+                        title: "Plan".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                ],
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
+    assert_eq!(counted, Ok(VersionResponseDraft { version: 1 }));
 }
 
 #[test]
@@ -255,7 +269,7 @@ fn a_unit_success_a_wrapped_message_and_a_one_way_call_are_answered() {
     );
     assert_eq!(
         block_on(client.lookup(DocumentId::new("doc-1".to_owned()).unwrap())),
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 })
     );
     assert_eq!(
         block_on(client.touch_document("doc-1".to_owned(), "reviewer-7".to_owned())),
@@ -286,11 +300,11 @@ fn a_header_goes_beside_the_wrapped_message_and_comes_back_beside_the_value() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     assert_eq!(
         block_on(client.get_tagged("doc-1".to_owned(), Some("\"v6\"".to_owned()))),
-        Ok((VersionResponse { version: 7 }, "\"v7\"".to_owned()))
+        Ok((VersionResponseDraft { version: 7 }, "\"v7\"".to_owned()))
     );
     assert_eq!(
         block_on(client.get_tagged("doc-1".to_owned(), None)),
-        Ok((VersionResponse { version: 7 }, "\"v7\"".to_owned()))
+        Ok((VersionResponseDraft { version: 7 }, "\"v7\"".to_owned()))
     );
     let arguments: Vec<Value> = taken(&client.transport().sent)
         .iter()

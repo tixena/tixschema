@@ -553,7 +553,7 @@ fn is_described(emitted: &str, declaration: &str) -> bool {
     let at = emitted.find(declaration).unwrap();
     let before = &emitted[..at];
     before
-        .rfind("# [:: tixschema :: model_schema ()]")
+        .rfind("# [:: tixschema :: model_schema (__tixschema_undrafted)]")
         .is_some_and(|annotated| !before[annotated..].contains("pub "))
 }
 
@@ -1403,7 +1403,7 @@ fn a_declared_message_is_emitted_with_everything_a_hand_written_type_carries() {
         "got: {emitted}"
     );
     assert!(
-        emitted.contains(":: tixschema :: model_schema ()"),
+        emitted.contains(":: tixschema :: model_schema (__tixschema_undrafted)"),
         "a client on the far side has to construct one, so it gets every schema a declared type \
          gets. Got: {emitted}"
     );
@@ -1589,7 +1589,7 @@ fn a_service_asking_for_no_transport_is_emitted_the_contract_and_nothing_else() 
         "pub fn undeserializable_payload",
         "pub fn unknown_operation",
         "pub trait MessageValidation",
-        "fn validate (& self)",
+        "fn validation_issues (& self)",
         "pub enum CallError",
     ] {
         assert!(
@@ -2360,7 +2360,7 @@ fn a_list_a_map_and_an_optional_message_are_read_element_by_element_and_validate
         "let read : Vec < Held > =",
         "let read : HashMap < String , Held > =",
         "let read : Option < Held > =",
-        "for item in received . iter () { if let :: core :: result :: Result :: Err (found) = item . validate ()",
+        "for item in received . iter () { violations . extend (item . validation_issues ())",
         "for item in received . values () {",
         "if let :: core :: option :: Option :: Some (item) = received . as_ref () {",
         "< CheckOneMessage > :: model_schema_read_unjudged (deserializer)",
@@ -2956,7 +2956,7 @@ fn both_halves_ask_one_operation_s_check_rather_than_a_copy_each() {
              it reaches only through the declaring crate. Got: {body}"
         );
         assert!(
-            !body.contains("message_validation") && !body.contains(". validate ()"),
+            !body.contains("message_validation") && !body.contains(". validation_issues ()"),
             "a copy of the check inside `{half}` answers at whatever type is in scope where the \
              macro was placed. Got: {body}"
         );
@@ -4652,7 +4652,8 @@ fn an_operation_at_the_default_route_of_its_name_is_accepted() {
 
 #[test]
 fn openapi_gives_every_generated_type_the_jsonschema_entry() {
-    let entry = r#"# [:: tixschema :: model_schema (enable = ["jsonschema"])]"#;
+    let entry =
+        r#"# [:: tixschema :: model_schema (enable = ["jsonschema"] , __tixschema_undrafted)]"#;
     assert_eq!(
         generated_model_schema_attributes(quote! { transports = ["http_rest"], openapi }),
         [
@@ -4667,7 +4668,7 @@ fn openapi_gives_every_generated_type_the_jsonschema_entry() {
 
 #[test]
 fn without_openapi_no_generated_type_lists_an_entry() {
-    let bare = "# [:: tixschema :: model_schema ()]";
+    let bare = "# [:: tixschema :: model_schema (__tixschema_undrafted)]";
     assert_eq!(
         generated_model_schema_attributes(quote! { transports = ["http_rest"] }),
         [

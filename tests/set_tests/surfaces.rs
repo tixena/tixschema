@@ -245,5 +245,5 @@ fn rust_validate_answers_nothing_of_a_set_it_read() {
     let read: EveryList =
         serde_json::from_str(r#"{"btree_set":["a","b"],"hash_set":["c","d"],"vec":["e","e"]}"#)
             .unwrap();
-    assert_eq!(read.validate(), Ok(()));
+    assert_eq!(read.validation_issues(), Vec::<String>::new());
 }

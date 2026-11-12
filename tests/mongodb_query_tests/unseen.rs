@@ -53,9 +53,11 @@ struct Reply {
 }
 
 fn tag(name: &str) -> Tag {
-    Tag {
+    TagDraft {
         name: name.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -93,13 +95,13 @@ fn nest_reaches_the_paths_below_a_whole_value() {
 #[test]
 fn a_type_that_holds_itself_is_one_whole_value_there() {
     let category = Category::MONGO_FIELDS;
-    let leaf = Category {
+    let leaf = CategoryDraft {
         children: Vec::new(),
         name: "leaf".to_owned(),
         parent: None,
     };
     assert_eq!(
-        shown(category.children().push(leaf).unwrap()),
+        shown(category.children().push(leaf.validate().unwrap()).unwrap()),
         r#"{ "$push": { "children": { "children": [], "name": "leaf" } } }"#
     );
     assert_eq!(

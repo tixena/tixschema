@@ -709,8 +709,8 @@ fn an_array_of_its_length_is_read_and_written_back_as_serde_writes_it() {
 #[test]
 fn an_untagged_enum_takes_the_fixed_array_for_an_array_of_its_length_alone() {
     let taken = |json: &str| match serde_json::from_str::<Grappling>(json).unwrap() {
-        Grappling::Pair(_) => "Pair",
-        Grappling::Spread(_) => "Spread",
+        GrapplingDraft::Pair(_) => "Pair",
+        GrapplingDraft::Spread(_) => "Spread",
     };
     let payloads = ["[1,2]", "[1,2,3]", "[1]"];
     let mut main = String::new();

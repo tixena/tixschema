@@ -93,7 +93,7 @@ mod beside_the_lone_slot {
             serde_json::from_value::<MarkedBefore>(serde_json::json!("def")).unwrap(),
             before
         );
-        let holder = MarkedHolder { after, before };
+        let holder = MarkedHolderDraft { after, before };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(
             written,
@@ -101,7 +101,7 @@ mod beside_the_lone_slot {
         );
         assert_eq!(
             serde_json::from_value::<MarkedHolder>(written).unwrap(),
-            holder
+            holder.validate().unwrap()
         );
     }
 
@@ -288,13 +288,11 @@ mod bounded_after_the_marker {
     #[test]
     fn a_bound_on_a_field_typed_with_it_measures_the_slot() {
         assert_eq!(
-            LooseMarkedHolder {
+            LooseMarkedHolderDraft {
                 slug: LooseMarked::new("abcd".to_owned()).unwrap(),
             }
-            .validate(),
-            Err(vec![
-                "'slug': too long: maximum length is 3, got 4".to_owned()
-            ])
+            .validation_issues(),
+            vec!["'slug': too long: maximum length is 3, got 4".to_owned()]
         );
     }
 }

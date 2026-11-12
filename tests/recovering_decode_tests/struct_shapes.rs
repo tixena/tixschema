@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -247,42 +247,52 @@ struct Shelf {
 }
 
 fn placement() -> Placement {
-    Placement {
+    PlacementDraft {
         maybe: Some(("m".to_owned(), 2)),
-        pair: Pair("p".to_owned(), 3),
+        pair: PairDraft("p".to_owned(), 3).validate().unwrap(),
         spot: ("s".to_owned(), 4),
         spots: vec![("t".to_owned(), 5)],
     }
+    .validate()
+    .unwrap()
 }
 
 fn labelled() -> Labelled {
-    Labelled {
-        history: History::new(vec![Version { number: 1 }]).unwrap(),
+    LabelledDraft {
+        history: History::new(vec![VersionDraft { number: 1 }]).unwrap(),
         id: RecordId::new("r-1".to_owned()).unwrap(),
-        kept: Kept(Version { number: 2 }),
-        latest: Latest(None),
-        ping: Ping,
-        pinned: Pinned::new(Version { number: 3 }).unwrap(),
-        wrapper: Wrapper("w".to_owned()),
+        kept: KeptDraft(VersionDraft { number: 2 }.validate().unwrap())
+            .validate()
+            .unwrap(),
+        latest: LatestDraft(None).validate().unwrap(),
+        ping: PingDraft.validate().unwrap(),
+        pinned: Pinned::new(VersionDraft { number: 3 }).unwrap(),
+        wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn titled() -> Titled {
-    Titled {
+    TitledDraft {
         cached: Cached::new("c".to_owned()).unwrap(),
         counted: Counted::new(5_u32).unwrap(),
-        current: Current::new(Version { number: 1 }).unwrap(),
-        revisions: Revisions::new(vec![Version { number: 2 }]).unwrap(),
+        current: Current::new(VersionDraft { number: 1 }).unwrap(),
+        revisions: Revisions::new(vec![VersionDraft { number: 2 }]).unwrap(),
         slug: Slug::new("s".to_owned()).unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn filed() -> Filed {
-    Filed {
+    FiledDraft {
         measured: Measured::new("m".to_owned()).unwrap(),
-        stamped: Stamped::new(Version { number: 1 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 1 }).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned()]).unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What `from_value_with` lists for `stored`, read as a `Pair` by a decider that rejects it.
@@ -354,7 +364,7 @@ fn a_tuple_struct_is_walked_by_position() {
         Pair::from_value_with(json!(["a", 7_i32]), |_raw, _found| {
             pair_schema::Verdict::Reject
         }),
-        Ok(Pair("a".to_owned(), 7))
+        Ok(PairDraft("a".to_owned(), 7).validate().unwrap())
     );
 }
 
@@ -406,7 +416,7 @@ fn a_decider_repairs_a_tuple_struct_by_the_position_it_is_handed() {
         }
         pair_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(Pair("a".to_owned(), 7)));
+    assert_eq!(read, Ok(PairDraft("a".to_owned(), 7).validate().unwrap()));
 }
 
 #[test]
@@ -535,8 +545,13 @@ fn a_decider_repairs_a_tuple_by_the_position_it_is_handed() {
 
 #[test]
 fn a_slot_is_a_position_only_where_serde_reads_one() {
-    let written =
-        serde_json::to_value(Loose("a".to_owned(), 9, Version { number: 1 }, vec![2])).unwrap();
+    let written = serde_json::to_value(LooseDraft(
+        "a".to_owned(),
+        9,
+        VersionDraft { number: 1 }.validate().unwrap(),
+        vec![2],
+    ))
+    .unwrap();
     assert_eq!(written, json!(["a", { "number": 1_i32 }, [2_i32]]));
     let mut calls = 0_u32;
     let read = Loose::from_value_with(json!(["a", { "number": 1_i32 }]), |_raw, _found| {
@@ -545,7 +560,14 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
     });
     assert_eq!(
         read,
-        Ok(Loose("a".to_owned(), 0, Version { number: 1 }, Vec::new()))
+        Ok(LooseDraft(
+            "a".to_owned(),
+            0,
+            VersionDraft { number: 1 }.validate().unwrap(),
+            Vec::new()
+        )
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -588,7 +610,7 @@ fn a_brand_and_a_single_slot_struct_are_read_as_the_value_they_hold() {
         Wrapper::from_value_with(json!("w"), |_raw, _found| {
             wrapper_schema::Verdict::Reject
         }),
-        Ok(Wrapper("w".to_owned()))
+        Ok(WrapperDraft("w".to_owned()).validate().unwrap())
     );
 }
 
@@ -619,9 +641,9 @@ fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
 #[test]
 fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
     let mut calls = 0_u32;
-    let referenced = Referenced {
+    let referenced = ReferencedDraft {
         owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
-        pair: PairRef::new(Pair("a".to_owned(), 1)).unwrap(),
+        pair: PairRef::new(PairDraft("a".to_owned(), 1)).unwrap(),
     };
     let written = serde_json::to_value(&referenced).unwrap();
     assert_eq!(written, json!({ "owner": "abc", "pair": ["a", 1_i32] }));
@@ -629,7 +651,7 @@ fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
         calls += 1;
         referenced_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(referenced));
+    assert_eq!(read, Ok(referenced.validate().unwrap()));
     assert_eq!(calls, 0);
 
     let alone = PairRef::from_value_with(json!(["a", "x"]), |_raw, _found| {
@@ -1111,7 +1133,7 @@ fn a_unit_struct_is_an_object_in_which_every_key_is_unknown() {
         }
         ping_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(Ping));
+    assert_eq!(read, Ok(PingDraft.validate().unwrap()));
 
     let mut stored = serde_json::to_value(labelled()).unwrap();
     stored["ping"] = json!({ "x": 1_i32 });

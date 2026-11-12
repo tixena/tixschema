@@ -191,7 +191,7 @@ enum RetirementPlan {
 
 #[test]
 fn test_advanced_types_constructible() {
-    let address = Address {
+    let address = AddressDraft {
         city: String::new(),
         country: String::new(),
         state: String::new(),
@@ -199,23 +199,23 @@ fn test_advanced_types_constructible() {
         zip_code: String::new(),
     };
     assert_eq!(address.city, String::new());
-    let settings = CompanySettings {
+    let settings = CompanySettingsDraft {
         allow_remote_work: false,
         health_insurance_provider: None,
         max_vacation_days: 0,
         retirement_plan: None,
     };
     assert!(!settings.allow_remote_work);
-    let company = Company {
+    let company = CompanyDraft {
         department_names: Vec::new(),
         employees: Vec::new(),
-        headquarters: address,
+        headquarters: address.validate().unwrap(),
         id: String::new(),
         name: String::new(),
-        settings,
+        settings: settings.validate().unwrap(),
     };
     assert_eq!(company.id, String::new());
-    let event = ComplexEvent::SystemMaintenance {
+    let event = ComplexEventDraft::SystemMaintenance {
         affected_services: Vec::new(),
         estimated_duration: 0,
         notification_sent: false,
@@ -223,14 +223,14 @@ fn test_advanced_types_constructible() {
     };
     assert!(matches!(
         event,
-        ComplexEvent::SystemMaintenance {
+        ComplexEventDraft::SystemMaintenance {
             affected_services: _affected_services,
             estimated_duration: _estimated_duration,
             notification_sent: _notification_sent,
             scheduled_start: _scheduled_start,
         }
     ));
-    let documented = DocumentedUser {
+    let documented = DocumentedUserDraft {
         email: String::new(),
         id: String::new(),
         is_active: false,
@@ -238,7 +238,7 @@ fn test_advanced_types_constructible() {
         name: String::new(),
     };
     assert_eq!(documented.id, String::new());
-    let edge = EdgeCases {
+    let edge = EdgeCasesDraft {
         booleans: Vec::new(),
         float_number: 0.0,
         medium_number: 0,
@@ -254,20 +254,20 @@ fn test_advanced_types_constructible() {
         tiny_number: 0,
     };
     assert_eq!(edge.booleans, Vec::<bool>::new());
-    let item = PurchaseItem {
+    let item = PurchaseItemDraft {
         discount_applied: None,
         product_id: String::new(),
         quantity: 0,
         unit_price: 0,
     };
     assert_eq!(item.product_id, String::new());
-    let plan = RetirementPlan::Roth {
+    let plan = RetirementPlanDraft::Roth {
         contribution_limit: 0,
         employer_contribution: false,
     };
     assert!(matches!(
         plan,
-        RetirementPlan::Roth {
+        RetirementPlanDraft::Roth {
             contribution_limit: _contribution_limit,
             employer_contribution: _employer_contribution,
         }
@@ -377,10 +377,10 @@ fn test_complex_nested_ts_definition() {
 
 #[test]
 fn test_serialization_consistency() {
-    let project = Project {
+    let project = ProjectDraft {
         id: "proj_123".to_owned(),
         name: "New Website".to_owned(),
-        status: ProjectStatus::InProgress,
+        status: ProjectStatusDraft::InProgress.validate().unwrap(),
         assigned_employees: vec!["emp_1".to_owned(), "emp_2".to_owned()],
         deadline: Some("2024-12-31".to_owned()),
         budget: Some(50000),
@@ -390,7 +390,7 @@ fn test_serialization_consistency() {
     let json_value: Value = serde_json::from_str(&json_str).unwrap();
 
     let deserialized: Project = serde_json::from_value(json_value.clone()).unwrap();
-    assert_eq!(project, deserialized);
+    assert_eq!(project, deserialized.into());
 
     assert_eq!(json_value["id"], "proj_123");
     assert_eq!(json_value["name"], "New Website");
@@ -611,31 +611,35 @@ fn test_json_schema_validation() {
 
 #[test]
 fn test_roundtrip_serialization() {
-    let contact = ContactInfo {
+    let contact = ContactInfoDraft {
         email: "test@example.com".to_owned(),
         phone: Some("123-456-7890".to_owned()),
-        emergency_contact: Some(EmergencyContact {
-            name: "John Doe".to_owned(),
-            relationship: "Brother".to_owned(),
-            phone: "098-765-4321".to_owned(),
-        }),
+        emergency_contact: Some(
+            EmergencyContactDraft {
+                name: "John Doe".to_owned(),
+                relationship: "Brother".to_owned(),
+                phone: "098-765-4321".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
     };
 
-    let employee = Employee {
+    let employee = EmployeeDraft {
         id: "emp_123".to_owned(),
         name: "Jane Smith".to_owned(),
         position: "Software Engineer".to_owned(),
         salary: 75000,
         manager: Some("mgr_456".to_owned()),
         skills: vec!["Rust".to_owned(), "TypeScript".to_owned()],
-        contact,
+        contact: contact.validate().unwrap(),
     };
 
     let json_str = serde_json::to_string(&employee).unwrap();
     let json_value: Value = serde_json::from_str(&json_str).unwrap();
 
     let deserialized: Employee = serde_json::from_value(json_value).unwrap();
-    assert_eq!(employee, deserialized);
+    assert_eq!(employee, deserialized.into());
 
     assert_eq!(deserialized.id, "emp_123");
     assert_eq!(deserialized.name, "Jane Smith");

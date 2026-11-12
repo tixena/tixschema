@@ -171,9 +171,11 @@ impl UploadClientService<()> for UploadClientBackEnd {
         _attachment: Box<dyn upload_client_service_schema::BodySource + Send>,
     ) -> Result<UploadResponse, UploadError> {
         ready(()).await;
-        Ok(UploadResponse {
+        Ok(UploadResponseDraft {
             document_id: format!("{folder_id}/{title}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -204,7 +206,7 @@ fn a_multipart_call_builds_one_text_part_per_field_and_one_file_part_per_binding
     .unwrap();
     assert_eq!(
         answered,
-        Ok(UploadResponse {
+        Ok(UploadResponseDraft {
             document_id: "doc-1".to_owned()
         })
     );
@@ -284,7 +286,7 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
     .unwrap();
     assert_eq!(
         answered,
-        Ok(UploadResponse {
+        Ok(UploadResponseDraft {
             document_id: "acme/report".to_owned()
         })
     );

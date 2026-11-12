@@ -117,13 +117,14 @@ fn the_documents_state_the_signatures_of_the_functions_that_compile() {
     let rustdoc = include_str!("../../src/lib.rs");
     for signature in [
         "fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>",
-        "fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>",
+        "fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>",
     ] {
         assert!(example.contains(&format!("{signature} {{")), "{signature}");
         assert!(readme().contains(&format!("`{signature}`")), "{signature}");
         assert!(rustdoc.contains(&format!("/// {signature}")), "{signature}");
     }
-    let generic = "fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>";
+    let generic =
+        "fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>";
     assert!(include_str!("models.rs").contains(&format!("{generic} {{")));
     assert!(readme().contains(&format!("`{generic}`")));
     for signature in [

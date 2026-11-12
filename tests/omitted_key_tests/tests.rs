@@ -29,30 +29,34 @@ struct PredicateOmittedKey {
 }
 
 fn with_age() -> OmittedKeyFields {
-    OmittedKeyFields {
+    OmittedKeyFieldsDraft {
         age: Some(30),
         id: "1".to_owned(),
         roles: vec![],
     }
+    .validate()
+    .unwrap()
 }
 
 fn without_age() -> OmittedKeyFields {
-    OmittedKeyFields {
+    OmittedKeyFieldsDraft {
         age: None,
         id: "1".to_owned(),
         roles: vec![],
     }
+    .validate()
+    .unwrap()
 }
 
 fn with_roles() -> PredicateOmittedKey {
-    PredicateOmittedKey {
+    PredicateOmittedKeyDraft {
         id: "1".to_owned(),
         roles: vec!["admin".to_owned()],
     }
 }
 
 fn without_roles() -> PredicateOmittedKey {
-    PredicateOmittedKey {
+    PredicateOmittedKeyDraft {
         id: "1".to_owned(),
         roles: vec![],
     }

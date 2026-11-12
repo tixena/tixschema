@@ -165,7 +165,7 @@ impl Serialize for ObjectId {
 
 #[test]
 fn test_mongodb_structs_constructible() {
-    let complex = ComplexDocument {
+    let complex = ComplexDocumentDraft {
         author_id: ObjectId::new(),
         id: ObjectId::new(),
         metadata: HashMap::new(),
@@ -175,7 +175,7 @@ fn test_mongodb_structs_constructible() {
         title: String::new(),
     };
     assert_eq!(complex.title, String::new());
-    let document = Document {
+    let document = DocumentDraft {
         author_id: ObjectId::new(),
         id: ObjectId::new(),
         metadata: HashMap::new(),
@@ -185,38 +185,38 @@ fn test_mongodb_structs_constructible() {
         title: String::new(),
     };
     assert_eq!(document.title, String::new());
-    let post = Post {
+    let post = PostDraft {
         author_id: ObjectId::new(),
         id: ObjectId::new(),
         parent_id: None,
         title: String::new(),
     };
     assert_eq!(post.title, String::new());
-    let hashmap_obj = UserWithHashMapObjectId {
+    let hashmap_obj = UserWithHashMapObjectIdDraft {
         id: ObjectId::new(),
         name: String::new(),
         relationships: HashMap::new(),
     };
     assert_eq!(hashmap_obj.name, String::new());
-    let array_obj = UserWithObjectIdArray {
+    let array_obj = UserWithObjectIdArrayDraft {
         friend_ids: Vec::new(),
         id: ObjectId::new(),
         name: String::new(),
     };
     assert_eq!(array_obj.name, String::new());
-    let map_obj = UserWithObjectIdMap {
+    let map_obj = UserWithObjectIdMapDraft {
         id: ObjectId::new(),
         name: String::new(),
         relationships: HashMap::new(),
     };
     assert_eq!(map_obj.name, String::new());
-    let optional_id = UserWithOptionalId {
+    let optional_id = UserWithOptionalIdDraft {
         email: String::new(),
         id: None,
         name: String::new(),
     };
     assert_eq!(optional_id.name, String::new());
-    let other_map = UserWithOtherHashMapObjectId {
+    let other_map = UserWithOtherHashMapObjectIdDraft {
         id: ObjectId::new(),
         metadata: HashMap::new(),
         name: String::new(),
@@ -412,7 +412,7 @@ fn test_object_id_arrays_zod_schema() {
 
 #[test]
 fn test_object_id_compilation_smoke_test() {
-    let user = User {
+    let user = UserDraft {
         id: ObjectId::new(),
         name: "Test User".to_owned(),
         email: Some("test@example.com".to_owned()),

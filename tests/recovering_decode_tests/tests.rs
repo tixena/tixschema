@@ -346,11 +346,16 @@ fn lines(report: &impl Display) -> Vec<String> {
 }
 
 fn ledger() -> Ledger {
-    Ledger {
+    LedgerDraft {
         name: "Loan".to_owned(),
         note: None,
-        versions: vec![Version { number: 1_i32 }, Version { number: 2_i32 }],
+        versions: vec![
+            VersionDraft { number: 1_i32 }.validate().unwrap(),
+            VersionDraft { number: 2_i32 }.validate().unwrap(),
+        ],
     }
+    .validate()
+    .unwrap()
 }
 
 /// Reads `stored` as a `Ledger` with a decider that answers `verdict` and changes nothing, and
@@ -586,12 +591,14 @@ fn a_hooked_field_held_as_its_hook_writes_it_is_no_issue() {
     });
     assert_eq!(
         read,
-        Ok(Hooked {
+        Ok(HookedDraft {
             code: "AB".to_owned(),
             count: 5,
             name: "Loan".to_owned(),
             port: 80,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -603,7 +610,7 @@ fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
         calls += 1;
         counted_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(Counted { number: 7 }));
+    assert_eq!(read, Ok(CountedDraft { number: 7 }.validate().unwrap()));
     assert_eq!(calls, 0);
     assert_eq!(NUMBER_READS.load(Ordering::Relaxed), 2);
 }
@@ -664,9 +671,11 @@ fn a_key_stored_under_an_alias_is_its_field() {
         });
         assert_eq!(
             read,
-            Ok(Aliased {
+            Ok(AliasedDraft {
                 name: "Ada".to_owned()
-            })
+            }
+            .validate()
+            .unwrap())
         );
         assert_eq!(calls, 0);
     }
@@ -693,9 +702,11 @@ fn an_issue_under_an_alias_is_listed_at_the_alias() {
     });
     assert_eq!(
         read,
-        Ok(Aliased {
+        Ok(AliasedDraft {
             name: "Ada".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let absent =
         Aliased::from_value_with(json!({}), |_raw, _found| aliased_schema::Verdict::Reject);
@@ -736,13 +747,15 @@ fn a_key_serde_reads_the_absence_of_is_not_missing() {
     });
     assert_eq!(
         read,
-        Ok(Sparse {
+        Ok(SparseDraft {
             computed: String::new(),
             count: 0,
             local: 0,
             maybe: None,
             required: "here".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -755,7 +768,7 @@ fn a_key_serde_reads_the_absence_of_is_not_missing() {
 
 #[test]
 fn a_key_the_type_writes_and_does_not_read_is_declared() {
-    let written = serde_json::to_value(Sparse {
+    let written = serde_json::to_value(SparseDraft {
         computed: "sum".to_owned(),
         count: 3,
         local: 9,
@@ -787,7 +800,7 @@ fn a_key_the_type_writes_and_does_not_read_is_declared() {
 
 #[test]
 fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
-    let kept = Kept {
+    let kept = KeptDraft {
         id: "i".to_owned(),
         note: Some("n".to_owned()),
     };
@@ -798,7 +811,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
         calls += 1;
         kept_schema::Verdict::Reject
     });
-    let unread = Kept {
+    let unread = KeptDraft {
         id: "i".to_owned(),
         note: None,
     };
@@ -807,9 +820,9 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
         calls += 1;
         kept_schema::Verdict::Reject
     });
-    assert_eq!(held_back, Ok(unread));
+    assert_eq!(held_back, Ok(unread.validate().unwrap()));
 
-    let text = serde_json::to_value(KeptText {
+    let text = serde_json::to_value(KeptTextDraft {
         id: "i".to_owned(),
         note: "n".to_owned(),
     })
@@ -821,10 +834,12 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     });
     assert_eq!(
         read_text,
-        Ok(KeptText {
+        Ok(KeptTextDraft {
             id: "i".to_owned(),
             note: String::new(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -832,7 +847,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
 /// A variant's field under the same attributes is a key the variant declares.
 #[test]
 fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
-    let written = serde_json::to_value(Memo::Noted {
+    let written = serde_json::to_value(MemoDraft::Noted {
         id: "i".to_owned(),
         note: Some("n".to_owned()),
     })
@@ -845,10 +860,12 @@ fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
     });
     assert_eq!(
         read,
-        Ok(Memo::Noted {
+        Ok(MemoDraft::Noted {
             id: "i".to_owned(),
             note: None,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -902,7 +919,7 @@ fn a_container_default_reads_every_missing_key() {
         calls += 1;
         defaulted_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(Defaulted::default()));
+    assert_eq!(read, Ok(DefaultedDraft::default().validate().unwrap()));
     assert_eq!(calls, 0);
 }
 
@@ -1020,12 +1037,14 @@ fn a_plain_value_in_a_list_or_a_map_is_listed_at_its_own_path() {
     });
     assert_eq!(
         read,
-        Ok(Tally {
+        Ok(TallyDraft {
             counts: vec![1_i32, 2_i32],
             grid: vec![vec![1_i32, 2_i32], vec![]],
             marks: Some(vec![2_i32]),
             scores: HashMap::from([("ada".to_owned(), 2_i32)]),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -1056,9 +1075,9 @@ fn a_type_that_holds_itself_is_walked_to_any_depth() {
 
 #[test]
 fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
-    let written = serde_json::to_value(Derived { total: 7 }).unwrap();
+    let written = serde_json::to_value(DerivedDraft { total: 7 }).unwrap();
     let read = Derived::from_value_with(written, |_raw, _found| derived_schema::Verdict::Reject);
-    assert_eq!(read, Ok(Derived { total: 0 }));
+    assert_eq!(read, Ok(DerivedDraft { total: 0 }.validate().unwrap()));
     let keyed = Derived::from_value_with(json!({ "extra": true }), |_raw, _found| {
         derived_schema::Verdict::Reject
     });
@@ -1077,17 +1096,19 @@ fn a_field_that_names_a_lifetime_and_borrows_nothing_is_read() {
     });
     assert_eq!(
         read,
-        Ok(Lettered {
+        Ok(LetteredDraft {
             label: Cow::Borrowed("x"),
             origin: "",
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
 
 #[test]
 fn a_flagged_type_never_read_is_still_a_type() {
-    let unread = Unread {
+    let unread = UnreadDraft {
         label: "kept".to_owned(),
     };
     assert_eq!(unread.label, "kept");

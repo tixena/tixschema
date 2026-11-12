@@ -10,7 +10,10 @@ mod the_top_of_a_u64 {
 
     #[test]
     fn the_limit_at_the_top_builds_and_keeps_its_digits() {
-        assert_eq!(ScaleTop { top: u64::MAX }.validate(), Ok(()));
+        assert_eq!(
+            ScaleTop { top: u64::MAX }.validation_issues(),
+            Vec::<String>::new()
+        );
         assert_eq!(
             written(&ScaleTop::json_schema(), "top", "maximum"),
             "18446744073709551615"
@@ -197,20 +200,22 @@ pub struct ScaleTop {
 }
 
 const fn reading(size: i64) -> ScaleReading {
-    ScaleReading { size, weight: 2.0 }
+    ScaleReadingDraft { size, weight: 2.0 }.validate().unwrap()
 }
 
 const fn mixed(count: i64, weight: f64) -> ScaleMixed {
-    ScaleMixed {
+    ScaleMixedDraft {
         count,
         weight,
         whole_float: 1.0,
     }
+    .validate()
+    .unwrap()
 }
 
 /// A [`ScaleWide`] with `held`, `spelled` and `whole` at `value`, and `vast` at 2e9.
 const fn wide(value: f64, sunk: f64, single: f32) -> ScaleWide {
-    ScaleWide {
+    ScaleWideDraft {
         held: Some(value),
         single,
         spelled: value,
@@ -218,6 +223,8 @@ const fn wide(value: f64, sunk: f64, single: f32) -> ScaleWide {
         vast: 2e9,
         whole: value,
     }
+    .validate()
+    .unwrap()
 }
 
 /// The number the JSON Schema writes for `keyword` of `member`, as its text.
@@ -227,13 +234,14 @@ fn written(schema: &Value, member: &str, keyword: &str) -> String {
 
 #[test]
 fn a_limit_past_two_to_the_fifty_third_is_the_limit_written() {
-    assert_eq!(reading(DECLARED - 1).validate(), Ok(()));
-    assert_eq!(reading(DECLARED).validate(), Ok(()));
     assert_eq!(
-        reading(DECLARED + 1).validate(),
-        Err(vec![
-            "'size': too large: maximum is 9007199254740993, got 9007199254740994".to_owned()
-        ])
+        reading(DECLARED - 1).validation_issues(),
+        Vec::<String>::new()
+    );
+    assert_eq!(reading(DECLARED).validation_issues(), Vec::<String>::new());
+    assert_eq!(
+        reading(DECLARED + 1).validation_issues(),
+        vec!["'size': too large: maximum is 9007199254740993, got 9007199254740994".to_owned()]
     );
 }
 
@@ -252,7 +260,7 @@ fn the_read_refuses_what_is_past_the_limit_written_and_no_more() {
 
 #[test]
 fn a_negative_limit_keeps_its_digits() {
-    let depth = |depth: i64| ScaleDepth { depth }.validate();
+    let depth = |depth: i64| ScaleDepthDraft { depth }.validate();
     assert_eq!(depth(1 - DECLARED), Ok(()));
     assert_eq!(depth(-DECLARED), Ok(()));
     assert_eq!(
@@ -294,60 +302,62 @@ fn the_json_schema_writes_an_integer_limit_as_the_integer_and_a_float_limit_as_w
 
 #[test]
 fn an_integer_limit_on_a_float_is_compared_as_that_float() {
-    assert_eq!(mixed(1, 120.0).validate(), Ok(()));
+    assert_eq!(mixed(1, 120.0).validation_issues(), Vec::<String>::new());
     assert_eq!(
-        mixed(1, 120.5).validate(),
-        Err(vec![
-            "'weight': too large: maximum is 120, got 120.5".to_owned()
-        ])
+        mixed(1, 120.5).validation_issues(),
+        vec!["'weight': too large: maximum is 120, got 120.5".to_owned()]
     );
 }
 
 #[test]
 fn a_whole_float_limit_on_an_integer_is_compared_whole_and_stated_as_written() {
-    assert_eq!(mixed(1, 1.0).validate(), Ok(()));
+    assert_eq!(mixed(1, 1.0).validation_issues(), Vec::<String>::new());
     assert_eq!(
-        mixed(2, 1.0).validate(),
-        Err(vec!["'count': too large: maximum is 1, got 2".to_owned()])
+        mixed(2, 1.0).validation_issues(),
+        vec!["'count': too large: maximum is 1, got 2".to_owned()]
     );
 }
 
 #[test]
 fn a_float_limit_states_what_it_always_stated() {
-    let thin = ScaleReading {
+    let thin = ScaleReadingDraft {
         size: 1,
         weight: 1.25,
     };
     assert_eq!(
-        thin.validate(),
-        Err(vec![
-            "'weight': too small: minimum is 1.5, got 1.25".to_owned()
-        ])
+        thin.validation_issues(),
+        vec!["'weight': too small: minimum is 1.5, got 1.25".to_owned()]
     );
 }
 
 #[test]
 fn a_limit_past_what_an_i32_holds_on_a_float_is_compared_as_that_float() {
-    assert_eq!(wide(1.0, 1.0, 1.0).validate(), Ok(()));
-    assert_eq!(wide(3e9, -3e9, 3e9).validate(), Ok(()));
     assert_eq!(
-        wide(4e9, -4e9, 4e9).validate(),
-        Err(vec![
+        wide(1.0, 1.0, 1.0).validation_issues(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        wide(3e9, -3e9, 3e9).validation_issues(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        wide(4e9, -4e9, 4e9).validation_issues(),
+        vec![
             "'held': too large: maximum is 3000000000, got 4000000000".to_owned(),
             "'single': too large: maximum is 3000000000, got 4000000000".to_owned(),
             "'spelled': too large: maximum is 3000000000, got 4000000000".to_owned(),
             "'sunk': too small: minimum is -3000000000, got -4000000000".to_owned(),
             "'whole': too large: maximum is 3000000000, got 4000000000".to_owned(),
-        ])
+        ]
     );
 }
 
 #[test]
 fn a_float_limit_past_what_an_i64_holds_on_an_f32_is_compared_as_an_f32() {
     let vast = |vast: f32| {
-        ScaleWide {
+        ScaleWideDraft {
             vast,
-            ..wide(1.0, 1.0, 1.0)
+            ..wide(1.0, 1.0, 1.0).into()
         }
         .validate()
     };
@@ -415,7 +425,7 @@ fn the_json_schema_writes_a_limit_past_what_an_i32_holds_as_written() {
 #[test]
 fn every_written_form_of_an_integer_reads_as_its_digits() {
     let spelled = |value: i64| {
-        ScaleSpelling {
+        ScaleSpellingDraft {
             hexadecimal: value,
             spaced: value,
             suffixed: value,

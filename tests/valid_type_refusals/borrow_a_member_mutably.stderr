@@ -1,0 +1,17 @@
+warning: variable does not need to be mutable
+  --> tests/valid_type_refusals/borrow_a_member_mutably.rs:13:9
+   |
+13 |     let mut shipment = ShipmentDraft { parcel_count: 3 }.validate().unwrap();
+   |         ----^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+error[E0596]: cannot borrow data in dereference of `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>` as mutable
+  --> tests/valid_type_refusals/borrow_a_member_mutably.rs:14:21
+   |
+14 |     let _borrowed = &mut shipment.parcel_count;
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot borrow as mutable
+   |
+   = help: trait `DerefMut` is required to modify through a dereference, but it is not implemented for `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>`

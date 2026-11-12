@@ -1,7 +1,7 @@
 //! A service that sends and answers a map keyed by an `i64`: each method and each arm of a result
 //! that writes one carries a `@deprecated` note, as a member does.
 
-use super::{HeaderProbeError, poll_once};
+use super::{HeaderProbeError, HeaderProbeErrorDraft, poll_once};
 use core::future::ready;
 use std::collections::HashMap;
 use tixschema::service_schema;
@@ -61,7 +61,7 @@ impl KeyedProbeService<()> for KeyedProbeBackEnd {
     ) -> Result<(), HeaderProbeError> {
         ready(()).await;
         if kept.is_empty() {
-            Err(HeaderProbeError::Missing)
+            Err(HeaderProbeErrorDraft::Missing.validate().unwrap())
         } else {
             Ok(())
         }
@@ -92,7 +92,7 @@ fn the_keyed_probe_service_is_still_implementable_and_callable() {
     );
     let stowed = poll_once(KeyedProbeBackEnd.stow(&(), HashMap::new(), "n".to_owned())).unwrap();
     assert!(
-        matches!(stowed, Err(HeaderProbeError::Missing)),
+        matches!(&*stowed, Err(HeaderProbeErrorDraft::Missing)),
         "got: {stowed:?}"
     );
     assert!(

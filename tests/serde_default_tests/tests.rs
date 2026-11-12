@@ -6,14 +6,16 @@
 use super::models::{Basin, Config, Fleet, Gangway, Logbook, report};
 use super::models::{
     Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
-    PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
-    filled_report, preprocessed_values, read_values, unwritten_defaults,
+    PREPROCESSED_REPORT, Pontoon, PontoonDraft, REPORT, REQUIRED, REQUIRED_REPORT, Wharf,
+    filled_expected, filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
 #[cfg(feature = "indexmap")]
 use super::models::{IndexedFleet, IndexedLogbook};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use super::omitted::OMITTED_WRITTEN;
-use super::omitted::{Muster, OMITTED, OMITTED_REPORT, Roster, Squad};
+use super::omitted::{
+    Muster, MusterDraft, OMITTED, OMITTED_REPORT, Roster, RosterDraft, Squad, SquadDraft,
+};
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 
@@ -124,12 +126,12 @@ fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
         refused.to_string(),
         "'dock': too short: minimum length is 1, got 0"
     );
-    let built = Pontoon {
+    let built = PontoonDraft {
         dock: String::new(),
         label: "p".to_owned(),
     };
     assert_eq!(
-        built.validate().unwrap_err(),
+        built.validation_issues(),
         ["'dock': too short: minimum length is 1, got 0"]
     );
 }
@@ -616,24 +618,30 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
     let roles = |held: &[&str]| held.iter().map(|&role| role.to_owned()).collect::<Vec<_>>();
     assert_eq!(
         serde_json::from_str::<Roster>(r#"{"id":"1"}"#).unwrap(),
-        Roster {
+        RosterDraft {
             id: "1".to_owned(),
             roles: roles(&[])
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Muster>(r#"{"id":"1"}"#).unwrap(),
-        Muster {
+        MusterDraft {
             id: "1".to_owned(),
             roles: roles(&[])
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Squad>(r#"{"id":"1"}"#).unwrap(),
-        Squad {
+        SquadDraft {
             id: "1".to_owned(),
             roles: roles(&["guest"])
         }
+        .validate()
+        .unwrap()
     );
     let reports = [
         OMITTED_REPORT,

@@ -34,29 +34,32 @@ mod measured_through_the_inner_brand {
     }
 
     fn held(badge: &str, medal: &str, spare: Option<&str>) -> CordHolder {
-        CordHolder {
+        CordHolderDraft {
             badge: Braid::new(Strand::new(badge.to_owned()).unwrap()).unwrap(),
             medal: Cord::new(Braid::new(Strand::new(medal.to_owned()).unwrap()).unwrap()).unwrap(),
             spare: spare.map(|text| Braid::new(Strand::new(text.to_owned()).unwrap()).unwrap()),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn validate_measures_the_text_through_each_level() {
-        assert_eq!(held("abc", "abcd", Some("ab")).validate(), Ok(()));
         assert_eq!(
-            held("a", "abcde", Some("a")).validate(),
-            Err(vec![
+            held("abc", "abcd", Some("ab")).validation_issues(),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            held("a", "abcde", Some("a")).validation_issues(),
+            vec![
                 "'badge': too short: minimum length is 3, got 1".to_owned(),
                 "'medal': too long: maximum length is 4, got 5".to_owned(),
                 "'spare': too short: minimum length is 2, got 1".to_owned(),
-            ])
+            ]
         );
         assert_eq!(
-            held("abc", "AB", None).validate(),
-            Err(vec![
-                "'medal': does not match pattern '^[a-z]+$'".to_owned()
-            ])
+            held("abc", "AB", None).validation_issues(),
+            vec!["'medal': does not match pattern '^[a-z]+$'".to_owned()]
         );
     }
 
@@ -68,7 +71,7 @@ mod measured_through_the_inner_brand {
         );
         assert_eq!(
             read.map_err(|error| error.to_string()),
-            Err(broken.validate().unwrap_err().join("; "))
+            Err(broken.validation_issues().join("; "))
         );
     }
 

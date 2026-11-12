@@ -258,7 +258,7 @@ mod declared_default_bounds {
             serde_json::to_value("short".to_owned()).unwrap(),
         )
         .unwrap();
-        let errors = short.validate().unwrap_err();
+        let errors = short.validation_issues();
         assert!(
             errors
                 .iter()
@@ -1752,36 +1752,38 @@ fn a_writably_keyed_map_filling_still_renders_its_default() {
 
 #[test]
 fn a_parameter_with_no_default_still_expands_where_no_json_document_is_built() {
-    assert_eq!(Undefaulted { id: 1_u32 }.id, 1);
+    assert_eq!(UndefaultedDraft { id: 1_u32 }.id, 1);
 }
 
 #[test]
 fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
     assert_eq!(
-        Labelled {
+        LabelledDraft {
             label: "one".to_owned()
         }
         .label,
         "one"
     );
-    let widened = Widened {
+    let widened = WidenedDraft {
         narrow: 'x',
         wide: String::from('x'),
     };
     assert_eq!(widened.narrow, 'x');
     assert_eq!(widened.wide, "x");
 
-    let annotated = Annotated {
+    let annotated = AnnotatedDraft {
         label: "two".to_owned(),
         source: Cow::Borrowed("three"),
     };
     assert_eq!(annotated.label, "two");
     assert_eq!(annotated.source, "three");
 
-    let padded: Padded<String, char, 4> = Padded {
+    let padded: Padded<String, char, 4> = PaddedDraft {
         narrow: 'y',
         wide: String::from('y'),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(padded.narrow, 'y');
     assert_eq!(padded.wide, "y");
 }
@@ -1797,7 +1799,7 @@ fn a_generic_alias_expands_to_rust_that_compiles() {
 
 #[test]
 fn a_generic_item_expands_to_rust_that_compiles() {
-    let wrapper = Wrapper {
+    let wrapper = WrapperDraft {
         children: vec!["a".to_owned()],
         id: "b".to_owned(),
         name: "c".to_owned(),
@@ -1806,7 +1808,7 @@ fn a_generic_item_expands_to_rust_that_compiles() {
     assert_eq!(wrapper.id, "b");
     assert_eq!(wrapper.name, "c");
 
-    let pair = Pair {
+    let pair = PairDraft {
         by_key: HashMap::from([("k".to_owned(), 1_u32)]),
         key: "k".to_owned(),
         maybe: None,
@@ -1817,17 +1819,19 @@ fn a_generic_item_expands_to_rust_that_compiles() {
     assert_eq!(pair.maybe, None);
     assert_eq!(pair.tuple.1, 1);
 
-    let positional = Positional("id".to_owned(), "name".to_owned());
+    let positional = PositionalDraft("id".to_owned(), "name".to_owned());
     assert_eq!(positional.0, "id");
     assert_eq!(positional.1, "name");
 
-    assert_eq!(Holder { id: 1_u32 }.id, 1);
-    assert_eq!(LifetimeStruct { label: "x".into() }.label, "x");
+    assert_eq!(HolderDraft { id: 1_u32 }.id, 1);
+    assert_eq!(LifetimeStructDraft { label: "x".into() }.label, "x");
 
-    let carried = Carried {
-        envelope: Envelope {
+    let carried = CarriedDraft {
+        envelope: EnvelopeDraft {
             trace: "t".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         id: "i".to_owned(),
     };
     assert_eq!(carried.envelope.trace, "t");
@@ -1837,7 +1841,7 @@ fn a_generic_item_expands_to_rust_that_compiles() {
     assert_eq!(boxed.len(), 1);
     assert_eq!(Tagged::new("t".to_owned()).unwrap().as_inner(), "t");
 
-    let quintet = Quintet {
+    let quintet = QuintetDraft {
         alpha: 1_u32,
         bravo: "b".to_owned(),
         charlie: 3_u32,
@@ -1853,49 +1857,55 @@ fn a_generic_item_expands_to_rust_that_compiles() {
 
 #[test]
 fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
-    let document = |id: &str| EcmDocument {
+    let document = |id: &str| EcmDocumentDraft {
         created_at: 1.0_f64,
         document_id: id.to_owned(),
     };
 
-    let folder = WireFolder {
+    let folder = WireFolderDraft {
         doc: document("d"),
-        plain: Envelope {
+        plain: EnvelopeDraft {
             trace: "t".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert!(folder.doc.created_at > 0.0_f64);
     assert_eq!(folder.doc.document_id, "d");
     assert_eq!(folder.plain.trace, "t");
 
-    let tree = FolderTree {
+    let tree = FolderTreeDraft {
         labels: HashSet::from(["l".to_owned()]),
-        many: vec![document("m")],
-        nested: Outer {
-            held: Inner {
+        many: vec![document("m").validate().unwrap()],
+        nested: OuterDraft {
+            held: InnerDraft {
                 value: "v".to_owned(),
             },
-        },
-        root: document("r"),
+        }
+        .validate()
+        .unwrap(),
+        root: document("r").validate().unwrap(),
     };
     assert_eq!(tree.labels.len(), 1);
     assert_eq!(tree.many[0].document_id, "m");
     assert_eq!(tree.nested.held.value, "v");
     assert_eq!(tree.root.document_id, "r");
 
-    let referrer = Referrer {
+    let referrer = ReferrerDraft {
         boxed: vec![1_u32],
         tagged: Tagged::new("t".to_owned()).unwrap(),
     };
     assert_eq!(referrer.boxed.len(), 1);
     assert_eq!(referrer.tagged.as_inner(), "t");
 
-    let counted = CountedFolder {
+    let counted = CountedFolderDraft {
         boxed: vec![true],
-        doc: EcmDocument {
+        doc: EcmDocumentDraft {
             created_at: false,
             document_id: 1_u32,
-        },
+        }
+        .validate()
+        .unwrap(),
         tagged: Tagged::new(2_u32).unwrap(),
     };
     assert_eq!(counted.boxed.len(), 1);
@@ -1908,24 +1918,30 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 #[test]
 fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
-    let mixed = MixedArguments {
-        keyed: Inner {
+    let mixed = MixedArgumentsDraft {
+        keyed: InnerDraft {
             value: ObjectId::new(),
-        },
-        sized: Inner { value: 1_u32 },
-        stamped: Inner {
+        }
+        .validate()
+        .unwrap(),
+        sized: InnerDraft { value: 1_u32 }.validate().unwrap(),
+        stamped: InnerDraft {
             value: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(mixed.sized.value, 1);
     assert_eq!(mixed.stamped.value.timestamp(), 0);
     assert_ne!(mixed.keyed.value.to_hex(), String::new());
 
-    let stored = StoredFolder {
-        doc: EcmDocument {
+    let stored = StoredFolderDraft {
+        doc: EcmDocumentDraft {
             created_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
             document_id: ObjectId::new(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(stored.doc.created_at.timestamp(), 0);
     assert_ne!(stored.doc.document_id.to_hex(), String::new());
@@ -1933,20 +1949,29 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
 
 #[test]
 fn a_generic_enum_expands_to_rust_that_compiles() {
-    assert!(matches!(Adjacent::<String>::Nothing, Adjacent::Nothing));
-    assert!(matches!(Internal::<String>::Nothing, Internal::Nothing));
-    assert!(matches!(External::<String>::Nothing, External::Nothing));
+    assert!(matches!(
+        Adjacent::<String>::Nothing,
+        AdjacentDraft::Nothing
+    ));
+    assert!(matches!(
+        Internal::<String>::Nothing,
+        InternalDraft::Nothing
+    ));
+    assert!(matches!(
+        External::<String>::Nothing,
+        ExternalDraft::Nothing
+    ));
     assert!(matches!(
         Untagged::<String>::Numbered { count: 1 },
-        Untagged::Numbered { count: _count }
+        UntaggedDraft::Numbered { count: _count }
     ));
-    assert!(matches!(PlainConst::<4>::Wide, PlainConst::Wide));
+    assert!(matches!(PlainConst::<4>::Wide, PlainConstDraft::Wide));
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn every_instantiation_the_wire_accepts_writes_string_keys() {
-    let string_instantiation = KeyedByParameter::<String, u32> {
+    let string_instantiation = KeyedByParameterDraft::<String, u32> {
         parameter_keyed: HashMap::from([("a".to_owned(), "one".to_owned())]),
         both_parameters: HashMap::from([("a".to_owned(), 1_u32)]),
         concrete_string_key: HashMap::new(),
@@ -1958,7 +1983,7 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
         serde_json::json!({ "a": "one" })
     );
 
-    let by_number = KeyedByParameter::<u32, u32> {
+    let by_number = KeyedByParameterDraft::<u32, u32> {
         parameter_keyed: HashMap::from([(7_u32, "seven".to_owned())]),
         both_parameters: HashMap::new(),
         concrete_string_key: HashMap::new(),
@@ -1970,7 +1995,7 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
         "a key serde stringifies still reaches the wire as a string"
     );
 
-    let by_bool = KeyedByParameter::<bool, u32> {
+    let by_bool = KeyedByParameterDraft::<bool, u32> {
         parameter_keyed: HashMap::from([(true, "yes".to_owned())]),
         both_parameters: HashMap::new(),
         concrete_string_key: HashMap::new(),
@@ -1981,7 +2006,7 @@ fn every_instantiation_the_wire_accepts_writes_string_keys() {
         serde_json::json!({ "true": "yes" })
     );
 
-    let by_sequence = KeyedByParameter::<Vec<u32>, u32> {
+    let by_sequence = KeyedByParameterDraft::<Vec<u32>, u32> {
         parameter_keyed: HashMap::from([(vec![1_u32], "no".to_owned())]),
         both_parameters: HashMap::new(),
         concrete_string_key: HashMap::new(),
@@ -2016,46 +2041,46 @@ fn a_lifetime_struct_still_holds_its_field_to_its_bound() {
 
     let accepted = serde_json::from_str::<LifetimeStruct<'_>>(r#"{"label":"x"}"#).unwrap();
     assert!(
-        accepted.validate().is_ok(),
+        accepted.validation_issues().is_empty(),
         "the value the bound admits has to pass: {:?}",
         accepted.validate().err()
     );
 
-    let empty = LifetimeStruct {
+    let empty = LifetimeStructDraft {
         label: Cow::Borrowed(""),
     };
     assert_eq!(
-        empty.validate().unwrap_err(),
+        empty.validation_issues(),
         vec!["'label': too short: minimum length is 1, got 0"]
     );
 }
 
 #[test]
 fn a_lifetime_beside_a_type_parameter_has_validate_at_every_filling() {
-    let valid = AnnotatedConstrained {
+    let valid = AnnotatedConstrainedDraft {
         label: "anything".to_owned(),
         source: Cow::Borrowed("s"),
         tag: "t".to_owned(),
     };
     valid.validate().unwrap();
 
-    let untagged = AnnotatedConstrained {
+    let untagged = AnnotatedConstrainedDraft {
         label: "anything".to_owned(),
         source: Cow::Borrowed("s"),
         tag: String::new(),
     };
     assert_eq!(
-        untagged.validate().unwrap_err(),
+        untagged.validation_issues(),
         vec!["'tag': too short: minimum length is 1, got 0"]
     );
 
-    let other_instantiation = AnnotatedConstrained {
+    let other_instantiation = AnnotatedConstrainedDraft {
         label: 7_u32,
         source: Cow::Borrowed("s"),
         tag: String::new(),
     };
     assert_eq!(
-        other_instantiation.validate().unwrap_err(),
+        other_instantiation.validation_issues(),
         vec!["'tag': too short: minimum length is 1, got 0"]
     );
 }

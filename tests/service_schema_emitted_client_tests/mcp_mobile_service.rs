@@ -244,7 +244,7 @@ pub struct Archive;
 impl Archive {
     fn version_of(document_id: &str) -> Result<VersionResponse, VersionError> {
         match document_id {
-            "doc-1" => Ok(VersionResponse { version: 7 }),
+            "doc-1" => Ok(VersionResponseDraft { version: 7 }.validate().unwrap()),
             "panic" => came_apart(),
             _ => Err(VersionError::NotFound),
         }
@@ -261,9 +261,9 @@ impl MobileBillingService<()> for Archive {
         _ledger: String,
     ) -> impl Future<Output = Result<BalanceResponse, BalanceError>> {
         ready(if account_id == "acct-1" {
-            Ok(BalanceResponse { cents: 1250 })
+            Ok(BalanceResponseDraft { cents: 1250 })
         } else {
-            Err(BalanceError::UnknownAccount)
+            Err(BalanceErrorDraft::UnknownAccount)
         })
     }
 }
@@ -284,7 +284,7 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: DraftBatch,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse {
+        ready(Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
         }))
     }
@@ -362,7 +362,7 @@ impl MobileDocumentService<()> for Archive {
         _mcp_source: String,
         _carried: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse { version: 10 }))
+        ready(Ok(VersionResponseDraft { version: 10 }))
     }
 
     fn lookup(
@@ -391,7 +391,7 @@ impl MobileDocumentService<()> for Archive {
         _outcome: String,
         _members: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse { version: 9 }))
+        ready(Ok(VersionResponseDraft { version: 9 }))
     }
 
     fn touch_document(

@@ -60,9 +60,11 @@ pub mod a_bound_the_fields_own_type_declares {
     impl EnrolService<()> for EnrolBackEnd {
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Enrolled, EnrolError> {
             ready(()).await;
-            Ok(Enrolled {
+            Ok(EnrolledDraft {
                 invoices: u32::try_from(req.slug.as_inner().len()).unwrap(),
-            })
+            }
+            .validate()
+            .unwrap())
         }
 
         async fn withdraw(&self, _ctx: &(), req: EnrolRequest) {
@@ -201,12 +203,16 @@ pub mod a_bound_the_fields_own_type_declares {
         let transport = ProbeTransport::new(&[]);
         let client = enrol_amqp_client::EnrolServiceClient::new(transport);
         let answered = poll_once(
-            client.enrol(EnrolRequest {
-                slug: Slug::model_schema_read_unjudged(
-                    serde_json::to_value("ab".to_owned()).unwrap(),
-                )
+            client.enrol(
+                EnrolRequestDraft {
+                    slug: Slug::model_schema_read_unjudged(
+                        serde_json::to_value("ab".to_owned()).unwrap(),
+                    )
+                    .unwrap(),
+                }
+                .validate()
                 .unwrap(),
-            }),
+            ),
         )
         .unwrap();
         let reported = match &answered {
@@ -241,13 +247,19 @@ pub mod a_bound_the_fields_own_type_declares {
     #[test]
     fn a_message_whose_bound_its_fields_type_declares_is_satisfiable_end_to_end() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
-        let answered = poll_once(client.enrol(EnrolRequest {
-            slug: Slug::new("abcd".to_owned()).unwrap(),
-        }))
+        let answered = poll_once(
+            client.enrol(
+                EnrolRequestDraft {
+                    slug: Slug::new("abcd".to_owned()).unwrap(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        )
         .unwrap();
         assert_eq!(
             answered.unwrap(),
-            Enrolled { invoices: 4 },
+            EnrolledDraft { invoices: 4 }.validate().unwrap(),
             "the implementation answered from the slug it was handed, so the message crossed whole"
         );
     }
@@ -255,20 +267,30 @@ pub mod a_bound_the_fields_own_type_declares {
     #[test]
     fn a_one_way_send_is_measured_against_the_same_bound_a_call_is() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
-        poll_once(client.withdraw(EnrolRequest {
-            slug: Slug::new("abcd".to_owned()).unwrap(),
-        }))
+        poll_once(
+            client.withdraw(
+                EnrolRequestDraft {
+                    slug: Slug::new("abcd".to_owned()).unwrap(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        )
         .unwrap()
         .unwrap();
         let refused = ProbeTransport::new(&[]);
         let refusing = enrol_amqp_client::EnrolServiceClient::new(refused);
         let reported = poll_once(
-            refusing.withdraw(EnrolRequest {
-                slug: Slug::model_schema_read_unjudged(
-                    serde_json::to_value("ab".to_owned()).unwrap(),
-                )
+            refusing.withdraw(
+                EnrolRequestDraft {
+                    slug: Slug::model_schema_read_unjudged(
+                        serde_json::to_value("ab".to_owned()).unwrap(),
+                    )
+                    .unwrap(),
+                }
+                .validate()
                 .unwrap(),
-            }),
+            ),
         )
         .unwrap()
         .unwrap_err();
@@ -386,7 +408,7 @@ impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("admit {}", req.customer_id));
-        Ok(BalanceResponse { invoices: 3 })
+        Ok(BalanceResponseDraft { invoices: 3 }.validate().unwrap())
     }
 
     async fn apply_bundle(&self, ctx: &String, req: AdmitRequest) {
@@ -402,16 +424,16 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("get_balance {}", req.customer_id));
         if req.customer_id == "unlucky" {
-            Err(ProbeError::DbError)
+            Err(ProbeErrorDraft::DbError.validate().unwrap())
         } else {
-            Ok(BalanceResponse { invoices: 7 })
+            Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponse { invoices: 0 })
+        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
     }
 
     async fn void_invoice(
@@ -422,7 +444,7 @@ impl ProbeService<String> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("void_invoice {customer_id} {invoice_id}"));
-        Ok(BalanceResponse { invoices: 1 })
+        Ok(BalanceResponseDraft { invoices: 1 }.validate().unwrap())
     }
 }
 
@@ -719,25 +741,37 @@ fn reported_fault(
 fn an_answer_becomes_the_success_type_the_operation_declared() {
     let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
-    assert_eq!(answered, Ok(BalanceResponse { invoices: 7 }));
+    assert_eq!(answered, Ok(BalanceResponseDraft { invoices: 7 }));
 }
 
 #[test]
 fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
     let transport = ProbeTransport::new(&[r#"{"ok":false,"error":{"errorCode":"db-error"}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "unlucky".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "unlucky".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         answered,
         Err(probe_service_schema::CallError::Operation(
-            ProbeError::DbError
+            ProbeErrorDraft::DbError
         )),
         "the thing the operation said it could fail at is not a defect"
     );
@@ -751,9 +785,15 @@ fn a_fault_the_remote_produced_comes_back_in_the_fault_arm() {
         r#""kind":"unknown-operation","operation":"get-balance"}}}"#
     )]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
     assert_eq!(
@@ -770,9 +810,15 @@ fn a_fault_the_remote_produced_comes_back_in_the_fault_arm() {
 fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
     let transport = ProbeTransport::new(&[r#"{"ok":true}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
     assert_eq!(
@@ -790,9 +836,15 @@ fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
 fn the_operation_name_travels_beside_the_payload_and_never_inside_it() {
     let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::ProbeServiceClient::new(transport);
-    poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap()
     .unwrap();
     let calls = client.transport().calls();
@@ -907,9 +959,15 @@ fn a_one_way_message_failing_its_own_validation_is_a_fault_and_sends_nothing() {
 #[test]
 fn a_call_the_transport_could_not_carry_comes_back_as_a_fault_rather_than_never_answering() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     let reported = reported_fault(&answered).unwrap();
     assert_eq!(
@@ -968,9 +1026,15 @@ fn a_one_way_send_the_transport_could_not_put_out_comes_back_as_a_fault() {
 #[test]
 fn a_transport_failure_reads_the_same_way_to_a_caller_as_every_other_defect() {
     let client = amqp_client::ProbeServiceClient::new(DeadlineTransport::new());
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert!(
         !matches!(answered, Err(probe_service_schema::CallError::Operation(_))),
@@ -1006,24 +1070,36 @@ fn a_transport_failure_is_reported_only_for_a_message_the_client_did_not_refuse_
 #[test]
 fn what_the_dispatcher_writes_is_what_the_client_reads() {
     let client = amqp_client::ProbeServiceClient::new(Loopback::new());
-    let answered = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponse { invoices: 7 }),
+        Ok(BalanceResponseDraft { invoices: 7 }),
         "one envelope, written by the dispatcher and read by the client"
     );
 
-    let failed = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "unlucky".to_owned(),
-    }))
+    let failed = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "unlucky".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         failed,
         Err(probe_service_schema::CallError::Operation(
-            ProbeError::DbError
+            ProbeErrorDraft::DbError
         )),
         "and the failure arm survives the round trip as the error the operation declared"
     );
@@ -1054,11 +1130,17 @@ fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its
         r#"{"ok":true,"value":{"invoices":3}}"#,
     ]);
     let client = spare_amqp_client::ProbeServiceClient::new(transport);
-    let balance = poll_once(client.get_balance(BalanceRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let balance = poll_once(
+        client.get_balance(
+            BalanceRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
-    assert_eq!(balance, Ok(BalanceResponse { invoices: 7 }));
+    assert_eq!(balance, Ok(BalanceResponseDraft { invoices: 7 }));
     poll_once(client.apply_bundle(AdmitRequest {
         customer_id: "acme".to_owned(),
     }))

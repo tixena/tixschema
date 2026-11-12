@@ -246,21 +246,23 @@ where
 
 /// A buoy with `mark`.
 fn buoy(mark: &str) -> Buoy {
-    Buoy {
+    BuoyDraft {
         mark: mark.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
     assert_eq!(
-        read_back(&Lone {
+        read_back(&LoneDraft {
             binary_heap: texts(&["a"]),
             btree_set: texts(&["b"]),
             hash_set: texts(&["c"]),
             vec_deque: VecDeque::from([1]),
         }),
-        read_back(&LoneAsVec {
+        read_back(&LoneAsVecDraft {
             binary_heap: texts(&["a"]),
             btree_set: texts(&["b"]),
             hash_set: texts(&["c"]),
@@ -269,15 +271,15 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
     );
     #[cfg(feature = "indexmap")]
     assert_eq!(
-        read_back(&IndexedLone {
+        read_back(&IndexedLoneDraft {
             index_set: texts(&["a"]),
         }),
-        read_back(&IndexedLoneAsVec {
+        read_back(&IndexedLoneAsVecDraft {
             index_set: texts(&["a"]),
         })
     );
     assert_eq!(
-        read_back(&Bundled {
+        read_back(&BundledDraft {
             buoys: VecDeque::from([buoy("a")]),
             buoys_by_dock: HashMap::from([("d".to_owned(), BTreeSet::from([buoy("b")]))]),
             by_dock: HashMap::from([("d".to_owned(), texts(&["c"]))]),
@@ -287,9 +289,9 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(BTreeSet::from([2])),
             stowed: (VecDeque::from([("h".to_owned(), buoy("i"))]), 2),
-            tether: Tether { id: texts(&["j"]) },
+            tether: TetherDraft { id: texts(&["j"]) }.validate().unwrap(),
         }),
-        read_back(&BundledAsVec {
+        read_back(&BundledAsVecDraft {
             buoys: vec![buoy("a")],
             buoys_by_dock: HashMap::from([("d".to_owned(), vec![buoy("b")])]),
             by_dock: HashMap::from([("d".to_owned(), texts(&["c"]))]),
@@ -299,40 +301,40 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(vec![2]),
             stowed: (vec![("h".to_owned(), buoy("i"))], 2),
-            tether: Tether { id: texts(&["j"]) },
+            tether: TetherDraft { id: texts(&["j"]) }.validate().unwrap(),
         })
     );
     assert_eq!(
-        read_back(&Tethered {
-            queue: VecDeque::from([Tether { id: "k".to_owned() }]),
+        read_back(&TetheredDraft {
+            queue: VecDeque::from([TetherDraft { id: "k".to_owned() }]),
         }),
-        read_back(&TetheredAsVec {
-            queue: vec![Tether { id: "k".to_owned() }],
+        read_back(&TetheredAsVecDraft {
+            queue: vec![TetherDraft { id: "k".to_owned() }.validate().unwrap()],
         })
     );
     for (held, as_vec) in [
         (
-            Hauling::Loose {
+            HaulingDraft::Loose {
                 members: texts(&["a"]),
             },
-            HaulingAsVec::Loose {
+            HaulingAsVecDraft::Loose {
                 members: texts(&["a"]),
             },
         ),
         (
-            Hauling::Queue(texts(&["b"])),
-            HaulingAsVec::Queue(texts(&["b"])),
+            HaulingDraft::Queue(texts(&["b"])),
+            HaulingAsVecDraft::Queue(texts(&["b"])),
         ),
         (
-            Hauling::Split(BTreeSet::from([1]), 2),
-            HaulingAsVec::Split(vec![1], 2),
+            HaulingDraft::Split(BTreeSet::from([1]), 2),
+            HaulingAsVecDraft::Split(vec![1], 2),
         ),
     ] {
         assert_eq!(read_back(&held), read_back(&as_vec));
     }
     assert_eq!(
-        read_back(&Queued(texts(&["a"]), 1)),
-        read_back(&QueuedAsVec(texts(&["a"]), 1))
+        read_back(&QueuedDraft(texts(&["a"]), 1)),
+        read_back(&QueuedAsVecDraft(texts(&["a"]), 1))
     );
     #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(

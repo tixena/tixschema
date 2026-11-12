@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -56,13 +56,18 @@ struct Owned {
 }
 
 fn record(numbers: &[i32]) -> Record {
-    Record {
+    RecordDraft {
         created_at: DateTime::from_timestamp_millis(1_759_600_000_000).unwrap(),
         id: ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap(),
         name: "Loan".to_owned(),
         note: None,
-        versions: numbers.iter().map(|&number| Version { number }).collect(),
+        versions: numbers
+            .iter()
+            .map(|&number| VersionDraft { number })
+            .collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Repairs what the cases below leave in a `Record`, and rejects anything else.
@@ -373,7 +378,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     let id = |hex: &str| ObjectId::parse_str(hex).unwrap();
     assert_eq!(
         read,
-        Ok(CatalogByItem {
+        Ok(CatalogByItemDraft {
             counts: vec![1_i32, 2_i32],
             owners: HashMap::from([("alice".to_owned(), id("6a7cc592ca0574e6efdfe219"))]),
             parent: Some(id("6a7cc592ca0574e6efdfe21a")),
@@ -429,10 +434,12 @@ fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
     });
     assert_eq!(
         read,
-        Ok(Owned {
+        Ok(OwnedDraft {
             owner: OwnerId::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap()).unwrap(),
             tagged: Tagged::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe218").unwrap()).unwrap(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
     let alone = OwnerId::from_value_with(json!("not-an-id"), |_raw, _found| {

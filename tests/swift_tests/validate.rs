@@ -135,7 +135,7 @@ pub enum Pier {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sealed(#[model_schema_prop(minLength = 1)] pub String);
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -303,7 +303,7 @@ fn a_member_named_after_the_method_or_a_local_of_it_keeps_its_key() {
         assert!(swift.contains(written), "{written} is not in: {swift}");
     }
     assert_eq!(
-        serde_json::to_value(Inspection {
+        serde_json::to_value(InspectionDraft {
             errors: Vec::new(),
             validate: "v".to_owned(),
         })
@@ -476,16 +476,16 @@ fn the_one_slot_of_a_struct_is_reported_under_no_step() {
 
 #[test]
 fn every_validated_fixture_is_built_and_written_by_serde() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
     };
-    let manifest = Manifest {
-        first_parcel: parcel.clone(),
-        parcel_list: vec![parcel.clone()],
+    let manifest = ManifestDraft {
+        first_parcel: parcel.clone().validate().unwrap(),
+        parcel_list: vec![parcel.clone().validate().unwrap()],
         parcels_by_dock: HashMap::from([("north".to_owned(), parcel.clone())]),
-        spare_parcel: Some(parcel),
+        spare_parcel: Some(parcel.validate().unwrap()),
     };
     assert_eq!(
         serde_json::to_value(&manifest).unwrap()["parcelsByDock"]["north"]["label"],
@@ -496,7 +496,7 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         "ab"
     );
     assert_eq!(
-        serde_json::to_value(Reading {
+        serde_json::to_value(ReadingDraft {
             age: 4,
             level: 1.5,
             spare: None,
@@ -505,7 +505,7 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         serde_json::json!({ "age": 4_u32, "level": 1.5_f64 })
     );
     assert_eq!(
-        serde_json::to_value(Routing {
+        serde_json::to_value(RoutingDraft {
             seen_code: Slug::new("ab".to_owned()).unwrap(),
             titled: Heading::from("ti"),
             unseen_code: LaterSlug::new("ab".to_owned()).unwrap(),
@@ -515,12 +515,12 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
     );
     assert_eq!(
         serde_json::to_value([
-            Freight::Boxed("b".to_owned()),
-            Freight::Loose {
+            FreightDraft::Boxed("b".to_owned()),
+            FreightDraft::Loose {
                 freight_label: "l".to_owned(),
             },
-            Freight::Split("s".to_owned(), 1),
-            Freight::Unladen,
+            FreightDraft::Split("s".to_owned(), 1),
+            FreightDraft::Unladen,
         ])
         .unwrap(),
         serde_json::json!([
@@ -532,15 +532,18 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
     );
     assert_eq!(
         serde_json::to_value([
-            Pier::Named {
+            PierDraft::Named {
                 quay: "q".to_owned(),
             },
-            Pier::Tagged("t".to_owned()),
+            PierDraft::Tagged("t".to_owned()),
         ])
         .unwrap(),
         serde_json::json!([{ "Named": { "quay": "q" } }, { "Tagged": "t" }])
     );
-    assert_eq!(serde_json::to_value(Sealed("s".to_owned())).unwrap(), "s");
+    assert_eq!(
+        serde_json::to_value(SealedDraft("s".to_owned())).unwrap(),
+        "s"
+    );
     assert_eq!(
         serde_json::to_value(SealedSlug::new(Slug::new("ab".to_owned()).unwrap()).unwrap())
             .unwrap(),

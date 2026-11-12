@@ -1332,7 +1332,7 @@ fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
     );
 
     let unchecked = expansion_over("pub struct Pair(pub String, pub u32);").to_string();
-    assert!(!unchecked.contains("fn validate"), "got: {unchecked}");
+    assert!(!unchecked.contains("fn validate_"), "got: {unchecked}");
 }
 
 #[cfg(feature = "serde")]
@@ -7103,7 +7103,7 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
          the call site can see, rather than tying with it: {body}"
     );
     assert!(
-        body.contains("value_0 . validate ()"),
+        body.contains("value_0 . validation_issues ()"),
         "the field's own validator is what runs: {body}"
     );
     assert!(
@@ -7227,7 +7227,7 @@ fn a_map_of_declared_types_is_walked_entry_by_entry_under_the_key_serde_writes()
         "impl < K : ? :: core :: marker :: Sized + serde :: Serialize > :: core :: fmt :: Display \
          for MapKey < '_ , K >",
         "serde :: Serialize :: serialize (self . 0 , formatter)",
-        "for (entry_1 , value_1) in value_0 { if let",
+        "for (entry_1 , value_1) in value_0 { let reported",
         "let key_1 = MapKey (entry_1) . written_key () ; errors . extend",
         r#"nested_under ("parcelsByDock" , & keyed_under (key_1 . as_deref () , violation))"#,
         "for (entry_3 , value_3) in value_2 { for",
@@ -7492,7 +7492,7 @@ fn a_field_written_as_a_set_of_declared_types_is_walked_item_by_item() {
     let body = walked_bodies(&mut item);
     for written in [
         "for (index_1 , value_1) in value_0 . into_iter () . enumerate ()",
-        "value_1 . validate ()",
+        "value_1 . validation_issues ()",
         r#"nested_under (& format ! ("parcels.{index_1}") , violation)"#,
     ] {
         assert!(body.contains(written), "{written} is not in {body}");
@@ -12931,7 +12931,7 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
         }
         assert_eq!(
             expanded.matches("_schema {").count(),
-            1,
+            2,
             "for {source}, got: {expanded}"
         );
     }
@@ -13185,7 +13185,7 @@ fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
         source,
     );
     assert!(
-        expanded.starts_with("pub struct DecodeEnvelope < T > {"),
+        expanded.starts_with("pub struct DecodeEnvelopeDraft < T > {"),
         "got: {expanded}"
     );
     assert!(
@@ -14751,7 +14751,9 @@ fn an_item_without_decode_with_expands_as_it_did() {
         "#[serde(untagged)] pub enum DecodePlainContact { Email { address: String }, Phone { digits: u32 } }",
         "pub type DecodePlainAlias = String;",
     ] {
-        let unflagged = expansion_under("", source).replace("__tixschema_sealed_", "");
+        let unflagged = expansion_under("", source)
+            .replace("__tixschema_sealed_", "")
+            .replace("__tixschema_valid_", "");
         for added in [
             "decode_with",
             "from_value_with",
@@ -14863,10 +14865,15 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
         .chain(DECODE_WITH_ENUM_FORMS)
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
-        let flagged = expansion_under(args, source).replace(
-            "# [doc (hidden)] pub mod __tixschema_sealed_",
-            "pub mod sealed_",
-        );
+        let flagged = expansion_under(args, source)
+            .replace(
+                "# [doc (hidden)] pub mod __tixschema_sealed_",
+                "pub mod sealed_",
+            )
+            .replace(
+                "# [doc (hidden)] pub mod __tixschema_valid_",
+                "pub mod valid_",
+            );
         for suppression in ["allow", "hidden", "cfg_attr"] {
             assert!(
                 !flagged.contains(&format!("# [{suppression}"))
@@ -19527,7 +19534,11 @@ fn a_field_read_through_a_reference_is_given_no_read_hook() {
         .iter()
         .map(ToString::to_string)
         .collect::<String>();
-    assert_eq!(walked.matches(". validate ()").count(), 2, "got: {walked}");
+    assert_eq!(
+        walked.matches(". validation_issues ()").count(),
+        2,
+        "got: {walked}"
+    );
     let read = super::judged_read::of_struct(&mut item, true).to_string();
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
@@ -22741,7 +22752,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
                 #[model_schema_prop(minLength = 1)]
                 pub label: String,
             }",
-            "impl FixedCrate {",
+            "impl FixedCrateDraft {",
         ),
         (
             "default_types(CodeType = String)",
@@ -22751,7 +22762,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
                 #[model_schema_prop(minLength = 1)]
                 pub label: String,
             }",
-            "impl < CodeType > FilledCrate < CodeType > {",
+            "impl < CodeType > FilledCrateDraft < CodeType > {",
         ),
         (
             "default_types(CodeType = String)",
@@ -22760,7 +22771,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
                 #[model_schema_prop(minLength = 1)] pub String,
                 pub CodeType,
             );",
-            "impl < CodeType > FilledSack < CodeType > {",
+            "impl < CodeType > FilledSackDraft < CodeType > {",
         ),
         (
             "default_types(CodeType = String)",
@@ -22774,7 +22785,7 @@ fn validate_is_written_once_in_the_types_own_impl() {
                 },
                 Unpacked,
             }",
-            "impl < CodeType > FilledLoad < CodeType > {",
+            "impl < CodeType > FilledLoadDraft < CodeType > {",
         ),
         (
             "minLength = 2",
@@ -22805,11 +22816,16 @@ fn validate_is_written_once_in_the_types_own_impl() {
             "no `{own_impl}` in: {rendered}"
         );
         let (_, held) = rendered.split_once(own_impl).unwrap();
-        assert!(held.contains("pub fn validate (& self)"), "got: {rendered}");
+        let method = if own_impl.contains("Draft") {
+            "pub fn validation_issues (& self)"
+        } else {
+            "pub fn validate (& self)"
+        };
+        assert!(held.contains(method), "got: {rendered}");
         assert_eq!(
-            rendered.matches("pub fn validate (& self)").count(),
-            1,
-            "got: {rendered}"
+            rendered.matches(method).count(),
+            if own_impl.contains("Draft") { 2 } else { 1 },
+            "the draft's, and the valid type's that lists the draft's: {rendered}"
         );
         assert!(
             !rendered.contains("< String > { pub fn validate"),

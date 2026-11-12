@@ -142,16 +142,18 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     }
 
     fn unlabelled<CodeType>() -> Crate<CodeType> {
-        Crate {
+        CrateDraft {
             codes: Vec::new(),
             label: String::new(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn a_struct_is_held_to_its_bounds_at_a_filling_that_is_not_its_default() {
         assert_eq!(
-            Crate::<u32> {
+            CrateDraft::<u32> {
                 codes: vec![],
                 label: String::new()
             }
@@ -159,25 +161,25 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             .unwrap_err(),
             [UNLABELLED]
         );
-        assert_eq!(unlabelled::<String>().validate().unwrap_err(), [UNLABELLED]);
+        assert_eq!(unlabelled::<String>().validation_issues(), [UNLABELLED]);
         assert_eq!(
-            Crate::<u32> {
+            CrateDraft::<u32> {
                 codes: vec![],
                 label: "spares".to_owned()
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
     }
 
     #[test]
     fn a_holder_reports_a_generic_type_held_at_a_filling_that_is_not_its_default() {
-        let depot = Depot {
+        let depot = DepotDraft {
             counted: unlabelled(),
             named: unlabelled(),
         };
         assert_eq!(
-            depot.validate().unwrap_err(),
+            depot.validation_issues(),
             [
                 "'numbered.label': too short: minimum length is 1, got 0",
                 "'named.label': too short: minimum length is 1, got 0",
@@ -189,14 +191,17 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     fn a_tuple_struct_is_held_to_its_bounds_at_two_fillings() {
         let unlabelled_slot = ["'0': too short: minimum length is 1, got 0"];
         assert_eq!(
-            Sack(String::new(), "a".to_owned()).validate().unwrap_err(),
+            SackDraft(String::new(), "a".to_owned()).validation_issues(),
             unlabelled_slot
         );
         assert_eq!(
-            Sack(String::new(), 7_u32).validate().unwrap_err(),
+            SackDraft(String::new(), 7_u32).validation_issues(),
             unlabelled_slot
         );
-        assert_eq!(Sack("spares".to_owned(), 7_u32).validate(), Ok(()));
+        assert_eq!(
+            SackDraft("spares".to_owned(), 7_u32).validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -219,7 +224,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             .unwrap_err(),
             ["'Packed.label': too short: minimum length is 1, got 0"]
         );
-        assert_eq!(LoadExternal::<u32>::Unpacked.validate(), Ok(()));
+        assert_eq!(
+            LoadExternal::<u32>::Unpacked.validation_issues(),
+            Vec::<String>::new()
+        );
 
         assert_eq!(
             LoadInternal::<String>::Packed {
@@ -239,7 +247,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             .unwrap_err(),
             [UNLABELLED]
         );
-        assert_eq!(LoadInternal::<u32>::Unpacked.validate(), Ok(()));
+        assert_eq!(
+            LoadInternal::<u32>::Unpacked.validation_issues(),
+            Vec::<String>::new()
+        );
 
         assert_eq!(
             LoadAdjacent::<String>::Packed {
@@ -259,7 +270,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             .unwrap_err(),
             ["'load.label': too short: minimum length is 1, got 0"]
         );
-        assert_eq!(LoadAdjacent::<u32>::Unpacked.validate(), Ok(()));
+        assert_eq!(
+            LoadAdjacent::<u32>::Unpacked.validation_issues(),
+            Vec::<String>::new()
+        );
 
         assert_eq!(
             LoadUntagged::<String>::Packed {
@@ -279,7 +293,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             .unwrap_err(),
             [UNLABELLED]
         );
-        assert_eq!(LoadUntagged::<u32>::Counted { count: 7 }.validate(), Ok(()));
+        assert_eq!(
+            LoadUntagged::<u32>::Counted { count: 7 }.validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     /// The seven lines are one text: the brand alone, held by a generated holder, and held by a
@@ -302,7 +319,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ),
             format!(
                 r#"Bin<String> {{ code: "a", codes: ["ab", "b"] }}: {:?}"#,
-                Bin {
+                BinDraft {
                     code: Code::model_schema_read_unjudged(
                         serde_json::to_value("a".to_owned()).unwrap()
                     )
@@ -319,7 +336,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ),
             format!(
                 "Bin<u32> {{ code: 7, codes: [1] }}:              {:?}",
-                Bin {
+                BinDraft {
                     code: Code::new(7_u32).unwrap(),
                     codes: vec![Code::new(1_u32).unwrap()],
                 }
@@ -371,7 +388,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     #[test]
     fn a_generic_holder_keeps_a_generic_brands_bound_in_a_field_a_list_and_an_option() {
         assert_eq!(
-            Bin {
+            BinDraft {
                 code: Code::<String>::model_schema_read_unjudged(
                     serde_json::to_value("a".to_owned()).unwrap()
                 )
@@ -389,7 +406,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ]
         );
         assert_eq!(
-            Rack {
+            RackDraft {
                 spare: Some(
                     Code::<String>::model_schema_read_unjudged(
                         serde_json::to_value("c".to_owned()).unwrap()
@@ -402,13 +419,16 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             ["'spare': too short: minimum length is 2, got 1"]
         );
         assert_eq!(
-            Rack {
+            RackDraft {
                 spare: Some(Code::new(7_u32).unwrap()),
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
-        assert_eq!(Rack::<String> { spare: None }.validate(), Ok(()));
+        assert_eq!(
+            RackDraft::<String> { spare: None }.validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -455,7 +475,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     /// is read. The README shows both as a run answers them.
     #[test]
     fn a_value_behind_a_type_parameter_is_judged_by_its_own_read_alone() {
-        let outer = Crate {
+        let outer = CrateDraft {
             codes: vec![unlabelled::<u32>()],
             label: "outer".to_owned(),
         };
@@ -490,7 +510,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             readme.contains(&format!("```text\n{BRAND_REPORT}\n```")),
             "the README no longer shows the brand's report"
         );
-        let depot = Depot {
+        let depot = DepotDraft {
             counted: unlabelled(),
             named: unlabelled(),
         };

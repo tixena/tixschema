@@ -89,16 +89,16 @@ pub struct NamesRenamedItemsDeclaredEarlier {
 
 #[test]
 fn every_renamed_shape_expands_in_this_feature_combination() {
-    let value = ReferencesRenamedItems {
+    let value = ReferencesRenamedItemsDraft {
         brand: BrandUnderRustName::new("three".to_owned()).unwrap(),
-        item: ItemUnderRustName {
+        item: ItemUnderRustNameDraft {
             count: 1,
             label: "one".to_owned(),
         },
-        pair: PairUnderRustName("two".to_owned(), 2),
-        shape: ShapeUnderRustName::Named { side: 4 },
-        slot: SlotUnderRustName::Primary,
-        tree: TreeUnderRustName {
+        pair: PairUnderRustNameDraft("two".to_owned(), 2),
+        shape: ShapeUnderRustNameDraft::Named { side: 4 },
+        slot: SlotUnderRustNameDraft::Primary,
+        tree: TreeUnderRustNameDraft {
             children: vec![],
             label: "five".to_owned(),
         },
@@ -106,7 +106,7 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
     assert_eq!(value.item.count, 1);
     assert_eq!(value.pair.1, 2);
     assert_eq!(value.brand.as_inner(), "three");
-    assert_eq!(value.slot, SlotUnderRustName::Primary);
+    assert_eq!(value.slot, SlotUnderRustNameDraft::Primary);
     assert!(value.tree.children.is_empty());
 }
 
@@ -273,19 +273,19 @@ fn the_module_a_json_reference_resolves_to_is_the_one_named_for_the_rust_ident()
 
 #[test]
 fn renamed_items_declared_under_their_reference_expand_in_this_feature_combination() {
-    let later = NamesRenamedItemsDeclaredLater {
-        gauge: LaterRenamedGauge { reading: 7 },
-        grades: vec![LaterRenamedGrade::High],
+    let later = NamesRenamedItemsDeclaredLaterDraft {
+        gauge: LaterRenamedGaugeDraft { reading: 7 },
+        grades: vec![LaterRenamedGradeDraft::High],
     };
     assert_eq!(later.gauge.reading, 7);
-    assert_eq!(later.grades, vec![LaterRenamedGrade::High]);
+    assert_eq!(later.grades, vec![LaterRenamedGradeDraft::High]);
 
-    let earlier = NamesRenamedItemsDeclaredEarlier {
-        gauge: LaterRenamedGauge { reading: 8 },
-        grades: vec![LaterRenamedGrade::Low],
+    let earlier = NamesRenamedItemsDeclaredEarlierDraft {
+        gauge: LaterRenamedGaugeDraft { reading: 8 },
+        grades: vec![LaterRenamedGradeDraft::Low],
     };
     assert_eq!(earlier.gauge.reading, 8);
-    assert_eq!(earlier.grades, vec![LaterRenamedGrade::Low]);
+    assert_eq!(earlier.grades, vec![LaterRenamedGradeDraft::Low]);
 }
 
 #[cfg(feature = "serde")]

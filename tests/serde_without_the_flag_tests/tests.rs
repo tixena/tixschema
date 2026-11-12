@@ -457,7 +457,7 @@ fn validate_names_a_member_by_its_rust_name() {
     };
 
     assert_eq!(
-        unknown.validate().unwrap_err(),
+        unknown.validation_issues(),
         ["'user_name': a name is known"]
     );
 }

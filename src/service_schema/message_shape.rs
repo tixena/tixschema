@@ -96,9 +96,7 @@ impl Shape {
         let walked = self.below.as_ref().map_or_else(
             || {
                 quote! {
-                    if let ::core::result::Result::Err(found) = item.validate() {
-                        violations.extend(found);
-                    }
+                    violations.extend(item.validation_issues());
                 }
             },
             |layer| layer.validated(&element),

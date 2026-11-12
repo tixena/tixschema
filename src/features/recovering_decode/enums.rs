@@ -24,6 +24,7 @@ use crate::features::serde::{
 };
 use crate::field_type::get_field_def;
 use crate::model_schema::judged_read::{HookScope, authored_read_bounds, listed_read};
+use crate::model_schema::valid_type::{draft_ident, has_draft};
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{ident_schema_module_name, to_snake_case, type_parameters_in_scope};
 
@@ -535,8 +536,9 @@ impl EnumWalker<'_> {
         let names = self.variants.iter().map(|variant| &variant.rust_name);
         let whole = source.object_value(&object);
         let own_read = self.walker.own_read();
+        let scrutinee = read_as_drafted(quote! { Self::#own_read(#reader) });
         quote! {
-            match Self::#own_read(#reader) {
+            match #scrutinee {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -581,8 +583,9 @@ impl EnumWalker<'_> {
         });
         let names = variants.iter().map(|variant| &variant.rust_name);
         let own_read = self.walker.own_read();
+        let scrutinee = read_as_drafted(quote! { Self::#own_read(#reader) });
         let walked = self.walker.issues_method(&quote! {
-            match Self::#own_read(#reader) {
+            match #scrutinee {
                 #(#picked)*
                 #unread
                 ::core::result::Result::Err(_) => {
@@ -896,10 +899,16 @@ fn walked_variants<'item>(
                     resolve_rename_rule(container.rename_all.as_deref())
                         .apply_to_variant(&rust_name)
                 });
+            let owner = if has_draft() {
+                let draft = draft_ident(&item_enum.ident);
+                quote! { #draft }
+            } else {
+                quote! { Self }
+            };
             let pattern = match &variant.fields {
-                Fields::Named(_) => quote! { Self::#ident { .. } },
-                Fields::Unit => quote! { Self::#ident },
-                Fields::Unnamed(_) => quote! { Self::#ident(..) },
+                Fields::Named(_) => quote! { #owner::#ident { .. } },
+                Fields::Unit => quote! { #owner::#ident },
+                Fields::Unnamed(_) => quote! { #owner::#ident(..) },
             };
             let stem = to_snake_case(&rust_name);
             let content = Shape::of_variant(variant, rename_all_fields, module_name, parameters);
@@ -942,4 +951,14 @@ pub fn written_variants(item: &ItemEnum) -> Vec<WrittenVariant<'_>> {
         });
     }
     written
+}
+
+/// `read`, the answer of a read of the type, as the draft it wraps where the type has one, which
+/// a pattern over its variants is written against.
+fn read_as_drafted(read: TokenStream) -> TokenStream {
+    if has_draft() {
+        quote! { ::core::result::Result::map(#read.as_ref(), |read| &**read) }
+    } else {
+        read
+    }
 }

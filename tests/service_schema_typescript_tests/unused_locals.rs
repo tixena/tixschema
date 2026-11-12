@@ -1,7 +1,7 @@
 //! Four services whose TypeScript surfaces call a different set of the module-private helpers each,
 //! compiled with every other service of the group under `--noUnusedLocals`.
 
-use super::super::{HeaderProbeDocument, HeaderProbeError, poll_once};
+use super::super::{HeaderProbeDocument, HeaderProbeDocumentDraft, HeaderProbeError, poll_once};
 use core::future::ready;
 use tixschema::service_schema;
 
@@ -48,7 +48,7 @@ pub struct NoteBackEnd;
 impl PlainService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocument { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id })
     }
 }
 
@@ -60,7 +60,7 @@ impl InboundService<()> for NoteBackEnd {
         _tenant: String,
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocument { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id })
     }
 }
 
@@ -71,14 +71,14 @@ impl OutboundService<()> for NoteBackEnd {
         id: String,
     ) -> Result<(HeaderProbeDocument, String), HeaderProbeError> {
         ready(()).await;
-        Ok((HeaderProbeDocument { title: id.clone() }, id))
+        Ok((HeaderProbeDocumentDraft { title: id.clone() }, id))
     }
 }
 
 impl BodilessService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocument { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id })
     }
 }
 

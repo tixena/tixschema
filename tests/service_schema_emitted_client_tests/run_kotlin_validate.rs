@@ -546,7 +546,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -563,14 +563,14 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
     }
 }
 
-fn sealed_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn sealed_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     if value.label == "open" {
         return Err(vec!["an open parcel is not sealed".to_owned()]);
     }
     Ok(())
 }
 
-fn unreserved(value: &Code) -> Result<(), Vec<String>> {
+fn unreserved(value: &CodeDraft) -> Result<(), Vec<String>> {
     if value.as_inner() == "NONE" {
         return Err(vec!["a code is not NONE".to_owned()]);
     }
@@ -581,14 +581,14 @@ fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
-fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
+fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }
     Ok(())
 }
 
-fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
+fn with_entries<IdType>(value: &CasketDraft<IdType>) -> Result<(), Vec<String>> {
     if value.entries.is_empty() {
         return Err(vec![
             "'entries': a casket holds at least one entry".to_owned(),
@@ -597,15 +597,15 @@ fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn rated(value: &Grade) -> Result<(), Vec<String>> {
+fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
     if matches!(value, Grade::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
 }
 
-fn labelled(value: &Freight) -> Result<(), Vec<String>> {
-    if let Freight::Loose { freight_label } = value
+fn labelled(value: &FreightDraft) -> Result<(), Vec<String>> {
+    if let FreightDraft::Loose { freight_label } = &**value
         && freight_label.is_empty()
     {
         return Err(vec![
@@ -615,7 +615,7 @@ fn labelled(value: &Freight) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn a_reference(value: &Reference) -> Result<(), Vec<String>> {
+fn a_reference(value: &ReferenceDraft) -> Result<(), Vec<String>> {
     if matches!(value, Reference::Numbered(7)) {
         return Err(vec!["a reference is not 7".to_owned()]);
     }
@@ -627,11 +627,13 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    Parcel {
+    ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A parcel that breaks its one bound.
@@ -832,7 +834,7 @@ fn table_rows() -> Vec<Row> {
         .iter()
         .map(|(name, held)| row(name, "Parcel", held, held.validate()))
         .collect();
-    let manifest = Manifest {
+    let manifest = ManifestDraft {
         parcel: parcel("A", &["x"], &["x", "y"]),
     };
     rows.push(row("case 6", "Manifest", &manifest, manifest.validate()));
@@ -840,7 +842,7 @@ fn table_rows() -> Vec<Row> {
 }
 
 fn gauge() -> Gauge {
-    Gauge {
+    GaugeDraft {
         axle_count: 2,
         deck_codes: texts(&["a"]),
         dock_code: "ab".to_owned(),
@@ -851,11 +853,13 @@ fn gauge() -> Gauge {
         spare_weight: None,
         tilt: 0.5,
     }
+    .validate()
+    .unwrap()
 }
 
 /// Each bound broken from below and from above, bare and under a nullable.
 fn bound_rows() -> Vec<Row> {
-    let low = Gauge {
+    let low = GaugeDraft {
         axle_count: 0,
         deck_codes: Vec::new(),
         dock_code: "A".to_owned(),
@@ -866,7 +870,7 @@ fn bound_rows() -> Vec<Row> {
         spare_weight: Some(120),
         tilt: 0.125,
     };
-    let high = Gauge {
+    let high = GaugeDraft {
         axle_count: 10,
         deck_codes: texts(&["a", "b", "c"]),
         dock_code: "abcde".to_owned(),
@@ -877,7 +881,7 @@ fn bound_rows() -> Vec<Row> {
         spare_weight: Some(121),
         tilt: 0.5,
     };
-    let far = Gauge {
+    let far = GaugeDraft {
         load_ratio: 25_000_000.0,
         ..gauge()
     };
@@ -922,7 +926,7 @@ fn code_point_rows() -> Vec<Row> {
     ]
     .into_iter()
     .map(|(name, mark)| {
-        let held = Stamp {
+        let held = StampDraft {
             mark: mark.to_owned(),
         };
         row(name, "Stamp", &held, held.validate())
@@ -931,9 +935,9 @@ fn code_point_rows() -> Vec<Row> {
 }
 
 fn depot() -> Depot {
-    Depot {
+    DepotDraft {
         by_number: BTreeMap::from([(7, unlabelled())]),
-        by_wing: BTreeMap::from([(Wing::North, unlabelled())]),
+        by_wing: BTreeMap::from([(WingDraft::North, unlabelled())]),
         deck_pair: ("deck".to_owned(), unlabelled()),
         first_parcel: parcel("open", &["x"], &["x", "y"]),
         lists_by_dock: BTreeMap::from([("north".to_owned(), vec![unlabelled()])]),
@@ -942,12 +946,14 @@ fn depot() -> Depot {
         parcels_by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
         spare_parcel: Some(unlabelled()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A model held in a field, a nullable, a list, a map and a tuple, and written into its holder.
 fn holder_rows() -> Vec<Row> {
     let full = depot();
-    let empty = Depot {
+    let empty = DepotDraft {
         by_number: BTreeMap::new(),
         by_wing: BTreeMap::new(),
         deck_pair: ("deck".to_owned(), parcel("A", &["x"], &["x"])),
@@ -958,13 +964,15 @@ fn holder_rows() -> Vec<Row> {
         parcels_by_dock: BTreeMap::new(),
         spare_parcel: None,
     };
-    let yard = Yard {
-        base: Base {
+    let yard = YardDraft {
+        base: BaseDraft {
             base_name: String::new(),
-        },
+        }
+        .validate()
+        .unwrap(),
         gate: "east".to_owned(),
     };
-    let docks = Docks {
+    let docks = DocksDraft {
         by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
     };
     vec![
@@ -1053,7 +1061,7 @@ fn brand_rows() -> Vec<Row> {
 /// A field that holds a brand, and one that bounds a brand declared above, a brand declared
 /// below, a brand over a brand, and an alias of a string declared above and below.
 fn entry_rows() -> Vec<Row> {
-    let broken = Entry {
+    let broken = EntryDraft {
         badge: Badge::new(Slug::new("ab".to_owned()).unwrap()).unwrap(),
         code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
             .unwrap(),
@@ -1065,7 +1073,7 @@ fn entry_rows() -> Vec<Row> {
         user: UserId::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
             .unwrap(),
     };
-    let kept = Entry {
+    let kept = EntryDraft {
         badge: Badge::new(Slug::new("abc".to_owned()).unwrap()).unwrap(),
         code: Code::new("AB".to_owned()).unwrap(),
         late_slug: LateSlug::new("abc".to_owned()).unwrap(),
@@ -1097,20 +1105,24 @@ fn carried_texts_of(length: usize) -> Carried<Vec<String>> {
 /// The rows of a type that holds another at its own parameter under a check, and of members typed
 /// with the name of a list or of a text under a length.
 fn counted_name_rows() -> Vec<Row> {
-    let archived = |entries: &[&str]| Archive::<String> {
-        casket: Casket {
+    let archived = |entries: &[&str]| ArchiveDraft::<String> {
+        casket: CasketDraft {
             entries: texts(entries),
             owner_id: "o".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
-    let archived_by_number = Archive::<u32> {
-        casket: Casket {
+    let archived_by_number = ArchiveDraft::<u32> {
+        casket: CasketDraft {
             entries: Vec::new(),
             owner_id: 7,
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     let (unfilled, filled) = (archived(&[]), archived(&["a"]));
-    let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
+    let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| PosterDraft {
         slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),
         mottos: texts(&vec!["w"; mottos]),
         some: SomeSlogans::model_schema_read_unjudged(
@@ -1121,11 +1133,11 @@ fn counted_name_rows() -> Vec<Row> {
     };
     let (poster_kept, poster_empty, poster_wide) =
         (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
-    let hauler = |counted: usize, named: usize| Hauler {
+    let hauler = |counted: usize, named: usize| HaulerDraft {
         counted: Carried::new(vec![1_i32; counted]).unwrap(),
         named: carried_texts_of(named),
     };
-    let loader = |counted: usize, named: usize| Loader {
+    let loader = |counted: usize, named: usize| LoaderDraft {
         counted: Carried::new(vec![1_i32; counted]).unwrap(),
         named: carried_texts_of(named),
     };
@@ -1225,35 +1237,39 @@ fn chosen_rows() -> Vec<Row> {
 /// A unit struct, a plain enum, a type with a parameter, and the members whose names the method
 /// writes itself.
 fn struct_rows() -> Vec<Row> {
-    let crate_of = |label: &str| Crate::<String> {
+    let crate_of = |label: &str| CrateDraft::<String> {
         codes: Vec::new(),
         label: label.to_owned(),
     };
-    let numbered = Crate::<u32> {
+    let numbered = CrateDraft::<u32> {
         codes: Vec::new(),
         label: String::new(),
     };
     let named = crate_of("");
-    let probe = Probe {
-        later: Later {
+    let probe = ProbeDraft {
+        later: LaterDraft {
             label: String::new(),
-        },
-        numbered: numbered.clone(),
+        }
+        .validate()
+        .unwrap(),
+        numbered: numbered.clone().validate().unwrap(),
         validate: String::new(),
         violations: 0,
     };
-    let labelled = Probe {
-        later: Later {
+    let labelled = ProbeDraft {
+        later: LaterDraft {
             label: "a".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         ..probe.clone()
     };
     vec![
         row(
             "ClosedDock",
             "ClosedDock",
-            &ClosedDock,
-            ClosedDock.validate(),
+            &ClosedDockDraft,
+            ClosedDockDraft.validate(),
         ),
         row(
             "Grade, unrated",
@@ -1292,7 +1308,7 @@ fn slot_rows() -> Vec<Row> {
         pinned(
             "Tally",
             "Tally",
-            &Tally(String::new(), 0),
+            &TallyDraft(String::new(), 0),
             &[
                 "'0': too short: minimum length is 1, got 0",
                 "'1': too small: minimum is 1, got 0",
@@ -1301,7 +1317,7 @@ fn slot_rows() -> Vec<Row> {
         pinned(
             "Consignment",
             "Consignment",
-            &Consignment(texts(&["a", "a"]), unlabelled()),
+            &ConsignmentDraft(texts(&["a", "a"]), unlabelled()),
             &[
                 "'0': duplicate item code a",
                 "'1.label': too short: minimum length is 1, got 0",
@@ -1328,7 +1344,7 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Freight, a named member",
             "Freight",
-            &Freight::Loose {
+            &FreightDraft::Loose {
                 freight_label: String::new(),
             },
             &[
@@ -1367,7 +1383,7 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Haul, a named member",
             "Haul",
-            &Haul::Loose {
+            &HaulDraft::Loose {
                 haul_label: String::new(),
             },
             &[&format!("'held.haulLabel': {short}")],
@@ -1387,7 +1403,7 @@ fn wrapped_variant_rows() -> Vec<Row> {
         pinned(
             "Haul, a member's check",
             "Haul",
-            &Haul::Stacked {
+            &HaulDraft::Stacked {
                 stacked_codes: texts(&["a", "a"]),
             },
             &["'held.stackedCodes': duplicate item code a"],
@@ -1401,7 +1417,7 @@ fn bare_variant_rows() -> Vec<Row> {
         pinned(
             "Lift, a named member held to its own bound and to the enum's",
             "Lift",
-            &Lift::Loose {
+            &LiftDraft::Loose {
                 lift_label: "n1".to_owned(),
                 lift_weight: 1,
             },
@@ -1413,7 +1429,7 @@ fn bare_variant_rows() -> Vec<Row> {
         pinned(
             "Lift, a named member the enum alone bounds",
             "Lift",
-            &Lift::Tall {
+            &LiftDraft::Tall {
                 lift_label: "a".to_owned(),
             },
             &["'liftLabel': too short: minimum length is 2, got 1"],
@@ -1564,7 +1580,7 @@ fn serde_reads_no_variant_from_a_payload_that_breaks_the_bound_of_each() {
 #[test]
 fn rust_answers_each_place_and_each_bound_in_these_words() {
     assert_eq!(
-        depot().validate().unwrap_err(),
+        depot().validation_issues(),
         [
             "'byNumber.7.label': too short: minimum length is 1, got 0",
             "'byWing.north.label': too short: minimum length is 1, got 0",
@@ -1621,7 +1637,7 @@ fn rust_answers_a_bound_on_each_declared_type_in_these_words() {
 #[test]
 fn serde_writes_the_two_shapes_a_row_builds_in_kotlin() {
     assert_eq!(
-        serde_json::to_value(Sealed("a".to_owned())).unwrap(),
+        serde_json::to_value(SealedDraft("a".to_owned())).unwrap(),
         serde_json::json!("a")
     );
     assert_eq!(
@@ -1717,7 +1733,7 @@ fn index_set_rows() -> Vec<Row> {
     let items = |count: usize| -> indexmap::IndexSet<String> {
         (0..count).map(|number| number.to_string()).collect()
     };
-    let lineup = |queue: usize, some: usize| Lineup {
+    let lineup = |queue: usize, some: usize| LineupDraft {
         queue: items(queue),
         some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(items(some)).unwrap())
             .unwrap(),

@@ -59,16 +59,18 @@ struct Pilot {
 }
 
 fn game() -> Game {
-    Game {
+    GameDraft {
         best: Score::new(84_u32).unwrap(),
         last: Some(Score::new(72_u32).unwrap()),
-        nicknames: vec![Nickname("ace".to_owned())],
-        past_ranks: vec![Rank::Rookie],
-        rank: Rank::TopSeed,
+        nicknames: vec![NicknameDraft("ace".to_owned()).validate().unwrap()],
+        past_ranks: vec![RankDraft::Rookie.validate().unwrap()],
+        rank: RankDraft::TopSeed.validate().unwrap(),
         scores: vec![Score::new(72_u32).unwrap(), Score::new(84_u32).unwrap()],
         seal: Sealed::new("wax".to_owned()).unwrap(),
         seals: vec![Sealed::new(3_u32).unwrap()],
     }
+    .validate()
+    .unwrap()
 }
 
 /// Every key of `value`, at every depth.
@@ -103,12 +105,19 @@ fn a_list_of_a_type_written_as_one_value_is_matched_through_its_elements() {
     );
     let nicknames: game_schema::ListField<Game, Nickname> = game.nicknames();
     assert_eq!(
-        shown(nicknames.elem_match(nicknames.element().eq(Nickname("ace".to_owned())).unwrap())),
+        shown(
+            nicknames.elem_match(
+                nicknames
+                    .element()
+                    .eq(NicknameDraft("ace".to_owned()).validate().unwrap())
+                    .unwrap()
+            )
+        ),
         r#"{ "nicknames": { "$elemMatch": { "$eq": "ace" } } }"#
     );
     let past_ranks: game_schema::ListField<Game, Rank> = game.past_ranks();
     assert_eq!(
-        shown(past_ranks.contains_none([Rank::TopSeed]).unwrap()),
+        shown(past_ranks.contains_none([RankDraft::TopSeed]).unwrap()),
         r#"{ "pastRanks": { "$nin": ["top-seed"] } }"#
     );
 }
@@ -131,7 +140,11 @@ fn bare_and_under_an_option_it_is_a_plain_value_with_every_comparison() {
         r#"{ "last": { "$exists": false } }"#
     );
     assert_eq!(
-        shown(game.rank().eq(Rank::TopSeed).unwrap()),
+        shown(
+            game.rank()
+                .eq(RankDraft::TopSeed.validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "rank": { "$eq": "top-seed" } }"#
     );
 }
@@ -234,10 +247,15 @@ fn no_operator_of_a_list_of_one_writes_an_empty_key() {
             .unwrap()
             .into(),
         game.past_ranks()
-            .elem_match(game.past_ranks().element().eq(Rank::Rookie).unwrap())
+            .elem_match(
+                game.past_ranks()
+                    .element()
+                    .eq(RankDraft::Rookie.validate().unwrap())
+                    .unwrap(),
+            )
             .into(),
         game.nicknames()
-            .contains(Nickname("ace".to_owned()))
+            .contains(NicknameDraft("ace".to_owned()).validate().unwrap())
             .unwrap()
             .into(),
     ];
@@ -261,7 +279,12 @@ fn each_path_is_found_in_what_serde_stores_for_the_row() {
         looked_up(stored, game.last().exists(true)),
         looked_up(stored, game.nicknames().size(1)),
         looked_up(stored, game.past_ranks().size(1)),
-        looked_up(stored, game.rank().eq(Rank::Rookie).unwrap()),
+        looked_up(
+            stored,
+            game.rank()
+                .eq(RankDraft::Rookie.validate().unwrap())
+                .unwrap(),
+        ),
         looked_up(stored, game.scores().size(2)),
         looked_up(
             stored,
@@ -296,7 +319,7 @@ fn a_plain_enum_declared_inside_a_function_builds() {
     assert_eq!(
         shown(
             Standing::MONGO_FIELDS
-                .is_in([Standing::OnHold, Standing::Settled])
+                .is_in([StandingDraft::OnHold, StandingDraft::Settled])
                 .unwrap()
         ),
         r#"{ "": { "$in": ["on-hold", "settled"] } }"#
@@ -331,7 +354,11 @@ fn a_tuple_struct_of_one_slot_declared_inside_a_function_builds() {
     struct Altitude(u32);
 
     assert_eq!(
-        shown(Altitude::MONGO_FIELDS.gt(Altitude(9000_u32)).unwrap()),
+        shown(
+            Altitude::MONGO_FIELDS
+                .gt(AltitudeDraft(9000_u32).validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "": { "$gt": Int64(9000) } }"#
     );
 }
@@ -343,7 +370,11 @@ fn a_unit_struct_declared_inside_a_function_builds() {
     struct Grounded;
 
     assert_eq!(
-        shown(Grounded::MONGO_FIELDS.eq(Grounded).unwrap()),
+        shown(
+            Grounded::MONGO_FIELDS
+                .eq(GroundedDraft.validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "": { "$eq": {} } }"#
     );
 }

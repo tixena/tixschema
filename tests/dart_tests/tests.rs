@@ -196,7 +196,7 @@ pub enum ReservedMember {
 
 #[test]
 fn test_every_declared_type_is_constructible() {
-    let stock_item = StockItem {
+    let stock_item = StockItemDraft {
         aisle: None,
         attributes: HashMap::new(),
         bin_location: None,
@@ -210,91 +210,96 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(stock_item.sku, "");
 
-    let warehouse = Warehouse {
-        address: Address {
+    let warehouse = WarehouseDraft {
+        address: AddressDraft {
             city: "Springfield".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         backup_address: None,
     };
     assert_eq!(warehouse.address.city, "Springfield");
 
     let statuses = [
-        StockStatus::InStock,
-        StockStatus::Backordered,
-        StockStatus::Discontinued,
+        StockStatusDraft::InStock,
+        StockStatusDraft::Backordered,
+        StockStatusDraft::Discontinued,
     ];
     assert_eq!(statuses.len(), 3);
 
     let events = [
-        StockEvent::Received {
+        StockEventDraft::Received {
             quantity: 1,
             supplier: "Acme".to_owned(),
         },
-        StockEvent::Shipped { quantity: 1 },
-        StockEvent::Reset,
+        StockEventDraft::Shipped { quantity: 1 },
+        StockEventDraft::Reset,
     ];
     assert_eq!(events.len(), 3);
 
-    let audit = StockAudit {
+    let audit = StockAuditDraft {
         note: String::new(),
     };
-    assert_eq!(audit, StockAudit::default());
+    assert_eq!(audit, StockAuditDraft::default());
 
-    let label = StockLabel {
+    let label = StockLabelDraft {
         batch_codes: Vec::new(),
         printed_by: "Acme".to_owned(),
     };
     assert_eq!(label.printed_by, "Acme");
 
     let dynamic_values = [
-        DynamicValue::Cleared {
+        DynamicValueDraft::Cleared {
             reason: String::new(),
         },
-        DynamicValue::Number(1),
-        DynamicValue::Flag(true),
-        DynamicValue::Nothing,
+        DynamicValueDraft::Number(1),
+        DynamicValueDraft::Flag(true),
+        DynamicValueDraft::Nothing,
     ];
     assert_eq!(dynamic_values.len(), 4);
 
     let payment_methods = [
-        PaymentMethod::Cash,
-        PaymentMethod::Card {
+        PaymentMethodDraft::Cash,
+        PaymentMethodDraft::Card {
             number: "4242".to_owned(),
         },
-        PaymentMethod::Voucher("ABC".to_owned()),
+        PaymentMethodDraft::Voucher("ABC".to_owned()),
     ];
     assert_eq!(payment_methods.len(), 3);
 
-    let received_ats = [ReceivedAt::Epoch(0), ReceivedAt::Iso(String::new())];
+    let received_ats = [
+        ReceivedAtDraft::Epoch(0),
+        ReceivedAtDraft::Iso(String::new()),
+    ];
     assert_eq!(received_ats.len(), 2);
 
     let sku = Sku::new(String::new()).unwrap();
     assert_eq!(sku.as_inner(), "");
 
-    let page = Page {
+    let page = PageDraft {
         items: vec!["a".to_owned()],
         total: 1,
     };
     assert_eq!(page.total, 1);
 
     let eithers = [
-        Either::Left {
+        EitherDraft::Left {
             value: "x".to_owned(),
         },
-        Either::Right,
+        EitherDraft::Right,
     ];
     assert_eq!(eithers.len(), 2);
 
-    let customer_data = CustomerData { id: String::new() };
-    let order = OrderWithCustomer {
-        customer: customer_data.clone(),
+    let customer_data = CustomerDataDraft { id: String::new() };
+    let order = OrderWithCustomerDraft {
+        customer: customer_data.clone().validate().unwrap(),
     };
-    assert_eq!(order.customer, customer_data);
+    assert_eq!(order.customer, customer_data.validate().unwrap());
 
     let _barcode: Barcode = "0000".to_owned();
 
-    let lookup = ProductLookup {
-        by_slot: HashMap::from([(StockStatus::InStock, "A1".to_owned())]),
+    let lookup = ProductLookupDraft {
+        by_slot: HashMap::from([(StockStatusDraft::InStock, "A1".to_owned())]),
     };
     assert_eq!(lookup.by_slot.len(), 1);
 }
@@ -302,7 +307,7 @@ fn test_every_declared_type_is_constructible() {
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_document_is_constructible() {
-    let document = Document {
+    let document = DocumentDraft {
         id: ObjectId::new(),
     };
     assert_ne!(document.id.to_hex(), String::new());
@@ -311,7 +316,7 @@ fn test_document_is_constructible() {
 #[test]
 #[cfg(feature = "chrono")]
 fn test_sample_is_constructible() {
-    let sample = Sample {
+    let sample = SampleDraft {
         created_at: chrono::Utc::now(),
         day: chrono::Utc::now().date_naive(),
         logged_at: chrono::Utc::now(),
@@ -459,7 +464,7 @@ fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_plain_enum_wire_values_match_what_serde_writes() {
-    let value = serde_json::to_value(StockStatus::Backordered).unwrap();
+    let value = serde_json::to_value(StockStatusDraft::Backordered).unwrap();
     assert_eq!(value, serde_json::json!("backordered"));
     let dart = stock_status_dart::dart_definition();
     assert!(dart.contains("'backordered'"));
@@ -503,7 +508,7 @@ fn test_internally_tagged_unit_variant_writes_only_the_tag() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_internally_tagged_wire_shape_matches_serde() {
-    let received = StockEvent::Received {
+    let received = StockEventDraft::Received {
         quantity: 5,
         supplier: "Acme".to_owned(),
     };
@@ -512,7 +517,7 @@ fn test_internally_tagged_wire_shape_matches_serde() {
         value,
         serde_json::json!({ "kind": "received", "quantity": 5_i32, "supplier": "Acme" })
     );
-    let reset_value = serde_json::to_value(StockEvent::Reset).unwrap();
+    let reset_value = serde_json::to_value(StockEventDraft::Reset).unwrap();
     assert_eq!(reset_value, serde_json::json!({ "kind": "reset" }));
 }
 
@@ -551,12 +556,12 @@ fn test_adjacently_tagged_unit_variant_has_no_content_key() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_adjacently_tagged_wire_shape_matches_serde() {
-    let value = serde_json::to_value(DynamicValue::Number(7)).unwrap();
+    let value = serde_json::to_value(DynamicValueDraft::Number(7)).unwrap();
     assert_eq!(
         value,
         serde_json::json!({ "type": "Number", "value": 7_i32 })
     );
-    let nothing = serde_json::to_value(DynamicValue::Nothing).unwrap();
+    let nothing = serde_json::to_value(DynamicValueDraft::Nothing).unwrap();
     assert_eq!(nothing, serde_json::json!({ "type": "Nothing" }));
 }
 
@@ -594,18 +599,18 @@ fn test_externally_tagged_named_and_tuple_variants_wrap_by_key() {
 #[cfg(feature = "serde")]
 fn test_externally_tagged_wire_shape_matches_serde() {
     assert_eq!(
-        serde_json::to_value(PaymentMethod::Cash).unwrap(),
+        serde_json::to_value(PaymentMethodDraft::Cash).unwrap(),
         serde_json::json!("Cash")
     );
     assert_eq!(
-        serde_json::to_value(PaymentMethod::Card {
+        serde_json::to_value(PaymentMethodDraft::Card {
             number: "4242".to_owned()
         })
         .unwrap(),
         serde_json::json!({ "Card": { "number": "4242" } })
     );
     assert_eq!(
-        serde_json::to_value(PaymentMethod::Voucher("ABC".to_owned())).unwrap(),
+        serde_json::to_value(PaymentMethodDraft::Voucher("ABC".to_owned())).unwrap(),
         serde_json::json!({ "Voucher": "ABC" })
     );
 }
@@ -624,11 +629,11 @@ fn test_untagged_enum_tries_each_variant_in_turn() {
 #[cfg(feature = "serde")]
 fn test_untagged_wire_shape_matches_serde() {
     assert_eq!(
-        serde_json::to_value(ReceivedAt::Epoch(1_700_000_000)).unwrap(),
+        serde_json::to_value(ReceivedAtDraft::Epoch(1_700_000_000)).unwrap(),
         serde_json::json!(1_700_000_000_i64)
     );
     assert_eq!(
-        serde_json::to_value(ReceivedAt::Iso("2025-01-01".to_owned())).unwrap(),
+        serde_json::to_value(ReceivedAtDraft::Iso("2025-01-01".to_owned())).unwrap(),
         serde_json::json!("2025-01-01")
     );
 }
@@ -826,7 +831,7 @@ fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
         "no empty brace pair survives anywhere in the class. Got: {dart}"
     );
     assert_eq!(
-        serde_json::to_string(&StockAudit::default()).unwrap(),
+        serde_json::to_string(&StockAuditDraft::default()).unwrap(),
         "{}",
         "the class reads and writes `{{}}`, and so does serde: every field this struct has is one \
          serde keeps off the wire, which is the empty object the codec above pins"
@@ -931,7 +936,7 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
         )
     );
     assert_eq!(
-        serde_json::to_value(ReservedMembers {
+        serde_json::to_value(ReservedMembersDraft {
             class: "c".to_owned(),
             r#in: "i".to_owned(),
             r#type: "t".to_owned(),
@@ -942,9 +947,9 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMember::Default,
-            ReservedMember::In,
-            ReservedMember::Other
+            ReservedMemberDraft::Default,
+            ReservedMemberDraft::In,
+            ReservedMemberDraft::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
@@ -964,7 +969,7 @@ fn a_moved_member_steps_past_a_field_already_written_under_its_name() {
         "got: {dart}"
     );
     assert_eq!(
-        serde_json::to_value(ReservedBesideItsMove {
+        serde_json::to_value(ReservedBesideItsMoveDraft {
             class: "a".to_owned(),
             class_: "b".to_owned(),
         })

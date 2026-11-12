@@ -179,12 +179,12 @@ impl ApprovalService<()> for Approvals {
     ) -> impl Future<Output = Result<(), DeleteError>> {
         self.reach(format!("delete-document {document_id} {confirmation:?}"));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(DeleteError::NotFound),
-            (_, None) => Err(DeleteError::NeedsConfirmation {
+            ("missing", _) => Err(DeleteErrorDraft::NotFound),
+            (_, None) => Err(DeleteErrorDraft::NeedsConfirmation {
                 message: "Delete this document for good?".to_owned(),
             }),
             (_, Some(DeleteConfirmation { confirm: true })) => Ok(()),
-            (_, Some(DeleteConfirmation { confirm: false })) => Err(DeleteError::Refused),
+            (_, Some(DeleteConfirmation { confirm: false })) => Err(DeleteErrorDraft::Refused),
         })
     }
 
@@ -198,7 +198,7 @@ impl ApprovalService<()> for Approvals {
             "doc-1" => Ok((vec![0x89, b'P', b'N', b'G'], "image/png".to_owned())),
             "voice" => Ok((vec![1, 2, 3, 4, 5], "audio/mpeg".to_owned())),
             "plain" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
-            _ => Err(PreviewError::NotFound),
+            _ => Err(PreviewErrorDraft::NotFound),
         })
     }
 
@@ -209,11 +209,11 @@ impl ApprovalService<()> for Approvals {
     ) -> impl Future<Output = Result<ImportedDocument, ImportError>> {
         self.reach(format!("import-from-drive {file_id}"));
         ready(if self.connected.load(Ordering::Relaxed) {
-            Ok(ImportedDocument {
+            Ok(ImportedDocumentDraft {
                 document_id: format!("doc-{file_id}"),
             })
         } else {
-            Err(ImportError::NeedsDriveConnection {
+            Err(ImportErrorDraft::NeedsDriveConnection {
                 url: "https://mcp.example.com/connect/drive?request=7f3a".to_owned(),
                 message: "Connect your Google Drive so this server can import the file.".to_owned(),
             })
@@ -229,7 +229,7 @@ impl ApprovalService<()> for Approvals {
         self.reach(format!("ship-document {document_id} {shipping:?}"));
         ready(shipping.map_or_else(
             || {
-                Err(DeleteError::NeedsConfirmation {
+                Err(DeleteErrorDraft::NeedsConfirmation {
                     message: "How should it ship?".to_owned(),
                 })
             },

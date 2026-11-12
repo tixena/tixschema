@@ -58,7 +58,7 @@ impl SoloPathBoundService<()> for SoloBackEnd {
         if id == "missing" {
             return Err(PathBoundError::NotFound);
         }
-        Ok(PathBoundDocument {
+        Ok(PathBoundDocumentDraft {
             title: format!("{org}/{id}"),
         })
     }

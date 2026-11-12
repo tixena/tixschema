@@ -7,7 +7,7 @@ use super::mcp_auth_rows::{
     STACKS_QUERIES, STACKS_STATUSES, stacks_rows,
 };
 use super::mcp_library_service::{
-    BookError, BookInfo, BookRequest, book_info_schema, book_request_schema,
+    BookError, BookInfo, BookInfoDraft, BookRequest, book_info_schema, book_request_schema,
 };
 use super::mcp_stacks_dispatcher;
 use super::tests::poll_once;
@@ -70,7 +70,7 @@ impl StacksService<()> for Shelved {
         _ctx: &(),
         _req: BookRequest,
     ) -> impl Future<Output = Result<BookInfo, BookError>> {
-        ready(Ok(BookInfo { pages: 3 }))
+        ready(Ok(BookInfoDraft { pages: 3 }))
     }
 
     fn get_item(

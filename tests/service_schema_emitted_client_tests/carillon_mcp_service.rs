@@ -6,8 +6,8 @@
 use super::carillon_mcp_client::{CarillonMcpServiceClient, McpMessage, Transport};
 use super::carillon_mcp_dispatcher;
 use super::carillon_service::{
-    CASES, CarillonBell, CarillonChime, CarillonError, STRUCK, carillon_bell_schema,
-    carillon_chime_schema, payload,
+    CASES, CarillonBell, CarillonBellDraft, CarillonChime, CarillonError, CarillonErrorDraft,
+    STRUCK, carillon_bell_schema, carillon_chime_schema, payload,
 };
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
@@ -202,7 +202,7 @@ impl CarillonMcpService<()> for McpCarillon {
     ) -> impl Future<Output = Result<(CarillonBell, u32), (CarillonError, u32)>> {
         let weight = req.weight;
         ready(if weight > CRACKS_ABOVE {
-            Err((CarillonError::Cracked, weight))
+            Err((CarillonErrorDraft::Cracked, weight))
         } else {
             Ok((req, weight))
         })
@@ -414,7 +414,9 @@ pub fn rust_toll_answers() -> Vec<Value> {
                 answer: answered,
                 sent: Mutex::new(Vec::new()),
             });
-            match poll_once(client.toll(CarillonBell { weight: 3 })).unwrap() {
+            match poll_once(client.toll(CarillonBellDraft { weight: 3 }.validate().unwrap()))
+                .unwrap()
+            {
                 Ok((_, rung)) => json!({ "rung": rung }),
                 Err(carillon_mcp_service_schema::CallError::Operation((_, at))) => {
                     json!({ "crackedAt": at })
@@ -660,12 +662,14 @@ fn the_rust_client_reads_the_verse_the_rust_dispatcher_chants() {
         answer: answer.unwrap(),
         sent: Mutex::new(Vec::new()),
     });
-    let verse = CarillonVerse {
-        refrain: CarillonRefrain::Beats { beats: 3 },
+    let verse = CarillonVerseDraft {
+        refrain: CarillonRefrainDraft::Beats { beats: 3 }.validate().unwrap(),
     };
     assert_eq!(
-        poll_once(client.chant(verse.clone())).unwrap().unwrap(),
-        verse
+        poll_once(client.chant(verse.clone().validate().unwrap()))
+            .unwrap()
+            .unwrap(),
+        verse.validate().unwrap()
     );
     assert_eq!(struck, 1);
 }

@@ -42,11 +42,13 @@ mod tests {
             Range::<u32>::json_schema(),
             "{document}"
         );
-        let value = Shelved {
-            span: Range {
+        let value = ShelvedDraft {
+            span: RangeDraft {
                 high: 13_u32,
                 low: 8_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
         };
         assert_eq!(
             serde_json::to_value(&value).unwrap(),

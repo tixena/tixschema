@@ -29,7 +29,7 @@ mod held_by_another {
         pub pouch_tag: Tag,
     }
 
-    fn upper_case(value: &Tag) -> Result<(), Vec<String>> {
+    fn upper_case(value: &TagDraft) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a tag is upper case".to_owned()]);
         }
@@ -64,16 +64,19 @@ mod held_by_another {
 
     #[test]
     fn a_holder_reports_the_checks_of_what_it_holds_under_the_key_it_holds_it_at() {
-        let held = Satchel {
-            first_pouch: Pouch { open: true },
-            pouch_list: vec![Pouch { open: false }, Pouch { open: true }],
+        let held = SatchelDraft {
+            first_pouch: PouchDraft { open: true }.validate().unwrap(),
+            pouch_list: vec![
+                PouchDraft { open: false }.validate().unwrap(),
+                PouchDraft { open: true }.validate().unwrap(),
+            ],
             pouch_tag: Tag::model_schema_read_unjudged(
                 serde_json::to_value("ab".to_owned()).unwrap(),
             )
             .unwrap(),
         };
         assert_eq!(
-            held.validate().unwrap_err(),
+            held.validation_issues(),
             [
                 "'firstPouch': a pouch is sealed",
                 "'firstPouch': the first pouch is no spare",
@@ -106,18 +109,15 @@ mod named_after_a_validator {
 
     #[test]
     fn a_check_named_after_a_validator_of_the_schema_module_calls_the_function_written() {
-        let blank = Tagged {
+        let blank = TaggedDraft {
             label: " ".to_owned(),
         };
-        assert_eq!(
-            blank.validate().unwrap_err(),
-            ["'label': a label is not blank"]
-        );
-        let empty = Tagged {
+        assert_eq!(blank.validation_issues(), ["'label': a label is not blank"]);
+        let empty = TaggedDraft {
             label: String::new(),
         };
         assert_eq!(
-            empty.validate().unwrap_err(),
+            empty.validation_issues(),
             [
                 "'label': too short: minimum length is 1, got 0",
                 "'label': a label is not blank",
@@ -138,7 +138,7 @@ mod named_after_a_validator_on_the_type {
         pub label: String,
     }
 
-    fn validate_label_value(value: &Labelled) -> Result<(), Vec<String>> {
+    fn validate_label_value(value: &LabelledDraft) -> Result<(), Vec<String>> {
         if value.label == "none" {
             return Err(vec!["'label': a label is not the word none".to_owned()]);
         }
@@ -147,11 +147,11 @@ mod named_after_a_validator_on_the_type {
 
     #[test]
     fn a_types_check_named_after_a_validator_calls_the_function_written() {
-        let held = Labelled {
+        let held = LabelledDraft {
             label: "none".to_owned(),
         };
         assert_eq!(
-            held.validate().unwrap_err(),
+            held.validation_issues(),
             ["'label': a label is not the word none"]
         );
     }
@@ -162,7 +162,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::models::Ledger;
+use super::models::{Ledger, LedgerDraft};
 
 /// A member under each wrapper a check is read through, and one that is a list.
 #[model_schema()]
@@ -306,7 +306,7 @@ fn second_of_the_member(value: &str) -> Result<(), Vec<String>> {
     Err(vec![format!("second of the member, on {value}")])
 }
 
-fn carried_by_someone(value: &Carriage) -> Result<(), Vec<String>> {
+fn carried_by_someone(value: &CarriageDraft) -> Result<(), Vec<String>> {
     if value.carrier.is_empty() {
         return Err(vec!["'carrier': a waybill names its carrier".to_owned()]);
     }
@@ -318,19 +318,21 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn consignment() -> Consignment {
-    Consignment {
+    ConsignmentDraft {
         boxed_carrier: Box::from("north"),
         item_codes: None,
         listed_codes: Vec::new(),
         spare_carrier: None,
         weight_by_code: HashMap::new(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn a_check_on_an_option_runs_only_where_it_holds_a_value() {
-    assert_eq!(consignment().validate(), Ok(()));
-    let held = Consignment {
+    assert_eq!(consignment().validation_issues(), Vec::<String>::new());
+    let held = ConsignmentDraft {
         item_codes: Some(texts(&["a", "b", "c"])),
         spare_carrier: Some("unknown".to_owned()),
         ..consignment()
@@ -345,12 +347,12 @@ fn a_check_on_an_option_runs_only_where_it_holds_a_value() {
         "'item_codes.2': c is one code too many",
         "'spare_carrier': a carrier is known",
     ];
-    assert_eq!(held.validate().unwrap_err(), named);
+    assert_eq!(held.validation_issues(), named);
 }
 
 #[test]
 fn a_check_takes_a_list_whole_and_the_value_under_a_wrapper() {
-    let held = Consignment {
+    let held = ConsignmentDraft {
         boxed_carrier: Box::from("unknown"),
         listed_codes: texts(&["a", "b", "c"]),
         weight_by_code: HashMap::from([("a".to_owned(), 0)]),
@@ -368,17 +370,17 @@ fn a_check_takes_a_list_whole_and_the_value_under_a_wrapper() {
         "'listed_codes.2': c is one code too many",
         "'weight_by_code': a weight is not zero",
     ];
-    assert_eq!(held.validate().unwrap_err(), named);
+    assert_eq!(held.validation_issues(), named);
 }
 
 #[test]
 fn several_checks_run_in_the_order_written_and_none_stops_another() {
-    let held = Ordered {
+    let held = OrderedDraft {
         code: "c".to_owned(),
         r#type: "t".to_owned(),
     };
     assert_eq!(
-        held.validate().unwrap_err(),
+        held.validation_issues(),
         [
             "'code': first of the member, on c",
             "'code': second of the member, on c",
@@ -405,12 +407,12 @@ fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
         "'ByRoad.road_stops.2': c is one code too many",
         "'Carried': a carrier is known",
     );
-    let by_road = Dispatch::ByRoad {
+    let by_road = DispatchDraft::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
-    assert_eq!(by_road.validate().unwrap_err(), [stops]);
+    assert_eq!(by_road.validation_issues(), [stops]);
     assert_eq!(
-        Dispatch::BySea("unknown".to_owned(), texts(&["a", "b", "c"]))
+        DispatchDraft::BySea("unknown".to_owned(), texts(&["a", "b", "c"]))
             .validate()
             .unwrap_err(),
         [
@@ -419,20 +421,26 @@ fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
         ]
     );
     assert_eq!(
-        Dispatch::Carried("unknown".to_owned())
+        DispatchDraft::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
         ["'Carried': a carrier is known"]
     );
-    assert_eq!(Dispatch::Held.validate(), Ok(()));
-    assert_eq!(Dispatch::Carried("north".to_owned()).validate(), Ok(()));
+    assert_eq!(
+        DispatchDraft::Held.validation_issues(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        DispatchDraft::Carried("north".to_owned()).validation_issues(),
+        Vec::<String>::new()
+    );
 
-    let adjacent = DispatchAdjacent::ByRoad {
+    let adjacent = DispatchAdjacentDraft::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
-    assert_eq!(adjacent.validate().unwrap_err(), [held_stops]);
+    assert_eq!(adjacent.validation_issues(), [held_stops]);
     assert_eq!(
-        DispatchAdjacent::Carried("unknown".to_owned())
+        DispatchAdjacentDraft::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
         [held]
@@ -443,10 +451,13 @@ fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
 #[test]
 fn the_one_slot_of_a_struct_is_reported_under_no_name() {
     assert_eq!(
-        Sticker("unknown".to_owned()).validate().unwrap_err(),
+        StickerDraft("unknown".to_owned()).validation_issues(),
         ["a carrier is known"]
     );
-    assert_eq!(Sticker("north".to_owned()).validate(), Ok(()));
+    assert_eq!(
+        StickerDraft("north".to_owned()).validation_issues(),
+        Vec::<String>::new()
+    );
 }
 
 /// The lone slot of an untagged variant is the value serde writes, so it has no name.
@@ -454,16 +465,16 @@ fn the_one_slot_of_a_struct_is_reported_under_no_name() {
 #[test]
 fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
     assert_eq!(
-        DispatchUntagged::Carried("unknown".to_owned())
+        DispatchUntaggedDraft::Carried("unknown".to_owned())
             .validate()
             .unwrap_err(),
         ["a carrier is known"]
     );
-    let by_road = DispatchUntagged::ByRoad {
+    let by_road = DispatchUntaggedDraft::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
     assert_eq!(
-        by_road.validate().unwrap_err(),
+        by_road.validation_issues(),
         ["'roadStops.2': c is one code too many"]
     );
 }
@@ -482,7 +493,7 @@ fn a_variants_slot_is_reported_under_the_variants_name_without_serde() {
         road_stops: texts(&["a", "b", "c"]),
     };
     assert_eq!(
-        by_road.validate().unwrap_err(),
+        by_road.validation_issues(),
         ["'ByRoad.road_stops.2': c is one code too many"]
     );
 }
@@ -491,17 +502,19 @@ fn a_variants_slot_is_reported_under_the_variants_name_without_serde() {
 /// the member is a field like any other.
 #[test]
 fn a_flattened_member_is_reported_under_no_name() {
-    let held = Waybill {
-        carriage: Carriage {
+    let held = WaybillDraft {
+        carriage: CarriageDraft {
             carrier: String::new(),
-        },
+        }
+        .validate()
+        .unwrap(),
         number: 7,
     };
     #[cfg(feature = "serde")]
     let named = ["'carrier': a waybill names its carrier"];
     #[cfg(not(feature = "serde"))]
     let named = ["'carriage.carrier': a waybill names its carrier"];
-    assert_eq!(held.validate().unwrap_err(), named);
+    assert_eq!(held.validation_issues(), named);
     assert_eq!(held.number, 7);
 }
 
@@ -516,7 +529,7 @@ fn a_check_is_called_where_the_type_is_declared() {
         pub open: bool,
     }
 
-    fn sealed(value: &Envelope) -> Result<(), Vec<String>> {
+    fn sealed(value: &EnvelopeDraft) -> Result<(), Vec<String>> {
         if value.open {
             return Err(vec!["an envelope is sealed".to_owned()]);
         }
@@ -530,12 +543,12 @@ fn a_check_is_called_where_the_type_is_declared() {
         Ok(())
     }
 
-    let held = Envelope {
+    let held = EnvelopeDraft {
         address: String::new(),
         open: true,
     };
     assert_eq!(
-        held.validate().unwrap_err(),
+        held.validation_issues(),
         [
             "'address': an envelope is addressed",
             "an envelope is sealed"
@@ -547,20 +560,20 @@ fn a_check_is_called_where_the_type_is_declared() {
 /// the key's `Display` text without `serde`, where a key with no `Display` names no entry.
 #[test]
 fn a_map_of_models_names_a_broken_entry_by_its_key() {
-    let empty = || Ledger {
+    let empty = || LedgerDraft {
         entries: Vec::new(),
         owner_id: "o".to_owned(),
     };
-    let held = Depot {
+    let held = DepotDraft {
         ledgers: HashMap::from([("main".to_owned(), empty())]),
-        ledgers_by_bay: HashMap::from([(Bay::North, empty())]),
+        ledgers_by_bay: HashMap::from([(BayDraft::North, empty())]),
     };
     #[cfg(feature = "serde")]
     let by_bay = "'ledgers_by_bay.North.entries': a ledger holds at least one entry";
     #[cfg(not(feature = "serde"))]
     let by_bay = "'ledgers_by_bay.entries': a ledger holds at least one entry";
     assert_eq!(
-        held.validate().unwrap_err(),
+        held.validation_issues(),
         [
             "'ledgers.main.entries': a ledger holds at least one entry",
             by_bay

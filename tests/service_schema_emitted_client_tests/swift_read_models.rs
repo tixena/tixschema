@@ -7,7 +7,7 @@ use core::future::ready;
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
-use super::swift_validate_models::{Base, Package, Parcel};
+use super::swift_validate_models::{Base, Package, Parcel, ParcelDraft};
 
 /// A parcel held in a field, a list, a map and an optional.
 #[model_schema()]
@@ -137,13 +137,15 @@ impl TrackingClientService<()> for TrackingBackEnd {
     async fn track(&self, _ctx: &(), parcel_label: String) -> Result<Parcel, TrackingError> {
         ready(()).await;
         if parcel_label.is_empty() {
-            return Err(TrackingError::NotFound);
+            return Err(TrackingErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(Parcel {
+        Ok(ParcelDraft {
             fragile_item_codes: Vec::new(),
             item_code_list: Vec::new(),
             label: parcel_label,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -155,7 +157,7 @@ fn signet_pressed(value: &Signet) -> Result<(), Vec<String>> {
 }
 
 fn with_an_urgency(value: &Urgency) -> Result<(), Vec<String>> {
-    if matches!(value, Urgency::Low) {
+    if matches!(value, UrgencyDraft::Low) {
         return Err(vec!["a low urgency is not carried".to_owned()]);
     }
     Ok(())

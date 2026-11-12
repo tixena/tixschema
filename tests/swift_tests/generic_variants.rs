@@ -83,23 +83,26 @@ fn holds(swift: &str, written: &[&str]) {
 
 #[test]
 fn each_variant_is_written_as_its_tagging_writes_it() {
-    let kegged = Hold::Kegged {
+    let kegged = HoldDraft::Kegged {
         by_dock: HashMap::from([(
             "d".to_owned(),
-            Keg {
+            KegDraft {
                 contents: "x".to_owned(),
             },
         )]),
     };
     for (held, written) in [
-        (Hold::Closed { deck: 1 }, r#"{"kind":"Closed","deck":1}"#),
-        (Hold::Empty, r#"{"kind":"Empty"}"#),
+        (
+            HoldDraft::Closed { deck: 1 },
+            r#"{"kind":"Closed","deck":1}"#,
+        ),
+        (HoldDraft::Empty, r#"{"kind":"Empty"}"#),
         (
             kegged,
             r#"{"kind":"Kegged","by_dock":{"d":{"contents":"x"}}}"#,
         ),
         (
-            Hold::Laden {
+            HoldDraft::Laden {
                 cargo: vec!["c".to_owned()],
                 deck: 2,
             },
@@ -109,7 +112,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         assert_eq!(read_back(&held), written);
     }
     assert_eq!(
-        read_back(&Lading::Both {
+        read_back(&LadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),
@@ -120,7 +123,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         r#"{"Marks":{"marks":[1]}}"#
     );
     assert_eq!(
-        read_back(&AdjacentLading::Both {
+        read_back(&AdjacentLadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),
@@ -131,7 +134,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         r#"{"kind":"Marks","held":{"marks":[1]}}"#
     );
     assert_eq!(
-        read_back(&UntaggedLading::Both {
+        read_back(&UntaggedLadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),

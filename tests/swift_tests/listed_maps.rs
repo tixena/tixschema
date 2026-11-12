@@ -14,19 +14,27 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::listed_maps_models::{
-    AdjacentGalley, AdjacentStowedGalley, Attic, Caddy, Cellar, Creel, Cupboard, Dresser, Galley,
-    Hopper, Larder, Pantry, Rung, Sideboard, StowedAttic, StowedCaddy, StowedCellar, StowedCreel,
-    StowedCupboard, StowedDresser, StowedGalley, StowedLarder, StowedPantry, StowedSideboard,
-    TaggedGalley, TaggedStowedGalley, Trug, UntaggedGalley, UntaggedStowedGalley,
-    adjacent_galley_swift, adjacent_stowed_galley_swift, attic_swift, caddy_swift, cellar_swift,
-    creel_swift, cupboard_swift, dresser_swift, galley_swift, hopper_swift, larder_swift,
-    pantry_swift, sideboard_swift, stowed_attic_swift, stowed_caddy_swift, stowed_cellar_swift,
+    AdjacentGalley, AdjacentGalleyDraft, AdjacentStowedGalley, Attic, AtticDraft, Caddy,
+    CaddyDraft, Cellar, CellarDraft, Creel, Cupboard, CupboardDraft, Dresser, DresserDraft, Galley,
+    GalleyDraft, Hopper, Larder, LarderDraft, Pantry, PantryDraft, Rung, RungDraft, Sideboard,
+    SideboardDraft, StowedAttic, StowedAtticDraft, StowedCaddy, StowedCaddyDraft, StowedCellar,
+    StowedCellarDraft, StowedCreel, StowedCupboard, StowedCupboardDraft, StowedDresser,
+    StowedDresserDraft, StowedGalley, StowedLarder, StowedLarderDraft, StowedPantry,
+    StowedPantryDraft, StowedSideboard, StowedSideboardDraft, TaggedGalley, TaggedGalleyDraft,
+    TaggedStowedGalley, TaggedStowedGalleyDraft, Trug, UntaggedGalley, UntaggedGalleyDraft,
+    UntaggedStowedGalley, UntaggedStowedGalleyDraft, adjacent_galley_swift,
+    adjacent_stowed_galley_swift, attic_swift, caddy_swift, cellar_swift, creel_swift,
+    cupboard_swift, dresser_swift, galley_swift, hopper_swift, larder_swift, pantry_swift,
+    sideboard_swift, stowed_attic_swift, stowed_caddy_swift, stowed_cellar_swift,
     stowed_creel_swift, stowed_cupboard_swift, stowed_dresser_swift, stowed_galley_swift,
     stowed_larder_swift, stowed_pantry_swift, stowed_sideboard_swift, tagged_galley_swift,
     tagged_stowed_galley_swift, trug_swift, untagged_galley_swift, untagged_stowed_galley_swift,
 };
 #[cfg(feature = "chrono")]
-use super::listed_maps_models::{Dateline, Plank, Timeline, dateline_swift, timeline_swift};
+use super::listed_maps_models::{
+    Dateline, DatelineDraft, Plank, PlankDraft, Timeline, TimelineDraft, dateline_swift,
+    timeline_swift,
+};
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
@@ -93,7 +101,7 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Rung::Low`].
 fn at_low<Held>(held: Held) -> HashMap<Rung, Held> {
-    HashMap::from([(Rung::Low, held)])
+    HashMap::from([(RungDraft::Low, held)])
 }
 
 /// The text `a`.
@@ -106,7 +114,7 @@ fn each_struct_of_fields_is_written_as_serde_writes_it() {
     let pantry = r#"{"defaulted":[],"flag_lists":[{"true":"a"}],"flag_lists_or_none":[null,{"true":"a"}],"maybe_flags":{"true":"a"},"maybe_number_lists":[{"1":"a"}],"number_lists":[],"number_lists_or_none":[],"rung_lists":[{"Low":"a"}],"rung_lists_or_none":[],"verbatim_lists":[]}"#;
     for (written, expected) in [
         (
-            read_back(&Pantry {
+            read_back(&PantryDraft {
                 defaulted: Vec::new(),
                 flag_lists: vec![at_true(text())],
                 flag_lists_or_none: vec![None, Some(at_true(text()))],
@@ -125,7 +133,7 @@ fn each_struct_of_fields_is_written_as_serde_writes_it() {
             pantry,
         ),
         (
-            read_back(&StowedPantry {
+            read_back(&StowedPantryDraft {
                 defaulted: Vec::new(),
                 flag_lists: vec![at_true(text())],
                 flag_lists_or_none: vec![None, Some(at_true(text()))],
@@ -155,7 +163,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
     let attic = r#"{"flag_lists_by_number":{"1":[{"true":"a"}]},"maybe_number_lists_by_name":{"n":null},"maybe_rungs_by_rung":{"Low":{"Low":"a"}},"number_lists_by_name":{"n":[{"1":"a"}]},"rung_lists_or_none_by_name":{"r":[null]}}"#;
     for (written, expected) in [
         (
-            read_back(&Larder {
+            read_back(&LarderDraft {
                 flag_lists_or_none: (vec![None], 1),
                 maybe_numbers: (Some(at_one(text())), 2),
                 maybe_rung_lists: (None, 3),
@@ -164,7 +172,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
             larder,
         ),
         (
-            read_back(&StowedLarder {
+            read_back(&StowedLarderDraft {
                 flag_lists_or_none: (vec![None], 1),
                 maybe_numbers: (Some(at_one(text())), 2),
                 maybe_rung_lists: (None, 3),
@@ -173,7 +181,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
             larder,
         ),
         (
-            read_back(&Cellar(
+            read_back(&CellarDraft(
                 vec![at_one(text())],
                 vec![None],
                 Some(vec![at_low(text())]),
@@ -182,7 +190,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
             cellar,
         ),
         (
-            read_back(&StowedCellar(
+            read_back(&StowedCellarDraft(
                 vec![at_one(text())],
                 vec![None],
                 Some(vec![at_low(text())]),
@@ -191,7 +199,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
             cellar,
         ),
         (
-            read_back(&Attic {
+            read_back(&AtticDraft {
                 flag_lists_by_number: at_one(vec![at_true(text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
                 maybe_rungs_by_rung: at_low(Some(at_low(text()))),
@@ -201,7 +209,7 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
             attic,
         ),
         (
-            read_back(&StowedAttic {
+            read_back(&StowedAtticDraft {
                 flag_lists_by_number: at_one(vec![at_true(text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
                 maybe_rungs_by_rung: at_low(Some(at_low(text()))),
@@ -218,27 +226,30 @@ fn each_tuple_and_each_map_is_written_as_serde_writes_it() {
 #[test]
 fn each_tuple_struct_of_one_slot_and_each_brand_is_written_as_serde_writes_it() {
     for (written, expected) in [
-        (read_back(&Cupboard(vec![at_one(text())])), r#"[{"1":"a"}]"#),
         (
-            read_back(&StowedCupboard(vec![at_one(text())])),
+            read_back(&CupboardDraft(vec![at_one(text())])),
             r#"[{"1":"a"}]"#,
         ),
         (
-            read_back(&Sideboard(vec![Some(at_true(text())), None])),
+            read_back(&StowedCupboardDraft(vec![at_one(text())])),
+            r#"[{"1":"a"}]"#,
+        ),
+        (
+            read_back(&SideboardDraft(vec![Some(at_true(text())), None])),
             r#"[{"true":"a"},null]"#,
         ),
         (
-            read_back(&StowedSideboard(vec![Some(at_true(text())), None])),
+            read_back(&StowedSideboardDraft(vec![Some(at_true(text())), None])),
             r#"[{"true":"a"},null]"#,
         ),
         (
-            read_back(&Dresser(Some(vec![at_low(text())]))),
+            read_back(&DresserDraft(Some(vec![at_low(text())]))),
             r#"[{"Low":"a"}]"#,
         ),
-        (read_back(&StowedDresser::<String>(None)), "null"),
-        (read_back(&Caddy(None)), "null"),
+        (read_back(&StowedDresserDraft::<String>(None)), "null"),
+        (read_back(&CaddyDraft(None)), "null"),
         (
-            read_back(&StowedCaddy(Some(at_one(text())))),
+            read_back(&StowedCaddyDraft(Some(at_one(text())))),
             r#"{"1":"a"}"#,
         ),
         (
@@ -265,7 +276,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     let rungs = r#"{"rung_lists":[{"Low":"a"}],"rung_lists_or_none":[null]}"#;
     for (written, expected) in [
         (
-            read_back(&Galley::Paired(vec![at_true(text())], None)),
+            read_back(&GalleyDraft::Paired(vec![at_true(text())], None)),
             r#"{"Paired":[[{"true":"a"}],null]}"#.to_owned(),
         ),
         (
@@ -273,7 +284,9 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"Maybe":null}"#.to_owned(),
         ),
         (
-            read_back(&AdjacentGalley::MaybeListed(Some(vec![at_one(text())]))),
+            read_back(&AdjacentGalleyDraft::MaybeListed(Some(vec![
+                at_one(text()),
+            ]))),
             r#"{"kind":"MaybeListed","held":[{"1":"a"}]}"#.to_owned(),
         ),
         (
@@ -286,7 +299,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             format!(r#"{{"kind":"Stocked","held":{stocked}}}"#),
         ),
         (
-            read_back(&TaggedGalley::Stocked {
+            read_back(&TaggedGalleyDraft::Stocked {
                 maybe_rung_lists: None,
                 maybe_rungs: None,
                 rung_lists: vec![at_low(text())],
@@ -295,7 +308,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             format!(r#"{{"kind":"Stocked",{}"#, &rungs[1..]),
         ),
         (
-            read_back(&TaggedStowedGalley::Stocked {
+            read_back(&TaggedStowedGalleyDraft::Stocked {
                 maybe_rung_lists: None,
                 maybe_rungs: None,
                 rung_lists: vec![at_low(text())],
@@ -304,14 +317,14 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             format!(r#"{{"kind":"Stocked",{}"#, &rungs[1..]),
         ),
         (
-            read_back(&UntaggedGalley::ListedOrNone(vec![
+            read_back(&UntaggedGalleyDraft::ListedOrNone(vec![
                 Some(at_low(text())),
                 None,
             ])),
             r#"[{"Low":"a"},null]"#.to_owned(),
         ),
         (
-            read_back(&UntaggedStowedGalley::Stocked {
+            read_back(&UntaggedStowedGalleyDraft::Stocked {
                 maybe_rung_lists: None,
                 maybe_rungs: None,
                 rung_lists: vec![at_low(text())],
@@ -746,7 +759,7 @@ fn no_try_is_written_ahead_of_a_conversion_that_throws_nothing() {
 fn a_conversion_that_parses_a_date_keeps_its_try() {
     let date = chrono::DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
     assert_eq!(
-        read_back(&Timeline {
+        read_back(&TimelineDraft {
             by_name_lists: vec![HashMap::from([("n".to_owned(), date)])],
             by_number_lists: vec![at_one(date)],
             maybe_by_name: None,
@@ -778,17 +791,17 @@ fn a_conversion_that_parses_a_date_keeps_its_try() {
 fn an_optional_value_is_stored_with_update_value_so_a_null_entry_is_kept() {
     let date = chrono::DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
     assert_eq!(
-        read_back(&Dateline {
+        read_back(&DatelineDraft {
             maybe_by_name: HashMap::from([("n".to_owned(), None)]),
             maybe_by_number: HashMap::from([(1, Some(date))]),
         }),
         r#"{"maybe_by_name":{"n":null},"maybe_by_number":{"1":"2024-01-02T03:04:05.678Z"}}"#
     );
     assert_eq!(
-        read_back(&Dateline {
+        read_back(&DatelineDraft {
             maybe_by_name: HashMap::from([(
                 "m".to_owned(),
-                Some(Plank {
+                Some(PlankDraft {
                     label: "a".to_owned()
                 })
             )]),

@@ -123,12 +123,16 @@ fn a_result_that_reads_lists_nothing() {
     });
     assert_eq!(
         Logbook::from_value_with(sound, |_raw, _found| logbook_schema::Verdict::Reject),
-        Ok(Logbook {
-            frontmatter: Some(Err(Garbled {
+        Ok(LogbookDraft {
+            frontmatter: Some(Err(GarbledDraft {
                 reason: "no title".to_owned(),
-            })),
+            }
+            .validate()
+            .unwrap())),
             outcome: Err("late".to_owned()),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

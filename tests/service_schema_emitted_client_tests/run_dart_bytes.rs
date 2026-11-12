@@ -7,8 +7,9 @@
 use std::collections::HashMap;
 
 use super::bytes_models::{
-    BytesCounted, BytesEither, BytesExample, BytesHolder, BytesImage, BytesLookalikes,
-    BytesOptional, bytes_box_dart, bytes_counted_dart, bytes_either_dart, bytes_holder_dart,
+    BytesCounted, BytesCountedDraft, BytesEither, BytesEitherDraft, BytesExample,
+    BytesExampleDraft, BytesHolder, BytesHolderDraft, BytesImage, BytesLookalikes, BytesOptional,
+    BytesOptionalDraft, bytes_box_dart, bytes_counted_dart, bytes_either_dart, bytes_holder_dart,
     bytes_image_dart, bytes_lookalikes_dart, bytes_optional_dart, bytes_payload_dart,
 };
 use super::run_dart_validate::{dart, module};
@@ -40,15 +41,19 @@ fn definitions() -> Vec<String> {
 
 /// The holder serde writes the JSON of.
 fn holder() -> BytesHolder {
-    BytesHolder {
+    BytesHolderDraft {
         aliased: vec![9],
         data: vec![137, 80, 78, 71],
-        filled: super::bytes_models::BytesBox { held: vec![0, 255] },
+        filled: super::bytes_models::BytesBoxDraft { held: vec![0, 255] }
+            .validate()
+            .unwrap(),
         keyed: HashMap::from([("k".to_owned(), vec![1, 2])]),
         outcome: Ok(vec![4, 5]),
         paired: (vec![6], "x".to_owned()),
         rows: vec![vec![7], vec![]],
     }
+    .validate()
+    .unwrap()
 }
 
 /// The Dart `main`: each payload is read with the `fromJson` of its type.
@@ -119,22 +124,22 @@ fn a_vec_of_u8_is_read_into_a_uint8list_and_written_as_the_json_array() {
         vec![1, 2]
     );
     assert_eq!(
-        BytesCounted {
+        BytesCountedDraft {
             data: vec![1, 2, 3]
         }
-        .validate(),
-        Ok(())
+        .validation_issues(),
+        Vec::<String>::new()
     );
     assert_eq!(
         serde_json::from_str::<BytesOptional>(r#"{"maybe":null}"#).unwrap(),
-        BytesOptional { maybe: None }
+        BytesOptionalDraft { maybe: None }.validate().unwrap()
     );
     assert_eq!(
         serde_json::from_str::<BytesEither>("[1,2]").unwrap(),
-        BytesEither::Bytes(vec![1, 2])
+        BytesEitherDraft::Bytes(vec![1, 2]).validate().unwrap()
     );
     assert_eq!(
-        serde_json::to_string(&BytesExample { data: vec![1] }).unwrap(),
+        serde_json::to_string(&BytesExampleDraft { data: vec![1] }).unwrap(),
         r#"{"data":[1]}"#
     );
     let looked = r#"{"boxed":[1],"digest":[1,2,3,4],"distinct":[1],"gaps":[null,2],"queued":[1],"sevens":[7],"signed":[-1],"wide":[300]}"#;

@@ -45,13 +45,13 @@ mod dated {
             document["properties"]["at"]
         );
         let shift = super::super::models::rostered().shift;
-        let timesheet = Timesheet {
+        let timesheet = TimesheetDraft {
             at: shift.start,
             shift,
         };
         let read: Timesheet =
             serde_json::from_str(&serde_json::to_string(&timesheet).unwrap()).unwrap();
-        assert_eq!(read, timesheet);
+        assert_eq!(read, timesheet.validate().unwrap());
     }
 }
 
@@ -95,13 +95,13 @@ mod identified {
             document["properties"]["id"]
         );
         let low = ObjectId::new();
-        let shelving = Shelving {
+        let shelving = ShelvingDraft {
             id: low,
             ids: low..=low,
         };
         let read: Shelving =
             serde_json::from_str(&serde_json::to_string(&shelving).unwrap()).unwrap();
-        assert_eq!(read, shelving);
+        assert_eq!(read, shelving.validate().unwrap());
     }
 }
 

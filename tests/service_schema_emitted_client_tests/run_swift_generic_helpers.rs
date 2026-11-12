@@ -155,15 +155,17 @@ struct Row {
 
 /// A barrel labelled `label` holding `contents`.
 fn barrel<Contents>(label: &str, contents: Contents) -> Barrel<Contents> {
-    Barrel {
+    BarrelDraft {
         contents,
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A trove whose barrel in the map is labelled `label`.
 fn trove(label: &str) -> Trove<String> {
-    Trove {
+    TroveDraft {
         barrel: barrel("b", ("c".to_owned(), 1)),
         by_barrel: HashMap::from([(2, barrel(label, "d".to_owned()))]),
         by_count: HashMap::from([(3, 4)]),
@@ -173,6 +175,8 @@ fn trove(label: &str) -> Trove<String> {
         pair: ("f".to_owned(), 8),
         paired_by_number: HashMap::from([(9, ("g".to_owned(), 10))]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payload serde writes for `held`, which the serde read reads, held to what that read prints:
@@ -226,24 +230,24 @@ fn struct_rows() -> Vec<Row> {
             "a model a map holds, unlabelled",
             "Trove<String>",
             &unlabelled,
-            unlabelled.validate(),
+            unlabelled.validate().map(|_valid| ()),
         ),
         read_row(
             "a map in a tuple's slot",
             "Nook<String>",
-            &Nook {
+            &NookDraft {
                 numbered_pair: (by_number.clone(), 2),
             },
         ),
         read_row(
             "the tuple of a tuple struct",
             "Brace<String>",
-            &Brace(("a".to_owned(), 1), 2),
+            &BraceDraft(("a".to_owned(), 1), 2),
         ),
         read_row(
             "a map in a tuple struct's slot",
             "Bunk<String>",
-            &Bunk(by_number, 2),
+            &BunkDraft(by_number, 2),
         ),
     ]
 }
@@ -257,27 +261,27 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "several slots, no tag attribute",
             "Parted<String>",
-            &Parted::Halves("a".to_owned(), 1),
+            &PartedDraft::Halves("a".to_owned(), 1),
         ),
         read_row(
             "several slots that hold a map, no tag attribute",
             "Parted<String>",
-            &Parted::Keyed(by_number.clone(), 2),
+            &PartedDraft::Keyed(by_number.clone(), 2),
         ),
         read_row(
             "one slot that holds a map, no tag attribute",
             "Parted<String>",
-            &Parted::Numbered(by_number.clone()),
+            &PartedDraft::Numbered(by_number.clone()),
         ),
         read_row(
             "one slot, no tag attribute",
             "Parted<String>",
-            &Parted::Paired(pair.clone()),
+            &PartedDraft::Paired(pair.clone()),
         ),
         read_row(
             "named members, no tag attribute",
             "Parted<String>",
-            &Parted::Stacked {
+            &PartedDraft::Stacked {
                 by_number: by_number.clone(),
                 pair: pair.clone(),
             },
@@ -285,7 +289,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "named members, a tag alone",
             "TaggedParted<String>",
-            &TaggedParted::Stacked {
+            &TaggedPartedDraft::Stacked {
                 by_hatch: by_hatch.clone(),
                 pair: pair.clone(),
             },
@@ -293,27 +297,27 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "several slots, a tag and a content key",
             "AdjacentParted<String>",
-            &AdjacentParted::Halves("a".to_owned(), 1),
+            &AdjacentPartedDraft::Halves("a".to_owned(), 1),
         ),
         read_row(
             "several slots that hold a map, a tag and a content key",
             "AdjacentParted<String>",
-            &AdjacentParted::Keyed(by_number.clone(), 2),
+            &AdjacentPartedDraft::Keyed(by_number.clone(), 2),
         ),
         read_row(
             "one slot that holds a map, a tag and a content key",
             "AdjacentParted<String>",
-            &AdjacentParted::Numbered(by_number.clone()),
+            &AdjacentPartedDraft::Numbered(by_number.clone()),
         ),
         read_row(
             "one slot, a tag and a content key",
             "AdjacentParted<String>",
-            &AdjacentParted::Paired(pair.clone()),
+            &AdjacentPartedDraft::Paired(pair.clone()),
         ),
         read_row(
             "named members, a tag and a content key",
             "AdjacentParted<String>",
-            &AdjacentParted::Stacked {
+            &AdjacentPartedDraft::Stacked {
                 by_number,
                 pair: pair.clone(),
             },
@@ -321,17 +325,17 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "one slot that holds a map, untagged",
             "UntaggedParted<String>",
-            &UntaggedParted::Hatched(by_hatch.clone()),
+            &UntaggedPartedDraft::Hatched(by_hatch.clone()),
         ),
         read_row(
             "one slot, untagged",
             "UntaggedParted<String>",
-            &UntaggedParted::Paired(pair.clone()),
+            &UntaggedPartedDraft::Paired(pair.clone()),
         ),
         read_row(
             "named members, untagged",
             "UntaggedParted<String>",
-            &UntaggedParted::Stacked { by_hatch, pair },
+            &UntaggedPartedDraft::Stacked { by_hatch, pair },
         ),
     ]
 }

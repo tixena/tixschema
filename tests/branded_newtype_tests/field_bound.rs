@@ -52,7 +52,7 @@ mod bounded_at_the_field {
         dir: &str,
         titled: &str,
     ) -> BoundHolder {
-        BoundHolder {
+        BoundHolderDraft {
             bare: BoundAbove::new(bare.to_owned()).unwrap(),
             dir: BoundDir::new(PathBuf::from(dir)).unwrap(),
             free: BoundAbove::new(String::new()).unwrap(),
@@ -63,26 +63,31 @@ mod bounded_at_the_field {
             maybe: maybe.map(|text| BoundBelow::new(text.to_owned()).unwrap()),
             titled: titled.to_owned(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn validate_reports_each_bound_under_the_field_it_was_written_on() {
         assert_eq!(
-            held("a", Some("TOOLONG"), &["abcd", "b", "c", "d"], "d", "t").validate(),
-            Err(vec![
+            held("a", Some("TOOLONG"), &["abcd", "b", "c", "d"], "d", "t").validation_issues(),
+            vec![
                 "'bare': too short: minimum length is 2, got 1".to_owned(),
                 "'dir': too short: minimum length is 2, got 1".to_owned(),
                 "'many': too long: maximum length is 3, got 4".to_owned(),
                 "'maybe': too long: maximum length is 4, got 7".to_owned(),
                 "'maybe': does not match pattern '^[a-z]+$'".to_owned(),
                 "'titled': too short: minimum length is 2, got 1".to_owned(),
-            ])
+            ]
         );
         assert_eq!(
-            held("ab", Some("abcd"), &["abcd", "abcde", ""], "dir", "title").validate(),
-            Ok(())
+            held("ab", Some("abcd"), &["abcd", "abcde", ""], "dir", "title").validation_issues(),
+            Vec::<String>::new()
         );
-        assert_eq!(held("ab", None, &[], "dir", "title").validate(), Ok(()));
+        assert_eq!(
+            held("ab", None, &[], "dir", "title").validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     /// The read refuses the value the bound refuses, with what `validate()` answers of it.
@@ -233,53 +238,62 @@ mod bounded_at_the_type_and_the_field {
 
     #[test]
     fn a_struct_field_runs_the_type_bound_beside_its_own() {
-        assert_eq!(Holder { slug: slug("ab") }.validate(), Err(vec![short(2)]));
         assert_eq!(
-            Holder { slug: slug("AB") }.validate(),
-            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+            HolderDraft { slug: slug("ab") }.validation_issues(),
+            vec![short(2)]
         );
-        assert_eq!(Holder { slug: slug("abc") }.validate(), Ok(()));
-        assert_eq!(Plain { slug: slug("ab") }.validate(), Err(vec![short(2)]));
+        assert_eq!(
+            HolderDraft { slug: slug("AB") }.validation_issues(),
+            vec![short(2), WRONG_PATTERN.to_owned()]
+        );
+        assert_eq!(
+            HolderDraft { slug: slug("abc") }.validation_issues(),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            PlainDraft { slug: slug("ab") }.validation_issues(),
+            vec![short(2)]
+        );
     }
 
     #[test]
     fn an_untagged_named_member_runs_the_type_bound_beside_its_own() {
         assert_eq!(
-            Untagged::Named { slug: slug("ab") }.validate(),
-            Err(vec![short(2)])
+            UntaggedDraft::Named { slug: slug("ab") }.validation_issues(),
+            vec![short(2)]
         );
         assert_eq!(
-            Untagged::Named { slug: slug("AB") }.validate(),
-            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+            UntaggedDraft::Named { slug: slug("AB") }.validation_issues(),
+            vec![short(2), WRONG_PATTERN.to_owned()]
         );
     }
 
     #[test]
     fn a_tagged_named_member_runs_the_type_bound_beside_its_own() {
         assert_eq!(
-            Tagged::Named { slug: slug("ab") }.validate(),
-            Err(vec![short(2)])
+            TaggedDraft::Named { slug: slug("ab") }.validation_issues(),
+            vec![short(2)]
         );
         assert_eq!(
-            Tagged::Named { slug: slug("AB") }.validate(),
-            Err(vec![short(2), WRONG_PATTERN.to_owned()])
+            TaggedDraft::Named { slug: slug("AB") }.validation_issues(),
+            vec![short(2), WRONG_PATTERN.to_owned()]
         );
     }
 
     #[test]
     fn a_slot_runs_the_type_bound_beside_its_own() {
         assert_eq!(
-            Tuple(slug("AB")).validate(),
-            Err(vec![
+            TupleDraft(slug("AB")).validation_issues(),
+            vec![
                 "too short: minimum length is 3, got 2".to_owned(),
                 "does not match pattern '^[a-z]+$'".to_owned(),
-            ])
+            ]
         );
     }
 
     #[test]
     fn the_read_answers_what_validate_answers() {
-        let built = Holder { slug: slug("AB") }
+        let built = HolderDraft { slug: slug("AB") }
             .validate()
             .unwrap_err()
             .join("; ");
@@ -323,7 +337,7 @@ mod bounded_crane {
     }
 
     fn crane(load: &str, spare: &str) -> Crane {
-        Crane {
+        CraneDraft {
             load_code: Code::model_schema_read_unjudged(
                 serde_json::to_value(load.to_owned()).unwrap(),
             )
@@ -333,29 +347,29 @@ mod bounded_crane {
             )
             .unwrap(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn validate_reports_the_brand_bound_and_the_field_bound() {
         assert_eq!(
-            crane("a", "a").validate(),
-            Err(vec![
+            crane("a", "a").validation_issues(),
+            vec![
                 "'loadCode': too short: minimum length is 2, got 1".to_owned(),
                 "'spareCode': too short: minimum length is 2, got 1".to_owned(),
-            ])
+            ]
         );
         assert_eq!(
-            crane("abcdefg", "ok").validate(),
-            Err(vec![
-                "'loadCode': too long: maximum length is 5, got 7".to_owned()
-            ])
+            crane("abcdefg", "ok").validation_issues(),
+            vec!["'loadCode': too long: maximum length is 5, got 7".to_owned()]
         );
-        assert_eq!(crane("ab", "ok").validate(), Ok(()));
+        assert_eq!(crane("ab", "ok").validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn the_read_refuses_with_the_text_validate_answers() {
-        let built = crane("a", "ok").validate().unwrap_err().join("; ");
+        let built = crane("a", "ok").validation_issues().join("; ");
         let read = serde_json::from_str::<Crane>(r#"{"loadCode":"a","spareCode":"ok"}"#)
             .unwrap_err()
             .to_string();

@@ -223,7 +223,7 @@ fn a_one_way_service_dispatches_into_its_implementation_and_settles_nothing() {
 #[test]
 fn a_one_way_client_reports_a_transport_that_could_not_put_the_message_out() {
     let client = note_amqp_client::NoteServiceClient::new(RefusingTransport);
-    let answered = poll_once(client.annotate(AnnotationRequest {
+    let answered = poll_once(client.annotate(AnnotationRequestDraft {
         customer_id: "acme".to_owned(),
     }))
     .unwrap();

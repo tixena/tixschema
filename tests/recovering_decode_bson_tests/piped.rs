@@ -109,13 +109,17 @@ fn number_without_prefix(raw: &mut Document, issue: &Issue<Bson>) -> Resolution 
 }
 
 fn invoice() -> Invoice {
-    Invoice {
-        customer: Customer {
+    InvoiceDraft {
+        customer: CustomerDraft {
             name: "Acme".to_owned(),
             open_invoices: 3_u32,
-        },
+        }
+        .validate()
+        .unwrap(),
         number: "INV-0042".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The key `legacy`, which no type declares, as a read lists it.

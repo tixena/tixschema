@@ -33,12 +33,12 @@ use super::swift_flattened_options_models::{
     Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking,
     Gasketing, HEELING, Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED,
     LOWERING, Lapping, Lowering, PAINTER, PITCHING, Painter, Pitching, Ratline, SENNIT,
-    SENNIT_ABSENT, SENNIT_MISTYPED, SQUARING, Sennit, Squaring, TARRING_SHORT, Tarring, Veering,
-    becket_dart, crowning_dart, easing_dart, fidding_dart, flaking_dart, gasket_dart,
-    gasketing_dart, grommet_dart, heeling_dart, kinking_dart, lapping_dart, lowering_dart,
-    nippering_dart, painter_dart, pitching_dart, plaiting_dart, ratline_dart, sennit_dart,
-    shackle_dart, squaring_dart, tabling_dart, tarring_dart, thimble_dart, toggle_dart,
-    veering_dart,
+    SENNIT_ABSENT, SENNIT_MISTYPED, SQUARING, Sennit, SennitDraft, Squaring, TARRING_SHORT,
+    Tarring, Veering, becket_dart, crowning_dart, easing_dart, fidding_dart, flaking_dart,
+    gasket_dart, gasketing_dart, grommet_dart, heeling_dart, kinking_dart, lapping_dart,
+    lowering_dart, nippering_dart, painter_dart, pitching_dart, plaiting_dart, ratline_dart,
+    sennit_dart, shackle_dart, squaring_dart, tabling_dart, tarring_dart, thimble_dart,
+    toggle_dart, veering_dart,
 };
 use super::unrecorded_options_models::{
     OPEN_HOLDERS, READ_BACK, UNRECORDED, bight_dart, crowned_dart, fiddling_dart, hitched_dart,
@@ -191,7 +191,7 @@ fn rows() -> Vec<Row> {
             "(read as SennitLaid).tabling",
             json,
             |read: &Sennit| {
-                let Sennit::Laid {
+                let SennitDraft::Laid {
                     tabling,
                     note: _note,
                 } = read;

@@ -465,7 +465,7 @@ fn replaced_count(payload: Value) -> Value {
 }
 
 /// The check of [`Plumbed`]: a plumb line holds a mark.
-fn checked_whole(value: &Plumbed) -> Result<(), Vec<String>> {
+fn checked_whole(value: &PlumbedDraft) -> Result<(), Vec<String>> {
     if value.marks.is_empty() {
         Err(vec!["a plumb line holds a mark".to_owned()])
     } else {
@@ -474,7 +474,7 @@ fn checked_whole(value: &Plumbed) -> Result<(), Vec<String>> {
 }
 
 /// The check of [`Reading`]: a reading is a number.
-fn checked_reading(value: &Reading) -> Result<(), Vec<String>> {
+fn checked_reading(value: &ReadingDraft) -> Result<(), Vec<String>> {
     if value.as_inner().is_nan() {
         Err(vec!["a reading is a number".to_owned()])
     } else {

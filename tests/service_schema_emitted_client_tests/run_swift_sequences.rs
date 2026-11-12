@@ -99,9 +99,11 @@ struct Row {
 
 /// A beacon with `mark`.
 fn beacon(mark: &str) -> Beacon {
-    Beacon {
+    BeaconDraft {
         mark: mark.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What the serde read prints of `payload`: the value written back, or each message of the
@@ -162,7 +164,7 @@ where
 
 /// Every payload the run reads.
 fn rows() -> Vec<Row> {
-    let empty_marks = Flotilla {
+    let empty_marks = FlotillaDraft {
         binary_heap: BinaryHeap::from([beacon("")]),
         btree_set: BTreeSet::from([beacon("")]),
         hash_set: HashSet::from([beacon("")]),
@@ -178,7 +180,7 @@ fn rows() -> Vec<Row> {
         "an empty mark in each sequence",
         "Flotilla",
         &empty_marks,
-        empty_marks.validate(),
+        empty_marks.validate().map(|_valid| ()),
     ));
     rows.extend(indexed_rows());
     rows
@@ -187,7 +189,7 @@ fn rows() -> Vec<Row> {
 /// Every payload of [`IndexedFlotilla`] the run reads.
 #[cfg(feature = "indexmap")]
 fn indexed_rows() -> Vec<Row> {
-    let empty_mark = IndexedFlotilla {
+    let empty_mark = IndexedFlotillaDraft {
         index_set: indexmap::IndexSet::from([beacon("a"), beacon("")]),
     };
     let mut rows: Vec<Row> = INDEXED_FLOTILLA

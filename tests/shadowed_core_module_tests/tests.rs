@@ -55,22 +55,24 @@ impl BalanceService<()> for BalanceBackEnd {
     ) -> Result<BalanceAnswer, BalanceFailure> {
         ready(()).await;
         if req.customer_id == 0 {
-            return Err(BalanceFailure::DbError);
+            return Err(BalanceFailureDraft::DbError.validate().unwrap());
         }
-        Ok(BalanceAnswer {
+        Ok(BalanceAnswerDraft {
             invoices: req.customer_id,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
 /// Nothing above suspends, so one poll answers it.
 fn balance_of(customer_id: u32) -> Poll<Result<BalanceAnswer, BalanceFailure>> {
-    let req = BalanceRequest {
+    let req = BalanceRequestDraft {
         note: "x".to_owned(),
         customer_id,
         tags: None,
     };
-    let call = pin!(BalanceBackEnd.read_balance(&(), req));
+    let call = pin!(BalanceBackEnd.read_balance(&(), req.validate().unwrap()));
     call.poll(&mut PollContext::from_waker(Waker::noop()))
 }
 
@@ -84,12 +86,12 @@ fn a_type_declared_beside_them_reads() {
 
 #[test]
 fn a_type_declared_beside_them_validates() {
-    let broken = BalanceRequest {
+    let broken = BalanceRequestDraft {
         note: String::new(),
         customer_id: 3,
         tags: None,
     };
-    let reported = broken.validate().unwrap_err();
+    let reported = broken.validation_issues();
     assert_eq!(reported.len(), 1);
     assert_eq!(
         serde_json::from_value::<BalanceRequest>(
@@ -111,7 +113,10 @@ fn the_modules_in_scope_are_the_ones_declared_here() {
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Ok(BalanceAnswer { invoices: 7 }))
+        Poll::Ready(Ok(BalanceAnswerDraft { invoices: 7 }))
     );
-    assert_eq!(balance_of(0), Poll::Ready(Err(BalanceFailure::DbError)));
+    assert_eq!(
+        balance_of(0),
+        Poll::Ready(Err(BalanceFailureDraft::DbError))
+    );
 }

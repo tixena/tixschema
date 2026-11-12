@@ -20,6 +20,7 @@ use crate::field_type::{
     is_ownership_wrapper, is_refused_sequence_wrapper, is_sequence_wrapper, written_std_result,
 };
 use crate::model_schema::checks::{ItemChecks, member_calls};
+use crate::model_schema::valid_type::{draft_ident, has_draft};
 use crate::model_schema::{
     BoundMember, MemberPlace, bound_member, build_member_check_arms, helper_name_stem,
     nested_under_fn, variant_check_pattern,
@@ -176,6 +177,23 @@ pub fn type_impl(
 ) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let issues = issue_methods(module);
+    if has_draft() {
+        let draft = draft_ident(name);
+        return quote! {
+            impl #impl_generics #draft #type_generics #where_clause {
+                #method
+            }
+
+            impl #impl_generics #name #type_generics #where_clause {
+                /// The messages of the checks alone, which the draft lists.
+                pub fn decode_with_check_messages(&self) -> ::std::vec::Vec<::std::string::String> {
+                    <#draft #type_generics>::decode_with_check_messages(self)
+                }
+
+                #issues
+            }
+        };
+    }
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #method

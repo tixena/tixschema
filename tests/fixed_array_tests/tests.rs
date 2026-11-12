@@ -42,7 +42,7 @@ fn omitted_member(name: &str, ts_type: &str) -> String {
 }
 
 fn fixed_array_fields() -> FixedArrayFields {
-    FixedArrayFields {
+    FixedArrayFieldsDraft {
         const_ids: [1, 2, 3],
         grid: [[1, 2], [3, 4]],
         ids: [1, 2, 3],
@@ -53,13 +53,17 @@ fn fixed_array_fields() -> FixedArrayFields {
         set_of_ids: [HashSet::from([1]), HashSet::from([2])],
         slice_ids: vec![1, 2].into_boxed_slice(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn fixed_array_slots() -> FixedArraySlots {
-    FixedArraySlots {
+    FixedArraySlotsDraft {
         by_key: HashMap::from([("k".to_owned(), [1, 2, 3])]),
         entry: ("t".to_owned(), [1, 2, 3]),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]

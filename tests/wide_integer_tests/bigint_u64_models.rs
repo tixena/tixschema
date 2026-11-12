@@ -10,7 +10,7 @@ use tixschema::model_schema;
 /// `number` holds exactly.
 ///
 /// ```rust example
-/// AccountNumber {
+/// AccountNumberDraft {
 ///     numbers: vec![12, far_unsigned()],
 ///     signed: far_signed(),
 ///     unsigned: far_unsigned(),
@@ -27,7 +27,7 @@ pub struct AccountNumber {
 /// The greatest `u64`.
 ///
 /// ```rust example
-/// Greatest { top: u64::MAX }
+/// GreatestDraft { top: u64::MAX }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -38,7 +38,7 @@ pub struct Greatest {
 /// A map keyed by a `u64`, whose key is a JSON string.
 ///
 /// ```rust example
-/// Keyed { keyed: BTreeMap::from([(42, 1)]) }
+/// KeyedDraft { keyed: BTreeMap::from([(42, 1)]) }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

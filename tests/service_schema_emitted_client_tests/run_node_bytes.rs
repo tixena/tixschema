@@ -118,10 +118,12 @@ impl BytesClientService<()> for BytesBackEnd {
 
     async fn store(&self, _ctx: &(), req: BytesPhoto) -> Result<BytesPhoto, BytesFault> {
         ready(()).await;
-        Ok(BytesPhoto {
+        Ok(BytesPhotoDraft {
             content_type: req.content_type,
             data: req.data.iter().map(|byte| 255 - byte).collect(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

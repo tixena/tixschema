@@ -205,21 +205,25 @@ fn mapped_reading(named: &str, key: &str) -> String {
 }
 
 fn pallet(label: &str) -> Pallet {
-    Pallet {
+    PalletDraft {
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn every_fixture_is_written_as_serde_writes_it() {
-    let bay = Bay {
+    let bay = BayDraft {
         first: pallet("a"),
         listed: vec![pallet("b")],
         spare: None,
         stored: HashMap::from([("north".to_owned(), pallet("c"))]),
-        trailer: Trailer {
+        trailer: TrailerDraft {
             plate: "p".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(
         serde_json::to_value(bay).unwrap(),
@@ -230,15 +234,21 @@ fn every_fixture_is_written_as_serde_writes_it() {
             "trailer": { "plate": "p" }
         })
     );
-    let cellar = Cellar {
-        cask: Cask {
+    let cellar = CellarDraft {
+        cask: CaskDraft {
             held: vec![pallet("d")],
             label: "e".to_owned(),
-        },
-        casks: vec![Cask {
-            held: vec![7],
-            label: "f".to_owned(),
-        }],
+        }
+        .validate()
+        .unwrap(),
+        casks: vec![
+            CaskDraft {
+                held: vec![7],
+                label: "f".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
     };
     assert_eq!(
         serde_json::to_value(cellar).unwrap(),
@@ -250,8 +260,8 @@ fn every_fixture_is_written_as_serde_writes_it() {
     assert_eq!(
         serde_json::to_value((
             Seal::new("s".to_owned()).unwrap(),
-            Load::Boxed(pallet("g")),
-            Load::Empty
+            LoadDraft::Boxed(pallet("g")),
+            LoadDraft::Empty
         ))
         .unwrap(),
         serde_json::json!(["s", { "Boxed": { "label": "g" } }, "Empty"])

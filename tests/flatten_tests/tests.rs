@@ -1353,32 +1353,34 @@ fn accepting_branches(branches: &serde_json::Value, payload: &serde_json::Value)
 
 #[test]
 fn test_flatten_structs_constructible() {
-    let base = BasePart {
+    let base = BasePartDraft {
         owner: String::new(),
     };
     assert_eq!(base.owner, String::new());
-    let extra = ExtraPart { priority: 0 };
+    let extra = ExtraPartDraft { priority: 0 };
     assert_eq!(extra.priority, 0_i64);
-    let flatten_only = FlattenOnly {
-        variant: DataElementSampleValueVariant::Alphanumeric {
+    let flatten_only = FlattenOnlyDraft {
+        variant: DataElementSampleValueVariantDraft::Alphanumeric {
             sample_values: Vec::new(),
         },
     };
     assert!(matches!(
         flatten_only.variant,
-        DataElementSampleValueVariant::Alphanumeric {
+        DataElementSampleValueVariantDraft::Alphanumeric {
             sample_values: _sample_values
         }
     ));
-    let multi = MultiFlatten {
-        base: BasePart {
+    let multi = MultiFlattenDraft {
+        base: BasePartDraft {
             owner: String::new(),
-        },
-        extra: ExtraPart { priority: 0 },
+        }
+        .validate()
+        .unwrap(),
+        extra: ExtraPartDraft { priority: 0 }.validate().unwrap(),
         id: String::new(),
     };
     assert_eq!(multi.id, String::new());
-    let no_flatten = NoFlatten {
+    let no_flatten = NoFlattenDraft {
         id: String::new(),
         name: String::new(),
     };
@@ -1738,9 +1740,9 @@ fn test_the_deferred_flatten_document_is_byte_identical() {
 
 #[test]
 fn test_flatten_serialization_is_flat() {
-    let entry = DataElementSampleValueEntry {
+    let entry = DataElementSampleValueEntryDraft {
         data_element_id: "abc".to_owned(),
-        variant: DataElementSampleValueVariant::Numeric {
+        variant: DataElementSampleValueVariantDraft::Numeric {
             sample_values: vec![1_i64, 2_i64, 3_i64],
         },
     };
@@ -1759,14 +1761,20 @@ fn test_flatten_serialization_is_flat() {
 
 #[test]
 fn test_flatten_recursive_base_serializes_flat() {
-    let holder = FlatHolder {
-        base: FlatNode {
-            children: vec![FlatNode {
-                children: Vec::new(),
-                val: "leaf".to_owned(),
-            }],
+    let holder = FlatHolderDraft {
+        base: FlatNodeDraft {
+            children: vec![
+                FlatNodeDraft {
+                    children: Vec::new(),
+                    val: "leaf".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ],
             val: "root".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         extra: "x".to_owned(),
     };
     let json = serde_json::to_value(&holder).unwrap();
@@ -1776,7 +1784,7 @@ fn test_flatten_recursive_base_serializes_flat() {
     assert!(json.get("base").is_none());
 
     let back: FlatHolder = serde_json::from_value(json).unwrap();
-    assert_eq!(back, holder);
+    assert_eq!(back, holder.validate().unwrap());
 }
 
 #[test]
@@ -1794,17 +1802,23 @@ fn test_flattening_a_plain_enum_writes_a_key_the_struct_does_not_name() {
 #[test]
 fn test_flattening_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
-        serde_json::to_value(FlatOverUntagged {
+        serde_json::to_value(FlatOverUntaggedDraft {
             own: "o".to_owned(),
-            either: FlatEither::First(FlatFirst { a: "x".to_owned() }),
+            either: FlatEitherDraft::First(
+                FlatFirstDraft { a: "x".to_owned() }.validate().unwrap()
+            )
+            .validate()
+            .unwrap(),
         })
         .unwrap(),
         serde_json::json!({ "own": "o", "a": "x" })
     );
     assert_eq!(
-        serde_json::to_value(FlatOverUntagged {
+        serde_json::to_value(FlatOverUntaggedDraft {
             own: "o".to_owned(),
-            either: FlatEither::Second(FlatSecond { b: true }),
+            either: FlatEitherDraft::Second(FlatSecondDraft { b: true }.validate().unwrap())
+                .validate()
+                .unwrap(),
         })
         .unwrap(),
         serde_json::json!({ "own": "o", "b": true })
@@ -1851,8 +1865,8 @@ fn test_the_untagged_flatten_schema_accepts_every_payload_serde_writes() {
 /// a key it does not declare.
 #[test]
 fn test_a_unit_filling_of_an_untagged_enum_flattened_below_its_holder_is_read_as_no_key() {
-    let holder = FlatOverLaterHeldUnit {
-        held: LaterHeldMember::Held(()),
+    let holder = FlatOverLaterHeldUnitDraft {
+        held: LaterHeldMemberDraft::Held(()),
         id: "i".to_owned(),
     };
     let written = serde_json::to_value(&holder).unwrap();
@@ -1917,12 +1931,18 @@ fn test_an_option_flattened_below_its_holder_still_offers_its_absence() {
 #[test]
 fn test_flattening_a_self_naming_union_member_writes_its_keys() {
     assert_eq!(
-        serde_json::to_value(FlatOverSelfUntagged {
+        serde_json::to_value(FlatOverSelfUntaggedDraft {
             own: "o".to_owned(),
-            either: FlatSelfEither::Node(FlatSelfNode {
-                kids: Vec::new(),
-                leaf: "l".to_owned(),
-            }),
+            either: FlatSelfEitherDraft::Node(
+                FlatSelfNodeDraft {
+                    kids: Vec::new(),
+                    leaf: "l".to_owned(),
+                }
+                .validate()
+                .unwrap()
+            )
+            .validate()
+            .unwrap(),
         })
         .unwrap(),
         serde_json::json!({ "own": "o", "kids": [], "leaf": "l" })
@@ -1961,14 +1981,18 @@ fn test_the_deferred_union_member_schema_accepts_the_payload_serde_writes() {
 
 #[test]
 fn test_flattening_an_overlapping_untagged_enum_writes_the_narrower_members_keys() {
-    let narrow = FlatOverOverlap {
+    let narrow = FlatOverOverlapDraft {
         own: "o".to_owned(),
-        either: OverlapEither::Narrow(OverlapNarrow { a: "x".to_owned() }),
+        either: OverlapEitherDraft::Narrow(
+            OverlapNarrowDraft { a: "x".to_owned() }.validate().unwrap(),
+        )
+        .validate()
+        .unwrap(),
     };
     let written = serde_json::to_value(&narrow).unwrap();
     assert_eq!(written, serde_json::json!({ "own": "o", "a": "x" }));
     let back: FlatOverOverlap = serde_json::from_value(written).unwrap();
-    assert_eq!(back, narrow);
+    assert_eq!(back, narrow.validate().unwrap());
 }
 
 #[test]
@@ -2008,12 +2032,18 @@ fn test_the_overlapping_untagged_flatten_schema_accepts_every_payload_serde_writ
 
 #[test]
 fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
-    let mixed = FlatOverMixed {
+    let mixed = FlatOverMixedDraft {
         own: "o".to_owned(),
-        tagged: MixedTagged::Left {
+        tagged: MixedTaggedDraft::Left {
             left: "l".to_owned(),
-        },
-        either: MixedEither::Partial(MixedPartial { a: "x".to_owned() }),
+        }
+        .validate()
+        .unwrap(),
+        either: MixedEitherDraft::Partial(
+            MixedPartialDraft { a: "x".to_owned() }.validate().unwrap(),
+        )
+        .validate()
+        .unwrap(),
     };
     let written = serde_json::to_value(&mixed).unwrap();
     assert_eq!(
@@ -2021,7 +2051,7 @@ fn test_flattening_both_spellings_of_a_union_writes_every_members_keys() {
         serde_json::json!({ "kind": "Left", "left": "l", "a": "x", "own": "o" })
     );
     let back: FlatOverMixed = serde_json::from_value(written).unwrap();
-    assert_eq!(back, mixed);
+    assert_eq!(back, mixed.validate().unwrap());
 }
 
 #[test]
@@ -2058,31 +2088,45 @@ fn test_the_mixed_merge_schema_accepts_every_payload_serde_writes() {
 fn test_flattening_a_nested_union_writes_the_leaf_members_keys() {
     let nested: [(NestEither, serde_json::Value); 3] = [
         (
-            NestEither::Plain(NestPlain {
-                plain: "p".to_owned(),
-            }),
+            NestEitherDraft::Plain(
+                NestPlainDraft {
+                    plain: "p".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
             serde_json::json!({ "own": "o", "plain": "p" }),
         ),
         (
-            NestEither::Tagged(NestTagged::Left {
-                left: "l".to_owned(),
-            }),
+            NestEitherDraft::Tagged(
+                NestTaggedDraft::Left {
+                    left: "l".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
             serde_json::json!({ "own": "o", "kind": "Left", "left": "l" }),
         ),
         (
-            NestEither::Tagged(NestTagged::Right { right: true }),
+            NestEitherDraft::Tagged(NestTaggedDraft::Right { right: true }.validate().unwrap())
+                .validate()
+                .unwrap(),
             serde_json::json!({ "own": "o", "kind": "Right", "right": true }),
         ),
     ];
     for (either, expected) in nested {
-        let holder = NestHolder {
+        let holder = NestHolderDraft {
             own: "o".to_owned(),
             either,
         };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(written, expected);
         let back: NestHolder = serde_json::from_value(written).unwrap();
-        assert_eq!(back, holder);
+        assert_eq!(back, holder.validate().unwrap());
     }
 }
 
@@ -2111,14 +2155,20 @@ fn test_a_nested_union_branch_expands_under_its_own_spelling() {
 
 #[test]
 fn test_flattening_a_single_member_nested_union_writes_the_leafs_keys() {
-    let holder = NestOnlyHolder {
+    let holder = NestOnlyHolderDraft {
         own: "o".to_owned(),
-        either: NestOnlyOuter::Inner(NestOnlyInner::A(NestOnly { a: "x".to_owned() })),
+        either: NestOnlyOuterDraft::Inner(
+            NestOnlyInnerDraft::A(NestOnlyDraft { a: "x".to_owned() }.validate().unwrap())
+                .validate()
+                .unwrap(),
+        )
+        .validate()
+        .unwrap(),
     };
     let written = serde_json::to_value(&holder).unwrap();
     assert_eq!(written, serde_json::json!({ "own": "o", "a": "x" }));
     let back: NestOnlyHolder = serde_json::from_value(written).unwrap();
-    assert_eq!(back, holder);
+    assert_eq!(back, holder.validate().unwrap());
 }
 
 #[test]
@@ -2154,23 +2204,27 @@ fn test_the_nested_union_cycle_refusal_names_the_remedy() {
 fn test_an_optional_flattened_base_writes_its_members_or_nothing() {
     let forms: [(Option<OptBase>, serde_json::Value); 2] = [
         (
-            Some(OptBase {
-                left: "l".to_owned(),
-                right: true,
-            }),
+            Some(
+                OptBaseDraft {
+                    left: "l".to_owned(),
+                    right: true,
+                }
+                .validate()
+                .unwrap(),
+            ),
             serde_json::json!({ "left": "l", "right": true, "own": "o" }),
         ),
         (None, serde_json::json!({ "own": "o" })),
     ];
     for (maybe, expected) in forms {
-        let holder = OptHolder {
+        let holder = OptHolderDraft {
             maybe,
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(written, expected);
         let back: OptHolder = serde_json::from_value(written).unwrap();
-        assert_eq!(back, holder);
+        assert_eq!(back, holder.validate().unwrap());
     }
 }
 
@@ -2178,26 +2232,30 @@ fn test_an_optional_flattened_base_writes_its_members_or_nothing() {
 fn test_an_optional_flattened_union_writes_the_matched_members_keys_or_nothing() {
     let forms: [(Option<NestTagged>, serde_json::Value); 3] = [
         (
-            Some(NestTagged::Left {
-                left: "l".to_owned(),
-            }),
+            Some(
+                NestTaggedDraft::Left {
+                    left: "l".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
             serde_json::json!({ "kind": "Left", "left": "l", "own": "o" }),
         ),
         (
-            Some(NestTagged::Right { right: true }),
+            Some(NestTaggedDraft::Right { right: true }.validate().unwrap()),
             serde_json::json!({ "kind": "Right", "right": true, "own": "o" }),
         ),
         (None, serde_json::json!({ "own": "o" })),
     ];
     for (maybe, expected) in forms {
-        let holder = OptUnionHolder {
+        let holder = OptUnionHolderDraft {
             maybe,
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(written, expected);
         let back: OptUnionHolder = serde_json::from_value(written).unwrap();
-        assert_eq!(back, holder);
+        assert_eq!(back, holder.validate().unwrap());
     }
 }
 
@@ -2338,23 +2396,27 @@ fn test_the_optional_flatten_schema_binds_the_objects_own_keys_once() {
 fn test_a_named_nullable_flattened_base_writes_its_members_or_nothing() {
     let forms: [(Option<OptBase>, serde_json::Value); 2] = [
         (
-            Some(OptBase {
-                left: "l".to_owned(),
-                right: true,
-            }),
+            Some(
+                OptBaseDraft {
+                    left: "l".to_owned(),
+                    right: true,
+                }
+                .validate()
+                .unwrap(),
+            ),
             serde_json::json!({ "left": "l", "right": true, "own": "o" }),
         ),
         (None, serde_json::json!({ "own": "o" })),
     ];
     for (maybe, expected) in forms {
-        let holder = NamedMaybeHolder {
-            maybe: MaybeOptBase(maybe),
+        let holder = NamedMaybeHolderDraft {
+            maybe: MaybeOptBaseDraft(maybe).validate().unwrap(),
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(written, expected);
         let back: NamedMaybeHolder = serde_json::from_value(written).unwrap();
-        assert_eq!(back, holder);
+        assert_eq!(back, holder.validate().unwrap());
     }
 }
 
@@ -2530,17 +2592,25 @@ fn test_an_optional_untagged_flatten_multiplies_the_members_and_the_absence() {
 fn test_an_optional_flattened_untagged_enum_writes_a_members_keys_or_nothing() {
     let forms: [(Option<LooseEither>, serde_json::Value); 3] = [
         (
-            Some(LooseEither::First(LooseFirst { a: "x".to_owned() })),
+            Some(
+                LooseEitherDraft::First(LooseFirstDraft { a: "x".to_owned() }.validate().unwrap())
+                    .validate()
+                    .unwrap(),
+            ),
             serde_json::json!({ "a": "x", "own": "o" }),
         ),
         (
-            Some(LooseEither::Second(LooseSecond { b: true })),
+            Some(
+                LooseEitherDraft::Second(LooseSecondDraft { b: true }.validate().unwrap())
+                    .validate()
+                    .unwrap(),
+            ),
             serde_json::json!({ "b": true, "own": "o" }),
         ),
         (None, serde_json::json!({ "own": "o" })),
     ];
     for (either, expected) in forms {
-        let holder = FlatOverOptionalUntagged {
+        let holder = FlatOverOptionalUntaggedDraft {
             either,
             own: "o".to_owned(),
         };
@@ -2658,11 +2728,12 @@ fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
 
 #[test]
 fn test_a_named_map_member_of_a_flattened_untagged_enum_round_trips() {
-    let written = serde_json::to_value(FlatOverMemberBucketUntagged {
-        either: MemberBucketEither::Bucket(MemberBucket(HashMap::from([(
-            "k".to_owned(),
-            "v".to_owned(),
-        )]))),
+    let written = serde_json::to_value(FlatOverMemberBucketUntaggedDraft {
+        either: MemberBucketEitherDraft::Bucket(
+            MemberBucketDraft(HashMap::from([("k".to_owned(), "v".to_owned())]))
+                .validate()
+                .unwrap(),
+        ),
     })
     .unwrap();
     assert_eq!(written, serde_json::json!({ "k": "v" }));
@@ -2714,9 +2785,13 @@ fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
 
 #[test]
 fn test_an_all_object_tagged_enum_member_round_trips() {
-    let written = serde_json::to_value(FlatOverMemberExtObjUntagged {
+    let written = serde_json::to_value(FlatOverMemberExtObjUntaggedDraft {
         own: "o".to_owned(),
-        either: MemberExtObjEither::Ext(MemberExtObjects::One(FlatFirst { a: "x".to_owned() })),
+        either: MemberExtObjEitherDraft::Ext(
+            MemberExtObjectsDraft::One(FlatFirstDraft { a: "x".to_owned() }.validate().unwrap())
+                .validate()
+                .unwrap(),
+        ),
     })
     .unwrap();
     assert_eq!(
@@ -2779,17 +2854,17 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone() {
 fn test_a_directly_flattened_tagged_enum_round_trips_every_variant() {
     let forms = [
         (
-            MemberExtBare::Bare,
+            MemberExtBareDraft::Bare,
             serde_json::json!({ "Bare": null, "own": "o" }),
         ),
         (
-            MemberExtBare::Wrapped(FlatSecond { b: true }),
+            MemberExtBareDraft::Wrapped(FlatSecondDraft { b: true }.validate().unwrap()),
             serde_json::json!({ "Wrapped": { "b": true }, "own": "o" }),
         ),
     ];
     for (ext, expected) in forms {
-        let holder = ExtBareDirectHolder {
-            ext,
+        let holder = ExtBareDirectHolderDraft {
+            ext: ext.validate().unwrap(),
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
@@ -2867,17 +2942,17 @@ fn test_the_direct_tagged_flatten_type_spells_the_key_set_serde_writes() {
 fn test_a_directly_flattened_all_object_tagged_enum_round_trips_every_variant() {
     let forms = [
         (
-            MemberExtObjects::One(FlatFirst { a: "x".to_owned() }),
+            MemberExtObjectsDraft::One(FlatFirstDraft { a: "x".to_owned() }.validate().unwrap()),
             serde_json::json!({ "One": { "a": "x" }, "own": "o" }),
         ),
         (
-            MemberExtObjects::Two(FlatSecond { b: true }),
+            MemberExtObjectsDraft::Two(FlatSecondDraft { b: true }.validate().unwrap()),
             serde_json::json!({ "Two": { "b": true }, "own": "o" }),
         ),
     ];
     for (ext, expected) in forms {
-        let holder = ExtObjDirectHolder {
-            ext,
+        let holder = ExtObjDirectHolderDraft {
+            ext: ext.validate().unwrap(),
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
@@ -2918,22 +2993,22 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
 fn test_a_flattened_enum_written_with_an_argument_round_trips_every_variant() {
     for (ext, expected) in [
         (
-            MemberExtCarried::Bare,
+            MemberExtCarriedDraft::Bare,
             serde_json::json!({ "Bare": null, "own": "o" }),
         ),
         (
-            MemberExtCarried::Carried(7),
+            MemberExtCarriedDraft::Carried(7),
             serde_json::json!({ "Carried": 7_u32, "own": "o" }),
         ),
     ] {
-        let holder = ExtCarriedHolder {
+        let holder = ExtCarriedHolderDraft {
             ext,
             own: "o".to_owned(),
         };
         let written = serde_json::to_value(&holder).unwrap();
         assert_eq!(written, expected);
         let back: ExtCarriedHolder = serde_json::from_value(written).unwrap();
-        assert_eq!(back, holder);
+        assert_eq!(back, holder.validate().unwrap());
     }
 }
 
@@ -3081,7 +3156,7 @@ fn test_a_flattened_enum_written_with_an_argument_documents_each_entry_at_the_ar
 
 #[test]
 fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_member() {
-    let owner = BasePart {
+    let owner = BasePartDraft {
         owner: "w".to_owned(),
     };
     for (either, expected) in [
@@ -3090,11 +3165,11 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_mem
             serde_json::json!({ "owner": "w", "own": "o" }),
         ),
         (
-            MemberUntaggedCarried::Counted { count: 3 },
+            MemberUntaggedCarriedDraft::Counted { count: 3 },
             serde_json::json!({ "count": 3_u32, "own": "o" }),
         ),
     ] {
-        let holder = UntaggedCarriedHolder {
+        let holder = UntaggedCarriedHolderDraft {
             either,
             own: "o".to_owned(),
         };
@@ -3105,15 +3180,15 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_round_trips_every_mem
     }
     for (pick, expected) in [
         (
-            MemberUntaggedPicked::Carried { load: 7 },
+            MemberUntaggedPickedDraft::Carried { load: 7 },
             serde_json::json!({ "load": 7_u32, "own": "o" }),
         ),
         (
-            MemberUntaggedPicked::Counted { count: 3 },
+            MemberUntaggedPickedDraft::Counted { count: 3 },
             serde_json::json!({ "count": 3_u32, "own": "o" }),
         ),
     ] {
-        let holder = UntaggedPickedHolder {
+        let holder = UntaggedPickedHolderDraft {
             pick,
             own: "o".to_owned(),
         };
@@ -3260,7 +3335,7 @@ fn test_a_flattened_untagged_enum_written_with_an_argument_documents_each_member
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_a_flattened_object_id_document_admits_what_serde_writes() {
-    let holder = FlattenedOidHolder {
+    let holder = FlattenedOidHolderDraft {
         id: 1,
         oid: ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap(),
     };
@@ -3292,7 +3367,7 @@ fn test_a_flattened_object_id_document_admits_what_serde_writes() {
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_an_object_id_beside_the_tag_document_admits_what_serde_writes() {
-    let held = TaggedOidHolder::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    let held = TaggedOidHolderDraft::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
     let written = serde_json::to_value(&held).unwrap();
     assert_eq!(
         written,
@@ -3370,7 +3445,7 @@ fn test_serde_refuses_every_write_of_a_parameter_filled_at_a_value_written_as_no
         ),
         (
             refused(serde_json::to_string(&SerdeOnlyWaybill::Held(Some(
-                BasePart {
+                BasePartDraft {
                     owner: "o".to_owned(),
                 },
             )))),
@@ -3443,18 +3518,18 @@ fn test_the_tagged_enums_standing_alone_close_each_object_member_on_typescript()
 fn test_a_directly_flattened_inline_untagged_union_round_trips_every_member() {
     let forms = [
         (
-            InlineUntagEither::Left {
+            InlineUntagEitherDraft::Left {
                 left: "l".to_owned(),
             },
             serde_json::json!({ "left": "l", "own": "o" }),
         ),
         (
-            InlineUntagEither::Right { right: true },
+            InlineUntagEitherDraft::Right { right: true },
             serde_json::json!({ "right": true, "own": "o" }),
         ),
     ];
     for (either, expected) in forms {
-        let holder = InlineUntagDirectHolder {
+        let holder = InlineUntagDirectHolderDraft {
             either,
             own: "o".to_owned(),
         };
@@ -3529,41 +3604,49 @@ fn test_the_inline_untagged_direct_flatten_document_is_unchanged() {
 #[test]
 fn test_a_flattened_variant_field_writes_its_members_into_the_variants_content() {
     assert_eq!(
-        serde_json::to_value(ExternalFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(ExternalFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "Named": { "note": "n", "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(InternalFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(InternalFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "kind": "Named", "note": "n", "x": "y" })
     );
     assert_eq!(
-        serde_json::to_value(AdjacentFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(AdjacentFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "kind": "Named", "data": { "note": "n", "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(TwiceFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(TwiceFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
-            rank: VariantRank { rank: 3 },
+            }
+            .validate()
+            .unwrap(),
+            rank: VariantRankDraft { rank: 3 }.validate().unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
@@ -3577,10 +3660,12 @@ fn test_a_flattened_variant_field_reads_back_from_the_merged_shape() {
         serde_json::from_value(serde_json::json!({ "Named": { "note": "n", "x": "y" } })).unwrap();
     assert_eq!(
         external,
-        ExternalFlatVariant::Named {
-            extra: VariantExtra {
+        ExternalFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         }
     );
@@ -3589,10 +3674,12 @@ fn test_a_flattened_variant_field_reads_back_from_the_merged_shape() {
             .unwrap();
     assert_eq!(
         internal,
-        InternalFlatVariant::Named {
-            extra: VariantExtra {
+        InternalFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         }
     );
@@ -3696,20 +3783,24 @@ fn test_the_flattened_variant_document_accepts_what_serde_writes() {
     let cases = [
         (
             ExternalFlatVariant::json_schema(),
-            serde_json::to_value(ExternalFlatVariant::Named {
-                extra: VariantExtra {
+            serde_json::to_value(ExternalFlatVariantDraft::Named {
+                extra: VariantExtraDraft {
                     note: "n".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
         ),
         (
             InternalFlatVariant::json_schema(),
-            serde_json::to_value(InternalFlatVariant::Named {
-                extra: VariantExtra {
+            serde_json::to_value(InternalFlatVariantDraft::Named {
+                extra: VariantExtraDraft {
                     note: "n".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -3743,21 +3834,25 @@ fn test_a_variant_without_a_flattened_field_keeps_its_zod_object() {
 #[test]
 fn test_a_flattened_untagged_variant_field_writes_its_members_beside_the_variants_own() {
     assert_eq!(
-        serde_json::to_value(UntaggedFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(UntaggedFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "note": "n", "x": "y" })
     );
     assert_eq!(
-        serde_json::to_value(TwiceUntaggedFlatVariant::Named {
-            extra: VariantExtra {
+        serde_json::to_value(TwiceUntaggedFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned()
-            },
-            rank: VariantRank { rank: 3 },
+            }
+            .validate()
+            .unwrap(),
+            rank: VariantRankDraft { rank: 3 }.validate().unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
@@ -3768,13 +3863,15 @@ fn test_a_flattened_untagged_variant_field_writes_its_members_beside_the_variant
 #[test]
 fn test_a_flattened_untagged_variant_field_round_trips_both_members() {
     for value in [
-        UntaggedFlatVariant::Named {
-            extra: VariantExtra {
+        UntaggedFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         },
-        UntaggedFlatVariant::Plain { y: "p".to_owned() },
+        UntaggedFlatVariantDraft::Plain { y: "p".to_owned() },
     ] {
         let written = serde_json::to_value(&value).unwrap();
         let back: UntaggedFlatVariant = serde_json::from_value(written).unwrap();
@@ -3851,10 +3948,12 @@ fn written_against_described(
 
 #[test]
 fn test_a_flattened_untagged_variant_field_merges_into_the_members_json_object() {
-    let payload = serde_json::to_value(UntaggedFlatVariant::Named {
-        extra: VariantExtra {
+    let payload = serde_json::to_value(UntaggedFlatVariantDraft::Named {
+        extra: VariantExtraDraft {
             note: "n".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         x: "y".to_owned(),
     })
     .unwrap();
@@ -3867,11 +3966,13 @@ fn test_a_flattened_untagged_variant_field_merges_into_the_members_json_object()
 
 #[test]
 fn test_two_flattened_untagged_variant_fields_merge_into_one_json_object() {
-    let payload = serde_json::to_value(TwiceUntaggedFlatVariant::Named {
-        extra: VariantExtra {
+    let payload = serde_json::to_value(TwiceUntaggedFlatVariantDraft::Named {
+        extra: VariantExtraDraft {
             note: "n".to_owned(),
-        },
-        rank: VariantRank { rank: 3 },
+        }
+        .validate()
+        .unwrap(),
+        rank: VariantRankDraft { rank: 3 }.validate().unwrap(),
         x: "y".to_owned(),
     })
     .unwrap();
@@ -3885,13 +3986,15 @@ fn test_two_flattened_untagged_variant_fields_merge_into_one_json_object() {
 fn test_the_flattened_untagged_variant_document_accepts_what_serde_writes() {
     let document = UntaggedFlatVariant::json_schema();
     for value in [
-        UntaggedFlatVariant::Named {
-            extra: VariantExtra {
+        UntaggedFlatVariantDraft::Named {
+            extra: VariantExtraDraft {
                 note: "n".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         },
-        UntaggedFlatVariant::Plain { y: "p".to_owned() },
+        UntaggedFlatVariantDraft::Plain { y: "p".to_owned() },
     ] {
         let payload = serde_json::to_value(&value).unwrap();
         assert_eq!(
@@ -3918,21 +4021,23 @@ fn test_the_flattened_untagged_variant_document_rejects_the_stale_nested_shape()
 fn test_flattening_an_enum_whose_member_flattens_round_trips_every_member() {
     let forms = [
         (
-            UntaggedFlatVariant::Named {
-                extra: VariantExtra {
+            UntaggedFlatVariantDraft::Named {
+                extra: VariantExtraDraft {
                     note: "n".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "note": "n", "x": "y", "own": "o" }),
         ),
         (
-            UntaggedFlatVariant::Plain { y: "p".to_owned() },
+            UntaggedFlatVariantDraft::Plain { y: "p".to_owned() },
             serde_json::json!({ "y": "p", "own": "o" }),
         ),
     ];
     for (either, expected) in forms {
-        let holder = UntaggedFlatVariantHolder {
+        let holder = UntaggedFlatVariantHolderDraft {
             either,
             own: "o".to_owned(),
         };
@@ -3959,46 +4064,68 @@ fn test_a_flattening_untagged_member_closes_no_sibling_against_unprovable_keys()
 #[test]
 fn test_a_multi_branch_variant_source_writes_one_key_set_per_branch() {
     assert_eq!(
-        serde_json::to_value(ExternalChoiceVariant::Named {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned()
-            }),
+        serde_json::to_value(ExternalChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned()
+                }
+                .validate()
+                .unwrap()
+            )
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "Named": { "left": "l", "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(ExternalChoiceVariant::Named {
-            choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+        serde_json::to_value(ExternalChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Right(ChoiceRightDraft { right: 3 }.validate().unwrap())
+                .validate()
+                .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(InternalChoiceVariant::Named {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned()
-            }),
+        serde_json::to_value(InternalChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned()
+                }
+                .validate()
+                .unwrap()
+            )
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "kind": "Named", "left": "l", "x": "y" })
     );
     assert_eq!(
-        serde_json::to_value(AdjacentChoiceVariant::Named {
-            choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+        serde_json::to_value(AdjacentChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Right(ChoiceRightDraft { right: 3 }.validate().unwrap())
+                .validate()
+                .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "kind": "Named", "data": { "right": 3_i64, "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(UntaggedChoiceVariant::Named {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned()
-            }),
+        serde_json::to_value(UntaggedChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned()
+                }
+                .validate()
+                .unwrap()
+            )
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         })
         .unwrap(),
@@ -4011,23 +4138,33 @@ fn test_a_multi_branch_variant_source_reads_back_every_key_set() {
     for (payload, expected) in [
         (
             serde_json::json!({ "Named": { "left": "l", "x": "y" } }),
-            ExternalChoiceVariant::Named {
-                choice: VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
+            ExternalChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             },
         ),
         (
             serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } }),
-            ExternalChoiceVariant::Named {
-                choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+            ExternalChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             },
         ),
         (
             serde_json::json!({ "Plain": { "y": "p" } }),
-            ExternalChoiceVariant::Plain { y: "p".to_owned() },
+            ExternalChoiceVariantDraft::Plain { y: "p".to_owned() },
         ),
     ] {
         let read: ExternalChoiceVariant = serde_json::from_value(payload.clone()).unwrap();
@@ -4036,17 +4173,25 @@ fn test_a_multi_branch_variant_source_reads_back_every_key_set() {
     }
 
     for value in [
-        UntaggedChoiceVariant::Named {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned(),
-            }),
+        UntaggedChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         },
-        UntaggedChoiceVariant::Named {
-            choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+        UntaggedChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Right(ChoiceRightDraft { right: 3 }.validate().unwrap())
+                .validate()
+                .unwrap(),
             x: "y".to_owned(),
         },
-        UntaggedChoiceVariant::Plain { y: "p".to_owned() },
+        UntaggedChoiceVariantDraft::Plain { y: "p".to_owned() },
     ] {
         let written = serde_json::to_value(&value).unwrap();
         assert_eq!(
@@ -4108,10 +4253,16 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
     let cases = [
         (
             ExternalChoiceVariant::zod_schema(),
-            serde_json::to_value(ExternalChoiceVariant::Named {
-                choice: VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
+            serde_json::to_value(ExternalChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -4119,8 +4270,12 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
         ),
         (
             ExternalChoiceVariant::zod_schema(),
-            serde_json::to_value(ExternalChoiceVariant::Named {
-                choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+            serde_json::to_value(ExternalChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -4128,8 +4283,12 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
         ),
         (
             InternalChoiceVariant::zod_schema(),
-            serde_json::to_value(InternalChoiceVariant::Named {
-                choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+            serde_json::to_value(InternalChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -4137,10 +4296,16 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
         ),
         (
             AdjacentChoiceVariant::zod_schema(),
-            serde_json::to_value(AdjacentChoiceVariant::Named {
-                choice: VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
+            serde_json::to_value(AdjacentChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -4148,8 +4313,12 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
         ),
         (
             UntaggedChoiceVariant::zod_schema(),
-            serde_json::to_value(UntaggedChoiceVariant::Named {
-                choice: VariantChoice::Right(ChoiceRight { right: 3 }),
+            serde_json::to_value(UntaggedChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             })
             .unwrap(),
@@ -4169,24 +4338,32 @@ fn test_the_multiplied_variant_zod_names_the_branch_every_serde_payload_wrote() 
 fn test_a_three_branch_variant_source_writes_three_key_sets() {
     for (value, written) in [
         (
-            ThreeBranchChoiceVariant::Named {
-                choice: ThreeBranchChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
+            ThreeBranchChoiceVariantDraft::Named {
+                choice: ThreeBranchChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                ),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "left": "l", "x": "y" } }),
         ),
         (
-            ThreeBranchChoiceVariant::Named {
-                choice: ThreeBranchChoice::Middle(ChoiceMiddle { middle: true }),
+            ThreeBranchChoiceVariantDraft::Named {
+                choice: ThreeBranchChoiceDraft::Middle(
+                    ChoiceMiddleDraft { middle: true }.validate().unwrap(),
+                ),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "middle": true, "x": "y" } }),
         ),
         (
-            ThreeBranchChoiceVariant::Named {
-                choice: ThreeBranchChoice::Right(ChoiceRight { right: 3 }),
+            ThreeBranchChoiceVariantDraft::Named {
+                choice: ThreeBranchChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                ),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "right": 3_i64, "x": "y" } }),
@@ -4237,17 +4414,21 @@ fn test_an_adjacently_tagged_multiplying_variant_keeps_its_discriminated_union()
 #[test]
 fn test_an_optional_variant_source_writes_the_object_with_the_source_and_without_it() {
     assert_eq!(
-        serde_json::to_value(OptionalSourceVariant::Named {
-            extra: Some(VariantExtra {
-                note: "n".to_owned()
-            }),
+        serde_json::to_value(OptionalSourceVariantDraft::Named {
+            extra: Some(
+                VariantExtraDraft {
+                    note: "n".to_owned()
+                }
+                .validate()
+                .unwrap()
+            ),
             x: "y".to_owned(),
         })
         .unwrap(),
         serde_json::json!({ "Named": { "note": "n", "x": "y" } })
     );
     assert_eq!(
-        serde_json::to_value(OptionalSourceVariant::Named {
+        serde_json::to_value(OptionalSourceVariantDraft::Named {
             extra: None,
             x: "y".to_owned(),
         })
@@ -4274,21 +4455,39 @@ fn test_an_optional_variant_source_offers_the_source_and_its_absence_in_zod() {
 fn test_two_variant_sources_write_their_cross_product() {
     for (value, written) in [
         (
-            TwoChoiceVariant::Named {
-                choice: VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
-                pair: PairChoice::Up(ChoiceUp { up: "u".to_owned() }),
+            TwoChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
+                pair: PairChoiceDraft::Up(ChoiceUpDraft { up: "u".to_owned() }.validate().unwrap())
+                    .validate()
+                    .unwrap(),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "left": "l", "up": "u", "x": "y" } }),
         ),
         (
-            TwoChoiceVariant::Named {
-                choice: VariantChoice::Right(ChoiceRight { right: 3 }),
-                pair: PairChoice::Down(ChoiceDown {
-                    down: "d".to_owned(),
-                }),
+            TwoChoiceVariantDraft::Named {
+                choice: VariantChoiceDraft::Right(
+                    ChoiceRightDraft { right: 3 }.validate().unwrap(),
+                )
+                .validate()
+                .unwrap(),
+                pair: PairChoiceDraft::Down(
+                    ChoiceDownDraft {
+                        down: "d".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "right": 3_i64, "down": "d", "x": "y" } }),
@@ -4297,7 +4496,7 @@ fn test_two_variant_sources_write_their_cross_product() {
         assert_eq!(serde_json::to_value(&value).unwrap(), written);
         assert_eq!(
             serde_json::from_value::<TwoChoiceVariant>(written).unwrap(),
-            value
+            value.validate().unwrap()
         );
     }
 }
@@ -4323,16 +4522,24 @@ fn test_two_variant_sources_write_their_cross_product_in_zod() {
 fn test_an_optional_multi_branch_variant_source_writes_a_members_keys_or_none() {
     for (value, written) in [
         (
-            OptionalChoiceVariant::Named {
-                choice: Some(VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                })),
+            OptionalChoiceVariantDraft::Named {
+                choice: Some(
+                    VariantChoiceDraft::Left(
+                        ChoiceLeftDraft {
+                            left: "l".to_owned(),
+                        }
+                        .validate()
+                        .unwrap(),
+                    )
+                    .validate()
+                    .unwrap(),
+                ),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Named": { "left": "l", "x": "y" } }),
         ),
         (
-            OptionalChoiceVariant::Named {
+            OptionalChoiceVariantDraft::Named {
                 choice: None,
                 x: "y".to_owned(),
             },
@@ -4366,17 +4573,25 @@ fn test_an_optional_multi_branch_variant_source_offers_its_branches_and_the_abse
 fn test_a_nonstrict_enum_reads_a_stray_key_past_or_refuses_it_in_each_variant_by_itself() {
     for (value, written) in [
         (
-            RefusingBesideOpenVariant::Open {
-                choice: VariantChoice::Left(ChoiceLeft {
-                    left: "l".to_owned(),
-                }),
+            RefusingBesideOpenVariantDraft::Open {
+                choice: VariantChoiceDraft::Left(
+                    ChoiceLeftDraft {
+                        left: "l".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                )
+                .validate()
+                .unwrap(),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Open": { "left": "l", "x": "y" } }),
         ),
         (
-            RefusingBesideOpenVariant::Refusing {
-                choice: ThreeBranchChoice::Middle(ChoiceMiddle { middle: true }),
+            RefusingBesideOpenVariantDraft::Refusing {
+                choice: ThreeBranchChoiceDraft::Middle(
+                    ChoiceMiddleDraft { middle: true }.validate().unwrap(),
+                ),
                 x: "y".to_owned(),
             },
             serde_json::json!({ "Refusing": { "middle": true, "x": "y" } }),
@@ -4393,10 +4608,16 @@ fn test_a_nonstrict_enum_reads_a_stray_key_past_or_refuses_it_in_each_variant_by
             serde_json::json!({ "Open": { "left": "l", "stray": 1_u8, "x": "y" } }),
         )
         .unwrap(),
-        RefusingBesideOpenVariant::Open {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned(),
-            }),
+        RefusingBesideOpenVariantDraft::Open {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned(),
+                }
+                .validate()
+                .unwrap()
+            )
+            .validate()
+            .unwrap(),
             x: "y".to_owned(),
         }
     );
@@ -4436,15 +4657,23 @@ fn test_a_multiplying_variant_defers_the_member_that_reaches_the_enum() {
 #[test]
 fn test_a_multiplying_recursive_variant_round_trips_every_branch() {
     for value in [
-        RecursiveChoiceVariant::Named {
-            choice: VariantChoice::Left(ChoiceLeft {
-                left: "l".to_owned(),
-            }),
+        RecursiveChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Left(
+                ChoiceLeftDraft {
+                    left: "l".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
             next: None,
         },
-        RecursiveChoiceVariant::Named {
-            choice: VariantChoice::Right(ChoiceRight { right: 3 }),
-            next: Some(Box::new(RecursiveChoiceVariant::Plain {
+        RecursiveChoiceVariantDraft::Named {
+            choice: VariantChoiceDraft::Right(ChoiceRightDraft { right: 3 }.validate().unwrap())
+                .validate()
+                .unwrap(),
+            next: Some(Box::new(RecursiveChoiceVariantDraft::Plain {
                 y: "p".to_owned(),
             })),
         },

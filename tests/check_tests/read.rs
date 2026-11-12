@@ -7,8 +7,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::models::{
-    Batch, ClosedDock, Code, Crate, Grade, Handover, Pallet, Reference, Route, Shipment, Stack,
-    Transfer, parcels,
+    Batch, ClosedDock, ClosedDockDraft, Code, Crate, CrateDraft, Grade, GradeDraft, Handover,
+    HandoverDraft, Pallet, PalletDraft, Reference, ReferenceDraft, Route, RouteDraft, Shipment,
+    ShipmentDraft, Stack, StackDraft, Transfer, TransferDraft, parcels,
 };
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -41,31 +42,38 @@ where
 #[test]
 fn a_struct_is_read_as_validate_answers() {
     for held in parcels() {
-        read_as_validated(&held, held.validate());
+        read_as_validated(&held, held.validate().map(|_valid| ()));
     }
     for stops in [texts(&[]), texts(&["a"])] {
-        let route = Route { stops };
-        read_as_validated(&route, route.validate());
+        let route = RouteDraft { stops };
+        read_as_validated(&route, route.validate().map(|_valid| ()));
     }
     for (codes, limit) in [
         (texts(&["a", "a"]), 5),
         (texts(&["a", "b"]), 1),
         (texts(&["a"]), 1),
     ] {
-        let stack = Stack(codes, limit);
-        read_as_validated(&stack, stack.validate());
+        let stack = StackDraft(codes, limit);
+        read_as_validated(&stack, stack.validate().map(|_valid| ()));
     }
     for codes in [texts(&["a", "b", "c"]), texts(&["a"])] {
-        let pallet = Pallet { codes };
-        read_as_validated(&pallet, pallet.validate());
+        let pallet = PalletDraft { codes };
+        read_as_validated(&pallet, pallet.validate().map(|_valid| ()));
     }
-    read_as_validated(&ClosedDock, ClosedDock.validate());
-    assert!(parcels().iter().any(|held| held.validate().is_err()));
+    read_as_validated(
+        &ClosedDockDraft,
+        ClosedDockDraft.validate().map(|_valid| ()),
+    );
+    assert!(
+        parcels()
+            .iter()
+            .any(|held| !held.validation_issues().is_empty())
+    );
 }
 
 #[test]
 fn an_enum_is_read_as_validate_answers_under_each_form_serde_writes_one_in() {
-    let air = |stops: &[&str]| Shipment::Air {
+    let air = |stops: &[&str]| ShipmentDraft::Air {
         flight: "F1".to_owned(),
         stops: texts(stops),
     };
@@ -73,58 +81,62 @@ fn an_enum_is_read_as_validate_answers_under_each_form_serde_writes_one_in() {
         air(&["a", "b", "c"]),
         air(&["a", "a"]),
         air(&["a"]),
-        Shipment::Ground {
+        ShipmentDraft::Ground {
             stops: texts(&["a", "b", "c"]),
         },
     ] {
-        read_as_validated(&shipment, shipment.validate());
+        read_as_validated(&shipment, shipment.validate().map(|_valid| ()));
     }
     for transfer in [
-        Transfer::Road { stops: Vec::new() },
-        Transfer::Rail(String::new()),
-        Transfer::Rail("north".to_owned()),
-        Transfer::Held,
+        TransferDraft::Road { stops: Vec::new() },
+        TransferDraft::Rail(String::new()),
+        TransferDraft::Rail("north".to_owned()),
+        TransferDraft::Held,
     ] {
-        read_as_validated(&transfer, transfer.validate());
+        read_as_validated(&transfer, transfer.validate().map(|_valid| ()));
     }
     for handover in [
-        Handover::Signed { by: String::new() },
-        Handover::Left("porch".to_owned()),
+        HandoverDraft::Signed { by: String::new() },
+        HandoverDraft::Left("porch".to_owned()),
     ] {
-        read_as_validated(&handover, handover.validate());
+        read_as_validated(&handover, handover.validate().map(|_valid| ()));
     }
     for reference in [
-        Reference::Numbered(0),
-        Reference::Numbered(7),
-        Reference::Named {
+        ReferenceDraft::Numbered(0),
+        ReferenceDraft::Numbered(7),
+        ReferenceDraft::Named {
             name: String::new(),
         },
-        Reference::Named {
+        ReferenceDraft::Named {
             name: "north".to_owned(),
         },
     ] {
-        read_as_validated(&reference, reference.validate());
+        read_as_validated(&reference, reference.validate().map(|_valid| ()));
     }
-    for grade in [Grade::Unrated, Grade::Express, Grade::Standard] {
-        read_as_validated(&grade, grade.validate());
+    for grade in [
+        GradeDraft::Unrated,
+        GradeDraft::Express,
+        GradeDraft::Standard,
+    ] {
+        read_as_validated(&grade, grade.validate().map(|_valid| ()));
     }
 }
 
 #[test]
 fn a_type_with_a_parameter_is_read_as_validate_answers_at_each_filling() {
     for codes in [texts(&[]), texts(&["a"])] {
-        let filled = Crate {
+        let filled = CrateDraft {
             codes,
             label: "c".to_owned(),
         };
-        read_as_validated(&filled, filled.validate());
+        read_as_validated(&filled, filled.validate().map(|_valid| ()));
     }
     for codes in [Vec::<u32>::new(), vec![7]] {
-        let counted = Crate {
+        let counted = CrateDraft {
             codes,
             label: "c".to_owned(),
         };
-        read_as_validated(&counted, counted.validate());
+        read_as_validated(&counted, counted.validate().map(|_valid| ()));
     }
 }
 

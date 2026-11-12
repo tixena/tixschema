@@ -87,13 +87,13 @@ mod tests {
     use bson::{Bson, Document, doc};
 
     use super::{
-        Branch, Keyed, Leaf, Listed, Root, Trunk, keyed_schema, leaf_schema, listed_schema,
-        root_schema,
+        Branch, BranchDraft, Keyed, KeyedDraft, Leaf, LeafDraft, Listed, ListedDraft, Root,
+        RootDraft, Trunk, TrunkDraft, keyed_schema, leaf_schema, listed_schema, root_schema,
     };
     use crate::tests::shown;
 
     fn leaf() -> Leaf {
-        Leaf {
+        LeafDraft {
             last: "f".to_owned(),
             text_0: "a".to_owned(),
             text_1: "b".to_owned(),
@@ -101,25 +101,33 @@ mod tests {
             text_3: "Clerk".to_owned(),
             text_4: "e".to_owned(),
         }
+        .validate()
+        .unwrap()
     }
 
     /// One trunk that holds one branch under `branch_4`, which holds one leaf under `leaf_1`.
     fn trunk() -> Trunk {
-        Trunk {
+        TrunkDraft {
             branch_0: Vec::new(),
             branch_1: Vec::new(),
             branch_2: Vec::new(),
             branch_3: Vec::new(),
-            branch_4: vec![Branch {
-                last: Vec::new(),
-                leaf_0: Vec::new(),
-                leaf_1: vec![leaf()],
-                leaf_2: Vec::new(),
-                leaf_3: Vec::new(),
-                leaf_4: Vec::new(),
-            }],
+            branch_4: vec![
+                BranchDraft {
+                    last: Vec::new(),
+                    leaf_0: Vec::new(),
+                    leaf_1: vec![leaf()],
+                    leaf_2: Vec::new(),
+                    leaf_3: Vec::new(),
+                    leaf_4: Vec::new(),
+                }
+                .validate()
+                .unwrap(),
+            ],
             last: Vec::new(),
         }
+        .validate()
+        .unwrap()
     }
 
     /// [`trunk`] as it is stored, with `text_3` of its one leaf holding `text_3`.
@@ -166,7 +174,7 @@ mod tests {
 
     #[test]
     fn a_row_of_the_widest_type_is_read_by_both_entry_points() {
-        let root = Root {
+        let root = RootDraft {
             last: Vec::new(),
             trunk_0: Vec::new(),
             trunk_1: Vec::new(),
@@ -176,13 +184,13 @@ mod tests {
         };
         assert_eq!(
             Root::from_bson_piped(stored_root(clerk()), &[]),
-            Ok(root.clone())
+            Ok(root.clone().validate().unwrap())
         );
         assert_eq!(
             Root::from_bson_with(stored_root(clerk()), |_row, _issues| {
                 root_schema::Verdict::Reject
             }),
-            Ok(root)
+            Ok(root.validate().unwrap())
         );
     }
 
@@ -204,16 +212,18 @@ mod tests {
                 doc! { "kind": "Second", "list": [stored_trunk(clerk())] },
                 &[]
             ),
-            Ok(Listed::Second(vec![trunk()]))
+            Ok(ListedDraft::Second(vec![trunk()]).validate().unwrap())
         );
         assert_eq!(
             Keyed::from_bson_piped(
                 doc! { "kind": "Fourth", "trunks": [stored_trunk(clerk())] },
                 &[]
             ),
-            Ok(Keyed::Fourth {
+            Ok(KeyedDraft::Fourth {
                 trunks: vec![trunk()]
-            })
+            }
+            .validate()
+            .unwrap())
         );
     }
 

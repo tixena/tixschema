@@ -279,7 +279,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "each brand as an optional member",
             "Lockers",
-            &Lockers {
+            &LockersDraft {
                 arrivals: Some(arrivals(vec![second])),
                 hoarded: Some(Hoarded::new(held()).unwrap()),
                 landfall: Some(PlainLandfall::new(first).unwrap()),
@@ -289,7 +289,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "no brand as an optional member",
             "Lockers",
-            &Lockers {
+            &LockersDraft {
                 arrivals: None,
                 hoarded: None,
                 landfall: None,

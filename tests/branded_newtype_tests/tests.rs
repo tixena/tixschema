@@ -360,7 +360,7 @@ mod constrained_branded_tests {
             serde_json::to_value("not-a-hex-id".to_owned()).unwrap(),
         )
         .unwrap();
-        assert!(invalid.validate().is_err());
+        assert!(!invalid.validation_issues().is_empty());
     }
 }
 
@@ -1249,7 +1249,7 @@ mod branded_display_tests {
 
     #[test]
     fn test_branded_display_over_a_sibling_inner_with_its_own_display_impl() {
-        let wrapped = WrapsDisplay::new(DisplayInner {
+        let wrapped = WrapsDisplay::new(DisplayInnerDraft {
             value: "xyz".to_owned(),
         })
         .unwrap();
@@ -2023,7 +2023,7 @@ mod branded_sibling_inner_tests {
 
     #[test]
     fn a_sibling_brand_writes_the_object_its_inner_writes() {
-        let part = Part {
+        let part = PartDraft {
             a: "a".to_owned(),
             b: 1,
         };
@@ -2607,7 +2607,7 @@ mod constrained_path_brand_tests {
         let accepted = serde_json::from_str::<AssetPath>("\"/etc\"").unwrap();
         assert_eq!(accepted, AssetPath::new(PathBuf::from("/etc")).unwrap());
         assert!(
-            accepted.validate().is_ok(),
+            accepted.validation_issues().is_empty(),
             "A payload the wire admits must be one validate() admits: {:?}",
             accepted.validate().err()
         );

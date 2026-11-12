@@ -239,7 +239,7 @@ where
 /// Holds Rust's read of each of [`PAYLOADS`] to what it answers: a set keeps one item of a
 /// repeat, and a count is held to what is left of it.
 pub fn assert_rust_keeps_one_item() {
-    let ticket = |tags: &[&str]| Ticket { tags: texts(tags) };
+    let ticket = |tags: &[&str]| TicketDraft { tags: texts(tags) };
     assert_eq!(
         read("repeated tags"),
         Ok(ticket(&["a"])),
@@ -252,8 +252,8 @@ pub fn assert_rust_keeps_one_item() {
     );
     assert_eq!(
         read("held tags"),
-        Ok(Folder {
-            ticket: ticket(&["a"])
+        Ok(FolderDraft {
+            ticket: ticket(&["a"]).validate().unwrap()
         }),
         "a set in a held model keeps one item of a repeat"
     );
@@ -266,10 +266,10 @@ pub fn assert_rust_keeps_one_item() {
         ),
         "a count is held to what is left of each set, and a list keeps both items"
     );
-    let point = |x: u32, y: u32| Point { x, y };
+    let point = |x: u32, y: u32| PointDraft { x, y };
     assert_eq!(
         read("nested repeated"),
-        Ok(Nesting {
+        Ok(NestingDraft {
             grid: vec![HashSet::from([1, 2]), HashSet::from([3])],
             keyed: BTreeMap::from([("k".to_owned(), BTreeSet::from([4]))]),
             listed: HashSet::from([vec![1, 2]]),
@@ -280,7 +280,7 @@ pub fn assert_rust_keeps_one_item() {
     );
     assert_eq!(
         read("nested distinct"),
-        Ok(Nesting {
+        Ok(NestingDraft {
             grid: vec![HashSet::from([1, 2])],
             keyed: BTreeMap::from([("k".to_owned(), BTreeSet::from([4]))]),
             listed: HashSet::from([vec![1, 2], vec![2, 1]]),
@@ -296,39 +296,39 @@ pub fn assert_rust_keeps_one_item() {
     );
     assert_eq!(
         read("slot"),
-        Ok(Pouch(BTreeSet::from([1]), 2)),
+        Ok(PouchDraft(BTreeSet::from([1]), 2)),
         "a set in a slot keeps one item of a repeat"
     );
     assert_eq!(
         read("variant member"),
-        Ok(Shelving::Loose {
+        Ok(ShelvingDraft::Loose {
             members: texts(&["a"])
         }),
         "a set in a variant's member keeps one item of a repeat"
     );
     assert_eq!(
         read("variant slot"),
-        Ok(Shelving::Bundle(BTreeSet::from([1]))),
+        Ok(ShelvingDraft::Bundle(BTreeSet::from([1]))),
         "a set in a variant's slot keeps one item of a repeat"
     );
     assert_eq!(
         read("untagged labels"),
-        Ok(Sorting::Labels {
+        Ok(SortingDraft::Labels {
             labels: texts(&["a"])
         }),
         "a repeated label chooses the variant of labels, which keeps one"
     );
     assert_eq!(
         read("untagged numbers"),
-        Ok(Sorting::Numbers {
+        Ok(SortingDraft::Numbers {
             numbers: BTreeSet::from([1])
         }),
         "a repeated number chooses the variant of numbers, which keeps one"
     );
     assert_eq!(
         read("filled"),
-        Ok(Wallet {
-            coins: BTreeSet::from([Coin { id: "a".to_owned() }])
+        Ok(WalletDraft {
+            coins: BTreeSet::from([CoinDraft { id: "a".to_owned() }])
         }),
         "a set of a model filled with the holder's parameter keeps one item of a repeat"
     );

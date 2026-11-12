@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.
 macro_rules! listed {
@@ -339,23 +339,31 @@ where
 }
 
 fn drawing() -> Drawing {
-    Drawing {
-        fill: Fill::Versioned(Version { number: 3_i32 }),
-        outline: Outline::Circle { radius: 1.5_f64 },
-        stroke: Stroke::Dashed { gap: 2 },
+    DrawingDraft {
+        fill: FillDraft::Versioned(VersionDraft { number: 3_i32 }.validate().unwrap())
+            .validate()
+            .unwrap(),
+        outline: OutlineDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
+        stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn route() -> Route {
-    Route {
-        contact: Contact::Phone {
+    RouteDraft {
+        contact: ContactDraft::Phone {
             country: 1_i32,
             digits: "555".to_owned(),
-        },
-        gauge: Gauge::Span(1, 2),
-        next: Move::To(1_i32, 2_i32),
-        status: Status::Draft,
+        }
+        .validate()
+        .unwrap(),
+        gauge: GaugeDraft::Span(1, 2).validate().unwrap(),
+        next: MoveDraft::To(1_i32, 2_i32).validate().unwrap(),
+        status: StatusDraft::Draft.validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -387,11 +395,13 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     });
     assert_eq!(
         unit_read,
-        Ok(Drawing {
-            fill: Fill::Clear,
-            outline: Outline::Empty,
-            stroke: Stroke::Hairline,
-        })
+        Ok(DrawingDraft {
+            fill: FillDraft::Clear.validate().unwrap(),
+            outline: OutlineDraft::Empty.validate().unwrap(),
+            stroke: StrokeDraft::Hairline.validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
 
     let single = json!({
@@ -405,13 +415,17 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     });
     assert_eq!(
         single_read,
-        Ok(Drawing {
-            fill: Fill::Solid {
+        Ok(DrawingDraft {
+            fill: FillDraft::Solid {
                 color: "red".to_owned(),
-            },
-            outline: Outline::Label("x".to_owned()),
-            stroke: Stroke::Width(4),
-        })
+            }
+            .validate()
+            .unwrap(),
+            outline: OutlineDraft::Label("x".to_owned()).validate().unwrap(),
+            stroke: StrokeDraft::Width(4).validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
 
     let routed = serde_json::to_value(route()).unwrap();
@@ -456,20 +470,22 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
 #[test]
 fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     let mut calls = 0_u32;
-    let written = serde_json::to_value(Review {
-        status: StatusRef::new(Status::Draft).unwrap(),
+    let written = serde_json::to_value(ReviewDraft {
+        status: StatusRef::new(StatusDraft::Draft).unwrap(),
     })
     .unwrap();
     assert_eq!(written, json!({ "status": "Draft" }));
     assert_eq!(
         read_counting!(Review, review_schema, written, calls),
-        Ok(Review {
-            status: StatusRef::new(Status::Draft).unwrap(),
-        })
+        Ok(ReviewDraft {
+            status: StatusRef::new(StatusDraft::Draft).unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read_counting!(StatusRef, status_ref_schema, json!("Published"), calls),
-        Ok(StatusRef::new(Status::Published).unwrap())
+        Ok(StatusRef::new(StatusDraft::Published).unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -655,7 +671,7 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
     let stored = json!({ "kind": "Warp", "speed": 9_i32 });
     assert_eq!(
         serde_json::from_value::<Signal>(stored.clone()).unwrap(),
-        Signal::Unrecognized
+        SignalDraft::Unrecognized.validate().unwrap()
     );
     assert_eq!(
         listed!(Signal, signal_schema, stored),
@@ -764,7 +780,7 @@ fn an_adjacently_tagged_unit_variant_walks_nothing_under_the_content_key() {
             stroke_schema::Verdict::Reject
         },
     );
-    assert_eq!(read, Ok(Stroke::Hairline));
+    assert_eq!(read, Ok(StrokeDraft::Hairline.validate().unwrap()));
     assert_eq!(calls, 0);
     let stored = json!({ "data": 5_i32, "kind": "Hairline" });
     assert!(!serde_reads::<Stroke>(&stored));
@@ -786,7 +802,7 @@ fn an_adjacently_tagged_optional_value_reads_its_absence() {
             calls += 1;
             gauge_schema::Verdict::Reject
         });
-        assert_eq!(read, Ok(Gauge::Level(None)));
+        assert_eq!(read, Ok(GaugeDraft::Level(None).validate().unwrap()));
     }
     assert_eq!(calls, 0);
     assert_eq!(
@@ -960,9 +976,11 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     let email = json!({ "address": "ann@example.org", "legacy": true });
     assert_eq!(
         serde_json::from_value::<Contact>(email.clone()).unwrap(),
-        Contact::Email {
+        ContactDraft::Email {
             address: "ann@example.org".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         listed!(Contact, contact_schema, email),
@@ -978,14 +996,14 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     );
     let mut calls = 0_u32;
     for (stored, token) in [
-        (json!("word"), Token::Word("word".to_owned())),
-        (json!([1_i32, 2_i32]), Token::Codes(vec![1, 2])),
+        (json!("word"), TokenDraft::Word("word".to_owned())),
+        (json!([1_i32, 2_i32]), TokenDraft::Codes(vec![1, 2])),
     ] {
         let read = Token::from_value_with(stored, |_raw, _found| {
             calls += 1;
             token_schema::Verdict::Reject
         });
-        assert_eq!(read, Ok(token));
+        assert_eq!(read, Ok(token.validate().unwrap()));
     }
     assert_eq!(calls, 0);
 }
@@ -1022,24 +1040,24 @@ fn an_untagged_variant_over_a_plain_value_is_read_whole() {
 fn variants_and_their_fields_are_walked_under_their_wire_names() {
     let mut calls = 0_u32;
     for shipment in [
-        Shipment::ByAir {
+        ShipmentDraft::ByAir {
             flight_code: "TX1".to_owned(),
         },
-        Shipment::BySea {
+        ShipmentDraft::BySea {
             vessel_name: "Ada".to_owned(),
         },
-        Shipment::InPerson,
+        ShipmentDraft::InPerson,
     ] {
         let written = serde_json::to_value(&shipment).unwrap();
         let read = Shipment::from_value_with(written, |_raw, _found| {
             calls += 1;
             shipment_schema::Verdict::Reject
         });
-        assert_eq!(read, Ok(shipment));
+        assert_eq!(read, Ok(shipment.validate().unwrap()));
     }
     assert_eq!(calls, 0);
     assert_eq!(
-        serde_json::to_value(Shipment::ByAir {
+        serde_json::to_value(ShipmentDraft::ByAir {
             flight_code: "TX1".to_owned(),
         })
         .unwrap(),
@@ -1075,7 +1093,7 @@ fn variants_and_their_fields_are_walked_under_their_wire_names() {
 
     assert_eq!(
         Pace::from_value_with(json!("halt"), |_raw, _found| pace_schema::Verdict::Reject),
-        Ok(Pace::StandStill)
+        Ok(PaceDraft::StandStill.validate().unwrap())
     );
     assert_eq!(
         listed!(
@@ -1188,10 +1206,10 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
     );
     let mut calls = 0_u32;
     for (stored, answer) in [
-        (json!("Empty"), Answer::Empty),
+        (json!("Empty"), AnswerDraft::Empty),
         (
             json!({ "Value": { "number": 3_i32 } }),
-            Answer::Value(Version { number: 3_i32 }),
+            AnswerDraft::Value(VersionDraft { number: 3_i32 }),
         ),
     ] {
         let read = Answer::<Version>::from_value_with(stored, |_raw, _found| {
@@ -1223,7 +1241,7 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
         Either::<String>::from_value_with(json!({ "left": "l" }), |_raw, _found| {
             either_schema::Verdict::Reject
         }),
-        Ok(Either::Left {
+        Ok(EitherDraft::Left {
             left: "l".to_owned(),
         })
     );
@@ -1256,7 +1274,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Coating, coating_schema, json!({ "kind": "Blank" }), calls),
-        Ok(Coating::Clear)
+        Ok(CoatingDraft::Clear.validate().unwrap())
     );
     assert_eq!(
         read_counting!(
@@ -1265,13 +1283,15 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             json!({ "color": "red", "kind": "Solid" }),
             calls
         ),
-        Ok(Coating::Solid {
+        Ok(CoatingDraft::Solid {
             color: "red".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read_counting!(Contour, contour_schema, json!("Blank"), calls),
-        Ok(Contour::Empty)
+        Ok(ContourDraft::Empty.validate().unwrap())
     );
     assert_eq!(
         read_counting!(
@@ -1280,12 +1300,12 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             json!({ "Round": { "radius": 1.5_f64 } }),
             calls
         ),
-        Ok(Contour::Circle { radius: 1.5_f64 })
+        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
     );
     for key in ["Jump", "Hop", "Leap"] {
         assert_eq!(
             read_counting!(Trail, trail_schema, json!({ key: [1_i32, 2_i32] }), calls),
-            Ok(Trail::Jump(1_i32, 2_i32)),
+            Ok(TrailDraft::Jump(1_i32, 2_i32).validate().unwrap()),
             "for {key}"
         );
     }
@@ -1296,7 +1316,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             json!({ "Lane": { "len": 3_i32 } }),
             calls
         ),
-        Ok(Trail::Road { length: 3 })
+        Ok(TrailDraft::Road { length: 3 }.validate().unwrap())
     );
     for tag in ["Dashed", "Dotted", "Broken"] {
         assert_eq!(
@@ -1306,13 +1326,13 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
                 json!({ "data": { "gap": 2_i32 }, "kind": tag }),
                 calls
             ),
-            Ok(Dash::Dashed { gap: 2 }),
+            Ok(DashDraft::Dashed { gap: 2 }.validate().unwrap()),
             "for {tag}"
         );
     }
     assert_eq!(
         read_counting!(Dash, dash_schema, json!({ "kind": "Hairline" }), calls),
-        Ok(Dash::Hairline)
+        Ok(DashDraft::Hairline.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1384,7 +1404,10 @@ fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
         }
         contour_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(Contour::Circle { radius: 1.5_f64 }));
+    assert_eq!(
+        read,
+        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
+    );
 }
 
 #[test]
@@ -1414,7 +1437,7 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
 
 #[test]
 fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
-    let hidden = serde_json::to_value(Coating::Hidden).unwrap();
+    let hidden = serde_json::to_value(CoatingDraft::Hidden).unwrap();
     assert_eq!(hidden, json!({ "kind": "Hidden" }));
     assert!(!serde_reads::<Coating>(&hidden));
     assert_eq!(
@@ -1428,7 +1451,7 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
         ["kind: missing: expected Variants([\"Clear\", \"Blank\", \"Solid\"])"]
     );
 
-    let faded = serde_json::to_value(Dash::Faded(3)).unwrap();
+    let faded = serde_json::to_value(DashDraft::Faded(3)).unwrap();
     assert_eq!(faded, json!({ "data": 3_i32, "kind": "Faded" }));
     assert!(!serde_reads::<Dash>(&faded));
     assert_eq!(
@@ -1439,7 +1462,9 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     );
 
     assert_eq!(
-        serde_json::to_value(Trail::Lost).unwrap_err().to_string(),
+        serde_json::to_value(TrailDraft::Lost)
+            .unwrap_err()
+            .to_string(),
         "the enum variant Trail::Lost cannot be serialized"
     );
     let named = json!("Lost");
@@ -1462,7 +1487,7 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
 
 #[test]
 fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
-    let stored = serde_json::to_value(Reach::Pager { number: 7_i32 }).unwrap();
+    let stored = serde_json::to_value(ReachDraft::Pager { number: 7_i32 }).unwrap();
     assert_eq!(stored, json!({ "number": 7_i32 }));
     assert!(!serde_reads::<Reach>(&stored));
     let read = Reach::from_value_with(stored, |_raw, _found| reach_schema::Verdict::Reject);
@@ -1497,9 +1522,11 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
     let email = json!({ "address": "ann@example.org", "legacy": true });
     assert_eq!(
         serde_json::from_value::<Reach>(email.clone()).unwrap(),
-        Reach::Email {
+        ReachDraft::Email {
             address: "ann@example.org".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         listed!(Reach, reach_schema, email),
@@ -1513,10 +1540,12 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
             json!({ "country": 1_i32, "digits": "555" }),
             calls
         ),
-        Ok(Reach::Phone {
+        Ok(ReachDraft::Phone {
             country: 1_i32,
             digits: "555".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1525,7 +1554,7 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
 #[test]
 fn a_variant_serde_reads_and_never_writes_is_walked() {
     assert_eq!(
-        serde_json::to_value(Trail::Old { length: 3 })
+        serde_json::to_value(TrailDraft::Old { length: 3 })
             .unwrap_err()
             .to_string(),
         "the enum variant Trail::Old cannot be serialized"
@@ -1538,7 +1567,7 @@ fn a_variant_serde_reads_and_never_writes_is_walked() {
             json!({ "Old": { "length": 3_i32 } }),
             calls
         ),
-        Ok(Trail::Old { length: 3 })
+        Ok(TrailDraft::Old { length: 3 }.validate().unwrap())
     );
     assert_eq!(calls, 0);
     let stored = json!({ "Old": { "extra": true, "length": "x" } });

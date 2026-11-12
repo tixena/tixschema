@@ -221,7 +221,7 @@ impl DartDocumentService<()> for Archive {
         _req: McpDraftBatch,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn check_many(
@@ -230,7 +230,7 @@ impl DartDocumentService<()> for Archive {
         _req: Vec<McpVersionRequest>,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn check_maybe(
@@ -239,7 +239,7 @@ impl DartDocumentService<()> for Archive {
         _req: Option<McpVersionRequest>,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn check_named(
@@ -248,7 +248,7 @@ impl DartDocumentService<()> for Archive {
         _req: BTreeMap<String, McpVersionRequest>,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn check_pair(
@@ -258,7 +258,7 @@ impl DartDocumentService<()> for Archive {
         _second: McpVersionRequest,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn get_tagged(
@@ -268,7 +268,7 @@ impl DartDocumentService<()> for Archive {
         _known_tag: Option<String>,
     ) -> Result<(McpVersionResponse, String), McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn get_version(
@@ -277,7 +277,7 @@ impl DartDocumentService<()> for Archive {
         req: McpVersionRequest,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Ok(McpVersionResponse {
+        Ok(McpVersionResponseDraft {
             version: u32::try_from(req.document_id.len()).unwrap_or_default(),
         })
     }
@@ -288,7 +288,7 @@ impl DartDocumentService<()> for Archive {
         _id: McpDocumentId,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn rename_document(
@@ -313,9 +313,11 @@ impl DartBillingService<()> for Archive {
         req: McpInvoiceRequest,
     ) -> Result<McpInvoiceList, McpVersionError> {
         ready(()).await;
-        Ok(McpInvoiceList {
+        Ok(McpInvoiceListDraft {
             invoices: vec![req.organization],
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -341,6 +343,6 @@ impl AuditService<()> for Archive {
         _req: McpVersionRequest,
     ) -> Result<McpVersionResponse, McpVersionError> {
         ready(()).await;
-        Err(McpVersionError::NotFound)
+        Err(McpVersionErrorDraft::NotFound.validate().unwrap())
     }
 }

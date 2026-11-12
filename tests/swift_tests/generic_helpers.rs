@@ -178,18 +178,20 @@ fn at_one<Held>(held: Held) -> HashMap<u32, Held> {
 
 #[test]
 fn each_struct_is_written_as_serde_writes_it() {
-    let cask = Cask {
+    let cask = CaskDraft {
         contents: "c".to_owned(),
         label: "l".to_owned(),
     };
-    let stack = Stack {
-        by_cask: at_one(cask),
+    let stack = StackDraft {
+        by_cask: at_one(cask.validate().unwrap()),
         by_count: at_one(2),
         by_number: at_one("n".to_owned()),
-        cask: Cask {
+        cask: CaskDraft {
             contents: ("t".to_owned(), 3),
             label: "l".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         listed: vec![at_one("i".to_owned())],
         marks: (4, 5),
         numbered_pair: (at_one("p".to_owned()), 6),
@@ -201,21 +203,24 @@ fn each_struct_is_written_as_serde_writes_it() {
         r#"{"by_cask":{"1":{"contents":"c","label":"l"}},"by_count":{"1":2},"by_number":{"1":"n"},"cask":{"contents":["t",3],"label":"l"},"listed":[{"1":"i"}],"marks":[4,5],"numbered_pair":[{"1":"p"},6],"pair":["q",7],"paired_by_number":{"1":["r",8]}}"#
     );
     assert_eq!(
-        read_back(&Pile {
+        read_back(&PileDraft {
             by_count: at_one(2),
             marks: (3, 4),
         }),
         r#"{"by_count":{"1":2},"marks":[3,4]}"#
     );
     assert_eq!(
-        read_back(&Ranked {
+        read_back(&RankedDraft {
             by_stowed: HashMap::from([("s".to_owned(), 1)]),
         }),
         r#"{"by_stowed":{"s":1}}"#
     );
-    assert_eq!(read_back(&Tally(("a".to_owned(), 1), 2)), r#"[["a",1],2]"#);
     assert_eq!(
-        read_back(&Register(at_one("a".to_owned()), 2)),
+        read_back(&TallyDraft(("a".to_owned(), 1), 2)),
+        r#"[["a",1],2]"#
+    );
+    assert_eq!(
+        read_back(&RegisterDraft(at_one("a".to_owned()), 2)),
         r#"[{"1":"a"},2]"#
     );
     assert_eq!(
@@ -232,18 +237,21 @@ fn each_struct_is_written_as_serde_writes_it() {
 fn each_variant_is_written_as_its_tagging_writes_it() {
     let pair = ("b".to_owned(), 2);
     for (held, written) in [
-        (Split::Halves("a".to_owned(), 1), r#"{"Halves":["a",1]}"#),
         (
-            Split::Keyed(at_one("a".to_owned()), 2),
+            SplitDraft::Halves("a".to_owned(), 1),
+            r#"{"Halves":["a",1]}"#,
+        ),
+        (
+            SplitDraft::Keyed(at_one("a".to_owned()), 2),
             r#"{"Keyed":[{"1":"a"},2]}"#,
         ),
         (
-            Split::Numbered(at_one("a".to_owned())),
+            SplitDraft::Numbered(at_one("a".to_owned())),
             r#"{"Numbered":{"1":"a"}}"#,
         ),
-        (Split::Paired(pair.clone()), r#"{"Paired":["b",2]}"#),
+        (SplitDraft::Paired(pair.clone()), r#"{"Paired":["b",2]}"#),
         (
-            Split::Stacked {
+            SplitDraft::Stacked {
                 by_number: at_one("a".to_owned()),
                 pair: pair.clone(),
             },
@@ -253,31 +261,31 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         assert_eq!(read_back(&held), written);
     }
     assert_eq!(
-        read_back(&TaggedSplit::Stacked {
-            by_deck: HashMap::from([(Deck::Upper, "a".to_owned())]),
+        read_back(&TaggedSplitDraft::Stacked {
+            by_deck: HashMap::from([(DeckDraft::Upper, "a".to_owned())]),
             pair: pair.clone(),
         }),
         r#"{"kind":"Stacked","by_deck":{"Upper":"a"},"pair":["b",2]}"#
     );
     for (held, written) in [
         (
-            AdjacentSplit::Halves("a".to_owned(), 1),
+            AdjacentSplitDraft::Halves("a".to_owned(), 1),
             r#"{"kind":"Halves","held":["a",1]}"#,
         ),
         (
-            AdjacentSplit::Keyed(at_one("a".to_owned()), 2),
+            AdjacentSplitDraft::Keyed(at_one("a".to_owned()), 2),
             r#"{"kind":"Keyed","held":[{"1":"a"},2]}"#,
         ),
         (
-            AdjacentSplit::Numbered(at_one("a".to_owned())),
+            AdjacentSplitDraft::Numbered(at_one("a".to_owned())),
             r#"{"kind":"Numbered","held":{"1":"a"}}"#,
         ),
         (
-            AdjacentSplit::Paired(pair.clone()),
+            AdjacentSplitDraft::Paired(pair.clone()),
             r#"{"kind":"Paired","held":["b",2]}"#,
         ),
         (
-            AdjacentSplit::Stacked {
+            AdjacentSplitDraft::Stacked {
                 by_number: at_one("a".to_owned()),
                 pair: pair.clone(),
             },
@@ -288,13 +296,13 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     for (held, written) in [
         (
-            UntaggedSplit::Decked(HashMap::from([(Deck::Lower, "a".to_owned())])),
+            UntaggedSplitDraft::Decked(HashMap::from([(DeckDraft::Lower, "a".to_owned())])),
             r#"{"Lower":"a"}"#,
         ),
-        (UntaggedSplit::Paired(pair.clone()), r#"["b",2]"#),
+        (UntaggedSplitDraft::Paired(pair.clone()), r#"["b",2]"#),
         (
-            UntaggedSplit::Stacked {
-                by_deck: HashMap::from([(Deck::Lower, "a".to_owned())]),
+            UntaggedSplitDraft::Stacked {
+                by_deck: HashMap::from([(DeckDraft::Lower, "a".to_owned())]),
                 pair,
             },
             r#"{"by_deck":{"Lower":"a"},"pair":["b",2]}"#,

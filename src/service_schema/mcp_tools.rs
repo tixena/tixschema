@@ -6,6 +6,7 @@ use super::parse::{
     OperationOutcome, PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements,
     wire_key, written,
 };
+use super::support::draft_type_path;
 use super::transport::http_rest::openapi::message_type;
 use super::transport::mcp::prompts::prompt_entries;
 use super::transport::mcp::resource_entries;
@@ -692,6 +693,18 @@ fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenSt
     }
 }
 
+/// The names of the two methods that carry an interview's form, and the doc of its schema.
+fn form_names(operation: &OperationDef) -> (Ident, Ident, String) {
+    (
+        method_ident(operation, "mcp_form"),
+        method_ident(operation, "mcp_read_form"),
+        format!(
+            " The schema of the form `{}` asks with.",
+            operation.mcp_tool_name()
+        ),
+    )
+}
+
 /// What the dispatcher asks of the types only the declaration can name: whether the declared error
 /// is the arm that asks, the link and message that arm holds, the form's schema and the read of
 /// its answer.
@@ -711,6 +724,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         operation.mcp_tool_name()
     );
     let tagged = arm_tag_methods(operation, error, &arm.to_string());
+    let drafted = draft_type_path(error);
     let Some(answers) = interview.answers.as_ref() else {
         let link_doc = format!(
             " The link and the message of the arm `{}` asks the user with, where the error is it.",
@@ -719,7 +733,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         return Some(quote! {
             #[doc = #link_doc]
             pub fn #asks(error: &#error) -> ::core::option::Option<(&str, &str)> {
-                if let #error::#arm { url, message, .. } = error {
+                if let #drafted::#arm { url, message, .. } = &**error {
                     return ::core::option::Option::Some((url.as_str(), message.as_str()));
                 }
                 ::core::option::Option::None
@@ -735,14 +749,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         .iter()
         .find(|(field, _)| written(field) == written(answers))?;
     let form = option_inner(ty)?;
-    let (schema_name, read_name) = (
-        method_ident(operation, "mcp_form"),
-        method_ident(operation, "mcp_read_form"),
-    );
-    let schema_doc = format!(
-        " The schema of the form `{}` asks with.",
-        operation.mcp_tool_name()
-    );
+    let (schema_name, read_name, schema_doc) = form_names(operation);
     let run = run();
     let settled = settled_definitions();
     let in_place = form_in_place();
@@ -750,7 +757,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
     Some(quote! {
         #[doc = #doc]
         pub fn #asks(error: &#error) -> bool {
-            ::core::matches!(error, #error::#arm { .. })
+            ::core::matches!(&**error, #drafted::#arm { .. })
         }
 
         #tagged

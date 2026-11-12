@@ -9,7 +9,7 @@ use tixschema::model_schema;
 /// let item = DocumentedStruct {
 ///     label: "alpha".to_string(),
 /// };
-/// println!("Item: {:?}", item);
+/// println!("Item: {:?}", item);.into()
 /// ```
 #[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
@@ -24,7 +24,7 @@ pub struct DocumentedStruct {
 ///     BTreeMap,
 ///     HashMap,
 /// };
-/// let item = WrappedImportStruct {
+/// let item = WrappedImportStructDraft {
 ///     label: "alpha".to_string(),
 /// };
 /// println!("Item: {:?}", item);
@@ -89,7 +89,7 @@ pub enum DocumentedInternal {
 
 /// A documented untagged enum.
 /// ```rust example
-/// let item = DocumentedUntagged::Count(3);
+/// let item = DocumentedUntagged::CountDraft(3);
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -139,7 +139,7 @@ pub type UndocumentedCount = u32;
 pub struct DocumentedFieldHolder {
     /// A documented field.
     /// ```rust example
-    /// let item = DocumentedFieldHolder {
+    /// let item = DocumentedFieldHolderDraft {
     ///     label: "alpha".to_string(),
     /// };
     /// println!("Item: {:?}", item);
@@ -155,7 +155,7 @@ pub struct DocumentedFieldHolder {
 pub enum DocumentedInternalVariant {
     /// A documented variant.
     /// ```rust example
-    /// let item = DocumentedInternalVariant::Unit;
+    /// let item = DocumentedInternalVariantDraft::Unit;
     /// println!("Item: {:?}", item);
     /// ```
     Named {
@@ -171,7 +171,7 @@ pub enum DocumentedInternalVariant {
 pub enum DocumentedExternalVariant {
     /// A documented variant.
     /// ```rust example
-    /// let item = DocumentedExternalVariant::Unit;
+    /// let item = DocumentedExternalVariantDraft::Unit;
     /// println!("Item: {:?}", item);
     /// ```
     Named {
@@ -188,7 +188,7 @@ pub enum DocumentedExternalVariant {
 pub enum DocumentedSlotVariant {
     /// A documented slot.
     /// ```rust example
-    /// let item = DocumentedSlotVariant::Primary;
+    /// let item = DocumentedSlotVariantDraft::Primary;
     /// println!("Item: {:?}", item);
     /// ```
     Primary,
@@ -196,7 +196,7 @@ pub enum DocumentedSlotVariant {
 }
 
 /// ```rust example
-/// let item = ExampleOnlyStruct {
+/// let item = ExampleOnlyStructDraft {
 ///     label: "alpha".to_string(),
 /// };
 /// println!("Item: {:?}", item);
@@ -220,7 +220,7 @@ pub struct ExampleOnlyStruct {
 #[serde(tag = "kind")]
 pub enum ExampleOnlyVariantHolder {
     /// ```rust example
-    /// let item = ExampleOnlyVariantHolder::Unit;
+    /// let item = ExampleOnlyVariantHolderDraft::Unit;
     /// println!("Item: {:?}", item);
     /// ```
     Named {
@@ -238,7 +238,7 @@ pub enum ExampleOnlyVariantHolder {
 pub type ExampleOnlyAlias = u32;
 
 /// ```rust example
-/// let item = ExampleOnlySlot::Primary;
+/// let item = ExampleOnlySlotDraft::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -402,9 +402,11 @@ fn a_documented_alias_publishes_its_rust_example_as_one_example() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
-    let held: DocumentedStructRef = DocumentedStruct {
+    let held: DocumentedStructRef = DocumentedStructDraft {
         label: "alpha".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(held.label, "alpha");
     let zod = documented_struct_ref_schema::Schema::zod_schema();
     assert!(!zod.contains(".meta("), "Got: {zod}");

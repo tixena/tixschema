@@ -141,10 +141,10 @@ enum UserStatus {
 #[test]
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
-        ActionWithLiteralEnum::Generate {
+        ActionWithLiteralEnumDraft::Generate {
             value: DocumentLiteralValue::Document,
         },
-        ActionWithLiteralEnum::Upload {
+        ActionWithLiteralEnumDraft::Upload {
             value: String::new(),
         },
     ];
@@ -159,10 +159,10 @@ fn test_ts_zod_serde_enums_constructible() {
     ];
     assert_eq!(operators.len(), 6);
     let statuses = [
-        UserStatus::Active,
-        UserStatus::Inactive,
-        UserStatus::Pending,
-        UserStatus::Suspended,
+        UserStatusDraft::Active,
+        UserStatusDraft::Inactive,
+        UserStatusDraft::Pending,
+        UserStatusDraft::Suspended,
     ];
     assert_eq!(statuses.len(), 4);
 }
@@ -175,7 +175,10 @@ fn test_serde_mime_enums_constructible() {
         DistributionValidMimeType::ApplicationPdf,
     ];
     assert_eq!(distributions.len(), 2);
-    let mimes = [MimeType::ApplicationDocx, MimeType::ApplicationPdf];
+    let mimes = [
+        MimeTypeDraft::ApplicationDocx,
+        MimeTypeDraft::ApplicationPdf,
+    ];
     assert_eq!(mimes.len(), 2);
 }
 
@@ -183,16 +186,16 @@ fn test_serde_mime_enums_constructible() {
 #[test]
 fn test_payment_method_constructible() {
     let payments = [
-        PaymentMethod::BankTransfer {
+        PaymentMethodDraft::BankTransfer {
             account_number: String::new(),
             routing_number: String::new(),
         },
-        PaymentMethod::CreditCard {
+        PaymentMethodDraft::CreditCard {
             card_number: String::new(),
             cvv: String::new(),
             expiry_date: String::new(),
         },
-        PaymentMethod::PayPal {
+        PaymentMethodDraft::PayPal {
             email: String::new(),
         },
     ];
@@ -288,19 +291,19 @@ fn test_discriminated_union_json_schema() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_variants_json_schema() {
-    let payment_method = PaymentMethod::PayPal {
+    let payment_method = PaymentMethodDraft::PayPal {
         email: "test@test.com".to_owned(),
     };
     assert_ne!(Some(payment_method), None);
 
-    let payment_method_2 = PaymentMethod::CreditCard {
+    let payment_method_2 = PaymentMethodDraft::CreditCard {
         card_number: "1234567890".to_owned(),
         expiry_date: "12/2025".to_owned(),
         cvv: "123".to_owned(),
     };
     assert_ne!(Some(payment_method_2), None);
 
-    let payment_method_3 = PaymentMethod::BankTransfer {
+    let payment_method_3 = PaymentMethodDraft::BankTransfer {
         account_number: "1234567890".to_owned(),
         routing_number: "1234567890".to_owned(),
     };

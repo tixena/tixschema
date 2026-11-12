@@ -95,26 +95,32 @@ const fn found_by(_find: FindOne) {}
 /// An invoice of one customer, with every other field empty.
 #[cfg(feature = "bson")]
 fn invoice() -> Invoice {
-    let customer = Customer {
+    let customer = CustomerDraft {
         name: "Ada".to_owned(),
         open_invoices: 1,
     };
-    Invoice {
+    InvoiceDraft {
         by_region: HashMap::new(),
         count: 1,
-        customer,
+        customer: customer.validate().unwrap(),
         customers: Vec::new(),
         details: HashMap::new(),
         memo: None,
         number: "INV-1".to_owned(),
-        shelf: ShelfTag {
+        shelf: ShelfTagDraft {
             code: "A-1".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         tags: Vec::new(),
-        wrapped: Wrapper {
+        wrapped: WrapperDraft {
             held: "kept".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// `invoice()` as a BSON document, with `key` holding `value`.
@@ -139,7 +145,7 @@ fn a_lookup_has_no_mongodb_layer_in_any_build() {
 fn under_bson_a_lookup_reads_from_bson() {
     assert_eq!(
         InvoiceLookup::from_bson_piped(bson::doc! { "number": "INV-1" }, &[]),
-        Ok(InvoiceLookup {
+        Ok(InvoiceLookupDraft {
             number: "INV-1".to_owned()
         })
     );

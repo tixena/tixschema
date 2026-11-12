@@ -276,7 +276,7 @@ impl TallyingClientService<()> for TallyingBackEnd {
         ready(()).await;
         req.tally
             .checked_add(1)
-            .map(|sum| TallyCount { tally: sum })
+            .map(|sum| TallyCountDraft { tally: sum })
             .ok_or(TallyError::Refused)
     }
 
@@ -291,7 +291,7 @@ impl TallyingClientService<()> for TallyingBackEnd {
         tally
             .checked_add(limit.unwrap_or(0))
             .and_then(|sum| sum.checked_add(ledger))
-            .map(|sum| TallyCount { tally: sum })
+            .map(|sum| TallyCountDraft { tally: sum })
             .ok_or(TallyError::Refused)
     }
 }

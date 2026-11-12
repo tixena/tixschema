@@ -182,8 +182,9 @@ mod with_progress {
 }
 
 use crate::approval::{
-    Approvals, DeleteConfirmation, DeleteError, ImportError, ImportedDocument, PreviewError,
-    ReportRequest,
+    Approvals, DeleteConfirmation, DeleteConfirmationDraft, DeleteError, DeleteErrorDraft,
+    ImportError, ImportErrorDraft, ImportedDocument, ImportedDocumentDraft, PreviewError,
+    PreviewErrorDraft, ReportRequest, ReportRequestDraft,
 };
 use crate::approval_client::{ApprovalServiceClient, McpMessage, Transport};
 use crate::approval_mcp;
@@ -646,12 +647,18 @@ fn a_client_reads_the_blocks_back_into_the_pair_and_the_list() {
         (b"%PDF-".to_vec(), "application/pdf".to_owned())
     );
     assert!(matches!(
-        block_on(client.document_preview("nothing".to_owned())),
-        Err(CallError::Operation(PreviewError::NotFound))
+        &*block_on(client.document_preview("nothing".to_owned())),
+        Err(CallError::Operation(PreviewErrorDraft::NotFound))
     ));
-    let blocks = block_on(client.build_report(ReportRequest {
-        title: "Q3".to_owned(),
-    }))
+    let blocks = block_on(
+        client.build_report(
+            ReportRequestDraft {
+                title: "Q3".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(blocks.len(), 6);
     assert_eq!(
@@ -687,25 +694,27 @@ fn a_client_declares_no_capabilities_so_it_receives_the_arm_and_calls_again_with
     );
     let first = block_on(client.delete_document("doc-1".to_owned(), None));
     assert!(matches!(
-        first,
-        Err(CallError::Operation(DeleteError::NeedsConfirmation { message })) if !message.is_empty()
+        &*first,
+        Err(CallError::Operation(DeleteErrorDraft::NeedsConfirmation { message })) if !message.is_empty()
     ));
     block_on(client.delete_document(
         "doc-1".to_owned(),
-        Some(DeleteConfirmation { confirm: true }),
+        Some(DeleteConfirmationDraft { confirm: true }),
     ))
     .unwrap();
     block_on(client.ship_document("doc-1".to_owned(), None)).unwrap_err();
     let link = block_on(client.import_from_drive("1A2b3C".to_owned()));
     assert!(matches!(
-        link,
-        Err(CallError::Operation(ImportError::NeedsDriveConnection { url, message })) if !url.is_empty() && !message.is_empty()
+        &*link,
+        Err(CallError::Operation(ImportErrorDraft::NeedsDriveConnection { url, message })) if !url.is_empty() && !message.is_empty()
     ));
     approvals.connect();
     assert_eq!(
         block_on(client.import_from_drive("1A2b3C".to_owned())).unwrap(),
-        ImportedDocument {
+        ImportedDocumentDraft {
             document_id: "doc-1A2b3C".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }

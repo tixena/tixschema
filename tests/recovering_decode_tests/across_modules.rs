@@ -8,8 +8,8 @@ mod customers;
 use invoice_schema::DecodeWith as _;
 use serde_json::{Value, json};
 
-use self::billing::{Invoice, invoice_schema};
-use self::customers::{Customer, customer_schema};
+use self::billing::{Invoice, InvoiceDraft, invoice_schema};
+use self::customers::{Customer, CustomerDraft, customer_schema};
 
 /// An invoice whose customer holds its count of open invoices as text.
 fn stored() -> Value {
@@ -91,11 +91,13 @@ fn one_resolver_serves_the_types_of_both_modules() {
     let settled: &[invoice_schema::Resolver<'_, Value, Value>] = &[&count_as_text];
     assert_eq!(
         Invoice::from_value_piped(stored(), settled).ok(),
-        Some(Invoice {
-            customer: Customer {
+        Some(InvoiceDraft {
+            customer: CustomerDraft {
                 name: "Ada".to_owned(),
                 open_invoices: 3,
-            },
+            }
+            .validate()
+            .unwrap(),
             number: "INV-1".to_owned(),
         })
     );

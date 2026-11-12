@@ -9,12 +9,16 @@ use std::collections::HashMap;
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Grading, Labelling, Lashing, Palleting, Piling, Racking, Ranking,
-    Slotting, Spooling, Stacking, Stencil, Strapping, Wrapping, crating_kotlin, grading_kotlin,
-    palleting_kotlin, ranking_kotlin, slotting_kotlin, stacking_kotlin,
+    Banding, BandingDraft, Bundling, BundlingDraft, Crating, CratingDraft, Grading, GradingDraft,
+    Labelling, LabellingDraft, Lashing, LashingDraft, Palleting, PalletingDraft, Piling,
+    PilingDraft, Racking, RackingDraft, Ranking, RankingDraft, Slotting, SlottingDraft, Spooling,
+    SpoolingDraft, Stacking, StackingDraft, Stencil, StencilDraft, Strapping, StrappingDraft,
+    Wrapping, WrappingDraft, crating_kotlin, grading_kotlin, palleting_kotlin, ranking_kotlin,
+    slotting_kotlin, stacking_kotlin,
 };
 use super::tuple_variants_models::{
-    Binning, Coiling, Heaping, Tallying, coiling_kotlin, heaping_kotlin, tallying_kotlin,
+    Binning, BinningDraft, Coiling, CoilingDraft, Heaping, HeapingDraft, Tallying, TallyingDraft,
+    coiling_kotlin, heaping_kotlin, tallying_kotlin,
 };
 #[cfg(feature = "serde")]
 use super::tuple_variants_models::{
@@ -26,19 +30,19 @@ use super::tuple_variants_models::{
 #[test]
 fn every_fixture_is_written_as_serde_writes_it() {
     assert_eq!(
-        serde_json::to_string(&Racking::Split(vec![1, 2], 3)).unwrap(),
+        serde_json::to_string(&RackingDraft::Split(vec![1, 2], 3)).unwrap(),
         r#"{"kind":"Split","held":[[1,2],3]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Stacking::Split(vec![1, 2], 3)).unwrap(),
+        serde_json::to_string(&StackingDraft::Split(vec![1, 2], 3)).unwrap(),
         r#"{"Split":[[1,2],3]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Piling::Split((vec![1, 2], 3))).unwrap(),
+        serde_json::to_string(&PilingDraft::Split((vec![1, 2], 3))).unwrap(),
         "[[1,2],3]"
     );
     assert_eq!(
-        serde_json::to_string(&Tallying::Counts(HashMap::from([(
+        serde_json::to_string(&TallyingDraft::Counts(HashMap::from([(
             "north".to_owned(),
             (1, 2)
         )])))
@@ -46,51 +50,55 @@ fn every_fixture_is_written_as_serde_writes_it() {
         r#"{"kind":"Counts","held":{"north":[1,2]}}"#
     );
     assert_eq!(
-        serde_json::to_string(&Ranking::Places(Ok((1, 2)))).unwrap(),
+        serde_json::to_string(&RankingDraft::Places(Ok((1, 2)))).unwrap(),
         r#"{"kind":"Places","held":{"Ok":[1,2]}}"#
     );
     assert_eq!(
-        serde_json::to_string(&Ranking::Places(Err("none".to_owned()))).unwrap(),
+        serde_json::to_string(&RankingDraft::Places(Err("none".to_owned()))).unwrap(),
         r#"{"kind":"Places","held":{"Err":"none"}}"#
     );
     assert_eq!(
         serde_json::from_str::<Strapping>("{}").unwrap(),
-        Strapping { pair: (0, 0) }
+        StrappingDraft { pair: (0, 0) }.validate().unwrap()
     );
     assert_eq!(
-        serde_json::to_string(&Bundling {
-            labelling: Labelling {
+        serde_json::to_string(&BundlingDraft {
+            labelling: LabellingDraft {
                 label: "north".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             pair: (1, 2)
         })
         .unwrap(),
         r#"{"label":"north","pair":[1,2]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Palleting((1, 2), 3)).unwrap(),
+        serde_json::to_string(&PalletingDraft((1, 2), 3)).unwrap(),
         "[[1,2],3]"
     );
     assert_eq!(
-        serde_json::to_string(&Crating { pair: ((1, 2), 3) }).unwrap(),
+        serde_json::to_string(&CratingDraft { pair: ((1, 2), 3) }).unwrap(),
         r#"{"pair":[[1,2],3]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Wrapping { pair: (north(), 2) }).unwrap(),
+        serde_json::to_string(&WrappingDraft { pair: (north(), 2) }).unwrap(),
         r#"{"pair":[{"code":"north"},2]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Banding {
-            labelling: Labelling {
+        serde_json::to_string(&BandingDraft {
+            labelling: LabellingDraft {
                 label: "north".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             pair: (north(), 2)
         })
         .unwrap(),
         r#"{"label":"north","pair":[{"code":"north"},2]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Binning::Counts(HashMap::from([(
+        serde_json::to_string(&BinningDraft::Counts(HashMap::from([(
             "north".to_owned(),
             (north(), 2)
         )])))
@@ -105,21 +113,23 @@ fn every_fixture_is_written_as_serde_writes_it() {
 #[test]
 fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
     assert_eq!(
-        serde_json::to_string(&Slotting((north(), 2), 3)).unwrap(),
+        serde_json::to_string(&SlottingDraft((north(), 2), 3)).unwrap(),
         r#"[[{"code":"north"},2],3]"#
     );
     assert_eq!(
-        serde_json::to_string(&Grading {
+        serde_json::to_string(&GradingDraft {
             pair: (Ok((north(), 2)), 3)
         })
         .unwrap(),
         r#"{"pair":[{"Ok":[{"code":"north"},2]},3]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Spooling {
-            labelling: Labelling {
+        serde_json::to_string(&SpoolingDraft {
+            labelling: LabellingDraft {
                 label: "north".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             maybe: Some((north(), 3)),
             pairs: vec![(north(), 2)]
         })
@@ -127,14 +137,14 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
         r#"{"label":"north","maybe":[{"code":"north"},3],"pairs":[[{"code":"north"},2]]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Coiling {
+        serde_json::to_string(&CoilingDraft {
             pair: (HashMap::from([("north".to_owned(), (north(), 2))]), 3)
         })
         .unwrap(),
         r#"{"pair":[{"north":[{"code":"north"},2]},3]}"#
     );
     assert_eq!(
-        serde_json::to_string(&Lashing {
+        serde_json::to_string(&LashingDraft {
             dock: "south".to_owned(),
             extra: HashMap::from([("north".to_owned(), (north(), 2))])
         })
@@ -142,7 +152,7 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
         r#"{"dock":"south","extra":{"north":[{"code":"north"},2]}}"#
     );
     assert_eq!(
-        serde_json::to_string(&Heaping {
+        serde_json::to_string(&HeapingDraft {
             counts: HashMap::from([("north".to_owned(), (north(), 2))])
         })
         .unwrap(),
@@ -152,9 +162,11 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
 
 /// A model whose code holds its bound.
 fn north() -> Stencil {
-    Stencil {
+    StencilDraft {
         code: "north".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The tuple wrappers `definition` declares, in the order declared, after asserting that each

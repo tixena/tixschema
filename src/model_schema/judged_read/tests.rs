@@ -2,7 +2,7 @@
 
 use quote::ToTokens as _;
 
-use super::{of_enum, of_struct};
+use super::{drafted_enum, of_struct};
 use crate::model_schema::exec_model_schema;
 
 /// The whole expansion of `source` under `#[model_schema(...)]` written with `args`.
@@ -12,6 +12,16 @@ fn expansion_under(args: &str, source: &str) -> String {
         syn::parse_str(source).unwrap(),
     )
     .to_string()
+}
+
+/// What the read of an enum gains where it publishes `validate()` or names a `preprocess`.
+fn of_enum(item: &mut syn::ItemEnum, publishes_validate: bool) -> proc_macro2::TokenStream {
+    drafted_enum(
+        item,
+        publishes_validate,
+        &proc_macro2::Ident::new("Valid", proc_macro2::Span::call_site()),
+    )
+    .draft
 }
 
 /// The item as it is left, and what its read gains, where it publishes `validate()`.
@@ -451,7 +461,7 @@ fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_de
         "# [serde (deserialize_with = \"counted_keys_schema::deserialize_listed_listed\")] # \
          [serde (default)] listed : Option < Vec < Key > >",
         "# [serde (bound (deserialize = \"Key : serde :: Deserialize < 'de >\"))]",
-        "impl < 'de , Key > serde :: Deserialize < 'de > for CountedKeys < Key > where Key : \
+        "impl < 'de , Key > serde :: Deserialize < 'de > for CountedKeysDraft < Key > where Key : \
          serde :: Deserialize < 'de > {",
     ] {
         assert!(read.contains(written), "missing `{written}` in: {read}");

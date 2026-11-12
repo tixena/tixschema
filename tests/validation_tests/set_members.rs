@@ -53,7 +53,7 @@ mod a_set_of_values_no_declared_type_describes {
 
     #[test]
     fn a_type_whose_only_member_is_a_set_of_strings_publishes_no_validate() {
-        let own = TallyOwn {
+        let own = TallyOwnDraft {
             dock_names: HashSet::from(["north".to_owned()]),
         };
         assert_eq!(own.validate(), 1);
@@ -61,29 +61,31 @@ mod a_set_of_values_no_declared_type_describes {
 
     #[test]
     fn a_set_of_declared_types_is_walked_and_named_by_the_index_of_each_item() {
-        let fleet = TallyFleet {
-            lines: BTreeSet::from([TallyLine {
+        let fleet = TallyFleetDraft {
+            lines: BTreeSet::from([TallyLineDraft {
                 item_label: String::new(),
             }]),
         };
         assert_eq!(
-            fleet.validate(),
-            Err(vec![
-                "'lines.0.itemLabel': too short: minimum length is 1, got 0".to_owned()
-            ])
+            fleet.validation_issues(),
+            vec!["'lines.0.itemLabel': too short: minimum length is 1, got 0".to_owned()]
         );
     }
 
     #[test]
     fn a_holder_of_such_a_type_validates_through_the_fallback() {
-        let holder = TallyHolder {
-            names: TallyNames {
+        let holder = TallyHolderDraft {
+            names: TallyNamesDraft {
                 dock_names: HashSet::from(["north".to_owned()]),
-            },
-            fleet: TallyFleet {
+            }
+            .validate()
+            .unwrap(),
+            fleet: TallyFleetDraft {
                 lines: BTreeSet::new(),
-            },
+            }
+            .validate()
+            .unwrap(),
         };
-        assert_eq!(holder.validate(), Ok(()));
+        assert_eq!(holder.validation_issues(), Vec::<String>::new());
     }
 }

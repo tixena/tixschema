@@ -109,7 +109,7 @@ impl ContentService<()> for DocumentStore {
     ) -> Result<content_service_schema::StreamedAnswer, ContentError> {
         ready(()).await;
         if document_id == "missing" {
-            return Err(ContentError::NotFound);
+            return Err(ContentErrorDraft::NotFound.validate().unwrap());
         }
         let content_type = if document_id == "bad-type" {
             "text/plain\r\nx-injected: yes".to_owned()
@@ -123,7 +123,7 @@ impl ContentService<()> for DocumentStore {
             });
         };
         let Some((start, end)) = parse_range(&range, CONTENT.len()) else {
-            return Err(ContentError::RangeNotSatisfiable);
+            return Err(ContentErrorDraft::RangeNotSatisfiable.validate().unwrap());
         };
         Ok(content_service_schema::StreamedAnswer::Partial {
             source: Box::new(ChunkedSlice::new(&CONTENT[start..=end])),

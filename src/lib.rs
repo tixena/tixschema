@@ -301,8 +301,8 @@ let said = refused.to_string();
 assert!(said.contains("'userName': too short: minimum length is 3, got 2"));
 assert!(said.contains("'age': too large: maximum is 120, got 150"));
 
-// A value built in code is judged by `validate()`.
-let built = Signup { user_name: "ada_l".to_owned(), age: 36 };
+// A value built in code is a draft, which `validate()` judges into the valid `Signup`.
+let built = SignupDraft { user_name: "ada_l".to_owned(), age: 36 };
 assert!(built.validate().is_ok());
 
 // The same rules reach Zod and JSON Schema.
@@ -1791,8 +1791,8 @@ pub struct Registration {
     pub username: String,
 }
 
-let built = Registration { age: 150, username: "ab".to_owned() };
-let messages = built.validate().unwrap_err();
+let built = RegistrationDraft { age: 150, username: "ab".to_owned() };
+let messages = built.validation_issues();
 for message in &messages {
     println!("{message:?}");
 }

@@ -2102,10 +2102,10 @@ pub struct DeclaredPlain {
 
 /// A struct that writes two.
 /// ```rust example
-/// DeclaredExampled { value: 1 }
+/// DeclaredExampledDraft { value: 1 }
 /// ```
 /// ```rust example
-/// DeclaredExampled { value: 2 }
+/// DeclaredExampledDraft { value: 2 }
 /// ```
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2628,7 +2628,7 @@ const fn as_given(payload: serde_json::Value) -> serde_json::Value {
 
 /// Refuses [`DeclaredLull::Calm`], which [`DeclaredLull`] names on itself.
 fn not_calm_lull(value: &DeclaredLull) -> Result<(), Vec<String>> {
-    if matches!(value, DeclaredLull::Calm) {
+    if matches!(value, DeclaredLullDraft::Calm) {
         Err(vec!["a calm lull is refused".to_owned()])
     } else {
         Ok(())
@@ -2636,8 +2636,8 @@ fn not_calm_lull(value: &DeclaredLull) -> Result<(), Vec<String>> {
 }
 
 /// Refuses [`DeclaredTack::Calm`], which [`DeclaredSway`] names.
-fn not_calm(value: &DeclaredTack) -> Result<(), Vec<String>> {
-    if matches!(value, DeclaredTack::Calm) {
+fn not_calm(value: &DeclaredTackDraft) -> Result<(), Vec<String>> {
+    if matches!(value, DeclaredTackDraft::Calm) {
         Err(vec!["a calm tack is refused".to_owned()])
     } else {
         Ok(())
@@ -3951,7 +3951,7 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
 /// reports, the brand's bound ahead of the member's where both break.
 #[test]
 fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_reports() {
-    let slugged = |slug: &str, spare: &str| DeclaredSlugged {
+    let slugged = |slug: &str, spare: &str| DeclaredSluggedDraft {
         slug: DeclaredSlug::model_schema_read_unjudged(
             serde_json::to_value(slug.to_owned()).unwrap(),
         )
@@ -4027,7 +4027,8 @@ fn type_check_every_schema_holds_its_examples_once_loaded() {
     assert_eq!(exampled.as_inner(), "a");
     let unwritten: DeclaredUnwrittenCount = 3;
     assert_eq!(unwritten, 3);
-    let generic: DeclaredExampledPairAlias<String> = DeclaredExampledPair { id: "x".to_owned() };
+    let generic: DeclaredExampledPairAlias<String> =
+        DeclaredExampledPairDraft { id: "x".to_owned() };
     assert_eq!(generic.id, "x");
 
     let Some((printed, failed)) = loaded("examples", EXAMPLES_DRIVER) else {
@@ -4117,10 +4118,13 @@ fn deferred_bundle() -> String {
 /// counted under `node` as `validate()` counts it.
 #[test]
 fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
-    use named_counts::{Billboard, Carried, LaterSlogans, Mottos, Poster, Slogans, SomeSlogans};
+    use named_counts::{
+        Billboard, BillboardDraft, Carried, LaterSlogans, Mottos, Poster, PosterDraft, Slogans,
+        SomeSlogans,
+    };
 
     let words = |count: usize| vec!["w".to_owned(); count];
-    let poster = |slogans, mottos: Mottos, later| Poster {
+    let poster = |slogans, mottos: Mottos, later| PosterDraft {
         slogans: Slogans::new(words(slogans)).unwrap(),
         mottos,
         later: LaterSlogans::new(words(later)).unwrap(),
@@ -4133,18 +4137,18 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
         poster(1, words(1), 0).validate(),
         SomeSlogans::new(Slogans::new(Vec::new()).unwrap()).map(|_| ()),
         SomeSlogans::new(Slogans::new(words(1)).unwrap()).map(|_| ()),
-        Billboard {
+        BillboardDraft {
             some: SomeSlogans::new(Slogans::new(words(3)).unwrap()).unwrap(),
         }
         .validate(),
-        Billboard {
+        BillboardDraft {
             some: SomeSlogans::model_schema_read_unjudged(
                 serde_json::to_value(Slogans::new(Vec::new()).unwrap()).unwrap(),
             )
             .unwrap(),
         }
         .validate(),
-        Billboard {
+        BillboardDraft {
             some: SomeSlogans::new(Slogans::new(words(1)).unwrap()).unwrap(),
         }
         .validate(),
@@ -4205,12 +4209,12 @@ fn index_set_counts_bundle() -> String {
 #[test]
 fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
     use indexmap::IndexSet;
-    use named_counts::{Lineup, SomeOrdered};
+    use named_counts::{Lineup, LineupDraft, SomeOrdered};
 
     let items = |count: usize| -> IndexSet<String> {
         (0..count).map(|number| number.to_string()).collect()
     };
-    let lineup = |ordered, some| Lineup {
+    let lineup = |ordered, some| LineupDraft {
         ordered: items(ordered),
         some: SomeOrdered::new(items(some)).unwrap(),
     };
@@ -4295,9 +4299,12 @@ fn type_check_an_alias_of_a_map_of_models_loads_and_reads_its_values() {
 /// `node` as serde and `validate()` do.
 #[test]
 fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer() {
-    use deferred::{Adjacent, Hasp, Latch, Locker, Maybe, Open, Pair, Rows, Safe, Tagged, Vault};
+    use deferred::{
+        Adjacent, Hasp, HaspDraft, Latch, LatchDraft, Locker, LockerDraft, Maybe, Open, OpenDraft,
+        Pair, Rows, Safe, SafeDraft, Tagged, TaggedDraft, Vault, VaultDraft,
+    };
 
-    let vault = |records: &[&str]| Vault {
+    let vault = |records: &[&str]| VaultDraft {
         owner: "o".to_owned(),
         records: records.iter().map(|&text| text.to_owned()).collect(),
     };
@@ -4305,51 +4312,78 @@ fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer
     assert_eq!(
         [
             answered(
-                Safe::Named {
-                    vault: vault(&["a"])
+                SafeDraft::Named {
+                    vault: vault(&["a"]).validate().unwrap()
                 }
                 .validate()
             ),
-            answered(Safe::Named { vault: vault(&[]) }.validate()),
-            answered(Safe::Single(vault(&["a"])).validate()),
-            answered(Safe::Single(vault(&[])).validate()),
             answered(
-                Open::Named {
-                    vault: vault(&["a"])
+                SafeDraft::Named {
+                    vault: vault(&[]).validate().unwrap()
                 }
                 .validate()
             ),
-            answered(Open::Named { vault: vault(&[]) }.validate()),
-            answered(Open::Single(vault(&["a"])).validate()),
-            answered(Open::Single(vault(&[])).validate()),
+            answered(SafeDraft::Single(vault(&["a"]).validate().unwrap()).validate()),
+            answered(SafeDraft::Single(vault(&[]).validate().unwrap()).validate()),
             answered(
-                Hasp {
-                    open: Open::Named { vault: vault(&[]) },
+                OpenDraft::Named {
+                    vault: vault(&["a"]).validate().unwrap()
+                }
+                .validate()
+            ),
+            answered(
+                OpenDraft::Named {
+                    vault: vault(&[]).validate().unwrap()
+                }
+                .validate()
+            ),
+            answered(OpenDraft::Single(vault(&["a"]).validate().unwrap()).validate()),
+            answered(OpenDraft::Single(vault(&[]).validate().unwrap()).validate()),
+            answered(
+                HaspDraft {
+                    open: OpenDraft::Named {
+                        vault: vault(&[]).validate().unwrap()
+                    }
+                    .validate()
+                    .unwrap(),
                     label: "l".to_owned()
                 }
                 .validate()
             ),
             answered(
-                Hasp {
-                    open: Open::Single(vault(&[])),
+                HaspDraft {
+                    open: OpenDraft::Single(vault(&[]).validate().unwrap())
+                        .validate()
+                        .unwrap(),
                     label: "l".to_owned()
                 }
                 .validate()
             ),
             answered(
-                Latch {
-                    open: Open::Single(Vault {
-                        owner: 7,
-                        records: Vec::new()
-                    }),
+                LatchDraft {
+                    open: OpenDraft::Single(
+                        VaultDraft {
+                            owner: 7,
+                            records: Vec::new()
+                        }
+                        .validate()
+                        .unwrap()
+                    )
+                    .validate()
+                    .unwrap(),
                     label: "l".to_owned()
                 }
                 .validate()
             ),
-            answered(Tagged::Named { vault: vault(&[]) }.validate()),
+            answered(
+                TaggedDraft::Named {
+                    vault: vault(&[]).validate().unwrap()
+                }
+                .validate()
+            ),
             answered(Adjacent::Single(vault(&[])).validate()),
-            answered(Locker(vault(&["a"]), "x".to_owned()).validate()),
-            answered(Locker(vault(&[]), "x".to_owned()).validate()),
+            answered(LockerDraft(vault(&["a"]).validate().unwrap(), "x".to_owned()).validate()),
+            answered(LockerDraft(vault(&[]).validate().unwrap(), "x".to_owned()).validate()),
         ],
         [
             Vec::<String>::new(),
@@ -4869,7 +4903,7 @@ fn type_check_a_map_of_units_parses_under_zod_what_serde_reads() {
     const WRITTEN: &str = r#"{"keyed":{"a":null}}"#;
     const LISTED: &str = r#"{"keyed":{"a":[]}}"#;
 
-    let value = ProbeUnitsKeyed {
+    let value = ProbeUnitsKeyedDraft {
         keyed: BTreeMap::from([("a".to_owned(), ())]),
     };
     assert_eq!(
@@ -4879,7 +4913,7 @@ fn type_check_a_map_of_units_parses_under_zod_what_serde_reads() {
     );
     assert_eq!(
         serde_json::from_str::<ProbeUnitsKeyed>(WRITTEN).unwrap(),
-        value,
+        value.validate().unwrap(),
         "serde's read of its write"
     );
     let refused = serde_json::from_str::<ProbeUnitsKeyed>(LISTED)
@@ -5853,7 +5887,7 @@ fn type_check_a_slot_beside_the_tag_takes_a_unit_variants_entry_over_null() {
 #[cfg(feature = "mongodb")]
 #[test]
 fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
-    let held = DeclaredStamp::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    let held = DeclaredStampDraft::Held(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
     assert_eq!(
         serde_json::to_string(&held).unwrap(),
         STAMPS[0].0,

@@ -51,13 +51,15 @@ struct WideReachedRow {
 
 /// The row every read below answers.
 fn row() -> WideRow {
-    WideRow {
+    WideRowDraft {
         by_name: HashMap::from([("a".to_owned(), -7)]),
         history: vec![1, i64::MAX],
         maybe: Some(i64::MIN),
         paired: (9, "x".to_owned()),
         total: -(1_i64 << 60_i32),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What the row is stored as.
@@ -144,7 +146,7 @@ fn a_filter_and_an_update_write_each_i64_as_the_bson_integer() {
 
 #[test]
 fn a_row_stores_each_i64_its_holder_reaches_as_the_bson_integer() {
-    let reached = WideReachedRow {
+    let reached = WideReachedRowDraft {
         aliased: -(1_i64 << 60_i32),
         fixed: 214,
         ranged: 1..i64::MAX,

@@ -134,7 +134,7 @@ fn unrated(payload: Value) -> Value {
     }
 }
 
-fn label(value: &Parcel) -> Result<(), Vec<String>> {
+fn label(value: &ParcelDraft) -> Result<(), Vec<String>> {
     if value.label.is_empty() {
         return refused("a parcel is labelled");
     }
@@ -161,35 +161,35 @@ fn seal(payload: Value) -> Value {
     unrated(payload)
 }
 
-fn validate(value: &Gauge) -> Result<(), Vec<String>> {
+fn validate(value: &GaugeDraft) -> Result<(), Vec<String>> {
     if value.size > 9 {
         return refused("a gauge is at most 9");
     }
     Ok(())
 }
 
-fn value(value: &Stamp) -> Result<(), Vec<String>> {
+fn value(value: &StampDraft) -> Result<(), Vec<String>> {
     if value.as_inner().is_empty() {
         return refused("a stamp is not empty");
     }
     Ok(())
 }
 
-fn tag(value: &Crate) -> Result<(), Vec<String>> {
+fn tag(value: &CrateDraft) -> Result<(), Vec<String>> {
     if value.tag == "x" {
         return refused("a crate is not x");
     }
     Ok(())
 }
 
-fn title(value: &Freight) -> Result<(), Vec<String>> {
-    if matches!(value, Freight::Held { title } if title.is_empty()) {
+fn title(value: &FreightDraft) -> Result<(), Vec<String>> {
+    if matches!(&**value, FreightDraft::Held { title } if title.is_empty()) {
         return refused("a freight is titled");
     }
     Ok(())
 }
 
-fn codes<CodeType>(value: &Hold<CodeType>) -> Result<(), Vec<String>> {
+fn codes<CodeType>(value: &HoldDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return refused("a hold has a code");
     }
@@ -217,7 +217,7 @@ fn entries(value: &BTreeMap<u32, String>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn ruled(value: &Plain) -> Result<(), Vec<String>> {
+fn ruled(value: &PlainDraft) -> Result<(), Vec<String>> {
     if value.size == 0 {
         return refused("a plain is sized");
     }
@@ -269,31 +269,39 @@ where
 }
 
 fn parcel(code: &str, label: &str) -> Parcel {
-    Parcel {
+    ParcelDraft {
         code: code.to_owned(),
         label: label.to_owned(),
         note: "n".to_owned(),
         seal: "s".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn titled(title: &str) -> Freight {
-    Freight::Held {
+    FreightDraft::Held {
         title: title.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn held(codes: &[&str], spare: Option<&[&str]>) -> Hold<String> {
-    Hold {
+    HoldDraft {
         codes: codes.iter().map(|&code| code.to_owned()).collect(),
         spare: spare.map(|spares| spares.iter().map(|&one| one.to_owned()).collect()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn named(tag: &str) -> Crate {
-    Crate {
+    CrateDraft {
         tag: tag.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn variant_and_member_rows() -> Vec<Row> {
@@ -323,13 +331,13 @@ fn variant_and_member_rows() -> Vec<Row> {
 }
 
 fn emitted_member_rows() -> Vec<Row> {
-    let (small, large) = (Gauge { size: 3 }, Gauge { size: 10 });
+    let (small, large) = (GaugeDraft { size: 3 }, GaugeDraft { size: 10 });
     let (stamped, blank) = (
         Stamp::new("a".to_owned()).unwrap(),
         Stamp::model_schema_read_unjudged(serde_json::to_value(String::new()).unwrap()).unwrap(),
     );
     let (crate_y, crate_x) = (named("y"), named("x"));
-    let (sized, empty) = (Plain { size: 1 }, Plain { size: 0 });
+    let (sized, empty) = (PlainDraft { size: 1 }, PlainDraft { size: 0 });
     vec![
         judged!("a check named validate, passes", "Gauge", small),
         judged!("a check named validate, refused", "Gauge", large),
@@ -352,18 +360,18 @@ fn emitted_member_rows() -> Vec<Row> {
 
 fn held_member_rows() -> Vec<Row> {
     let (positive, negative) = (
-        Couple {
+        CoupleDraft {
             pair: ("a".to_owned(), 1_i32),
         },
-        Couple {
+        CoupleDraft {
             pair: ("a".to_owned(), -1_i32),
         },
     );
     let (filled, bare) = (
-        Ledger {
+        LedgerDraft {
             entries: BTreeMap::from([(1, "x".to_owned())]),
         },
-        Ledger {
+        LedgerDraft {
             entries: BTreeMap::new(),
         },
     );

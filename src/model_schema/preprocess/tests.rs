@@ -99,23 +99,19 @@ fn the_read_calls_the_functions_of_the_type_and_then_those_of_each_member() {
     ] {
         assert!(rendered.contains(written), "no `{written}` in: {rendered}");
     }
-    for unwritten in [
-        "# [allow",
-        "# [expect",
-        ". expect (",
-        "doc (hidden)",
-        "impl Trait",
-    ] {
+    for unwritten in ["# [allow", "# [expect", ". expect (", "impl Trait"] {
         assert!(
             !rendered.contains(unwritten),
             "found `{unwritten}` in: {rendered}"
         );
     }
     // Read as an identifier: the source of a client is a string the expansion holds, and it
-    // names the `validate()` of its own type.
-    assert!(
-        idents_named(tokens, "validate").is_empty(),
-        "found `validate` in: {rendered}"
+    // names the `validate()` of its own type. The one `validate` the expansion writes is the
+    // draft's own, which the read never calls.
+    assert_eq!(
+        idents_named(tokens, "validate").len(),
+        1,
+        "found more than the draft's `validate` in: {rendered}"
     );
 }
 

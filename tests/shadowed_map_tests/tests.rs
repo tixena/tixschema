@@ -30,12 +30,16 @@ fn a_field_written_with_the_name_is_read_as_the_type_declared_here() {
     let read: Holder = serde_json::from_value(stored.clone()).unwrap();
     assert_eq!(
         read,
-        Holder {
-            held: Map {
+        HolderDraft {
+            held: MapDraft {
                 key: "k".to_owned(),
                 value: 7_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
         }
+        .validate()
+        .unwrap()
     );
     let mut calls = 0_u32;
     let walked = Holder::from_value_with(stored, |_raw, _found| {

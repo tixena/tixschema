@@ -151,9 +151,11 @@ pub struct Payload {
 
 /// A milestone marked `mark`.
 pub fn milestone(mark: &str) -> Milestone {
-    Milestone {
+    MilestoneDraft {
         mark: mark.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A waymark of `code`.
@@ -163,23 +165,27 @@ pub fn waymark(code: &str) -> Waymark {
 
 /// The four ranges of a number.
 pub const fn spanned() -> Spanned {
-    Spanned {
+    SpannedDraft {
         closed: 1..=2,
         from: 8..,
         span: 8..13,
         to: ..13,
     }
+    .validate()
+    .unwrap()
 }
 
 /// A range in each position, with `maybe` holding one where `held` says so.
 pub fn positioned(held: bool) -> Positioned {
-    Positioned {
-        filled: Itinerary { held: 1..2 },
+    PositionedDraft {
+        filled: ItineraryDraft { held: 1..2 }.validate().unwrap(),
         keyed: BTreeMap::from([("a".to_owned(), 3..4)]),
         listed: vec![5..6, 7..8],
         maybe: held.then_some(9..10),
         paired: (11..12, "b".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A range of a model and one of a brand: where `broken` says so, the start of the first and both
@@ -190,41 +196,51 @@ pub fn signposted(broken: bool) -> Signposted {
     } else {
         ("a", "ab", "cd")
     };
-    Signposted {
+    SignpostedDraft {
         marks: milestone(mark)..=milestone("b"),
         span: waymark(start)..waymark(end),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Ranges of a model beside a flattened map of ranges of a brand, every bound broken where
 /// `broken` says so.
 pub fn excursion(broken: bool) -> Excursion {
     let (code, mark) = if broken { ("a", "") } else { ("ab", "a") };
-    Excursion {
-        atlas: Atlas {
+    ExcursionDraft {
+        atlas: AtlasDraft {
             keyed: BTreeMap::from([("k".to_owned(), waymark(code)..waymark("cd"))]),
-        },
+        }
+        .validate()
+        .unwrap(),
         maybe: Some(milestone(mark)..milestone(mark)),
         span: milestone(mark)..milestone("b"),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A list of ranges of a brand in an internally tagged variant, both bounds broken where `broken`
 /// says so.
 pub fn waypost(broken: bool) -> Waypost {
     let (start, end) = if broken { ("a", "b") } else { ("ab", "cd") };
-    Waypost::Codes {
+    WaypostDraft::Codes {
         codes: vec![waymark(start)..waymark(end)],
     }
+    .validate()
+    .unwrap()
 }
 
 /// The two ranges of one bound, each bound broken where `broken` says so.
 pub fn frontier(broken: bool) -> Frontier {
     let code = if broken { "a" } else { "ab" };
-    Frontier {
+    FrontierDraft {
         from: waymark(code)..,
         to: ..waymark(code),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What serde writes of `value`, read as `read_as`.
@@ -266,7 +282,7 @@ pub fn judged_payloads() -> Vec<Payload> {
         written(
             "an optional range of a model in a tagged variant",
             "Waypost",
-            &Waypost::Marks {
+            &WaypostDraft::Marks {
                 marks: Some(milestone("a")..=milestone("b")),
             },
         ),
@@ -276,10 +292,12 @@ pub fn judged_payloads() -> Vec<Payload> {
 /// A range of two dates, each written with its milliseconds, which every client writes back.
 #[cfg(feature = "chrono")]
 pub fn rostered() -> Rostered {
-    Rostered {
+    RosteredDraft {
         shift: "2026-10-16T12:00:00.125Z".parse().unwrap()
             .."2026-10-16T13:30:00.250Z".parse().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What serde writes of a value of each model that holds a range of a number or of a date.
@@ -291,36 +309,36 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "a second holder of a range in a type argument",
             "Detour",
-            &Detour {
-                filled: Itinerary { held: 2..3 },
+            &DetourDraft {
+                filled: ItineraryDraft { held: 2..3 }.validate().unwrap(),
             },
         ),
         written(
             "a range of a parameter",
             "Stride",
-            &Stride { span: 8_u32..13 },
+            &StrideDraft { span: 8_u32..13 },
         ),
         written(
             "a range in the slot of a variant",
             "Course",
-            &Course::Span(8_u32..13),
+            &CourseDraft::Span(8_u32..13),
         ),
         written(
             "a range in a member of a variant",
             "Course",
-            &Course::Named { span: 1_u32..2 },
+            &CourseDraft::Named { span: 1_u32..2 },
         ),
         written(
             "an untagged variant of a range of a brand",
             "Compass",
-            &Compass::Coded {
+            &CompassDraft::Coded {
                 codes: waymark("ab")..waymark("cd"),
             },
         ),
         written(
             "an untagged variant of a range of a number",
             "Compass",
-            &Compass::Plain { span: 8..13 },
+            &CompassDraft::Plain { span: 8..13 },
         ),
         #[cfg(feature = "chrono")]
         written("a range of dates", "Rostered", &rostered()),

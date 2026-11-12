@@ -15,13 +15,16 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Convoy, Daybook, Daybooks, Diary, Logbook, Moment,
-    Reminder, Sailing, Shift, StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable,
-    UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift, adjacent_watch_swift,
-    chronicle_swift, convoy_swift, daybook_swift, daybooks_swift, diary_swift, first,
-    logbook_swift, moment_swift, reminder_swift, sailing_swift, second, shift_swift,
-    stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift, timetable_swift,
-    untagged_shift_swift, untagged_watch_swift, watch_swift,
+    AdjacentShift, AdjacentShiftDraft, AdjacentWatch, AdjacentWatchDraft, Chronicle, Convoy,
+    ConvoyDraft, Daybook, Daybooks, Diary, Logbook, LogbookDraft, Moment, Reminder, Sailing,
+    SailingDraft, Shift, ShiftDraft, StowedLogbook, StowedLogbookDraft, TaggedShift,
+    TaggedShiftDraft, TaggedWatch, TaggedWatchDraft, Tidetable, TidetableDraft, Timetable,
+    TimetableDraft, UntaggedShift, UntaggedShiftDraft, UntaggedWatch, UntaggedWatchDraft, Watch,
+    WatchDraft, adjacent_shift_swift, adjacent_watch_swift, chronicle_swift, convoy_swift,
+    daybook_swift, daybooks_swift, diary_swift, first, logbook_swift, moment_swift, reminder_swift,
+    sailing_swift, second, shift_swift, stowed_logbook_swift, tagged_shift_swift,
+    tagged_watch_swift, tidetable_swift, timetable_swift, untagged_shift_swift,
+    untagged_watch_swift, watch_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -146,9 +149,11 @@ fn once<Held>(held: Held) -> HashMap<DateTime<Utc>, Held> {
 
 /// A model that keeps its rule.
 fn sailing() -> Sailing {
-    Sailing {
+    SailingDraft {
         label: "s".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of a struct and of a brand, in a type that declares a parameter and in one that
@@ -158,7 +163,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a struct",
             "Timetable",
-            &Timetable {
+            &TimetableDraft {
                 by_at: keyed(&1),
                 sailings: keyed(&sailing()),
             },
@@ -166,7 +171,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a struct with empty maps",
             "Timetable",
-            &Timetable {
+            &TimetableDraft {
                 by_at: HashMap::new(),
                 sailings: HashMap::new(),
             },
@@ -174,7 +179,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a struct that declares a parameter",
             "Tidetable<String>",
-            &Tidetable {
+            &TidetableDraft {
                 by_at: keyed(&"t".to_owned()),
                 counts: keyed(&2),
             },
@@ -197,7 +202,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a list, a list of optionals, an optional list and an optional",
             "Logbook",
-            &Logbook {
+            &LogbookDraft {
                 listed: vec![keyed(&1), HashMap::new()],
                 listed_or_none: vec![Some(keyed(&2)), None],
                 maybe: Some(keyed(&3)),
@@ -208,7 +213,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a list, a list of optionals, an optional list and an optional, none",
             "Logbook",
-            &Logbook {
+            &LogbookDraft {
                 listed: Vec::new(),
                 listed_or_none: vec![None],
                 maybe: None,
@@ -220,7 +225,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
             "a list, a list of optionals, an optional list and an optional that declare a \
              parameter",
             "StowedLogbook<String>",
-            &StowedLogbook {
+            &StowedLogbookDraft {
                 listed: vec![keyed(&"t".to_owned())],
                 listed_or_none: vec![None, Some(keyed(&"u".to_owned()))],
                 maybe: Some(keyed(&"v".to_owned())),
@@ -242,7 +247,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under no tag",
             "Watch",
-            &Watch::Logged {
+            &WatchDraft::Logged {
                 by_at: keyed(&1),
                 sailings: keyed(&sailing()),
             },
@@ -250,7 +255,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag",
             "TaggedWatch",
-            &TaggedWatch::Logged {
+            &TaggedWatchDraft::Logged {
                 by_at: keyed(&1),
                 sailings: keyed(&sailing()),
             },
@@ -258,7 +263,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag and a content key",
             "AdjacentWatch",
-            &AdjacentWatch::Logged {
+            &AdjacentWatchDraft::Logged {
                 by_at: keyed(&1),
                 sailings: keyed(&sailing()),
             },
@@ -266,7 +271,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant",
             "UntaggedWatch",
-            &UntaggedWatch::Logged {
+            &UntaggedWatchDraft::Logged {
                 by_at: keyed(&1),
                 sailings: keyed(&sailing()),
             },
@@ -274,14 +279,14 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant after the maps",
             "UntaggedWatch",
-            &UntaggedWatch::Plain {
+            &UntaggedWatchDraft::Plain {
                 note: "n".to_owned(),
             },
         ),
         read_row(
             "a variant under no tag that declares a parameter",
             "Shift<String>",
-            &Shift::Logged {
+            &ShiftDraft::Logged {
                 by_at: keyed(&"t".to_owned()),
                 counts: keyed(&2),
             },
@@ -289,7 +294,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag that declares a parameter",
             "TaggedShift<String>",
-            &TaggedShift::Logged {
+            &TaggedShiftDraft::Logged {
                 by_at: keyed(&"t".to_owned()),
                 counts: keyed(&2),
             },
@@ -297,7 +302,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag and a content key that declares a parameter",
             "AdjacentShift<String>",
-            &AdjacentShift::Logged {
+            &AdjacentShiftDraft::Logged {
                 by_at: keyed(&"t".to_owned()),
                 counts: keyed(&2),
             },
@@ -305,7 +310,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant that declares a parameter",
             "UntaggedShift<String>",
-            &UntaggedShift::Logged {
+            &UntaggedShiftDraft::Logged {
                 by_at: keyed(&"t".to_owned()),
                 counts: keyed(&2),
             },
@@ -313,7 +318,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant after the maps that declares a parameter",
             "UntaggedShift<String>",
-            &UntaggedShift::Plain {
+            &UntaggedShiftDraft::Plain {
                 note: "n".to_owned(),
             },
         ),
@@ -327,7 +332,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a struct under a key that is no date",
             "Timetable",
-            &Timetable {
+            &TimetableDraft {
                 by_at: once(1),
                 sailings: HashMap::new(),
             },
@@ -337,7 +342,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a struct under a key that is no date, over a model",
             "Timetable",
-            &Timetable {
+            &TimetableDraft {
                 by_at: HashMap::new(),
                 sailings: once(sailing()),
             },
@@ -347,7 +352,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a struct that declares a parameter under a key that is no date",
             "Tidetable<String>",
-            &Tidetable {
+            &TidetableDraft {
                 by_at: once("t".to_owned()),
                 counts: HashMap::new(),
             },
@@ -378,7 +383,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a list under a key that is no date",
             "Logbook",
-            &Logbook {
+            &LogbookDraft {
                 listed: vec![once(1)],
                 listed_or_none: Vec::new(),
                 maybe: None,
@@ -391,7 +396,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "an optional under a key that is no date",
             "StowedLogbook<String>",
-            &StowedLogbook {
+            &StowedLogbookDraft {
                 listed: Vec::new(),
                 listed_or_none: Vec::new(),
                 maybe: Some(once("v".to_owned())),
@@ -417,7 +422,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "a variant under no tag under a key that is no date",
             "Watch",
-            &Watch::Logged {
+            &WatchDraft::Logged {
                 by_at: once(1),
                 sailings: HashMap::new(),
             },
@@ -427,7 +432,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "a variant under a tag under a key that is no date",
             "TaggedWatch",
-            &TaggedWatch::Logged {
+            &TaggedWatchDraft::Logged {
                 by_at: once(1),
                 sailings: HashMap::new(),
             },
@@ -437,7 +442,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "a variant under a tag and a content key under a key that is no date",
             "AdjacentWatch",
-            &AdjacentWatch::Logged {
+            &AdjacentWatchDraft::Logged {
                 by_at: once(1),
                 sailings: HashMap::new(),
             },
@@ -447,7 +452,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "an untagged variant under a key that is no date",
             "UntaggedWatch",
-            &UntaggedWatch::Logged {
+            &UntaggedWatchDraft::Logged {
                 by_at: once(1),
                 sailings: HashMap::new(),
             },
@@ -457,7 +462,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "a variant under no tag that declares a parameter under a key that is no date",
             "Shift<String>",
-            &Shift::Logged {
+            &ShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: HashMap::new(),
             },
@@ -467,7 +472,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "a variant under a tag that declares a parameter under a key that is no date",
             "TaggedShift<String>",
-            &TaggedShift::Logged {
+            &TaggedShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: HashMap::new(),
             },
@@ -478,7 +483,7 @@ fn refused_variant_rows() -> Vec<Row> {
             "a variant under a tag and a content key that declares a parameter under a key that \
              is no date",
             "AdjacentShift<String>",
-            &AdjacentShift::Logged {
+            &AdjacentShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: HashMap::new(),
             },
@@ -488,7 +493,7 @@ fn refused_variant_rows() -> Vec<Row> {
         refused_row(
             "an untagged variant that declares a parameter under a key that is no date",
             "UntaggedShift<String>",
-            &UntaggedShift::Logged {
+            &UntaggedShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: HashMap::new(),
             },
@@ -552,9 +557,11 @@ fn reminder_row(name: &'static str, payload: &str) -> Row {
 
 /// A sailing whose label breaks its rule.
 fn unlabelled() -> Sailing {
-    Sailing {
+    SailingDraft {
         label: String::new(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A date of whole seconds, which chrono writes with no fraction.
@@ -566,38 +573,38 @@ fn whole() -> DateTime<Utc> {
 /// the key named as serde writes it.
 fn validated_rows() -> Vec<Row> {
     let key = "2024-01-02T03:04:05.678Z";
-    let timetable = Timetable {
+    let timetable = TimetableDraft {
         by_at: HashMap::new(),
         sailings: once(unlabelled()),
     };
-    let whole_timetable = Timetable {
+    let whole_timetable = TimetableDraft {
         by_at: HashMap::new(),
         sailings: HashMap::from([(whole(), unlabelled())]),
     };
-    let logged = Watch::Logged {
+    let logged = WatchDraft::Logged {
         by_at: HashMap::new(),
         sailings: once(unlabelled()),
     };
-    let tagged = TaggedWatch::Logged {
+    let tagged = TaggedWatchDraft::Logged {
         by_at: HashMap::new(),
         sailings: once(unlabelled()),
     };
-    let adjacent = AdjacentWatch::Logged {
+    let adjacent = AdjacentWatchDraft::Logged {
         by_at: HashMap::new(),
         sailings: once(unlabelled()),
     };
-    let untagged = UntaggedWatch::Logged {
+    let untagged = UntaggedWatchDraft::Logged {
         by_at: HashMap::new(),
         sailings: once(unlabelled()),
     };
-    let logbook = Logbook {
+    let logbook = LogbookDraft {
         listed: Vec::new(),
         listed_or_none: Vec::new(),
         maybe: None,
         maybe_listed: None,
         sailing_lists: vec![once(unlabelled())],
     };
-    let convoy = Convoy {
+    let convoy = ConvoyDraft {
         held: "h".to_owned(),
         sailings: once(unlabelled()),
     };
@@ -606,28 +613,28 @@ fn validated_rows() -> Vec<Row> {
             "a struct whose key has a fraction",
             "Timetable",
             &timetable,
-            timetable.validate(),
+            timetable.validate().map(|_valid| ()),
             key,
         ),
         validated_row(
             "a struct whose key is whole seconds",
             "Timetable",
             &whole_timetable,
-            whole_timetable.validate(),
+            whole_timetable.validate().map(|_valid| ()),
             "2024-01-02T03:04:05Z",
         ),
         validated_row(
             "a variant under no tag",
             "Watch",
             &logged,
-            logged.validate(),
+            logged.validate().map(|_valid| ()),
             key,
         ),
         validated_row(
             "a variant under a tag",
             "TaggedWatch",
             &tagged,
-            tagged.validate(),
+            tagged.validate().map(|_valid| ()),
             key,
         ),
         validated_row(
@@ -648,14 +655,14 @@ fn validated_rows() -> Vec<Row> {
             "a list of maps",
             "Logbook",
             &logbook,
-            logbook.validate(),
+            logbook.validate().map(|_valid| ()),
             key,
         ),
         validated_row(
             "a type that declares a parameter",
             "Convoy<String>",
             &convoy,
-            convoy.validate(),
+            convoy.validate().map(|_valid| ()),
             key,
         ),
     ]
@@ -665,7 +672,7 @@ fn validated_rows() -> Vec<Row> {
 /// seconds, of milliseconds and finer than a millisecond, which Swift's `Date` reads at the
 /// millisecond, and an optional date under `as_number`.
 fn written_as_serde_writes_rows() -> Vec<Row> {
-    let by_whole = Timetable {
+    let by_whole = TimetableDraft {
         by_at: HashMap::from([(whole(), 1)]),
         sailings: HashMap::new(),
     };

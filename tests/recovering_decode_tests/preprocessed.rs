@@ -103,11 +103,13 @@ fn without_fragile(mut payload: Value) -> Value {
 }
 
 fn parcel(label: &str, fragile: &[&str]) -> StoredParcel {
-    StoredParcel {
+    StoredParcelDraft {
         fragile_item_codes: fragile.iter().map(|&code| code.to_owned()).collect(),
         item_code_list: vec!["x".to_owned()],
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Row 1 of the sample: a label with spaces at its ends.
@@ -153,7 +155,7 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
     });
     assert_eq!(
         held.map_err(|refused| lines(&refused)),
-        Ok(StoredManifest {
+        Ok(StoredManifestDraft {
             parcel: parcel("A", &[])
         })
     );
@@ -163,7 +165,7 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
     );
     assert_eq!(
         flattened.map_err(|refused| lines(&refused)),
-        Ok(StoredCrated {
+        Ok(StoredCratedDraft {
             dock: "north".to_owned(),
             parcel: parcel("A", &[])
         })
@@ -296,7 +298,7 @@ fn an_enum_is_taken_out_of_its_envelope_by_the_recovering_read() {
         StoredShipment::from_value_with(enveloped, |_, _| stored_shipment_schema::Verdict::Reject);
     assert_eq!(
         read.map_err(|refused| lines(&refused)),
-        Ok(StoredShipment::Air {
+        Ok(StoredShipmentDraft::Air {
             flight: "F1".to_owned()
         })
     );

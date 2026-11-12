@@ -45,17 +45,19 @@ mod a_length_counts_characters {
     }
 
     fn at_most_one(name: &str) -> Result<(), Vec<String>> {
-        AtMostOne {
+        AtMostOneDraft {
             name: name.to_owned(),
         }
         .validate()
+        .map(|_valid| ())
     }
 
     fn at_least_two(name: &str) -> Result<(), Vec<String>> {
-        AtLeastTwo {
+        AtLeastTwoDraft {
             name: name.to_owned(),
         }
         .validate()
+        .map(|_valid| ())
     }
 
     fn too_long(count: usize) -> Result<(), Vec<String>> {
@@ -139,9 +141,12 @@ mod a_length_counts_characters {
 
     #[test]
     fn a_unit_variant_named_with_one_character_builds_under_a_maximum_of_one() {
-        assert_eq!(serde_json::to_string(&Marks::Accent).unwrap(), "\"\u{e9}\"");
         assert_eq!(
-            serde_json::to_string(&Marks::Smile).unwrap(),
+            serde_json::to_string(&MarksDraft::Accent).unwrap(),
+            "\"\u{e9}\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MarksDraft::Smile).unwrap(),
             "\"\u{1f600}\""
         );
     }

@@ -222,7 +222,7 @@ fn with_a_code<CodeType>(value: &CheckedCrate<CodeType>) -> Result<(), Vec<Strin
 }
 
 fn with_a_stop(value: &CheckedExternal) -> Result<(), Vec<String>> {
-    if let CheckedExternal::Road { road_stops } = value
+    if let CheckedExternalDraft::Road { road_stops } = value
         && road_stops.is_empty()
     {
         return Err(vec![
@@ -520,7 +520,7 @@ fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it
     });
     assert_eq!(
         kept,
-        Ok(CheckedSealed {
+        Ok(CheckedSealedDraft {
             seal: CheckedSeal::new("ABC".to_owned()).unwrap(),
             seals: Vec::new(),
         })
@@ -602,7 +602,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
     let held = CheckedExternal::from_value_with(json!("Held"), |_, _| {
         checked_external_schema::Verdict::Reject
     });
-    assert_eq!(held, Ok(CheckedExternal::Held));
+    assert_eq!(held, Ok(CheckedExternalDraft::Held));
 
     let internal = |stored: Value| {
         let read = CheckedInternal::from_value_with(stored, |_, _| {
@@ -621,7 +621,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
     let unheld = CheckedInternal::from_value_with(json!({ "kind": "Held" }), |_, _| {
         checked_internal_schema::Verdict::Reject
     });
-    assert_eq!(unheld, Ok(CheckedInternal::Held));
+    assert_eq!(unheld, Ok(CheckedInternalDraft::Held));
 
     let adjacent = |stored: Value| {
         let read = CheckedAdjacent::from_value_with(stored, |_, _| {
@@ -684,13 +684,13 @@ fn a_bound_and_a_check_of_one_value_are_two_issues() {
 /// by `validate()`: the place serde writes it at.
 #[test]
 fn a_model_held_in_a_slot_is_named_where_serde_writes_it() {
-    let x = || PlacedParcel {
+    let x = || PlacedParcelDraft {
         item_label: "x".to_owned(),
     };
-    let sealed = PlacedSealed(x());
-    let boxed = PlacedFreight::Boxed(x());
-    let split = PlacedFreight::Split("a".to_owned(), x());
-    let lifted = PlacedLift::Boxed(x());
+    let sealed = PlacedSealedDraft(x().validate().unwrap());
+    let boxed = PlacedFreightDraft::Boxed(x().validate().unwrap());
+    let split = PlacedFreightDraft::Split("a".to_owned(), x().validate().unwrap());
+    let lifted = PlacedLiftDraft::Boxed(x().validate().unwrap());
     assert_eq!(
         [
             serde_json::to_value(&sealed).unwrap(),

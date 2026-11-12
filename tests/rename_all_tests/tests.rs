@@ -113,7 +113,7 @@ fn lowercase_variants_match_serde_wire() {
     assert_eq!(AuthorKind::enum_members(), ["agent", "human"]);
     assert_eq!(
         AuthorKind::enum_members(),
-        serde_wire_names(&[AuthorKind::Agent, AuthorKind::Human])
+        serde_wire_names(&[AuthorKindDraft::Agent, AuthorKindDraft::Human])
     );
 }
 
@@ -122,7 +122,11 @@ fn snake_case_variants_match_serde_wire() {
     assert_eq!(CopyKind::enum_members(), ["body_only", "noop", "verbatim"]);
     assert_eq!(
         CopyKind::enum_members(),
-        serde_wire_names(&[CopyKind::BodyOnly, CopyKind::Noop, CopyKind::Verbatim])
+        serde_wire_names(&[
+            CopyKindDraft::BodyOnly,
+            CopyKindDraft::Noop,
+            CopyKindDraft::Verbatim
+        ])
     );
 }
 
@@ -139,9 +143,9 @@ fn snake_case_acronyms_and_digits_match_serde_wire() {
     assert_eq!(
         FindingKind::enum_members(),
         serde_wire_names(&[
-            FindingKind::AgentKeyUnderUserSsh,
-            FindingKind::Base64Payload,
-            FindingKind::HttpSSHProxy,
+            FindingKindDraft::AgentKeyUnderUserSsh,
+            FindingKindDraft::Base64Payload,
+            FindingKindDraft::HttpSSHProxy,
         ])
     );
 }
@@ -155,8 +159,8 @@ fn per_variant_rename_matches_serde_wire() {
     assert_eq!(
         VerifyErrorKind::enum_members(),
         serde_wire_names(&[
-            VerifyErrorKind::ContentMismatch,
-            VerifyErrorKind::VerifyFailed,
+            VerifyErrorKindDraft::ContentMismatch,
+            VerifyErrorKindDraft::VerifyFailed,
         ])
     );
 }
@@ -166,7 +170,7 @@ fn per_variant_rename_overrides_rename_all() {
     assert_eq!(SandboxKind::enum_members(), ["AS-IS", "plain_add"]);
     assert_eq!(
         SandboxKind::enum_members(),
-        serde_wire_names(&[SandboxKind::AsIs, SandboxKind::PlainAdd])
+        serde_wire_names(&[SandboxKindDraft::AsIs, SandboxKindDraft::PlainAdd])
     );
 }
 
@@ -226,7 +230,7 @@ fn snake_case_json_schema_matches_serde_wire() {
 
 #[test]
 fn internally_tagged_rename_all_reaches_the_wire_correctly() {
-    let unmarked = InternallyTaggedRename::Unmarked {
+    let unmarked = InternallyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_json = serde_json::to_value(&unmarked).unwrap();
@@ -239,7 +243,7 @@ fn internally_tagged_rename_all_reaches_the_wire_correctly() {
         unmarked
     );
 
-    let marked = InternallyTaggedRename::Marked {
+    let marked = InternallyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_json = serde_json::to_value(&marked).unwrap();
@@ -255,7 +259,7 @@ fn internally_tagged_rename_all_reaches_the_wire_correctly() {
 
 #[test]
 fn externally_tagged_rename_all_reaches_the_wire_correctly() {
-    let unmarked = ExternallyTaggedRename::Unmarked {
+    let unmarked = ExternallyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_json = serde_json::to_value(&unmarked).unwrap();
@@ -268,7 +272,7 @@ fn externally_tagged_rename_all_reaches_the_wire_correctly() {
         unmarked
     );
 
-    let marked = ExternallyTaggedRename::Marked {
+    let marked = ExternallyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_json = serde_json::to_value(&marked).unwrap();
@@ -284,7 +288,7 @@ fn externally_tagged_rename_all_reaches_the_wire_correctly() {
 
 #[test]
 fn adjacently_tagged_rename_all_reaches_the_wire_correctly() {
-    let unmarked = AdjacentlyTaggedRename::Unmarked {
+    let unmarked = AdjacentlyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_json = serde_json::to_value(&unmarked).unwrap();
@@ -297,7 +301,7 @@ fn adjacently_tagged_rename_all_reaches_the_wire_correctly() {
         unmarked
     );
 
-    let marked = AdjacentlyTaggedRename::Marked {
+    let marked = AdjacentlyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_json = serde_json::to_value(&marked).unwrap();
@@ -402,7 +406,7 @@ fn internally_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = InternallyTaggedRename::json_schema();
     let one_of = schema["oneOf"].as_array().unwrap();
 
-    let unmarked = InternallyTaggedRename::Unmarked {
+    let unmarked = InternallyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_branch = one_of
@@ -411,7 +415,7 @@ fn internally_tagged_rename_all_json_schema_matches_serde_wire() {
         .unwrap();
     assert_branch_accepts(unmarked_branch, &unmarked);
 
-    let marked = InternallyTaggedRename::Marked {
+    let marked = InternallyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_branch = one_of
@@ -426,7 +430,7 @@ fn externally_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = ExternallyTaggedRename::json_schema();
     let one_of = schema["oneOf"].as_array().unwrap();
 
-    let unmarked = ExternallyTaggedRename::Unmarked {
+    let unmarked = ExternallyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_branch = one_of
@@ -446,7 +450,7 @@ fn externally_tagged_rename_all_json_schema_matches_serde_wire() {
             .contains_key("field_one")
     );
 
-    let marked = ExternallyTaggedRename::Marked {
+    let marked = ExternallyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_branch = one_of
@@ -474,7 +478,7 @@ fn adjacently_tagged_rename_all_json_schema_matches_serde_wire() {
     let schema = AdjacentlyTaggedRename::json_schema();
     let one_of = schema["oneOf"].as_array().unwrap();
 
-    let unmarked = AdjacentlyTaggedRename::Unmarked {
+    let unmarked = AdjacentlyTaggedRenameDraft::Unmarked {
         field_one: "a".to_owned(),
     };
     let unmarked_branch = one_of
@@ -489,7 +493,7 @@ fn adjacently_tagged_rename_all_json_schema_matches_serde_wire() {
             .contains_key("field_one")
     );
 
-    let marked = AdjacentlyTaggedRename::Marked {
+    let marked = AdjacentlyTaggedRenameDraft::Marked {
         field_two: "b".to_owned(),
     };
     let marked_branch = one_of

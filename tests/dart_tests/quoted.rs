@@ -4,9 +4,10 @@
 
 use super::held_numbers::u8_held;
 use super::quoted_models::{
-    Dutied, Excised, Leveed, Levied, Mulcted, Tariffed, Tithed, Tolled, UNDER_AN_ALIAS, WRITTEN,
-    dutied_dart, excised_dart, levied_dart, mulcted_dart, serde_written, tariffed_dart,
-    tithed_dart, tolled_dart,
+    Dutied, DutiedDraft, Excised, ExcisedDraft, Leveed, LeveedDraft, Levied, LeviedDraft, Mulcted,
+    MulctedDraft, Tariffed, TariffedDraft, Tithed, TithedDraft, Tolled, TolledDraft,
+    UNDER_AN_ALIAS, WRITTEN, dutied_dart, excised_dart, levied_dart, mulcted_dart, serde_written,
+    tariffed_dart, tithed_dart, tolled_dart,
 };
 
 /// Asserts that `definition` holds each of `pieces`.
@@ -20,34 +21,34 @@ fn holds_each(definition: &str, pieces: &[&str]) {
 /// writes.
 #[test]
 fn serde_writes_each_name_the_rows_state() {
-    let leveed = Leveed {
+    let leveed = LeveedDraft {
         cost: "c".to_owned(),
     };
     let written = [
-        serde_json::to_string(&Tariffed {
+        serde_json::to_string(&TariffedDraft {
             backslash: "b".to_owned(),
             cost: "c".to_owned(),
             quoted: "s".to_owned(),
         }),
-        serde_json::to_string(&Tolled::Bid { lot: 1 }),
-        serde_json::to_string(&Tolled::Held("p".to_owned())),
-        serde_json::to_string(&Tolled::Still),
-        serde_json::to_string(&Levied::Bid { lot: 1 }),
-        serde_json::to_string(&Levied::Held(leveed.clone())),
-        serde_json::to_string(&Levied::Still),
-        serde_json::to_string(&Dutied::Bid { lot: 1 }),
-        serde_json::to_string(&Dutied::Held("h".to_owned())),
-        serde_json::to_string(&Dutied::Still),
-        serde_json::to_string(&Tithed {
-            leveed,
+        serde_json::to_string(&TolledDraft::Bid { lot: 1 }),
+        serde_json::to_string(&TolledDraft::Held("p".to_owned())),
+        serde_json::to_string(&TolledDraft::Still),
+        serde_json::to_string(&LeviedDraft::Bid { lot: 1 }),
+        serde_json::to_string(&LeviedDraft::Held(leveed.clone().validate().unwrap())),
+        serde_json::to_string(&LeviedDraft::Still),
+        serde_json::to_string(&DutiedDraft::Bid { lot: 1 }),
+        serde_json::to_string(&DutiedDraft::Held("h".to_owned())),
+        serde_json::to_string(&DutiedDraft::Still),
+        serde_json::to_string(&TithedDraft {
+            leveed: leveed.validate().unwrap(),
             note: "n".to_owned(),
         }),
-        serde_json::to_string(&Mulcted {
+        serde_json::to_string(&MulctedDraft {
             note: "n".to_owned(),
-            tolled: Tolled::Held("p".to_owned()),
+            tolled: TolledDraft::Held("p".to_owned()).validate().unwrap(),
         }),
-        serde_json::to_string(&Excised::High),
-        serde_json::to_string(&Excised::Low),
+        serde_json::to_string(&ExcisedDraft::High),
+        serde_json::to_string(&ExcisedDraft::Low),
     ]
     .map(Result::unwrap);
     let rows = WRITTEN.map(|(_, json)| json);

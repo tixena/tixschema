@@ -266,9 +266,9 @@ impl TollingClientService<()> for Tollbooth {
     ) -> Result<TollingReceipt, TollingError> {
         ready(()).await;
         if note.is_empty() {
-            return Err(TollingError::Refused);
+            return Err(TollingErrorDraft::Refused.validate().unwrap());
         }
-        Ok(TollingReceipt { label })
+        Ok(TollingReceiptDraft { label }.validate().unwrap())
     }
 
     async fn note(&self, _ctx: &(), label: String) {
@@ -285,7 +285,7 @@ impl TollingClientService<()> for Tollbooth {
     ) -> Result<(TollingReceipt, String), (TollingError, Option<String>)> {
         ready(()).await;
         Ok((
-            TollingReceipt { label },
+            TollingReceiptDraft { label }.validate().unwrap(),
             format!("{tenant}{}", trace.unwrap_or_default()),
         ))
     }
@@ -302,9 +302,11 @@ impl TollingUploadClientService<()> for Tollbooth {
         ready(()).await;
         let mut held = vec![0_u8; 8];
         let pulled = attachment.pull(&mut held).unwrap_or_default();
-        Ok(TollingReceipt {
+        Ok(TollingReceiptDraft {
             label: format!("{title}{note}{pulled}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -453,17 +455,19 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
     assert_eq!(
         tolled,
         Some(Ok((
-            TollingReceipt {
+            TollingReceiptDraft {
                 label: "l".to_owned()
             },
             "t7".to_owned()
-        ))),
+        )))
+        .validate()
+        .unwrap(),
         "toll answers otherwise"
     );
     let levied = poll_once(Tollbooth::default().levy(&(), "l".to_owned(), String::new()));
     assert_eq!(
         levied,
-        Some(Err(TollingError::Refused)),
+        Some(Err(TollingErrorDraft::Refused)),
         "levy answers otherwise"
     );
     let tollbooth = Tollbooth::default();
@@ -485,7 +489,7 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
     ));
     assert_eq!(
         deposited,
-        Some(Ok(TollingReceipt {
+        Some(Ok(TollingReceiptDraft {
             label: "tn1".to_owned()
         })),
         "deposit answers otherwise"

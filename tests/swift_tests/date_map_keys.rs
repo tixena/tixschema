@@ -15,9 +15,12 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::date_map_keys_models::{
-    AdjacentShift, AdjacentWatch, Chronicle, Convoy, Daybook, Daybooks, Diary, Logbook, Moment,
-    Reminder, Sailing, Shift, StowedLogbook, TaggedShift, TaggedWatch, Tidetable, Timetable,
-    UntaggedShift, UntaggedWatch, Watch, adjacent_shift_swift, adjacent_watch_swift,
+    AdjacentShift, AdjacentShiftDraft, AdjacentWatch, AdjacentWatchDraft, Chronicle, Convoy,
+    ConvoyDraft, Daybook, Daybooks, Diary, Logbook, LogbookDraft, Moment, MomentDraft, Reminder,
+    ReminderDraft, Sailing, SailingDraft, Shift, ShiftDraft, StowedLogbook, StowedLogbookDraft,
+    TaggedShift, TaggedShiftDraft, TaggedWatch, TaggedWatchDraft, Tidetable, TidetableDraft,
+    Timetable, TimetableDraft, UntaggedShift, UntaggedShiftDraft, UntaggedWatch,
+    UntaggedWatchDraft, Watch, WatchDraft, adjacent_shift_swift, adjacent_watch_swift,
     chronicle_swift, daybook_swift, daybooks_swift, diary_swift, first, logbook_swift, second,
     shift_swift, stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift,
     timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
@@ -103,7 +106,7 @@ fn wrappers(swift: &str) -> Vec<&str> {
 
 #[test]
 fn each_model_is_written_as_serde_writes_it() {
-    let sailing = || Sailing {
+    let sailing = || SailingDraft {
         label: "s".to_owned(),
     };
     let logged = r#"{"by_at":{"2024-01-02T03:04:05.678Z":1},"sailings":{"2024-01-02T03:04:05.678Z":{"label":"s"}}}"#;
@@ -111,70 +114,70 @@ fn each_model_is_written_as_serde_writes_it() {
         r#"{"by_at":{"2024-01-02T03:04:05.678Z":"t"},"counts":{"2024-01-02T03:04:05.678Z":2}}"#;
     for (written, expected) in [
         (
-            read_back(&Timetable {
+            read_back(&TimetableDraft {
                 by_at: once(1),
-                sailings: once(sailing()),
+                sailings: once(sailing().validate().unwrap()),
             }),
             logged.to_owned(),
         ),
         (
-            read_back(&Tidetable {
+            read_back(&TidetableDraft {
                 by_at: once("t".to_owned()),
                 counts: once(2),
             }),
             shifted.to_owned(),
         ),
         (
-            read_back(&Watch::Logged {
+            read_back(&WatchDraft::Logged {
                 by_at: once(1),
-                sailings: once(sailing()),
+                sailings: once(sailing().validate().unwrap()),
             }),
             format!(r#"{{"Logged":{logged}}}"#),
         ),
         (
-            read_back(&TaggedWatch::Logged {
+            read_back(&TaggedWatchDraft::Logged {
                 by_at: once(1),
-                sailings: once(sailing()),
+                sailings: once(sailing().validate().unwrap()),
             }),
             format!(r#"{{"kind":"Logged",{}"#, &logged[1..]),
         ),
         (
-            read_back(&AdjacentWatch::Logged {
+            read_back(&AdjacentWatchDraft::Logged {
                 by_at: once(1),
-                sailings: once(sailing()),
+                sailings: once(sailing().validate().unwrap()),
             }),
             format!(r#"{{"kind":"Logged","body":{logged}}}"#),
         ),
         (
-            read_back(&UntaggedWatch::Logged {
+            read_back(&UntaggedWatchDraft::Logged {
                 by_at: once(1),
-                sailings: once(sailing()),
+                sailings: once(sailing().validate().unwrap()),
             }),
             logged.to_owned(),
         ),
         (
-            read_back(&Shift::Logged {
+            read_back(&ShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: once(2),
             }),
             format!(r#"{{"Logged":{shifted}}}"#),
         ),
         (
-            read_back(&TaggedShift::Logged {
+            read_back(&TaggedShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: once(2),
             }),
             format!(r#"{{"kind":"Logged",{}"#, &shifted[1..]),
         ),
         (
-            read_back(&AdjacentShift::Logged {
+            read_back(&AdjacentShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: once(2),
             }),
             format!(r#"{{"kind":"Logged","body":{shifted}}}"#),
         ),
         (
-            read_back(&UntaggedShift::Logged {
+            read_back(&UntaggedShiftDraft::Logged {
                 by_at: once("t".to_owned()),
                 counts: once(2),
             }),
@@ -218,19 +221,23 @@ fn a_date_of_whole_seconds_or_finer_than_milliseconds_is_written_as_chrono_write
 fn a_date_is_written_as_chrono_writes_it_by_the_models_the_swift_runs_read() {
     let whole = DateTime::from_timestamp(1_704_164_645, 0).unwrap();
     assert_eq!(
-        read_back(&Moment { at: whole }),
+        read_back(&MomentDraft { at: whole }),
         r#"{"at":"2024-01-02T03:04:05Z"}"#
     );
     assert_eq!(
-        read_back(&Reminder { due: Some(first()) }),
+        read_back(&ReminderDraft { due: Some(first()) }),
         r#"{"due":1704164645678}"#
     );
-    assert_eq!(read_back(&Reminder { due: None }), "{}");
-    let convoy = Convoy {
+    assert_eq!(read_back(&ReminderDraft { due: None }), "{}");
+    let convoy = ConvoyDraft {
         held: "h".to_owned(),
-        sailings: once(Sailing {
-            label: "s".to_owned(),
-        }),
+        sailings: once(
+            SailingDraft {
+                label: "s".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
     };
     assert_eq!(
         read_back(&convoy),
@@ -344,7 +351,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
 fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
     let bound = integer_key_bound("UInt32(number)", "u32");
     assert_eq!(
-        read_back(&Muster {
+        read_back(&MusterDraft {
             by_count: HashMap::from([(7, "m".to_owned())]),
         }),
         r#"{"by_count":{"7":"m"}}"#
@@ -407,10 +414,10 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
 #[test]
 fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
     assert_eq!(
-        read_back(&Roll {
+        read_back(&RollDraft {
             by_count: HashMap::from([(
                 7,
-                Sailing {
+                SailingDraft {
                     label: "s".to_owned()
                 }
             )]),
@@ -502,21 +509,21 @@ fn only_a_wrapper_of_a_date_key_declares_the_formatter() {
 /// that throws nothing.
 #[test]
 fn a_list_or_an_optional_of_maps_keyed_by_a_date_hands_on_each_storage_with_no_try() {
-    let sailing = Sailing {
+    let sailing = SailingDraft {
         label: "s".to_owned(),
     };
     assert_eq!(
-        read_back(&Logbook {
+        read_back(&LogbookDraft {
             listed: vec![once(1)],
             listed_or_none: vec![None, Some(once(2))],
             maybe: Some(once(3)),
             maybe_listed: None,
-            sailing_lists: vec![once(sailing)],
+            sailing_lists: vec![once(sailing.validate().unwrap())],
         }),
         r#"{"listed":[{"2024-01-02T03:04:05.678Z":1}],"listed_or_none":[null,{"2024-01-02T03:04:05.678Z":2}],"maybe":{"2024-01-02T03:04:05.678Z":3},"sailing_lists":[{"2024-01-02T03:04:05.678Z":{"label":"s"}}]}"#
     );
     assert_eq!(
-        read_back(&StowedLogbook {
+        read_back(&StowedLogbookDraft {
             listed: Vec::new(),
             listed_or_none: Vec::new(),
             maybe: None,

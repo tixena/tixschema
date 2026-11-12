@@ -11,8 +11,8 @@ use super::stamp_ws_rpc_client::ping_frame;
 use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient};
 use super::stamp_ws_rpc_transport;
 use super::tests::{
-    StampBackEnd, StampClientServiceSchema, StampError, StampReceipt, stamp_error_dart,
-    stamp_receipt_dart,
+    StampBackEnd, StampClientServiceSchema, StampError, StampErrorDraft, StampReceipt,
+    StampReceiptDraft, stamp_error_dart, stamp_receipt_dart,
 };
 use alloc::sync::Arc;
 use core::future::{Future, Ready, ready};
@@ -409,13 +409,15 @@ fn the_dart_attachment_answers_the_rust_client_the_way_the_rust_dispatcher_does(
             Poll::Ready(())
         ));
     }
-    let receipt = |label: &str| StampReceipt {
+    let receipt = |label: &str| StampReceiptDraft {
         label: label.to_owned(),
         tenant: "acme".to_owned(),
     };
     assert_eq!(
         poll_by_hand(first.as_mut()),
         Poll::Ready(Ok((receipt("a"), "etag-acme".to_owned(), Some(8))))
+            .validate()
+            .unwrap()
     );
     assert_eq!(
         poll_by_hand(second.as_mut()),
@@ -424,13 +426,13 @@ fn the_dart_attachment_answers_the_rust_client_the_way_the_rust_dispatcher_does(
     assert_eq!(
         poll_by_hand(third.as_mut()),
         Poll::Ready(Err(CallError::Operation((
-            StampError::Refused,
+            StampErrorDraft::Refused,
             Some("refused at 3".to_owned())
         ))))
     );
     assert_eq!(
         poll_by_hand(fourth.as_mut()),
-        Poll::Ready(Err(CallError::Operation((StampError::Refused, None))))
+        Poll::Ready(Err(CallError::Operation((StampErrorDraft::Refused, None))))
     );
 }
 

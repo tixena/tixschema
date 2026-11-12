@@ -145,27 +145,33 @@ fn within_docked_parcel(value: &DockedParcel) -> Result<(), Vec<String>> {
 }
 
 fn sound() -> DockedParcel {
-    DockedParcel {
+    DockedParcelDraft {
         fragile_item_codes: vec!["x".to_owned()],
         item_label: "A".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn broken() -> DockedParcel {
-    DockedParcel {
+    DockedParcelDraft {
         fragile_item_codes: vec!["x".to_owned(), "y".to_owned()],
         item_label: String::new(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn manifest_of(held: &DockedParcel) -> DockedManifest {
-    DockedManifest {
+    DockedManifestDraft {
         boxed_parcel: Box::new(held.clone()),
         first_parcel: held.clone(),
         parcel_list: vec![sound(), held.clone()],
         parcels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_parcel: Some(held.clone()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn docked_in_upper_case(value: &DockCode) -> Result<(), Vec<String>> {
@@ -206,13 +212,15 @@ fn docked_once(value: &DockCodes) -> Result<(), Vec<String>> {
 
 /// A shelf that holds `held` in every place it holds a label, after a sound one in its list.
 fn shelf_of(held: &DockLabel) -> DockedShelf {
-    DockedShelf {
+    DockedShelfDraft {
         boxed_label: Box::new(held.clone()),
         first_label: held.clone(),
         label_list: vec![DockLabel::new("OK".to_owned()).unwrap(), held.clone()],
         labels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_label: Some(held.clone()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn counted_docked(check: usize) {
@@ -282,7 +290,7 @@ where
 
 #[test]
 fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answers() {
-    let refused = broken().validate().unwrap_err().join("; ");
+    let refused = broken().validation_issues().join("; ");
     assert_eq!(
         refused,
         "'itemLabel': too short: minimum length is 1, got 0; \
@@ -302,7 +310,7 @@ fn a_document_that_breaks_a_bound_and_a_check_is_refused_with_what_validate_answ
 #[test]
 fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_path() {
     let held = manifest_of(&broken());
-    let refused = held.validate().unwrap_err().join("; ");
+    let refused = held.validation_issues().join("; ");
     assert_eq!(
         refused,
         "'boxedParcel.itemLabel': too short: minimum length is 1, got 0; \
@@ -327,7 +335,7 @@ fn a_document_is_refused_with_every_message_of_every_model_it_holds_at_its_full_
 #[test]
 fn a_document_is_refused_by_the_holders_deserialize_with_every_message_it_holds() {
     let held = manifest_of(&broken());
-    let refused = held.validate().unwrap_err().join("; ");
+    let refused = held.validation_issues().join("; ");
     assert_eq!(
         DockedManifest::deserialize(bson::Deserializer::new(Bson::Document(written(&held))))
             .map_err(|error| error.to_string()),
@@ -350,12 +358,12 @@ fn a_brand_that_names_a_check_alone_is_refused_as_it_is_read() {
         DockCode::model_schema_read_unjudged(serde_json::to_value("abc".to_owned()).unwrap())
             .unwrap();
     assert_eq!(
-        lower.validate(),
-        Err(vec!["a dock code is upper case".to_owned()])
+        lower.validation_issues(),
+        vec!["a dock code is upper case".to_owned()]
     );
     read_as_validated(&lower, lower.validate());
     let upper = DockCode::new("ABC".to_owned()).unwrap();
-    assert_eq!(upper.validate(), Ok(()));
+    assert_eq!(upper.validation_issues(), Vec::<String>::new());
     read_as_validated(&upper, upper.validate());
 }
 
@@ -392,8 +400,8 @@ fn a_brand_over_a_list_is_refused_as_validate_answers_of_the_list_read() {
         .unwrap()
     };
     assert_eq!(
-        codes(&["a", "b", "a"]).validate(),
-        Err(vec!["'2': a is docked twice".to_owned()])
+        codes(&["a", "b", "a"]).validation_issues(),
+        vec!["'2': a is docked twice".to_owned()]
     );
     for written in [&[][..], &["a"], &["a", "a"], &["a", "b"], &["a", "b", "a"]] {
         let held = codes(written);
@@ -421,8 +429,8 @@ fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_an
         DockDir::model_schema_read_unjudged(serde_json::to_value(PathBuf::from("/a")).unwrap())
             .unwrap();
     assert_eq!(
-        short.validate(),
-        Err(vec!["too short: minimum length is 3, got 2".to_owned()])
+        short.validation_issues(),
+        vec!["too short: minimum length is 3, got 2".to_owned()]
     );
     read_as_validated(&short, short.validate());
     let long = DockDir::new(PathBuf::from("/etc")).unwrap();
@@ -433,8 +441,8 @@ fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_an
             .unwrap()
     };
     assert_eq!(
-        slug("abcd").validate(),
-        Err(vec!["too long: maximum length is 3, got 4".to_owned()])
+        slug("abcd").validation_issues(),
+        vec!["too long: maximum length is 3, got 4".to_owned()]
     );
     for text in ["abcd", "abc"] {
         let held = slug(text);
@@ -449,15 +457,15 @@ fn a_generic_brand_is_refused_at_its_declared_default_and_read_at_any_other_fill
     )
     .unwrap();
     assert_eq!(
-        short.validate(),
-        Err(vec!["too short: minimum length is 2, got 1".to_owned()])
+        short.validation_issues(),
+        vec!["too short: minimum length is 2, got 1".to_owned()]
     );
     read_as_validated(&short, short.validate());
     let long = DockTag::new("ab".to_owned()).unwrap();
     read_as_validated(&long, long.validate());
     // The bound is the declared default's, so one digit is read at another filling.
     let counted = DockTag::new(7_i32).unwrap();
-    assert_eq!(counted.validate(), Ok(()));
+    assert_eq!(counted.validation_issues(), Vec::<String>::new());
     read_as_validated(&counted, counted.validate());
 }
 
@@ -467,7 +475,7 @@ fn a_document_names_every_broken_brand_it_holds_at_its_full_path() {
         &DockLabel::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
             .unwrap(),
     );
-    let refused = held.validate().unwrap_err().join("; ");
+    let refused = held.validation_issues().join("; ");
     assert_eq!(
         refused,
         "'boxedLabel': too short: minimum length is 2, got 1; \

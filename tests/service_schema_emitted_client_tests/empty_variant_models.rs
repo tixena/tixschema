@@ -494,7 +494,7 @@ fn serde_refuses_a_stray_key_in_either_variant_of_a_strict_enum_and_reads_past_i
     assert_eq!(told, expected());
     let read: AdjacentSignal = serde_json::from_str(ADJACENT[0].0).unwrap();
     assert!(
-        matches!(&read, AdjacentSignal::Off { reason, since: 0 } if reason.is_empty()),
+        matches!(&read, AdjacentSignalDraft::Off { reason, since: 0 } if reason.is_empty()),
         "{read:?}"
     );
 }
@@ -539,49 +539,52 @@ fn the_json_schema_of_each_enum_accepts_what_serde_reads() {
 
 #[test]
 fn serde_writes_no_variant_it_neither_writes_nor_reads() {
-    let hidden_signal = HiddenSignal::Closed { held: 1 };
-    assert!(matches!(hidden_signal, HiddenSignal::Closed { held: 1 }));
+    let hidden_signal = HiddenSignalDraft::Closed { held: 1 };
+    assert!(matches!(
+        hidden_signal,
+        HiddenSignalDraft::Closed { held: 1 }
+    ));
     assert!(refused_write(&hidden_signal).contains("Closed cannot be serialized"));
-    let open_hidden_signal = OpenHiddenSignal::Closed { held: 1 };
+    let open_hidden_signal = OpenHiddenSignalDraft::Closed { held: 1 };
     assert!(matches!(
         open_hidden_signal,
-        OpenHiddenSignal::Closed { held: 1 }
+        OpenHiddenSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&open_hidden_signal).contains("Closed cannot be serialized"));
-    let hidden_tagged_signal = HiddenTaggedSignal::Closed { held: 1 };
+    let hidden_tagged_signal = HiddenTaggedSignalDraft::Closed { held: 1 };
     assert!(matches!(
         hidden_tagged_signal,
-        HiddenTaggedSignal::Closed { held: 1 }
+        HiddenTaggedSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&hidden_tagged_signal).contains("Closed cannot be serialized"));
-    let open_hidden_tagged_signal = OpenHiddenTaggedSignal::Closed { held: 1 };
+    let open_hidden_tagged_signal = OpenHiddenTaggedSignalDraft::Closed { held: 1 };
     assert!(matches!(
         open_hidden_tagged_signal,
-        OpenHiddenTaggedSignal::Closed { held: 1 }
+        OpenHiddenTaggedSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&open_hidden_tagged_signal).contains("Closed cannot be serialized"));
-    let hidden_adjacent_signal = HiddenAdjacentSignal::Closed { held: 1 };
+    let hidden_adjacent_signal = HiddenAdjacentSignalDraft::Closed { held: 1 };
     assert!(matches!(
         hidden_adjacent_signal,
-        HiddenAdjacentSignal::Closed { held: 1 }
+        HiddenAdjacentSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&hidden_adjacent_signal).contains("Closed cannot be serialized"));
-    let open_hidden_adjacent_signal = OpenHiddenAdjacentSignal::Closed { held: 1 };
+    let open_hidden_adjacent_signal = OpenHiddenAdjacentSignalDraft::Closed { held: 1 };
     assert!(matches!(
         open_hidden_adjacent_signal,
-        OpenHiddenAdjacentSignal::Closed { held: 1 }
+        OpenHiddenAdjacentSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&open_hidden_adjacent_signal).contains("Closed cannot be serialized"));
-    let hidden_untagged_signal = HiddenUntaggedSignal::Closed { held: 1 };
+    let hidden_untagged_signal = HiddenUntaggedSignalDraft::Closed { held: 1 };
     assert!(matches!(
         hidden_untagged_signal,
-        HiddenUntaggedSignal::Closed { held: 1 }
+        HiddenUntaggedSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&hidden_untagged_signal).contains("Closed cannot be serialized"));
-    let open_hidden_untagged_signal = OpenHiddenUntaggedSignal::Closed { held: 1 };
+    let open_hidden_untagged_signal = OpenHiddenUntaggedSignalDraft::Closed { held: 1 };
     assert!(matches!(
         open_hidden_untagged_signal,
-        OpenHiddenUntaggedSignal::Closed { held: 1 }
+        OpenHiddenUntaggedSignalDraft::Closed { held: 1 }
     ));
     assert!(refused_write(&open_hidden_untagged_signal).contains("Closed cannot be serialized"));
 }

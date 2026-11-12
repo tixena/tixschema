@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 
 use crate::models::{
     AccountService, AdjacentContact, Contact, Done, Handle, Pair, Profile, Roster, Signup,
-    SignupError, TaggedContact, UntaggedContact, Username, account_service_schema, handle_schema,
+    SignupDraft, SignupError, TaggedContact, UntaggedContact, Username, account_service_schema,
+    handle_schema,
 };
 use handle_schema::DecodeWith as _;
 
@@ -123,7 +124,7 @@ fn the_recovering_decode_hands_its_callback_the_broken_rule() {
 
 #[test]
 fn a_service_request_check_refuses_a_broken_request() {
-    let broken = Signup {
+    let broken = SignupDraft {
         username: "ab".to_owned(),
     };
     let short = ["'username': too short: minimum length is 3, got 2"];

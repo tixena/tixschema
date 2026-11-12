@@ -64,7 +64,7 @@ mod beside_the_tuple_form {
             serde_json::from_value::<NamedSlug>(serde_json::json!("x")).unwrap(),
             slug
         );
-        let holder = NamedHolder {
+        let holder = NamedHolderDraft {
             marked: NamedMarked::new("y".to_owned()).unwrap(),
             slug,
         };

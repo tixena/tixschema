@@ -19,21 +19,26 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::listed_maps_models::{
-    AdjacentGalley, AdjacentStowedGalley, Attic, Caddy, Cellar, Creel, Cupboard, Dresser, Galley,
-    Hopper, Larder, Pantry, Rung, Sideboard, StowedAttic, StowedCaddy, StowedCellar, StowedCreel,
-    StowedCupboard, StowedDresser, StowedGalley, StowedLarder, StowedPantry, StowedSideboard,
-    TaggedGalley, TaggedStowedGalley, Trug, UntaggedGalley, UntaggedStowedGalley,
-    adjacent_galley_swift, adjacent_stowed_galley_swift, attic_swift, caddy_swift, cellar_swift,
-    creel_swift, cupboard_swift, dresser_swift, galley_swift, hopper_swift, larder_swift,
-    pantry_swift, rung_swift, sideboard_swift, stowed_attic_swift, stowed_caddy_swift,
-    stowed_cellar_swift, stowed_creel_swift, stowed_cupboard_swift, stowed_dresser_swift,
-    stowed_galley_swift, stowed_larder_swift, stowed_pantry_swift, stowed_sideboard_swift,
-    tagged_galley_swift, tagged_stowed_galley_swift, trug_swift, untagged_galley_swift,
-    untagged_stowed_galley_swift,
+    AdjacentGalley, AdjacentStowedGalley, Attic, AtticDraft, Caddy, CaddyDraft, Cellar,
+    CellarDraft, Creel, Cupboard, CupboardDraft, Dresser, DresserDraft, Galley, Hopper, Larder,
+    LarderDraft, Pantry, PantryDraft, Rung, RungDraft, Sideboard, SideboardDraft, StowedAttic,
+    StowedAtticDraft, StowedCaddy, StowedCaddyDraft, StowedCellar, StowedCellarDraft, StowedCreel,
+    StowedCupboard, StowedCupboardDraft, StowedDresser, StowedDresserDraft, StowedGalley,
+    StowedLarder, StowedLarderDraft, StowedPantry, StowedPantryDraft, StowedSideboard,
+    StowedSideboardDraft, TaggedGalley, TaggedGalleyDraft, TaggedStowedGalley,
+    TaggedStowedGalleyDraft, Trug, UntaggedGalley, UntaggedGalleyDraft, UntaggedStowedGalley,
+    UntaggedStowedGalleyDraft, adjacent_galley_swift, adjacent_stowed_galley_swift, attic_swift,
+    caddy_swift, cellar_swift, creel_swift, cupboard_swift, dresser_swift, galley_swift,
+    hopper_swift, larder_swift, pantry_swift, rung_swift, sideboard_swift, stowed_attic_swift,
+    stowed_caddy_swift, stowed_cellar_swift, stowed_creel_swift, stowed_cupboard_swift,
+    stowed_dresser_swift, stowed_galley_swift, stowed_larder_swift, stowed_pantry_swift,
+    stowed_sideboard_swift, tagged_galley_swift, tagged_stowed_galley_swift, trug_swift,
+    untagged_galley_swift, untagged_stowed_galley_swift,
 };
 #[cfg(feature = "chrono")]
 use super::listed_maps_models::{
-    Dateline, Plank, Timeline, dateline_swift, plank_swift, timeline_swift,
+    Dateline, DatelineDraft, Plank, PlankDraft, Timeline, TimelineDraft, dateline_swift,
+    plank_swift, timeline_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -210,7 +215,10 @@ fn rungs<Held>(held: &Held) -> HashMap<Rung, Held>
 where
     Held: Clone,
 {
-    HashMap::from([(Rung::Low, held.clone()), (Rung::High, held.clone())])
+    HashMap::from([
+        (RungDraft::Low, held.clone()),
+        (RungDraft::High, held.clone()),
+    ])
 }
 
 /// The text `a`.
@@ -220,7 +228,7 @@ fn text() -> String {
 
 /// [`Pantry`] holding each shape, or none of the optionals.
 fn pantry(present: bool) -> Pantry {
-    Pantry {
+    PantryDraft {
         defaulted: vec![numbered(&text())],
         flag_lists: vec![flagged(&text()), HashMap::new()],
         flag_lists_or_none: vec![Some(flagged(&text())), None],
@@ -236,11 +244,13 @@ fn pantry(present: bool) -> Pantry {
         rung_lists_or_none: vec![Some(rungs(&text())), None],
         verbatim_lists: vec![numbered(&text())],
     }
+    .validate()
+    .unwrap()
 }
 
 /// [`StowedPantry`] holding each shape, or none of the optionals.
 fn stowed_pantry(present: bool) -> StowedPantry<String> {
-    StowedPantry {
+    StowedPantryDraft {
         defaulted: vec![numbered(&text())],
         flag_lists: vec![flagged(&text())],
         flag_lists_or_none: vec![None, Some(flagged(&text()))],
@@ -256,6 +266,8 @@ fn stowed_pantry(present: bool) -> StowedPantry<String> {
         rung_lists_or_none: vec![None],
         verbatim_lists: vec![numbered(&text())],
     }
+    .validate()
+    .unwrap()
 }
 
 /// The JSON serde writes for `held`, without the key `defaulted`.
@@ -299,10 +311,10 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "a null entry under a key Swift wraps and under one it keys natively",
             "Dateline",
-            &Dateline {
+            &DatelineDraft {
                 maybe_by_name: HashMap::from([
                     ("n".to_owned(), None),
-                    ("m".to_owned(), Some(Plank { label: text() })),
+                    ("m".to_owned(), Some(PlankDraft { label: text() })),
                 ]),
                 maybe_by_number: HashMap::from([(1, Some(date())), (2, None)]),
             },
@@ -311,7 +323,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "a list of maps of dates",
             "Timeline",
-            &Timeline {
+            &TimelineDraft {
                 by_name_lists: vec![HashMap::from([("n".to_owned(), date())])],
                 by_number_lists: vec![numbered(&date())],
                 maybe_by_name: Some(HashMap::from([("m".to_owned(), date())])),
@@ -327,7 +339,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape in a tuple's slot",
             "Larder",
-            &Larder {
+            &LarderDraft {
                 flag_lists_or_none: (vec![Some(flagged(&text())), None], 1),
                 maybe_numbers: (Some(numbered(&text())), 2),
                 maybe_rung_lists: (Some(vec![rungs(&text())]), 3),
@@ -337,7 +349,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape in a tuple's slot, no optional",
             "Larder",
-            &Larder {
+            &LarderDraft {
                 flag_lists_or_none: (vec![None], 1),
                 maybe_numbers: (None, 2),
                 maybe_rung_lists: (None, 3),
@@ -347,7 +359,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape in a tuple's slot that declares a parameter",
             "StowedLarder<String>",
-            &StowedLarder {
+            &StowedLarderDraft {
                 flag_lists_or_none: (vec![Some(flagged(&text()))], 1),
                 maybe_numbers: (Some(numbered(&text())), 2),
                 maybe_rung_lists: (None, 3),
@@ -357,7 +369,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape in a slot of a tuple struct",
             "Cellar",
-            &Cellar(
+            &CellarDraft(
                 vec![numbered(&text())],
                 vec![Some(flagged(&text())), None],
                 Some(vec![rungs(&text())]),
@@ -367,7 +379,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape in a slot of a tuple struct that declares a parameter",
             "StowedCellar<String>",
-            &StowedCellar(
+            &StowedCellarDraft(
                 vec![numbered(&text())],
                 vec![None],
                 None,
@@ -377,15 +389,15 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape as a map's value",
             "Attic",
-            &Attic {
+            &AtticDraft {
                 flag_lists_by_number: numbered(&vec![flagged(&text())]),
                 maybe_number_lists_by_name: HashMap::from([
                     ("m".to_owned(), Some(vec![numbered(&text())])),
                     ("n".to_owned(), None),
                 ]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (Rung::Low, Some(rungs(&text()))),
-                    (Rung::High, None),
+                    (RungDraft::Low, Some(rungs(&text()))),
+                    (RungDraft::High, None),
                 ]),
                 number_lists_by_name: HashMap::from([("n".to_owned(), vec![numbered(&text())])]),
                 rung_lists_or_none_by_name: HashMap::from([(
@@ -397,12 +409,12 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "each shape as a map's value that declares a parameter",
             "StowedAttic<String>",
-            &StowedAttic {
+            &StowedAtticDraft {
                 flag_lists_by_number: numbered(&vec![flagged(&text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (Rung::Low, Some(rungs(&text()))),
-                    (Rung::High, None),
+                    (RungDraft::Low, Some(rungs(&text()))),
+                    (RungDraft::High, None),
                 ]),
                 number_lists_by_name: HashMap::new(),
                 rung_lists_or_none_by_name: HashMap::from([("r".to_owned(), vec![None])]),
@@ -411,7 +423,7 @@ fn holder_rows() -> Vec<Row> {
         refused_row(
             "a map's value under a key that is no number",
             "Attic",
-            &Attic {
+            &AtticDraft {
                 flag_lists_by_number: HashMap::new(),
                 maybe_number_lists_by_name: HashMap::new(),
                 maybe_rungs_by_rung: HashMap::new(),
@@ -434,62 +446,62 @@ fn slot_and_brand_rows() -> Vec<Row> {
         read_row(
             "a list in a tuple struct's one slot",
             "Cupboard",
-            &Cupboard(vec![numbered(&text())]),
+            &CupboardDraft(vec![numbered(&text())]),
         ),
         refused_row(
             "a list in a tuple struct's one slot under a key that is no number",
             "Cupboard",
-            &Cupboard(vec![numbered(&text())]),
+            &CupboardDraft(vec![numbered(&text())]),
         ),
         read_row(
             "a list of optionals in a tuple struct's one slot",
             "Sideboard",
-            &Sideboard(vec![Some(flagged(&text())), None]),
+            &SideboardDraft(vec![Some(flagged(&text())), None]),
         ),
         read_row(
             "an optional list in a tuple struct's one slot",
             "Dresser",
-            &Dresser(Some(vec![rungs(&text())])),
+            &DresserDraft(Some(vec![rungs(&text())])),
         ),
         read_row(
             "an optional list in a tuple struct's one slot, none",
             "Dresser",
-            &Dresser(None),
+            &DresserDraft(None),
         ),
         read_row(
             "an optional in a tuple struct's one slot",
             "Caddy",
-            &Caddy(Some(numbered(&text()))),
+            &CaddyDraft(Some(numbered(&text()))),
         ),
         read_row(
             "an optional in a tuple struct's one slot, none",
             "Caddy",
-            &Caddy(None),
+            &CaddyDraft(None),
         ),
         read_row(
             "a list in a tuple struct's one slot that declares a parameter",
             "StowedCupboard<String>",
-            &StowedCupboard(vec![numbered(&text())]),
+            &StowedCupboardDraft(vec![numbered(&text())]),
         ),
         read_row(
             "a list of optionals in a tuple struct's one slot that declares a parameter",
             "StowedSideboard<String>",
-            &StowedSideboard(vec![None, Some(flagged(&text()))]),
+            &StowedSideboardDraft(vec![None, Some(flagged(&text()))]),
         ),
         read_row(
             "an optional list in a tuple struct's one slot that declares a parameter",
             "StowedDresser<String>",
-            &StowedDresser(Some(vec![rungs(&text())])),
+            &StowedDresserDraft(Some(vec![rungs(&text())])),
         ),
         read_row(
             "an optional in a tuple struct's one slot that declares a parameter",
             "StowedCaddy<String>",
-            &StowedCaddy(Some(numbered(&text()))),
+            &StowedCaddyDraft(Some(numbered(&text()))),
         ),
         read_row(
             "an optional in a tuple struct's one slot that declares a parameter, none",
             "StowedCaddy<String>",
-            &StowedCaddy::<String>(None),
+            &StowedCaddyDraft::<String>(None),
         ),
         read_row(
             "a brand over a list",
@@ -550,7 +562,7 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "each shape as a member of a variant, a tag alone",
             "TaggedGalley",
-            &TaggedGalley::Stocked {
+            &TaggedGalleyDraft::Stocked {
                 maybe_rung_lists: Some(vec![rungs(&text())]),
                 maybe_rungs: Some(rungs(&text())),
                 rung_lists: vec![rungs(&text())],
@@ -560,7 +572,7 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "each shape as a member of a variant, no optional, a tag alone",
             "TaggedGalley",
-            &TaggedGalley::Stocked {
+            &TaggedGalleyDraft::Stocked {
                 maybe_rung_lists: None,
                 maybe_rungs: None,
                 rung_lists: Vec::new(),
@@ -570,7 +582,7 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "each shape as a member of a variant, a tag alone, a parameter",
             "TaggedStowedGalley<String>",
-            &TaggedStowedGalley::Stocked {
+            &TaggedStowedGalleyDraft::Stocked {
                 maybe_rung_lists: Some(vec![rungs(&text())]),
                 maybe_rungs: None,
                 rung_lists: vec![rungs(&text())],
@@ -580,27 +592,27 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "a list in a variant's one slot, untagged",
             "UntaggedGalley",
-            &UntaggedGalley::Listed(vec![rungs(&text())]),
+            &UntaggedGalleyDraft::Listed(vec![rungs(&text())]),
         ),
         read_row(
             "a list of optionals in a variant's one slot, untagged",
             "UntaggedGalley",
-            &UntaggedGalley::ListedOrNone(vec![Some(rungs(&text())), None]),
+            &UntaggedGalleyDraft::ListedOrNone(vec![Some(rungs(&text())), None]),
         ),
         read_row(
             "an optional in a variant's one slot, untagged",
             "UntaggedGalley",
-            &UntaggedGalley::Maybe(Some(rungs(&text()))),
+            &UntaggedGalleyDraft::Maybe(Some(rungs(&text()))),
         ),
         read_row(
             "an absent optional in a variant's one slot, untagged",
             "UntaggedGalley",
-            &UntaggedGalley::Maybe(None),
+            &UntaggedGalleyDraft::Maybe(None),
         ),
         read_row(
             "each shape as a member of a variant, untagged",
             "UntaggedGalley",
-            &UntaggedGalley::Stocked {
+            &UntaggedGalleyDraft::Stocked {
                 maybe_rung_lists: Some(vec![rungs(&text())]),
                 maybe_rungs: Some(rungs(&text())),
                 rung_lists: vec![rungs(&text())],
@@ -630,7 +642,7 @@ fn buffered_rows() -> Vec<Row> {
         read_row(
             "each shape as a member of a variant, untagged, a parameter",
             "UntaggedStowedGalley<String>",
-            &UntaggedStowedGalley::Stocked {
+            &UntaggedStowedGalleyDraft::Stocked {
                 maybe_rung_lists: None,
                 maybe_rungs: Some(rungs(&text())),
                 rung_lists: vec![rungs(&text())],

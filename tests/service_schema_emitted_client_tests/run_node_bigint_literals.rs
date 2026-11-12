@@ -73,7 +73,7 @@ const UNSIGNED: &str = "";
 /// A ledger row.
 ///
 /// ```rust example
-/// Ledger { carried: far(), count: 3, signed: 12 }
+/// LedgerDraft { carried: far(), count: 3, signed: 12 }
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -87,7 +87,7 @@ pub struct Ledger {
 /// The extremes of an `i64`.
 ///
 /// ```rust example
-/// Extremes { greatest: i64::MAX, least: i64::MIN }
+/// ExtremesDraft { greatest: i64::MAX, least: i64::MIN }
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -99,7 +99,7 @@ pub struct Extremes {
 /// A list of an `i64` beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// FarLines { lines: vec![12, far()] }
+/// FarLinesDraft { lines: vec![12, far()] }
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -110,7 +110,7 @@ pub struct FarLines {
 /// A list of an `i64` with two values.
 ///
 /// ```rust example
-/// ShortLines { lines: vec![12, 240] }
+/// ShortLinesDraft { lines: vec![12, 240] }
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -121,7 +121,7 @@ pub struct ShortLines {
 /// A list of an `i64` with no value.
 ///
 /// ```rust example
-/// NoLines { lines: vec![] }
+/// NoLinesDraft { lines: vec![] }
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -132,7 +132,7 @@ pub struct NoLines {
 /// An untagged enum over a list.
 ///
 /// ```rust example
-/// EitherMany::Many(vec![12, far()])
+/// EitherManyDraft::Many(vec![12, far()])
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -145,7 +145,7 @@ pub enum EitherMany {
 /// An untagged enum over an `i64`.
 ///
 /// ```rust example
-/// EitherOne::One(240)
+/// EitherOneDraft::One(240)
 /// ```
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -158,7 +158,7 @@ pub enum EitherOne {
 /// An account number with an `i64`, a `u64` and a list of them.
 ///
 /// ```rust example
-/// AccountNumber {
+/// AccountNumberDraft {
 ///     carried: 7,
 ///     numbers: vec![12, far_unsigned()],
 ///     signed: far(),
@@ -179,7 +179,7 @@ pub struct AccountNumber {
 /// The greatest `u64`.
 ///
 /// ```rust example
-/// Greatest { top: u64::MAX }
+/// GreatestDraft { top: u64::MAX }
 /// ```
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[model_schema()]

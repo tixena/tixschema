@@ -46,11 +46,13 @@ fn the_authors_types_and_the_added_ones_of_their_names_are_two_types_each() {
     };
     assert_eq!(
         Attempt::mongo_read_row(stored, &[]).unwrap(),
-        Attempt {
-            failed_with: OperationError { code: 7_u32 },
+        AttemptDraft {
+            failed_with: OperationErrorDraft { code: 7_u32 }.validate().unwrap(),
             id: seeded_id(),
-            last: Read { rows: 2_u32 },
+            last: ReadDraft { rows: 2_u32 }.validate().unwrap(),
         }
+        .validate()
+        .unwrap()
     );
     let refused: attempt_schema::OperationError =
         Attempt::mongo_read_row(doc! { "_id": seeded_id() }, &[]).unwrap_err();

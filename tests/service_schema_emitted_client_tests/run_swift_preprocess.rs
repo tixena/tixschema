@@ -23,16 +23,17 @@ use super::swift_preprocess_models::shipping_client_service_schema::{
     shipping_client_service_fault_fields_swift, shipping_client_service_fault_kind_swift,
 };
 use super::swift_preprocess_models::{
-    Ahead, Barged, Binned, Boxed, Branch, Choice, Chosen, Dated, Docked, Duplexed, Ferried, Hull,
-    Loaded, Lodged, Lone, Loosed, Marked, Moved, Paired, Quayside, Sampled, Sealing, Shifted,
-    ShippingBackEnd, ShippingClientService as _, ShippingClientServiceSchema, ShippingError,
-    Shouldered, Spared, Stamped, Sticker, Stowed, Strapped, Tallied, ahead_swift, banded_swift,
-    barged_swift, behind_swift, binned_swift, boxed_swift, branch_swift, choice_swift,
-    chosen_swift, dated_swift, docked_swift, duplexed_swift, ferried_swift, hull_swift,
-    listing_swift, loaded_swift, lodged_swift, lone_swift, loosed_swift, marked_swift, moved_swift,
-    paired_swift, quayside_swift, sampled_swift, sealing_swift, shifted_swift,
-    shipping_error_swift, shouldered_swift, spared_swift, spotted_swift, stamped_swift,
-    sticker_swift, stowed_swift, strapped_swift, tallied_calls, tallied_swift,
+    Ahead, Barged, Binned, Boxed, BoxedDraft, Branch, Choice, ChoiceDraft, Chosen, Dated, Docked,
+    Duplexed, Ferried, Hull, Loaded, Lodged, Lone, Loosed, Marked, MarkedDraft, Moved, Paired,
+    Quayside, Sampled, Sealing, Shifted, ShippingBackEnd, ShippingClientService as _,
+    ShippingClientServiceSchema, ShippingError, ShippingErrorDraft, Shouldered, Spared, Stamped,
+    Sticker, Stowed, Strapped, Tallied, ahead_swift, banded_swift, barged_swift, behind_swift,
+    binned_swift, boxed_swift, branch_swift, choice_swift, chosen_swift, dated_swift, docked_swift,
+    duplexed_swift, ferried_swift, hull_swift, listing_swift, loaded_swift, lodged_swift,
+    lone_swift, loosed_swift, marked_swift, moved_swift, paired_swift, quayside_swift,
+    sampled_swift, sealing_swift, shifted_swift, shipping_error_swift, shouldered_swift,
+    spared_swift, spotted_swift, stamped_swift, sticker_swift, stowed_swift, strapped_swift,
+    tallied_calls, tallied_swift,
 };
 #[cfg(feature = "chrono")]
 use super::swift_preprocess_models::{Timed, timed_swift};
@@ -669,27 +670,27 @@ fn rust_keys_report() -> String {
             "a slot's own function, under a tag",
             tagged,
             &|held| match held {
-                Marked::Held(inner) => listed(&inner.keys),
-                Marked::Lost => String::new(),
+                MarkedDraft::Held(inner) => listed(&inner.keys),
+                MarkedDraft::Lost => String::new(),
             },
         ),
         rust_keys::<Boxed>(
             "a variant under a tag that flattens",
             r#"{"kind":"Held","dock":"north","tag":"t"}"#,
             &|held| match held {
-                Boxed::Held {
+                BoxedDraft::Held {
                     dock,
                     tagged: inner,
                 } => format!("{} at {dock}", listed(&inner.keys)),
-                Boxed::Lost => String::new(),
+                BoxedDraft::Lost => String::new(),
             },
         ),
         rust_keys::<Chosen>(
             "a flattened choice that holds the type",
             r#"{"choice_dock":"north","tag":"t"}"#,
             &|held| match &held.taken {
-                Choice::Tagged(inner) => listed(&inner.keys),
-                Choice::Named { name } => name.clone(),
+                ChoiceDraft::Tagged(inner) => listed(&inner.keys),
+                ChoiceDraft::Named { name } => name.clone(),
             },
         ),
         rust_keys::<Lodged>(
@@ -1102,7 +1103,7 @@ fn the_http_client_reads_a_reply_through_its_functions() {
         poll_once(ShippingBackEnd.shipped(&(), String::new()))
             .unwrap()
             .map(|parcel| parcel.label),
-        Err(ShippingError::NotFound)
+        Err(ShippingErrorDraft::NotFound)
     );
     let Some(swift) = answered_by(String::new(), HTTP_DRIVER) else {
         return;

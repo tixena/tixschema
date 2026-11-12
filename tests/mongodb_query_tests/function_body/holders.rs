@@ -37,11 +37,11 @@ fn a_model_an_option_of_one_and_a_list_of_one_build_inside_a_function() {
         shown(outer.many().elem_match(named())),
         r#"{ "many": { "$elemMatch": { "name": { "$eq": "kept" } } } }"#
     );
-    let inner = InnerA {
+    let inner = InnerADraft {
         name: "kept".to_owned(),
     };
     assert_eq!(
-        shown(outer.inner().set(inner).unwrap()),
+        shown(outer.inner().set(inner.validate().unwrap()).unwrap()),
         r#"{ "$set": { "inner": { "name": "kept" } } }"#
     );
 }
@@ -105,11 +105,11 @@ fn an_externally_tagged_enum_of_models_builds_inside_a_function() {
         r#"{ "One.name": { "$eq": "kept" } }"#
     );
     assert_eq!(shown(held.is_one()), r#"{ "One": { "$exists": true } }"#);
-    let inner = InnerC {
+    let inner = InnerCDraft {
         name: "kept".to_owned(),
     };
     assert_eq!(
-        shown(held.one().set(inner).unwrap()),
+        shown(held.one().set(inner.validate().unwrap()).unwrap()),
         r#"{ "$set": { "One": { "name": "kept" } } }"#
     );
 }
@@ -191,11 +191,11 @@ fn a_model_declared_below_its_holder_builds_inside_a_function() {
     }
 
     let outer = OuterF::MONGO_FIELDS;
-    let inner = InnerF {
+    let inner = InnerFDraft {
         name: "kept".to_owned(),
     };
     assert_eq!(
-        shown(outer.inner().eq(inner).unwrap()),
+        shown(outer.inner().eq(inner.validate().unwrap()).unwrap()),
         r#"{ "inner": { "$eq": { "name": "kept" } } }"#
     );
     let named = InnerF::MONGO_FIELDS.name().eq("kept".to_owned()).unwrap();

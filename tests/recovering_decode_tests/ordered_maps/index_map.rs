@@ -111,7 +111,10 @@ fn resolvers_settle_an_index_maps_entries_and_the_map_keeps_the_values_order() {
     let read = Ranking::from_value_piped(stored, &[&number_as_text]).unwrap();
     assert_eq!(read.by_name.keys().cloned().collect::<Vec<_>>(), names);
     assert_eq!(read.scores.keys().cloned().collect::<Vec<_>>(), ranked);
-    assert_eq!(read.by_name.get("zeta"), Some(&Tracked { number: 1_i32 }));
+    assert_eq!(
+        read.by_name.get("zeta"),
+        Some(&TrackedDraft { number: 1_i32 })
+    );
     assert_eq!(read.scores.get("zeta"), Some(&9_i32));
     assert_eq!(read.labels.iter().collect::<Vec<_>>(), ["b", "a"]);
     assert_eq!(read.more, None);
@@ -168,6 +171,6 @@ fn an_alias_seen_above_is_walked_as_the_index_map_or_the_index_set_it_names() {
     assert_eq!(kept.scores.get("zeta"), Some(&1_i32));
     assert_eq!(
         kept.entries.get("zeta"),
-        Some(&vec![Tracked { number: 1_i32 }])
+        Some(&vec![TrackedDraft { number: 1_i32 }])
     );
 }

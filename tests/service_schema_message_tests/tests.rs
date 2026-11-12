@@ -52,7 +52,7 @@ mod the_generated_message_on_json_schema {
 
 #[cfg(feature = "typescript")]
 mod the_generated_message_on_typescript {
-    use super::{BalanceRequest, SweepRequest, VoidInvoiceRequest};
+    use super::{BalanceRequest, BalanceRequestDraft, SweepRequest, VoidInvoiceRequest};
     use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
 
     #[test]
@@ -131,7 +131,9 @@ mod the_generated_message_on_zod {
 
 mod the_context_the_trait_declares {
     use super::BalanceRequest;
-    use super::{ProbeBackEnd, ProbeContext, ProbeError, ProbeService as _, poll_once};
+    use super::{
+        ProbeBackEnd, ProbeContext, ProbeError, ProbeErrorDraft, ProbeService as _, poll_once,
+    };
 
     #[test]
     fn an_operation_reads_the_context_rather_than_any_message_field() {
@@ -142,7 +144,7 @@ mod the_context_the_trait_declares {
         let answered =
             poll_once(service.void_invoice(&silent, "acme".to_owned(), "cr-1".to_owned())).unwrap();
         assert!(
-            matches!(answered, Err(ProbeError::InsufficientBalance)),
+            matches!(answered, Err(ProbeErrorDraft::InsufficientBalance)),
             "the operation answered off the context, which no message carries"
         );
     }
@@ -206,7 +208,7 @@ mod the_context_the_trait_declares {
 
         let named = poll_once(service.get_balance(
             &ctx,
-            BalanceRequest {
+            BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             },
         ))
@@ -301,9 +303,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeError::DbError)
+            Err(ProbeErrorDraft::DbError)
         } else {
-            Ok(BalanceResponse {
+            Ok(BalanceResponseDraft {
                 invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
             })
         }
@@ -311,7 +313,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
 
     async fn sweep(&self, ctx: &ProbeContext) -> Result<BalanceResponse, ProbeError> {
         let _settled = ready(ctx.logger_name.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: self.billed_invoices,
         })
     }
@@ -324,9 +326,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeError::InsufficientBalance)
+            Err(ProbeErrorDraft::InsufficientBalance)
         } else {
-            Ok(BalanceResponse {
+            Ok(BalanceResponseDraft {
                 invoices: u32::try_from(seen).unwrap_or(0),
             })
         }

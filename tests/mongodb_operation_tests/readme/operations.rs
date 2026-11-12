@@ -16,8 +16,8 @@ use tokio::task::JoinHandle;
 
 use super::super::live::{collection, say};
 use super::{
-    Address, Customer, Invoice, InvoiceStatus, assert_declared_and_documented, assert_documented,
-    customer_schema, invoice, invoice_schema,
+    Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceStatus,
+    assert_declared_and_documented, assert_documented, customer_schema, invoice, invoice_schema,
 };
 use crate::BSON_MAJOR;
 
@@ -642,7 +642,7 @@ fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time()
     );
     assert_documented(&in_a_list_item(&format!("```rust\n{DECLARED_KEYED}\n```")));
 
-    let texted = Keyed::<String> {
+    let texted = KeyedDraft::<String> {
         by_key: HashMap::from([("8".to_owned(), "eight".to_owned())]),
     };
     let stored = texted.mongo_written_row().unwrap();
@@ -650,7 +650,7 @@ fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time()
     let read = Keyed::<String>::mongo_read_row(stored.clone(), &[]).unwrap();
     assert_eq!(read.by_key, texted.by_key);
 
-    let numbered = Keyed::<u32> {
+    let numbered = KeyedDraft::<u32> {
         by_key: HashMap::from([(8, "eight".to_owned())]),
     };
     let unwritable = numbered.mongo_written_row().unwrap_err();
@@ -669,7 +669,7 @@ fn the_readme_shows_a_map_keyed_by_the_types_own_parameter_failing_at_run_time()
 /// refused the row MongoDB would store for it.
 #[test]
 fn the_readme_shows_what_a_type_that_lists_decode_with_alone_makes_of_a_map_keyed_by_a_number() {
-    let roster = NumberedRoster {
+    let roster = NumberedRosterDraft {
         by_number: HashMap::from([(7, "seven".to_owned())]),
     };
     let as_json = serde_json::to_value(&roster).unwrap();
@@ -691,10 +691,10 @@ fn the_readme_shows_what_a_type_that_lists_decode_with_alone_makes_of_a_map_keye
 /// A map keyed by what serde writes as text is stored as that text and read back.
 #[test]
 fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
-    let roster = TextKeyedRoster {
+    let roster = TextKeyedRosterDraft {
         initials: HashMap::from([('m', "Moca".to_owned())]),
         names: HashMap::from([("Acme".to_owned(), "Moca".to_owned())]),
-        shifts: HashMap::from([(Shift::Late, "Moca".to_owned())]),
+        shifts: HashMap::from([(ShiftDraft::Late, "Moca".to_owned())]),
         stations: HashMap::from([(Station::new("north".to_owned()).unwrap(), "Moca".to_owned())]),
     };
     let row = roster.mongo_written_row().unwrap();
@@ -707,7 +707,10 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
             "stations": { "north": "Moca" },
         }
     );
-    assert_eq!(TextKeyedRoster::mongo_read_row(row, &[]).unwrap(), roster);
+    assert_eq!(
+        TextKeyedRoster::mongo_read_row(row, &[]).unwrap(),
+        roster.validate().unwrap()
+    );
     assert_documented(SHOWN_TEXT_KEYS);
 }
 
@@ -717,7 +720,7 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
 fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
     let date = chrono::NaiveDate::from_ymd_opt(2026, 10, 21).unwrap();
     let time = chrono::NaiveTime::from_hms_opt(17, 40, 0).unwrap();
-    let roster = DatedRoster {
+    let roster = DatedRosterDraft {
         dates: HashMap::from([(date, "Moca".to_owned())]),
         moments: HashMap::from([(date.and_time(time).and_utc(), "Moca".to_owned())]),
         times: HashMap::from([(time, "Moca".to_owned())]),
@@ -731,7 +734,10 @@ fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
             "times": { "17:40:00": "Moca" },
         }
     );
-    assert_eq!(DatedRoster::mongo_read_row(row, &[]).unwrap(), roster);
+    assert_eq!(
+        DatedRoster::mongo_read_row(row, &[]).unwrap(),
+        roster.validate().unwrap()
+    );
 }
 
 #[tokio::test]
@@ -754,9 +760,9 @@ async fn live_the_readme_examples_run_against_a_collection() {
     let Some(invoices) = collection("readme_invoices").await else {
         return;
     };
-    let draft = Invoice {
+    let draft = InvoiceDraft {
         status: InvoiceStatus::Draft,
-        ..invoice("INV-0000", "Acme", 50.5)
+        ..invoice("INV-0000", "Acme", 50.5).into()
     };
     every_operation(&invoices, &draft).await.unwrap();
     let left = Invoice::count(&invoices, Filter::raw(doc! {}))
@@ -771,10 +777,10 @@ async fn live_the_readme_examples_run_against_a_collection() {
         .get_document_mut("customer")
         .unwrap()
         .insert("openInvoices", "1");
-    let paid = Invoice {
+    let paid = InvoiceDraft {
         paid_at: Some("2026-10-07T17:40:00Z".to_owned()),
         status: InvoiceStatus::Paid,
-        ..invoice("INV-0003", "Acme", 500.5)
+        ..invoice("INV-0003", "Acme", 500.5).into()
     };
     let rows = vec![
         stored(&invoice("INV-0001", "Acme", 100.5)),
@@ -817,11 +823,13 @@ async fn live_the_readme_examples_run_against_a_collection() {
     let Some(customers) = collection("readme_customers").await else {
         return;
     };
-    let acme = Customer {
-        address: Address {
+    let acme = CustomerDraft {
+        address: AddressDraft {
             city: "Moca".to_owned(),
             postal_code: "56000".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         name: "Acme".to_owned(),
         open_invoices: 3,
     };

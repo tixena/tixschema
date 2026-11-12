@@ -18,13 +18,14 @@ use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
 use super::run_dart_validate::{
-    CHECKS, Case, Crate, Deck, Gauge, Pair, Parcel, SHAPE_FUNCTIONS, Stamp, Terminal, Yard,
-    brand_cases, code_point_cases, compared, dart, from_until, manifest_dart, module,
-    named_shape_cases, named_variant_cases, outside, parcel, parcel_dart, pinned,
-    shape_definitions, sound, table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
+    CHECKS, Case, Crate, CrateDraft, Deck, DeckDraft, Gauge, GaugeDraft, Pair, PairDraft, Parcel,
+    SHAPE_FUNCTIONS, Stamp, StampDraft, Terminal, TerminalDraft, Yard, YardDraft, brand_cases,
+    code_point_cases, compared, dart, from_until, manifest_dart, module, named_shape_cases,
+    named_variant_cases, outside, parcel, parcel_dart, pinned, shape_definitions, sound,
+    table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
 };
 use super::runtime::ran;
-use super::tests::{ShelfError, shelf_error_dart};
+use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
 
 /// The class the emitter writes for a struct whose one field is named after the unjudged read,
 /// which `src/features/dart/tests.rs` holds the emitter to.
@@ -295,24 +296,28 @@ where
 
 /// A terminal that holds a broken parcel in a field, a list, a map and an optional.
 fn broken_terminal() -> Terminal {
-    Terminal {
+    TerminalDraft {
         first_parcel: unlabelled(),
         lists_by_dock: BTreeMap::new(),
         parcel_list: vec![sound(), outside()],
         parcels_by_dock: BTreeMap::from([("north".to_owned(), unlabelled())]),
         spare_parcel: Some(outside()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A terminal that holds sound parcels, and no spare one.
 fn sound_terminal() -> Terminal {
-    Terminal {
+    TerminalDraft {
         first_parcel: sound(),
         lists_by_dock: BTreeMap::new(),
         parcel_list: vec![sound()],
         parcels_by_dock: BTreeMap::from([("north".to_owned(), sound())]),
         spare_parcel: None,
     }
+    .validate()
+    .unwrap()
 }
 
 /// The four messages a read of [`broken_terminal`] is refused with, in the order the terminal
@@ -328,7 +333,7 @@ fn four_messages() -> Vec<String> {
 
 /// The five reads of the sample.
 fn sample_cases() -> Vec<Case> {
-    let filled = Crate {
+    let filled = CrateDraft {
         codes: vec![sound(), outside()],
         label: "A".to_owned(),
     };
@@ -418,7 +423,7 @@ fn the_sample_is_refused_with_every_message_at_its_full_place() {
 /// The bounds, the nested places, the slots and an enum's own string check, each with what
 /// `validate()` answers of it.
 fn measured_cases() -> Vec<Case> {
-    let gauge = Gauge {
+    let gauge = GaugeDraft {
         code_list: Vec::new(),
         item_count: 0,
         item_label: "A".to_owned(),
@@ -427,7 +432,7 @@ fn measured_cases() -> Vec<Case> {
         spare_count: Some(10),
         unit_weight: 4.0,
     };
-    let yard = Yard {
+    let yard = YardDraft {
         by_dock: BTreeMap::new(),
         by_number: BTreeMap::from([(7, unlabelled())]),
         code_list: Some(texts(&["a", "b", "c"])),
@@ -435,19 +440,29 @@ fn measured_cases() -> Vec<Case> {
         parcel_list: vec![parcel("unknown", &["x"], &["y"])],
         spares: vec![None, Some(unlabelled())],
     };
-    let deck = Deck {
+    let deck = DeckDraft {
         deck_pair: ("a".to_owned(), unlabelled()),
     };
-    let inked = Stamp::Inked {
+    let inked = StampDraft::Inked {
         ink: "b".to_owned(),
         pages: 0,
     };
     vec![
-        compared("a gauge", &gauge, gauge.validate(), "Gauge.fromJson(@)"),
-        compared("a yard", &yard, yard.validate(), "Yard.fromJson(@)"),
+        compared(
+            "a gauge",
+            &gauge,
+            gauge.validate().map(|_valid| ()),
+            "Gauge.fromJson(@)",
+        ),
+        compared(
+            "a yard",
+            &yard,
+            yard.validate().map(|_valid| ()),
+            "Yard.fromJson(@)",
+        ),
         pinned(
             "Pair, each slot broken",
-            &Pair(String::new(), 0, unlabelled()),
+            &PairDraft(String::new(), 0, unlabelled()),
             &[
                 "'0': too short: minimum length is 1, got 0",
                 "'1': too small: minimum is 1, got 0",
@@ -605,13 +620,13 @@ fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
         ["'tray': too short: minimum length is 2, got 1"],
         "what the Rust read answers"
     );
-    let held = Rack {
+    let held = RackDraft {
         tray: Tray::model_schema_read_unjudged(serde_json::to_value("XX".to_owned()).unwrap())
             .unwrap(),
     };
     assert_eq!(
-        held.validate(),
-        Err(vec!["'tray': a tray is known".to_owned()]),
+        held.validation_issues(),
+        vec!["'tray': a tray is known".to_owned()],
         "what Rust's `validate()` answers"
     );
     let cases = [
@@ -627,7 +642,7 @@ fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
         },
         pinned(
             "a rack of a tray",
-            &Rack {
+            &RackDraft {
                 tray: Tray::new("TR".to_owned()).unwrap(),
             },
             &[],
@@ -657,7 +672,7 @@ fn a_member_named_after_the_unjudged_read_builds_and_keeps_its_key() {
                  print(Stage.fromJson('FromJsonUnjudged') == Stage.fromJsonUnjudged_);\n  \
                  print(jsonEncode(Stage.fromJsonUnjudged('FromJsonUnjudged').toJson()));\n}\n";
     assert_eq!(
-        serde_json::to_string(&[Stage::FromJsonUnjudged, Stage::Judged]).unwrap(),
+        serde_json::to_string(&[StageDraft::FromJsonUnjudged, StageDraft::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#,
         "the values serde writes"
     );

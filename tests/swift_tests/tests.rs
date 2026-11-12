@@ -511,7 +511,7 @@ fn naive_dates_are_plain_strings_and_datetime_is_date_with_a_fractional_second_f
 
 #[test]
 fn every_fixture_constructs_and_round_trips_through_serde_json() {
-    let window_request = WindowRequest {
+    let window_request = WindowRequestDraft {
         conversation_id: "c-1".to_owned(),
         limit: Some(10),
     };
@@ -522,7 +522,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
         window_request.conversation_id
     );
 
-    let all_widths = AllWidths {
+    let all_widths = AllWidthsDraft {
         a_bool: true,
         a_char: 'x',
         a_f32: 1.5,
@@ -542,11 +542,11 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     };
     serde_json::to_string(&all_widths).unwrap();
 
-    serde_json::to_string(&Status::Active).unwrap();
-    serde_json::to_string(&ExternalTagged::Foo { a: "x".to_owned() }).unwrap();
-    serde_json::to_string(&InternalTagged::Foo { a: "x".to_owned() }).unwrap();
-    serde_json::to_string(&AdjacentTagged::Flag(true)).unwrap();
-    serde_json::to_string(&Untagged::Count { count: 1 }).unwrap();
+    serde_json::to_string(&StatusDraft::Active).unwrap();
+    serde_json::to_string(&ExternalTaggedDraft::Foo { a: "x".to_owned() }).unwrap();
+    serde_json::to_string(&InternalTaggedDraft::Foo { a: "x".to_owned() }).unwrap();
+    serde_json::to_string(&AdjacentTaggedDraft::Flag(true)).unwrap();
+    serde_json::to_string(&UntaggedDraft::Count { count: 1 }).unwrap();
 
     let correlation_id = CorrelationId::new("id-1".to_owned()).unwrap();
     let correlation_round_trip: CorrelationId =
@@ -555,53 +555,55 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
 
     let _user_id: UserId = "u-1".to_owned();
 
-    serde_json::to_string(&TuplePoint {
+    serde_json::to_string(&TuplePointDraft {
         label: "pt".to_owned(),
         pair: ("a".to_owned(), 7),
     })
     .unwrap();
-    serde_json::to_string(&ByU32 {
+    serde_json::to_string(&ByU32Draft {
         by_u32: HashMap::from([(7, "seven".to_owned())]),
     })
     .unwrap();
-    serde_json::to_string(&ByBool {
+    serde_json::to_string(&ByBoolDraft {
         by_bool: HashMap::from([(true, "yes".to_owned())]),
     })
     .unwrap();
-    serde_json::to_string(&ByEnum {
-        by_enum: HashMap::from([(Primary::Primary, "p".to_owned())]),
+    serde_json::to_string(&ByEnumDraft {
+        by_enum: HashMap::from([(PrimaryDraft::Primary, "p".to_owned())]),
     })
     .unwrap();
-    serde_json::to_string(&Envelope {
+    serde_json::to_string(&EnvelopeDraft {
         note: "n1".to_owned(),
         value: "payload".to_owned(),
     })
     .unwrap();
-    serde_json::to_string(&UserData {
+    serde_json::to_string(&UserDataDraft {
         id: "u1".to_owned(),
     })
     .unwrap();
-    serde_json::to_string(&WithNullable {
+    serde_json::to_string(&WithNullableDraft {
         note: Some("hi".to_owned()),
     })
     .unwrap();
-    serde_json::to_string(&WithFlatten {
-        extra: FlattenedExtra {
+    serde_json::to_string(&WithFlattenDraft {
+        extra: FlattenedExtraDraft {
             reason: "r".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         id: "id-1".to_owned(),
     })
     .unwrap();
 
     #[cfg(feature = "mongodb")]
-    serde_json::to_string(&Document {
+    serde_json::to_string(&DocumentDraft {
         id: ObjectId::new(),
     })
     .unwrap();
 
     #[cfg(feature = "chrono")]
     {
-        let timestamps = Timestamps {
+        let timestamps = TimestampsDraft {
             date: chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
             date_time: chrono::NaiveDate::from_ymd_opt(2026, 9, 21)
                 .unwrap()
@@ -631,7 +633,7 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
         )
     );
     assert_eq!(
-        serde_json::to_value(ReservedMembers {
+        serde_json::to_value(ReservedMembersDraft {
             class: "c".to_owned(),
             r#in: "i".to_owned(),
             r#type: "t".to_owned(),
@@ -642,9 +644,9 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMember::Default,
-            ReservedMember::In,
-            ReservedMember::Other
+            ReservedMemberDraft::Default,
+            ReservedMemberDraft::In,
+            ReservedMemberDraft::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])

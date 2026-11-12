@@ -18,6 +18,7 @@ How the macros turn a declaration into each surface, the data structures they sh
    - Extracts example code from doc comments (every ` ```rust example` fence)
    - Generates methods: `ts_definition()`, `json_schema()` for a type that lists `enable = ["jsonschema"]`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
    - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types
+   - Every struct and enum that is no brand is emitted as `{Name}Draft`, and `{Name}` is the valid type (`valid_type.rs`). The registry, the schema module, the delegates (`json_schema()`, `ts_definition()` and the rest, which sit on the valid type) and every other surface keep the declared name, and the `#[serde(rename = ...)]` the draft carries keeps the messages serde writes naming the declared type. `{type}_schema` holds a hidden module, `__tixschema_valid_{type}_schema`, with one generic struct `{Name}<Draft>(Draft)` whose field is private to it, `Deref`, `into_draft()` and the hidden `model_schema_wrap_unjudged()`; the author's module names it with `{vis} type {Name}<Params> = {type}_schema::__tixschema_valid_{type}_schema::{Name}<{Name}Draft<Params>>`, so a type declared in a function body is wrapped as one declared beside it. The draft gets `validation_issues(&self)`, which is the body `validate()` was (the members' rules in the order declared, then the type's checks, which take `&{Name}Draft`), and `validate(self)`. The valid type gets `Serialize` as its draft writes, `Deserialize` and `model_schema_read_unjudged` as the draft's own read followed (or not) by `validation_issues()`, `From<{Name}> for {Name}Draft`, and `validation_issues()`, which a holder's walk calls on each model it holds. A type a service writes for itself (a generated message, the fault types) carries `__tixschema_undrafted` and is declared as written, with `validation_issues()` and the `validate(&self)` it always had.
 
 3. **Type Analysis** ([field_type.rs](../src/field_type.rs))
    - `FieldDef`: Core data structure representing a field's type, optionality, docs, etc.
@@ -264,7 +265,8 @@ tixschema/
 │   ├── model_schema.rs           # Main macro logic
 │   ├── model_schema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
-│   │   ├── judged_read.rs        # The Deserialize of a type that publishes validate() or names a preprocess
+│   │   ├── judged_read.rs        # The Deserialize of a draft that publishes validate() or names a preprocess, and the unjudged read a holder calls
+│   │   ├── valid_type.rs         # The valid type: the draft's ident, the hidden wrapper module and its alias, validate(), the valid type's reads and write
 │   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
 │   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused, and one keyed by a number below a flattened member or in an enum serde buffers; serde_json's Value and Map refused by their full path and checked by their bare name
 │   ├── model_schema/flatten_order.rs # which flattened members read back, the refusals that name the fix, __TIXSCHEMA_FLATTENED and __TIXSCHEMA_KEYS

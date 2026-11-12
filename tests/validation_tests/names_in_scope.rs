@@ -51,15 +51,15 @@ mod a_one_parameter_result {
                 .unwrap();
         assert_eq!(record.to_string(), "1 versions");
 
-        let named = Named {
+        let named = NamedDraft {
             name: "ab".to_owned(),
         };
-        assert_eq!(named.validate().unwrap_err().len(), 1);
+        assert_eq!(named.validation_issues().len(), 1);
         assert_eq!(
             serde_json::from_value::<Named>(serde_json::json!({ "name": "ab" }))
                 .unwrap_err()
                 .to_string(),
-            named.validate().unwrap_err().join("; ")
+            named.validation_issues().join("; ")
         );
         serde_json::from_value::<Named>(serde_json::json!({ "name": "abc" })).unwrap();
 
@@ -71,7 +71,7 @@ mod a_one_parameter_result {
 
         assert_eq!(
             serde_json::from_value::<Ping>(serde_json::json!({})).unwrap(),
-            Ping
+            PingDraft.validate().unwrap()
         );
     }
 }
@@ -203,7 +203,7 @@ mod a_type_named_sized {
         .unwrap();
         holder.validate().unwrap();
         assert_eq!(
-            serde_json::to_value(Sized {
+            serde_json::to_value(SizedDraft {
                 text: "t".to_owned()
             })
             .unwrap(),

@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::{
-    Address, Customer, Invoice, InvoiceStatus, LineItem, Payment, assert_declared_and_documented,
-    assert_documented, readme,
+    Address, AddressDraft, Customer, Invoice, InvoiceStatus, LineItem, LineItemDraft, Payment,
+    PaymentDraft, assert_declared_and_documented, assert_documented, readme,
 };
 use super::{invoice_schema, payment_schema};
 
@@ -271,11 +271,13 @@ pub struct Carrier {
 
 /// The line item the examples write.
 fn bolts() -> LineItem {
-    LineItem {
+    LineItemDraft {
         price: 4.5,
         quantity: 9,
         sku: "C-3".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What the README's examples build, each as a row of the table that follows them.
@@ -345,10 +347,12 @@ const fn held<T>(_path: &T) {}
 
 /// The address the examples write.
 fn moca() -> Address {
-    Address {
+    AddressDraft {
         city: "Moca".to_owned(),
         postal_code: "56000".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Invoices of one cost center that are no draft. `details` is a map: its keys are data.
@@ -604,7 +608,11 @@ fn written_by_a_model() -> Result<Vec<(&'static str, String)>, WriteError> {
                 .payment()
                 .nest(payment.card().last4().eq("4242".to_owned())?)
         ),
-        written!(paths.payment().set(Payment::Cash)?),
+        written!(
+            paths
+                .payment()
+                .set(PaymentDraft::Cash.validate().unwrap())?
+        ),
     ])
 }
 

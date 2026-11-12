@@ -15,8 +15,8 @@ mod keyed;
 #[cfg(feature = "typescript")]
 mod the_bundle_one_registration_line_produces {
     use super::{
-        ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceResponse, InvoiceWriteError,
-        ProbeError, ProbeServiceSchema,
+        ApplyBundleReceipt, AuditServiceSchema, BalanceRequest, BalanceRequestDraft,
+        BalanceResponse, InvoiceWriteError, ProbeError, ProbeServiceSchema,
     };
     use std::env::temp_dir;
     use std::fs;
@@ -903,7 +903,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         let client = amqp_client::ProbeServiceClient::new(PreparedAnswer {
             encoded: framed_fault(&fault),
         });
-        let answered = poll_once(client.get_balance(BalanceRequest {
+        let answered = poll_once(client.get_balance(BalanceRequestDraft {
             customer_id: "acme".to_owned(),
         }))
         .unwrap();
@@ -927,7 +927,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         let client = amqp_client::ProbeServiceClient::new(PreparedAnswer {
             encoded: framed_fault(&fault),
         });
-        let request = || BalanceRequest {
+        let request = || BalanceRequestDraft {
             customer_id: "acme".to_owned(),
         };
         assert!(faulted(poll_once(client.get_balance(request())).unwrap()).is_some());
@@ -1196,14 +1196,14 @@ impl AuditService<ProbeContext> for AuditBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceResponse, InvoiceWriteError> {
         let seen = ready(req.customer_id.len() + ctx.logger_name.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
 
     async fn reconcile(&self, ctx: &ProbeContext) -> Result<BalanceResponse, InvoiceWriteError> {
         let seen = ready(ctx.logger_name.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
@@ -1225,7 +1225,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         req: BalanceRequest,
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(req.customer_id.len() + ctx.logger_name.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
         })
     }
@@ -1236,7 +1236,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         probe_tag: String,
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(ctx.logger_name.len() + probe_tag.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         })
     }
@@ -1248,15 +1248,15 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<ApplyBundleReceipt, ProbeError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeError::DbError)
+            Err(ProbeErrorDraft::DbError)
         } else {
-            Ok(ApplyBundleReceipt { applied: seen > 0 })
+            Ok(ApplyBundleReceiptDraft { applied: seen > 0 })
         }
     }
 
     async fn sweep(&self, ctx: &ProbeContext) -> Result<BalanceResponse, ProbeError> {
         let _settled = ready(ctx.logger_name.len()).await;
-        Ok(BalanceResponse {
+        Ok(BalanceResponseDraft {
             invoices: self.billed_invoices,
         })
     }
@@ -1269,9 +1269,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, InvoiceWriteError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(InvoiceWriteError::Conflict)
+            Err(InvoiceWriteErrorDraft::Conflict)
         } else {
-            Ok(BalanceResponse {
+            Ok(BalanceResponseDraft {
                 invoices: u32::try_from(seen).unwrap_or(0),
             })
         }
@@ -1332,7 +1332,7 @@ impl RenamedPathProbeService<()> for UnitPingBackEnd {
     async fn own_key(&self, _ctx: &(), req: OwnKeyPathProbe) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.document_id.is_empty() || req.title.is_empty() {
-            return Err(UnitPingError::Unreachable);
+            return Err(UnitPingErrorDraft::Unreachable);
         }
         Ok(())
     }
@@ -1340,7 +1340,7 @@ impl RenamedPathProbeService<()> for UnitPingBackEnd {
     async fn renamed(&self, _ctx: &(), req: RenamedPathProbe) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.document_id.is_empty() || req.title.is_empty() {
-            return Err(UnitPingError::Unreachable);
+            return Err(UnitPingErrorDraft::Unreachable);
         }
         Ok(())
     }
@@ -1350,7 +1350,7 @@ impl UnitPingService<()> for UnitPingBackEnd {
     async fn ping(&self, _ctx: &(), req: UnitPingRequest) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.probe.is_empty() {
-            Err(UnitPingError::Unreachable)
+            Err(UnitPingErrorDraft::Unreachable)
         } else {
             Ok(())
         }
@@ -1406,9 +1406,9 @@ impl HeaderProbeService<()> for HeaderProbeBackEnd {
     {
         ready(()).await;
         if id.is_empty() {
-            Err((HeaderProbeError::Missing, Some(tenant)))
+            Err((HeaderProbeErrorDraft::Missing, Some(tenant)))
         } else {
-            Ok((HeaderProbeDocument { title: id }, tenant, trace))
+            Ok((HeaderProbeDocumentDraft { title: id }, tenant, trace))
         }
     }
 }
@@ -1463,9 +1463,9 @@ impl LapsedProbeService<()> for LapsedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, (LapsedProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((LapsedProbeError::Gone(id), None));
+            return Err((LapsedProbeErrorDraft::Gone(id), None));
         }
-        Ok(HeaderProbeDocument { title: id })
+        Ok(HeaderProbeDocumentDraft { title: id })
     }
 
     async fn stale(
@@ -1475,9 +1475,9 @@ impl LapsedProbeService<()> for LapsedProbeBackEnd {
     ) -> Result<(HeaderProbeDocument, String), LapsedProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(LapsedProbeError::Busy(1));
+            return Err(LapsedProbeErrorDraft::Busy(1));
         }
-        Ok((HeaderProbeDocument { title: id.clone() }, id))
+        Ok((HeaderProbeDocumentDraft { title: id.clone() }, id))
     }
 }
 
@@ -1517,7 +1517,7 @@ impl SpooledProbeService<()> for SpooledProbeBackEnd {
     ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((HeaderProbeError::Missing, None));
+            return Err((HeaderProbeErrorDraft::Missing, None));
         }
         Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
     }
@@ -1529,7 +1529,7 @@ impl SpooledProbeService<()> for SpooledProbeBackEnd {
     ) -> Result<spooled_probe_service_schema::StreamedAnswer, HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeError::Missing);
+            return Err(HeaderProbeErrorDraft::Missing);
         }
         Ok(spooled_probe_service_schema::StreamedAnswer::Full {
             source: Box::new(io::Cursor::new(id.into_bytes())),
@@ -1561,7 +1561,7 @@ impl StreamedProbeService<()> for StreamedProbeBackEnd {
     ) -> Result<streamed_probe_service_schema::StreamedAnswer, HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeError::Missing);
+            return Err(HeaderProbeErrorDraft::Missing);
         }
         Ok(streamed_probe_service_schema::StreamedAnswer::Full {
             source: Box::new(io::Cursor::new(id.into_bytes())),
@@ -1598,7 +1598,7 @@ impl BytesProbeService<()> for BytesProbeBackEnd {
     async fn dump(&self, _ctx: &(), id: String) -> Result<(Vec<u8>, String), HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeError::Missing);
+            return Err(HeaderProbeErrorDraft::Missing);
         }
         Ok((id.into_bytes(), "text/plain".to_owned()))
     }
@@ -1610,7 +1610,7 @@ impl BytesProbeService<()> for BytesProbeBackEnd {
     ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((HeaderProbeError::Missing, None));
+            return Err((HeaderProbeErrorDraft::Missing, None));
         }
         Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
     }
@@ -1663,9 +1663,9 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
         if r#in.is_empty() {
-            Err(HeaderProbeError::Missing)
+            Err(HeaderProbeErrorDraft::Missing)
         } else {
-            Ok(HeaderProbeDocument {
+            Ok(HeaderProbeDocumentDraft {
                 title: [Some(r#in), Some(r#final), default]
                     .into_iter()
                     .flatten()
@@ -1685,9 +1685,9 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
         if message.is_empty() {
-            Err(HeaderProbeError::Missing)
+            Err(HeaderProbeErrorDraft::Missing)
         } else {
-            Ok(HeaderProbeDocument {
+            Ok(HeaderProbeDocumentDraft {
                 title: [Some(message), Some(sending), Some(headers), path]
                     .into_iter()
                     .flatten()
@@ -1760,10 +1760,13 @@ impl QuotedProbeService<()> for QuotedProbeBackEnd {
     ) -> Result<(HeaderProbeDocument, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if label.is_empty() {
-            return Err((HeaderProbeError::Missing, trace.map(|at| at.to_string())));
+            return Err((
+                HeaderProbeErrorDraft::Missing,
+                trace.map(|at| at.to_string()),
+            ));
         }
         Ok((
-            HeaderProbeDocument {
+            HeaderProbeDocumentDraft {
                 title: format!("{label}|{note}"),
             },
             trace.map_or_else(String::new, |at| at.to_string()),
@@ -1784,7 +1787,7 @@ impl QuotedFilingProbeService<()> for QuotedProbeBackEnd {
         _attachment: Box<dyn quoted_filing_probe_service_schema::BodySource + Send>,
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocument {
+        Ok(HeaderProbeDocumentDraft {
             title: format!("{label}|{title}"),
         })
     }
@@ -1822,7 +1825,7 @@ fn the_second_service_answers_the_operation_its_generated_message_was_declared_f
 fn the_unit_success_service_is_still_implementable_and_callable() {
     let answered = poll_once(UnitPingBackEnd.ping(
         &(),
-        UnitPingRequest {
+        UnitPingRequestDraft {
             probe: "x".to_owned(),
         },
     ))
@@ -1835,7 +1838,7 @@ fn a_service_whose_path_binds_a_renamed_member_is_still_implementable_and_callab
     let (id, title) = ("d1".to_owned(), "t".to_owned());
     let renamed = poll_once(UnitPingBackEnd.renamed(
         &(),
-        RenamedPathProbe {
+        RenamedPathProbeDraft {
             document_id: id.clone(),
             title: title.clone(),
         },
@@ -1844,7 +1847,7 @@ fn a_service_whose_path_binds_a_renamed_member_is_still_implementable_and_callab
     assert!(renamed.is_ok(), "got: {renamed:?}");
     let own_key = poll_once(UnitPingBackEnd.own_key(
         &(),
-        OwnKeyPathProbe {
+        OwnKeyPathProbeDraft {
             document_id: id,
             title,
         },
@@ -1866,7 +1869,7 @@ fn a_service_named_after_reserved_words_is_still_implementable_and_callable() {
     let refused =
         poll_once(ReservedProbeBackEnd.r#for(&(), String::new(), String::new(), None)).unwrap();
     assert!(
-        matches!(refused, Err(HeaderProbeError::Missing)),
+        matches!(refused, Err(HeaderProbeErrorDraft::Missing)),
         "got: {refused:?}"
     );
     let shadowed = poll_once(ReservedProbeBackEnd.shadow(
@@ -1887,7 +1890,7 @@ fn a_service_named_after_reserved_words_is_still_implementable_and_callable() {
     ))
     .unwrap();
     assert!(
-        matches!(unnamed, Err(HeaderProbeError::Missing)),
+        matches!(unnamed, Err(HeaderProbeErrorDraft::Missing)),
         "got: {unnamed:?}"
     );
 }
@@ -1897,7 +1900,7 @@ fn the_header_probe_service_is_still_implementable_and_callable() {
     let answered =
         poll_once(HeaderProbeBackEnd.read(&(), String::new(), "acme".to_owned(), None)).unwrap();
     assert!(
-        matches!(&answered, Err((HeaderProbeError::Missing, Some(tenant))) if tenant == "acme"),
+        matches!(&answered, Err((HeaderProbeErrorDraft::Missing, Some(tenant))) if tenant == "acme"),
         "got: {answered:?}"
     );
 }
@@ -1906,7 +1909,7 @@ fn the_header_probe_service_is_still_implementable_and_callable() {
 fn the_lapsed_probe_service_is_still_implementable_and_callable() {
     let lapsed = poll_once(LapsedProbeBackEnd.lapse(&(), String::new())).unwrap();
     assert!(
-        matches!(&lapsed, Err((LapsedProbeError::Gone(held), None)) if held.is_empty()),
+        matches!(&lapsed, Err((LapsedProbeErrorDraft::Gone(held), None)) if held.is_empty()),
         "got: {lapsed:?}"
     );
     let stale = poll_once(LapsedProbeBackEnd.stale(&(), "s".to_owned())).unwrap();
@@ -1925,7 +1928,7 @@ fn the_spooled_probe_service_is_still_implementable_and_callable() {
     );
     let streamed = poll_once(SpooledProbeBackEnd.stream(&(), String::new())).unwrap();
     assert!(
-        matches!(streamed, Err(HeaderProbeError::Missing)),
+        matches!(streamed, Err(HeaderProbeErrorDraft::Missing)),
         "the implementation answers another value"
     );
 }
@@ -1934,7 +1937,7 @@ fn the_spooled_probe_service_is_still_implementable_and_callable() {
 fn the_streamed_probe_service_is_still_implementable_and_callable() {
     let streamed = poll_once(StreamedProbeBackEnd.stream(&(), String::new())).unwrap();
     assert!(
-        matches!(streamed, Err(HeaderProbeError::Missing)),
+        matches!(streamed, Err(HeaderProbeErrorDraft::Missing)),
         "the implementation answers another value"
     );
 }
@@ -1948,7 +1951,7 @@ fn the_bytes_probe_service_is_still_implementable_and_callable() {
     );
     let dumped = poll_once(BytesProbeBackEnd.dump(&(), String::new())).unwrap();
     assert!(
-        matches!(dumped, Err(HeaderProbeError::Missing)),
+        matches!(dumped, Err(HeaderProbeErrorDraft::Missing)),
         "the implementation answers another value"
     );
 }
@@ -1962,7 +1965,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
 
     let answered = poll_once(service.get_balance(
         &ctx,
-        BalanceRequest {
+        BalanceRequestDraft {
             customer_id: "acme".to_owned(),
         },
     ))
@@ -1980,14 +1983,14 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
         "cr-1".to_owned(),
     ))
     .unwrap();
-    assert!(matches!(refused, Err(InvoiceWriteError::Conflict)));
+    assert!(matches!(refused, Err(InvoiceWriteErrorDraft::Conflict)));
 
     let swept = poll_once(service.sweep(&ctx)).unwrap();
     assert_eq!(swept.unwrap().invoices, 5);
 
     let settled = poll_once(service.settle(
         &ctx,
-        BalanceRequest {
+        BalanceRequestDraft {
             customer_id: "acme".to_owned(),
         },
     ))
@@ -2000,7 +2003,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
     // called like the first, and the two publish types that do not collide.
     let audited = poll_once(AuditBackEnd.get_balance(
         &ctx,
-        BalanceRequest {
+        BalanceRequestDraft {
             customer_id: "acme".to_owned(),
         },
     ))

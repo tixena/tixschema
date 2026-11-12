@@ -194,7 +194,7 @@ fn test_primitive_structs_constructible() {
 #[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn test_char_struct_constructible() {
-    let showcase = CharTypesShowcase {
+    let showcase = CharTypesShowcaseDraft {
         array_of_char: vec!['a', 'b'],
         initial: 'x',
         map_to_char: HashMap::from([("k".to_owned(), 'v')]),
@@ -207,7 +207,7 @@ fn test_char_struct_constructible() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_char_serde_roundtrip() {
-    let showcase = CharTypesShowcase {
+    let showcase = CharTypesShowcaseDraft {
         array_of_char: vec!['a', 'b'],
         initial: 'x',
         map_to_char: HashMap::from([("k".to_owned(), 'v')]),

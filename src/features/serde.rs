@@ -394,7 +394,7 @@ pub fn tag_written_alone(attrs: &[Attribute]) -> Option<String> {
 /// The list is consumed whole rather than parsed. `bound(...)` is the one list form worth naming
 /// here: it replaces the trait bounds serde's derive writes on its own impls and leaves the JSON
 /// byte-identical, so no surface generated from this walk has anything to read out of it.
-fn consume_unread_value(nested: &ParseNestedMeta<'_>) -> syn::Result<()> {
+pub fn consume_unread_value(nested: &ParseNestedMeta<'_>) -> syn::Result<()> {
     if nested.input.peek(Token![=]) {
         nested.value()?.parse::<syn::Expr>()?;
     } else if nested.input.peek(Paren) {

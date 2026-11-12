@@ -178,7 +178,7 @@ fn filters_over_every_kind_of_path_nest_under_and_or_and_nor() {
     let invoice = Invoice::MONGO_FIELDS;
     let overdue_or_large = invoice
         .status()
-        .eq(InvoiceStatus::PastDue)
+        .eq(InvoiceStatusDraft::PastDue.validate().unwrap())
         .unwrap()
         .or(invoice.total().gt(1000.0_f64).unwrap());
     let few_open = Customer::MONGO_FIELDS.open_invoices().lte(3_u32).unwrap();
@@ -199,7 +199,7 @@ fn generated_paths_write_a_filter_an_update_and_a_raw_document() {
     let invoice = Invoice::MONGO_FIELDS;
     let overdue = invoice
         .status()
-        .eq(InvoiceStatus::PastDue)
+        .eq(InvoiceStatusDraft::PastDue.validate().unwrap())
         .unwrap()
         .or(invoice.total().gt(1000.0_f64).unwrap())
         .and(invoice.tags().contains("export".to_owned()).unwrap())
@@ -210,7 +210,7 @@ fn generated_paths_write_a_filter_an_update_and_a_raw_document() {
     );
     let settled = invoice
         .status()
-        .set(InvoiceStatus::Paid)
+        .set(InvoiceStatusDraft::Paid.validate().unwrap())
         .unwrap()
         .and(invoice.paid_at().unset());
     assert_eq!(

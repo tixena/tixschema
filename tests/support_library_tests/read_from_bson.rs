@@ -93,7 +93,7 @@ fn a_stored_holder_keeps_its_mongodb_layer() {
     found_by(Record::find_one);
     let current = Record::MONGO_FIELDS
         .current()
-        .eq(Version { number: 7 })
+        .eq(VersionDraft { number: 7 }.validate().unwrap())
         .unwrap();
     assert_eq!(
         current.into_document().to_string(),

@@ -7,7 +7,8 @@ use super::mcp_library_rows::{
     HttpAnswer, HttpRow, Match, ORIGIN, Row, assert_answer_valid, request,
 };
 use super::mcp_library_service::{
-    BookError, BookInfo, BookRequest, Sink, book_info_schema, book_request_schema,
+    BookError, BookErrorDraft, BookInfo, BookInfoDraft, BookRequest, Sink, book_info_schema,
+    book_request_schema,
 };
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
@@ -47,7 +48,7 @@ impl LessonService<()> for Lessons {
         ready(match path.as_str() {
             "SKILL.md" => Ok((b"# Figures\n".to_vec(), "text/markdown".to_owned())),
             "figures.bin" => Ok((vec![0, 255, 128, 1], "application/octet-stream".to_owned())),
-            _ => Err(BookError::NotFound),
+            _ => Err(BookErrorDraft::NotFound),
         })
     }
 
@@ -57,9 +58,9 @@ impl LessonService<()> for Lessons {
         req: BookRequest,
     ) -> impl Future<Output = Result<BookInfo, BookError>> {
         ready(if req.book_id == "lesson-1" {
-            Ok(BookInfo { pages: 3 })
+            Ok(BookInfoDraft { pages: 3 })
         } else {
-            Err(BookError::NotFound)
+            Err(BookErrorDraft::NotFound)
         })
     }
 
@@ -75,7 +76,7 @@ impl LessonService<()> for Lessons {
             ),
             "references/changes.md" => Ok("- renamed a document\n".to_owned()),
             "panic" => resume_unwind(Box::new("the handler came apart")),
-            _ => Err(BookError::NotFound),
+            _ => Err(BookErrorDraft::NotFound),
         })
     }
 }

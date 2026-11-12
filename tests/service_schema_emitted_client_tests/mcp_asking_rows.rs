@@ -271,7 +271,7 @@ impl AskingService<()> for Stand {
         file_id: String,
     ) -> impl Future<Output = Result<AskingLinked, AskingAdjacentError>> {
         self.reach(json!(["connect-adjacent", file_id]));
-        ready(Err(AskingAdjacentError::NeedsConnection {
+        ready(Err(AskingAdjacentErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }))
@@ -283,7 +283,7 @@ impl AskingService<()> for Stand {
         file_id: String,
     ) -> impl Future<Output = Result<AskingLinked, AskingKindError>> {
         self.reach(json!(["connect-by-kind", file_id]));
-        ready(Err(AskingKindError::NeedsConnection {
+        ready(Err(AskingKindErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }))
@@ -295,7 +295,7 @@ impl AskingService<()> for Stand {
         file_id: String,
     ) -> impl Future<Output = Result<AskingLinked, AskingRenamedError>> {
         self.reach(json!(["connect-renamed", file_id]));
-        ready(Err(AskingRenamedError::NeedsConnection {
+        ready(Err(AskingRenamedErrorDraft::NeedsConnection {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }))
@@ -309,12 +309,14 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingAdjacentError>> {
         self.reach(json!(["delete-adjacent", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingAdjacentError::NotFound),
-            (_, None) => Err(AskingAdjacentError::NeedsConfirmation {
+            ("missing", _) => Err(AskingAdjacentErrorDraft::NotFound),
+            (_, None) => Err(AskingAdjacentErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
             }),
             (_, Some(AskingConfirmation { confirm: true })) => Ok(()),
-            (_, Some(AskingConfirmation { confirm: false })) => Err(AskingAdjacentError::Refused),
+            (_, Some(AskingConfirmation { confirm: false })) => {
+                Err(AskingAdjacentErrorDraft::Refused)
+            }
         })
     }
 
@@ -326,12 +328,12 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingError>> {
         self.reach(json!(["delete-document", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingError::NotFound),
-            (_, None) => Err(AskingError::NeedsConfirmation {
+            ("missing", _) => Err(AskingErrorDraft::NotFound),
+            (_, None) => Err(AskingErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
             }),
             (_, Some(AskingConfirmation { confirm: true })) => Ok(()),
-            (_, Some(AskingConfirmation { confirm: false })) => Err(AskingError::Refused),
+            (_, Some(AskingConfirmation { confirm: false })) => Err(AskingErrorDraft::Refused),
         })
     }
 
@@ -342,11 +344,11 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<AskingLinked, AskingLinkError>> {
         self.reach(json!(["import-from-drive", file_id]));
         ready(if file_id == "connected" {
-            Ok(AskingLinked {
+            Ok(AskingLinkedDraft {
                 document_id: format!("doc-{file_id}"),
             })
         } else {
-            Err(AskingLinkError::NeedsConnection {
+            Err(AskingLinkErrorDraft::NeedsConnection {
                 url: LINK.to_owned(),
                 message: LINK_MESSAGE.to_owned(),
             })
@@ -362,7 +364,7 @@ impl AskingService<()> for Stand {
         self.reach(json!(["ship-document", document_id, shipping]));
         ready(shipping.map_or_else(
             || {
-                Err(AskingError::NeedsConfirmation {
+                Err(AskingErrorDraft::NeedsConfirmation {
                     message: SHIPPING_MESSAGE.to_owned(),
                 })
             },
@@ -382,7 +384,7 @@ impl PreviewService<()> for Stand {
             "doc-1" => Ok((vec![0x89, b'P', b'N', b'G'], "image/png".to_owned())),
             "voice" => Ok((vec![1, 2, 3, 4, 5], "audio/mpeg".to_owned())),
             "plain" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
-            _ => Err(AskingMiss::NotFound),
+            _ => Err(AskingMissDraft::NotFound),
         })
     }
 }

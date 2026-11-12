@@ -33,15 +33,15 @@ pub struct Shelved {
 #[test]
 fn validate_holds_the_members_the_build_keeps() {
     assert_eq!(
-        Shelved {
-            tag: Tag {
+        ShelvedDraft {
+            tag: TagDraft {
                 label: String::new()
             }
+            .validate()
+            .unwrap()
         }
-        .validate(),
-        Err(vec![
-            "'tag.label': too short: minimum length is 1, got 0".to_owned()
-        ])
+        .validation_issues(),
+        vec!["'tag.label': too short: minimum length is 1, got 0".to_owned()]
     );
 }
 

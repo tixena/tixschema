@@ -511,7 +511,7 @@ where
 #[test]
 fn serde_hands_a_map_alone_every_key() {
     assert_eq!(written(&read::<Stopping>(COUNTS).rest), COUNTS);
-    let Clewing::Held { rest } = read::<Clewing>(CLEWING);
+    let ClewingDraft::Held { rest } = read::<Clewing>(CLEWING);
     assert_eq!(written(&rest), r#"{"north":2}"#);
     assert_eq!(
         written(&read::<Parceling>(PARCELING).rest),
@@ -519,9 +519,11 @@ fn serde_hands_a_map_alone_every_key() {
     );
     assert_eq!(
         read::<Toggling<u8>>(PARCELING),
-        Toggling {
-            rest: BTreeMap::from([(Quarter::North, 2)]),
+        TogglingDraft {
+            rest: BTreeMap::from([(QuarterDraft::North, 2)]),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(written(&read::<Worming>(WORMING).rest), WORMING);
     assert_eq!(written(&read::<Faking>(FAKING).rest), FAKING);
@@ -621,26 +623,42 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
             .to_string()
     };
     assert_eq!(refusal(GRAFTING_SLOT), "missing field `kind`");
-    let label = || Pennant {
+    let label = || PennantDraft {
         label: "n".to_owned(),
     };
-    let mark = || Notch {
+    let mark = || NotchDraft {
         mark: "x".to_owned(),
     };
     for (text, read_as) in [
-        (POINTING_HELD, Pointing::Held { flag: label() }),
-        (POINTING_SLOT, Pointing::Slot(label())),
+        (
+            POINTING_HELD,
+            PointingDraft::Held {
+                flag: label().validate().unwrap(),
+            },
+        ),
+        (
+            POINTING_SLOT,
+            PointingDraft::Slot(label().validate().unwrap()),
+        ),
         (
             POINTING_NOTED,
-            Pointing::Noted {
-                flag: label(),
+            PointingDraft::Noted {
+                flag: label().validate().unwrap(),
                 note: "a".to_owned(),
             },
         ),
-        (POINTING_MARKED, Pointing::Marked { notch: mark() }),
-        (POINTING_NOTCHED, Pointing::Notched(mark())),
+        (
+            POINTING_MARKED,
+            PointingDraft::Marked {
+                notch: mark().validate().unwrap(),
+            },
+        ),
+        (
+            POINTING_NOTCHED,
+            PointingDraft::Notched(mark().validate().unwrap()),
+        ),
     ] {
-        assert_eq!(read::<Pointing>(text), read_as);
+        assert_eq!(read::<Pointing>(text), read_as.validate().unwrap());
         assert_eq!(written(&read_as), text);
     }
 }
@@ -652,10 +670,10 @@ fn serde_hands_what_a_variant_under_a_tag_alone_holds_the_object_without_the_tag
 /// as Swift, TypeScript and Zod do.
 #[test]
 fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
-    let bay = || Careen::Bay {
+    let bay = || CareenDraft::Bay {
         label: "n".to_owned(),
     };
-    let dock = || Careen::Dock {
+    let dock = || CareenDraft::Dock {
         label: "s".to_owned(),
     };
     let anchored = |text: &str| serde_json::from_str::<Anchoring>(text).map(|read| read.careen);
@@ -667,8 +685,11 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
         anchored(ANCHORING[1]).unwrap_err().to_string(),
         "'Bay.label': too short: minimum length is 1, got 0"
     );
-    assert_eq!(anchored(ANCHORING[2]).unwrap(), Careen::Calm);
-    assert_eq!(anchored(ANCHORING[3]).unwrap(), dock());
+    assert_eq!(
+        anchored(ANCHORING[2]).unwrap(),
+        CareenDraft::Calm.validate().unwrap()
+    );
+    assert_eq!(anchored(ANCHORING[3]).unwrap(), dock().validate().unwrap());
     assert!(
         anchored(ANCHORING[4])
             .unwrap_err()
@@ -676,7 +697,7 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
             .starts_with("unknown field `Dock`")
     );
     let dredging = read::<Dredging>(DREDGING);
-    assert_eq!(dredging.careen, dock());
+    assert_eq!(dredging.careen, dock().validate().unwrap());
     assert_eq!(dredging.tally.keys, ["north"]);
     let fended = |text: &str| serde_json::from_str::<Fending>(text).map(|read| read.careen);
     assert_eq!(fended(FENDING[0]).unwrap(), None);

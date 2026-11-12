@@ -27,7 +27,7 @@ fn test_usage_section_shows_what_the_struct_emits() {
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     #[model_schema()]
-    pub struct User {
+    pub struct UserDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub age: Option<u32>,
         pub first_name: String,
@@ -90,7 +90,7 @@ fn test_object_id_section_shows_what_the_object_id_struct_emits() {
 
     #[derive(Serialize, Deserialize)]
     #[model_schema()]
-    pub struct Document {
+    pub struct DocumentDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraftDraft {
         pub author_id: ObjectId,
         pub id: ObjectId,
         pub metadata: HashMap<String, ObjectId>,

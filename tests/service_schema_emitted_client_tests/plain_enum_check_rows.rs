@@ -82,9 +82,9 @@ impl AppraisalClientService<()> for Court {
     async fn appraise(&self, _ctx: &(), case_number: String) -> Result<Verdict, AppraisalError> {
         ready(()).await;
         if case_number.is_empty() {
-            return Err(AppraisalError::Missing);
+            return Err(AppraisalErrorDraft::Missing.validate().unwrap());
         }
-        Ok(Verdict::Overturned)
+        Ok(VerdictDraft::Overturned.validate().unwrap())
     }
 }
 
@@ -101,14 +101,14 @@ pub struct Row {
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn allowed(value: &Ruling) -> Result<(), Vec<String>> {
-    if matches!(value, Ruling::Denied) {
+    if matches!(value, RulingDraft::Denied) {
         return Err(vec!["a ruling is allowed".to_owned()]);
     }
     Ok(())
 }
 
 fn affirmed(value: &Verdict) -> Result<(), Vec<String>> {
-    if matches!(value, Verdict::Overturned) {
+    if matches!(value, VerdictDraft::Overturned) {
         return Err(vec!["a verdict is upheld".to_owned()]);
     }
     Ok(())

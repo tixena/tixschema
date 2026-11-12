@@ -18,12 +18,15 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer, Hourbook,
-    Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin, UntaggedTidings,
-    adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
-    day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
-    moorage_swift, tagged_bulletin_swift, tagged_tidings_swift, tidings_swift,
-    untagged_bulletin_swift, untagged_tidings_swift,
+    AdjacentBulletin, AdjacentBulletinDraft, AdjacentTidings, AdjacentTidingsDraft, Almanac,
+    AlmanacDraft, Bulletin, BulletinDraft, Datebook, Ephemeris, EphemerisDraft, Gazetteer,
+    GazetteerDraft, Hourbook, Logsheet, Moorage, MoorageDraft, TaggedBulletin, TaggedBulletinDraft,
+    TaggedTidings, TaggedTidingsDraft, Tidings, TidingsDraft, UntaggedBulletin,
+    UntaggedBulletinDraft, UntaggedTidings, UntaggedTidingsDraft, adjacent_bulletin_swift,
+    adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift, day, ephemeris_swift,
+    gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment, moorage_swift,
+    tagged_bulletin_swift, tagged_tidings_swift, tidings_swift, untagged_bulletin_swift,
+    untagged_tidings_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -128,10 +131,10 @@ where
 /// [`Almanac`] with each map of two entries, and the model under the later date labelled `label`.
 fn almanac(label: &str) -> Almanac {
     let (days, hours, moments) = dated(&"d".to_owned());
-    let labelled = |text: &str| Moorage {
+    let labelled = |text: &str| MoorageDraft {
         label: text.to_owned(),
     };
-    Almanac {
+    AlmanacDraft {
         berths: HashMap::from([
             (day(), labelled("m")),
             (day() + TimeDelta::days(1), labelled(label)),
@@ -140,6 +143,8 @@ fn almanac(label: &str) -> Almanac {
         hours,
         moments,
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of a struct and of a brand, in a type that declares a parameter and in one that
@@ -153,12 +158,12 @@ fn struct_and_brand_rows() -> Vec<Row> {
             "a struct whose model breaks its rule",
             "Almanac",
             &broken,
-            broken.validate(),
+            broken.validate().map(|_valid| ()),
         ),
         read_row(
             "a struct that declares a parameter",
             "Ephemeris<String>",
-            &Ephemeris {
+            &EphemerisDraft {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -167,14 +172,14 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "the parameter as a key",
             "Gazetteer<String>",
-            &Gazetteer {
+            &GazetteerDraft {
                 by_stowed: keyed(["a".to_owned(), "b".to_owned()], &1_u32),
             },
         ),
         read_row(
             "the parameter as a key, filled with a number",
             "Gazetteer<UInt32>",
-            &Gazetteer {
+            &GazetteerDraft {
                 by_stowed: keyed([7_u32, 8], &1_u32),
             },
         ),
@@ -205,7 +210,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under no tag",
             "Tidings",
-            &Tidings::Dated {
+            &TidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -214,7 +219,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag",
             "TaggedTidings",
-            &TaggedTidings::Dated {
+            &TaggedTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -223,7 +228,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag and a content key",
             "AdjacentTidings",
-            &AdjacentTidings::Dated {
+            &AdjacentTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -232,7 +237,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant",
             "UntaggedTidings",
-            &UntaggedTidings::Dated {
+            &UntaggedTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -241,14 +246,14 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant after the maps",
             "UntaggedTidings",
-            &UntaggedTidings::Plain {
+            &UntaggedTidingsDraft::Plain {
                 note: "n".to_owned(),
             },
         ),
         read_row(
             "a variant under no tag that declares a parameter",
             "Bulletin<String>",
-            &Bulletin::Dated {
+            &BulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -257,7 +262,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag that declares a parameter",
             "TaggedBulletin<String>",
-            &TaggedBulletin::Dated {
+            &TaggedBulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -266,7 +271,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant under a tag and a content key that declares a parameter",
             "AdjacentBulletin<String>",
-            &AdjacentBulletin::Dated {
+            &AdjacentBulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -275,7 +280,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant that declares a parameter",
             "UntaggedBulletin<String>",
-            &UntaggedBulletin::Dated {
+            &UntaggedBulletinDraft::Dated {
                 days,
                 hours,
                 moments,
@@ -284,7 +289,7 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "an untagged variant after the maps that declares a parameter",
             "UntaggedBulletin<String>",
-            &UntaggedBulletin::Plain {
+            &UntaggedBulletinDraft::Plain {
                 note: "n".to_owned(),
             },
         ),

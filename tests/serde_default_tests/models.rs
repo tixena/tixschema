@@ -618,10 +618,12 @@ pub fn trimmed_dock(payload: serde_json::Value) -> serde_json::Value {
 /// What serde reads of each payload of [`PREPROCESSED`], in its order.
 pub fn preprocessed_values() -> [Bollard; 2] {
     [
-        Bollard { dock: spare_dock() },
-        Bollard {
+        BollardDraft { dock: spare_dock() }.validate().unwrap(),
+        BollardDraft {
             dock: "east".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     ]
 }
 
@@ -629,16 +631,20 @@ pub fn preprocessed_values() -> [Bollard; 2] {
 /// a `Pontoon` that holds both keys.
 pub fn read_values() -> (Wharf, Pontoon) {
     (
-        Wharf {
+        WharfDraft {
             dock: String::new(),
             gangway: Gangway::default(),
             gate: north_dock(),
             label: "w".to_owned(),
-        },
-        Pontoon {
+        }
+        .validate()
+        .unwrap(),
+        PontoonDraft {
             dock: "d".to_owned(),
             label: "p".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     )
 }
 
@@ -648,26 +654,34 @@ pub fn read_values() -> (Wharf, Pontoon) {
 pub fn unwritten_defaults() -> (Marina, [Harbour<String>; 3]) {
     let held = |text: &str| vec![text.to_owned()];
     (
-        Marina {
+        MarinaDraft {
             dock: String::new(),
             label: "m".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         [
-            Harbour {
+            HarbourDraft {
                 berths: held("b"),
                 flagship: String::new(),
                 slips: held("s"),
-            },
-            Harbour {
+            }
+            .validate()
+            .unwrap(),
+            HarbourDraft {
                 berths: two_berths(),
                 flagship: "f".to_owned(),
                 slips: held("s"),
-            },
-            Harbour {
+            }
+            .validate()
+            .unwrap(),
+            HarbourDraft {
                 berths: held("b"),
                 flagship: "f".to_owned(),
                 slips: Vec::new(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ],
     )
 }

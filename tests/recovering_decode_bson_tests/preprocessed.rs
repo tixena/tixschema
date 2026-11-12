@@ -146,11 +146,13 @@ fn row() -> Document {
 }
 
 fn parcel(label: &str, fragile: &[&str]) -> StoredParcel {
-    StoredParcel {
+    StoredParcelDraft {
         fragile_item_codes: fragile.iter().map(|&code| code.to_owned()).collect(),
         item_code_list: vec!["x".to_owned()],
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// An id and a date are read to the values a type that names no function reads them to, by this
@@ -161,7 +163,7 @@ fn a_row_is_read_to_the_values_a_type_that_names_no_function_reads() {
     let stored = read_document::<StoredRow>(row()).unwrap();
     assert_eq!(
         stored,
-        StoredRow {
+        StoredRowDraft {
             at: plain.at,
             count: plain.count,
             id: plain.id,
@@ -169,6 +171,8 @@ fn a_row_is_read_to_the_values_a_type_that_names_no_function_reads() {
             total: plain.total,
             weight: plain.weight,
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(plain.id, id());
     assert_eq!(plain.at.timestamp_millis(), 1_700_000_000_000);

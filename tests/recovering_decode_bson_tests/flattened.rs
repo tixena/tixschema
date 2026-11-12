@@ -13,7 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;
 
 use super::{
-    Told, Version, invalid, missing, mistyped, oid, serde_reads, string, unknown, written,
+    Told, Version, VersionDraft, invalid, missing, mistyped, oid, serde_reads, string, unknown,
+    written,
 };
 
 /// What `$issues` say less each `reason`, whichever type's `$module` declares them.
@@ -649,19 +650,23 @@ flagged! {
 }
 
 fn audit() -> Audit {
-    Audit {
+    AuditDraft {
         created_by: "ada".to_owned(),
         revision: 1_i32,
     }
+    .validate()
+    .unwrap()
 }
 
 fn sheet(extra: Option<Extra>, paint: Paint) -> Sheet {
-    Sheet {
+    SheetDraft {
         audit: audit(),
         extra,
         paint,
         title: "t".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A row as `Sheet` writes it with its optional part absent, and one more key where `legacy`.
@@ -682,13 +687,19 @@ fn no_variant(path: &str, found: Bson) -> Told {
 fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     let whole = sheet(
-        Some(Extra {
-            note: "n".to_owned(),
-            weight: 2_i32,
-        }),
-        Paint::Solid {
+        Some(
+            ExtraDraft {
+                note: "n".to_owned(),
+                weight: 2_i32,
+            }
+            .validate()
+            .unwrap(),
+        ),
+        PaintDraft::Solid {
             color: "red".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     );
     let stored_row = written(&whole);
     assert_eq!(
@@ -708,12 +719,14 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
         Ok(whole)
     );
 
-    let filed = Filed {
+    let filed = FiledDraft {
         audit: audit(),
-        origin: Origin {
+        origin: OriginDraft {
             owner: oid("6a7cc592ca0574e6efdfe217"),
             source: "import".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         title: "t".to_owned(),
     };
     let filed_row = written(&filed);
@@ -723,26 +736,26 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
     );
     assert_eq!(
         read_counting!(Filed, filed_schema, filed_row, calls),
-        Ok(filed)
+        Ok(filed.validate().unwrap())
     );
 
-    let notice = Notice {
-        channel: Channel::Pager { number: 7_i32 },
+    let notice = NoticeDraft {
+        channel: ChannelDraft::Pager { number: 7_i32 }.validate().unwrap(),
         subject: "s".to_owned(),
     };
     assert_eq!(written(&notice), doc! { "number": 7_i32, "subject": "s" });
     assert_eq!(
         read_counting!(Notice, notice_schema, written(&notice), calls),
-        Ok(notice)
+        Ok(notice.validate().unwrap())
     );
 
-    let counts = Counts {
+    let counts = CountsDraft {
         by_name: HashMap::from([("a".to_owned(), 1_i32)]),
     };
     assert_eq!(written(&counts), doc! { "a": 1_i32 });
     assert_eq!(
         read_counting!(Counts, counts_schema, written(&counts), calls),
-        Ok(counts)
+        Ok(counts.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -750,10 +763,13 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
 #[test]
 fn a_flattened_optional_type_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
-    assert_eq!(written(&sheet(None, Paint::Clear)), sheet_row(false));
+    assert_eq!(
+        written(&sheet(None, PaintDraft::Clear.validate().unwrap())),
+        sheet_row(false)
+    );
     assert_eq!(
         read_counting!(Sheet, sheet_schema, sheet_row(false), calls),
-        Ok(sheet(None, Paint::Clear))
+        Ok(sheet(None, PaintDraft::Clear.validate().unwrap()))
     );
     assert_eq!(calls, 0);
 }
@@ -827,14 +843,18 @@ fn an_id_stored_as_text_inside_a_flattened_type_is_mistyped_and_fixed() {
     );
     assert_eq!(
         read,
-        Ok(Filed {
+        Ok(FiledDraft {
             audit: audit(),
-            origin: Origin {
+            origin: OriginDraft {
                 owner: oid("6a7cc592ca0574e6efdfe217"),
                 source: "import".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             title: "t".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -859,7 +879,7 @@ fn a_flattened_optional_type_half_there_is_mistyped_at_the_document() {
         }
         sheet_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(sheet(None, Paint::Clear)));
+    assert_eq!(read, Ok(sheet(None, PaintDraft::Clear.validate().unwrap())));
     assert_eq!(
         listed!(Sheet, sheet_schema, stored_row.clone()),
         [mistyped(
@@ -915,10 +935,10 @@ fn a_flattened_tagged_enum_reads_its_tag_in_the_outer_document() {
 #[test]
 fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys() {
     let mut calls = 0_u32;
-    let framed = Framed {
-        edge: Edge::Curved { radius: 1.5_f64 },
+    let framed = FramedDraft {
+        edge: EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap(),
         title: "t".to_owned(),
-        trim: Trim::Dotted { gap: 2_i32 },
+        trim: TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap(),
     };
     assert_eq!(
         written(&framed),
@@ -931,12 +951,12 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
     );
     assert_eq!(
         read_counting!(Framed, framed_schema, written(&framed), calls),
-        Ok(framed)
+        Ok(framed.validate().unwrap())
     );
-    let units = Framed {
-        edge: Edge::Straight,
+    let units = FramedDraft {
+        edge: EdgeDraft::Straight.validate().unwrap(),
         title: "t".to_owned(),
-        trim: Trim::Solid,
+        trim: TrimDraft::Solid.validate().unwrap(),
     };
     assert_eq!(
         written(&units),
@@ -944,7 +964,7 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
     );
     assert_eq!(
         read_counting!(Framed, framed_schema, written(&units), calls),
-        Ok(units)
+        Ok(units.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1070,13 +1090,13 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 #[test]
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
-    let releases = Releases {
-        by_name: HashMap::from([("first".to_owned(), Version { number: 1_i32 })]),
+    let releases = ReleasesDraft {
+        by_name: HashMap::from([("first".to_owned(), VersionDraft { number: 1_i32 })]),
     };
     assert_eq!(written(&releases), doc! { "first": { "number": 1_i32 } });
     assert_eq!(
         read_counting!(Releases, releases_schema, written(&releases), calls),
-        Ok(releases)
+        Ok(releases.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1145,7 +1165,7 @@ fn a_flattened_type_that_flattens_others_is_walked_in_the_same_document() {
 #[test]
 fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
-    let logged = written(&Logged::Made {
+    let logged = written(&LoggedDraft::Made {
         audit: audit(),
         title: "t".to_owned(),
     });
@@ -1154,7 +1174,7 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         doc! { "Made": { "createdBy": "ada", "revision": 1_i32, "title": "t" } }
     );
     read_counting!(Logged, logged_schema, logged, calls).unwrap();
-    let posted = written(&Posted::Made {
+    let posted = written(&PostedDraft::Made {
         audit: audit(),
         title: "t".to_owned(),
     });
@@ -1163,7 +1183,7 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         doc! { "kind": "Made", "createdBy": "ada", "revision": 1_i32, "title": "t" }
     );
     read_counting!(Posted, posted_schema, posted, calls).unwrap();
-    let queued = written(&Queued::Made {
+    let queued = written(&QueuedDraft::Made {
         audit: audit(),
         title: "t".to_owned(),
     });
@@ -1172,7 +1192,7 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         doc! { "kind": "Made", "data": { "createdBy": "ada", "revision": 1_i32, "title": "t" } }
     );
     read_counting!(Queued, queued_schema, queued, calls).unwrap();
-    let seen = written(&Seen::Made {
+    let seen = written(&SeenDraft::Made {
         audit: audit(),
         title: "t".to_owned(),
     });
@@ -1257,15 +1277,17 @@ fn an_untagged_variant_that_flattens_lists_the_flattened_types_issues_as_its_own
 
 #[test]
 fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
-    let scoreboard = Scoreboard {
+    let scoreboard = ScoreboardDraft {
         id: "i".to_owned(),
-        scores: Scores::Pointed(Pointed { a: 1_i32 }),
+        scores: ScoresDraft::Pointed(PointedDraft { a: 1_i32 }.validate().unwrap())
+            .validate()
+            .unwrap(),
     };
     assert_eq!(written(&scoreboard), doc! { "id": "i", "a": 1_i32 });
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Scoreboard, scoreboard_schema, written(&scoreboard), calls),
-        Ok(scoreboard)
+        Ok(scoreboard.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1295,30 +1317,30 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
 #[test]
 fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
-    let painted = Painted {
+    let painted = PaintedDraft {
         own: "x".to_owned(),
         paint: None,
     };
     assert_eq!(written(&painted), doc! { "own": "x" });
     assert_eq!(
         read_counting!(Painted, painted_schema, written(&painted), calls),
-        Ok(painted)
+        Ok(painted.validate().unwrap())
     );
-    let reached = Reached {
+    let reached = ReachedDraft {
         channel: None,
         own: "x".to_owned(),
     };
     assert_eq!(written(&reached), doc! { "own": "x" });
     assert_eq!(
         read_counting!(Reached, reached_schema, written(&reached), calls),
-        Ok(reached)
+        Ok(reached.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
 
 #[test]
 fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue() {
-    let layered = Layered {
+    let layered = LayeredDraft {
         audit: audit(),
         paint: None,
         title: "t".to_owned(),
@@ -1330,7 +1352,7 @@ fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue()
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Layered, layered_schema, written(&layered), calls),
-        Ok(layered)
+        Ok(layered.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1360,11 +1382,15 @@ fn an_absent_flattened_optional_enum_leaves_the_documents_keys_to_the_outer_type
 #[test]
 fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     let mut calls = 0_u32;
-    let painted = Painted {
+    let painted = PaintedDraft {
         own: "x".to_owned(),
-        paint: Some(Paint::Solid {
-            color: "red".to_owned(),
-        }),
+        paint: Some(
+            PaintDraft::Solid {
+                color: "red".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
     };
     assert_eq!(
         written(&painted),
@@ -1372,18 +1398,26 @@ fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     );
     assert_eq!(
         read_counting!(Painted, painted_schema, written(&painted), calls),
-        Ok(painted)
+        Ok(painted.validate().unwrap())
     );
-    let reached = Reached {
-        channel: Some(Channel::Mail(ByMail {
-            address: "a@b".to_owned(),
-        })),
+    let reached = ReachedDraft {
+        channel: Some(
+            ChannelDraft::Mail(
+                ByMailDraft {
+                    address: "a@b".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
+        ),
         own: "x".to_owned(),
     };
     assert_eq!(written(&reached), doc! { "address": "a@b", "own": "x" });
     assert_eq!(
         read_counting!(Reached, reached_schema, written(&reached), calls),
-        Ok(reached)
+        Ok(reached.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1427,17 +1461,17 @@ fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_document() {
 #[test]
 fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     let mut calls = 0_u32;
-    let absent = Edged {
+    let absent = EdgedDraft {
         edge: None,
         own: "x".to_owned(),
     };
     assert_eq!(written(&absent), doc! { "own": "x" });
     assert_eq!(
         read_counting!(Edged, edged_schema, written(&absent), calls),
-        Ok(absent)
+        Ok(absent.validate().unwrap())
     );
-    let there = Edged {
-        edge: Some(Edge::Curved { radius: 1.5_f64 }),
+    let there = EdgedDraft {
+        edge: Some(EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap()),
         own: "x".to_owned(),
     };
     assert_eq!(
@@ -1446,7 +1480,7 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     );
     assert_eq!(
         read_counting!(Edged, edged_schema, written(&there), calls),
-        Ok(there)
+        Ok(there.validate().unwrap())
     );
     assert_eq!(calls, 0);
     let undeclared = doc! { "legacy": true, "own": "x" };
@@ -1460,18 +1494,18 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
 #[test]
 fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     let mut calls = 0_u32;
-    let absent = Trimmed {
+    let absent = TrimmedDraft {
         own: "x".to_owned(),
         trim: None,
     };
     assert_eq!(written(&absent), doc! { "own": "x" });
     assert_eq!(
         read_counting!(Trimmed, trimmed_schema, written(&absent), calls),
-        Ok(absent)
+        Ok(absent.validate().unwrap())
     );
-    let there = Trimmed {
+    let there = TrimmedDraft {
         own: "x".to_owned(),
-        trim: Some(Trim::Dotted { gap: 2_i32 }),
+        trim: Some(TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap()),
     };
     assert_eq!(
         written(&there),
@@ -1479,7 +1513,7 @@ fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     );
     assert_eq!(
         read_counting!(Trimmed, trimmed_schema, written(&there), calls),
-        Ok(there)
+        Ok(there.validate().unwrap())
     );
     assert_eq!(calls, 0);
     let content_alone = doc! { "data": { "gap": 2_i32 }, "own": "x" };
@@ -1513,9 +1547,11 @@ fn each_flagged_type_answers_whether_a_document_names_a_value_of_it() {
 }
 
 fn counts() -> Counts {
-    Counts {
+    CountsDraft {
         by_name: HashMap::from([("a".to_owned(), 1_i32)]),
     }
+    .validate()
+    .unwrap()
 }
 
 fn mark() -> ObjectId {
@@ -1552,12 +1588,12 @@ where
 /// The type an internally tagged variant holds is handed the document without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_document_without_the_tag() {
-    let filled = Filled::Counted(Tallies { a: 1_i32 });
+    let filled = FilledDraft::Counted(TalliesDraft { a: 1_i32 }.validate().unwrap());
     assert_eq!(written(&filled), doc! { "kind": "Counted", "a": 1_i32 });
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Filled, filled_schema, written(&filled), calls),
-        Ok(filled)
+        Ok(filled.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1565,33 +1601,37 @@ fn an_internally_tagged_variants_value_is_handed_the_document_without_the_tag() 
 #[test]
 fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
-    let bag = Bag {
-        extras: Extras(HashMap::from([("a".to_owned(), 1_i32)])),
+    let bag = BagDraft {
+        extras: ExtrasDraft(HashMap::from([("a".to_owned(), 1_i32)]))
+            .validate()
+            .unwrap(),
     };
     assert_eq!(written(&bag), doc! { "a": 1_i32 });
     assert_eq!(
         read_counting!(Bag, bag_schema, written(&bag), calls),
-        Ok(bag)
+        Ok(bag.validate().unwrap())
     );
 
-    let paper = Paper {
-        newest: Newest(Some(Version { number: 3_i32 })),
+    let paper = PaperDraft {
+        newest: NewestDraft(Some(VersionDraft { number: 3_i32 }.validate().unwrap()))
+            .validate()
+            .unwrap(),
         title: "t".to_owned(),
     };
     assert_eq!(written(&paper), doc! { "number": 3_i32, "title": "t" });
     assert_eq!(
         read_counting!(Paper, paper_schema, written(&paper), calls),
-        Ok(paper)
+        Ok(paper.validate().unwrap())
     );
 
-    let outer = Outer {
-        body: Wrap::new(Version { number: 3_i32 }).unwrap(),
+    let outer = OuterDraft {
+        body: Wrap::new(VersionDraft { number: 3_i32 }).unwrap(),
         id: "i".to_owned(),
     };
     assert_eq!(written(&outer), doc! { "number": 3_i32, "id": "i" });
     assert_eq!(
         read_counting!(Outer, outer_schema, written(&outer), calls),
-        Ok(outer)
+        Ok(outer.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1651,14 +1691,16 @@ fn an_issue_in_a_type_handed_what_serde_hands_it_is_listed_once_where_it_sits() 
 #[test]
 fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads() {
     let mut calls = 0_u32;
-    let franked = Franked {
+    let franked = FrankedDraft {
         id: "i".to_owned(),
-        postmark: Postmark(Version { number: 3_i32 }),
+        postmark: PostmarkDraft(VersionDraft { number: 3_i32 }.validate().unwrap())
+            .validate()
+            .unwrap(),
     };
     assert_eq!(written(&franked), doc! { "id": "i", "number": 3_i32 });
     assert_eq!(
         read_counting!(Franked, franked_schema, written(&franked), calls),
-        Ok(franked)
+        Ok(franked.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1676,8 +1718,10 @@ fn a_flattened_single_slot_struct_with_a_hooked_slot_claims_what_its_hook_reads(
 
 #[test]
 fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it() {
-    let docket = Docket {
-        marker: Marker(oid("6a7cc592ca0574e6efdfe217")),
+    let docket = DocketDraft {
+        marker: MarkerDraft(oid("6a7cc592ca0574e6efdfe217"))
+            .validate()
+            .unwrap(),
         name: "n".to_owned(),
     };
     let row = written(&docket);
@@ -1696,13 +1740,13 @@ fn a_flattened_single_slot_struct_over_an_id_claims_the_key_serde_reads_for_it()
         calls += 1;
         docket_schema::Verdict::Reject
     });
-    assert_eq!(from_json, Ok(docket));
+    assert_eq!(from_json, Ok(docket.validate().unwrap()));
     assert_eq!(calls, 0);
 }
 
 #[test]
 fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
-    let direct = DirectId {
+    let direct = DirectIdDraft {
         id: mark(),
         name: "n".to_owned(),
     };
@@ -1711,15 +1755,15 @@ fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
         doc! { "$oid": "6a7cc592ca0574e6efdfe217", "name": "n" }
     );
     reads_what_serde_wrote(&direct);
-    reads_what_serde_wrote(&MaybeId {
+    reads_what_serde_wrote(&MaybeIdDraft {
         name: "n".to_owned(),
         oid: Some(mark()),
     });
-    reads_what_serde_wrote(&MaybeId {
+    reads_what_serde_wrote(&MaybeIdDraft {
         name: "n".to_owned(),
         oid: None,
     });
-    reads_what_serde_wrote(&IdThroughHook {
+    reads_what_serde_wrote(&IdThroughHookDraft {
         name: "n".to_owned(),
         oid: mark(),
     });
@@ -1727,24 +1771,24 @@ fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
 
 #[test]
 fn a_flattened_option_not_seen_that_is_absent_is_no_issue() {
-    reads_what_serde_wrote(&Pocket {
+    reads_what_serde_wrote(&PocketDraft {
         body: Wrap::new(None).unwrap(),
         id: "i".to_owned(),
     });
-    reads_what_serde_wrote(&Pocket {
-        body: Wrap::new(Some(Body {
+    reads_what_serde_wrote(&PocketDraft {
+        body: Wrap::new(Some(BodyDraft {
             text: "t".to_owned(),
         }))
         .unwrap(),
         id: "i".to_owned(),
     });
-    reads_what_serde_wrote(&DirectMaybe {
+    reads_what_serde_wrote(&DirectMaybeDraft {
         id: "i".to_owned(),
         version: None,
     });
-    reads_what_serde_wrote(&DirectMaybe {
+    reads_what_serde_wrote(&DirectMaybeDraft {
         id: "i".to_owned(),
-        version: Some(Version { number: 3_i32 }),
+        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
     });
 }
 
@@ -1755,10 +1799,12 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
     assert!(serde_reads::<DirectMaybe>(&number_as_text));
     assert_eq!(
         read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
-        Ok(DirectMaybe {
+        Ok(DirectMaybeDraft {
             id: "i".to_owned(),
             version: None,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1781,17 +1827,17 @@ fn a_flattened_value_read_whole_that_its_reader_refuses_is_invalid_at_the_docume
 fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
     let entries = || HashMap::from([("a".to_owned(), 1_i32)]);
     reads_what_serde_wrote(&counts());
-    reads_what_serde_wrote(&ThroughHook {
+    reads_what_serde_wrote(&ThroughHookDraft {
         id: "i".to_owned(),
-        version: Version { number: 3_i32 },
+        version: VersionDraft { number: 3_i32 }.validate().unwrap(),
     });
-    reads_what_serde_wrote(&MapThroughHook { entries: entries() });
-    reads_what_serde_wrote(&NeverRead {
+    reads_what_serde_wrote(&MapThroughHookDraft { entries: entries() });
+    reads_what_serde_wrote(&NeverReadDraft {
         id: "i".to_owned(),
-        version: Some(Version { number: 3_i32 }),
+        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
     });
-    reads_what_serde_wrote(&Unpicked {
-        draft: Draft { pages: 3_i32 },
+    reads_what_serde_wrote(&UnpickedDraft {
+        draft: DraftDraft { pages: 3_i32 }.validate().unwrap(),
         id: "i".to_owned(),
     });
 }

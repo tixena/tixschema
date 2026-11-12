@@ -255,7 +255,7 @@ fn serde_judges_each_brand_of_a_key_as_it_reads_it_and_validate_the_brand_s_own_
             "{refused}"
         );
     }
-    let raised = Topmast {
+    let raised = TopmastDraft {
         gaffs: HashMap::from([(
             Gaff::new(Sheave::new("rope".to_owned()).unwrap()).unwrap(),
             1,

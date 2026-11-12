@@ -250,15 +250,19 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     }
 
     fn sound() -> Parcel {
-        Parcel {
+        ParcelDraft {
             item_label: "A".to_owned(),
         }
+        .validate()
+        .unwrap()
     }
 
     fn unlabelled() -> Parcel {
-        Parcel {
+        ParcelDraft {
             item_label: String::new(),
         }
+        .validate()
+        .unwrap()
     }
 
     /// The message of an unlabelled parcel held at `path`.
@@ -287,27 +291,31 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
 
     /// A yard with one unlabelled parcel under a key of each kind that is no string.
     fn keyed_yard() -> Yard {
-        Yard {
+        YardDraft {
             by_brand: BTreeMap::from([(Bay::new("b2".to_owned()).unwrap(), unlabelled())]),
             by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
             by_flag: BTreeMap::from([(true, unlabelled())]),
             by_letter: BTreeMap::from([('q', unlabelled())]),
             by_number: BTreeMap::from([(7, unlabelled())]),
-            ..empty_yard()
+            ..empty_yard().into()
         }
+        .validate()
+        .unwrap()
     }
 
     /// A yard with one unlabelled parcel in a map of lists and in a list of maps.
     fn nested_yard() -> Yard {
-        Yard {
+        YardDraft {
             docks_in_order: vec![BTreeMap::new(), at_north()],
             lists_by_dock: BTreeMap::from([("north".to_owned(), vec![sound(), unlabelled()])]),
-            ..empty_yard()
+            ..empty_yard().into()
         }
+        .validate()
+        .unwrap()
     }
 
     fn empty_yard() -> Yard {
-        Yard {
+        YardDraft {
             by_bay: HashMap::new(),
             by_brand: BTreeMap::new(),
             by_dock: BTreeMap::new(),
@@ -320,11 +328,13 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             rows_by_dock: BTreeMap::new(),
             spares_by_dock: None,
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn a_model_held_as_a_maps_value_is_reported_under_its_key() {
-        let terminal = Terminal {
+        let terminal = TerminalDraft {
             first_parcel: unlabelled(),
             parcels_by_dock: BTreeMap::from([
                 ("north".to_owned(), unlabelled()),
@@ -333,31 +343,31 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             ]),
         };
         assert_eq!(
-            terminal.validate(),
-            Err(vec![
+            terminal.validation_issues(),
+            vec![
                 unlabelled_at("firstParcel.itemLabel"),
                 unlabelled_at("parcelsByDock.north.itemLabel"),
                 unlabelled_at("parcelsByDock.west.itemLabel"),
-            ])
+            ]
         );
     }
 
     #[test]
     fn a_hash_map_is_walked_as_a_b_tree_map_is() {
-        let yard = Yard {
+        let yard = YardDraft {
             by_bay: HashMap::from([("b2".to_owned(), unlabelled())]),
-            ..empty_yard()
+            ..empty_yard().into()
         };
         assert_eq!(
-            yard.validate(),
-            Err(vec![unlabelled_at("byBay.b2.itemLabel")])
+            yard.validation_issues(),
+            vec![unlabelled_at("byBay.b2.itemLabel")]
         );
     }
 
     #[cfg(feature = "indexmap")]
     #[test]
     fn an_index_map_is_walked_as_a_b_tree_map_is() {
-        let quay = Quay {
+        let quay = QuayDraft {
             in_order: indexmap::IndexMap::from([
                 ("west".to_owned(), unlabelled()),
                 ("north".to_owned(), unlabelled()),
@@ -365,42 +375,42 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             quay_parcel: sound(),
         };
         assert_eq!(
-            quay.validate(),
-            Err(vec![
+            quay.validation_issues(),
+            vec![
                 unlabelled_at("inOrder.west.itemLabel"),
                 unlabelled_at("inOrder.north.itemLabel"),
-            ])
+            ]
         );
     }
 
     #[test]
     fn an_empty_map_and_a_map_of_sound_models_report_nothing() {
-        assert_eq!(empty_yard().validate(), Ok(()));
-        let terminal = Terminal {
+        assert_eq!(empty_yard().validation_issues(), Vec::<String>::new());
+        let terminal = TerminalDraft {
             first_parcel: sound(),
             parcels_by_dock: BTreeMap::from([("north".to_owned(), sound())]),
         };
-        assert_eq!(terminal.validate(), Ok(()));
+        assert_eq!(terminal.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn a_key_and_an_index_are_written_in_the_order_the_payload_nests_them() {
-        let yard = Yard {
+        let yard = YardDraft {
             rows_by_dock: BTreeMap::from([(
                 "north".to_owned(),
                 BTreeMap::from([(4, unlabelled())]),
             )]),
             spares_by_dock: Some(Arc::new(at_north())),
-            ..nested_yard()
+            ..nested_yard().into()
         };
         assert_eq!(
-            yard.validate(),
-            Err(vec![
+            yard.validation_issues(),
+            vec![
                 unlabelled_at("docksInOrder.1.north.itemLabel"),
                 unlabelled_at("listsByDock.north.1.itemLabel"),
                 unlabelled_at("rowsByDock.north.4.itemLabel"),
                 unlabelled_at("sparesByDock.north.itemLabel"),
-            ])
+            ]
         );
     }
 
@@ -408,14 +418,14 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     fn a_key_that_is_no_string_is_written_as_serde_writes_it() {
         let yard = keyed_yard();
         assert_eq!(
-            yard.validate(),
-            Err(vec![
+            yard.validation_issues(),
+            vec![
                 unlabelled_at("byBrand.b2.itemLabel"),
                 unlabelled_at("byDock.north.itemLabel"),
                 unlabelled_at("byFlag.true.itemLabel"),
                 unlabelled_at("byLetter.q.itemLabel"),
                 unlabelled_at("byNumber.7.itemLabel"),
-            ])
+            ]
         );
         assert_eq!(Dock::North.to_string(), "the north dock");
         let written = serde_json::to_value(&yard).unwrap();
@@ -442,15 +452,13 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             .and_hms_opt(4, 17, 0)
             .unwrap();
         assert_eq!(arrival.to_string(), "2026-10-13 04:17:00");
-        let schedule = Schedule {
+        let schedule = ScheduleDraft {
             by_arrival: BTreeMap::from([(arrival, unlabelled())]),
             schedule_parcel: sound(),
         };
         assert_eq!(
-            schedule.validate(),
-            Err(vec![unlabelled_at(
-                "byArrival.2026-10-13T04:17:00.itemLabel"
-            )])
+            schedule.validation_issues(),
+            vec![unlabelled_at("byArrival.2026-10-13T04:17:00.itemLabel")]
         );
         assert_eq!(
             serde_json::to_value(&schedule).unwrap()["byArrival"]["2026-10-13T04:17:00"]["itemLabel"],
@@ -465,66 +473,74 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
 
     #[test]
     fn a_struct_whose_one_field_is_a_map_of_models_reports_them() {
-        let depot = Depot {
-            depot_racks: Racks {
+        let depot = DepotDraft {
+            depot_racks: RacksDraft {
                 by_aisle: at_north(),
-            },
+            }
+            .validate()
+            .unwrap(),
         };
         assert_eq!(
-            depot.validate(),
-            Err(vec![unlabelled_at("depotRacks.byAisle.north.itemLabel")])
+            depot.validation_issues(),
+            vec![unlabelled_at("depotRacks.byAisle.north.itemLabel")]
         );
     }
 
     #[test]
     fn a_model_held_in_a_slot_of_a_tuple_struct_is_reported_under_its_position() {
         assert_eq!(
-            Consignment(String::new(), unlabelled()).validate(),
-            Err(vec![unlabelled_at("0"), unlabelled_at("1.itemLabel")])
+            ConsignmentDraft(String::new(), unlabelled()).validation_issues(),
+            vec![unlabelled_at("0"), unlabelled_at("1.itemLabel")]
         );
-        assert_eq!(Consignment("a".to_owned(), sound()).validate(), Ok(()));
+        assert_eq!(
+            ConsignmentDraft("a".to_owned(), sound()).validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
     fn a_slot_is_walked_through_an_option_a_list_and_a_map() {
-        let pallet = Pallet(
+        let pallet = PalletDraft(
             "a".to_owned(),
             Some(unlabelled()),
             vec![sound(), unlabelled()],
             at_north(),
         );
         assert_eq!(
-            pallet.validate(),
-            Err(vec![
+            pallet.validation_issues(),
+            vec![
                 unlabelled_at("1.itemLabel"),
                 unlabelled_at("2.1.itemLabel"),
                 unlabelled_at("3.north.itemLabel"),
-            ])
+            ]
         );
         assert_eq!(
-            Pallet("a".to_owned(), None, Vec::new(), BTreeMap::new()).validate(),
-            Ok(())
+            PalletDraft("a".to_owned(), None, Vec::new(), BTreeMap::new()).validation_issues(),
+            Vec::<String>::new()
         );
     }
 
     #[test]
     fn a_value_is_named_by_the_steps_serde_writes_on_the_way_to_it() {
-        let crane = Crane {
-            sealed_load: Sealed(unlabelled()),
+        let crane = CraneDraft {
+            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
         };
         let split = Freight::Split(String::new(), unlabelled());
-        let loose = Freight::Loose {
+        let loose = FreightDraft::Loose {
             freight_label: String::new(),
         };
         let printed = [
-            placed(&Sealed(unlabelled()), Sealed(unlabelled()).validate()),
-            placed(&crane, crane.validate()),
+            placed(
+                &SealedDraft(unlabelled()),
+                SealedDraft(unlabelled()).validate().map(|_valid| ()),
+            ),
+            placed(&crane, crane.validate().map(|_valid| ())),
             placed(
                 &Freight::Boxed(unlabelled()),
                 Freight::Boxed(unlabelled()).validate(),
             ),
             placed(&split, split.validate()),
-            placed(&loose, loose.validate()),
+            placed(&loose, loose.validate().map(|_valid| ())),
             placed(
                 &Haul::Boxed(unlabelled()),
                 Haul::Boxed(unlabelled()).validate(),
@@ -538,8 +554,8 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 Seal::Stamped(String::new()).validate(),
             ),
             placed(
-                &Docket(String::new(), 0),
-                Docket(String::new(), 0).validate(),
+                &DocketDraft(String::new(), 0),
+                DocketDraft(String::new(), 0).validate().map(|_valid| ()),
             ),
         ]
         .concat();
@@ -550,19 +566,19 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn the_one_slot_of_a_struct_adds_no_step() {
         assert_eq!(
-            Sealed(unlabelled()).validate(),
-            Err(vec![unlabelled_at("itemLabel")])
+            SealedDraft(unlabelled()).validation_issues(),
+            vec![unlabelled_at("itemLabel")]
         );
         assert_eq!(
-            serde_json::to_string(&Sealed(unlabelled())).unwrap(),
+            serde_json::to_string(&SealedDraft(unlabelled())).unwrap(),
             r#"{"itemLabel":""}"#
         );
-        let crane = Crane {
-            sealed_load: Sealed(unlabelled()),
+        let crane = CraneDraft {
+            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
         };
         assert_eq!(
-            crane.validate(),
-            Err(vec![unlabelled_at("sealedLoad.itemLabel")])
+            crane.validation_issues(),
+            vec![unlabelled_at("sealedLoad.itemLabel")]
         );
     }
 
@@ -585,27 +601,24 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn a_member_of_a_variant_of_several_is_reported_under_the_variants_name() {
         assert_eq!(
-            Freight::Split(String::new(), unlabelled()).validate(),
-            Err(vec![
-                unlabelled_at("Split.0"),
-                unlabelled_at("Split.1.itemLabel")
-            ])
+            Freight::Split(String::new(), unlabelled()).validation_issues(),
+            vec![unlabelled_at("Split.0"), unlabelled_at("Split.1.itemLabel")]
         );
-        let loose = Freight::Loose {
+        let loose = FreightDraft::Loose {
             freight_label: String::new(),
         };
         assert_eq!(
-            loose.validate(),
-            Err(vec![unlabelled_at("Loose.freightLabel")])
+            loose.validation_issues(),
+            vec![unlabelled_at("Loose.freightLabel")]
         );
     }
 
     #[test]
     fn a_member_is_reported_under_a_content_key_and_under_no_step_beside_a_tag() {
-        let loose = Haul::Loose {
+        let loose = HaulDraft::Loose {
             haul_label: "a".to_owned(),
         };
-        let lifted = Lift::Loose {
+        let lifted = LiftDraft::Loose {
             lift_label: "a".to_owned(),
         };
         assert_eq!(
@@ -624,10 +637,10 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 Ok(()),
             ]
         );
-        let unlabelled_haul = Haul::Loose {
+        let unlabelled_haul = HaulDraft::Loose {
             haul_label: String::new(),
         };
-        let unlabelled_lift = Lift::Loose {
+        let unlabelled_lift = LiftDraft::Loose {
             lift_label: String::new(),
         };
         assert_eq!(
@@ -641,26 +654,26 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
 
     #[test]
     fn a_model_held_in_a_tuple_written_as_a_fields_type_is_reported_under_its_position() {
-        let barge = Barge {
+        let barge = BargeDraft {
             deck_pair: ("a".to_owned(), unlabelled()),
             deck_pairs: vec![(sound(), sound()), (unlabelled(), unlabelled())],
             hold_parcel: sound(),
             stern_pair: (1, ("a".to_owned(), Some(unlabelled()))),
         };
         assert_eq!(
-            barge.validate(),
-            Err(vec![
+            barge.validation_issues(),
+            vec![
                 unlabelled_at("deckPair.1.itemLabel"),
                 unlabelled_at("deckPairs.1.0.itemLabel"),
                 unlabelled_at("deckPairs.1.1.itemLabel"),
                 unlabelled_at("sternPair.1.1.itemLabel"),
-            ])
+            ]
         );
     }
 
     #[test]
     fn a_map_written_as_the_whole_value_names_its_entry_by_the_key_alone() {
-        let annex = Annex {
+        let annex = AnnexDraft {
             parcels_by_gate: at_north(),
         };
         assert_eq!(
@@ -678,11 +691,11 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
 
     #[test]
     fn a_key_typed_with_a_parameter_is_written_where_the_parameter_declares_serialize() {
-        let rack = Rack {
+        let rack = RackDraft {
             by_key: at_north(),
             rack_parcel: sound(),
         };
-        let shelf = Shelf {
+        let shelf = ShelfDraft {
             by_key: at_north(),
             by_name: BTreeMap::from([("west", unlabelled())]),
             top_parcel: sound(),
@@ -706,20 +719,20 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn the_readme_shows_the_steps_serde_writes_for_a_variant_and_for_the_one_slot() {
         let readme = include_str!("../../docs/guide/validation.md");
-        let freight = Freight::Loose {
+        let freight = FreightDraft::Loose {
             freight_label: String::new(),
         };
-        let haul = Haul::Loose {
+        let haul = HaulDraft::Loose {
             haul_label: String::new(),
         };
-        let lift = Lift::Loose {
+        let lift = LiftDraft::Loose {
             lift_label: String::new(),
         };
         let written = [
             serde_json::to_string(&freight).unwrap(),
             serde_json::to_string(&haul).unwrap(),
             serde_json::to_string(&lift).unwrap(),
-            serde_json::to_string(&Sealed(unlabelled())).unwrap(),
+            serde_json::to_string(&SealedDraft(unlabelled())).unwrap(),
         ];
         assert_eq!(
             written,
@@ -730,8 +743,8 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 r#"{"itemLabel":""}"#,
             ]
         );
-        let crane = Crane {
-            sealed_load: Sealed(unlabelled()),
+        let crane = CraneDraft {
+            sealed_load: SealedDraft(unlabelled()).validate().unwrap(),
         };
         let named: Vec<String> = [
             freight.validate(),
@@ -742,7 +755,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             Haul::Split("a".to_owned(), unlabelled()).validate(),
             lift.validate(),
             Lift::Boxed(unlabelled()).validate(),
-            Sealed(unlabelled()).validate(),
+            SealedDraft(unlabelled()).validate(),
             crane.validate(),
         ]
         .into_iter()
@@ -780,13 +793,13 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_map_a_slot_and_a_tuple() {
         let readme = include_str!("../../docs/guide/validation.md");
-        let terminal = Terminal {
+        let terminal = TerminalDraft {
             first_parcel: sound(),
             parcels_by_dock: at_north(),
         };
         let shown = [
             terminal.validate(),
-            Consignment(String::new(), unlabelled()).validate(),
+            ConsignmentDraft(String::new(), unlabelled()).validate(),
         ];
         assert_eq!(
             shown,
@@ -808,17 +821,17 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             "the README no longer shows `{whole}`"
         );
 
-        let barge = Barge {
+        let barge = BargeDraft {
             deck_pair: ("a".to_owned(), unlabelled()),
             deck_pairs: Vec::new(),
             hold_parcel: sound(),
             stern_pair: (1, ("a".to_owned(), None)),
         };
-        let rack = Rack {
+        let rack = RackDraft {
             by_key: at_north(),
             rack_parcel: sound(),
         };
-        let shelf = Shelf {
+        let shelf = ShelfDraft {
             by_key: at_north(),
             by_name: BTreeMap::new(),
             top_parcel: sound(),

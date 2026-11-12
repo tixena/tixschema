@@ -83,13 +83,13 @@ struct UserWithAddress {
 #[cfg(all(test, any(feature = "typescript", feature = "zod", feature = "serde")))]
 #[test]
 fn test_edge_case_structs_constructible() {
-    let address = Address {
+    let address = AddressDraft {
         city: String::new(),
         street: String::new(),
         zip_code: String::new(),
     };
     assert_eq!(address.city, String::new());
-    let original = OriginalBugReproduction {
+    let original = OriginalBugReproductionDraft {
         problematic_map: HashMap::new(),
         string_to_optional_vec_u64: HashMap::new(),
         string_to_vec_bool: HashMap::new(),
@@ -98,7 +98,7 @@ fn test_edge_case_structs_constructible() {
         string_to_vec_string: HashMap::new(),
     };
     assert!(original.problematic_map.is_empty());
-    let nested = NestedStringKeyedMaps {
+    let nested = NestedStringKeyedMapsDraft {
         counts_by_group: HashMap::new(),
         labels_by_group: HashMap::from([(
             "first".to_owned(),
@@ -116,12 +116,12 @@ fn test_edge_case_structs_constructible() {
     assert!(nested.counts_by_group.is_empty());
     assert!(nested.rows_by_group.is_empty());
     assert!(nested.tallies_by_region.is_empty());
-    let simple = SimpleComplexTest {
+    let simple = SimpleComplexTestDraft {
         nested_map_of_arrays: HashMap::new(),
     };
     assert!(simple.nested_map_of_arrays.is_empty());
-    let user = UserWithAddress {
-        address,
+    let user = UserWithAddressDraft {
+        address: address.validate().unwrap(),
         backup_addresses: Vec::new(),
         id: String::new(),
         name: String::new(),
@@ -136,7 +136,7 @@ fn test_edge_case_aliases_and_complex_constructible() {
     assert_eq!(optional_nested, Vec::new());
     let quadruple: QuadrupleNestedValue = Vec::new();
     assert_eq!(quadruple, Vec::new());
-    let complex = ReallyComplexTest {
+    let complex = ReallyComplexTestDraft {
         optional_nested: None,
         quadruple_nested: HashMap::new(),
     };

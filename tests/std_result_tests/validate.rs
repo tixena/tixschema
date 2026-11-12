@@ -3,7 +3,8 @@
 //! `validate()` refuses, the model in an arm read unjudged so that the whole value is judged once.
 
 use super::models::{
-    Errata, Missive, Notebook, Reply, ballot, masthead, missive, notebook, unparsed,
+    Errata, ErrataDraft, Missive, MissiveDraft, Notebook, Reply, ballot, masthead, missive,
+    notebook, unparsed,
 };
 
 /// What `validate()` answers of a broken [`Missive`].
@@ -21,40 +22,38 @@ pub const NOTEBOOK_REPORTS: [&str; 2] = [
 #[test]
 fn the_arm_a_result_holds_is_reported_under_its_key() {
     assert_eq!(
-        missive(true).validate(),
-        Err(MISSIVE_REPORTS.map(str::to_owned).to_vec())
+        missive(true).validation_issues(),
+        MISSIVE_REPORTS.map(str::to_owned).to_vec()
     );
     assert_eq!(
-        Missive {
+        MissiveDraft {
             frontmatter: Some(Err(unparsed(""))),
         }
-        .validate(),
-        Err(vec![
-            "'frontmatter.Err.reason': too short: minimum length is 1, got 0".to_owned()
-        ])
+        .validation_issues(),
+        vec!["'frontmatter.Err.reason': too short: minimum length is 1, got 0".to_owned()]
     );
     assert_eq!(
-        notebook(true).validate(),
-        Err(NOTEBOOK_REPORTS.map(str::to_owned).to_vec())
+        notebook(true).validation_issues(),
+        NOTEBOOK_REPORTS.map(str::to_owned).to_vec()
     );
     assert_eq!(
-        Errata::Listed {
+        ErrataDraft::Listed {
             marks: Some(vec![Err(unparsed("")), Ok(ballot("a"))]),
         }
-        .validate(),
-        Err(vec![
+        .validation_issues(),
+        vec![
             "'marks.0.Err.reason': too short: minimum length is 1, got 0".to_owned(),
             "'marks.1.Ok': too short: minimum length is 2, got 1".to_owned(),
-        ])
+        ]
     );
-    assert_eq!(missive(false).validate(), Ok(()));
-    assert_eq!(notebook(false).validate(), Ok(()));
+    assert_eq!(missive(false).validation_issues(), Vec::<String>::new());
+    assert_eq!(notebook(false).validation_issues(), Vec::<String>::new());
     assert_eq!(
-        Errata::Filed {
+        ErrataDraft::Filed {
             frontmatter: Ok(masthead("intro", "Intro")),
         }
-        .validate(),
-        Ok(())
+        .validation_issues(),
+        Vec::<String>::new()
     );
 }
 

@@ -126,9 +126,11 @@ mod a_key_on_a_list {
 
     fn parts(count: usize) -> Vec<Part> {
         vec![
-            Part {
+            PartDraft {
                 value: "part".to_owned()
-            };
+            }
+            .validate()
+            .unwrap();
             count
         ]
     }
@@ -140,7 +142,7 @@ mod a_key_on_a_list {
     #[test]
     fn a_list_of_models_is_held_to_its_item_count() {
         assert_eq!(
-            Document {
+            DocumentDraft {
                 name_config: parts(0)
             }
             .validate()
@@ -148,7 +150,7 @@ mod a_key_on_a_list {
             vec!["'nameConfig': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Document {
+            DocumentDraft {
                 name_config: parts(4)
             }
             .validate()
@@ -156,17 +158,21 @@ mod a_key_on_a_list {
             vec!["'nameConfig': too long: maximum length is 3, got 4"]
         );
         for held in 1..=3 {
-            let admitted = Document {
+            let admitted = DocumentDraft {
                 name_config: parts(held),
             };
-            assert_eq!(admitted.validate(), Ok(()), "{held} parts");
+            assert_eq!(
+                admitted.validation_issues(),
+                Vec::<String>::new(),
+                "{held} parts"
+            );
         }
     }
 
     #[test]
     fn a_list_of_strings_and_a_list_of_numbers_are_counted_and_no_item_is_measured() {
         assert_eq!(
-            Counted {
+            CountedDraft {
                 numbers: Vec::new(),
                 strings: Vec::new(),
             }
@@ -178,7 +184,7 @@ mod a_key_on_a_list {
             ]
         );
         assert_eq!(
-            Counted {
+            CountedDraft {
                 numbers: vec![1, 2, 3, 4],
                 strings: strings(4),
             }
@@ -189,17 +195,17 @@ mod a_key_on_a_list {
                 "'strings': too long: maximum length is 3, got 4",
             ]
         );
-        let held = Counted {
+        let held = CountedDraft {
             numbers: vec![0, 4000],
             strings: vec!["abcd".to_owned(), String::new()],
         };
-        assert_eq!(held.validate(), Ok(()));
+        assert_eq!(held.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn each_key_is_enforced_alone() {
         assert_eq!(
-            EachAlone {
+            EachAloneDraft {
                 least: Vec::new(),
                 most: strings(4),
             }
@@ -210,17 +216,17 @@ mod a_key_on_a_list {
                 "'most': too long: maximum length is 3, got 4",
             ]
         );
-        let held = EachAlone {
+        let held = EachAloneDraft {
             least: strings(9),
             most: Vec::new(),
         };
-        assert_eq!(held.validate(), Ok(()));
+        assert_eq!(held.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn every_list_type_is_counted() {
         let one = || "only".to_owned();
-        let short = EveryList {
+        let short = EveryListDraft {
             deque: VecDeque::from([one()]),
             hashed: HashSet::from([one()]),
             heap: BinaryHeap::from([1]),
@@ -230,13 +236,13 @@ mod a_key_on_a_list {
             sliced: Box::from([one()]),
         };
         assert_eq!(
-            short.validate().unwrap_err(),
+            short.validation_issues(),
             ["deque", "hashed", "heap", "listed", "ordered", "sliced"]
                 .map(|field| format!("'{field}': too short: minimum length is 2, got 1"))
         );
 
         let two = || ["a".to_owned(), "b".to_owned()];
-        let held = EveryList {
+        let held = EveryListDraft {
             deque: VecDeque::from(two()),
             hashed: HashSet::from(two()),
             heap: BinaryHeap::from([1, 2]),
@@ -245,22 +251,22 @@ mod a_key_on_a_list {
             pair: two(),
             sliced: Box::from(two()),
         };
-        assert_eq!(held.validate(), Ok(()));
+        assert_eq!(held.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn an_optional_list_is_counted_inside_its_some() {
         let rows = || vec![Vec::new()];
         assert_eq!(
-            Wrapped {
+            WrappedDraft {
                 maybe: None,
                 rows: rows()
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
         assert_eq!(
-            Wrapped {
+            WrappedDraft {
                 maybe: Some(Vec::new()),
                 rows: rows()
             }
@@ -269,19 +275,19 @@ mod a_key_on_a_list {
             vec!["'maybe': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Wrapped {
+            WrappedDraft {
                 maybe: Some(parts(1)),
                 rows: rows()
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
     }
 
     #[test]
     fn a_list_of_lists_is_counted_at_the_outer_list() {
         assert_eq!(
-            Wrapped {
+            WrappedDraft {
                 maybe: None,
                 rows: Vec::new()
             }
@@ -290,12 +296,12 @@ mod a_key_on_a_list {
             vec!["'rows': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Wrapped {
+            WrappedDraft {
                 maybe: None,
                 rows: vec![Vec::new()]
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
     }
 
@@ -305,7 +311,7 @@ mod a_key_on_a_list {
             Tag::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap()).unwrap()
         };
         assert_eq!(
-            Tagged {
+            TaggedDraft {
                 counted: vec![tag("abc")],
                 free: vec![tag("abc"), tag("ab"), tag("a")],
             }
@@ -317,7 +323,7 @@ mod a_key_on_a_list {
             ]
         );
         assert_eq!(
-            Tagged {
+            TaggedDraft {
                 counted: vec![tag("abc"), tag("ab"), tag("abcd")],
                 free: Vec::new(),
             }
@@ -339,16 +345,19 @@ mod a_key_on_a_list {
 
     #[test]
     fn each_item_of_a_counted_list_of_models_is_still_validated() {
-        let line = |code: &str| Line {
+        let line = |code: &str| LineDraft {
             code: code.to_owned(),
         };
         assert_eq!(
-            Order { lines: Vec::new() }.validate().unwrap_err(),
+            OrderDraft { lines: Vec::new() }.validation_issues(),
             vec!["'lines': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Order {
-                lines: vec![line("ok"), line("x")]
+            OrderDraft {
+                lines: vec![
+                    line("ok").validate().unwrap(),
+                    line("x").validate().unwrap()
+                ]
             }
             .validate()
             .unwrap_err(),
@@ -359,7 +368,7 @@ mod a_key_on_a_list {
     #[test]
     fn a_list_of_a_type_parameter_and_a_list_of_the_type_itself_are_counted() {
         assert_eq!(
-            Page {
+            PageDraft {
                 items: strings(3),
                 more: Some(Box::from([])),
             }
@@ -371,66 +380,73 @@ mod a_key_on_a_list {
             ]
         );
         assert_eq!(
-            Page {
+            PageDraft {
                 items: strings(2),
                 more: None,
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
 
-        let leaf = || Tree {
+        let leaf = || TreeDraft {
             children: Vec::new(),
         };
         assert_eq!(
-            Tree {
-                children: vec![leaf(), leaf(), leaf()]
+            TreeDraft {
+                children: vec![
+                    leaf().validate().unwrap(),
+                    leaf().validate().unwrap(),
+                    leaf().validate().unwrap()
+                ]
             }
             .validate()
             .unwrap_err(),
             vec!["'children': too long: maximum length is 2, got 3"]
         );
         assert_eq!(
-            Tree {
-                children: vec![leaf()]
+            TreeDraft {
+                children: vec![leaf().validate().unwrap()]
             }
-            .validate(),
-            Ok(())
+            .validation_issues(),
+            Vec::<String>::new()
         );
     }
 
     #[test]
     fn a_tagged_variants_list_is_counted_as_a_named_member_and_as_a_slot() {
         assert_eq!(
-            Shipment::Boxes { labels: Vec::new() }
+            ShipmentDraft::Boxes { labels: Vec::new() }
                 .validate()
                 .unwrap_err(),
             vec!["'Boxes.labels': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Shipment::Pallets(vec![1, 2, 3]).validate().unwrap_err(),
+            Shipment::Pallets(vec![1, 2, 3]).validation_issues(),
             vec!["'Pallets': too long: maximum length is 2, got 3"]
         );
-        assert_eq!(Shipment::Pallets(Vec::new()).validate(), Ok(()));
+        assert_eq!(
+            Shipment::Pallets(Vec::new()).validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     /// The README prints these two reports beside the declaration they come from.
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_list() {
         let readme = include_str!("../../docs/guide/validation.md");
-        let empty = Document {
+        let empty = DocumentDraft {
             name_config: parts(0),
         };
-        let full = Document {
+        let full = DocumentDraft {
             name_config: parts(4),
         };
         for (reported, shown) in [
             (
-                empty.validate().unwrap_err(),
+                empty.validation_issues(),
                 "// Err([\"'nameConfig': too short: minimum length is 1, got 0\"])",
             ),
             (
-                full.validate().unwrap_err(),
+                full.validation_issues(),
                 "answers `'nameConfig': too long: maximum length is 3, got 4`",
             ),
         ] {
@@ -688,22 +704,24 @@ mod a_key_on_an_alias_of_a_list {
     }
 
     fn album(count: usize) -> Album {
-        Album {
+        AlbumDraft {
             captions: vec!["c".to_owned(); count],
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn validate_and_the_read_count_the_items() {
         assert_eq!(
-            album(0).validate().unwrap_err(),
+            album(0).validation_issues(),
             vec!["'captions': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            album(3).validate().unwrap_err(),
+            album(3).validation_issues(),
             vec!["'captions': too long: maximum length is 2, got 3"]
         );
-        assert_eq!(album(1).validate(), Ok(()));
+        assert_eq!(album(1).validation_issues(), Vec::<String>::new());
         assert_eq!(
             serde_json::from_str::<Album>(r#"{"captions":[]}"#)
                 .unwrap_err()

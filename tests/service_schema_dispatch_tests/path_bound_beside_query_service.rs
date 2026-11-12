@@ -65,7 +65,7 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
         if id == "missing" {
             return Err(PathBoundError::NotFound);
         }
-        Ok(PathBoundDocument {
+        Ok(PathBoundDocumentDraft {
             title: format!("{org}/{id}"),
         })
     }
@@ -77,7 +77,7 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
         limit: Option<i64>,
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
-        Ok(PathBoundDocument {
+        Ok(PathBoundDocumentDraft {
             title: format!("{org} limit={limit:?}"),
         })
     }

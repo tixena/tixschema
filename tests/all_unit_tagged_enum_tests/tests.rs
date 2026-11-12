@@ -75,15 +75,15 @@ fn ts_shape(definition: &str) -> String {
 #[test]
 fn an_all_unit_internally_tagged_enum_is_written_as_a_tagged_object() {
     assert_eq!(
-        serde_json::to_string(&BalanceError::DbError).unwrap(),
+        serde_json::to_string(&BalanceErrorDraft::DbError).unwrap(),
         r#"{"errorCode":"db-error"}"#
     );
     assert_eq!(
-        serde_json::to_string(&BalanceError::InsufficientBalance).unwrap(),
+        serde_json::to_string(&BalanceErrorDraft::InsufficientBalance).unwrap(),
         r#"{"errorCode":"insufficient-balance"}"#
     );
     assert_eq!(
-        wire_tag(&BalanceError::DbError),
+        wire_tag(&BalanceErrorDraft::DbError),
         ("errorCode".to_owned(), "db-error".to_owned())
     );
 }
@@ -115,8 +115,8 @@ fn an_all_unit_enum_naming_no_tag_is_written_as_the_bare_variant_name() {
 #[cfg(feature = "typescript")]
 #[test]
 fn the_typescript_union_carries_the_tag_serde_writes() {
-    let (tag, db) = wire_tag(&BalanceError::DbError);
-    let (_, insufficient) = wire_tag(&BalanceError::InsufficientBalance);
+    let (tag, db) = wire_tag(&BalanceErrorDraft::DbError);
+    let (_, insufficient) = wire_tag(&BalanceErrorDraft::InsufficientBalance);
 
     assert_eq!(
         ts_shape(&BalanceError::ts_definition()),
@@ -169,8 +169,8 @@ fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
 #[cfg(feature = "zod")]
 #[test]
 fn the_zod_schema_discriminates_on_the_tag_serde_writes() {
-    let (tag, db) = wire_tag(&BalanceError::DbError);
-    let (_, insufficient) = wire_tag(&BalanceError::InsufficientBalance);
+    let (tag, db) = wire_tag(&BalanceErrorDraft::DbError);
+    let (_, insufficient) = wire_tag(&BalanceErrorDraft::InsufficientBalance);
     let schema = BalanceError::zod_schema();
 
     assert!(schema.contains(&format!("z.discriminatedUnion(\"{tag}\", [")));
@@ -199,7 +199,10 @@ fn the_json_schema_describes_the_bytes_serde_writes() {
     let branches = schema["oneOf"].as_array().unwrap();
     assert_eq!(branches.len(), 2);
 
-    for value in [BalanceError::DbError, BalanceError::InsufficientBalance] {
+    for value in [
+        BalanceErrorDraft::DbError,
+        BalanceErrorDraft::InsufficientBalance,
+    ] {
         let wire = wire_object(&value);
         let (tag, _) = wire_tag(&value);
         let described = branches

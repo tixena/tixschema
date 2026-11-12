@@ -7,12 +7,13 @@
 #[cfg(all(feature = "typescript", feature = "serde"))]
 mod typescript {
     use super::{
-        ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveNode, ArchiveTrunk, ArchiveWire,
+        ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveEventDraft, ArchiveNode,
+        ArchiveNodeDraft, ArchiveTrunk, ArchiveWire,
     };
     // The brand's intersection is read only where the value surface that writes its marker
     // compiles — see the test below.
     #[cfg(feature = "zod")]
-    use super::{ArchiveId, ArchiveStamp};
+    use super::{ArchiveId, ArchiveStamp, ArchiveStampDraft};
 
     #[test]
     fn a_whole_type_binds_every_parameter_its_members_are_written_under() {
@@ -512,7 +513,7 @@ mod wire {
     #[test]
     fn the_whole_type_writes_the_keys_its_schemas_describe() {
         let entry = ArchiveEntry::<String, f64, String, u32, String> {
-            stamp: ArchiveStamp {
+            stamp: ArchiveStampDraft {
                 archive_id: ArchiveId::new("doc-1".to_owned()).unwrap(),
             },
             created_at: 1.5_f64,
@@ -537,7 +538,7 @@ mod wire {
     #[test]
     fn the_generic_enums_write_the_shapes_their_schemas_describe() {
         assert_eq!(
-            serde_json::to_value(ArchiveEvent::Created {
+            serde_json::to_value(ArchiveEventDraft::Created {
                 id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
             })
             .unwrap(),
@@ -553,7 +554,7 @@ mod wire {
     fn a_recursive_generic_writes_itself_all_the_way_down() {
         let node = ArchiveNode::<String> {
             id: "root".to_owned(),
-            children: vec![ArchiveNode {
+            children: vec![ArchiveNodeDraft {
                 id: "leaf".to_owned(),
                 children: Vec::new(),
             }],
@@ -691,7 +692,7 @@ pub struct TwoLoopedFillings {
 
 #[test]
 fn every_fixture_expands_in_this_build() {
-    let stamp = ArchiveStamp {
+    let stamp = ArchiveStampDraft {
         archive_id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
     };
     let entry = ArchiveEntry::<String, f64, String, u32, String> {
@@ -703,7 +704,7 @@ fn every_fixture_expands_in_this_build() {
     };
     assert_eq!(entry.tags, Vec::<String>::new());
 
-    let event = ArchiveEvent::Purged {
+    let event = ArchiveEventDraft::Purged {
         reason: "expired".to_owned(),
     };
     assert!(matches!(
@@ -711,7 +712,7 @@ fn every_fixture_expands_in_this_build() {
         ArchiveEvent::<String>::Purged { reason: _reason }
     ));
     let wire = ArchiveWire::<String>::Counted { count: 2_u32 };
-    assert!(matches!(wire, ArchiveWire::Counted { count: 2_u32 }));
+    assert!(matches!(wire, ArchiveWireDraft::Counted { count: 2_u32 }));
 
     let node = ArchiveNode::<String> {
         children: Vec::new(),

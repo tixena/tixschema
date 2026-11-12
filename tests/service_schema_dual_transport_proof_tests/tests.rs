@@ -161,12 +161,14 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("archive_document {document_id}"));
         if document_id == "already" {
-            return Err(ArchiveError::AlreadyArchived);
+            return Err(ArchiveErrorDraft::AlreadyArchived.validate().unwrap());
         }
         if document_id == "locked" {
-            return Err(ArchiveError::Locked {
+            return Err(ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
-            });
+            }
+            .validate()
+            .unwrap());
         }
         Ok(())
     }
@@ -179,32 +181,43 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("check_range {document_id}"));
         if document_id == "missing" {
-            return Err((RangeError::NotFound, None));
+            return Err((RangeErrorDraft::NotFound.validate().unwrap(), None));
         }
         if document_id == "toolarge" {
             return Err((
-                RangeError::RangeNotSatisfiable,
+                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
                 Some("bytes */2097152".to_owned()),
             ));
         }
         if document_id == "inject" {
             return Err((
-                RangeError::RangeNotSatisfiable,
+                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
                 Some("bytes */2097152\r\nSet-Cookie: injected=yes".to_owned()),
             ));
         }
         if document_id == "space" {
-            return Err((RangeError::RangeNotSatisfiable, Some("a b".to_owned())));
+            return Err((
+                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+                Some("a b".to_owned()),
+            ));
         }
         if document_id == "tab" {
-            return Err((RangeError::RangeNotSatisfiable, Some("a\tb".to_owned())));
+            return Err((
+                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+                Some("a\tb".to_owned()),
+            ));
         }
         if document_id == "quoted" {
-            return Err((RangeError::RangeNotSatisfiable, Some("\"abc\"".to_owned())));
+            return Err((
+                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+                Some("\"abc\"".to_owned()),
+            ));
         }
-        Ok(VersionResponse {
+        Ok(VersionResponseDraft {
             content: format!("{document_id}@ok"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn get_thumbnail(
@@ -216,7 +229,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("get_thumbnail {document_id} {download:?}"));
         if document_id == "missing" {
-            return Err(ThumbnailError::NotFound);
+            return Err(ThumbnailErrorDraft::NotFound.validate().unwrap());
         }
         Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
     }
@@ -233,23 +246,27 @@ impl DocumentService<()> for DocumentBackEnd {
             "get_version {document_id} {version_id} {byte_range:?}"
         ));
         if document_id == "missing" {
-            return Err(GetVersionError::NotFound);
+            return Err(GetVersionErrorDraft::NotFound.validate().unwrap());
         }
         if document_id == "gone" {
-            return Err(GetVersionError::VersionGone);
+            return Err(GetVersionErrorDraft::VersionGone.validate().unwrap());
         }
         if document_id == "quiet" {
             return Ok((
-                VersionResponse {
+                VersionResponseDraft {
                     content: format!("{document_id}@{version_id}"),
-                },
+                }
+                .validate()
+                .unwrap(),
                 None,
             ));
         }
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
-            },
+            }
+            .validate()
+            .unwrap(),
             Some("v7".to_owned()),
         ))
     }
@@ -262,16 +279,16 @@ impl DocumentService<()> for DocumentBackEnd {
     async fn seal_document(&self, _ctx: &(), document_id: String) -> Result<SealAck, ArchiveError> {
         ready(()).await;
         self.reach(format!("seal_document {document_id}"));
-        Ok(SealAck)
+        Ok(SealAckDraft.validate().unwrap())
     }
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
         ready(()).await;
         self.reach("sweep_documents".to_owned());
         if *self.sweep_fails.lock().unwrap() {
-            return Err(SweepError::DbError);
+            return Err(SweepErrorDraft::DbError.validate().unwrap());
         }
-        Ok(SweepReport { swept: 3 })
+        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
     }
 }
 
@@ -543,11 +560,13 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
     assert_eq!(
         answered,
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
             },
             Some("v7".to_owned()),
-        )),
+        ))
+        .validate()
+        .unwrap(),
         "the response rides in the body and the header_out value is rejoined from the reply's own \
          headers"
     );
@@ -571,7 +590,7 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
     assert_eq!(
         answered,
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
             },
             None,
@@ -584,8 +603,8 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_http_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        ("missing", GetVersionError::NotFound),
-        ("gone", GetVersionError::VersionGone),
+        ("missing", GetVersionErrorDraft::NotFound),
+        ("gone", GetVersionErrorDraft::VersionGone),
     ] {
         let service = DocumentBackEnd::new();
         let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
@@ -613,7 +632,7 @@ fn the_http_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeError::RangeNotSatisfiable,
+            RangeErrorDraft::RangeNotSatisfiable,
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the body and its `error_header_out` element is \
@@ -632,7 +651,7 @@ fn a_declared_error_with_no_header_value_carries_none_rather_than_an_empty_heade
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeError::NotFound,
+            RangeErrorDraft::NotFound,
             None,
         ))),
     );
@@ -775,7 +794,7 @@ fn the_http_loop_round_trips_the_no_payload_operation_at_its_overridden_ok_statu
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveError::AlreadyArchived
+            ArchiveErrorDraft::AlreadyArchived
         )),
         "the mapped error still answers even though the operation carries no payload of its own"
     );
@@ -789,7 +808,7 @@ fn the_http_loop_round_trips_a_unit_struct_success() {
         http_rest_transport::DefaultFaultHandler,
     ));
     let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
-    assert_eq!(answered, Ok(SealAck));
+    assert_eq!(answered, Ok(SealAckDraft.validate().unwrap()));
     assert_eq!(service.reached(), vec!["seal_document doc-1".to_owned()]);
 }
 
@@ -816,7 +835,7 @@ fn the_http_loop_round_trips_the_bytes_operation_and_its_content_type() {
     assert_eq!(
         missing,
         Err(document_service_schema::CallError::Operation(
-            ThumbnailError::NotFound
+            ThumbnailErrorDraft::NotFound
         )),
         "a bytes operation's declared error still answers JSON, exactly like any other operation's"
     );
@@ -830,7 +849,10 @@ fn the_http_loop_round_trips_the_defaulted_operation_at_its_default_path() {
         http_rest_transport::DefaultFaultHandler,
     ));
     let answered = poll_once(client.sweep_documents()).unwrap();
-    assert_eq!(answered, Ok(SweepReport { swept: 3 }));
+    assert_eq!(
+        answered,
+        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
+    );
     assert_eq!(service.reached(), vec!["sweep_documents".to_owned()]);
 
     service.fail_next_sweep();
@@ -838,7 +860,7 @@ fn the_http_loop_round_trips_the_defaulted_operation_at_its_default_path() {
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepError::DbError
+            SweepErrorDraft::DbError
         )),
         "an operation naming no http(...) group still answers its declared error, at the fixed \
          default-binding status"
@@ -940,7 +962,7 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
     assert_eq!(
         answered,
         (
-            VersionResponse {
+            VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
             },
             Some("v7".to_owned()),
@@ -964,7 +986,7 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
     assert_eq!(
         answered,
         (
-            VersionResponse {
+            VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
             },
             None,
@@ -976,8 +998,8 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        ("missing", GetVersionError::NotFound),
-        ("gone", GetVersionError::VersionGone),
+        ("missing", GetVersionErrorDraft::NotFound),
+        ("gone", GetVersionErrorDraft::VersionGone),
     ] {
         let service = DocumentBackEnd::new();
         let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
@@ -998,7 +1020,7 @@ fn a_declared_error_crosses_the_amqp_loop_with_every_field_it_carries() {
     assert_eq!(
         poll_once(client.archive_document("locked".to_owned())).unwrap(),
         Err(document_service_schema::CallError::Operation(
-            ArchiveError::Locked {
+            ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
         )),
@@ -1015,7 +1037,7 @@ fn a_declared_error_crosses_the_http_loop_with_every_field_it_carries() {
     assert_eq!(
         poll_once(client.archive_document("locked".to_owned())).unwrap(),
         Err(document_service_schema::CallError::Operation(
-            ArchiveError::Locked {
+            ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
         )),
@@ -1030,7 +1052,7 @@ fn the_amqp_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeError::RangeNotSatisfiable,
+            RangeErrorDraft::RangeNotSatisfiable,
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the envelope's `error` and its `error_header_out` \
@@ -1047,7 +1069,7 @@ fn an_amqp_declared_error_with_no_header_value_carries_none() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeError::NotFound,
+            RangeErrorDraft::NotFound,
             None,
         ))),
     );
@@ -1061,7 +1083,7 @@ fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveError::AlreadyArchived
+            ArchiveErrorDraft::AlreadyArchived
         ))
     );
     assert_eq!(
@@ -1108,7 +1130,7 @@ fn the_amqp_loop_round_trips_a_unit_struct_success() {
     let service = DocumentBackEnd::new();
     let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
     let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
-    assert_eq!(answered, Ok(SealAck));
+    assert_eq!(answered, Ok(SealAckDraft.validate().unwrap()));
 }
 
 #[test]
@@ -1117,7 +1139,7 @@ fn a_typescript_shaped_unit_struct_success_envelope_with_no_value_key_reads_as_o
         &serde_json::json!({ "ok": true }),
     ));
     let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
-    assert_eq!(answered, Ok(SealAck));
+    assert_eq!(answered, Ok(SealAckDraft.validate().unwrap()));
 }
 
 #[test]
@@ -1126,7 +1148,7 @@ fn a_rust_shaped_unit_struct_success_envelope_with_an_empty_object_value_reads_a
         &serde_json::json!({ "ok": true, "value": {} }),
     ));
     let answered = poll_once(client.seal_document("doc-1".to_owned())).unwrap();
-    assert_eq!(answered, Ok(SealAck));
+    assert_eq!(answered, Ok(SealAckDraft.validate().unwrap()));
 }
 
 #[test]
@@ -1176,14 +1198,17 @@ fn the_amqp_loop_round_trips_the_defaulted_operation() {
     let service = DocumentBackEnd::new();
     let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
     let answered = poll_once(client.sweep_documents()).unwrap();
-    assert_eq!(answered, Ok(SweepReport { swept: 3 }));
+    assert_eq!(
+        answered,
+        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
+    );
 
     service.fail_next_sweep();
     let refused = poll_once(client.sweep_documents()).unwrap();
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepError::DbError
+            SweepErrorDraft::DbError
         ))
     );
 }

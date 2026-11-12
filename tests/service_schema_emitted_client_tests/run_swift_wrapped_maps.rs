@@ -18,8 +18,9 @@ use tixschema::model_schema;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_maps_models::{
-    AdjacentDrawer, AdjacentStowedDrawer, Cabinet, Cubby, Drawer, Latch, Satchel, StowedCabinet,
-    StowedCubby, StowedDrawer, TaggedDrawer, TaggedStowedDrawer, UntaggedDrawer,
+    AdjacentDrawer, AdjacentStowedDrawer, Cabinet, CabinetDraft, Cubby, CubbyDraft, Drawer, Latch,
+    LatchDraft, Satchel, SatchelDraft, StowedCabinet, StowedCabinetDraft, StowedCubby,
+    StowedCubbyDraft, StowedDrawer, TaggedDrawer, TaggedStowedDrawer, UntaggedDrawer,
     UntaggedStowedDrawer, adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift,
     cubby_swift, drawer_swift, latch_swift, satchel_swift, stowed_cabinet_swift,
     stowed_cubby_swift, stowed_drawer_swift, tagged_drawer_swift, tagged_stowed_drawer_swift,
@@ -75,7 +76,7 @@ macro_rules! drawer_rows {
             read_row(
                 concat!("a tuple of named members, ", $tagging),
                 $read_as,
-                &Held::Stacked {
+                &HeldDraft::Stacked {
                     pair: (numbered(&text), flagged(&text)),
                 },
             ),
@@ -113,12 +114,12 @@ macro_rules! untagged_drawer_rows {
             read_row(
                 concat!("one slot that holds models, untagged", $parameter),
                 $read_as,
-                &Held::Sealed(one(Latch::Inner, "l")),
+                &Held::Sealed(one(LatchDraft::Inner, "l")),
             ),
             read_row(
                 concat!("a tuple of named members, untagged", $parameter),
                 $read_as,
-                &Held::Stacked {
+                &HeldDraft::Stacked {
                     pair: (latched(&text), 2),
                 },
             ),
@@ -128,7 +129,7 @@ macro_rules! untagged_drawer_rows {
                     $parameter
                 ),
                 $read_as,
-                Held::Sealed(one(Latch::Inner, ""))
+                Held::Sealed(one(LatchDraft::Inner, ""))
             ),
         ]
     }};
@@ -144,19 +145,19 @@ macro_rules! tagged_drawer_rows {
             read_row(
                 concat!("named members, a tag alone", $parameter),
                 $read_as,
-                &Held::Stacked {
+                &HeldDraft::Stacked {
                     latches_by_latch: latched(&latched(&text)),
                     pair: (latched(&text), 3),
-                    sealed: (one(Latch::Outer, "l"), 4),
+                    sealed: (one(LatchDraft::Outer, "l"), 4),
                 },
             ),
             refused!(
                 concat!("named members, unlabelled, a tag alone", $parameter),
                 $read_as,
-                Held::Stacked {
+                HeldDraft::Stacked {
                     latches_by_latch: latched(&latched(&text)),
                     pair: (latched(&text), 3),
-                    sealed: (one(Latch::Outer, ""), 4),
+                    sealed: (one(LatchDraft::Outer, ""), 4),
                 }
             ),
         ]
@@ -271,7 +272,10 @@ fn latched<Held>(held: &Held) -> HashMap<Latch, Held>
 where
     Held: Clone,
 {
-    HashMap::from([(Latch::Inner, held.clone()), (Latch::Outer, held.clone())])
+    HashMap::from([
+        (LatchDraft::Inner, held.clone()),
+        (LatchDraft::Outer, held.clone()),
+    ])
 }
 
 /// A satchel labelled `label` under `key`: one entry, so the Rust `validate()` reports the satchels
@@ -282,7 +286,7 @@ where
 {
     HashMap::from([(
         key,
-        Satchel {
+        SatchelDraft {
             label: label.to_owned(),
         },
     )])
@@ -291,7 +295,7 @@ where
 /// [`Cubby`] whose satchels are labelled `label`.
 fn cubby(label: &str) -> Cubby {
     let text = "a".to_owned();
-    Cubby {
+    CubbyDraft {
         flags: (flagged(&text), 1),
         flags_by_number: numbered(&flagged(&text)),
         latches: (latched(&text), 2),
@@ -301,12 +305,14 @@ fn cubby(label: &str) -> Cubby {
         satchels: (one(1, label), 4),
         satchels_by_name: HashMap::from([("s".to_owned(), one(2, label))]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// [`StowedCubby`] whose satchels are labelled `label`.
 fn stowed_cubby(label: &str) -> StowedCubby<String> {
     let text = "b".to_owned();
-    StowedCubby {
+    StowedCubbyDraft {
         flags: (flagged(&text), 1),
         flags_by_number: numbered(&flagged(&text)),
         latches: (latched(&text), 2),
@@ -316,6 +322,8 @@ fn stowed_cubby(label: &str) -> StowedCubby<String> {
         satchels: (one(1, label), "d".to_owned()),
         satchels_by_name: HashMap::from([("s".to_owned(), one(2, label))]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of a struct and of a tuple struct, in a type that declares a parameter and in one
@@ -326,7 +334,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "the reproduction's struct",
             "Plainly",
-            &Plainly {
+            &PlainlyDraft {
                 nested: HashMap::from([("a".to_owned(), HashMap::from([(1, "x".to_owned())]))]),
                 numbered_pair: (HashMap::from([(5, "c".to_owned())]), 6),
             },
@@ -335,7 +343,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "each map empty",
             "Cubby",
-            &Cubby {
+            &CubbyDraft {
                 flags: (HashMap::new(), 1),
                 flags_by_number: HashMap::from([(1, HashMap::new())]),
                 latches: (HashMap::new(), 2),
@@ -354,12 +362,12 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "the slots of a tuple struct",
             "Cabinet",
-            &Cabinet(numbered(&text), flagged(&text), latched(&text), one(1, "l")),
+            &CabinetDraft(numbered(&text), flagged(&text), latched(&text), one(1, "l")),
         ),
         read_row(
             "the slots of a tuple struct that declares a parameter",
             "StowedCabinet<String>",
-            &StowedCabinet(numbered(&text), flagged(&text), latched(&text), one(1, "l")),
+            &StowedCabinetDraft(numbered(&text), flagged(&text), latched(&text), one(1, "l")),
         ),
         refused!(
             "a model in a slot and as a value, unlabelled",
@@ -374,12 +382,12 @@ fn struct_rows() -> Vec<Row> {
         refused!(
             "a model in a tuple struct's slot, unlabelled",
             "Cabinet",
-            Cabinet(numbered(&text), flagged(&text), latched(&text), one(1, ""))
+            CabinetDraft(numbered(&text), flagged(&text), latched(&text), one(1, ""))
         ),
         refused!(
             "a model in a tuple struct's slot, unlabelled, a parameter",
             "StowedCabinet<String>",
-            StowedCabinet(numbered(&text), flagged(&text), latched(&text), one(1, ""))
+            StowedCabinetDraft(numbered(&text), flagged(&text), latched(&text), one(1, ""))
         ),
     ]
 }
@@ -390,12 +398,12 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "the reproduction's several slots",
             "Split",
-            &Split::Keyed(HashMap::from([(2, "b".to_owned())]), 7),
+            &SplitDraft::Keyed(HashMap::from([(2, "b".to_owned())]), 7),
         ),
         read_row(
             "the reproduction's one slot",
             "Split",
-            &Split::Numbered(HashMap::from([(2, "b".to_owned())])),
+            &SplitDraft::Numbered(HashMap::from([(2, "b".to_owned())])),
         ),
     ];
     rows.extend(drawer_rows!(Drawer, "Drawer", "no tag attribute"));

@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::models::{
-    WideAdjacent, WideBeside, WideBorrowed, WideBounded, WideChosen, WideEvent, WideHolder, WideId,
-    WideKept, WideLater, WideLocked, WidePair, WideReached, WideTagged, WideTally, WideUntagged,
+    WideAdjacent, WideAdjacentDraft, WideBeside, WideBesideDraft, WideBorrowed, WideBorrowedDraft,
+    WideBounded, WideBoundedDraft, WideChosen, WideChosenDraft, WideEvent, WideEventDraft,
+    WideHolder, WideHolderDraft, WideId, WideKept, WideKeptDraft, WideLater, WideLaterDraft,
+    WideLocked, WideLockedDraft, WidePair, WidePairDraft, WideReached, WideReachedDraft,
+    WideTagged, WideTaggedDraft, WideTally, WideTallyDraft, WideUntagged, WideUntaggedDraft,
 };
 
 /// The numbers serde writes for [`reached`].
@@ -44,7 +47,7 @@ where
 
 /// A `WideTally` with an `i64` beyond what a JavaScript `number` holds exactly in each place.
 fn tally() -> WideTally {
-    WideTally {
+    WideTallyDraft {
         boxed: Box::new(-(1_i64 << 60_i32)),
         grid: [1_i64, 1_i64 << 60_i32],
         keyed: BTreeMap::from([("a".to_owned(), -7)]),
@@ -55,6 +58,8 @@ fn tally() -> WideTally {
         set: BTreeSet::from([2, 5]),
         signed: -(1_i64 << 60_i32),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A `u64` and an `i64` member is written as the JSON number serde writes, and read back from it.
@@ -140,13 +145,13 @@ fn a_brand_and_a_struct_of_slots_write_their_numbers() {
         "a brand read"
     );
     assert_eq!(
-        written(&WidePair(4, "y".to_owned())),
+        written(&WidePairDraft(4, "y".to_owned())),
         r#"[4,"y"]"#,
         "a struct of two slots"
     );
     assert_eq!(
         read::<WidePair>(r#"[4,"y"]"#),
-        Ok(WidePair(4, "y".to_owned())),
+        Ok(WidePairDraft(4, "y".to_owned()).validate().unwrap()),
         "a struct of two slots read"
     );
 }
@@ -154,18 +159,21 @@ fn a_brand_and_a_struct_of_slots_write_their_numbers() {
 #[test]
 fn every_variant_writes_its_numbers_under_each_tagging() {
     for (value, json) in [
-        (WideEvent::Counted(5), r#"{"Counted":5}"#),
+        (WideEventDraft::Counted(5), r#"{"Counted":5}"#),
         (
-            WideEvent::Moved { from: -1, to: 2 },
+            WideEventDraft::Moved { from: -1, to: 2 },
             r#"{"Moved":{"from":-1,"to":2}}"#,
         ),
-        (WideEvent::Pair(6, "z".to_owned()), r#"{"Pair":[6,"z"]}"#),
-        (WideEvent::Reset, r#""Reset""#),
+        (
+            WideEventDraft::Pair(6, "z".to_owned()),
+            r#"{"Pair":[6,"z"]}"#,
+        ),
+        (WideEventDraft::Reset, r#""Reset""#),
     ] {
         assert_eq!(written(&value), json, "for {value:?}");
         assert_eq!(read::<WideEvent>(json), Ok(value), "for {json}");
     }
-    let tagged = WideTagged::Moved { from: 1, to: 2 };
+    let tagged = WideTaggedDraft::Moved { from: 1, to: 2 };
     assert_eq!(
         written(&tagged),
         r#"{"kind":"Moved","from":1,"to":2}"#,
@@ -177,9 +185,12 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
         "under a tag, read"
     );
     for (value, json) in [
-        (WideAdjacent::Counted(5), r#"{"kind":"Counted","body":5}"#),
         (
-            WideAdjacent::Moved { from: 1, to: 2 },
+            WideAdjacentDraft::Counted(5),
+            r#"{"kind":"Counted","body":5}"#,
+        ),
+        (
+            WideAdjacentDraft::Moved { from: 1, to: 2 },
             r#"{"kind":"Moved","body":{"from":1,"to":2}}"#,
         ),
     ] {
@@ -192,10 +203,10 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
 /// digits is the text of the variant that holds a `String`.
 #[test]
 fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
-    assert_eq!(written(&WideUntagged::Small(4)), "4", "a slot");
+    assert_eq!(written(&WideUntaggedDraft::Small(4)), "4", "a slot");
     assert_eq!(
         read::<WideUntagged>("4"),
-        Ok(WideUntagged::Small(4)),
+        Ok(WideUntaggedDraft::Small(4)),
         "within the bound"
     );
     assert_eq!(
@@ -205,17 +216,17 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     );
     assert_eq!(
         read::<WideUntagged>(r#""40""#),
-        Ok(WideUntagged::Text("40".to_owned())),
+        Ok(WideUntaggedDraft::Text("40".to_owned())),
         "a string of digits"
     );
     assert_eq!(
-        written(&WideUntagged::Named { count: 12 }),
+        written(&WideUntaggedDraft::Named { count: 12 }),
         r#"{"count":12}"#,
         "a named member"
     );
     assert_eq!(
         read::<WideUntagged>(r#"{"count":12}"#),
-        Ok(WideUntagged::Named { count: 12 }),
+        Ok(WideUntaggedDraft::Named { count: 12 }),
         "a named member read"
     );
 }
@@ -225,7 +236,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
 fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
     assert_eq!(
         read::<WideBounded>(r#"{"level":-5}"#),
-        Ok(WideBounded {
+        Ok(WideBoundedDraft {
             level: -5,
             start: 7
         }),
@@ -237,7 +248,7 @@ fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
         "beyond the bound"
     );
     assert_eq!(
-        written(&WideBounded { level: 2, start: 7 }),
+        written(&WideBoundedDraft { level: 2, start: 7 }),
         r#"{"level":2,"start":7}"#,
         "the numbers written"
     );
@@ -246,18 +257,22 @@ fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
 /// A map's key is written as its text, and what fills another type's parameter as a number.
 #[test]
 fn an_i64_as_a_map_key_and_as_a_filling_is_written_as_serde_writes_it() {
-    let kept = WideKept {
-        filled: WideHolder { held: 3 },
+    let kept = WideKeptDraft {
+        filled: WideHolderDraft { held: 3 }.validate().unwrap(),
         keyed: BTreeMap::from([(-4, "k".to_owned())]),
     };
     let json = r#"{"filled":{"held":3},"keyed":{"-4":"k"}}"#;
     assert_eq!(written(&kept), json, "what serde writes");
-    assert_eq!(read::<WideKept>(json), Ok(kept), "what serde reads");
+    assert_eq!(
+        read::<WideKept>(json),
+        Ok(kept.validate().unwrap()),
+        "what serde reads"
+    );
 }
 
 /// A `WideReached` with an `i64` in each place it holds one.
 fn reached() -> WideReached {
-    WideReached {
+    WideReachedDraft {
         aliased: -(1_i64 << 60_i32),
         aliases: Some(vec![1, i64::MAX]),
         fixed: 214,
@@ -268,6 +283,8 @@ fn reached() -> WideReached {
         to: ..6,
         wrong: Err(vec![8, -9]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// An `i64` through an alias declared above, as a range's bound, as a `Result`'s arm and under a
@@ -291,7 +308,7 @@ fn an_i64_through_an_alias_a_range_a_result_and_a_literal_travels_as_a_number() 
 /// and read back from it.
 #[test]
 fn an_i64_a_lock_guards_below_a_level_travels_as_a_number() {
-    let locked = WideLocked {
+    let locked = WideLockedDraft {
         keyed: BTreeMap::from([("a".to_owned(), Mutex::new(-7))]),
         listed: vec![RefCell::new(i64::MAX)],
         maybe: Some(RwLock::new(i64::MIN)),
@@ -313,7 +330,7 @@ fn an_i64_a_lock_guards_below_a_level_travels_as_a_number() {
 /// An `i64` beside the type's own parameter is written as a number, and read back from it.
 #[test]
 fn an_i64_beside_the_types_own_parameter_travels_as_a_number() {
-    let beside = WideBeside {
+    let beside = WideBesideDraft {
         keyed: BTreeMap::from([("a".to_owned(), -7_i64)]),
         paired: ("b".to_owned(), 1_i64 << 60_i32),
     };
@@ -329,7 +346,7 @@ fn an_i64_beside_the_types_own_parameter_travels_as_a_number() {
 /// An `i64` beside the type's own parameter in an untagged enum is read from its number.
 #[test]
 fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_number() {
-    let chosen = WideChosen::Listed {
+    let chosen = WideChosenDraft::Listed {
         listed: vec![(i64::MAX, "a".to_owned())],
     };
     let json = r#"{"listed":[[9223372036854775807,"a"]]}"#;
@@ -341,7 +358,7 @@ fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_nu
     );
     assert_eq!(
         read::<WideChosen<String>>(r#""7""#),
-        Ok(WideChosen::Text("7".to_owned())),
+        Ok(WideChosenDraft::Text("7".to_owned())),
         "a string of digits is the text"
     );
 }
@@ -350,7 +367,7 @@ fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_nu
 /// holder is described by the alias's own schema.
 #[test]
 fn an_i64_through_an_alias_declared_below_is_a_number() {
-    let later = WideLater { revision: -7 };
+    let later = WideLaterDraft { revision: -7 };
     let json = r#"{"revision":-7}"#;
     assert_eq!(written(&later), json, "the number serde writes");
     assert_eq!(read::<WideLater>(json), Ok(later), "the number serde reads");
@@ -433,7 +450,7 @@ fn zod_reads_a_bigint_or_an_exact_number() {
 /// An integer literal is held exactly, beyond the integers an `f64` holds.
 #[test]
 fn an_integer_literal_no_f64_holds_is_held_exactly() {
-    let exact = WideExact {
+    let exact = WideExactDraft {
         exact: (1_i64 << 53_i32) + 1,
     };
     let json = r#"{"exact":9007199254740993}"#;
@@ -462,7 +479,7 @@ fn an_integer_literal_no_f64_holds_is_held_exactly() {
 fn an_i64_a_reference_borrows_is_written_as_a_number() {
     let (counted, listed) = (-(1_i64 << 60_i32), [1_i64, 2_i64]);
     assert_eq!(
-        written(&WideBorrowed {
+        written(&WideBorrowedDraft {
             counted: &counted,
             listed: &listed,
         }),

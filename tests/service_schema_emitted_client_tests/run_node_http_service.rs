@@ -806,7 +806,7 @@ impl ScaleClientService<()> for ScaleBackEnd {
         _reading_id: String,
     ) -> Result<ScaleReading, ScaleError> {
         ready(()).await;
-        Err(ScaleError::NotFound)
+        Err(ScaleErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -816,9 +816,11 @@ struct CatalogBackEnd;
 impl CatalogClientService<()> for CatalogBackEnd {
     async fn get_entry(&self, _ctx: &(), _entry_id: String) -> Result<CatalogEntry, CatalogError> {
         ready(()).await;
-        Ok(CatalogEntry {
+        Ok(CatalogEntryDraft {
             title: "Minutes".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

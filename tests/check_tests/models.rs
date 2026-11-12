@@ -247,7 +247,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -264,14 +264,14 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
     }
 }
 
-fn with_a_route(value: &Route) -> Result<(), Vec<String>> {
+fn with_a_route(value: &RouteDraft) -> Result<(), Vec<String>> {
     if value.stops.is_empty() {
         return Err(vec!["'stops': a route makes at least one stop".to_owned()]);
     }
     Ok(())
 }
 
-fn within_its_limit(value: &Stack) -> Result<(), Vec<String>> {
+fn within_its_limit(value: &StackDraft) -> Result<(), Vec<String>> {
     if u32::try_from(value.0.len()).is_ok_and(|held| held <= value.1) {
         return Ok(());
     }
@@ -291,11 +291,11 @@ fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
-fn with_few_stops(value: &Shipment) -> Result<(), Vec<String>> {
-    if let Shipment::Air {
+fn with_few_stops(value: &ShipmentDraft) -> Result<(), Vec<String>> {
+    if let ShipmentDraft::Air {
         flight: _flight,
         stops,
-    } = value
+    } = &**value
         && stops.len() > 2
     {
         return Err(vec![
@@ -306,14 +306,14 @@ fn with_few_stops(value: &Shipment) -> Result<(), Vec<String>> {
 }
 
 fn with_a_stop(value: &Transfer) -> Result<(), Vec<String>> {
-    if let Transfer::Road { stops } = value
+    if let TransferDraft::Road { stops } = &**value
         && stops.is_empty()
     {
         return Err(vec![
             "'Road.stops': a road transfer makes a stop".to_owned(),
         ]);
     }
-    if let Transfer::Rail(line) = value
+    if let TransferDraft::Rail(line) = &**value
         && line.is_empty()
     {
         return Err(vec!["'Rail': a rail transfer names its line".to_owned()]);
@@ -321,8 +321,8 @@ fn with_a_stop(value: &Transfer) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn signed_by_someone(value: &Handover) -> Result<(), Vec<String>> {
-    if let Handover::Signed { by } = value
+fn signed_by_someone(value: &HandoverDraft) -> Result<(), Vec<String>> {
+    if let HandoverDraft::Signed { by } = &**value
         && by.is_empty()
     {
         return Err(vec![
@@ -332,33 +332,33 @@ fn signed_by_someone(value: &Handover) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn a_reference(value: &Reference) -> Result<(), Vec<String>> {
-    if let Reference::Named { name } = value
+fn a_reference(value: &ReferenceDraft) -> Result<(), Vec<String>> {
+    if let ReferenceDraft::Named { name } = &**value
         && name.is_empty()
     {
         return Err(vec!["'name': a reference has a name".to_owned()]);
     }
-    if matches!(value, Reference::Numbered(0)) {
+    if matches!(&**value, ReferenceDraft::Numbered(0)) {
         return Err(vec!["a reference is not zero".to_owned()]);
     }
     Ok(())
 }
 
-fn rated(value: &Grade) -> Result<(), Vec<String>> {
-    if matches!(value, Grade::Unrated) {
+fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
+    if matches!(value, GradeDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
 }
 
-fn upper_case(value: &Code) -> Result<(), Vec<String>> {
+fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
     if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
 }
 
-fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
+fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }
@@ -372,7 +372,7 @@ fn holding_a_code<CodeType>(value: &Batch<CodeType>) -> Result<(), Vec<String>> 
     Ok(())
 }
 
-fn with_entries<IdType>(value: &Ledger<IdType>) -> Result<(), Vec<String>> {
+fn with_entries<IdType>(value: &LedgerDraft<IdType>) -> Result<(), Vec<String>> {
     if value.entries.is_empty() {
         return Err(vec![
             "'entries': a ledger holds at least one entry".to_owned(),
@@ -382,10 +382,12 @@ fn with_entries<IdType>(value: &Ledger<IdType>) -> Result<(), Vec<String>> {
 }
 
 fn archived<IdType>(entries: Vec<String>, owner_id: IdType) -> Archive<IdType> {
-    Archive {
-        ledger: Ledger { entries, owner_id },
+    ArchiveDraft {
+        ledger: LedgerDraft { entries, owner_id }.validate().unwrap(),
         label: "a".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -404,11 +406,13 @@ where
 }
 
 fn parcel(label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]) -> Parcel {
-    Parcel {
+    ParcelDraft {
         fragile_item_codes: texts(fragile_item_codes),
         item_code_list: texts(item_code_list),
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The five parcels of the shared table, in the order of its cases.
@@ -425,7 +429,7 @@ pub fn parcels() -> [Parcel; 5] {
 /// The manifest of the table's last case: its fourth parcel, held under `parcel`.
 pub fn manifest() -> Manifest {
     let [_, _, _, outside, _] = parcels();
-    Manifest { parcel: outside }
+    ManifestDraft { parcel: outside }.validate().unwrap()
 }
 
 /// Cases 1 to 5 of the shared table.
@@ -446,11 +450,11 @@ pub fn manifest_case() -> Case {
 
 /// The cases of the structs: one with named fields, one with slots, and one with neither.
 fn struct_cases() -> Vec<Case> {
-    let route = |stops: &[&str]| Route {
+    let route = |stops: &[&str]| RouteDraft {
         stops: texts(stops),
     };
-    let stack = |codes: &[&str], limit: u32| Stack(texts(codes), limit);
-    let pallet = |codes: &[&str]| Pallet {
+    let stack = |codes: &[&str], limit: u32| StackDraft(texts(codes), limit);
+    let pallet = |codes: &[&str]| PalletDraft {
         codes: texts(codes),
     };
     vec![
@@ -473,27 +477,27 @@ fn struct_cases() -> Vec<Case> {
             pallet(&["a", "b", "c"]).validate(),
         ),
         case("Pallet", &pallet(&["a"]), pallet(&["a"]).validate()),
-        case("ClosedDock", &ClosedDock, ClosedDock.validate()),
+        case("ClosedDock", &ClosedDockDraft, ClosedDockDraft.validate()),
     ]
 }
 
 /// The cases of the enums: one under each form serde writes an enum in.
 fn enum_cases() -> Vec<Case> {
-    let air = |stops: &[&str]| Shipment::Air {
+    let air = |stops: &[&str]| ShipmentDraft::Air {
         flight: "F1".to_owned(),
         stops: texts(stops),
     };
-    let ground = Shipment::Ground {
+    let ground = ShipmentDraft::Ground {
         stops: texts(&["a", "b", "c"]),
     };
-    let road = Transfer::Road { stops: Vec::new() };
-    let rail = Transfer::Rail(String::new());
-    let signed = Handover::Signed { by: String::new() };
-    let left = Handover::Left("porch".to_owned());
-    let unnamed = Reference::Named {
+    let road = TransferDraft::Road { stops: Vec::new() };
+    let rail = TransferDraft::Rail(String::new());
+    let signed = HandoverDraft::Signed { by: String::new() };
+    let left = HandoverDraft::Left("porch".to_owned());
+    let unnamed = ReferenceDraft::Named {
         name: String::new(),
     };
-    let named = Reference::Named {
+    let named = ReferenceDraft::Named {
         name: "north".to_owned(),
     };
     vec![
@@ -514,22 +518,34 @@ fn enum_cases() -> Vec<Case> {
         ),
         case("Transfer, a road with no stop", &road, road.validate()),
         case("Transfer, a rail with no line", &rail, rail.validate()),
-        case("Transfer, held", &Transfer::Held, Transfer::Held.validate()),
+        case(
+            "Transfer, held",
+            &TransferDraft::Held,
+            TransferDraft::Held.validate(),
+        ),
         case("Handover, signed by no one", &signed, signed.validate()),
         case("Handover, left", &left, left.validate()),
         case(
             "Reference, numbered zero",
-            &Reference::Numbered(0),
-            Reference::Numbered(0).validate(),
+            &ReferenceDraft::Numbered(0),
+            ReferenceDraft::Numbered(0).validate(),
         ),
         case("Reference, with no name", &unnamed, unnamed.validate()),
         case("Reference", &named, named.validate()),
-        case("Grade, unrated", &Grade::Unrated, Grade::Unrated.validate()),
-        case("Grade, express", &Grade::Express, Grade::Express.validate()),
+        case(
+            "Grade, unrated",
+            &GradeDraft::Unrated,
+            GradeDraft::Unrated.validate(),
+        ),
+        case(
+            "Grade, express",
+            &GradeDraft::Express,
+            GradeDraft::Express.validate(),
+        ),
         case(
             "Grade, standard",
-            &Grade::Standard,
-            Grade::Standard.validate(),
+            &GradeDraft::Standard,
+            GradeDraft::Standard.validate(),
         ),
     ]
 }
@@ -563,11 +579,11 @@ fn batch_cases() -> Vec<Case> {
 
 /// The cases of the brands and of the type with a parameter, each at two fillings.
 fn brand_and_crate_cases() -> Vec<Case> {
-    let filled = |codes: Vec<String>| Crate {
+    let filled = |codes: Vec<String>| CrateDraft {
         codes,
         label: "c".to_owned(),
     };
-    let counted = |codes: Vec<u32>| Crate {
+    let counted = |codes: Vec<u32>| CrateDraft {
         codes,
         label: "c".to_owned(),
     };
@@ -604,7 +620,7 @@ fn brand_and_crate_cases() -> Vec<Case> {
 
 /// The cases of the types that hold a value of their own parameter, each at two fillings.
 fn ledger_and_archive_cases() -> Vec<Case> {
-    let owned = |entries: Vec<String>| Ledger {
+    let owned = |entries: Vec<String>| LedgerDraft {
         entries,
         owner_id: "o".to_owned(),
     };
@@ -621,11 +637,11 @@ fn ledger_and_archive_cases() -> Vec<Case> {
         ),
         case(
             "Ledger<u32>",
-            &Ledger {
+            &LedgerDraft {
                 entries: texts(&["a"]),
                 owner_id: 7_u32,
             },
-            Ledger {
+            LedgerDraft {
                 entries: texts(&["a"]),
                 owner_id: 7_u32,
             }

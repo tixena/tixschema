@@ -40,9 +40,11 @@ mod a_length_on_a_brand_over_a_list {
 
     fn parts(count: usize) -> Vec<ListPart> {
         vec![
-            ListPart {
+            ListPartDraft {
                 value: "part".to_owned()
-            };
+            }
+            .validate()
+            .unwrap();
             count
         ]
     }
@@ -95,7 +97,7 @@ mod a_length_on_a_brand_over_a_list {
         );
         assert_eq!(
             serde_json::from_str::<NameConfig>(r#"[{"value":"a"}]"#).unwrap(),
-            NameConfig::new(vec![ListPart {
+            NameConfig::new(vec![ListPartDraft {
                 value: "a".to_owned()
             }])
             .unwrap()
@@ -128,7 +130,7 @@ mod a_length_on_a_brand_over_a_list {
                 .to_string(),
             "'name_config': too short: minimum length is 1, got 0"
         );
-        let built = Template {
+        let built = TemplateDraft {
             name_config: NameConfig::model_schema_read_unjudged(
                 &mut serde_json::Deserializer::from_str("[]"),
             )
@@ -139,7 +141,7 @@ mod a_length_on_a_brand_over_a_list {
             ),
         };
         assert_eq!(
-            built.validate().unwrap_err(),
+            built.validation_issues(),
             vec![
                 "'name_config': too short: minimum length is 1, got 0",
                 "'shelf': too short: minimum length is 1, got 0",
@@ -252,24 +254,26 @@ mod a_length_through_a_name {
     }
 
     fn article(keywords: usize, below: usize) -> Article {
-        Article {
+        ArticleDraft {
             keywords: Keywords::new(words(keywords)).unwrap(),
             below: LaterKeywords::new(words(below)).unwrap(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn a_field_typed_with_a_brand_over_a_list_counts_its_items() {
-        assert_eq!(article(1, 1).validate(), Ok(()));
+        assert_eq!(article(1, 1).validation_issues(), Vec::<String>::new());
         assert_eq!(
-            article(0, 0).validate().unwrap_err(),
+            article(0, 0).validation_issues(),
             vec![
                 "'below': too short: minimum length is 1, got 0",
                 "'keywords': too short: minimum length is 1, got 0",
             ]
         );
         assert_eq!(
-            article(3, 1).validate().unwrap_err(),
+            article(3, 1).validation_issues(),
             vec!["'keywords': too long: maximum length is 2, got 3"]
         );
     }
@@ -306,14 +310,14 @@ mod a_length_through_a_name {
                 .to_string(),
             "too short: minimum length is 1, got 0"
         );
-        let collected = |count| Collected {
+        let collected = |count| CollectedDraft {
             some: SomeKeywords::new(Keywords::new(words(count)).unwrap()).unwrap(),
         };
         assert_eq!(
-            collected(3).validate().unwrap_err(),
+            collected(3).validation_issues(),
             vec!["'some': too long: maximum length is 2, got 3"]
         );
-        assert_eq!(collected(1).validate(), Ok(()));
+        assert_eq!(collected(1).validation_issues(), Vec::<String>::new());
     }
 
     #[test]
@@ -414,25 +418,27 @@ mod a_length_through_an_alias_of_an_index_set {
     }
 
     fn roster(queued: usize, some: usize) -> Roster {
-        Roster {
+        RosterDraft {
             queue: queue(queued),
             some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(queue(some)).unwrap())
                 .unwrap(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn validate_counts_the_items() {
-        assert_eq!(roster(1, 1).validate(), Ok(()));
+        assert_eq!(roster(1, 1).validation_issues(), Vec::<String>::new());
         assert_eq!(
-            roster(0, 0).validate().unwrap_err(),
+            roster(0, 0).validation_issues(),
             vec![
                 "'queue': too short: minimum length is 1, got 0",
                 "'some': too short: minimum length is 1, got 0",
             ]
         );
         assert_eq!(
-            roster(3, 3).validate().unwrap_err(),
+            roster(3, 3).validation_issues(),
             vec![
                 "'queue': too long: maximum length is 2, got 3",
                 "'some': too long: maximum length is 2, got 3",
@@ -467,10 +473,12 @@ mod a_length_through_an_alias_of_an_index_set {
         );
         assert_eq!(
             serde_json::from_str::<Roster>(r#"{"queue":["a"],"some":["a"]}"#).unwrap(),
-            Roster {
+            RosterDraft {
                 queue: IndexSet::from(["a".to_owned()]),
                 some: SomeQueue::new(IndexSet::from(["a".to_owned()])).unwrap(),
             }
+            .validate()
+            .unwrap()
         );
     }
 

@@ -27,16 +27,16 @@ pub struct Shelf {
 
 #[test]
 fn a_validate_written_by_hand_builds_beside_a_type_with_no_check() {
-    let held = Shelf {
-        loose: Loose { open: true },
+    let held = ShelfDraft {
+        loose: LooseDraft { open: true }.validate().unwrap(),
     };
+    assert_eq!(held.loose.validation_issues(), ["a loose parcel is closed"]);
     assert_eq!(
-        held.loose.validate().unwrap_err(),
-        ["a loose parcel is closed"]
+        LooseDraft { open: false }.validation_issues(),
+        Vec::<String>::new()
     );
-    assert_eq!(Loose { open: false }.validate(), Ok(()));
     assert_eq!(
-        held.validate().unwrap_err(),
+        held.validation_issues(),
         ["'loose': a loose parcel is closed"]
     );
 }

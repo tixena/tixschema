@@ -51,17 +51,24 @@ pub struct Aliased {
 
 #[test]
 fn serde_writes_the_types_declared_here() {
-    let holder = Holder {
-        held: IndexMap {
+    let holder = HolderDraft {
+        held: IndexMapDraft {
             key: "k".to_owned(),
             value: 7_u32,
-        },
-        listed: IndexSet {
+        }
+        .validate()
+        .unwrap(),
+        listed: IndexSetDraft {
             only: "x".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(serde_json::to_string(&holder).unwrap(), WRITTEN);
-    assert_eq!(serde_json::from_str::<Holder>(WRITTEN).unwrap(), holder);
+    assert_eq!(
+        serde_json::from_str::<Holder>(WRITTEN).unwrap(),
+        holder.validate().unwrap()
+    );
 }
 
 /// A key a type does not declare is unknown, where a map would have held it as an entry.

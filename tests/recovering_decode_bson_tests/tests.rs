@@ -930,32 +930,45 @@ fn undescribed() -> Told {
 }
 
 fn drawing() -> Drawing {
-    Drawing {
-        fill: Fill::Versioned(Version { number: 3_i32 }),
-        outline: Outline::Circle { radius: 1.5_f64 },
-        stroke: Stroke::Dashed { gap: 2 },
+    DrawingDraft {
+        fill: FillDraft::Versioned(VersionDraft { number: 3_i32 }.validate().unwrap())
+            .validate()
+            .unwrap(),
+        outline: OutlineDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
+        stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn route() -> Route {
-    Route {
-        contact: Contact::Phone {
+    RouteDraft {
+        contact: ContactDraft::Phone {
             country: 1_i32,
             digits: "555".to_owned(),
-        },
-        next: Move::To(1_i32, 2_i32),
-        status: Status::Draft,
+        }
+        .validate()
+        .unwrap(),
+        next: MoveDraft::To(1_i32, 2_i32).validate().unwrap(),
+        status: StatusDraft::Draft.validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn record(numbers: &[i32]) -> Record {
-    Record {
+    RecordDraft {
         created_at: DateTime::from_timestamp_millis(1_759_600_000_000).unwrap(),
         id: oid("6a7cc592ca0574e6efdfe217"),
         name: "Loan".to_owned(),
         note: None,
-        versions: numbers.iter().map(|&number| Version { number }).collect(),
+        versions: numbers
+            .iter()
+            .map(|&number| VersionDraft { number })
+            .collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A row as `Record` writes it, holding one version.
@@ -969,17 +982,19 @@ fn plain_row() -> Document {
 }
 
 fn hooked() -> Hooked {
-    Hooked {
+    HookedDraft {
         code: "AB".to_owned(),
         count: 5,
         name: "Loan".to_owned(),
         port: 80,
         seen_at: DateTime::from_timestamp_millis(1_759_600_000_000).unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn bound() -> Bound {
-    Bound {
+    BoundDraft {
         found: "a".to_owned(),
         held: "b".to_owned(),
         issue: "c".to_owned(),
@@ -990,6 +1005,8 @@ fn bound() -> Bound {
         path: "g".to_owned(),
         stored: "h".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Repairs what older writers left in a `Record` row, inner versions included, and rejects
@@ -1174,7 +1191,7 @@ fn bson_5_a_number_stored_as_another_number_type_is_no_issue() {
 
 #[test]
 fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
-    let kept_row = written(&Kept {
+    let kept_row = written(&KeptDraft {
         id: "i".to_owned(),
         note: Some("n".to_owned()),
     });
@@ -1186,13 +1203,15 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     });
     assert_eq!(
         kept,
-        Ok(Kept {
+        Ok(KeptDraft {
             id: "i".to_owned(),
             note: None,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
-    let text_row = written(&KeptText {
+    let text_row = written(&KeptTextDraft {
         id: "i".to_owned(),
         note: "n".to_owned(),
     });
@@ -1203,10 +1222,12 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
     });
     assert_eq!(
         text,
-        Ok(KeptText {
+        Ok(KeptTextDraft {
             id: "i".to_owned(),
             note: String::new(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1259,9 +1280,11 @@ fn a_decider_that_drops_an_undeclared_key_of_a_strict_type_reads_the_row() {
         });
     assert_eq!(
         read,
-        Ok(Applicant {
+        Ok(ApplicantDraft {
             national_id: "1".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 1);
 }
@@ -1559,7 +1582,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
     );
     assert_eq!(
         read,
-        Ok(CatalogByItem {
+        Ok(CatalogByItemDraft {
             counts: vec![1_i32, 2_i32],
             owners: HashMap::from([("alice".to_owned(), oid("6a7cc592ca0574e6efdfe219"))]),
             parent: Some(oid("6a7cc592ca0574e6efdfe21a")),
@@ -1656,9 +1679,11 @@ fn a_read_hook_named_like_the_value_a_key_holds_is_the_authors_function() {
     });
     assert_eq!(
         read,
-        Ok(Named {
+        Ok(NamedDraft {
             name: "x".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1737,11 +1762,13 @@ fn a_hook_named_like_a_value_an_enum_walker_binds_reads_a_variants_field() {
     });
     assert_eq!(
         read,
-        Ok(Adjacent::Note {
+        Ok(AdjacentDraft::Note {
             content: "a".to_owned(),
             inner: "b".to_owned(),
             tag: "c".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1774,10 +1801,12 @@ fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias(
         });
         assert_eq!(
             read,
-            Ok(Aliased {
+            Ok(AliasedDraft {
                 latest: None,
                 name: "Ada".to_owned()
-            })
+            }
+            .validate()
+            .unwrap())
         );
         assert_eq!(calls, 0);
     }
@@ -1813,10 +1842,12 @@ fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias(
     );
     assert_eq!(
         read,
-        Ok(Aliased {
-            latest: Some(Version { number: 1 }),
+        Ok(AliasedDraft {
+            latest: Some(VersionDraft { number: 1 }.validate().unwrap()),
             name: "Ada".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -1899,21 +1930,23 @@ fn a_plain_value_in_a_nested_or_optional_list_or_a_map_is_listed_at_its_own_path
     );
     assert_eq!(
         absent,
-        Ok(Tally {
+        Ok(TallyDraft {
             grid: Vec::new(),
             marks: None,
             scores: HashMap::new(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
 
 #[test]
 fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
-    let read = Derived::from_bson_with(written(&Derived { total: 7 }), |_raw, _found| {
+    let read = Derived::from_bson_with(written(&DerivedDraft { total: 7 }), |_raw, _found| {
         derived_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(Derived { total: 0 }));
+    assert_eq!(read, Ok(DerivedDraft { total: 0 }.validate().unwrap()));
     let keyed = Derived::from_bson_with(doc! { "extra": true }, |_raw, _found| {
         derived_schema::Verdict::Reject
     });
@@ -2017,8 +2050,8 @@ fn unrecovered_is_an_error_a_caller_can_propagate() {
 /// A tuple struct and a tuple are each the list serde writes them as, walked position by position.
 #[test]
 fn a_tuple_struct_and_a_tuple_are_walked_by_position() {
-    let placement = Placement {
-        pair: Pair("p".to_owned(), 3),
+    let placement = PlacementDraft {
+        pair: PairDraft("p".to_owned(), 3).validate().unwrap(),
         spot: ("s".to_owned(), 4),
         spots: vec![("t".to_owned(), 5)],
     };
@@ -2027,7 +2060,7 @@ fn a_tuple_struct_and_a_tuple_are_walked_by_position() {
         calls += 1;
         placement_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(placement));
+    assert_eq!(read, Ok(placement.validate().unwrap()));
     assert_eq!(calls, 0);
 
     let stored_row = doc! {
@@ -2086,11 +2119,13 @@ fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
     assert_eq!(seen, [unknown("pair[2]", Bson::Boolean(true))]);
     assert_eq!(
         read,
-        Ok(Placement {
-            pair: Pair("a".to_owned(), 1),
+        Ok(PlacementDraft {
+            pair: PairDraft("a".to_owned(), 1).validate().unwrap(),
             spot: ("b".to_owned(), 2),
             spots: Vec::new(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -2116,11 +2151,11 @@ fn a_tuple_and_a_tuple_struct_stored_as_no_list_are_listed_at_the_value() {
 
 #[test]
 fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_them() {
-    let labelled = Labelled {
+    let labelled = LabelledDraft {
         owner: OwnerId::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-        ping: Ping,
-        pinned: Pinned::new(Version { number: 3 }).unwrap(),
-        wrapper: Wrapper("w".to_owned()),
+        ping: PingDraft.validate().unwrap(),
+        pinned: Pinned::new(VersionDraft { number: 3 }).unwrap(),
+        wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
     };
     assert_eq!(
         written(&labelled),
@@ -2185,7 +2220,7 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
             invalid("wrapper", "String", Bson::Int32(5)),
         ]
     );
-    assert_eq!(read, Ok(labelled));
+    assert_eq!(read, Ok(labelled.validate().unwrap()));
 }
 
 #[test]
@@ -2195,12 +2230,12 @@ fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
         calls += 1;
         ping_schema::Verdict::Reject
     });
-    assert_eq!(ping, Ok(Ping));
+    assert_eq!(ping, Ok(PingDraft.validate().unwrap()));
     let pinned = Pinned::from_bson_with(doc! { "number": 3_i32 }, |_raw, _found| {
         calls += 1;
         pinned_schema::Verdict::Reject
     });
-    assert_eq!(pinned, Ok(Pinned::new(Version { number: 3 }).unwrap()));
+    assert_eq!(pinned, Ok(Pinned::new(VersionDraft { number: 3 }).unwrap()));
     assert_eq!(calls, 0);
 
     let keyed = Ping::from_bson_with(doc! { "x": 1_i32 }, |_raw, _found| {
@@ -2248,10 +2283,10 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
 
 #[test]
 fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_holds() {
-    let referenced = Referenced {
+    let referenced = ReferencedDraft {
         owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
-        pair: PairRef::new(Pair("a".to_owned(), 1)).unwrap(),
-        status: StatusRef::new(Status::Draft).unwrap(),
+        pair: PairRef::new(PairDraft("a".to_owned(), 1)).unwrap(),
+        status: StatusRef::new(StatusDraft::Draft).unwrap(),
     };
     let stored_row = written(&referenced);
     assert_eq!(
@@ -2263,7 +2298,7 @@ fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_hol
         calls += 1;
         referenced_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(referenced));
+    assert_eq!(read, Ok(referenced.validate().unwrap()));
     assert_eq!(calls, 0);
 
     let refused_row = doc! { "owner": 5_i32, "pair": ["a", "x"], "status": "Archived" };
@@ -2300,8 +2335,8 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
 
 #[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
-    let assigned = Assigned {
-        current: Current::new(Version { number: 3 }).unwrap(),
+    let assigned = AssignedDraft {
+        current: Current::new(VersionDraft { number: 3 }).unwrap(),
         owner: Owner::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     };
     assert_eq!(
@@ -2364,7 +2399,7 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
             mistyped("owner", "ObjectId", string("6a7cc592ca0574e6efdfe217")),
         ]
     );
-    assert_eq!(read, Ok(assigned));
+    assert_eq!(read, Ok(assigned.validate().unwrap()));
 
     let refused = Assigned::from_bson_with(
         doc! { "current": "three", "owner": { "id": oid("6a7cc592ca0574e6efdfe217") } },
@@ -2390,7 +2425,10 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
         calls += 1;
         current_schema::Verdict::Reject
     });
-    assert_eq!(current, Ok(Current::new(Version { number: 3 }).unwrap()));
+    assert_eq!(
+        current,
+        Ok(Current::new(VersionDraft { number: 3 }).unwrap())
+    );
     assert_eq!(calls, 0);
 
     let refused = Current::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
@@ -2414,14 +2452,14 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
 
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
-    let filing = Filing {
+    let filing = FilingDraft {
         keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-        stamped: Stamped::new(Version { number: 3 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 3 }).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     };
-    let stored = written(&Filing {
+    let stored = written(&FilingDraft {
         keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
-        stamped: Stamped::new(Version { number: 3 }).unwrap(),
+        stamped: Stamped::new(VersionDraft { number: 3 }).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     });
     assert_eq!(
@@ -2493,7 +2531,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
             invalid("tags[1]", "String", Bson::Int32(7)),
         ]
     );
-    assert_eq!(read, Ok(filing));
+    assert_eq!(read, Ok(filing.validate().unwrap()));
 
     let refused_row = doc! {
         "keeper": [oid("6a7cc592ca0574e6efdfe217")],
@@ -2524,7 +2562,10 @@ fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_
         calls += 1;
         stamped_schema::Verdict::Reject
     });
-    assert_eq!(stamped, Ok(Stamped::new(Version { number: 3 }).unwrap()));
+    assert_eq!(
+        stamped,
+        Ok(Stamped::new(VersionDraft { number: 3 }).unwrap())
+    );
     assert_eq!(calls, 0);
 
     let refused = Stamped::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
@@ -2567,9 +2608,11 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
         Coded::from_bson_with(doc! { "code": "abc" }, |_raw, _found| {
             coded_schema::Verdict::Reject
         }),
-        Ok(Coded {
+        Ok(CodedDraft {
             code: Code::new("abc".to_owned()).unwrap()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -2590,8 +2633,8 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
         ]
     );
 
-    let page = Page {
-        items: vec![Plain {
+    let page = PageDraft {
+        items: vec![PlainDraft {
             label: "a".to_owned(),
         }],
         total: 1,
@@ -2635,7 +2678,7 @@ fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
     );
     assert_eq!(
         read,
-        Ok(Pairing {
+        Ok(PairingDraft {
             left: oid("6a7cc592ca0574e6efdfe217"),
             right: 2_i32,
         })
@@ -2651,7 +2694,7 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
     });
     assert_eq!(
         read,
-        Ok(Lenient {
+        Ok(LenientDraft {
             extra: String::new(),
             total: 1,
         })
@@ -2670,11 +2713,13 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
 
 #[test]
 fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
-    let listing = Listing {
-        page: Page {
-            items: vec![Version { number: 1 }],
+    let listing = ListingDraft {
+        page: PageDraft {
+            items: vec![VersionDraft { number: 1 }],
             total: 1,
-        },
+        }
+        .validate()
+        .unwrap(),
         tagged: Tagged::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     };
     let mut calls = 0_u32;
@@ -2682,7 +2727,7 @@ fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
         calls += 1;
         listing_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(listing));
+    assert_eq!(read, Ok(listing.validate().unwrap()));
     assert_eq!(calls, 0);
 
     let items = vec![Bson::Document(doc! { "number": "1" })];
@@ -2757,9 +2802,11 @@ fn a_field_typed_as_the_walkers_own_parameter_is_called_reads_as_the_authors_typ
     });
     assert_eq!(
         read,
-        Ok(Holder {
-            inner: I { number: 1 }
-        })
+        Ok(HolderDraft {
+            inner: IDraft { number: 1 }.validate().unwrap()
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -2800,25 +2847,31 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     });
     assert_eq!(
         unit_read,
-        Ok(Drawing {
-            fill: Fill::Clear,
-            outline: Outline::Empty,
-            stroke: Stroke::Hairline,
-        })
+        Ok(DrawingDraft {
+            fill: FillDraft::Clear.validate().unwrap(),
+            outline: OutlineDraft::Empty.validate().unwrap(),
+            stroke: StrokeDraft::Hairline.validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
 
-    let single = Drawing {
-        fill: Fill::Solid {
+    let single = DrawingDraft {
+        fill: FillDraft::Solid {
             color: "red".to_owned(),
-        },
-        outline: Outline::Owned(oid("6a7cc592ca0574e6efdfe217")),
-        stroke: Stroke::Span(1, 2),
+        }
+        .validate()
+        .unwrap(),
+        outline: OutlineDraft::Owned(oid("6a7cc592ca0574e6efdfe217"))
+            .validate()
+            .unwrap(),
+        stroke: StrokeDraft::Span(1, 2).validate().unwrap(),
     };
     let single_read = Drawing::from_bson_with(written(&single), |_raw, _found| {
         calls += 1;
         drawing_schema::Verdict::Reject
     });
-    assert_eq!(single_read, Ok(single));
+    assert_eq!(single_read, Ok(single.validate().unwrap()));
 
     let routed = written(&route());
     assert_eq!(
@@ -2995,11 +3048,17 @@ fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
     );
     assert_eq!(
         read,
-        Ok(Drawing {
-            fill: Fill::Versioned(Version { number: 3_i32 }),
-            outline: Outline::Owned(oid("6a7cc592ca0574e6efdfe217")),
-            stroke: Stroke::Dashed { gap: 2 },
-        })
+        Ok(DrawingDraft {
+            fill: FillDraft::Versioned(VersionDraft { number: 3_i32 }.validate().unwrap())
+                .validate()
+                .unwrap(),
+            outline: OutlineDraft::Owned(oid("6a7cc592ca0574e6efdfe217"))
+                .validate()
+                .unwrap(),
+            stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
 
     let circle = doc! { "Circle": { "extra": 1_i32, "radius": "wide" } };
@@ -3135,7 +3194,7 @@ fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
             calls += 1;
             stroke_schema::Verdict::Reject
         });
-        assert_eq!(level, Ok(Stroke::Level(None)));
+        assert_eq!(level, Ok(StrokeDraft::Level(None).validate().unwrap()));
     }
     assert_eq!(calls, 0);
 }
@@ -3297,7 +3356,7 @@ fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
 /// Tags and keys are walked under the names serde writes, and `Variants` lists them.
 #[test]
 fn variants_and_their_fields_are_walked_under_their_wire_names() {
-    let by_air = Shipment::ByAir {
+    let by_air = ShipmentDraft::ByAir {
         flight_code: "TX1".to_owned(),
     };
     let stored_row = written(&by_air);
@@ -3307,7 +3366,7 @@ fn variants_and_their_fields_are_walked_under_their_wire_names() {
         calls += 1;
         shipment_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(by_air));
+    assert_eq!(read, Ok(by_air.validate().unwrap()));
     assert_eq!(calls, 0);
 
     for (renamed_row, told) in [
@@ -3407,7 +3466,7 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
             calls += 1;
             answer_schema::Verdict::Reject
         });
-    assert_eq!(kept, Ok(Answer::Value(Version { number: 3_i32 })));
+    assert_eq!(kept, Ok(AnswerDraft::Value(VersionDraft { number: 3_i32 })));
     assert_eq!(calls, 0);
 
     let stored_row = doc! { "Value": "6a7cc592ca0574e6efdfe217" };
@@ -3435,10 +3494,12 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     });
     assert_eq!(
         read,
-        Ok(Sketch {
-            coating: Coating::Clear,
-            contour: Contour::Empty,
-        })
+        Ok(SketchDraft {
+            coating: CoatingDraft::Clear.validate().unwrap(),
+            contour: ContourDraft::Empty.validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
     let keyed_row = doc! {
         "coating": { "color": "red", "kind": "Solid" },
@@ -3450,28 +3511,35 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     });
     assert_eq!(
         keyed,
-        Ok(Sketch {
-            coating: Coating::Solid {
+        Ok(SketchDraft {
+            coating: CoatingDraft::Solid {
                 color: "red".to_owned(),
-            },
-            contour: Contour::Circle { radius: 1.5_f64 },
-        })
+            }
+            .validate()
+            .unwrap(),
+            contour: ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap())
     );
     for stored_dash in [
         doc! { "data": { "gap": 2_i32 }, "kind": "Dotted" },
-        written(&Dash::Dashed { gap: 2_i32 }),
+        written(&DashDraft::Dashed { gap: 2_i32 }),
     ] {
         let dash = Dash::from_bson_with(stored_dash, |_raw, _found| {
             calls += 1;
             dash_schema::Verdict::Reject
         });
-        assert_eq!(dash, Ok(Dash::Dashed { gap: 2_i32 }));
+        assert_eq!(
+            dash,
+            Ok(DashDraft::Dashed { gap: 2_i32 }.validate().unwrap())
+        );
     }
     let hairline = Dash::from_bson_with(doc! { "kind": "Hairline" }, |_raw, _found| {
         calls += 1;
         dash_schema::Verdict::Reject
     });
-    assert_eq!(hairline, Ok(Dash::Hairline));
+    assert_eq!(hairline, Ok(DashDraft::Hairline.validate().unwrap()));
     assert_eq!(calls, 0);
 }
 
@@ -3507,11 +3575,14 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the
         contour_schema::Verdict::Fixed
     });
     assert_eq!(seen, [invalid("Round.radius", "F64", string("wide"))]);
-    assert_eq!(fixed, Ok(Contour::Circle { radius: 1.5_f64 }));
+    assert_eq!(
+        fixed,
+        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
+    );
 
-    let mut held = written(&Sketch {
-        coating: Coating::Clear,
-        contour: Contour::Empty,
+    let mut held = written(&SketchDraft {
+        coating: CoatingDraft::Clear.validate().unwrap(),
+        contour: ContourDraft::Empty.validate().unwrap(),
     });
     held.insert("contour", doc! { "Round": {} });
     assert!(!serde_reads::<Sketch>(&held));
@@ -3558,7 +3629,7 @@ fn an_adjacent_tag_stored_as_an_alias_walks_its_content_under_the_content_key() 
 
 #[test]
 fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
-    let stored_row = written(&Coating::Hidden);
+    let stored_row = written(&CoatingDraft::Hidden);
     assert_eq!(stored_row, doc! { "kind": "Hidden" });
     assert!(!serde_reads::<Coating>(&stored_row));
     let read = Coating::from_bson_with(stored_row, |_raw, _found| coating_schema::Verdict::Reject);
@@ -3598,7 +3669,7 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
 
 #[test]
 fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
-    let stored_row = written(&Reach::Pager { number: 7_i32 });
+    let stored_row = written(&ReachDraft::Pager { number: 7_i32 });
     assert_eq!(stored_row, doc! { "number": 7_i32 });
     assert!(!serde_reads::<Reach>(&stored_row));
     let read = Reach::from_bson_with(stored_row.clone(), |_raw, _found| {

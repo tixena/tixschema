@@ -82,7 +82,7 @@ pub(super) struct Receipt {
     total: u32,
 }
 
-impl Receipt {
+impl ReceiptDraft {
     pub(super) fn new(id: ObjectId, number: &str, total: u32) -> Self {
         Self {
             id,
@@ -113,7 +113,7 @@ fn with_a_total(mut payload: Value) -> Value {
 /// another thread: the future of an insert holds no borrow of the row.
 fn a_row_no_two_threads_share_is_sendable(held: &Collection<Document>) {
     let every = || tally_schema::Filter::<Tally>::raw(doc! {});
-    sendable(&Tally::default().insert_one(held));
+    sendable(&TallyDraft::default().insert_one(held));
     sendable(&Tally::find(held, every()).into_future());
     sendable(&Tally::find_one(held, every()).into_future());
     sendable(&Tally::count(held, every()).into_future());
@@ -123,7 +123,7 @@ fn a_row_no_two_threads_share_is_sendable(held: &Collection<Document>) {
 /// what awaits each can be moved to another thread.
 fn a_row_with_a_type_parameter_is_sendable(held: &Collection<Document>) {
     let every = || ledger_schema::Filter::<Ledger<u64>>::raw(doc! {});
-    sendable(&Ledger { total: 7_u64 }.insert_one(held));
+    sendable(&LedgerDraft { total: 7_u64 }.insert_one(held));
     sendable(&Ledger::<u64>::find(held, every()).into_future());
     sendable(&Ledger::<u64>::count(held, every()).into_future());
     sendable(&Ledger::<u64>::delete_many(held, every()));
@@ -268,13 +268,13 @@ async fn a_row_declared_inside_a_function_reads_and_writes_itself() {
         text: String,
     }
 
-    let kept = || Note {
+    let kept = || NoteDraft {
         text: "kept".to_owned(),
     };
     assert_eq!(kept().mongo_written_row().unwrap(), doc! { "text": "kept" });
     assert_eq!(
         Note::mongo_read_row(doc! { "text": "kept" }, &[]).unwrap(),
-        kept()
+        kept().validate().unwrap()
     );
 
     let never = never_connected().await;
@@ -499,7 +499,7 @@ async fn an_unwritable_row_is_refused_before_any_connection() {
         .unwrap_err()
         .to_string();
     let answered = {
-        let over = Ledger { total: u64::MAX };
+        let over = LedgerDraft { total: u64::MAX };
         over.insert_one(&never)
     };
     let refused = answered.await.unwrap_err();
@@ -513,7 +513,7 @@ async fn an_unwritable_row_is_refused_before_any_connection() {
     );
     assert_eq!(refused.source().map(ToString::to_string), Some(told));
 
-    let stored = Ledger { total: 7_u64 }.mongo_written_row().unwrap();
+    let stored = LedgerDraft { total: 7_u64 }.mongo_written_row().unwrap();
     assert_eq!(stored, doc! { "total": 7_i64 });
 }
 
@@ -545,7 +545,7 @@ fn the_error_and_every_operation_cross_threads() {
 
 #[test]
 fn what_a_row_keeps_off_the_wire_is_not_stored() {
-    let tally = Tally::default();
+    let tally = TallyDraft::default();
     tally.seen.set(7_u32);
     assert_eq!(tally.mongo_written_row().unwrap(), doc! { "total": 0_i64 });
     assert_eq!(tally.seen.get(), 7_u32);
@@ -582,9 +582,9 @@ fn a_stored_row_is_read_through_the_functions_its_type_names() {
     let id = ObjectId::parse_str("0123456789abcdef01234567").unwrap();
     assert_eq!(
         Receipt::mongo_read_row(doc! { "_id": id, "number": " R-1 " }, &[]).ok(),
-        Some(Receipt::new(id, "R-1", 0))
+        Some(ReceiptDraft::new(id, "R-1", 0))
     );
-    let stored = Receipt::new(id, "R-2", 7);
+    let stored = ReceiptDraft::new(id, "R-2", 7);
     let written = stored.mongo_written_row().unwrap();
     assert_eq!(Receipt::mongo_read_row(written, &[]).ok(), Some(stored));
 }

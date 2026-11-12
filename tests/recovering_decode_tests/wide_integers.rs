@@ -46,13 +46,15 @@ struct WideReachedLedger<Key: Ord> {
 
 /// The ledger every read below answers.
 fn ledger() -> WideLedger {
-    WideLedger {
+    WideLedgerDraft {
         by_name: BTreeMap::from([("a".to_owned(), -7_i64)]),
         history: vec![1_i64, i64::MAX],
         maybe: Some(i64::MIN),
         paired: (9_i64, "x".to_owned()),
         total: -(1_i64 << 60_i32),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Reads `stored` with a callback that rejects, and answers the read with every issue listed.

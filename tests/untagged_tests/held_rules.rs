@@ -53,13 +53,21 @@ where
 fn a_held_models_rule_chooses_no_variant() {
     assert_eq!(
         read::<ProbePicker>(r#"{"label":"x"}"#),
-        Ok(ProbePicker::A(ProbeBale {
-            label: "x".to_owned()
-        }))
+        Ok(ProbePickerDraft::A(
+            ProbeBaleDraft {
+                label: "x".to_owned()
+            }
+            .validate()
+            .unwrap()
+        ))
     );
-    let empty = ProbePicker::B(ProbeLoose {
-        label: String::new(),
-    });
+    let empty = ProbePickerDraft::B(
+        ProbeLooseDraft {
+            label: String::new(),
+        }
+        .validate()
+        .unwrap(),
+    );
     assert_eq!(serde_json::to_string(&empty).unwrap(), r#"{"label":""}"#);
     assert_eq!(
         read::<ProbePicker>(r#"{"label":""}"#),
@@ -68,9 +76,12 @@ fn a_held_models_rule_chooses_no_variant() {
 
     assert_eq!(
         read::<ProbeChooser>("1"),
-        Ok(ProbeChooser::A(ProbeCount(1)))
+        Ok(ProbeChooserDraft::A(ProbeCountDraft(1).validate().unwrap()))
     );
-    assert_eq!(serde_json::to_string(&ProbeChooser::B(0)).unwrap(), "0");
+    assert_eq!(
+        serde_json::to_string(&ProbeChooserDraft::B(0)).unwrap(),
+        "0"
+    );
     assert_eq!(
         read::<ProbeChooser>("0"),
         Err("too small: minimum is 1, got 0".to_owned())

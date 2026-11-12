@@ -117,7 +117,7 @@ struct Row {
 }
 
 fn calm(value: &Mood) -> Result<(), Vec<String>> {
-    if matches!(value, Mood::Frantic) {
+    if matches!(value, MoodDraft::Frantic) {
         return Err(vec!["a mood is calm".to_owned()]);
     }
     Ok(())
@@ -181,44 +181,54 @@ fn leaf(text: &str) -> String {
 fn rows() -> Vec<Row> {
     let line = || "a".to_owned();
     let mut rows: Vec<Row> = [
-        both("a plain enum", "Genre", "Category", &Genre::Poetry),
-        both("a plain enum with a check", "Mood", "Temper", &Mood::Calm),
+        both("a plain enum", "Genre", "Category", &GenreDraft::Poetry),
+        both(
+            "a plain enum with a check",
+            "Mood",
+            "Temper",
+            &MoodDraft::Calm,
+        ),
         both(
             "a plain enum, its check refusing",
             "Mood",
             "Temper",
-            &Mood::Frantic,
+            &MoodDraft::Frantic,
         ),
         both(
             "a tag alone",
             "Chapter",
             "Excerpt",
-            &Chapter::Opening { line: line() },
+            &ChapterDraft::Opening { line: line() },
         ),
-        both("a tag and a content key", "Act", "Scene", &Act::Lowered),
+        both(
+            "a tag and a content key",
+            "Act",
+            "Scene",
+            &ActDraft::Lowered,
+        ),
         both(
             "a tag and a content key, a payload",
             "Act",
             "Scene",
-            &Act::Raised { line: line() },
+            &ActDraft::Raised { line: line() },
         ),
         both(
             "no tag attribute, a parameter",
             "Reel<String>",
             "Spool<String>",
-            &Reel::Unrolled { leaf: leaf("b") },
+            &ReelDraft::Unrolled { leaf: leaf("b") },
         ),
         both(
             "no tag attribute, one slot",
             "Reel<String>",
             "Spool<String>",
-            &Reel::Sealed(leaf("b")),
+            &ReelDraft::Sealed(leaf("b")),
         ),
         both(
             "untagged, a parameter",
             "Cue<String>",
             "Prompt<String>",
-            &Cue::Unrolled { leaf: leaf("b") },
+            &CueDraft::Unrolled { leaf: leaf("b") },
         ),
     ]
     .into_iter()
@@ -227,37 +237,37 @@ fn rows() -> Vec<Row> {
     rows.push(read_row(
         "a holder declared above",
         "Bookcase<String>",
-        &Bookcase {
-            act: Act::Lowered,
-            chapter: Chapter::Closing { line: line() },
-            cue: Cue::Sealed(leaf("c")),
-            genre: Genre::Prose,
-            mood: Mood::Calm,
-            reel: Reel::Sealed(leaf("d")),
+        &BookcaseDraft {
+            act: ActDraft::Lowered.validate().unwrap(),
+            chapter: ChapterDraft::Closing { line: line() }.validate().unwrap(),
+            cue: CueDraft::Sealed(leaf("c")).validate().unwrap(),
+            genre: GenreDraft::Prose.validate().unwrap(),
+            mood: MoodDraft::Calm.validate().unwrap(),
+            reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
         },
     ));
     rows.push(read_row(
         "a holder declared below",
         "Archive<String>",
-        &Archive {
-            act: Act::Raised { line: line() },
-            chapter: Chapter::Opening { line: line() },
-            cue: Cue::Unrolled { leaf: leaf("c") },
-            genre: Genre::Poetry,
-            mood: Mood::Calm,
-            reel: Reel::Unrolled { leaf: leaf("d") },
+        &ArchiveDraft {
+            act: ActDraft::Raised { line: line() }.validate().unwrap(),
+            chapter: ChapterDraft::Opening { line: line() }.validate().unwrap(),
+            cue: CueDraft::Unrolled { leaf: leaf("c") }.validate().unwrap(),
+            genre: GenreDraft::Poetry.validate().unwrap(),
+            mood: MoodDraft::Calm.validate().unwrap(),
+            reel: ReelDraft::Unrolled { leaf: leaf("d") }.validate().unwrap(),
         },
     ));
     rows.push(read_row(
         "a holder declared below, its mood refused",
         "Archive<String>",
-        &Archive {
-            act: Act::Lowered,
-            chapter: Chapter::Closing { line: line() },
-            cue: Cue::Sealed(leaf("c")),
-            genre: Genre::Prose,
-            mood: Mood::Frantic,
-            reel: Reel::Sealed(leaf("d")),
+        &ArchiveDraft {
+            act: ActDraft::Lowered.validate().unwrap(),
+            chapter: ChapterDraft::Closing { line: line() }.validate().unwrap(),
+            cue: CueDraft::Sealed(leaf("c")).validate().unwrap(),
+            genre: GenreDraft::Prose.validate().unwrap(),
+            mood: MoodDraft::Frantic.validate().unwrap(),
+            reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
         },
     ));
     rows

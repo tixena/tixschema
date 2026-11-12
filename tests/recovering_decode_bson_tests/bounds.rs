@@ -143,7 +143,7 @@ fn broken() -> Document {
 
 /// The group `broken()` stores, built in code.
 fn broken_group() -> BoundedGroup {
-    BoundedGroup {
+    BoundedGroupDraft {
         human_name: Some(String::new()),
         labels: Vec::new(),
         level: 0,
@@ -152,6 +152,8 @@ fn broken_group() -> BoundedGroup {
         tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
         title: "long".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -267,7 +269,7 @@ fn a_broken_bound_in_a_tagged_slot_is_listed_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_bson_with(doc! { "Code": "ABC" }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlots::Code("ABC".to_owned())));
+    assert_eq!(held, Ok(BoundedSlotsDraft::Code("ABC".to_owned())));
 
     let code = BoundedSlots::from_bson_with(doc! { "Code": "abc" }, |_, _| Verdict::Reject);
     let pair = BoundedSlots::from_bson_with(doc! { "Pair": ["a", 0_i32] }, |_, _| Verdict::Reject);
@@ -324,7 +326,7 @@ fn a_list_in_a_variants_slot_is_listed_once_at_the_slot() {
     use bounded_slots_schema::Verdict;
 
     let held = BoundedSlots::from_bson_with(doc! { "Many": ["only"] }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedSlots::Many(vec!["only".to_owned()])));
+    assert_eq!(held, Ok(BoundedSlotsDraft::Many(vec!["only".to_owned()])));
     let many = BoundedSlots::from_bson_with(doc! { "Many": ["a", "b"] }, |_, _| Verdict::Reject);
     assert_eq!(
         many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
@@ -342,8 +344,10 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
     let few = BoundedChooser::from_bson_with(doc! { "choice": ["a", "b"] }, |_, _| Verdict::Reject);
     assert_eq!(
         few,
-        Ok(BoundedChooser {
-            choice: BoundedChoice::Few(vec!["a".to_owned(), "b".to_owned()])
+        Ok(BoundedChooserDraft {
+            choice: BoundedChoiceDraft::Few(vec!["a".to_owned(), "b".to_owned()])
+                .validate()
+                .unwrap()
         })
     );
     let many =
@@ -362,14 +366,14 @@ fn a_bound_written_on_the_enum_is_listed_at_each_string_it_reaches() {
     use bounded_by_enum_schema::Verdict;
 
     let held = BoundedByEnum::from_bson_with(doc! { "Slot": "abcde" }, |_, _| Verdict::Reject);
-    assert_eq!(held, Ok(BoundedByEnum::Slot("abcde".to_owned())));
+    assert_eq!(held, Ok(BoundedByEnumDraft::Slot("abcde".to_owned())));
     let tags =
         BoundedByEnum::from_bson_with(doc! { "Tags": { "tags": ["", "abcdef"] } }, |_, _| {
             Verdict::Reject
         });
     assert_eq!(
         tags,
-        Ok(BoundedByEnum::Tags {
+        Ok(BoundedByEnumDraft::Tags {
             tags: vec![String::new(), "abcdef".to_owned()]
         })
     );
@@ -407,9 +411,9 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
         });
     assert_eq!(
         held,
-        Ok(BoundedHolder {
-            lone: BoundedLone("ok".to_owned()),
-            pair: BoundedPair("ab".to_owned(), 1),
+        Ok(BoundedHolderDraft {
+            lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
+            pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
         })
     );
 
@@ -463,9 +467,9 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
     });
     assert_eq!(
         read,
-        Ok(BoundedHolder {
-            lone: BoundedLone("ok".to_owned()),
-            pair: BoundedPair("ab".to_owned(), 1),
+        Ok(BoundedHolderDraft {
+            lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
+            pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
         })
     );
 }
@@ -494,7 +498,7 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     });
     assert_eq!(
         read,
-        Ok(BoundedGroup {
+        Ok(BoundedGroupDraft {
             human_name: None,
             labels: vec![BoundedLabel::new("ok".to_owned()).unwrap()],
             level: 1,
@@ -583,6 +587,6 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
 fn plain_serde_refuses_what_breaks_a_bound() {
     let read = BoundedGroup::deserialize(bson::Deserializer::new(Bson::Document(broken())));
     let refused = read.unwrap_err().to_string();
-    let reported = broken_group().validate().unwrap_err().join("; ");
+    let reported = broken_group().validation_issues().join("; ");
     assert!(refused.contains(&reported), "got: {refused}");
 }

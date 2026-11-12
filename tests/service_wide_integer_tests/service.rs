@@ -64,7 +64,7 @@ impl LedgerService<()> for LedgerBackEnd {
         ready(()).await;
         let shifted = entry
             .checked_add(offset.unwrap_or(0))
-            .ok_or(LedgerError::Overflowed)?;
+            .ok_or(LedgerErrorDraft::Overflowed)?;
         Ok((shifted, shifted.checked_mul(2)))
     }
 

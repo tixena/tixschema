@@ -16,13 +16,16 @@ use super::generic_dates::{
     adjacent_tide_swift, chart_swift, tide_swift, untagged_tide_swift, waypoint_swift,
 };
 use super::held_dates_models::{
-    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, FirstHolder, Pannier,
-    Pendulum, PlainChart, PlainTide, SecondHolder, StowedChart, StowedTicker, Ticker, Tock,
-    TwinHolder, UntaggedCountedTide, UntaggedPlainTide, adjacent_counted_tide_swift,
-    adjacent_plain_tide_swift, chimed_swift, counted_tide_swift, first, first_holder_swift,
-    plain_chart_swift, plain_tide_swift, second, second_holder_swift, stowed_chart_swift,
-    stowed_ticker_swift, ticker_swift, tock_swift, twin_holder_swift, untagged_counted_tide_swift,
-    untagged_plain_tide_swift,
+    AdjacentCountedTide, AdjacentCountedTideDraft, AdjacentPlainTide, AdjacentPlainTideDraft,
+    Chime, ChimeDraft, Chimed, CountedTide, CountedTideDraft, FirstHolder, FirstHolderDraft,
+    Pannier, PannierDraft, Pendulum, PendulumDraft, PlainChart, PlainChartDraft, PlainTide,
+    PlainTideDraft, SecondHolder, SecondHolderDraft, StowedChart, StowedChartDraft, StowedTicker,
+    StowedTickerDraft, Ticker, TickerDraft, Tock, TockDraft, TwinHolder, TwinHolderDraft,
+    UntaggedCountedTide, UntaggedCountedTideDraft, UntaggedPlainTide, UntaggedPlainTideDraft,
+    adjacent_counted_tide_swift, adjacent_plain_tide_swift, chimed_swift, counted_tide_swift,
+    first, first_holder_swift, plain_chart_swift, plain_tide_swift, second, second_holder_swift,
+    stowed_chart_swift, stowed_ticker_swift, ticker_swift, tock_swift, twin_holder_swift,
+    untagged_counted_tide_swift, untagged_plain_tide_swift,
 };
 
 /// The formatter a type that declares a parameter computes on each call.
@@ -100,21 +103,25 @@ fn declared<'swift>(swift: &'swift str, named: &str) -> &'swift str {
 
 /// [`PlainChart`] with [`first`] in each place a date is held.
 fn plain_chart() -> PlainChart {
-    PlainChart {
+    PlainChartDraft {
         at: second(),
         by_name: HashMap::from([("a".to_owned(), first())]),
         by_number: HashMap::from([(1, first())]),
         by_turn: HashMap::from([(-1, first())]),
-        dated: Pannier { held: first() },
+        dated: PannierDraft { held: first() }.validate().unwrap(),
         marks_by_name: HashMap::from([("m".to_owned(), vec![first()])]),
         maybe_by_name: HashMap::from([("n".to_owned(), None)]),
         pair: (first(), 1),
         spans: (vec![first()], Some(second())),
-        swung: Pendulum {
+        swung: PendulumDraft {
             first: vec![first()],
             second: None,
-        },
+        }
+        .validate()
+        .unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -124,21 +131,23 @@ fn each_model_is_written_as_serde_writes_it() {
         r#"{"at":"2024-02-29T12:00:00.100Z","by_name":{"a":"2024-01-02T03:04:05.678Z"},"by_number":{"1":"2024-01-02T03:04:05.678Z"},"by_turn":{"-1":"2024-01-02T03:04:05.678Z"},"dated":{"held":"2024-01-02T03:04:05.678Z"},"marks_by_name":{"m":["2024-01-02T03:04:05.678Z"]},"maybe_by_name":{"n":null},"pair":["2024-01-02T03:04:05.678Z",1],"spans":[["2024-01-02T03:04:05.678Z"],"2024-02-29T12:00:00.100Z"],"swung":{"first":["2024-01-02T03:04:05.678Z"],"second":null}}"#
     );
     assert_eq!(
-        read_back(&StowedChart {
+        read_back(&StowedChartDraft {
             at: second(),
             by_name: HashMap::new(),
             by_number: HashMap::new(),
-            dated: Chime {
+            dated: ChimeDraft {
                 first: first(),
                 second: "c".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             held: "h".to_owned(),
             pair: (first(), "p".to_owned()),
         }),
         r#"{"at":"2024-02-29T12:00:00.100Z","by_name":{},"by_number":{},"dated":{"first":"2024-01-02T03:04:05.678Z","second":"c"},"held":"h","pair":["2024-01-02T03:04:05.678Z","p"]}"#
     );
     assert_eq!(
-        read_back(&Tock(first(), 2)),
+        read_back(&TockDraft(first(), 2)),
         r#"["2024-01-02T03:04:05.678Z",2]"#
     );
     assert_eq!(
@@ -151,28 +160,31 @@ fn each_model_is_written_as_serde_writes_it() {
 fn each_variant_is_written_as_its_tagging_writes_it() {
     for (held, written) in [
         (
-            read_back(&PlainTide::Logged { at: first() }),
+            read_back(&PlainTideDraft::Logged { at: first() }),
             r#"{"Logged":{"at":"2024-01-02T03:04:05.678Z"}}"#,
         ),
         (
-            read_back(&PlainTide::Paired(first(), 1)),
+            read_back(&PlainTideDraft::Paired(first(), 1)),
             r#"{"Paired":["2024-01-02T03:04:05.678Z",1]}"#,
         ),
-        (read_back(&PlainTide::Pending(None)), r#"{"Pending":null}"#),
         (
-            read_back(&PlainTide::Stamped(first())),
+            read_back(&PlainTideDraft::Pending(None)),
+            r#"{"Pending":null}"#,
+        ),
+        (
+            read_back(&PlainTideDraft::Stamped(first())),
             r#"{"Stamped":"2024-01-02T03:04:05.678Z"}"#,
         ),
         (
-            read_back(&AdjacentPlainTide::Paired(first(), 1)),
+            read_back(&AdjacentPlainTideDraft::Paired(first(), 1)),
             r#"{"kind":"Paired","held":["2024-01-02T03:04:05.678Z",1]}"#,
         ),
         (
-            read_back(&AdjacentPlainTide::Stamped(first())),
+            read_back(&AdjacentPlainTideDraft::Stamped(first())),
             r#"{"kind":"Stamped","held":"2024-01-02T03:04:05.678Z"}"#,
         ),
         (
-            read_back(&UntaggedPlainTide::Stamped(first())),
+            read_back(&UntaggedPlainTideDraft::Stamped(first())),
             r#""2024-01-02T03:04:05.678Z""#,
         ),
     ] {
@@ -182,30 +194,30 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
 
 #[test]
 fn two_holders_of_one_generic_type_name_the_helpers_of_its_type_arguments_after_themselves() {
-    let dated = || Pannier { held: first() };
-    let numbered = || Pannier {
+    let dated = || PannierDraft { held: first() };
+    let numbered = || PannierDraft {
         held: HashMap::from([(1_u32, "a".to_owned())]),
     };
-    let paired = || Pannier {
+    let paired = || PannierDraft {
         held: ("p".to_owned(), 1_u8),
     };
-    let first_holder = FirstHolder {
-        dated: dated(),
-        numbered: numbered(),
-        paired: paired(),
+    let first_holder = FirstHolderDraft {
+        dated: dated().validate().unwrap(),
+        numbered: numbered().validate().unwrap(),
+        paired: paired().validate().unwrap(),
     };
-    let second_holder = SecondHolder {
-        dated: dated(),
-        numbered: numbered(),
-        paired: paired(),
+    let second_holder = SecondHolderDraft {
+        dated: dated().validate().unwrap(),
+        numbered: numbered().validate().unwrap(),
+        paired: paired().validate().unwrap(),
     };
-    let twin_holder = TwinHolder {
-        dated: dated(),
-        later: dated(),
-        numbered: numbered(),
-        other_numbered: numbered(),
-        other_paired: paired(),
-        paired: paired(),
+    let twin_holder = TwinHolderDraft {
+        dated: dated().validate().unwrap(),
+        later: dated().validate().unwrap(),
+        numbered: numbered().validate().unwrap(),
+        other_numbered: numbered().validate().unwrap(),
+        other_paired: paired().validate().unwrap(),
+        paired: paired().validate().unwrap(),
     };
     for written in [
         serde_json::to_string(&first_holder).unwrap(),
@@ -246,28 +258,28 @@ fn two_holders_of_one_generic_type_name_the_helpers_of_its_type_arguments_after_
 fn a_date_under_as_number_in_a_slot_is_written_as_a_number() {
     for (held, written) in [
         (
-            read_back(&CountedTide::Counted(first())),
+            read_back(&CountedTideDraft::Counted(first())),
             r#"{"Counted":1704164645678}"#,
         ),
         (
-            read_back(&CountedTide::Maybe(Some(first()))),
+            read_back(&CountedTideDraft::Maybe(Some(first()))),
             r#"{"Maybe":1704164645678}"#,
         ),
         (
-            read_back(&CountedTide::Spanned(first(), 1)),
+            read_back(&CountedTideDraft::Spanned(first(), 1)),
             r#"{"Spanned":[1704164645678,1]}"#,
         ),
         (
-            read_back(&AdjacentCountedTide::Counted(first())),
+            read_back(&AdjacentCountedTideDraft::Counted(first())),
             r#"{"kind":"Counted","held":1704164645678}"#,
         ),
         (
-            read_back(&AdjacentCountedTide::Spanned(first(), 1)),
+            read_back(&AdjacentCountedTideDraft::Spanned(first(), 1)),
             r#"{"kind":"Spanned","held":[1704164645678,1]}"#,
         ),
-        (read_back(&Ticker(first(), 1)), "[1704164645678,1]"),
+        (read_back(&TickerDraft(first(), 1)), "[1704164645678,1]"),
         (
-            read_back(&StowedTicker(first(), "t".to_owned())),
+            read_back(&StowedTickerDraft(first(), "t".to_owned())),
             r#"[1704164645678,"t"]"#,
         ),
     ] {
@@ -280,7 +292,7 @@ fn a_date_under_as_number_in_a_slot_is_written_as_a_number() {
 #[test]
 fn an_untagged_variant_writes_its_date_under_as_number_as_a_number() {
     assert_eq!(
-        read_back(&UntaggedCountedTide::Counted(first())),
+        read_back(&UntaggedCountedTideDraft::Counted(first())),
         "1704164645678"
     );
 }

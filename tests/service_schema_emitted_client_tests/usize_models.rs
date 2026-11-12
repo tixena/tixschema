@@ -122,13 +122,13 @@ pub fn serde_defaulted() -> usize {
 /// What the Rust `validate()` answers of an [`Offsets`] whose `bounded` is `bounded`, its messages
 /// joined as each client's read joins them.
 pub fn rust_violations(bounded: usize) -> String {
-    let offsets = Offsets {
+    let offsets = OffsetsDraft {
         at: 0,
         bounded,
         by_index: BTreeMap::new(),
         span: 0..0,
     };
-    offsets.validate().unwrap_err().join("; ")
+    offsets.validation_issues().join("; ")
 }
 
 /// What serde writes back of `json` read as `T`.
@@ -176,7 +176,7 @@ fn serde_reads_and_refuses_each_usize_payload_as_the_rows_state() {
 /// A `usize::MAX` is written as the twenty digits of the number, and read back.
 #[test]
 fn serde_writes_usize_max_as_its_digits() {
-    let offsets = Offsets {
+    let offsets = OffsetsDraft {
         at: usize::MAX,
         bounded: 12,
         by_index: BTreeMap::from([(3, "c".to_owned())]),
@@ -187,5 +187,8 @@ fn serde_writes_usize_max_as_its_digits() {
         written,
         r#"{"at":18446744073709551615,"bounded":12,"by_index":{"3":"c"},"span":{"start":8,"end":13}}"#
     );
-    assert_eq!(serde_json::from_str::<Offsets>(&written).unwrap(), offsets);
+    assert_eq!(
+        serde_json::from_str::<Offsets>(&written).unwrap(),
+        offsets.validate().unwrap()
+    );
 }

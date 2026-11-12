@@ -173,8 +173,8 @@ pub mod swift_codec_fixture {
 
     /// The value row 8 and the Dart group both round-trip.
     pub fn codec_reserved() -> CodecReserved {
-        CodecReserved {
-            r#as: CodecReservedInner {
+        CodecReservedDraft {
+            r#as: CodecReservedInnerDraft {
                 r#for: 4,
                 object: "o".to_owned(),
             },
@@ -183,17 +183,19 @@ pub mod swift_codec_fixture {
             r#in: "i".to_owned(),
             is: true,
             kinds: vec![
-                CodecReservedKind::Class,
-                CodecReservedKind::Default,
-                CodecReservedKind::In,
-                CodecReservedKind::Index,
-                CodecReservedKind::Values,
-                CodecReservedKind::WireValue,
+                CodecReservedKindDraft::Class,
+                CodecReservedKindDraft::Default,
+                CodecReservedKindDraft::In,
+                CodecReservedKindDraft::Index,
+                CodecReservedKindDraft::Values,
+                CodecReservedKindDraft::WireValue,
             ],
             r#type: "t".to_owned(),
             var: Some("v".to_owned()),
             r#while: vec!["w".to_owned()],
         }
+        .validate()
+        .unwrap()
     }
 }
 
@@ -274,13 +276,13 @@ impl ShelfClientService<()> for ShelfBackEnd {
         _limit: u32,
     ) -> Result<Vec<Shelf>, ShelfError> {
         ready(()).await;
-        Ok(vec![Shelf { title: prefix }])
+        Ok(vec![ShelfDraft { title: prefix }.validate().unwrap()])
     }
 
     async fn tally(&self, _ctx: &(), _prefix: String, deep: bool) -> Result<i64, ShelfError> {
         ready(()).await;
         if deep {
-            return Err(ShelfError::Missing);
+            return Err(ShelfErrorDraft::Missing.validate().unwrap());
         }
         Ok(7)
     }
@@ -347,7 +349,7 @@ impl MediaClientService<()> for MediaBackEnd {
     async fn upload(&self, _ctx: &(), req: MediaUpload) -> Result<(), MediaError> {
         ready(()).await;
         if req.sha256.as_inner().is_empty() {
-            return Err(MediaError::Missing);
+            return Err(MediaErrorDraft::Missing.validate().unwrap());
         }
         Ok(())
     }
@@ -408,9 +410,11 @@ impl ConversationClientService<()> for ConversationBackEnd {
         _limit: Option<u32>,
     ) -> Result<WindowPage, WindowError> {
         ready(()).await;
-        Ok(WindowPage {
+        Ok(WindowPageDraft {
             items: vec![conversation_id],
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -456,9 +460,9 @@ impl GateClientService<()> for GateBackEnd {
     async fn check_gate(&self, _ctx: &(), gate_id: String) -> Result<GateStatus, GateError> {
         ready(()).await;
         match gate_id.as_str() {
-            "missing" => Err(GateError::NotFound),
-            "locked" => Err(GateError::Locked),
-            _ => Ok(GateStatus { open: true }),
+            "missing" => Err(GateErrorDraft::NotFound.validate().unwrap()),
+            "locked" => Err(GateErrorDraft::Locked.validate().unwrap()),
+            _ => Ok(GateStatusDraft { open: true }.validate().unwrap()),
         }
     }
 
@@ -468,7 +472,7 @@ impl GateClientService<()> for GateBackEnd {
         _gate_id: String,
     ) -> Result<GateStatus, GateError> {
         ready(()).await;
-        Err(GateError::NotFound)
+        Err(GateErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -512,9 +516,9 @@ impl VaultClientService<()> for VaultBackEnd {
     async fn check_vault(&self, _ctx: &(), vault_id: String) -> Result<VaultStatus, VaultError> {
         ready(()).await;
         match vault_id.as_str() {
-            "missing" => Err(VaultError::NotFound),
-            "locked" => Err(VaultError::Locked),
-            _ => Ok(VaultStatus { open: true }),
+            "missing" => Err(VaultErrorDraft::NotFound.validate().unwrap()),
+            "locked" => Err(VaultErrorDraft::Locked.validate().unwrap()),
+            _ => Ok(VaultStatusDraft { open: true }.validate().unwrap()),
         }
     }
 
@@ -524,7 +528,7 @@ impl VaultClientService<()> for VaultBackEnd {
         _vault_id: String,
     ) -> Result<VaultStatus, VaultError> {
         ready(()).await;
-        Err(VaultError::NotFound)
+        Err(VaultErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -569,9 +573,11 @@ impl ArchiveClientService<()> for ArchiveBackEnd {
     ) -> Result<ArchiveStatus, ArchiveError> {
         ready(()).await;
         match archive_id.as_str() {
-            "missing" => Err(ArchiveError::NotFound),
-            "locked" => Err(ArchiveError::Locked { retry_after: 30 }),
-            _ => Ok(ArchiveStatus { archived: true }),
+            "missing" => Err(ArchiveErrorDraft::NotFound.validate().unwrap()),
+            "locked" => Err(ArchiveErrorDraft::Locked { retry_after: 30 }
+                .validate()
+                .unwrap()),
+            _ => Ok(ArchiveStatusDraft { archived: true }.validate().unwrap()),
         }
     }
 }
@@ -616,9 +622,9 @@ impl SealClientService<()> for SealBackEnd {
     async fn check_seal(&self, _ctx: &(), seal_id: String) -> Result<SealStatus, SealError> {
         ready(()).await;
         match seal_id.as_str() {
-            "missing" => Err(SealError::NotFound),
-            "locked" => Err(SealError::Locked),
-            _ => Ok(SealStatus { sealed: true }),
+            "missing" => Err(SealErrorDraft::NotFound.validate().unwrap()),
+            "locked" => Err(SealErrorDraft::Locked.validate().unwrap()),
+            _ => Ok(SealStatusDraft { sealed: true }.validate().unwrap()),
         }
     }
 
@@ -628,7 +634,7 @@ impl SealClientService<()> for SealBackEnd {
         _seal_id: String,
     ) -> Result<SealStatus, SealError> {
         ready(()).await;
-        Err(SealError::NotFound)
+        Err(SealErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -678,7 +684,7 @@ impl SearchClientService<()> for SearchBackEnd {
         verbose: Option<bool>,
     ) -> Result<SearchEcho, SearchError> {
         ready(()).await;
-        Ok(SearchEcho { limit, verbose })
+        Ok(SearchEchoDraft { limit, verbose }.validate().unwrap())
     }
 
     async fn search_body(
@@ -688,7 +694,7 @@ impl SearchClientService<()> for SearchBackEnd {
         verbose: Option<bool>,
     ) -> Result<SearchEcho, SearchError> {
         ready(()).await;
-        Ok(SearchEcho { limit, verbose })
+        Ok(SearchEchoDraft { limit, verbose }.validate().unwrap())
     }
 }
 
@@ -732,11 +738,13 @@ impl LabelClientService<()> for LabelBackEnd {
     ) -> Result<LabelStatus, LabelError> {
         ready(()).await;
         if label_id == "missing" {
-            return Err(LabelError::NotFound);
+            return Err(LabelErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(LabelStatus {
+        Ok(LabelStatusDraft {
             label: format!("{org_id}/{label_id}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -775,10 +783,13 @@ impl ThumbnailClientService<()> for ThumbnailBackEnd {
     ) -> Result<(Vec<u8>, String, Option<String>), (ThumbnailError, Option<String>)> {
         ready(()).await;
         if document_id == "missing" {
-            return Err((ThumbnailError::NotFound, Some("archived".to_owned())));
+            return Err((
+                ThumbnailErrorDraft::NotFound.validate().unwrap(),
+                Some("archived".to_owned()),
+            ));
         }
         if document_id == "gone" {
-            return Err((ThumbnailError::NotFound, None));
+            return Err((ThumbnailErrorDraft::NotFound.validate().unwrap(), None));
         }
         if document_id == "anon" {
             return Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned(), None));
@@ -872,7 +883,7 @@ impl ContentClientService<()> for ContentBackEnd {
     ) -> Result<content_client_service_schema::StreamedAnswer, ContentError> {
         ready(()).await;
         if file_id == "missing" {
-            return Err(ContentError::NotFound);
+            return Err(ContentErrorDraft::NotFound.validate().unwrap());
         }
         let content_type = if file_id == "bad-type" {
             "text/plain\r\nx-injected: yes"
@@ -894,7 +905,7 @@ impl ContentClientService<()> for ContentBackEnd {
         ready(()).await;
         if file_id == "unsatisfiable" {
             return Err((
-                ContentRangeError::RangeNotSatisfiable,
+                ContentRangeErrorDraft::RangeNotSatisfiable,
                 Some(format!("bytes */{}", STREAMED_CONTENT.len())),
             ));
         }
@@ -960,7 +971,7 @@ impl UploadDocumentClientService<()> for UploadDocumentBackEnd {
             drained.extend_from_slice(&buf[..read]);
         }
         if title == "toolarge" {
-            return Err(UploadDocumentError::TooLarge);
+            return Err(UploadDocumentErrorDraft::TooLarge);
         }
         // The Node driver's own implementation never reads the part's content either, so it
         // plays no part in the success value the two dispatchers are compared on.
@@ -968,7 +979,7 @@ impl UploadDocumentClientService<()> for UploadDocumentBackEnd {
             !drained.is_empty(),
             "the file part must have drained something"
         );
-        Ok(UploadDocumentResponse {
+        Ok(UploadDocumentResponseDraft {
             document_id: format!("doc-{folder_id}-{title}-{}", description.is_some()),
         })
     }
@@ -1023,9 +1034,9 @@ impl EchoClientService<()> for EchoBackEnd {
     ) -> Result<EchoRangeResponse, EchoRangeError> {
         ready(()).await;
         if document_id == "missing" {
-            return Err(EchoRangeError::NotFound);
+            return Err(EchoRangeErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(EchoRangeResponse {
+        Ok(EchoRangeResponseDraft {
             received: byte_range,
         })
     }
@@ -1109,12 +1120,16 @@ impl StampClientService<()> for StampBackEnd {
         ready(()).await;
         if label == "refuse" {
             return Err((
-                StampError::Refused,
+                StampErrorDraft::Refused.validate().unwrap(),
                 trace.map(|at| format!("refused at {at}")),
             ));
         }
         let etag = format!("etag-{tenant}");
-        Ok((StampReceipt { label, tenant }, etag, trace.map(|at| at + 1)))
+        Ok((
+            StampReceiptDraft { label, tenant }.validate().unwrap(),
+            etag,
+            trace.map(|at| at + 1),
+        ))
     }
 }
 
@@ -1146,7 +1161,7 @@ pub struct PulseBackEnd;
 impl PulseClientService<()> for PulseBackEnd {
     async fn pulse(&self, _ctx: &()) -> Result<PulseResponse, PulseError> {
         ready(()).await;
-        Ok(PulseResponse { alive: true })
+        Ok(PulseResponseDraft { alive: true }.validate().unwrap())
     }
 }
 
@@ -1236,9 +1251,11 @@ impl LookupClientService<()> for LookupBackEnd {
     ) -> Result<LookupFound, LookupError> {
         ready(()).await;
         let handed = [Some(r#in), Some(r#final), Some(r#type), default];
-        Ok(LookupFound {
+        Ok(LookupFoundDraft {
             name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn import(
@@ -1251,19 +1268,23 @@ impl LookupClientService<()> for LookupBackEnd {
     ) -> Result<LookupFound, LookupError> {
         ready(()).await;
         let handed = [Some(class), Some(object), default, var];
-        Ok(LookupFound {
+        Ok(LookupFoundDraft {
             name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn object(&self, _ctx: &(), req: LookupThing) -> Result<LookupFound, LookupError> {
         ready(()).await;
         if req.class.is_empty() {
-            return Err(LookupError::NotFound);
+            return Err(LookupErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(LookupFound {
+        Ok(LookupFoundDraft {
             name: [req.class, req.var].join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn shadow(
@@ -1277,9 +1298,11 @@ impl LookupClientService<()> for LookupBackEnd {
     ) -> Result<LookupFound, LookupError> {
         ready(()).await;
         let handed = [Some(message), Some(sending), Some(body), Some(path), status];
-        Ok(LookupFound {
+        Ok(LookupFoundDraft {
             name: handed.into_iter().flatten().collect::<Vec<_>>().join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -1339,16 +1362,20 @@ impl TallyClientService<()> for TallyBackEnd {
         bool: bool,
     ) -> Result<TallyReply, TallyError> {
         ready(()).await;
-        Ok(TallyReply {
+        Ok(TallyReplyDraft {
             total: format!("{label}|{int}|{double}|{bool}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn find(&self, _ctx: &(), int: i32, label: String) -> Result<TallyReply, TallyError> {
         ready(()).await;
-        Ok(TallyReply {
+        Ok(TallyReplyDraft {
             total: format!("{int}|{label}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -1385,14 +1412,14 @@ impl WatchClientService<()> for WatchBackEnd {
 #[test]
 fn every_declared_type_is_constructible() {
     assert_eq!(
-        WindowPage {
+        WindowPageDraft {
             items: vec!["one".to_owned()]
         }
         .items
         .len(),
         1
     );
-    assert_eq!(WindowError::NotFound, WindowError::NotFound);
+    assert_eq!(WindowErrorDraft::NotFound, WindowErrorDraft::NotFound);
     assert_eq!(
         ConversationId::new("652f1a3b4c5d6e7f8a9b0c1d".to_owned())
             .unwrap()
@@ -1409,12 +1436,16 @@ fn every_declared_type_is_constructible() {
 
 #[test]
 fn the_watch_backend_answers_ok_unit() {
-    let answered = poll_once(WatchBackEnd.watch(
-        &(),
-        WatchRequest {
-            topic: "x".to_owned(),
-        },
-    ))
+    let answered = poll_once(
+        WatchBackEnd.watch(
+            &(),
+            WatchRequestDraft {
+                topic: "x".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(answered, Ok(()));
 }
@@ -1437,92 +1468,98 @@ where
 fn every_reader_form_and_query_backend_answers_as_declared() {
     assert_eq!(
         poll_once(GateBackEnd.check_gate(&(), "missing".to_owned())).unwrap(),
-        Err(GateError::NotFound)
+        Err(GateErrorDraft::NotFound)
     );
     assert_eq!(
         poll_once(GateBackEnd.check_gate(&(), "locked".to_owned())).unwrap(),
-        Err(GateError::Locked)
+        Err(GateErrorDraft::Locked)
     );
     assert_eq!(
         poll_once(GateBackEnd.check_gate(&(), "g1".to_owned())).unwrap(),
-        Ok(GateStatus { open: true })
+        Ok(GateStatusDraft { open: true }.validate().unwrap())
     );
     assert_eq!(
         poll_once(GateBackEnd.check_gate_unmapped(&(), "g1".to_owned())).unwrap(),
-        Err(GateError::NotFound)
+        Err(GateErrorDraft::NotFound)
     );
 
     assert_eq!(
         poll_once(VaultBackEnd.check_vault(&(), "missing".to_owned())).unwrap(),
-        Err(VaultError::NotFound)
+        Err(VaultErrorDraft::NotFound)
     );
     assert_eq!(
         poll_once(VaultBackEnd.check_vault(&(), "locked".to_owned())).unwrap(),
-        Err(VaultError::Locked)
+        Err(VaultErrorDraft::Locked)
     );
     assert_eq!(
         poll_once(VaultBackEnd.check_vault(&(), "v1".to_owned())).unwrap(),
-        Ok(VaultStatus { open: true })
+        Ok(VaultStatusDraft { open: true }.validate().unwrap())
     );
     assert_eq!(
         poll_once(VaultBackEnd.check_vault_unmapped(&(), "v1".to_owned())).unwrap(),
-        Err(VaultError::NotFound)
+        Err(VaultErrorDraft::NotFound)
     );
 
     assert_eq!(
         poll_once(ArchiveBackEnd.check_archive(&(), "missing".to_owned())).unwrap(),
-        Err(ArchiveError::NotFound)
+        Err(ArchiveErrorDraft::NotFound)
     );
     assert_eq!(
         poll_once(ArchiveBackEnd.check_archive(&(), "locked".to_owned())).unwrap(),
-        Err(ArchiveError::Locked { retry_after: 30 })
+        Err(ArchiveErrorDraft::Locked { retry_after: 30 })
     );
     assert_eq!(
         poll_once(ArchiveBackEnd.check_archive(&(), "a1".to_owned())).unwrap(),
-        Ok(ArchiveStatus { archived: true })
+        Ok(ArchiveStatusDraft { archived: true })
     );
 
     assert_eq!(
         poll_once(SealBackEnd.check_seal(&(), "missing".to_owned())).unwrap(),
-        Err(SealError::NotFound)
+        Err(SealErrorDraft::NotFound)
     );
     assert_eq!(
         poll_once(SealBackEnd.check_seal(&(), "locked".to_owned())).unwrap(),
-        Err(SealError::Locked)
+        Err(SealErrorDraft::Locked)
     );
     assert_eq!(
         poll_once(SealBackEnd.check_seal(&(), "s1".to_owned())).unwrap(),
-        Ok(SealStatus { sealed: true })
+        Ok(SealStatusDraft { sealed: true }.validate().unwrap())
     );
     assert_eq!(
         poll_once(SealBackEnd.check_seal_unmapped(&(), "s1".to_owned())).unwrap(),
-        Err(SealError::NotFound)
+        Err(SealErrorDraft::NotFound)
     );
 
     assert_eq!(
         poll_once(SearchBackEnd.search(&(), Some(10), Some(true))).unwrap(),
-        Ok(SearchEcho {
+        Ok(SearchEchoDraft {
             limit: Some(10),
             verbose: Some(true)
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         poll_once(SearchBackEnd.search_body(&(), None, None)).unwrap(),
-        Ok(SearchEcho {
+        Ok(SearchEchoDraft {
             limit: None,
             verbose: None
-        })
+        }
+        .validate()
+        .unwrap())
     );
 
     assert_eq!(
         poll_once(LabelBackEnd.get_label(&(), "acme".to_owned(), "missing".to_owned())).unwrap(),
-        Err(LabelError::NotFound)
+        Err(LabelErrorDraft::NotFound)
     );
     assert_eq!(
         poll_once(LabelBackEnd.get_label(&(), "acme".to_owned(), "priority".to_owned())).unwrap(),
-        Ok(LabelStatus {
+        Ok(LabelStatusDraft {
             label: "acme/priority".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -1531,7 +1568,7 @@ fn every_reader_form_and_query_backend_answers_as_declared() {
 fn the_echo_backend_answers_the_header_it_was_bound() {
     assert_eq!(
         poll_once(EchoBackEnd.echo_range(&(), "d1".to_owned(), "bytes=0-9".to_owned())).unwrap(),
-        Ok(EchoRangeResponse {
+        Ok(EchoRangeResponseDraft {
             received: "bytes=0-9".to_owned()
         })
     );
@@ -1542,27 +1579,27 @@ fn the_echo_backend_answers_the_header_it_was_bound() {
 fn the_pulse_backend_answers_alive() {
     assert_eq!(
         poll_once(PulseBackEnd.pulse(&())).unwrap(),
-        Ok(PulseResponse { alive: true })
+        Ok(PulseResponseDraft { alive: true })
     );
 }
 
 /// Read only by the Dart, Swift and Kotlin groups beside this one.
 #[test]
 fn the_media_backend_answers_every_operation() {
-    let upload = |sha256: &str| MediaUpload {
+    let upload = |sha256: &str| MediaUploadDraft {
         caption: "c".to_owned(),
         sha256: MediaId::new(sha256.to_owned()).unwrap(),
     };
     assert_eq!(
-        poll_once(MediaBackEnd.upload(&(), upload("abc123"))).unwrap(),
+        poll_once(MediaBackEnd.upload(&(), upload("abc123").validate().unwrap())).unwrap(),
         Ok(())
     );
     assert_eq!(
-        poll_once(MediaBackEnd.upload(&(), upload(""))).unwrap(),
-        Err(MediaError::Missing)
+        poll_once(MediaBackEnd.upload(&(), upload("").validate().unwrap())).unwrap(),
+        Err(MediaErrorDraft::Missing)
     );
     assert_eq!(
-        poll_once(MediaBackEnd.stat(&(), upload("abc123"))).unwrap(),
+        poll_once(MediaBackEnd.stat(&(), upload("abc123").validate().unwrap())).unwrap(),
         Ok((upload("abc123"), MediaId::new("abc123".to_owned()).unwrap()))
     );
 }
@@ -1577,13 +1614,13 @@ fn the_shelf_backend_answers_every_operation() {
     );
     assert_eq!(
         poll_once(ShelfBackEnd.stacks(&(), "t".to_owned(), 1)).unwrap(),
-        Ok(vec![Shelf {
+        Ok(vec![ShelfDraft {
             title: "t".to_owned()
         }])
     );
     assert_eq!(
         poll_once(ShelfBackEnd.tally(&(), "x".to_owned(), true)).unwrap(),
-        Err(ShelfError::Missing)
+        Err(ShelfErrorDraft::Missing)
     );
     assert_eq!(
         poll_once(ShelfBackEnd.titles(&(), "a".to_owned(), 2)).unwrap(),

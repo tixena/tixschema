@@ -169,15 +169,19 @@ fn payload(held: Value) -> Value {
 fn the_function_of_a_type_is_called_ahead_of_the_function_of_a_field() {
     assert_eq!(
         serde_json::from_value::<Labelled>(json!({})).unwrap(),
-        Labelled {
+        LabelledDraft {
             label: "unnamed".to_owned()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Labelled>(json!({ "label": " A " })).unwrap(),
-        Labelled {
+        LabelledDraft {
             label: "A".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -185,9 +189,11 @@ fn the_function_of_a_type_is_called_ahead_of_the_function_of_a_field() {
 fn a_function_named_as_a_read_names_what_it_declares_is_called() {
     assert_eq!(
         serde_json::from_value::<Named>(json!({ "payload": { "payload": " A " } })).unwrap(),
-        Named {
+        NamedDraft {
             payload: "A".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -217,18 +223,20 @@ fn a_member_of_a_variant_and_a_slot_are_read_from_the_corrected_payload() {
     assert_eq!(
         serde_json::from_value::<Carried>(json!({ "kind": "Boxed", "detail": { "label": " A " } }))
             .unwrap(),
-        Carried::Boxed {
+        CarriedDraft::Boxed {
             label: "A".to_owned()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Carried>(json!({ "kind": "Loose", "detail": [" A ", 2_u32] }))
             .unwrap(),
-        Carried::Loose("A".to_owned(), 2)
+        CarriedDraft::Loose("A".to_owned(), 2).validate().unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Tagged>(json!([" A ", 2_u32])).unwrap(),
-        Tagged("A".to_owned(), 2)
+        TaggedDraft("A".to_owned(), 2).validate().unwrap()
     );
 }
 
@@ -236,20 +244,24 @@ fn a_member_of_a_variant_and_a_slot_are_read_from_the_corrected_payload() {
 fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
     assert_eq!(
         serde_json::from_value::<Noted<String>>(json!({ "codes": { "payload": ["a"] } })).unwrap(),
-        Noted {
+        NotedDraft {
             codes: vec!["a".to_owned()],
             dock: String::new(),
             note: None
         }
+        .validate()
+        .unwrap()
     );
     let held = json!({ "codes": [7_u32], "dock": " north ", "note": " n " });
     assert_eq!(
         serde_json::from_value::<Noted<u32>>(held).unwrap(),
-        Noted {
+        NotedDraft {
             codes: vec![7_u32],
             dock: "north".to_owned(),
             note: Some("n".to_owned())
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -261,20 +273,30 @@ fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
     let picked = |payload: Value| serde_json::from_value::<Picked>(payload).unwrap();
     assert_eq!(
         picked(json!({ "code": " AB " })),
-        Picked::Coded {
+        PickedDraft::Coded {
             code: "AB".to_owned()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         picked(json!({ "codes": { "payload": ["a"] } })),
-        Picked::Listed {
+        PickedDraft::Listed {
             codes: vec!["a".to_owned()]
         }
+        .validate()
+        .unwrap()
     );
-    assert_eq!(picked(json!(" AB ")), Picked::Short("AB".to_owned()));
+    assert_eq!(
+        picked(json!(" AB ")),
+        PickedDraft::Short("AB".to_owned()).validate().unwrap()
+    );
     // Three letters once trimmed: the slot's bound refuses them, and the next variant reads the
     // payload as it is.
-    assert_eq!(picked(json!(" ABC ")), Picked::Whole(" ABC ".to_owned()));
+    assert_eq!(
+        picked(json!(" ABC ")),
+        PickedDraft::Whole(" ABC ".to_owned()).validate().unwrap()
+    );
     for refused in [
         json!({ "code": " A " }),
         json!({ "codes": { "payload": [] } }),
@@ -295,9 +317,11 @@ fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
 fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
     assert_eq!(
         serde_json::from_value::<Shelved>(json!({ "label": { "payload": "AB" } })).unwrap(),
-        Shelved {
+        ShelvedDraft {
             label: Arc::new(Bounded::new("AB".to_owned()).unwrap())
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Shelved>(json!({ "label": { "payload": "A" } }))
@@ -334,11 +358,11 @@ fn a_date_stored_as_a_number_is_read_from_the_corrected_payload() {
     for stored in [json!(1_700_000_000_000_i64), json!("1700000000000")] {
         assert_eq!(
             serde_json::from_value::<Stamped>(json!({ "at": stored })).unwrap(),
-            Stamped { at }
+            StampedDraft { at }.validate().unwrap()
         );
     }
     assert_eq!(
-        serde_json::to_value(Stamped { at }).unwrap(),
+        serde_json::to_value(StampedDraft { at }).unwrap(),
         json!({ "at": 1_700_000_000_000_i64 })
     );
 }

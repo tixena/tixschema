@@ -50,16 +50,20 @@ mod tests {
     pub struct Sku(String);
 
     fn note() -> Note {
-        Note {
+        NoteDraft {
             due_on: None,
-            source: Source::Web {
+            source: SourceDraft::Web {
                 url: "https://example.com/a".to_owned(),
-            },
-            status: Status::Draft,
+            }
+            .validate()
+            .unwrap(),
+            status: StatusDraft::Draft.validate().unwrap(),
             tags: vec!["parser".to_owned()],
             title: "Notes".to_owned(),
             views: 7,
         }
+        .validate()
+        .unwrap()
     }
 
     fn text(written: &str) -> Value {
@@ -95,12 +99,15 @@ mod tests {
 
     #[test]
     fn a_model_with_a_parameter_converts_at_any_filling() {
-        let tagged = Tagged {
+        let tagged = TaggedDraft {
             id: 7_u32,
             label: "seven".to_owned(),
         };
         let value = Value::try_from(&tagged).unwrap();
-        assert_eq!(Tagged::<u32>::try_from(&value).unwrap(), tagged);
+        assert_eq!(
+            Tagged::<u32>::try_from(&value).unwrap(),
+            tagged.validate().unwrap()
+        );
     }
 
     #[test]
