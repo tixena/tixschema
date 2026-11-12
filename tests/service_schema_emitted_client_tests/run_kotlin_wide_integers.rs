@@ -33,19 +33,18 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What the Kotlin read answers of each payload of [`REFUSED`], in its order. The read refuses the
-/// string of an `i64`'s digits and a fraction in serde's words, and an out-of-range number in
-/// kotlinx's, each at the path of the number.
+/// string of an `i64`'s digits, a fraction and an out-of-range number in serde's words, each at
+/// the path of the number.
 const KOTLIN_REFUSED: [&str; 8] = [
-    "SerializationException: Failed to parse literal '9223372036854775808' as a long value at \
-     path: $\nJSON input: 9223372036854775808",
+    "SerializationException: invalid value: integer `9223372036854775808`, expected i64 at path: $",
     "SerializationException: invalid type: string \"7\", expected i64 at path: $",
-    "SerializationException: Failed to parse literal '-9223372036854775809' as a long value at \
-     path: $.listed[1]\nJSON input: -9223372036854775809",
+    "SerializationException: invalid type: floating point `-9.223372036854776e+18`, expected i64 \
+     at path: $.listed[1]",
     "SerializationException: invalid type: floating point `1.5`, expected i64 at path: \
      $.Moved.from",
     "SerializationException: 'level': too large: maximum is 5, got 6",
-    "SerializationException: Failed to parse literal '9223372036854775808' as a long value at \
-     path: $.ranged.end\nJSON input: 9223372036854775808",
+    "SerializationException: invalid value: integer `9223372036854775808`, expected i64 at path: \
+     $.ranged.end",
     "SerializationException: 'fixed': not the literal 214, got 215",
     "SerializationException: invalid type: string \"x\", expected i64 at path: $.keyed['4']",
 ];
@@ -70,6 +69,10 @@ fn an_i64_is_read_and_written_as_a_number_in_kotlin() {
             serde_refusal(read_as, json).as_deref(),
             Some(said),
             "serde no longer refuses {json}"
+        );
+        assert!(
+            refused.contains(said),
+            "the row does not hold serde's {said}"
         );
         let _ = writeln!(
             main,
