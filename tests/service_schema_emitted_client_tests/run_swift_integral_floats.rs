@@ -28,7 +28,7 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// keys sorted, the coding path and the description of a `dataCorrupted`, and the case, the type
 /// and the coding path of any other `DecodingError`, whose description Foundation words differently
 /// from one version to the next.
-const HARNESS: &str = r#"
+pub const HARNESS: &str = r#"
 func path(_ context: DecodingError.Context) -> String {
   context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".")
 }
@@ -68,7 +68,7 @@ const PLACES: [(&str, &str); 4] = [
 
 /// How a line the run prints is held to what serde answers.
 #[derive(Clone, Copy)]
-enum Compared {
+pub enum Compared {
     /// With every number read as a float, as Swift writes a whole `Double` with no fraction.
     AsFloats,
     /// Exactly, an integer as it is written.
@@ -77,12 +77,12 @@ enum Compared {
 
 /// One payload the run reads: its name, the Swift type that reads it, the payload, the line the
 /// Swift read is held to, and how.
-struct Row {
-    compared: Compared,
-    expected: String,
-    name: String,
-    payload: String,
-    read_as: &'static str,
+pub struct Row {
+    pub compared: Compared,
+    pub expected: String,
+    pub name: String,
+    pub payload: String,
+    pub read_as: &'static str,
 }
 
 /// `value` with the keys of every object it holds sorted, as the Swift encoder of the run writes

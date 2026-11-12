@@ -479,13 +479,13 @@ fn a_model_under_two_wrappers_is_read_unjudged_at_every_level() {
                 "listed1.superDecoder())) }; items.append(items1) }; self.grid = items; ",
             ),
             concat!(
-                "let keyed1 = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, ",
-                "forKey: .listsByDock); var entries1: [String: [Parcel]] = [:]; ",
-                "for entry1 in keyed1.allKeys { ",
-                "var listed2 = try keyed1.nestedUnkeyedContainer(forKey: entry1); ",
+                "let keyed = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, ",
+                "forKey: .listsByDock); var entries: [String: [Parcel]] = [:]; ",
+                "for entry in keyed.allKeys { ",
+                "var listed2 = try keyed.nestedUnkeyedContainer(forKey: entry); ",
                 "var items2: [Parcel] = []; while !listed2.isAtEnd { items2.append(try Parcel(",
                 "swiftSchemaUnjudged: listed2.superDecoder())) }; ",
-                "entries1[entry1.stringValue] = items2 }; self.listsByDock = entries1; ",
+                "entries[entry.stringValue] = items2 }; self.listsByDock = entries; ",
             ),
             concat!(
                 "var listed3 = try container.nestedUnkeyedContainer(forKey: .maybeEach); ",
@@ -505,8 +505,7 @@ fn a_model_under_two_wrappers_is_read_unjudged_at_every_level() {
     );
 }
 
-/// A map under a key Swift reads as a number is read entry by entry, a key that is no number the
-/// error it was. A map under any other key is read by its wrapper, which reads each value
+/// A map under a key Swift reads as a number is read by its wrapper, which reads each value
 /// unjudged, and a tuple by the struct written for it.
 #[test]
 fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
@@ -514,14 +513,9 @@ fn a_model_in_a_map_under_a_number_and_in_a_tuple_is_read_unjudged() {
         &stowage_swift::swift_definition(),
         &[
             concat!(
-                "let keyed = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, ",
-                "forKey: .byDeck); var entries: [Int: Parcel] = [:]; for entry in keyed.allKeys { ",
-                "guard let number = Int(entry.stringValue) else { ",
-                "throw DecodingError.typeMismatch(Int.self, DecodingError.Context(",
-                "codingPath: keyed.codingPath + [entry], ",
-                r#"debugDescription: "Expected Int key but found String key instead.")) }; "#,
-                "entries[number] = try Parcel(swiftSchemaUnjudged: ",
-                "keyed.superDecoder(forKey: entry)) }; self.byDeck = entries; ",
+                "_ = try container.decodeNil(forKey: .byDeck); ",
+                "self.byDeck = try StowageByDeckKeyedMap(swiftSchemaUnjudged: ",
+                "container.superDecoder(forKey: .byDeck)).storage; ",
             ),
             concat!(
                 "_ = try container.decodeNil(forKey: .byNumber); ",

@@ -1903,8 +1903,14 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
 /// text between a key's quotes: the number, then the type's refusal of it, then the text after it.
 /// A refusal serde classifies as text that is not the document is in its words; a float for an
 /// integer key is refused at the map, and an integer beyond the type under the number. An `f32`
-/// key is held to its range.
+/// key beyond its range reads as an infinity, as serde reads it.
 fn number_key_read(number: &FieldDefType, expr: &str) -> String {
+    number_key_text(number, expr, true)
+}
+
+/// [`number_key_read`], narrowing an `f32` beyond its range to an infinity only where `narrowed`:
+/// a brand over an `f32` reads its value through its own narrowing, which refuses an infinity.
+fn number_key_text(number: &FieldDefType, expr: &str, narrowed: bool) -> String {
     let Some(key) = number.number_key() else {
         return expr.to_owned();
     };
@@ -1939,8 +1945,8 @@ fn number_key_read(number: &FieldDefType, expr: &str) -> String {
             )
         },
     );
-    let returned = if matches!(number, FieldDefType::F32) {
-        forms::number_held(number, &read).unwrap_or(read)
+    let returned = if narrowed && matches!(number, FieldDefType::F32) {
+        float_read(number, &read)
     } else {
         read
     };
@@ -2042,7 +2048,11 @@ fn judged_key(key: &FieldDef, expr: &str) -> String {
             &format!("{}.fromJson({value})", dart_base(key)),
         )
     };
-    let held = dart_map_key_decode(&leaf, expr);
+    let held = if matches!(leaf.field_type, FieldDefType::F32) {
+        number_key_text(&leaf.field_type, expr, false)
+    } else {
+        dart_map_key_decode(&leaf, expr)
+    };
     if held == expr {
         return built(expr);
     }
