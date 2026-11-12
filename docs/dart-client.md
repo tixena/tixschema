@@ -93,6 +93,14 @@ consumer's view; this is what a change has to keep.
   wrapper (a brand, a tuple struct, an alias), a variant with named members and the base of a
   sealed enum. `judged_body` writes the judgement, which the static `fromJson` of a plain enum
   takes too. A generic type takes its converters in both reads.
+- **A brand is sealed.** `struct_dart_tokens` hands `value_wrapper_tokens` `Held::Brand` for a
+  brand alone: the class writes `const X._(this.value)`, the only constructor, and `factory X.of(value)`
+  (`judged_body` over `X._(value)`, so it throws the `FormatException` `fromJson` throws, the messages
+  of `validate()` joined by `; `). `fromJsonUnjudged` stays public under that name and builds through
+  `X._`, as Rust keeps `model_schema_read_unjudged` public: a holder in another file, which is another
+  library, or in another crate calls it, so a holder reads a brand as it reads any type. A name
+  starting with an underscore is private to the library, so a second library builds a brand through
+  `of` or a read alone. A tuple struct and an alias keep the public constructor.
 - **A tuple struct that declares one slot is the value of that slot**, as serde writes it whatever
   the slot's attributes say: `tuple_struct_dart_tokens` hands `value_wrapper_tokens` the slot as
   `Held::Value`, the class a brand is written as, and the slot is read through `member_decode`,

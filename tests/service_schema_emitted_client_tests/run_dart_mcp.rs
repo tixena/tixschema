@@ -467,7 +467,7 @@ void main() async {
     Object(),
   ]);
   final other = DartDocumentServiceMcpClient(more);
-  final lookup = await other.lookup(McpDocumentId('doc-12'));
+  final lookup = await other.lookup(McpDocumentId.of('doc-12'));
   final tagged = await other.getTagged('doc-1', '"v6"');
   final renamed = await other.renameDocument(RenameDocumentRequest(document_id: 'doc-1', title: 'Plan'));
   await other.touchDocument(TouchDocumentRequest(document_id: 'doc-1', reader: 'reviewer-7'));

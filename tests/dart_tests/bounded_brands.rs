@@ -38,10 +38,13 @@ fn every_declared_brand_is_constructible() {
 fn a_brand_over_a_string_measures_its_value_under_no_place() {
     assert_eq!(
         slug_dart::dart_definition(),
-        "class Slug { const Slug(this.value); final String value; factory Slug.fromJson(dynamic \
+        "class Slug { const Slug._(this.value); final String value; factory Slug.of(String value) \
+         { final read = Slug._(value); final violations = read.validate(); if \
+         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
+         factory Slug.fromJson(dynamic \
          json) { final read = Slug.fromJsonUnjudged(json); final violations = read.validate(); \
          if (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Slug.fromJsonUnjudged(dynamic json) => Slug(json as String); dynamic toJson() \
+         factory Slug.fromJsonUnjudged(dynamic json) => Slug._(json as String); dynamic toJson() \
          => value; List<String> validateBound() => [ if (value.runes.length < 2) \"too short: \
          minimum length is 2, got ${value.runes.length}\", if \
          (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match pattern '^[A-Z]+\\$'\", ]; \
@@ -58,12 +61,15 @@ fn a_brand_over_a_string_measures_its_value_under_no_place() {
 fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
     assert_eq!(
         tag_dart::dart_definition(),
-        "class Tag<IdType> { const Tag(this.value); final IdType value; factory \
+        "class Tag<IdType> { const Tag._(this.value); final IdType value; factory \
+         Tag.of(IdType value) { final read = Tag<IdType>._(value); final violations = \
+         read.validate(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
+         ')); return read; } factory \
          Tag.fromJson(dynamic json, IdType Function(dynamic) idTypeFromJson) { final read = \
          Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validate(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
-         Tag(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
+         Tag._(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
          idTypeToJson(value); List<String> validateBound() => [ if (value case final String \
          held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
          ${held.runes.length}\", ]; List<String> validate() => [ if (value case final String \
@@ -76,11 +82,14 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
 fn a_brand_over_a_list_counts_its_items() {
     assert_eq!(
         batch_dart::dart_definition(),
-        "class Batch { const Batch(this.value); final List<String> value; factory \
+        "class Batch { const Batch._(this.value); final List<String> value; factory \
+         Batch.of(List<String> value) { final read = Batch._(value); final violations = \
+         read.validate(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
+         ')); return read; } factory \
          Batch.fromJson(dynamic json) { final read = Batch.fromJsonUnjudged(json); final \
          violations = read.validate(); if (violations.isNotEmpty) throw \
          FormatException(violations.join('; ')); return read; } factory \
-         Batch.fromJsonUnjudged(dynamic json) => Batch((json as List<dynamic>).indexed.map((e) => \
+         Batch.fromJsonUnjudged(dynamic json) => Batch._((json as List<dynamic>).indexed.map((e) => \
          _readAt(null, e.$1, () => e.$2 as String)).toList()); static Read \
          _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try { \
          return read(); } catch (refused) { if (object != null && !object.containsKey(key)) throw \
