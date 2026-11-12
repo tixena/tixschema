@@ -12,8 +12,8 @@ struct Address {
     street: String,
 }
 
-/// `u64`/`usize` are the whole point of this sweep, so the item is gated out entirely when the
-/// Swift or Kotlin target refuses those widths, rather than swapped to a signed width.
+/// `u64` is part of this sweep, so the item is gated out entirely when the Swift or Kotlin target
+/// refuses that width, rather than swapped to a signed width.
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]

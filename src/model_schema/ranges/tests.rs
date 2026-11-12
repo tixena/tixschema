@@ -351,23 +351,15 @@ fn a_bound_key_on_a_range_field_is_refused_naming_the_field() {
     }
 }
 
-/// With Swift or Kotlin on, a `usize` is refused wherever it is written, a range's bound among
-/// them: the reproduction's `Range<usize>` is refused for its width alone, and nothing else is
-/// refused of it.
+/// With Swift or Kotlin on, the reproduction's `Range<usize>` earns no refusal.
 #[cfg(any(feature = "swift", feature = "kotlin"))]
 #[test]
-fn a_range_of_usize_is_refused_for_its_width_alone() {
+fn a_range_of_usize_earns_no_refusal_under_swift_or_kotlin() {
     let messages = refusals(expanded(
         "#[derive(Serialize, Deserialize)] pub struct Text { pub span: Range<usize>, pub value: \
          String }",
     ));
-    assert_ne!(messages, Vec::<String>::new());
-    assert!(
-        messages
-            .iter()
-            .all(|message| message.contains("`usize` has no")),
-        "{messages:?}"
-    );
+    assert_eq!(messages, Vec::<String>::new());
 }
 
 #[cfg(feature = "serde")]

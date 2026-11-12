@@ -172,3 +172,15 @@ mod unwired;
 #[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/renamed_enums.rs"]
 mod renamed_enums;
+
+/// A `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/usize_positions_models.rs"]
+mod usize_positions_models;
+
+/// What the Kotlin emitter writes for a `usize` in each place a member holds one.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "kotlin_tests/usize_positions.rs"]
+mod usize_positions;

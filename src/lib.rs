@@ -782,12 +782,12 @@ fn main() {
 //!
 //! - **Zod 4 only.** The schemas use the Zod 4 API (`z.strictObject`, `z.codec`, `.prefault`,
 //!   `.check`), which Zod 3 does not have.
-//! - **`u64` and `usize` stop the build under `swift` or `kotlin`**, in every `#[model_schema]`
-//!   type of the crate and at any depth: `Vec<u64>`, a map's values, a tuple, a generic argument.
-//!   The `mobile` set and `--all-features` turn both features on. Use `i64`, or `u32` where the
-//!   range allows. A member serde neither writes nor reads, under `#[serde(skip)]` or under
-//!   `skip_serializing` and `skip_deserializing` together, and every member of a variant serde
-//!   skips, is not refused.
+//! - **`u64` stops the build under `swift` or `kotlin`**, in every `#[model_schema]` type of the
+//!   crate and at any depth: `Vec<u64>`, a map's values, a tuple, a generic argument. The `mobile`
+//!   set and `--all-features` turn both features on. Use `i64`, or `u32` where the range allows.
+//!   A `usize` builds: it is a `UInt64` in Swift and a `ULong` in Kotlin. A member serde neither
+//!   writes nor reads, under `#[serde(skip)]` or under `skip_serializing` and `skip_deserializing`
+//!   together, and every member of a variant serde skips, is not refused.
 //! - **`u64` and `i64` are `bigint` in TypeScript.** Zod reads them through `z.codec`. A plain
 //!   `JSON.parse` rounds a value above `2^53 - 1`, and the schema then refuses it. As a map's key,
 //!   an `i64` or a `u64` is a `number` in TypeScript and `z.number().int()` in Zod.
@@ -871,7 +871,7 @@ fn main() {
 //!   and [arky Frontmatter Conversions](https://github.com/tixena/tixschema/blob/master/docs/guide/arky.md#arky-frontmatter-conversions-arky).
 //! - Setup: [Feature Flags](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#feature-flags),
 //!   [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#generating-typescript-files),
-//!   [`u64` or `usize` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-or-usize-under-swift-or-kotlin)
+//!   [`u64` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-under-swift-or-kotlin)
 //!   and [Error Handling and Troubleshooting](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#error-handling--troubleshooting).
 
 mod bound_message;
@@ -1258,8 +1258,8 @@ export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
 ///   TypeScript, and Zod holds an integer to its type's range.
 /// - `u64` and `i64` are `bigint` in TypeScript, read in Zod through `z.codec`, and
 ///   `{ "type": "integer" }` in JSON Schema. As a map's key they are a TypeScript `number`, and
-///   Zod keys the record by each key's digits. `u64` and `usize` are refused under `swift` or
-///   `kotlin`.
+///   Zod keys the record by each key's digits. `u64` is refused under `swift` or `kotlin`, where a
+///   `usize` is a `UInt64` in Swift and a `ULong` in Kotlin.
 /// - `i128`, `u128`, `f16` and `f128` are refused at expansion. A `serde_json::Value` or
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.
@@ -1445,8 +1445,8 @@ export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
 ///   `#[model_schema_prop(nullable)]` where the wire carries `null`.
 /// - **`E0433`, a `{type}_schema` module that cannot be found**: a type another model names is
 ///   declared inside a function body. Declare it in a module.
-/// - **`u64` or `usize` under `swift` or `kotlin`**: refused at the field, at any depth. Use `i64`,
-///   or `u32` where the range allows.
+/// - **`u64` under `swift` or `kotlin`**: refused at the field, at any depth. Use `i64`, or `u32`
+///   where the range allows.
 /// - **A function of yours named `validate` or `model_schema_read_unjudged`** on a type that
 ///   publishes one: a duplicate definition (`E0592`). serde's `remote`, `from`, `try_from` and
 ///   `into` are refused on a type whose `Deserialize` the macro writes.

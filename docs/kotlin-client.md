@@ -314,7 +314,10 @@ the consumer's view; this is what a change has to keep.
   forms': `texts::found` walks them (`Annotated::numbers` names the serializer where the plugin
   reads, `kotlin_serializer_expr` composes it where the emitter writes the read), and a map's key
   is the one place it is skipped (`texts::found`'s `key` flag, `key_serializer_expr`), since JSON
-  writes a number key between quotes. `u64` and `usize` are refused before they are read.
+  writes a number key between quotes. A `usize` is a `ULong`, read through `Primitive::Usize` as
+  a `u32` is read as a `UInt`, its bound and its `literal` compared with a `uL` literal
+  (`Number::UnsignedLong` in `validate.rs`); a number outside a `ULong` is refused in kotlinx's
+  words, `Failed to parse type 'ULong' for input '-1'`. A `u64` is refused before it is read.
   `tests/service_schema_emitted_client_tests/run_kotlin_refusals.rs` reads a quoted value in every
   place beside serde's refusal, and `run_kotlin_wide_integers.rs` pins the quoted `i64` refused.
 - **A fixed array is read from an array of its length alone**, at each level, by

@@ -28,8 +28,8 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
 /// The Swift integers Foundation refuses a number outside the range of in an error no coding path
 /// reaches, and reads a number written with a fraction or an exponent into: [`fitted`] reads them
 /// through [`FITTED`].
-const FIXED_WIDTH: [&str; 8] = [
-    "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32",
+const FIXED_WIDTH: [&str; 9] = [
+    "Int", "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
 ];
 
 /// What a type whose reads [`fitted`] wrote holds: `SwiftSchemaFit`, which reads one value and
@@ -66,7 +66,8 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      leaf.hasPrefix(\"Optional<\"), leaf.hasSuffix(\">\") { leaf = leaf.dropFirst(9).dropLast() \
      }; return [\"Int\": \
      \"isize\", \"Int8\": \"i8\", \"Int16\": \"i16\", \"Int32\": \"i32\", \"Int64\": \"i64\", \
-     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\"][String(leaf)] ?? named }; \
+     \"UInt8\": \"u8\", \"UInt16\": \"u16\", \"UInt32\": \"u32\", \"UInt64\": \"usize\"] \
+     [String(leaf)] ?? named }; \
      private static func floating(_ number: Double) -> String { var spelled = \
      number.description; if let mark = spelled.firstIndex(of: \"e\") { let exponent = \
      spelled[spelled.index(after: mark)...]; let figures = exponent.drop { \"+-0\".contains($0) }; \
