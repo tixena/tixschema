@@ -196,12 +196,12 @@ impl Locals {
         ["listed", "items"].map(|stem| numbered(stem, nth))
     }
 
-    /// The container the next map is read from, what its entries are gathered in, the key of one
-    /// entry, and that key as a number.
-    fn next_map(&mut self) -> [String; 4] {
+    /// The container the next map is read from, what its entries are gathered in, and the key of
+    /// one entry.
+    fn next_map(&mut self) -> [String; 3] {
         let nth = self.mapped;
         self.mapped += 1;
-        ["keyed", "entries", "entry", "number"].map(|stem| numbered(stem, nth))
+        ["keyed", "entries", "entry"].map(|stem| numbered(stem, nth))
     }
 }
 
@@ -1015,7 +1015,7 @@ pub(super) fn counted(
             sink(&items)
         );
     }
-    let FieldDefType::Map(key, value) = &def.field_type else {
+    let FieldDefType::Map(_, value) = &def.field_type else {
         return shaped.read_whole(&shaped.real_type(), stem, source, sink);
     };
     let value_hint = format!("{}Value", shaped.hint);
@@ -1027,7 +1027,7 @@ pub(super) fn counted(
         shape: value_shape,
     };
     read_entries(
-        (key, value),
+        value,
         &shaped.real_type(),
         source,
         false,
@@ -1070,7 +1070,7 @@ fn map_unjudged(
     }
     let value_hint = format!("{hint}Value");
     read_entries(
-        (key, value),
+        value,
         &written_type(def, hint),
         source,
         false,
@@ -1091,12 +1091,12 @@ pub(super) fn store_entry(entries: &str, key: &str, held: &str, value: &FieldDef
     }
 }
 
-/// The statements that read from `source` the entries of a map whose `key` Swift keys natively
+/// The statements that read from `source` the entries of a map Swift keys natively by text
 /// into a `written`, each value read under its key by `value`, and hand the map to `sink`. Where
 /// `skips_taken`, no entry is read under a key the types around the holder took: a map flattened
 /// beside another member is refused, so no member of the holder takes one.
 pub(super) fn read_entries(
-    (key, entry_value): (&FieldDef, &FieldDef),
+    entry_value: &FieldDef,
     written: &str,
     source: &Source,
     skips_taken: bool,
@@ -1104,12 +1104,8 @@ pub(super) fn read_entries(
     sink: &dyn Fn(&str) -> String,
     locals: &mut Locals,
 ) -> String {
-    let [keyed, entries, entry, number] = locals.next_map();
-    let (refusal, named) = if matches!(map_keys(key), MapKeys::Whole) {
-        (whole_key(&keyed, &entry, &number), number)
-    } else {
-        (String::new(), format!("{entry}.stringValue"))
-    };
+    let [keyed, entries, entry] = locals.next_map();
+    let named = format!("{entry}.stringValue");
     let under = Source::Keyed {
         container: keyed.clone(),
         key: entry.clone(),
@@ -1127,7 +1123,7 @@ pub(super) fn read_entries(
     };
     format!(
         "let {keyed} = try {}; var {entries}: {written} = [:]; \
-         for {entry} in {keyed}.allKeys{skipped} {{ {refusal}{read} }}; {}",
+         for {entry} in {keyed}.allKeys{skipped} {{ {read} }}; {}",
         source.keyed(),
         sink(&entries)
     )
@@ -1140,17 +1136,6 @@ fn numbered(stem: &str, nth: usize) -> String {
     } else {
         format!("{stem}{nth}")
     }
-}
-
-/// The statement that reads the key `entry` of the container `keyed` as `number`, and refuses one
-/// that is no number as the read of a `[Int: Value]` does.
-fn whole_key(keyed: &str, entry: &str, number: &str) -> String {
-    format!(
-        "guard let {number} = Int({entry}.stringValue) else {{ \
-         throw DecodingError.typeMismatch(Int.self, DecodingError.Context(\
-         codingPath: {keyed}.codingPath + [{entry}], \
-         debugDescription: \"Expected Int key but found String key instead.\")) }}; "
-    )
 }
 
 /// The Swift type the emitter declares a value of `def` as.
