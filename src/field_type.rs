@@ -3235,7 +3235,7 @@ fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
     });
     format!(
         "z.unknown().check((ctx) => {{ if (typeof ctx.value !== \"object\" || ctx.value === null \
-         || Array.isArray(ctx.value)) return; {held}for (const [text, member] of Object.entries(ctx.value)) {{ const \
+         || Array.isArray(ctx.value)) return; {held}{walked} {{ const \
          [number = \"\", sign = \"\", whole, fraction, exponent] = \
          /^(-?)(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?/.exec(text) ?? []; const after = \
          text.slice(sign.length + (whole ?? \"\").length); const float = fraction !== undefined || \
@@ -3246,6 +3246,11 @@ fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
          ?? \"\").length)) && exponent === undefined)) {{ {invalid} }} if (float && \
          !Number.isFinite(Number(number))) {{ {beyond} }} {integer}if (number.length < \
          text.length) {{ {trailing} }} {collect}}} {finish}}}).pipe({record})",
+        walked = if float_key {
+            "for (const [text, member] of Object.entries(ctx.value))"
+        } else {
+            "for (const text of Object.keys(ctx.value))"
+        },
         held = if float_key {
             "const read: Record<string, unknown> = {}; "
         } else {
