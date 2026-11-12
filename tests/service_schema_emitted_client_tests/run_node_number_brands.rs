@@ -127,17 +127,17 @@ class _Recorder implements WharfClientServiceHttpTransport, WharfFilingClientSer
 
 void main() async {
   final recorder = _Recorder();
-  final ticket = WharfTicketNumber(9007199254740993);
+  final ticket = WharfTicketNumber.of(9007199254740993);
   await WharfClientServiceHttpClient(recorder).find(FindRequest(
-    berth: WharfBerthNumber(7),
+    berth: WharfBerthNumber.of(7),
     ticket: ticket,
-    label: WharfBerthLabel('007'),
-    since: WharfBerthAliasType(WharfBerthNumber(9)),
-    berths: [WharfBerthNumber(1), WharfBerthNumber(2)],
+    label: WharfBerthLabel.of('007'),
+    since: WharfBerthAliasType(WharfBerthNumber.of(9)),
+    berths: [WharfBerthNumber.of(1), WharfBerthNumber.of(2)],
   ));
-  final moored = await WharfClientServiceHttpClient(recorder).moor('n', WharfBerthNumber(7), ticket, WharfBerthLabel('42'));
+  final moored = await WharfClientServiceHttpClient(recorder).moor('n', WharfBerthNumber.of(7), ticket, WharfBerthLabel.of('42'));
   await WharfFilingClientServiceHttpClient(recorder).file(
-    FileRequest(berth: WharfBerthNumber(7), ticket: ticket, label: WharfBerthLabel('007')),
+    FileRequest(berth: WharfBerthNumber.of(7), ticket: ticket, label: WharfBerthLabel.of('007')),
     <int>[1],
   );
   for (final sent in recorder.sent) {

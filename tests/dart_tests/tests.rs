@@ -637,9 +637,9 @@ fn test_untagged_wire_shape_matches_serde() {
 fn test_branded_newtype_wraps_the_inner_value() {
     let dart = sku_dart::dart_definition();
     assert!(dart.contains("class Sku {"));
-    assert!(dart.contains("const Sku(this.value);"));
+    assert!(dart.contains("const Sku._(this.value);"));
     assert!(dart.contains("final String value;"));
-    assert!(dart.contains("factory Sku.fromJsonUnjudged(dynamic json) => Sku(json as String);"));
+    assert!(dart.contains("factory Sku.fromJsonUnjudged(dynamic json) => Sku._(json as String);"));
     assert!(dart.contains("dynamic toJson() => value;"));
 }
 

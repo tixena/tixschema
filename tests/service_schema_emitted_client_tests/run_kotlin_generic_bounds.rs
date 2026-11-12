@@ -220,42 +220,42 @@ fn rows() -> Vec<Row> {
     };
     vec![
         Row {
-            dart: "Wrapped<Tag<String>>(Tag<String>('ab')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('ab')).validate()",
             kotlin: "Wrapped<Tag<String>>(Tag(\"ab\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"ab\")).validate()",
             name: "the default, below the bound",
             rust: Wrapped::new(Tag::new("ab".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<String>>(Tag<String>('abcdef')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('abcdef')).validate()",
             kotlin: "Wrapped<Tag<String>>(Tag(\"abcdef\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abcdef\")).validate()",
             name: "the default, past the bound",
             rust: Wrapped::new(Tag::new("abcdef".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<String>>(Tag<String>('abc')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('abc')).validate()",
             kotlin: "Wrapped<Tag<String>>(Tag(\"abc\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abc\")).validate()",
             name: "the default, within the bound",
             rust: Wrapped::new(Tag::new("abc".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<int>>(Tag<int>(1)).validate()",
+            dart: "Wrapped<Tag<int>>._(Tag<int>._(1)).validate()",
             kotlin: "Wrapped<Tag<UInt>>(Tag(1u)).validate()",
             swift: "Wrapped<Tag<UInt32>>(value: Tag<UInt32>(value: 1)).validate()",
             name: "another filling of the class",
             rust: Wrapped::new(Tag::new(1_u32).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<String>('a').validate()",
+            dart: "Wrapped<String>._('a').validate()",
             kotlin: "Wrapped<String>(\"a\").validate()",
             swift: "Wrapped<String>(value: \"a\").validate()",
             name: "another type",
             rust: Wrapped::new("a".to_owned()).map(|_| ()),
         },
         Row {
-            dart: "Plain<String>('ab').validate()",
+            dart: "Plain<String>._('ab').validate()",
             kotlin: "Plain<String>(\"ab\").validate()",
             swift: "Plain<String>(value: \"ab\").validate()",
             name: "a default written with no argument",

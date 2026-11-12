@@ -295,6 +295,29 @@ fn pair(named: &str, kind: &str, taken: &str, converters: &str, handed: &str) ->
     )
 }
 
+/// The pair of a brand: `of` builds it through its rules, then the judged read and the unjudged
+/// one follow.
+fn sealed_pair(
+    named: &str,
+    generics: &str,
+    kind: &str,
+    taken: &str,
+    converters: &str,
+    handed: &str,
+) -> String {
+    format!(
+        "factory {named}.of({value} value) {{ final read = {named}{generics}._(value); {JUDGED} \
+         factory {named}.fromJson({kind} json{converters}) {{ final read = \
+         {named}.fromJsonUnjudged(json{handed}); {JUDGED} factory \
+         {named}.fromJsonUnjudged({kind} {taken}{converters}) ",
+        value = if generics.is_empty() {
+            "String"
+        } else {
+            "IdType"
+        },
+    )
+}
+
 /// The pair of a type with no parameter.
 fn plain_pair(named: &str, kind: &str, taken: &str) -> String {
     pair(named, kind, taken, "", "")
@@ -549,9 +572,9 @@ fn a_brand_calls_its_functions_in_the_order_written() {
     assert_written(
         &label_dart::dart_definition(),
         &format!(
-            "{}{{ final json = trimmed(unwrapped(payload)); return Label(json as String); }} \
+            "{}{{ final json = trimmed(unwrapped(payload)); return Label._(json as String); }} \
              dynamic toJson() => value;",
-            plain_pair("Label", "dynamic", "payload")
+            sealed_pair("Label", "", "dynamic", "payload", "", "")
         ),
     );
 }
@@ -564,10 +587,11 @@ fn a_type_with_a_parameter_calls_its_function_at_every_filling() {
     assert_written(
         &tag_dart::dart_definition(),
         &format!(
-            "{}{{ final json = unwrapped(payload); return Tag(idTypeFromJson(json)); }} dynamic \
+            "{}{{ final json = unwrapped(payload); return Tag._(idTypeFromJson(json)); }} dynamic \
              toJson(",
-            pair(
+            sealed_pair(
                 "Tag",
+                "<IdType>",
                 "dynamic",
                 "payload",
                 id_converter,

@@ -194,12 +194,24 @@ enum VariantPayload {
 
 /// What the class [`value_wrapper_tokens`] writes holds as its `value`.
 enum Held<'held> {
+    /// A brand's value, read and written as its type is, which only `of` and the reads build: its
+    /// constructor is private to the library.
+    Brand(&'held FieldDef),
     /// The slots of a tuple struct that is no brand and declares no slot or several, read from and
     /// written as the array serde writes them in, an empty one for a struct of no slot.
     Slots(&'held [FieldDef]),
-    /// A value, read and written as its type is: a brand's, an alias's, and the one slot of a
-    /// tuple struct that declares one, through the functions it names.
+    /// A value, read and written as its type is: an alias's, and the one slot of a tuple struct
+    /// that declares one, through the functions it names.
     Value(&'held FieldDef),
+}
+
+impl<'held> Held<'held> {
+    const fn value(&self) -> Option<&'held FieldDef> {
+        match self {
+            Self::Brand(value) | Self::Value(value) => Some(value),
+            Self::Slots(_) => None,
+        }
+    }
 }
 
 /// The generic converter parameters a `fromJson`/`toJson` pair threads through, beyond its own
@@ -4457,7 +4469,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
             &item_struct.ident,
             &item_struct.generics,
             args.name_override,
-            &Held::Value(&value_field),
+            &Held::Brand(&value_field),
             Read::Judged,
             &Corrects::of(args.preprocess),
             &brand_validate(&value_field, args),
@@ -4570,7 +4582,8 @@ fn brand_value_field(
 /// tuple struct, or a type alias. Each publishes a class wrapping `value`, whose reads and
 /// `toJson` delegate to what `held` reads and writes, and whose `validate()` is `validate`.
 /// `read` is how a declared type the value holds is read, which is unjudged where `validate`
-/// runs it. The unjudged read calls what `corrects` names on the payload it takes.
+/// runs it. The unjudged read calls what `corrects` names on the payload it takes. A [`Held::Brand`]
+/// is built through `of`, which runs its rules.
 fn value_wrapper_tokens(
     ident: &Ident,
     generics: &syn::Generics,
@@ -4583,14 +4596,12 @@ fn value_wrapper_tokens(
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
     register_dart_name(&rust_ident, &export_name);
+    let sealed = matches!(held, Held::Brand(_));
     note_writes_an_object(&rust_ident, false);
-    note_reads_a_unit(
-        &rust_ident,
-        matches!(held, Held::Value(value_field) if reads_a_unit(value_field)),
-    );
+    note_reads_a_unit(&rust_ident, held.value().is_some_and(reads_a_unit));
     // A brand, a struct of one slot or an alias over an enum that writes a unit variant as its bare
     // name writes it so as well.
-    if let Held::Value(value) = held
+    if let Some(value) = held.value()
         && !value.is_list()
         && !value.is_optional()
         && writes_a_name(value)
@@ -4598,7 +4609,7 @@ fn value_wrapper_tokens(
         record_writes_a_name(&rust_ident);
     }
     // A value that reads one key alone is handed that key alone where it is flattened.
-    if let (Held::Value(value), []) = (held, corrects.own)
+    if let (Some(value), []) = (held.value(), corrects.own)
         && !value.is_optional()
         && let Taken::Only(keys) = taken_by(value)
     {
@@ -4614,24 +4625,40 @@ fn value_wrapper_tokens(
             tuple_decode(slots, &corrects.json, read),
             tuple_encode(slots, "value"),
         ),
-        Held::Value(value_field) => (
+        Held::Brand(value_field) | Held::Value(value_field) => (
             dart_typename(value_field),
             member_decode(value_field, &corrects.json, None, read),
             dart_encode_expr(value_field, "value", false),
         ),
     });
+    let (built, constructor, checked) = if sealed {
+        (
+            format!("{export_name}._"),
+            format!("const {export_name}._(this.value);"),
+            format!(
+                "factory {export_name}.of({value_ty} value) {} ",
+                judged_body(&format!("{export_name}{generic_params}._(value)"))
+            ),
+        )
+    } else {
+        (
+            export_name.clone(),
+            format!("const {export_name}(this.value);"),
+            String::new(),
+        )
+    };
     let unjudged = unjudged_read(
         corrects,
         "",
         decode.contains(corrects.json.as_str()),
-        &Answer::Value(format!("{export_name}({decode})")),
+        &Answer::Value(format!("{built}({decode})")),
     );
     let reads = with_read_at(
         read_pair(&export_name, "dynamic", &codec, &unjudged),
         called,
     );
     let body = format!(
-        "class {export_name}{generic_params} {{ const {export_name}(this.value); final {value_ty} value; \
+        "class {export_name}{generic_params} {{ {constructor} final {value_ty} value; {checked}\
          {reads} dynamic toJson({tp}) => {encode}; {validate} }}",
         tp = codec.to_json_params,
     );

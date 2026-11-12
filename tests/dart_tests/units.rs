@@ -59,7 +59,7 @@ fn a_brand_over_unit_reads_and_writes_null() {
     let nothing = probe_nothing_dart::dart_definition();
     for read in [
         format!(
-            "factory ProbeNothing.fromJsonUnjudged(dynamic json) => ProbeNothing({});",
+            "factory ProbeNothing.fromJsonUnjudged(dynamic json) => ProbeNothing._({});",
             unit_read("json")
         ),
         "dynamic toJson() => null;".to_owned(),
