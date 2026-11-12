@@ -380,7 +380,7 @@ fn the_zod_schema_parses_the_default_of_each_member_of_a_variant() {
     let docked = "dock: z.string().prefault(\"\")";
     let moored = "dock: z.string().prefault(\"north\")";
     let line = "line: z.string().min(1, { error: (issue) => `too short: minimum length is 1, got \
-                ${String(issue.input).length}` }).prefault(\"\")";
+                ${[...String(issue.input)].length}` }).prefault(\"\")";
     for schema in [
         Berthing::zod_schema(),
         ExternalBerthing::zod_schema(),

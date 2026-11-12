@@ -76,7 +76,7 @@ mod measured_through_the_inner_brand {
     #[test]
     fn the_zod_schema_checks_the_text_at_the_field() {
         let zod = CordHolder::zod_schema();
-        let short = "{ error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : String(issue.input).length}` }";
+        let short = "{ error: (issue) => `too short: minimum length is 3, got ${Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length}` }";
         assert!(
             zod.contains(&format!(
                 "  badge: Braid$Schema.check(z.minLength(3, {short})),\n"

@@ -318,7 +318,8 @@ mod a_length_through_a_name {
     #[cfg(feature = "zod")]
     #[test]
     fn the_zod_schema_counts_the_items_of_the_named_array() {
-        let said = "Array.isArray(issue.input) ? issue.input.length : String(issue.input).length";
+        let said =
+            "Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length";
         let article = Article::zod_schema();
         assert!(
             article.contains(&format!(
@@ -459,7 +460,8 @@ mod a_length_through_an_alias_of_an_index_set {
     #[cfg(all(feature = "serde", feature = "zod"))]
     #[test]
     fn the_zod_schema_counts_the_items() {
-        let said = "Array.isArray(issue.input) ? issue.input.length : String(issue.input).length";
+        let said =
+            "Array.isArray(issue.input) ? issue.input.length : [...String(issue.input)].length";
         let roster = Roster::zod_schema();
         assert!(
             roster.contains(&format!(

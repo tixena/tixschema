@@ -444,16 +444,19 @@ Sconce, long: passes
     assert_eq!(swift, expected);
 }
 
-/// A length is counted in Unicode code points: one for a precomposed letter, two for a letter and
-/// its combining mark, one for a character outside the Basic Multilingual Plane.
-#[test]
-fn a_length_is_counted_in_unicode_code_points() {
-    let read: Vec<(&str, String)> = [
+/// A string held to no length at all, in the four values that tell a byte, a UTF-16 unit and a
+/// code point apart, each held to what Rust's `validate()` answers.
+fn code_point_cases() -> Vec<Case> {
+    [
         ("a precomposed letter", "\u{e9}"),
         ("a letter and its combining mark", "e\u{301}"),
         (
             "a character outside the Basic Multilingual Plane",
             "\u{1f600}",
+        ),
+        (
+            "two characters outside the Basic Multilingual Plane",
+            "\u{1f600}\u{1f600}",
         ),
     ]
     .into_iter()
@@ -461,14 +464,18 @@ fn a_length_is_counted_in_unicode_code_points() {
         let held = Nameplate {
             engraved: engraved.to_owned(),
         };
-        (name, read_as("Nameplate", &held))
+        case(name, "Nameplate", &held, held.validate())
     })
-    .collect();
-    let Some(swift) = printed(&driver(&read)) else {
-        return;
-    };
+    .collect()
+}
+
+/// A length is counted in Unicode code points, as Rust counts it: the sentence is Rust's.
+#[test]
+fn a_length_is_counted_in_unicode_code_points() {
+    let cases = code_point_cases();
+    let expected = rust_report(&cases);
     assert_eq!(
-        swift,
+        expected,
         "\
 a precomposed letter: refused
     'engraved': too long: maximum length is 0, got 1
@@ -476,8 +483,14 @@ a letter and its combining mark: refused
     'engraved': too long: maximum length is 0, got 2
 a character outside the Basic Multilingual Plane: refused
     'engraved': too long: maximum length is 0, got 1
+two characters outside the Basic Multilingual Plane: refused
+    'engraved': too long: maximum length is 0, got 2
 "
     );
+    let Some(swift) = printed(&driver_of(&cases)) else {
+        return;
+    };
+    assert_eq!(swift, expected);
 }
 
 #[test]

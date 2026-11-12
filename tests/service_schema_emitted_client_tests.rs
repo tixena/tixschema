@@ -275,6 +275,11 @@ mod omitted_models;
 #[path = "service_schema_emitted_client_tests/run_node_serde_default.rs"]
 mod run_node_serde_default;
 
+/// A length on a string, read by the Zod schema under node as Rust's `validate()` reads it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_node_character_lengths.rs"]
+mod run_node_character_lengths;
+
 /// A std sequence other than `Vec`, read and written by the emitted Swift types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_sequences.rs"]

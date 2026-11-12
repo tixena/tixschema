@@ -718,7 +718,7 @@ mod a_key_on_an_alias_of_a_list {
             schema.contains(
                 "captions: CaptionsType$Schema.check(z.minLength(1, { error: (issue) => `too short: \
                  minimum length is 1, got ${Array.isArray(issue.input) ? issue.input.length : \
-                 String(issue.input).length}` })"
+                 [...String(issue.input)].length}` })"
             ),
             "{schema}"
         );

@@ -905,26 +905,29 @@ fn bound_rows() -> Vec<Row> {
     ]
 }
 
-/// A length is counted in Unicode code points: each of these marks is one.
+/// A length is counted in Unicode code points: the four values that tell a byte, a UTF-16 unit and
+/// a code point apart, each held to what Rust's `validate()` answers.
 fn code_point_rows() -> Vec<Row> {
-    let stamp = |mark: &str| Stamp {
-        mark: mark.to_owned(),
-    };
-    vec![
-        pinned("Stamp, an accented letter", "Stamp", &stamp("\u{e9}"), &[]),
-        pinned(
+    [
+        ("Stamp, an accented letter", "\u{e9}"),
+        ("Stamp, a letter and its combining accent", "e\u{301}"),
+        (
             "Stamp, a character outside the Basic Multilingual Plane",
-            "Stamp",
-            &stamp("\u{1f600}"),
-            &[],
+            "\u{1f600}",
         ),
-        pinned(
-            "Stamp, two accented letters",
-            "Stamp",
-            &stamp("\u{e9}\u{e9}"),
-            &["'mark': too long: maximum length is 1, got 2"],
+        (
+            "Stamp, two characters outside the Basic Multilingual Plane",
+            "\u{1f600}\u{1f600}",
         ),
     ]
+    .into_iter()
+    .map(|(name, mark)| {
+        let held = Stamp {
+            mark: mark.to_owned(),
+        };
+        row(name, "Stamp", &held, held.validate())
+    })
+    .collect()
 }
 
 fn depot() -> Depot {

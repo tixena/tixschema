@@ -91,11 +91,11 @@ fn a_report_with_no_field_to_name_names_none() {
 fn a_length_bound_reads_its_measure_off_the_issue() {
     assert_eq!(
         zod_error_arg(Bound::MinLength(3)),
-        "{ error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` }"
+        "{ error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }"
     );
     assert_eq!(
         zod_error_arg(Bound::MaxLength(50)),
-        "{ error: (issue) => `too long: maximum length is 50, got ${String(issue.input).length}` }"
+        "{ error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` }"
     );
 }
 

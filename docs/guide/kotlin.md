@@ -86,7 +86,7 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 | [`literal`](literals-and-type-names.md#literal-values) | a string, a number or a `Boolean` | `value != 214u`, `value != "fixed"`, `!value`: in the number's own type, and on each item of a list, under its index |
 | none | a `HashSet`, a `BTreeSet` or an `IndexSet` | `value.toSet().size != value.size`, ahead of the set's count: two equal items repeat one, and the message is [`repeats an item: a set holds each item once`](models.md#a-set-holds-each-item-once) |
 
-- **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. The Rust validator counts the bytes of the UTF-8 text (`len()`) and the Zod schema counts UTF-16 code units (`length`), so the three agree on ASCII text and can differ on any other.
+- **A length is counted in Unicode code points**, so `"é"` and a character outside the Basic Multilingual Plane each count one. Rust, Zod and the other clients count the same unit ([Field Validation](validation.md#string-constraints-minlength-maxlength-pattern)).
 - **A nullable member is measured only where it holds a value**: `spareLabel?.let { held -> ... }`.
 - **A number is compared in its own type.** An unsigned one is compared with an unsigned literal (`1u`), a `Float` with a `Float` (`0.5f`), a `Double` with a `Double`.
 - **A float is quoted back as Rust writes it.** Kotlin prints `150.0` and `2.5E8` where Rust prints `150` and `250000000`, so a type that bounds a float carries `kotlinSchemaShown`, which writes a whole float without `.0` and any float without an exponent.
