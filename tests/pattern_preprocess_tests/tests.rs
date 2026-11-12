@@ -477,7 +477,7 @@ fn test_a_slash_in_a_brand_pattern_escapes_the_zod_regex_delimiter() {
     #[model_schema(pattern = "^/[a-z]+$")]
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(transparent)]
-    pub struct SlashBrand(pub String);
+    pub struct SlashBrand(String);
 
     let schema = SlashBrand::zod_schema();
     assert!(
@@ -603,7 +603,7 @@ fn test_a_raw_newline_in_a_brand_pattern_escapes_for_the_zod_regex_literal() {
     #[model_schema(pattern = "^a\n[a-z]+$")]
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(transparent)]
-    pub struct NewlineBrand(pub String);
+    pub struct NewlineBrand(String);
 
     let schema = NewlineBrand::zod_schema();
     assert!(

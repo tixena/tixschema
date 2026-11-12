@@ -27,13 +27,13 @@ struct Plain {
 
 /// A generic brand.
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Wrapped<T>(T);
 
 /// A generic `transparent` struct with a named field.
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Sleeve<T> {
     held: T,
@@ -110,7 +110,7 @@ fn listing() -> Listing {
             items: vec!["a".to_owned()],
             total: 1,
         }],
-        wrapped: Wrapped("w".to_owned()),
+        wrapped: Wrapped::new("w".to_owned()).unwrap(),
     }
 }
 
@@ -296,7 +296,7 @@ fn a_generic_brand_is_read_as_the_value_it_holds() {
         Wrapped::<u32>::from_value_with(json!(7_i32), |_raw, _found| {
             wrapped_schema::Verdict::Reject
         }),
-        Ok(Wrapped(7))
+        Ok(Wrapped::new(7_u32).unwrap())
     );
 }
 
@@ -315,7 +315,7 @@ fn a_generic_transparent_struct_with_a_named_field_is_read_as_the_value_it_holds
         Sleeve::<u32>::from_value_with(json!(7_i32), |_raw, _found| {
             sleeve_schema::Verdict::Reject
         }),
-        Ok(Sleeve { held: 7 })
+        Ok(Sleeve::new(7).unwrap())
     );
 }
 

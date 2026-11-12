@@ -21,21 +21,21 @@ mod beside_the_tuple_form {
     #[serde(transparent)]
     pub struct NamedMarked {
         #[serde(skip)]
-        pub note: u8,
-        pub text: String,
+        note: u8,
+        text: String,
     }
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct NamedSlug {
-        pub text: String,
+        text: String,
     }
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct TupleSlug(pub String);
+    pub struct TupleSlug(String);
 
     /// What is written for the tuple form, under the names the named form is written with.
     #[cfg(any(
@@ -54,12 +54,10 @@ mod beside_the_tuple_form {
 
     #[test]
     fn serde_writes_and_reads_the_value_alone() {
-        let slug = NamedSlug {
-            text: "x".to_owned(),
-        };
+        let slug = NamedSlug::new("x".to_owned()).unwrap();
         assert_eq!(serde_json::to_value(&slug).unwrap(), serde_json::json!("x"));
         assert_eq!(
-            serde_json::to_value(TupleSlug("x".to_owned())).unwrap(),
+            serde_json::to_value(TupleSlug::new("x".to_owned()).unwrap()).unwrap(),
             serde_json::json!("x")
         );
         assert_eq!(
@@ -67,10 +65,7 @@ mod beside_the_tuple_form {
             slug
         );
         let holder = NamedHolder {
-            marked: NamedMarked {
-                note: 7,
-                text: "y".to_owned(),
-            },
+            marked: NamedMarked::new("y".to_owned()).unwrap(),
             slug,
         };
         assert_eq!(
@@ -155,9 +150,7 @@ mod beside_the_tuple_form {
     #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn it_is_displayed_as_the_value_it_holds() {
-        let slug = NamedSlug {
-            text: "x".to_owned(),
-        };
+        let slug = NamedSlug::new("x".to_owned()).unwrap();
         assert_eq!(slug.to_string(), "x");
     }
 }

@@ -257,7 +257,7 @@ pub enum Baggywrinkle {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Futtock(pub char);
+pub struct Futtock(char);
 
 /// A map keyed by a date under a key.
 #[model_schema(enable = ["jsonschema"])]

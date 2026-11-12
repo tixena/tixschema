@@ -116,7 +116,7 @@ pub struct Bayed {
 #[model_schema(no_display)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Wrap(pub Carton);
+pub struct Wrap(Carton);
 
 /// Another name for a carton.
 #[model_schema()]
@@ -181,13 +181,13 @@ pub struct Toted(pub Carton);
 #[model_schema(preprocess = ["unwrapped", "trimmed"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tagline(pub String);
+pub struct Tagline(String);
 
 /// A brand with a parameter.
 #[model_schema(default_types(IdType = String), preprocess = ["unwrapped"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Ticket<IdType>(pub IdType);
+pub struct Ticket<IdType>(IdType);
 
 /// A struct with a parameter.
 #[model_schema(default_types(CodeType = String), preprocess = ["unwrapped"])]
@@ -1080,7 +1080,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
     );
     assert_eq!(
         serde_json::from_value::<Wrap>(written).unwrap(),
-        Wrap(carton())
+        Wrap::new(carton()).unwrap()
     );
 }
 
@@ -1098,11 +1098,11 @@ fn every_struct_shape_of_this_file_is_read_by_serde_through_its_functions() {
     );
     assert_eq!(
         serde_json::from_value::<Tagline>(json!({ "payload": "  A  " })).unwrap(),
-        Tagline("A".to_owned())
+        Tagline::new("A".to_owned()).unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Ticket<u32>>(json!({ "payload": 7_u32 })).unwrap(),
-        Ticket(7)
+        Ticket::new(7_u32).unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Bin<u32>>(json!({

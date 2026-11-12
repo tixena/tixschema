@@ -11,7 +11,7 @@ mod held_by_another {
     #[model_schema(minLength = 2, check = ["upperCase"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct Tag(pub String);
+    pub struct Tag(String);
 
     #[model_schema(check = ["sealed"])]
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -30,7 +30,7 @@ mod held_by_another {
     }
 
     fn upper_case(value: &Tag) -> Result<(), Vec<String>> {
-        if value.0.chars().any(char::is_lowercase) {
+        if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a tag is upper case".to_owned()]);
         }
         Ok(())
@@ -53,13 +53,13 @@ mod held_by_another {
     #[test]
     fn a_brands_check_runs_after_its_bound_and_names_no_path() {
         assert_eq!(
-            Tag("a".to_owned()).validate().unwrap_err(),
+            Tag::new("a".to_owned()).map(|_| ()).unwrap_err(),
             [
                 "too short: minimum length is 2, got 1",
                 "a tag is upper case"
             ]
         );
-        assert_eq!(Tag("AB".to_owned()).validate(), Ok(()));
+        assert_eq!(Tag::new("AB".to_owned()).map(|_| ()), Ok(()));
     }
 
     #[test]
@@ -67,7 +67,10 @@ mod held_by_another {
         let held = Satchel {
             first_pouch: Pouch { open: true },
             pouch_list: vec![Pouch { open: false }, Pouch { open: true }],
-            pouch_tag: Tag("ab".to_owned()),
+            pouch_tag: Tag::model_schema_read_unjudged(
+                serde_json::to_value("ab".to_owned()).unwrap(),
+            )
+            .unwrap(),
         };
         assert_eq!(
             held.validate().unwrap_err(),

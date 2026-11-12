@@ -1,0 +1,11 @@
+error[E0616]: field `0` of struct `__tixschema_sealed_label_text_schema::LabelText` is private
+  --> tests/sealed_brand_refusals/edit_the_slot.rs:13:11
+   |
+13 |     label.0 = String::new();
+   |           ^ private field
+
+error[E0616]: field `0` of struct `__tixschema_sealed_label_text_schema::LabelText` is private
+  --> tests/sealed_brand_refusals/edit_the_slot.rs:14:32
+   |
+14 |     let _borrowed = &mut label.0;
+   |                                ^ private field

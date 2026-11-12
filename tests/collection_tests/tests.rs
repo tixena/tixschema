@@ -1855,9 +1855,9 @@ fn test_string_keyed_sibling_value_maps_typescript_generation() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_brand_keyed_maps_constructible() {
-    let key = CorrelationId("abc".to_owned());
+    let key = CorrelationId::new("abc".to_owned()).unwrap();
     let maps = BrandKeyedMaps {
-        chained: HashMap::from([(TraceId(key.clone()), 2)]),
+        chained: HashMap::from([(TraceId::new(key.clone()).unwrap(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
         samples: HashMap::from([(
@@ -1922,9 +1922,9 @@ fn test_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_brand_keyed_maps_match_the_serialized_form() {
-    let key = CorrelationId("abc".to_owned());
+    let key = CorrelationId::new("abc".to_owned()).unwrap();
     let maps = BrandKeyedMaps {
-        chained: HashMap::from([(TraceId(key.clone()), 2)]),
+        chained: HashMap::from([(TraceId::new(key.clone()).unwrap(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
         samples: HashMap::from([(
@@ -1962,7 +1962,7 @@ fn test_brand_keyed_maps_match_the_serialized_form() {
 fn test_alias_keyed_maps_constructible() {
     let key: SlotKey = "abc".to_owned();
     let maps = AliasKeyedMaps {
-        branded: HashMap::from([(CorrelationId(key.clone()), 4)]),
+        branded: HashMap::from([(CorrelationId::new(key.clone()).unwrap(), 4)]),
         chained: HashMap::from([(key.clone(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
@@ -2036,7 +2036,7 @@ fn test_alias_keyed_maps_name_the_alias_as_the_key_type() {
 fn test_alias_keyed_maps_match_the_serialized_form() {
     let key: SlotKey = "abc".to_owned();
     let maps = AliasKeyedMaps {
-        branded: HashMap::from([(CorrelationId(key.clone()), 4)]),
+        branded: HashMap::from([(CorrelationId::new(key.clone()).unwrap(), 4)]),
         chained: HashMap::from([(key.clone(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
@@ -2077,19 +2077,25 @@ fn test_alias_keyed_maps_match_the_serialized_form() {
 #[test]
 fn test_scalar_brand_keyed_maps_constructible() {
     let maps = ScalarBrandKeyedMaps {
-        by_enabled: HashMap::from([(Enabled(true), 4)]),
-        by_tick: HashMap::from([(Tick(7), 1)]),
-        chained: HashMap::from([(TickRef(Tick(7)), 2)]),
-        nested: HashMap::from([(Tick(7), HashMap::from([(Enabled(true), 3)]))]),
+        by_enabled: HashMap::from([(Enabled::new(true).unwrap(), 4)]),
+        by_tick: HashMap::from([(Tick::new(7_u32).unwrap(), 1)]),
+        chained: HashMap::from([(TickRef::new(Tick::new(7_u32).unwrap()).unwrap(), 2)]),
+        nested: HashMap::from([(
+            Tick::new(7_u32).unwrap(),
+            HashMap::from([(Enabled::new(true).unwrap(), 3)]),
+        )]),
         samples: HashMap::from([(
-            Tick(7),
+            Tick::new(7_u32).unwrap(),
             MetricSample {
                 label: "s".to_owned(),
             },
         )]),
     };
-    assert_eq!(maps.by_tick[&Tick(7)], 1);
-    assert_eq!(maps.nested[&Tick(7)][&Enabled(true)], 3);
+    assert_eq!(maps.by_tick[&Tick::new(7_u32).unwrap()], 1);
+    assert_eq!(
+        maps.nested[&Tick::new(7_u32).unwrap()][&Enabled::new(true).unwrap()],
+        3
+    );
 
     let twin = ScalarKeyedBrandTwin {
         by_enabled: HashMap::from([(true, 4)]),
@@ -2098,10 +2104,10 @@ fn test_scalar_brand_keyed_maps_constructible() {
         nested: HashMap::from([(7, HashMap::from([(true, 3)]))]),
         samples: HashMap::new(),
     };
-    assert_eq!(twin.by_tick[&7], maps.by_tick[&Tick(7)]);
+    assert_eq!(twin.by_tick[&7], maps.by_tick[&Tick::new(7_u32).unwrap()]);
 
     let enum_branded = EnumBrandKeyedMaps {
-        counts: HashMap::from([(SlotBrand(MetricSlot::Daily), 1)]),
+        counts: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
         samples: HashMap::new(),
     };
     let enum_twin = StringKeyedEnumBrandTwin {
@@ -2110,7 +2116,7 @@ fn test_scalar_brand_keyed_maps_constructible() {
     };
     assert_eq!(
         enum_twin.counts["Daily"],
-        enum_branded.counts[&SlotBrand(MetricSlot::Daily)]
+        enum_branded.counts[&SlotBrand::new(MetricSlot::Daily).unwrap()]
     );
 }
 
@@ -2119,12 +2125,12 @@ fn test_scalar_brand_keyed_maps_constructible() {
 fn test_chrono_brand_keyed_maps_constructible() {
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
     let maps = ChronoBrandKeyedMaps {
-        by_day: HashMap::from([(Day(day), 1)]),
+        by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
     };
     let twin = ChronoKeyedBrandTwin {
         by_day: HashMap::from([(day, 1)]),
     };
-    assert_eq!(twin.by_day[&day], maps.by_day[&Day(day)]);
+    assert_eq!(twin.by_day[&day], maps.by_day[&Day::new(day).unwrap()]);
 }
 
 /// The keys of a map keyed by an integer, as the JSON Schema names them: the text serde writes.
@@ -2199,12 +2205,15 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[test]
 fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
     let maps = ScalarBrandKeyedMaps {
-        by_enabled: HashMap::from([(Enabled(true), 4)]),
-        by_tick: HashMap::from([(Tick(7), 1)]),
-        chained: HashMap::from([(TickRef(Tick(7)), 2)]),
-        nested: HashMap::from([(Tick(7), HashMap::from([(Enabled(true), 3)]))]),
+        by_enabled: HashMap::from([(Enabled::new(true).unwrap(), 4)]),
+        by_tick: HashMap::from([(Tick::new(7_u32).unwrap(), 1)]),
+        chained: HashMap::from([(TickRef::new(Tick::new(7_u32).unwrap()).unwrap(), 2)]),
+        nested: HashMap::from([(
+            Tick::new(7_u32).unwrap(),
+            HashMap::from([(Enabled::new(true).unwrap(), 3)]),
+        )]),
         samples: HashMap::from([(
-            Tick(7),
+            Tick::new(7_u32).unwrap(),
             MetricSample {
                 label: "s".to_owned(),
             },
@@ -2261,9 +2270,9 @@ fn test_enum_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[test]
 fn test_enum_brand_keyed_maps_match_the_serialized_form() {
     let maps = EnumBrandKeyedMaps {
-        counts: HashMap::from([(SlotBrand(MetricSlot::Daily), 1)]),
+        counts: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
         samples: HashMap::from([(
-            SlotBrand(MetricSlot::Weekly),
+            SlotBrand::new(MetricSlot::Weekly).unwrap(),
             MetricSample {
                 label: "s".to_owned(),
             },
@@ -2287,7 +2296,7 @@ fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
 
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
     let maps = ChronoBrandKeyedMaps {
-        by_day: HashMap::from([(Day(day), 1)]),
+        by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
     assert_eq!(
@@ -2325,7 +2334,7 @@ fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
 fn test_scalar_alias_keyed_maps_constructible() {
     let tick: TickKey = 7;
     let maps = ScalarAliasKeyedMaps {
-        branded: HashMap::from([(Tick(tick), 4)]),
+        branded: HashMap::from([(Tick::new(tick).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(tick, 1)]),
         chained: HashMap::from([(tick, 2)]),
@@ -2341,7 +2350,7 @@ fn test_scalar_alias_keyed_maps_constructible() {
     assert_eq!(maps.nested[&tick][&true], 3);
 
     let twin = ScalarKeyedAliasTwin {
-        branded: HashMap::from([(Tick(7), 4)]),
+        branded: HashMap::from([(Tick::new(7_u32).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(7, 1)]),
         chained: HashMap::from([(7, 2)]),
@@ -2404,7 +2413,7 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
 fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
     let tick: TickKey = 7;
     let maps = ScalarAliasKeyedMaps {
-        branded: HashMap::from([(Tick(tick), 4)]),
+        branded: HashMap::from([(Tick::new(tick).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(tick, 1)]),
         chained: HashMap::from([(tick, 2)]),
@@ -2502,12 +2511,12 @@ fn test_chrono_alias_keyed_maps_name_the_alias_as_the_key_type() {
 #[cfg(feature = "serde")]
 fn bool_keyed_maps() -> BoolKeyedMaps {
     BoolKeyedMaps {
-        alias_of_brand: HashMap::from([(Enabled(true), 1)]),
+        alias_of_brand: HashMap::from([(Enabled::new(true).unwrap(), 1)]),
         aliased: HashMap::from([(true, 2)]),
         aliased_chain: HashMap::from([(true, 3)]),
         bare: HashMap::from([(true, 4), (false, 5)]),
-        branded: HashMap::from([(Enabled(false), 6)]),
-        branded_chain: HashMap::from([(EnabledRef(Enabled(true)), 7)]),
+        branded: HashMap::from([(Enabled::new(false).unwrap(), 6)]),
+        branded_chain: HashMap::from([(EnabledRef::new(Enabled::new(true).unwrap()).unwrap(), 7)]),
         listed: vec![HashMap::from([(false, 8)])],
         nested: HashMap::from([("outer".to_owned(), HashMap::from([(true, 9)]))]),
         optional: Some(HashMap::from([(true, 10)])),
@@ -2667,12 +2676,15 @@ fn test_bool_keyed_maps_describe_their_values_under_the_two_keys() {
 #[cfg(feature = "serde")]
 fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
     EnumeratedKeyedMaps {
-        alias_of_brand: HashMap::from([(SlotBrand(MetricSlot::Daily), 1)]),
+        alias_of_brand: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
         aliased: HashMap::from([(MetricSlot::Daily, 2)]),
         aliased_chain: HashMap::from([(MetricSlot::Weekly, 3)]),
         bare: HashMap::from([(MetricSlot::Daily, 4)]),
-        branded: HashMap::from([(SlotBrand(MetricSlot::Weekly), 5)]),
-        branded_chain: HashMap::from([(SlotBrandRef(SlotBrand(MetricSlot::Daily)), 6)]),
+        branded: HashMap::from([(SlotBrand::new(MetricSlot::Weekly).unwrap(), 5)]),
+        branded_chain: HashMap::from([(
+            SlotBrandRef::new(SlotBrand::new(MetricSlot::Daily).unwrap()).unwrap(),
+            6,
+        )]),
         forward: HashMap::from([(LaterSlot::First, 7)]),
         listed: vec![HashMap::from([(MetricSlot::Daily, 8)])],
         nested: HashMap::from([(MetricSlot::Daily, HashMap::from([(MetricSlot::Weekly, 9)]))]),
@@ -2837,12 +2849,12 @@ fn test_enumerated_keyed_maps_keep_the_document_that_admits_a_subset() {
 fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
     DateTimeKeyedMaps {
-        alias_of_brand: HashMap::from([(Stamp(stamp), 1)]),
+        alias_of_brand: HashMap::from([(Stamp::new(stamp).unwrap(), 1)]),
         aliased: HashMap::from([(stamp, 2)]),
         aliased_chain: HashMap::from([(stamp, 3)]),
         bare: HashMap::from([(stamp, 4)]),
-        branded: HashMap::from([(Stamp(stamp), 5)]),
-        branded_chain: HashMap::from([(StampRef(Stamp(stamp)), 6)]),
+        branded: HashMap::from([(Stamp::new(stamp).unwrap(), 5)]),
+        branded_chain: HashMap::from([(StampRef::new(Stamp::new(stamp).unwrap()).unwrap(), 6)]),
         listed: vec![HashMap::from([(stamp, 7)])],
         nested: HashMap::from([("outer".to_owned(), HashMap::from([(stamp, 8)]))]),
         optional: Some(HashMap::from([(stamp, 9)])),

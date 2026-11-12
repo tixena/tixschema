@@ -131,7 +131,7 @@ pub struct Tock(pub DateTime<Utc>, pub u8);
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Chimed(pub DateTime<Utc>);
+pub struct Chimed(DateTime<Utc>);
 
 /// A date under `as_number` in a variant of one slot, an optional one, and one of several slots,
 /// under no tag attribute.

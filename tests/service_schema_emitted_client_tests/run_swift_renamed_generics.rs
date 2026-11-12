@@ -141,7 +141,12 @@ fn struct_rows() -> Vec<Row> {
             "Twofold",
             &Diptych(owned("a"), 1),
         ),
-        both("a brand", "Shelfmark", "CallNumber", &Shelfmark(owned("a"))),
+        both(
+            "a brand",
+            "Shelfmark",
+            "CallNumber",
+            &Shelfmark::new(owned("a")).unwrap(),
+        ),
     ]
     .into_iter()
     .flatten()
@@ -238,7 +243,7 @@ fn holder_rows() -> Vec<Row> {
             folio: folio("c"),
             leaf: owned("d"),
         },
-        shelfmark: Shelfmark(owned("e")),
+        shelfmark: Shelfmark::new(owned("e")).unwrap(),
         spread: (owned("f"), 3),
         tagged_scroll: TaggedScroll::Bound(folio("g")),
         tome: tome(),
@@ -252,7 +257,7 @@ fn holder_rows() -> Vec<Row> {
         leaves: vec![owned("e")],
         margin: Some(owned("f")),
         scroll: Scroll::Paired(owned("g"), 3),
-        shelfmark: Shelfmark(owned("h")),
+        shelfmark: Shelfmark::new(owned("h")).unwrap(),
         spread: (owned("i"), 4),
         tagged_scroll: TaggedScroll::Unrolled {
             folio: folio("j"),

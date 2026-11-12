@@ -7,11 +7,11 @@ use tixschema::model_schema;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeBehind(pub Behind);
+pub struct SomeBehind(Behind);
 
 #[model_schema(no_display)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Behind(pub Vec<String>);
+pub struct Behind(Vec<String>);
 
 fn main() {}

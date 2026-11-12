@@ -49,7 +49,7 @@ pub enum Genre {
 #[model_schema(name = "BookNumber")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Isbn(pub String);
+pub struct Isbn(String);
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
@@ -104,7 +104,7 @@ fn each_model_is_written_as_serde_writes_it() {
         adjacent_scroll: AdjacentScroll::Sealed("a".to_owned()),
         diptych: Diptych("b".to_owned(), 1),
         scroll: Scroll::Paired("c".to_owned(), 2),
-        shelfmark: Shelfmark("d".to_owned()),
+        shelfmark: Shelfmark::new("d".to_owned()).unwrap(),
         spread: ("e".to_owned(), 3),
         tagged_scroll: TaggedScroll::Bound(folio("f")),
         tome: Tome {
@@ -304,7 +304,7 @@ fn an_item_that_declares_no_parameter_republishes_its_ident_as_it_did() {
     );
     let gathering: Gathering = vec!["a".to_owned()];
     assert_eq!(read_back(&gathering), r#"["a"]"#);
-    assert_eq!(read_back(&Isbn("a".to_owned())), r#""a""#);
+    assert_eq!(read_back(&Isbn::new("a".to_owned()).unwrap()), r#""a""#);
     assert_eq!(
         read_back(&Stanza {
             line: "a".to_owned()

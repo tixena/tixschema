@@ -300,7 +300,7 @@ impl ShelfClientService<()> for ShelfBackEnd {
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct MediaId(pub String);
+pub struct MediaId(String);
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -340,13 +340,13 @@ impl MediaClientService<()> for MediaBackEnd {
         req: MediaUpload,
     ) -> Result<(MediaUpload, MediaId), MediaError> {
         ready(()).await;
-        let id = MediaId(req.sha256.0.clone());
+        let id = MediaId::new(req.sha256.as_inner().clone()).unwrap();
         Ok((req, id))
     }
 
     async fn upload(&self, _ctx: &(), req: MediaUpload) -> Result<(), MediaError> {
         ready(()).await;
-        if req.sha256.0.is_empty() {
+        if req.sha256.as_inner().is_empty() {
             return Err(MediaError::Missing);
         }
         Ok(())
@@ -370,7 +370,7 @@ pub enum WindowError {
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct ConversationId(pub String);
+pub struct ConversationId(String);
 
 #[service_schema(transports = ["http_rest"])]
 pub trait ConversationClientService<Ctx> {
@@ -1394,16 +1394,17 @@ fn every_declared_type_is_constructible() {
     );
     assert_eq!(WindowError::NotFound, WindowError::NotFound);
     assert_eq!(
-        ConversationId("652f1a3b4c5d6e7f8a9b0c1d".to_owned())
-            .0
+        ConversationId::new("652f1a3b4c5d6e7f8a9b0c1d".to_owned())
+            .unwrap()
+            .as_inner()
             .len(),
         24
     );
     drop(ConversationBackEnd.window(&(), "652f1a3b4c5d6e7f8a9b0c1d".to_owned(), Some(10)));
-    drop(
-        ConversationBackEnd
-            .purge_conversation(&(), ConversationId("652f1a3b4c5d6e7f8a9b0c1d".to_owned())),
-    );
+    drop(ConversationBackEnd.purge_conversation(
+        &(),
+        ConversationId::new("652f1a3b4c5d6e7f8a9b0c1d".to_owned()).unwrap(),
+    ));
 }
 
 #[test]
@@ -1550,7 +1551,7 @@ fn the_pulse_backend_answers_alive() {
 fn the_media_backend_answers_every_operation() {
     let upload = |sha256: &str| MediaUpload {
         caption: "c".to_owned(),
-        sha256: MediaId(sha256.to_owned()),
+        sha256: MediaId::new(sha256.to_owned()).unwrap(),
     };
     assert_eq!(
         poll_once(MediaBackEnd.upload(&(), upload("abc123"))).unwrap(),
@@ -1562,7 +1563,7 @@ fn the_media_backend_answers_every_operation() {
     );
     assert_eq!(
         poll_once(MediaBackEnd.stat(&(), upload("abc123"))).unwrap(),
-        Ok((upload("abc123"), MediaId("abc123".to_owned())))
+        Ok((upload("abc123"), MediaId::new("abc123".to_owned()).unwrap()))
     );
 }
 

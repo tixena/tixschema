@@ -642,18 +642,18 @@ pub struct CarillonDeep {
 #[model_schema(enable = ["jsonschema"], check = ["withinScale"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct CarillonPitch(pub u32);
+pub struct CarillonPitch(u32);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct CarillonGauge(pub f64);
+pub struct CarillonGauge(f64);
 
 impl Eq for CarillonGauge {}
 
 impl Ord for CarillonGauge {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.total_cmp(&other.0)
+        self.as_inner().total_cmp(other.as_inner())
     }
 }
 
@@ -666,13 +666,13 @@ impl PartialOrd for CarillonGauge {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct CarillonSlim(pub f32);
+pub struct CarillonSlim(f32);
 
 impl Eq for CarillonSlim {}
 
 impl Ord for CarillonSlim {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.total_cmp(&other.0)
+        self.as_inner().total_cmp(other.as_inner())
     }
 }
 
@@ -685,12 +685,12 @@ impl PartialOrd for CarillonSlim {
 #[model_schema(enable = ["jsonschema"], check = ["audible"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct CarillonTone(pub String);
+pub struct CarillonTone(String);
 
 #[model_schema(enable = ["jsonschema"], check = ["loud"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct CarillonOuterTone(pub CarillonTone);
+pub struct CarillonOuterTone(CarillonTone);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -775,16 +775,19 @@ impl CarillonService<()> for Carillon {
 
 /// The check of [`CarillonPitch`]: a pitch within the twelve tones of the scale.
 fn within_scale(value: &CarillonPitch) -> Result<(), Vec<String>> {
-    if value.0 <= 12 {
+    if *value.as_inner() <= 12 {
         Ok(())
     } else {
-        Err(vec![format!("{} is outside of the scale", value.0)])
+        Err(vec![format!(
+            "{} is outside of the scale",
+            value.as_inner()
+        )])
     }
 }
 
 /// The check of [`CarillonTone`]: a tone that sounds.
 fn audible(value: &CarillonTone) -> Result<(), Vec<String>> {
-    if value.0 == "mute" {
+    if value.as_inner() == "mute" {
         Err(vec!["mute is silent".to_owned()])
     } else {
         Ok(())
@@ -793,7 +796,7 @@ fn audible(value: &CarillonTone) -> Result<(), Vec<String>> {
 
 /// The check of [`CarillonOuterTone`]: a tone louder than soft.
 fn loud(value: &CarillonOuterTone) -> Result<(), Vec<String>> {
-    if value.0.0 == "soft" {
+    if value.as_inner().as_inner() == "soft" {
         Err(vec!["soft is quiet".to_owned()])
     } else {
         Ok(())

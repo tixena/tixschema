@@ -242,7 +242,7 @@ fn a_check_on_a_type_alias_is_refused() {
 fn a_check_on_the_slot_of_a_brand_is_refused() {
     let found = refusals(expansion(
         "",
-        "#[serde(transparent)] pub struct Code(#[model_schema_prop(check = [\"upperCase\"])] pub \
+        "#[serde(transparent)] pub struct Code(#[model_schema_prop(check = [\"upperCase\"])] \
          String);",
     ));
     assert_eq!(found.len(), 1, "got: {found:?}");

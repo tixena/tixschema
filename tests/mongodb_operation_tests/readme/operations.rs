@@ -329,7 +329,7 @@ pub enum Shift {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash, Serialize)]
 #[serde(transparent)]
-pub struct Station(pub String);
+pub struct Station(String);
 
 /// Maps keyed by what serde writes as text, each stored as that text.
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -695,7 +695,7 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
         initials: HashMap::from([('m', "Moca".to_owned())]),
         names: HashMap::from([("Acme".to_owned(), "Moca".to_owned())]),
         shifts: HashMap::from([(Shift::Late, "Moca".to_owned())]),
-        stations: HashMap::from([(Station("north".to_owned()), "Moca".to_owned())]),
+        stations: HashMap::from([(Station::new("north".to_owned()).unwrap(), "Moca".to_owned())]),
     };
     let row = roster.mongo_written_row().unwrap();
     assert_eq!(

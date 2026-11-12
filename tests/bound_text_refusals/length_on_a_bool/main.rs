@@ -22,7 +22,7 @@ pub struct Version {
 #[model_schema(no_display)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Keywords(pub Vec<String>);
+pub struct Keywords(Vec<String>);
 
 #[model_schema()]
 #[derive(Debug, Serialize)]

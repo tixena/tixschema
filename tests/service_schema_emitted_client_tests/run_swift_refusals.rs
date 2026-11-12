@@ -432,7 +432,7 @@ pub struct Gauging(pub [u8; 2]);
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Squeezing(pub [u8; 2]);
+pub struct Squeezing([u8; 2]);
 
 /// A model with a rule, which the `validate()` of a holder walks.
 #[model_schema()]

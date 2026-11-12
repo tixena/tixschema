@@ -2044,12 +2044,12 @@ pub struct DeclaredBounded {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DeclaredLabel(pub String);
+pub struct DeclaredLabel(String);
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DeclaredPath(pub String);
+pub struct DeclaredPath(String);
 
 /// A date beside a boolean in an untagged enum, the date first: an input that is no date has to
 /// reach the member after it.
@@ -2123,7 +2123,7 @@ pub struct DeclaredExampled {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DeclaredExampledLabel(pub String);
+pub struct DeclaredExampledLabel(String);
 
 /// A generic struct that writes two.
 /// ```rust example
@@ -2146,7 +2146,7 @@ pub type DeclaredExampledPairAlias<IdType> = DeclaredExampledPair<IdType>;
 #[model_schema(minLength = 3)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DeclaredSlug(pub String);
+pub struct DeclaredSlug(String);
 
 /// A member that bounds a brand whose type declares a bound of its own.
 #[model_schema()]
@@ -2440,7 +2440,7 @@ pub struct DeclaredHatched(pub DeclaredHatch);
 #[model_schema(no_display)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DeclaredHatchMark(pub DeclaredHatch);
+pub struct DeclaredHatchMark(DeclaredHatch);
 
 /// [`DeclaredHatched`] flattened beside a member of its holder's own: serde writes a unit variant
 /// as an entry of its name over `null`.
@@ -3952,8 +3952,14 @@ fn type_check_a_bound_on_a_field_typed_with_a_brand_loads_and_parses() {
 #[test]
 fn type_check_a_member_bound_beside_a_brand_reports_under_zod_what_validate_reports() {
     let slugged = |slug: &str, spare: &str| DeclaredSlugged {
-        slug: DeclaredSlug(slug.to_owned()),
-        spare: DeclaredSlug(spare.to_owned()),
+        slug: DeclaredSlug::model_schema_read_unjudged(
+            serde_json::to_value(slug.to_owned()).unwrap(),
+        )
+        .unwrap(),
+        spare: DeclaredSlug::model_schema_read_unjudged(
+            serde_json::to_value(spare.to_owned()).unwrap(),
+        )
+        .unwrap(),
     };
     let validated: Vec<Vec<String>> = [("ab", "abc"), ("AB", "abc"), ("abc", "ab"), ("abc", "abc")]
         .iter()
@@ -4015,10 +4021,10 @@ fn an_alias_of_a_type_that_writes_none_carries_no_examples_in_json_schema() {
 
 #[test]
 fn type_check_every_schema_holds_its_examples_once_loaded() {
-    let aliased: DeclaredLabelRef = DeclaredLabel("a".to_owned());
-    assert_eq!(aliased.0, "a");
-    let exampled: DeclaredExampledLabelRef = DeclaredExampledLabel("a".to_owned());
-    assert_eq!(exampled.0, "a");
+    let aliased: DeclaredLabelRef = DeclaredLabel::new("a".to_owned()).unwrap();
+    assert_eq!(aliased.as_inner(), "a");
+    let exampled: DeclaredExampledLabelRef = DeclaredExampledLabel::new("a".to_owned()).unwrap();
+    assert_eq!(exampled.as_inner(), "a");
     let unwritten: DeclaredUnwrittenCount = 3;
     assert_eq!(unwritten, 3);
     let generic: DeclaredExampledPairAlias<String> = DeclaredExampledPair { id: "x".to_owned() };
@@ -4115,9 +4121,9 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
 
     let words = |count: usize| vec!["w".to_owned(); count];
     let poster = |slogans, mottos: Mottos, later| Poster {
-        slogans: Slogans(words(slogans)),
+        slogans: Slogans::new(words(slogans)).unwrap(),
         mottos,
-        later: LaterSlogans(words(later)),
+        later: LaterSlogans::new(words(later)).unwrap(),
     };
     let broken: Vec<Vec<String>> = vec![
         poster(1, words(1), 1).validate(),
@@ -4125,22 +4131,25 @@ fn type_check_a_length_on_a_name_of_a_list_counts_its_items() {
         poster(3, words(1), 1).validate(),
         poster(1, Vec::new(), 1).validate(),
         poster(1, words(1), 0).validate(),
-        SomeSlogans(Slogans(Vec::new())).validate(),
-        SomeSlogans(Slogans(words(1))).validate(),
+        SomeSlogans::new(Slogans::new(Vec::new()).unwrap()).map(|_| ()),
+        SomeSlogans::new(Slogans::new(words(1)).unwrap()).map(|_| ()),
         Billboard {
-            some: SomeSlogans(Slogans(words(3))),
+            some: SomeSlogans::new(Slogans::new(words(3)).unwrap()).unwrap(),
         }
         .validate(),
         Billboard {
-            some: SomeSlogans(Slogans(Vec::new())),
+            some: SomeSlogans::model_schema_read_unjudged(
+                serde_json::to_value(Slogans::new(Vec::new()).unwrap()).unwrap(),
+            )
+            .unwrap(),
         }
         .validate(),
         Billboard {
-            some: SomeSlogans(Slogans(words(1))),
+            some: SomeSlogans::new(Slogans::new(words(1)).unwrap()).unwrap(),
         }
         .validate(),
-        Carried(Vec::<String>::new()).validate(),
-        Carried(words(1)).validate(),
+        Carried::new(Vec::<String>::new()).map(|_| ()),
+        Carried::new(words(1)).map(|_| ()),
     ]
     .into_iter()
     .map(|answered| answered.err().unwrap_or_default())
@@ -4203,14 +4212,14 @@ fn type_check_a_length_on_an_alias_of_an_index_set_counts_its_items() {
     };
     let lineup = |ordered, some| Lineup {
         ordered: items(ordered),
-        some: SomeOrdered(items(some)),
+        some: SomeOrdered::new(items(some)).unwrap(),
     };
     let broken: Vec<Vec<String>> = vec![
         lineup(1, 1).validate(),
         lineup(0, 1).validate(),
         lineup(3, 1).validate(),
-        SomeOrdered(items(0)).validate(),
-        SomeOrdered(items(1)).validate(),
+        SomeOrdered::new(items(0)).map(|_| ()),
+        SomeOrdered::new(items(1)).map(|_| ()),
     ]
     .into_iter()
     .map(|answered| answered.err().unwrap_or_default())

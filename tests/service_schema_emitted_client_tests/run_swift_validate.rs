@@ -275,7 +275,10 @@ fn parcel(label: &str, codes: &[&str], fragile: &[&str]) -> Parcel {
 pub fn package(item_label: &str, parcel_code: &str) -> Package {
     Package {
         item_label: item_label.to_owned(),
-        parcel_code: Code(parcel_code.to_owned()),
+        parcel_code: Code::model_schema_read_unjudged(
+            serde_json::to_value(parcel_code.to_owned()).unwrap(),
+        )
+        .unwrap(),
     }
 }
 
@@ -422,7 +425,7 @@ Gauge, held: passes
 #[test]
 fn a_brand_over_a_brand_is_measured_on_its_text() {
     let sconce = |text: &str| Sconce {
-        candle: Candle(Wick(text.to_owned())),
+        candle: Candle::new(Wick::new(text.to_owned()).unwrap()).unwrap(),
     };
     let (short, long) = (sconce("a"), sconce("abc"));
     let cases = [
@@ -617,8 +620,11 @@ Ledger: refused
 #[test]
 fn a_bound_on_a_named_type_measures_the_string_it_holds() {
     let waybill = |later_code: &str, short_code: &str, titled: &str| Waybill {
-        later_code: LaterCode(later_code.to_owned()),
-        short_code: Code(short_code.to_owned()),
+        later_code: LaterCode::new(later_code.to_owned()).unwrap(),
+        short_code: Code::model_schema_read_unjudged(
+            serde_json::to_value(short_code.to_owned()).unwrap(),
+        )
+        .unwrap(),
         titled: Title::from(titled),
     };
     let broken = waybill("a", "abcd", "t");
@@ -661,12 +667,18 @@ Waybill, a code its own type refuses: refused
 
 #[test]
 fn a_brand_runs_its_bound_and_one_with_a_parameter_at_its_declared_default_alone() {
-    let short = Code("a".to_owned());
-    let long = Code("ab".to_owned());
-    let named = Docket("a".to_owned());
-    let kept = Docket("ab".to_owned());
-    let numbered = Docket(7_u32);
-    let sealed = SealedCode(Code("abcde".to_owned()));
+    let short =
+        Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap()).unwrap();
+    let long = Code::new("ab".to_owned()).unwrap();
+    let named =
+        Docket::<String>::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap();
+    let kept = Docket::new("ab".to_owned()).unwrap();
+    let numbered = Docket::new(7_u32).unwrap();
+    let sealed = SealedCode::model_schema_read_unjudged(
+        serde_json::to_value(Code::new("abcde".to_owned()).unwrap()).unwrap(),
+    )
+    .unwrap();
     let cases = [
         case("Code, one letter", "Code", &short, short.validate()),
         case("Code", "Code", &long, long.validate()),
@@ -801,10 +813,16 @@ fn counted_name_cases() -> Vec<Case> {
     };
     let (unfilled, filled) = (archived(&[]), archived(&["a"]));
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
-        slogans: Slogans(vec!["w".to_owned(); slogans]),
+        slogans: Slogans::new(vec!["w".to_owned(); slogans]).unwrap(),
         mottos: vec!["w".to_owned(); mottos],
-        some: SomeSlogans(Slogans(vec!["w".to_owned(); some])),
-        carried: Carried(vec!["w".to_owned(); carried]),
+        some: SomeSlogans::model_schema_read_unjudged(
+            serde_json::to_value(Slogans::new(vec!["w".to_owned(); some]).unwrap()).unwrap(),
+        )
+        .unwrap(),
+        carried: Carried::model_schema_read_unjudged(
+            serde_json::to_value(vec!["w".to_owned(); carried]).unwrap(),
+        )
+        .unwrap(),
     };
     let (poster_kept, empty, wide) = (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
     vec![
@@ -1175,7 +1193,8 @@ fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
     };
     let lineup = |queue: usize, some: usize| Lineup {
         queue: items(queue),
-        some: SomeQueue(items(some)),
+        some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(items(some)).unwrap())
+            .unwrap(),
     };
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
     let cases = [

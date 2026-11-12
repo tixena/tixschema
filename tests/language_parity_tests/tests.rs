@@ -9,7 +9,7 @@ mod declarations {
     #[model_schema(minLength = 3, pattern = "^[a-z][a-z0-9_-]+$")]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct CustomerId(pub String);
+    pub struct CustomerId(String);
 
     /// A bound two hops down, one of them flattened, named by the path the payload spells rather
     /// than by the field it was declared on.
@@ -443,8 +443,8 @@ fn a_length_over_non_ascii_text_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brands_two_bounds_read_the_same_in_both_languages() {
-    let rust = declarations::CustomerId("A!".to_owned())
-        .validate()
+    let rust = declarations::CustomerId::new("A!".to_owned())
+        .map(|_| ())
         .unwrap_err();
 
     assert_eq!(
@@ -474,7 +474,10 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
                 jti: "ok".to_owned(),
             },
         },
-        customer_id: declarations::CustomerId("A!".to_owned()),
+        customer_id: declarations::CustomerId::model_schema_read_unjudged(
+            serde_json::to_value("A!".to_owned()).unwrap(),
+        )
+        .unwrap(),
     };
 
     assert_eq!(
@@ -491,7 +494,7 @@ fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
         account: declarations::Account {
             claims: declarations::Claims { jti: String::new() },
         },
-        customer_id: declarations::CustomerId("acme".to_owned()),
+        customer_id: declarations::CustomerId::new("acme".to_owned()).unwrap(),
     };
     let rust = broken.validate().unwrap_err();
 

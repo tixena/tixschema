@@ -11,7 +11,7 @@ This rule, and the refusal of a variant that reads every object ahead of a varia
 #[model_schema(enable = ["jsonschema"], pattern = r"^\d{4}-\d{2}-\d{2}$")]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DateString(pub String);
+pub struct DateString(String);
 
 /// A date sample value: an ISO date string OR an epoch number.
 #[model_schema(enable = ["jsonschema"])]

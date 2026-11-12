@@ -73,8 +73,8 @@ pub struct Sounding<Stowed> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Landfall<Stowed> {
-    pub at: DateTime<Utc>,
-    pub marker: PhantomData<Stowed>,
+    at: DateTime<Utc>,
+    marker: PhantomData<Stowed>,
 }
 
 /// A date under `as_number`, beside the parameter. Compiled, and not read: serde writes it as
@@ -227,10 +227,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "a brand that declares a parameter",
             "Landfall<String>",
-            &Landfall::<String> {
-                at: first,
-                marker: PhantomData,
-            },
+            &Landfall::<String>::new(first).unwrap(),
         ),
         payload_row::<Sounding<String>>(
             "a date a function answers",

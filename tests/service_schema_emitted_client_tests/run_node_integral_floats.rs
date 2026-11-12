@@ -378,7 +378,7 @@ pub struct Gauge {
 #[model_schema(check = ["checkedReading"])]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Reading(pub f64);
+pub struct Reading(f64);
 
 /// Floats at each depth, under a function and a check of the type's own and a function of a
 /// member's.
@@ -475,7 +475,7 @@ fn checked_whole(value: &Plumbed) -> Result<(), Vec<String>> {
 
 /// The check of [`Reading`]: a reading is a number.
 fn checked_reading(value: &Reading) -> Result<(), Vec<String>> {
-    if value.0.is_nan() {
+    if value.as_inner().is_nan() {
         Err(vec!["a reading is a number".to_owned()])
     } else {
         Ok(())

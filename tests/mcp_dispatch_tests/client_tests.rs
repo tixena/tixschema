@@ -254,7 +254,7 @@ fn a_unit_success_a_wrapped_message_and_a_one_way_call_are_answered() {
         Ok(())
     );
     assert_eq!(
-        block_on(client.lookup(DocumentId("doc-1".to_owned()))),
+        block_on(client.lookup(DocumentId::new("doc-1".to_owned()).unwrap())),
         Ok(VersionResponse { version: 7 })
     );
     assert_eq!(

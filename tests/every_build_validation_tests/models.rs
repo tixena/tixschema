@@ -26,7 +26,7 @@ pub struct Pair(
 #[model_schema(minLength = 3)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Username(pub String);
+pub struct Username(String);
 
 /// An alias of the brand.
 #[cfg(feature = "serde")]

@@ -8,25 +8,28 @@ use tixschema::model_schema;
 #[model_schema(minLength = 2, pattern = "^[A-Z]+$")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slug(pub String);
+pub struct Slug(String);
 
 /// A brand with a parameter, whose string check is its declared default's.
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Tag<IdType>(pub IdType);
+pub struct Tag<IdType>(IdType);
 
 /// A brand over a list, whose lengths count its items.
 #[model_schema(no_display, minLength = 1, maxLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Batch(pub Vec<String>);
+pub struct Batch(Vec<String>);
 
 #[test]
 fn every_declared_brand_is_constructible() {
-    assert_eq!(Slug("AB".to_owned()).0, "AB");
-    assert_eq!(Tag(7_u32).0, 7);
-    assert_eq!(Batch(vec!["a".to_owned()]).0.len(), 1);
+    assert_eq!(Slug::new("AB".to_owned()).unwrap().as_inner(), "AB");
+    assert_eq!(*Tag::new(7_u32).unwrap().as_inner(), 7);
+    assert_eq!(
+        Batch::new(vec!["a".to_owned()]).unwrap().as_inner().len(),
+        1
+    );
 }
 
 /// The bounds are measured on the value the brand wraps, and no message names a place: whatever

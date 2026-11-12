@@ -21,10 +21,13 @@ pub struct UnitHolder {
 
 #[test]
 fn serde_writes_a_unit_as_null_and_refuses_an_empty_array() {
-    assert_eq!(serde_json::to_value(UnitBrand(())).unwrap(), json!(null));
+    assert_eq!(
+        serde_json::to_value(UnitBrand::new(()).unwrap()).unwrap(),
+        json!(null)
+    );
     assert_eq!(
         serde_json::from_value::<UnitBrand>(json!(null)).unwrap(),
-        UnitBrand(())
+        UnitBrand::new(()).unwrap()
     );
     assert_eq!(
         serde_json::from_value::<UnitBrand>(json!([]))
@@ -33,7 +36,7 @@ fn serde_writes_a_unit_as_null_and_refuses_an_empty_array() {
         "invalid type: sequence, expected unit"
     );
     let holder = UnitHolder {
-        branded: UnitBrand(()),
+        branded: UnitBrand::new(()).unwrap(),
         unit: (),
     };
     assert_eq!(

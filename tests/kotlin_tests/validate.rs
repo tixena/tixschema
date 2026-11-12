@@ -81,14 +81,14 @@ pub struct Later {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slug(pub String);
+pub struct Slug(String);
 
 /// A brand over a brand: it answers through the brand it holds.
 #[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Badge(pub Slug);
+pub struct Badge(Slug);
 
 #[cfg(feature = "serde")]
 #[model_schema()]
@@ -111,7 +111,7 @@ pub struct Entry {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct LateSlug(pub String);
+pub struct LateSlug(String);
 
 /// A variant of several slots under serde's own tagging.
 #[model_schema()]
@@ -228,10 +228,10 @@ fn every_fixture_is_written_as_serde_writes_it() {
     #[cfg(feature = "serde")]
     assert_eq!(
         serde_json::to_value((
-            Badge(Slug("b".to_owned())),
+            Badge::new(Slug::new("b".to_owned()).unwrap()).unwrap(),
             Entry {
-                late: LateSlug("l".to_owned()),
-                slug: Slug("s".to_owned()),
+                late: LateSlug::new("l".to_owned()).unwrap(),
+                slug: Slug::new("s".to_owned()).unwrap(),
                 titled,
             }
         ))
@@ -268,8 +268,8 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
     #[cfg(feature = "serde")]
     assert_eq!(
         Entry {
-            late: LateSlug("l".to_owned()),
-            slug: Slug("s".to_owned()),
+            late: LateSlug::new("l".to_owned()).unwrap(),
+            slug: Slug::new("s".to_owned()).unwrap(),
             titled: "t".to_owned(),
         }
         .validate()

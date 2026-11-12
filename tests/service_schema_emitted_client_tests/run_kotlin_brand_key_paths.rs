@@ -72,26 +72,26 @@ fun <T> said(at: String, serializer: KSerializer<T>, payload: String) {
 #[model_schema(check = ["audible"])]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct KeyedTone(pub String);
+pub struct KeyedTone(String);
 
 /// A brand over the brand over a text a map is keyed by.
 #[model_schema(check = ["loud"])]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct OuterTone(pub KeyedTone);
+pub struct OuterTone(KeyedTone);
 
 /// A brand over a number a map is keyed by.
 #[model_schema(check = ["inScale"])]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct KeyedPitch(pub u32);
+pub struct KeyedPitch(u32);
 
 /// A brand over a date a map is keyed by.
 #[cfg(feature = "chrono")]
 #[model_schema(check = ["workday"])]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct KeyedDay(pub chrono::NaiveDate);
+pub struct KeyedDay(chrono::NaiveDate);
 
 /// A map keyed by the brand over a number, and one keyed by the brand over a text.
 #[model_schema()]
@@ -127,7 +127,7 @@ struct Row {
 
 /// The check of [`KeyedTone`]: a tone that sounds.
 fn audible(value: &KeyedTone) -> Result<(), Vec<String>> {
-    if value.0 == "mute" {
+    if value.as_inner() == "mute" {
         Err(vec!["mute is silent".to_owned()])
     } else {
         Ok(())
@@ -136,7 +136,7 @@ fn audible(value: &KeyedTone) -> Result<(), Vec<String>> {
 
 /// The check of [`OuterTone`]: a tone louder than soft.
 fn loud(value: &OuterTone) -> Result<(), Vec<String>> {
-    if value.0.0 == "soft" {
+    if value.as_inner().as_inner() == "soft" {
         Err(vec!["soft is quiet".to_owned()])
     } else {
         Ok(())
@@ -145,17 +145,20 @@ fn loud(value: &OuterTone) -> Result<(), Vec<String>> {
 
 /// The check of [`KeyedPitch`]: a pitch within the twelve tones of the scale.
 fn in_scale(value: &KeyedPitch) -> Result<(), Vec<String>> {
-    if value.0 <= 12 {
+    if *value.as_inner() <= 12 {
         Ok(())
     } else {
-        Err(vec![format!("{} is outside of the scale", value.0)])
+        Err(vec![format!(
+            "{} is outside of the scale",
+            value.as_inner()
+        )])
     }
 }
 
 /// The check of [`KeyedDay`]: a day that is not the one day of rest.
 #[cfg(feature = "chrono")]
 fn workday(value: &KeyedDay) -> Result<(), Vec<String>> {
-    if value.0 == chrono::NaiveDate::from_ymd_opt(2024, 1, 6).unwrap() {
+    if *value.as_inner() == chrono::NaiveDate::from_ymd_opt(2024, 1, 6).unwrap() {
         Err(vec!["2024-01-06 is a day of rest".to_owned()])
     } else {
         Ok(())

@@ -133,8 +133,12 @@ fn serde_refuses_a_number_beyond_the_type_and_a_string_of_digits() {
 
 #[test]
 fn a_brand_and_a_struct_of_slots_write_their_numbers() {
-    assert_eq!(written(&WideId(-3)), "-3", "a brand");
-    assert_eq!(read::<WideId>("-3"), Ok(WideId(-3)), "a brand read");
+    assert_eq!(written(&WideId::new(-3_i32).unwrap()), "-3", "a brand");
+    assert_eq!(
+        read::<WideId>("-3"),
+        Ok(WideId::new(-3_i32).unwrap()),
+        "a brand read"
+    );
     assert_eq!(
         written(&WidePair(4, "y".to_owned())),
         r#"[4,"y"]"#,

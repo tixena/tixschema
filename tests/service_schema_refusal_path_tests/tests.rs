@@ -15,7 +15,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema(minLength = 1, maxLength = 80)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(transparent)]
-pub struct LabelText(pub String);
+pub struct LabelText(String);
 
 /// One shipment, holding labels in each shape a member holds a model in.
 #[model_schema()]

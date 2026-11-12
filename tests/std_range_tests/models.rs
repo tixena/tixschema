@@ -19,7 +19,7 @@ pub struct Milestone {
 #[model_schema(minLength = 2, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Waymark(pub String);
+pub struct Waymark(String);
 
 /// A type that declares a parameter, which a range fills.
 #[model_schema(default_types(Held = String), enable = ["jsonschema"])]
@@ -158,7 +158,7 @@ pub fn milestone(mark: &str) -> Milestone {
 
 /// A waymark of `code`.
 pub fn waymark(code: &str) -> Waymark {
-    Waymark(code.to_owned())
+    Waymark::model_schema_read_unjudged(serde_json::to_value(code.to_owned()).unwrap()).unwrap()
 }
 
 /// The four ranges of a number.

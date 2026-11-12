@@ -184,27 +184,27 @@ pub struct StowedCaddy<Stowed>(pub Option<HashMap<u32, Stowed>>);
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Creel(pub Vec<HashMap<u32, String>>);
+pub struct Creel(Vec<HashMap<u32, String>>);
 
 /// A brand over a list of optional maps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Trug(pub Vec<Option<HashMap<bool, String>>>);
+pub struct Trug(Vec<Option<HashMap<bool, String>>>);
 
 /// A brand with a named member over a list of maps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Hopper {
-    pub rung_lists: Vec<HashMap<Rung, String>>,
+    rung_lists: Vec<HashMap<Rung, String>>,
 }
 
 /// A brand over a list of maps of the parameter.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct StowedCreel<Stowed>(pub Vec<HashMap<Rung, Stowed>>);
+pub struct StowedCreel<Stowed>(Vec<HashMap<Rung, Stowed>>);
 
 /// Each shape in a variant's one slot, two in the slots of a variant of several, and each as a
 /// member of a variant, under no tag attribute.

@@ -147,14 +147,14 @@ pub struct QueuedAsVec(pub Vec<String>, pub u8);
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Crew(pub HashSet<String>);
+pub struct Crew(HashSet<String>);
 
 /// [`Crew`] written with `Vec`.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct CrewAsVec(pub Vec<String>);
+pub struct CrewAsVec(Vec<String>);
 
 /// An alias of a sequence.
 #[model_schema()]
@@ -336,8 +336,8 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
     );
     #[cfg(any(feature = "typescript", feature = "zod"))]
     assert_eq!(
-        read_back(&Crew(texts(&["a"]))),
-        read_back(&CrewAsVec(texts(&["a"])))
+        read_back(&Crew::new(texts::<HashSet<String>>(&["a"])).unwrap()),
+        read_back(&CrewAsVec::new(texts::<Vec<String>>(&["a"])).unwrap())
     );
     let roster: Roster = texts(&["a"]);
     let roster_as_vec: RosterAsVec = texts(&["a"]);

@@ -74,7 +74,7 @@ pub struct Manifest {
 #[model_schema(check = ["upperCase"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A tuple struct of several slots.
 #[model_schema()]
@@ -229,7 +229,7 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn upper_case(value: &Code) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
@@ -306,7 +306,7 @@ fn every_declared_type_is_constructible() {
         item_count: 1,
         item_label: "ab".to_owned(),
         short_note: None,
-        sort_code: Some(Code("AB".to_owned())),
+        sort_code: Some(Code::new("AB".to_owned()).unwrap()),
         unit_weight: 1.0,
     };
     assert_eq!(gauge.item_count, 1);
@@ -401,10 +401,14 @@ fn each_named_function_answers_for_its_value() {
         ["'fragileItemCodes.0': y is outside of itemCodeList"]
     );
     assert_eq!(
-        upper_case(&Code("ab".to_owned())).unwrap_err(),
+        upper_case(
+            &Code::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+                .unwrap()
+        )
+        .unwrap_err(),
         ["a code is upper case"]
     );
-    assert_eq!(upper_case(&Code("AB".to_owned())), Ok(()));
+    assert_eq!(upper_case(&Code::new("AB".to_owned()).unwrap()), Ok(()));
     assert_eq!(
         routed(&Freight::Held).unwrap_err(),
         ["a held freight has no route"]

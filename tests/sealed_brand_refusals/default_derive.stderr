@@ -1,0 +1,5 @@
+error: model_schema: type `LabelText`: a brand is sealed: `#[derive(Default)]` is not allowed on it, because a derive builds a value without `validate()`. A brand derives only Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize
+ --> tests/sealed_brand_refusals/default_derive.rs:7:17
+  |
+7 | #[derive(Debug, Default, Deserialize, Serialize)]
+  |                 ^^^^^^^

@@ -68,7 +68,7 @@ pub struct BalanceResponse {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DocumentId(pub String);
+pub struct DocumentId(String);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -370,7 +370,7 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         id: DocumentId,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Self::version_of(&id.0))
+        ready(Self::version_of(id.as_inner()))
     }
 
     fn rename_document(

@@ -10,12 +10,12 @@ mod written_after_a_valued_key {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent, rename = "Brand")]
-    pub struct FirstBrand(pub String);
+    pub struct FirstBrand(String);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(rename = "Brand", transparent)]
-    pub struct LastBrand(pub String);
+    pub struct LastBrand(String);
 
     /// What is written for `LastBrand`, under the names `FirstBrand` is written with.
     fn under_the_first_name(written: &str) -> String {
@@ -54,8 +54,8 @@ mod written_after_a_valued_key {
     #[test]
     fn serde_writes_both_alike() {
         assert_eq!(
-            serde_json::to_string(&FirstBrand("a".to_owned())).unwrap(),
-            serde_json::to_string(&LastBrand("a".to_owned())).unwrap()
+            serde_json::to_string(&FirstBrand::new("a".to_owned()).unwrap()).unwrap(),
+            serde_json::to_string(&LastBrand::new("a".to_owned()).unwrap()).unwrap()
         );
     }
 

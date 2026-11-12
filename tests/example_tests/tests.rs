@@ -1127,19 +1127,19 @@ fn a_brand_holds_its_examples_inside_its_own_meta() {
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(transparent)]
-    pub struct Token(pub String);
+    pub struct Token(String);
 
     /// A token with no example
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(transparent)]
-    pub struct Ticket(pub String);
+    pub struct Ticket(String);
 
     /// A generic token with no example
     #[model_schema(default_types(Held = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     #[serde(transparent)]
-    pub struct Stub<Held>(pub Held);
+    pub struct Stub<Held>(Held);
 
     assert_eq!(
         Token::schema_examples(),

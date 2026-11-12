@@ -342,7 +342,7 @@ fn a_preprocess_on_the_slot_of_a_brand_is_refused() {
     let (said, located) = the_refusal(
         "",
         "#[derive(Deserialize)] #[serde(transparent)] pub struct Code(#[model_schema_prop(\
-         preprocess = [\"trimmed\"])] pub String);",
+         preprocess = [\"trimmed\"])] String);",
     );
     assert!(
         said.contains(
@@ -357,7 +357,7 @@ fn a_preprocess_on_the_slot_of_a_brand_is_refused() {
     );
     let on_the_type = expansion(
         "preprocess = [\"trimmed\"]",
-        "#[derive(Deserialize)] #[serde(transparent)] pub struct Code(pub String);",
+        "#[derive(Deserialize)] #[serde(transparent)] pub struct Code(String);",
     );
     assert_eq!(refusals(on_the_type.clone()), Vec::new());
     assert!(

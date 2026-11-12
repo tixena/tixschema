@@ -406,27 +406,27 @@ fn test_the_branded_newtype_example_is_declarable_and_shows_what_it_emits() {
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct UserId<IdType>(pub IdType);
+    pub struct UserId<IdType>(IdType);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct CorrelationId(pub String);
+    pub struct CorrelationId(String);
 
     assert_readme_declares_and_shows_whole(
-        "pub struct UserId<IdType>(pub IdType);",
+        "pub struct UserId<IdType>(IdType);",
         &UserId::<String>::ts_definition(),
     );
     assert_readme_declares_and_shows_whole(
-        "pub struct UserId<IdType>(pub IdType);",
+        "pub struct UserId<IdType>(IdType);",
         &UserId::<String>::zod_schema(),
     );
     assert_readme_declares_and_shows_whole(
-        "pub struct CorrelationId(pub String);",
+        "pub struct CorrelationId(String);",
         &CorrelationId::ts_definition(),
     );
     assert_readme_declares_and_shows_whole(
-        "pub struct CorrelationId(pub String);",
+        "pub struct CorrelationId(String);",
         &CorrelationId::zod_schema(),
     );
 }
@@ -437,19 +437,19 @@ fn test_the_branded_newtype_example_shows_what_a_build_without_zod_emits() {
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct UserId<IdType>(pub IdType);
+    pub struct UserId<IdType>(IdType);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct CorrelationId(pub String);
+    pub struct CorrelationId(String);
 
     assert_readme_declares_and_shows_whole(
-        "pub struct UserId<IdType>(pub IdType);",
+        "pub struct UserId<IdType>(IdType);",
         &UserId::<String>::ts_definition(),
     );
     assert_readme_declares_and_shows_whole(
-        "pub struct CorrelationId(pub String);",
+        "pub struct CorrelationId(String);",
         &CorrelationId::ts_definition(),
     );
 }
@@ -468,10 +468,10 @@ fn test_the_documented_branded_newtype_example_is_declarable_and_shows_what_it_e
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DocumentId<IdType>(pub IdType);
+    pub struct DocumentId<IdType>(IdType);
 
     assert_readme_declares_and_shows_whole(
-        "pub struct DocumentId<IdType>(pub IdType);",
+        "pub struct DocumentId<IdType>(IdType);",
         &DocumentId::<String>::zod_schema(),
     );
 }
@@ -560,11 +560,11 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
 #[test]
 fn test_the_constrained_brand_over_a_parameterised_inner_example_is_still_shown() {
     assert!(
-        readme().contains("pub struct TaggedSlug<T>(pub Tagged<T>);"),
+        readme().contains("pub struct TaggedSlug<T>(Tagged<T>);"),
         "the README no longer shows the rejected declaration"
     );
     assert!(
-        readme().contains("pub struct Tagged<T>(pub T);"),
+        readme().contains("pub struct Tagged<T>(T);"),
         "the README no longer shows the inner the rejected declaration is written over"
     );
 }

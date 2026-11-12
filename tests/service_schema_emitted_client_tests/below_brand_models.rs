@@ -49,7 +49,7 @@ pub enum Finish {
 #[model_schema(maxLength = 4)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Rivet(pub String);
+pub struct Rivet(String);
 
 /// A model with a bounded member.
 #[model_schema()]

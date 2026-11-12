@@ -39,31 +39,31 @@ mod by_the_derive {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Serialize)]
     #[serde(transparent)]
-    pub struct CountAlone(pub u32);
+    pub struct CountAlone(u32);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
     pub struct Received {
         #[serde(default)]
-        pub count: u32,
+        count: u32,
         #[serde(skip_serializing)]
-        pub text: String,
+        text: String,
     }
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
-    pub struct TextAlone(pub String);
+    pub struct TextAlone(String);
 
     #[model_schema(enable = ["jsonschema"])]
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Written {
         #[serde(default)]
-        pub count: u32,
+        count: u32,
         #[serde(skip_serializing)]
-        pub text: String,
+        text: String,
     }
 
     /// What is written for a brand of one slot, under the names of the brand `names` maps it to.
@@ -92,37 +92,22 @@ mod by_the_derive {
 
     #[test]
     fn serde_writes_one_field_and_reads_the_other() {
-        let written = Written {
-            count: 7,
-            text: "abc".to_owned(),
-        };
-        let renamed = Written {
-            count: 7,
-            text: "def".to_owned(),
-        };
-        assert_ne!(written.text, renamed.text);
+        let written = Written::new(7_u32).unwrap();
         assert_eq!(
             serde_json::to_value(&written).unwrap(),
             serde_json::json!(7_u32)
         );
         assert_eq!(
-            serde_json::to_value(&renamed).unwrap(),
-            serde_json::to_value(&written).unwrap()
-        );
-        assert_eq!(
-            serde_json::to_value(CountAlone(7)).unwrap(),
+            serde_json::to_value(CountAlone::new(7_u32).unwrap()).unwrap(),
             serde_json::to_value(&written).unwrap()
         );
         assert_eq!(
             serde_json::from_value::<Received>(serde_json::json!("abc")).unwrap(),
-            Received {
-                count: 0,
-                text: "abc".to_owned(),
-            }
+            Received::new("abc").unwrap()
         );
         assert_eq!(
             serde_json::from_value::<TextAlone>(serde_json::json!("abc")).unwrap(),
-            TextAlone("abc".to_owned())
+            TextAlone::new("abc".to_owned()).unwrap()
         );
     }
 
@@ -219,15 +204,9 @@ mod by_the_derive {
     #[cfg(any(feature = "typescript", feature = "zod"))]
     #[test]
     fn each_is_displayed_as_the_field_its_derive_takes() {
-        let written = Written {
-            count: 7,
-            text: "abc".to_owned(),
-        };
+        let written = Written::new(7_u32).unwrap();
         assert_eq!(written.to_string(), "7");
-        let received = Received {
-            count: 7,
-            text: "abc".to_owned(),
-        };
+        let received = Received::new("abc".to_owned()).unwrap();
         assert_eq!(received.to_string(), "abc");
     }
 }

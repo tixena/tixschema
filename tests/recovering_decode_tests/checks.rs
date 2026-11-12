@@ -43,13 +43,13 @@ struct CheckedDepot {
 }
 
 #[model_schema(enable = ["decode_with"], check = ["upperCase"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct CheckedCode(String);
 
 /// A brand held to a bound and to a check.
 #[model_schema(enable = ["decode_with"], minLength = 3, check = ["sealInUpperCase"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct CheckedSeal(String);
 
@@ -194,7 +194,7 @@ fn within_parcel(value: &CheckedParcel) -> Result<(), Vec<String>> {
 }
 
 fn upper_case(value: &CheckedCode) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
@@ -208,7 +208,7 @@ fn with_a_route(value: &CheckedRoute) -> Result<(), Vec<String>> {
 }
 
 fn seal_in_upper_case(value: &CheckedSeal) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a seal is upper case".to_owned()]);
     }
     Ok(())
@@ -521,7 +521,7 @@ fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it
     assert_eq!(
         kept,
         Ok(CheckedSealed {
-            seal: CheckedSeal("ABC".to_owned()),
+            seal: CheckedSeal::new("ABC".to_owned()).unwrap(),
             seals: Vec::new(),
         })
     );

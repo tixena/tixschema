@@ -12,7 +12,7 @@ use tixschema::model_schema;
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct SlotIndex(pub usize);
+pub struct SlotIndex(usize);
 
 /// A type that holds what fills its parameter.
 #[model_schema()]
@@ -60,7 +60,7 @@ fn serde_writes_and_reads_each_usize_of_placed() {
         maybe: Some(usize::MAX),
         paired: (usize::MAX, "y".to_owned()),
         pinned: usize::MAX,
-        slot: SlotIndex(usize::MAX),
+        slot: SlotIndex::new(usize::MAX).unwrap(),
         span: 0..usize::MAX,
     };
     let written = serde_json::to_string(&placed).unwrap();

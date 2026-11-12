@@ -65,7 +65,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
     #[serde(transparent)]
-    pub struct Bay(pub String);
+    pub struct Bay(String);
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -288,7 +288,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     /// A yard with one unlabelled parcel under a key of each kind that is no string.
     fn keyed_yard() -> Yard {
         Yard {
-            by_brand: BTreeMap::from([(Bay("b2".to_owned()), unlabelled())]),
+            by_brand: BTreeMap::from([(Bay::new("b2".to_owned()).unwrap(), unlabelled())]),
             by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
             by_flag: BTreeMap::from([(true, unlabelled())]),
             by_letter: BTreeMap::from([('q', unlabelled())]),

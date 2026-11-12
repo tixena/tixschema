@@ -16,22 +16,22 @@ use crate::{http_rest_client, http_rest_transport};
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DockSlipNumber(pub u32);
+pub struct DockSlipNumber(u32);
 
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DockTicketNumber(pub i64);
+pub struct DockTicketNumber(i64);
 
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DockLit(pub bool);
+pub struct DockLit(bool);
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DockSlipLabel(pub String);
+pub struct DockSlipLabel(String);
 
 #[model_schema()]
 pub type DockSlipAlias = DockSlipNumber;
@@ -89,13 +89,14 @@ impl DockService<()> for DockBackEnd {
         slips: Option<Vec<DockSlipNumber>>,
     ) -> Result<String, DockError> {
         ready(()).await;
-        let numbers: Option<Vec<u32>> = slips.map(|each| each.iter().map(|one| one.0).collect());
+        let numbers: Option<Vec<u32>> =
+            slips.map(|each| each.iter().map(|one| one.into_inner()).collect());
         Ok(format!(
             "{} {:?} {:?} {:?} {numbers:?}",
-            slip.0,
-            ticket.map(|each| each.0),
-            label.map(|each| each.0),
-            since.map(|each| each.0),
+            slip.as_inner(),
+            ticket.map(DockTicketNumber::into_inner),
+            label.map(DockSlipLabel::into_inner),
+            since.map(DockSlipAlias::into_inner),
         ))
     }
 
@@ -109,16 +110,16 @@ impl DockService<()> for DockBackEnd {
         lit: DockLit,
     ) -> Result<(String, DockTicketNumber), DockError> {
         ready(()).await;
-        let next = ticket.map_or(0, |each| each.0.saturating_add(1));
+        let next = ticket.map_or(0, |each| each.into_inner().saturating_add(1));
         Ok((
             format!(
                 "{note} {} {} {} {}",
-                slip.0,
-                label.0,
+                slip.as_inner(),
+                label.as_inner(),
                 ticket.is_some(),
-                lit.0
+                lit.as_inner()
             ),
-            DockTicketNumber(next),
+            DockTicketNumber::new(next).unwrap(),
         ))
     }
 }
@@ -222,11 +223,14 @@ fn a_brand_over_a_number_travels_as_the_text_of_the_number_through_the_client_an
     });
     assert_eq!(
         poll_once(client.find(
-            DockSlipNumber(7),
-            Some(DockTicketNumber(i64::MAX)),
-            Some(DockSlipLabel("007".to_owned())),
-            Some(DockSlipNumber(9)),
-            Some(vec![DockSlipNumber(1), DockSlipNumber(2)]),
+            DockSlipNumber::new(7_u32).unwrap(),
+            Some(DockTicketNumber::new(i64::MAX).unwrap()),
+            Some(DockSlipLabel::new("007".to_owned()).unwrap()),
+            Some(DockSlipNumber::new(9_u32).unwrap()),
+            Some(vec![
+                DockSlipNumber::new(1_u32).unwrap(),
+                DockSlipNumber::new(2_u32).unwrap()
+            ]),
         )),
         Some(Ok(format!(
             "7 Some({}) Some(\"007\") Some(9) Some([1, 2])",
@@ -237,14 +241,14 @@ fn a_brand_over_a_number_travels_as_the_text_of_the_number_through_the_client_an
     assert_eq!(
         poll_once(client.moor(
             "n".to_owned(),
-            DockSlipNumber(7),
-            Some(DockTicketNumber(i64::MIN + 1)),
-            DockSlipLabel("42".to_owned()),
-            DockLit(true),
+            DockSlipNumber::new(7_u32).unwrap(),
+            Some(DockTicketNumber::new(i64::MIN + 1).unwrap()),
+            DockSlipLabel::new("42".to_owned()).unwrap(),
+            DockLit::new(true).unwrap(),
         )),
         Some(Ok((
             "n 7 42 true true".to_owned(),
-            DockTicketNumber(i64::MIN + 2)
+            DockTicketNumber::new(i64::MIN + 2).unwrap()
         ))),
         "moor"
     );

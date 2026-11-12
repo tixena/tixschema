@@ -17,7 +17,7 @@ pub struct PairUnderRustName(pub String, pub u32);
 #[model_schema(name = "RenamedBrand", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(transparent)]
-pub struct BrandUnderRustName(pub String);
+pub struct BrandUnderRustName(String);
 
 #[model_schema(name = "RenamedSlot", enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,7 +90,7 @@ pub struct NamesRenamedItemsDeclaredEarlier {
 #[test]
 fn every_renamed_shape_expands_in_this_feature_combination() {
     let value = ReferencesRenamedItems {
-        brand: BrandUnderRustName("three".to_owned()),
+        brand: BrandUnderRustName::new("three".to_owned()).unwrap(),
         item: ItemUnderRustName {
             count: 1,
             label: "one".to_owned(),
@@ -105,7 +105,7 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
     };
     assert_eq!(value.item.count, 1);
     assert_eq!(value.pair.1, 2);
-    assert_eq!(value.brand.0, "three");
+    assert_eq!(value.brand.as_inner(), "three");
     assert_eq!(value.slot, SlotUnderRustName::Primary);
     assert!(value.tree.children.is_empty());
 }

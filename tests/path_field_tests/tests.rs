@@ -10,7 +10,7 @@ use tixschema::model_schema;
 /// A path whose own length a brand holds, which is where a rule for each path of a list goes.
 #[cfg(feature = "serde")]
 #[model_schema(no_display, minLength = 3)]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 struct BoundedPath(PathBuf);
 
@@ -266,8 +266,11 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
 fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
     let held = ListedPaths {
         listed: vec![
-            BoundedPath(PathBuf::from("/etc")),
-            BoundedPath(PathBuf::from("/a")),
+            BoundedPath::new(PathBuf::from("/etc")).unwrap(),
+            BoundedPath::model_schema_read_unjudged(
+                serde_json::to_value(PathBuf::from("/a")).unwrap(),
+            )
+            .unwrap(),
         ],
     };
     assert_eq!(

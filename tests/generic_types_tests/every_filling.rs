@@ -102,19 +102,19 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     #[model_schema(minLength = 2, default_types(CodeType = String))]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Code<CodeType>(pub CodeType);
+    pub struct Code<CodeType>(CodeType);
 
     /// A brand over a list, counted whatever fills it.
     #[model_schema(no_display, minLength = 1, default_types(T = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct Codes<T>(pub Vec<T>);
+    pub struct Codes<T>(Vec<T>);
 
     /// A brand whose declared default names a lifetime, which a borrowed filling differs in.
     #[model_schema(minLength = 2, default_types(Text = &'static str))]
     #[derive(Clone, Debug, Serialize)]
     #[serde(transparent)]
-    pub struct Stamp<Text>(pub Text);
+    pub struct Stamp<Text>(Text);
 
     #[model_schema(default_types(CodeType = String))]
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -290,43 +290,55 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         let reported = [
             format!(
                 r#"Code<String>("a").validate():                 {:?}"#,
-                Code("a".to_owned()).validate()
+                Code::new("a".to_owned()).map(|_| ())
             ),
             format!(
                 r#"Code<String>("ab").validate():                {:?}"#,
-                Code("ab".to_owned()).validate()
+                Code::new("ab".to_owned()).map(|_| ())
             ),
             format!(
                 "Code<u32>(7).validate():                      {:?}",
-                Code(7_u32).validate()
+                Code::new(7_u32).map(|_| ())
             ),
             format!(
                 r#"Bin<String> {{ code: "a", codes: ["ab", "b"] }}: {:?}"#,
                 Bin {
-                    code: Code("a".to_owned()),
-                    codes: vec![Code("ab".to_owned()), Code("b".to_owned())],
+                    code: Code::model_schema_read_unjudged(
+                        serde_json::to_value("a".to_owned()).unwrap()
+                    )
+                    .unwrap(),
+                    codes: vec![
+                        Code::new("ab".to_owned()).unwrap(),
+                        Code::model_schema_read_unjudged(
+                            serde_json::to_value("b".to_owned()).unwrap()
+                        )
+                        .unwrap()
+                    ],
                 }
                 .validate()
             ),
             format!(
                 "Bin<u32> {{ code: 7, codes: [1] }}:              {:?}",
                 Bin {
-                    code: Code(7_u32),
-                    codes: vec![Code(1_u32)],
+                    code: Code::new(7_u32).unwrap(),
+                    codes: vec![Code::new(1_u32).unwrap()],
                 }
                 .validate()
             ),
             format!(
                 r#"Plain<&str> {{ held: "a" }}:                    {:?}"#,
                 Plain {
-                    held: Code(borrowed.as_str()),
+                    held: Code::new(borrowed.as_str()).unwrap(),
                 }
                 .validate()
             ),
             format!(
                 r#"Plain<String> {{ held: "a" }}:                  {:?}"#,
                 Plain {
-                    held: Code(borrowed),
+                    held: Code::<String>::model_schema_read_unjudged(
+                        serde_json::to_value(borrowed).unwrap()
+                    )
+                    .unwrap(),
                 }
                 .validate()
             ),
@@ -337,8 +349,8 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     /// The brand's `validate()` asks nothing of what fills it: a filling with no `Display` has it.
     #[test]
     fn a_generic_brand_has_validate_at_a_filling_the_read_does_not_take() {
-        assert_eq!(Code(vec![7_u8]).validate(), Ok(()));
-        assert_eq!(Code(Some("a")).validate(), Ok(()));
+        assert_eq!(Code::new(vec![7_u8]).map(|_| ()), Ok(()));
+        assert_eq!(Code::new(Some("a")).map(|_| ()), Ok(()));
     }
 
     /// A filling that differs from the declared default in a lifetime alone is that filling, so
@@ -347,18 +359,27 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     fn a_default_that_names_a_lifetime_is_checked_at_a_shorter_one() {
         let too_short = ["too short: minimum length is 2, got 1"];
         let owned = String::from("a");
-        assert_eq!(Stamp(owned.as_str()).validate().unwrap_err(), too_short);
-        assert_eq!(Stamp("a").validate().unwrap_err(), too_short);
-        assert_eq!(Stamp("ab").validate(), Ok(()));
-        assert_eq!(Stamp(owned).validate(), Ok(()));
+        assert_eq!(
+            Stamp::new(owned.as_str()).map(|_| ()).unwrap_err(),
+            too_short
+        );
+        assert_eq!(Stamp::new("a").map(|_| ()).unwrap_err(), too_short);
+        assert_eq!(Stamp::new("ab").map(|_| ()), Ok(()));
+        assert_eq!(Stamp::new(owned).map(|_| ()), Ok(()));
     }
 
     #[test]
     fn a_generic_holder_keeps_a_generic_brands_bound_in_a_field_a_list_and_an_option() {
         assert_eq!(
             Bin {
-                code: Code("a".to_owned()),
-                codes: vec![Code("b".to_owned())],
+                code: Code::<String>::model_schema_read_unjudged(
+                    serde_json::to_value("a".to_owned()).unwrap()
+                )
+                .unwrap(),
+                codes: vec![
+                    Code::model_schema_read_unjudged(serde_json::to_value("b".to_owned()).unwrap())
+                        .unwrap()
+                ],
             }
             .validate()
             .unwrap_err(),
@@ -369,7 +390,12 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         );
         assert_eq!(
             Rack {
-                spare: Some(Code("c".to_owned())),
+                spare: Some(
+                    Code::<String>::model_schema_read_unjudged(
+                        serde_json::to_value("c".to_owned()).unwrap()
+                    )
+                    .unwrap()
+                ),
             }
             .validate()
             .unwrap_err(),
@@ -377,7 +403,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         );
         assert_eq!(
             Rack {
-                spare: Some(Code(7_u32)),
+                spare: Some(Code::new(7_u32).unwrap()),
             }
             .validate(),
             Ok(())
@@ -388,10 +414,10 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
     #[test]
     fn a_brand_over_a_list_counts_its_items_at_every_filling() {
         let empty = ["too short: minimum length is 1, got 0"];
-        assert_eq!(Codes::<u32>(Vec::new()).validate().unwrap_err(), empty);
-        assert_eq!(Codes::<String>(Vec::new()).validate().unwrap_err(), empty);
-        assert_eq!(Codes(vec![7_u32]).validate(), Ok(()));
-        assert_eq!(Codes(vec![String::new()]).validate(), Ok(()));
+        assert_eq!(Codes::<u32>::new(Vec::new()).unwrap_err(), empty);
+        assert_eq!(Codes::<String>::new(Vec::new()).unwrap_err(), empty);
+        assert_eq!(Codes::new(vec![7_u32]).map(|_| ()), Ok(()));
+        assert_eq!(Codes::new(vec![String::new()]).map(|_| ()), Ok(()));
     }
 
     /// The read is the one the brand had: it refuses its declared default alone.
@@ -405,9 +431,12 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
         );
         assert_eq!(
             serde_json::from_str::<Code<String>>(r#""ab""#).unwrap(),
-            Code("ab".to_owned())
+            Code::new("ab".to_owned()).unwrap()
         );
-        assert_eq!(serde_json::from_str::<Code<u32>>("7").unwrap(), Code(7));
+        assert_eq!(
+            serde_json::from_str::<Code<u32>>("7").unwrap(),
+            Code::new(7_u32).unwrap()
+        );
         assert!(
             serde_json::from_str::<Bin<String>>(r#"{"code":"a","codes":[]}"#)
                 .unwrap_err()
@@ -418,7 +447,7 @@ Plain<String> { held: "a" }:                  Err(["too short: minimum length is
             serde_json::from_str::<Bin<u32>>(r#"{"code":7,"codes":[1]}"#)
                 .unwrap()
                 .code,
-            Code(7)
+            Code::new(7_u32).unwrap()
         );
     }
 

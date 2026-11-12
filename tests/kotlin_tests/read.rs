@@ -85,7 +85,7 @@ pub struct Cellar {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Seal(pub String);
+pub struct Seal(String);
 
 /// An enum under its variants' names, one of which holds a model.
 #[model_schema()]
@@ -248,8 +248,12 @@ fn every_fixture_is_written_as_serde_writes_it() {
         })
     );
     assert_eq!(
-        serde_json::to_value((Seal("s".to_owned()), Load::Boxed(pallet("g")), Load::Empty))
-            .unwrap(),
+        serde_json::to_value((
+            Seal::new("s".to_owned()).unwrap(),
+            Load::Boxed(pallet("g")),
+            Load::Empty
+        ))
+        .unwrap(),
         serde_json::json!(["s", { "Boxed": { "label": "g" } }, "Empty"])
     );
 }

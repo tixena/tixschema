@@ -394,7 +394,7 @@ pub struct Countersigned<Held> {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Sigil(pub ObjectId);
+pub struct Sigil(ObjectId);
 
 /// An alias of an `ObjectId`.
 #[model_schema(enable = ["jsonschema"])]
@@ -527,7 +527,7 @@ pub struct Belated {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct LateSigil(pub ObjectId);
+pub struct LateSigil(ObjectId);
 
 /// [`ROWS`], each held to what its columns state of one another: neither a client nor the schemas
 /// take a payload serde refuses.

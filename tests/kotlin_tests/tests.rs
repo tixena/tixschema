@@ -174,7 +174,7 @@ pub struct HasId {
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct CorrelationId(pub String);
+pub struct CorrelationId(String);
 
 #[model_schema(name = "RenamedWidget")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -367,8 +367,8 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(map_keys.by_number.len(), 1);
 
-    let correlation_id = CorrelationId("abc-123".to_owned());
-    assert_eq!(correlation_id.0, "abc-123");
+    let correlation_id = CorrelationId::new("abc-123".to_owned()).unwrap();
+    assert_eq!(correlation_id.as_inner(), "abc-123");
 
     let widget = Widget {
         label: "a widget".to_owned(),

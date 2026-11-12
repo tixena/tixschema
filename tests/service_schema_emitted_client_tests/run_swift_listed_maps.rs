@@ -494,29 +494,27 @@ fn slot_and_brand_rows() -> Vec<Row> {
         read_row(
             "a brand over a list",
             "Creel",
-            &Creel(vec![numbered(&text())]),
+            &Creel::new(vec![numbered(&text())]).unwrap(),
         ),
         refused_row(
             "a brand over a list under a key that is no number",
             "Creel",
-            &Creel(vec![numbered(&text())]),
+            &Creel::new(vec![numbered(&text())]).unwrap(),
         ),
         read_row(
             "a brand over a list of optionals",
             "Trug",
-            &Trug(vec![Some(flagged(&text())), None]),
+            &Trug::new(vec![Some(flagged(&text())), None]).unwrap(),
         ),
         read_row(
             "a brand with a named member over a list",
             "Hopper",
-            &Hopper {
-                rung_lists: vec![rungs(&text())],
-            },
+            &Hopper::new(vec![rungs(&text())]).unwrap(),
         ),
         read_row(
             "a brand over a list that declares a parameter",
             "StowedCreel<String>",
-            &StowedCreel(vec![rungs(&text())]),
+            &StowedCreel::new(vec![rungs(&text())]).unwrap(),
         ),
     ]
 }

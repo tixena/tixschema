@@ -8,7 +8,7 @@ use tixschema::model_schema;
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Slogans(pub Vec<String>);
+pub struct Slogans(Vec<String>);
 
 #[model_schema()]
 pub type Mottos = Vec<String>;
@@ -27,12 +27,12 @@ pub struct Poster {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct LaterSlogans(pub Vec<String>);
+pub struct LaterSlogans(Vec<String>);
 
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct SomeSlogans(pub Slogans);
+pub struct SomeSlogans(Slogans);
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -44,7 +44,7 @@ pub struct Billboard {
 #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Carried<T>(pub T);
+pub struct Carried<T>(T);
 
 #[cfg(feature = "indexmap")]
 #[model_schema()]
@@ -54,7 +54,7 @@ pub type Ordered = indexmap::IndexSet<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct SomeOrdered(pub Ordered);
+pub struct SomeOrdered(Ordered);
 
 #[cfg(feature = "indexmap")]
 #[model_schema()]

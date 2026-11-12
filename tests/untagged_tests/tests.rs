@@ -21,7 +21,7 @@ const WRAPPED_MEMBERS: [&str; 3] = ["ids", "ordered", "queued"];
 #[model_schema(pattern = r"^\d{4}-\d{2}-\d{2}$", enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DateString(pub String);
+pub struct DateString(String);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1140,7 +1140,7 @@ fn test_flatten_end_to_end_json_schema() {
 
 #[test]
 fn test_serde_round_trip_string_member() {
-    let value = DateValue::S(DateString("2026-06-26".to_owned()));
+    let value = DateValue::S(DateString::new("2026-06-26".to_owned()).unwrap());
     let json = serde_json::to_string(&value).unwrap();
     assert_eq!(json, "\"2026-06-26\"");
     let back: DateValue = serde_json::from_str(&json).unwrap();
@@ -2112,24 +2112,30 @@ fn test_untagged_optional_slot_json_schema() {
 #[test]
 fn test_untagged_slot_runs_its_own_check_and_the_one_its_type_declares() {
     assert_eq!(
-        BrandedArm::Slugged(ArmSlug("A".to_owned()))
-            .validate()
-            .unwrap_err(),
+        BrandedArm::Slugged(
+            ArmSlug::model_schema_read_unjudged(serde_json::to_value("A".to_owned()).unwrap())
+                .unwrap()
+        )
+        .validate()
+        .unwrap_err(),
         vec![
             "too short: minimum length is 3, got 1",
             "does not match pattern '^[a-z]+$'",
         ]
     );
     assert_eq!(
-        BrandedArm::Slugged(ArmSlug("ABC".to_owned()))
+        BrandedArm::Slugged(ArmSlug::new("ABC".to_owned()).unwrap())
             .validate()
             .unwrap_err(),
         vec!["does not match pattern '^[a-z]+$'"]
     );
     assert_eq!(
-        BrandedArm::Slugged(ArmSlug("ab".to_owned()))
-            .validate()
-            .unwrap_err(),
+        BrandedArm::Slugged(
+            ArmSlug::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+                .unwrap()
+        )
+        .validate()
+        .unwrap_err(),
         vec!["too short: minimum length is 3, got 2"]
     );
     for refused in ["ab", "ABC"] {
@@ -2137,7 +2143,7 @@ fn test_untagged_slot_runs_its_own_check_and_the_one_its_type_declares() {
     }
     assert_eq!(
         serde_json::from_value::<BrandedArm>(serde_json::json!("abc")).unwrap(),
-        BrandedArm::Slugged(ArmSlug("abc".to_owned()))
+        BrandedArm::Slugged(ArmSlug::new("abc".to_owned()).unwrap())
     );
 }
 

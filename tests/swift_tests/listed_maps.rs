@@ -241,16 +241,17 @@ fn each_tuple_struct_of_one_slot_and_each_brand_is_written_as_serde_writes_it() 
             read_back(&StowedCaddy(Some(at_one(text())))),
             r#"{"1":"a"}"#,
         ),
-        (read_back(&Creel(vec![at_one(text())])), r#"[{"1":"a"}]"#),
-        (read_back(&Trug(vec![None])), "[null]"),
         (
-            read_back(&Hopper {
-                rung_lists: vec![at_low(text())],
-            }),
+            read_back(&Creel::new(vec![at_one(text())]).unwrap()),
+            r#"[{"1":"a"}]"#,
+        ),
+        (read_back(&Trug::new(vec![None]).unwrap()), "[null]"),
+        (
+            read_back(&Hopper::new(vec![at_low(text())]).unwrap()),
             r#"[{"Low":"a"}]"#,
         ),
         (
-            read_back(&StowedCreel(vec![at_low(text())])),
+            read_back(&StowedCreel::new(vec![at_low(text())]).unwrap()),
             r#"[{"Low":"a"}]"#,
         ),
     ] {

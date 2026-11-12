@@ -293,14 +293,14 @@ enum FlatNullableEither {
 #[cfg(feature = "zod")]
 #[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 struct MemberSlug(String);
 
 #[cfg(feature = "zod")]
 #[cfg(feature = "zod")]
 #[model_schema(enable = ["jsonschema"])]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 struct MemberSwitch(bool);
 

@@ -9,14 +9,14 @@ mod zod_ts_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct CorrelationId(pub String);
+    pub struct CorrelationId(String);
 
     /// A unique document identifier.
     #[cfg(feature = "serde")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DocId(pub String);
+    pub struct DocId(String);
 
     /// Generic document identifier.
     ///
@@ -29,19 +29,19 @@ mod zod_ts_tests {
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DocumentId<IdType>(pub IdType);
+    pub struct DocumentId<IdType>(IdType);
 
     #[cfg(feature = "serde")]
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct RoleId<IdType>(pub IdType);
+    pub struct RoleId<IdType>(IdType);
 
     #[cfg(feature = "serde")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SequenceNum(pub i64);
+    pub struct SequenceNum(i64);
 
     #[cfg(feature = "serde")]
     #[test]
@@ -211,19 +211,19 @@ mod constrained_branded_tests {
     #[model_schema(pattern = "^[0-9a-fA-F]{24}$")]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ObjectIdStr(pub String);
+    pub struct ObjectIdStr(String);
 
     #[model_schema(pattern = "^[a-z0-9_]+$", minLength = 3, maxLength = 50)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SlugId(pub String);
+    pub struct SlugId(String);
 
     /// A pattern simple enough that building a regex for it would fail a consumer denying
     /// `clippy::nursery`.
     #[model_schema(pattern = "^/")]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct MountPath(pub String);
+    pub struct MountPath(String);
 
     #[cfg(feature = "zod")]
     #[test]
@@ -253,13 +253,15 @@ mod constrained_branded_tests {
 
     #[test]
     fn test_constrained_branded_validate_pass() {
-        let valid = SlugId("hello_world".to_owned());
+        let valid = SlugId::new("hello_world".to_owned()).unwrap();
         valid.validate().unwrap();
     }
 
     #[test]
     fn test_constrained_branded_validate_too_short() {
-        let short = SlugId("ab".to_owned());
+        let short =
+            SlugId::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+                .unwrap();
         let result = short.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].contains("too short"));
@@ -267,7 +269,9 @@ mod constrained_branded_tests {
 
     #[test]
     fn test_constrained_branded_validate_too_long() {
-        let long = SlugId("a".repeat(51));
+        let long =
+            SlugId::model_schema_read_unjudged(serde_json::to_value("a".repeat(51)).unwrap())
+                .unwrap();
         let result = long.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].contains("too long"));
@@ -275,7 +279,10 @@ mod constrained_branded_tests {
 
     #[test]
     fn test_constrained_branded_validate_bad_pattern() {
-        let bad = SlugId("UPPERCASE".to_owned());
+        let bad = SlugId::model_schema_read_unjudged(
+            serde_json::to_value("UPPERCASE".to_owned()).unwrap(),
+        )
+        .unwrap();
         let result = bad.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].contains("pattern"));
@@ -297,7 +304,10 @@ mod constrained_branded_tests {
     fn test_constrained_branded_serde_accepts_valid() {
         let result: Result<SlugId, _> = serde_json::from_str("\"hello_world\"");
         assert!(result.is_ok(), "Should accept valid value via serde");
-        assert_eq!(result.unwrap(), SlugId("hello_world".to_owned()));
+        assert_eq!(
+            result.unwrap(),
+            SlugId::new("hello_world".to_owned()).unwrap()
+        );
     }
 
     #[test]
@@ -310,9 +320,9 @@ mod constrained_branded_tests {
             "Should contain pattern. Got:\n{zod}"
         );
 
-        MountPath("/var/log".to_owned()).validate().unwrap();
+        MountPath::new("/var/log".to_owned()).map(|_| ()).unwrap();
 
-        let result = MountPath("var/log".to_owned()).validate();
+        let result = MountPath::new("var/log".to_owned()).map(|_| ());
         assert_eq!(
             result.unwrap_err()[0],
             "does not match pattern '^/'",
@@ -343,10 +353,13 @@ mod constrained_branded_tests {
         #[cfg(feature = "zod")]
         assert!(!zod.contains(".max("), "Should not have max. Got:\n{zod}");
 
-        let valid = ObjectIdStr("507f1f77bcf86cd799439011".to_owned());
+        let valid = ObjectIdStr::new("507f1f77bcf86cd799439011".to_owned()).unwrap();
         valid.validate().unwrap();
 
-        let invalid = ObjectIdStr("not-a-hex-id".to_owned());
+        let invalid = ObjectIdStr::model_schema_read_unjudged(
+            serde_json::to_value("not-a-hex-id".to_owned()).unwrap(),
+        )
+        .unwrap();
         assert!(invalid.validate().is_err());
     }
 }
@@ -359,12 +372,12 @@ mod constrained_objectid_branded_tests {
     #[model_schema(pattern = "^[0-9a-fA-F]{24}$")]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct StrictObjectId(pub ObjectId);
+    pub struct StrictObjectId(ObjectId);
 
     #[test]
     fn test_objectid_branded_validate_pass() {
         let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
-        let valid = StrictObjectId(oid);
+        let valid = StrictObjectId::new(oid).unwrap();
         valid.validate().unwrap();
     }
 
@@ -379,12 +392,12 @@ mod constrained_objectid_branded_tests {
     fn an_objectid_brand_writes_the_oid_object_its_inner_writes() {
         let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
         assert_eq!(
-            serde_json::to_string(&StrictObjectId(oid)).unwrap(),
+            serde_json::to_string(&StrictObjectId::new(oid).unwrap()).unwrap(),
             r#"{"$oid":"507f1f77bcf86cd799439011"}"#
         );
         assert_eq!(
             serde_json::to_string(&oid).unwrap(),
-            serde_json::to_string(&StrictObjectId(oid)).unwrap()
+            serde_json::to_string(&StrictObjectId::new(oid).unwrap()).unwrap()
         );
     }
 }
@@ -409,12 +422,12 @@ mod objectid_branded_surface_tests {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainObjectId(pub ObjectId);
+    pub struct PlainObjectId(ObjectId);
 
     #[model_schema(pattern = "^[0-9a-fA-F]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct HexObjectId(pub ObjectId);
+    pub struct HexObjectId(ObjectId);
 
     /// A brand whose pattern is wider than the hex the type holds — the shape that tells layering
     /// from replacement, since a surface holding only the brand's would admit strings no
@@ -424,12 +437,12 @@ mod objectid_branded_surface_tests {
     #[model_schema(pattern = "^[a-z0-9]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WideObjectId(pub ObjectId);
+    pub struct WideObjectId(ObjectId);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ObjectIdList(pub Vec<ObjectId>);
+    pub struct ObjectIdList(Vec<ObjectId>);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -586,12 +599,12 @@ mod branded_in_struct_all_features_tests {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskId(pub String);
+    pub struct TaskId(String);
 
     #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskTypeId<T>(pub T);
+    pub struct TaskTypeId<T>(T);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -670,12 +683,12 @@ mod branded_in_struct_no_jsonschema_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskIdNJ(pub String);
+    pub struct TaskIdNJ(String);
 
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskTypeIdNJ<T>(pub T);
+    pub struct TaskTypeIdNJ<T>(T);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -719,7 +732,7 @@ mod branded_tuple_map_value_no_jsonschema_tests {
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SpanMap(pub HashMap<String, (u32, u32)>);
+    pub struct SpanMap(HashMap<String, (u32, u32)>);
 
     #[test]
     fn a_tuple_map_value_still_renders_without_the_json_surface() {
@@ -742,12 +755,12 @@ mod branded_in_struct_jsonschema_only_tests {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskIdJO(pub String);
+    pub struct TaskIdJO(String);
 
     #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskTypeIdJO<T>(pub T);
+    pub struct TaskTypeIdJO<T>(T);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -793,12 +806,12 @@ mod branded_in_struct_typescript_only_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskIdTO(pub String);
+    pub struct TaskIdTO(String);
 
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TaskTypeIdTO<T>(pub T);
+    pub struct TaskTypeIdTO<T>(T);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -829,12 +842,12 @@ mod branded_constrained_json_schema_tests {
     #[model_schema(minLength = 24, maxLength = 24, pattern = "^[a-f\\d]{24}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ConstrainedId(pub String);
+    pub struct ConstrainedId(String);
 
     #[model_schema(minLength = 3, maxLength = 50, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ShortId(pub String);
+    pub struct ShortId(String);
 
     /// A generic brand's bare-parameter inner has no type of its own, so its document is the
     /// declared default's — narrowed by the brand's own bounds through the same `allOf` a named
@@ -848,7 +861,7 @@ mod branded_constrained_json_schema_tests {
     )]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct GenericConstrainedId<IdType>(pub IdType);
+    pub struct GenericConstrainedId<IdType>(IdType);
 
     #[test]
     fn test_constrained_generic_branded_json_schema_carries_the_defaults_document() {
@@ -908,7 +921,7 @@ mod constrained_generic_branded_tests {
     )]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct StrictDocumentId<IdType>(pub IdType);
+    pub struct StrictDocumentId<IdType>(IdType);
 
     /// A declared default naming `StrictDocumentId` at exactly its own declared default — the
     /// shape the fold exists for.
@@ -926,7 +939,7 @@ mod constrained_generic_branded_tests {
     #[model_schema(minLength = 10, default_types(WrapType = StrictDocumentId<String>))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct OuterId<WrapType>(pub WrapType);
+    pub struct OuterId<WrapType>(WrapType);
 
     /// A reference filling whose `Display` writes a name, the shape a portable payload uses.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -956,12 +969,12 @@ mod constrained_generic_branded_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainLabel(pub String);
+    pub struct PlainLabel(String);
 
     #[model_schema(minLength = 10, default_types(WrapType = PlainLabel))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LabelId<WrapType>(pub WrapType);
+    pub struct LabelId<WrapType>(WrapType);
 
     #[cfg(feature = "zod")]
     #[test]
@@ -1051,8 +1064,8 @@ mod constrained_generic_branded_tests {
 
     #[test]
     fn another_instantiation_has_the_generated_validate_and_none_of_the_defaults_bounds() {
-        assert_eq!(StrictDocumentId(1_u32).validate(), Ok(()));
-        assert_eq!(StrictDocumentId(0_u32).validate(), Ok(()));
+        assert_eq!(StrictDocumentId::new(1_u32).map(|_| ()), Ok(()));
+        assert_eq!(StrictDocumentId::new(0_u32).map(|_| ()), Ok(()));
     }
 
     #[test]
@@ -1061,21 +1074,23 @@ mod constrained_generic_branded_tests {
             serde_json::from_str(r#"{"type":"by-name","name":"ID Afiliado"}"#).unwrap();
         assert_eq!(
             by_name,
-            StrictDocumentId(StrictReference::ByName {
+            StrictDocumentId::new(StrictReference::ByName {
                 name: "ID Afiliado".to_owned()
             })
+            .unwrap()
         );
 
         let number: StrictDocumentId<u32> = serde_json::from_str("7").unwrap();
-        assert_eq!(number, StrictDocumentId(7));
+        assert_eq!(number, StrictDocumentId::new(7_u32).unwrap());
 
         let held: StrictHolder<StrictReference> =
             serde_json::from_str(r#"{"id":{"type":"by-name","name":"ID Afiliado"}}"#).unwrap();
         assert_eq!(
             held.id,
-            StrictDocumentId(StrictReference::ByName {
+            StrictDocumentId::new(StrictReference::ByName {
                 name: "ID Afiliado".to_owned()
             })
+            .unwrap()
         );
     }
 
@@ -1099,10 +1114,13 @@ mod constrained_generic_branded_tests {
         );
 
         let long: LabelId<PlainLabel> = serde_json::from_str(r#""abcdefghijkl""#).unwrap();
-        assert_eq!(long, LabelId(PlainLabel("abcdefghijkl".to_owned())));
+        assert_eq!(
+            long,
+            LabelId::new(PlainLabel::new("abcdefghijkl".to_owned()).unwrap()).unwrap()
+        );
 
         let not_the_default: LabelId<String> = serde_json::from_str(r#""abc""#).unwrap();
-        assert_eq!(not_the_default, LabelId("abc".to_owned()));
+        assert_eq!(not_the_default, LabelId::new("abc".to_owned()).unwrap());
     }
 }
 
@@ -1119,7 +1137,7 @@ mod constrained_default_names_a_sibling_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct InnerString(pub String);
+    pub struct InnerString(String);
 
     /// A constrained generic brand whose declared default names `InnerString` — non-generic, so
     /// `default_zod_rendering` defers to its bare `$Schema` binding (never `$SchemaDefault`, which
@@ -1127,7 +1145,7 @@ mod constrained_default_names_a_sibling_tests {
     #[model_schema(minLength = 3, default_types(T = InnerString))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct OuterBrand<T>(pub T);
+    pub struct OuterBrand<T>(T);
 
     #[cfg(feature = "zod")]
     #[test]
@@ -1185,12 +1203,12 @@ mod branded_display_tests {
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DisplayId<T>(pub T);
+    pub struct DisplayId<T>(T);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SimpleDisplayId(pub String);
+    pub struct SimpleDisplayId(String);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1209,31 +1227,32 @@ mod branded_display_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrapsDisplay(pub DisplayInner);
+    pub struct WrapsDisplay(DisplayInner);
 
     #[test]
     fn test_generic_branded_display() {
-        let id = DisplayId("abc123".to_owned());
+        let id = DisplayId::new("abc123".to_owned()).unwrap();
         assert_eq!(format!("{id}"), "abc123");
     }
 
     #[test]
     fn test_non_generic_branded_display() {
-        let id = SimpleDisplayId("xyz789".to_owned());
+        let id = SimpleDisplayId::new("xyz789".to_owned()).unwrap();
         assert_eq!(format!("{id}"), "xyz789");
     }
 
     #[test]
     fn test_branded_display_to_string() {
-        let id = DisplayId("hello".to_owned());
+        let id = DisplayId::new("hello".to_owned()).unwrap();
         assert_eq!(id.to_string(), "hello");
     }
 
     #[test]
     fn test_branded_display_over_a_sibling_inner_with_its_own_display_impl() {
-        let wrapped = WrapsDisplay(DisplayInner {
+        let wrapped = WrapsDisplay::new(DisplayInner {
             value: "xyz".to_owned(),
-        });
+        })
+        .unwrap();
         assert_eq!(wrapped.to_string(), "inner:xyz");
     }
 }
@@ -1247,20 +1266,20 @@ mod branded_no_display_tests {
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Tags(pub Vec<String>);
+    pub struct Tags(Vec<String>);
 
     #[model_schema(no_display, default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TagList<T>(pub Vec<T>);
+    pub struct TagList<T>(Vec<T>);
 
     #[test]
     fn test_no_display_brand_wraps_a_container() {
-        let tags = Tags(vec!["a".to_owned(), "b".to_owned()]);
-        assert_eq!(tags.0, vec!["a".to_owned(), "b".to_owned()]);
+        let tags = Tags::new(vec!["a".to_owned(), "b".to_owned()]).unwrap();
+        assert_eq!(tags.as_inner(), &vec!["a".to_owned(), "b".to_owned()]);
 
-        let list = TagList(vec![1_u8, 2_u8]);
-        assert_eq!(list.0, vec![1_u8, 2_u8]);
+        let list = TagList::new(vec![1_u8, 2_u8]).unwrap();
+        assert_eq!(list.as_inner(), &vec![1_u8, 2_u8]);
     }
 
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -1290,37 +1309,37 @@ mod branded_composite_inner_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ByteQuad(pub [u8; 4]);
+    pub struct ByteQuad([u8; 4]);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Grid(pub Vec<Vec<i32>>);
+    pub struct Grid(Vec<Vec<i32>>);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LabelList(pub Vec<String>);
+    pub struct LabelList(Vec<String>);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LabelPair(pub (String, u32));
+    pub struct LabelPair((String, u32));
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LabelSet(pub BTreeSet<String>);
+    pub struct LabelSet(BTreeSet<String>);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SparseLabels(pub Vec<Option<String>>);
+    pub struct SparseLabels(Vec<Option<String>>);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WeightMap(pub HashMap<String, u32>);
+    pub struct WeightMap(HashMap<String, u32>);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1331,7 +1350,7 @@ mod branded_composite_inner_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LabelRow(pub Vec<Label>);
+    pub struct LabelRow(Vec<Label>);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1345,32 +1364,38 @@ mod branded_composite_inner_tests {
     fn a_container_brand_writes_the_container_its_inner_writes() {
         for (rendered, expected) in [
             (
-                serde_json::to_string(&LabelList(vec!["a".to_owned()])).unwrap(),
+                serde_json::to_string(&LabelList::new(vec!["a".to_owned()]).unwrap()).unwrap(),
                 r#"["a"]"#,
             ),
             (
-                serde_json::to_string(&WeightMap(HashMap::from([("a".to_owned(), 1_u32)])))
-                    .unwrap(),
+                serde_json::to_string(
+                    &WeightMap::new(HashMap::from([("a".to_owned(), 1_u32)])).unwrap(),
+                )
+                .unwrap(),
                 r#"{"a":1}"#,
             ),
             (
-                serde_json::to_string(&LabelPair(("a".to_owned(), 1_u32))).unwrap(),
+                serde_json::to_string(&LabelPair::new(("a".to_owned(), 1_u32)).unwrap()).unwrap(),
                 r#"["a",1]"#,
             ),
             (
-                serde_json::to_string(&LabelSet(BTreeSet::from(["a".to_owned()]))).unwrap(),
+                serde_json::to_string(&LabelSet::new(BTreeSet::from(["a".to_owned()])).unwrap())
+                    .unwrap(),
                 r#"["a"]"#,
             ),
             (
-                serde_json::to_string(&ByteQuad([1, 2, 3, 4])).unwrap(),
+                serde_json::to_string(&ByteQuad::new([1, 2, 3, 4]).unwrap()).unwrap(),
                 "[1,2,3,4]",
             ),
             (
-                serde_json::to_string(&SparseLabels(vec![Some("a".to_owned()), None])).unwrap(),
+                serde_json::to_string(
+                    &SparseLabels::new(vec![Some("a".to_owned()), None]).unwrap(),
+                )
+                .unwrap(),
                 r#"["a",null]"#,
             ),
             (
-                serde_json::to_string(&Grid(vec![vec![1_i32, 2_i32]])).unwrap(),
+                serde_json::to_string(&Grid::new(vec![vec![1_i32, 2_i32]]).unwrap()).unwrap(),
                 "[[1,2]]",
             ),
         ] {
@@ -1380,17 +1405,17 @@ mod branded_composite_inner_tests {
 
     #[test]
     fn a_container_brand_reads_back_what_it_wrote() {
-        let labels = LabelList(vec!["a".to_owned()]);
+        let labels = LabelList::new(vec!["a".to_owned()]).unwrap();
         assert_eq!(
             serde_json::from_str::<LabelList>(&serde_json::to_string(&labels).unwrap()).unwrap(),
             labels
         );
-        let weights = WeightMap(HashMap::from([("a".to_owned(), 1_u32)]));
+        let weights = WeightMap::new(HashMap::from([("a".to_owned(), 1_u32)])).unwrap();
         assert_eq!(
             serde_json::from_str::<WeightMap>(&serde_json::to_string(&weights).unwrap()).unwrap(),
             weights
         );
-        let pair = LabelPair(("a".to_owned(), 1_u32));
+        let pair = LabelPair::new(("a".to_owned(), 1_u32)).unwrap();
         assert_eq!(
             serde_json::from_str::<LabelPair>(&serde_json::to_string(&pair).unwrap()).unwrap(),
             pair
@@ -1555,12 +1580,12 @@ mod branded_generic_inner_tests {
     #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct BareTag<T>(pub T);
+    pub struct BareTag<T>(T);
 
     #[model_schema(no_display, default_types(T = u32), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WeightIndex<T>(pub HashMap<String, T>);
+    pub struct WeightIndex<T>(HashMap<String, T>);
 
     #[model_schema(default_types(T = String), enable = ["jsonschema"])]
     pub type BareSeq<T> = T;
@@ -1573,7 +1598,7 @@ mod branded_generic_inner_tests {
 
     #[test]
     fn a_generic_container_brand_writes_the_container_its_inner_writes() {
-        let tags = TagList(vec!["a".to_owned()]);
+        let tags = TagList::new(vec!["a".to_owned()]).unwrap();
         assert_eq!(serde_json::to_string(&tags).unwrap(), r#"["a"]"#);
         assert_eq!(
             serde_json::from_str::<TagList<String>>(&serde_json::to_string(&tags).unwrap())
@@ -1581,7 +1606,7 @@ mod branded_generic_inner_tests {
             tags
         );
 
-        let weights = WeightIndex(HashMap::from([("a".to_owned(), 1_u32)]));
+        let weights = WeightIndex::new(HashMap::from([("a".to_owned(), 1_u32)])).unwrap();
         assert_eq!(serde_json::to_string(&weights).unwrap(), r#"{"a":1}"#);
         assert_eq!(
             serde_json::from_str::<WeightIndex<u32>>(&serde_json::to_string(&weights).unwrap())
@@ -1589,7 +1614,7 @@ mod branded_generic_inner_tests {
             weights
         );
 
-        let bare = BareTag("a".to_owned());
+        let bare = BareTag::new("a".to_owned()).unwrap();
         assert_eq!(serde_json::to_string(&bare).unwrap(), r#""a""#);
         assert_eq!(
             serde_json::from_str::<BareTag<String>>(&serde_json::to_string(&bare).unwrap())
@@ -1772,7 +1797,7 @@ mod branded_example_arity_tests {
     #[model_schema(no_display, default_types(A = String, B = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PairId<A, B>(pub (A, B));
+    pub struct PairId<A, B>((A, B));
 
     /// The one parameter the example is written against.
     ///
@@ -1782,7 +1807,7 @@ mod branded_example_arity_tests {
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SoloId<T>(pub T);
+    pub struct SoloId<T>(T);
 
     #[test]
     fn a_two_parameter_brand_renders_the_example_its_inner_writes() {
@@ -1808,12 +1833,12 @@ mod branded_javascript_flavour_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainMark(pub String);
+    pub struct PlainMark(String);
 
     #[model_schema(default_types(T = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct HeldMark<T>(pub T);
+    pub struct HeldMark<T>(T);
 
     #[test]
     fn a_brand_writes_the_marker_with_no_type_argument() {
@@ -1849,7 +1874,7 @@ mod branded_sibling_inner_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrappedPart(pub Part);
+    pub struct WrappedPart(Part);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1862,7 +1887,7 @@ mod branded_sibling_inner_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrappedTail(pub Tail);
+    pub struct WrappedTail(Tail);
 
     #[cfg(feature = "zod")]
     #[model_schema(enable = ["jsonschema"])]
@@ -1882,7 +1907,7 @@ mod branded_sibling_inner_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ChainRef(pub Chain);
+    pub struct ChainRef(Chain);
 
     // A string-shaped sibling: the one a constrained brand can be written over, the constrained
     // path asserting `Display` on the inner.
@@ -1890,13 +1915,13 @@ mod branded_sibling_inner_tests {
     #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[cfg(feature = "zod")]
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ShortSlug(pub Slug);
+    pub struct ShortSlug(Slug);
 
     // A constrained brand written *before* the string-shaped sibling it names, so nothing is
     // recorded for that name when the brand asks what it publishes.
@@ -1904,19 +1929,19 @@ mod branded_sibling_inner_tests {
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct EarlySlug(pub LateSlug);
+    pub struct EarlySlug(LateSlug);
 
     #[cfg(feature = "zod")]
     #[model_schema(maxLength = 10, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LateSlug(pub String);
+    pub struct LateSlug(String);
 
     // The same forward declaration with the inner's argument fixed where it is written.
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct FixedTag(pub LateTag<String>);
+    pub struct FixedTag(LateTag<String>);
 
     // The same inner reached through a parameter instead, unconstrained — which is what a generic
     // brand publishes a factory for.
@@ -1924,19 +1949,19 @@ mod branded_sibling_inner_tests {
     #[model_schema(default_types(TagType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct OpenTag<TagType>(pub LateTag<TagType>);
+    pub struct OpenTag<TagType>(LateTag<TagType>);
 
     #[model_schema(default_types(TagType = String), enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct LateTag<TagType>(pub TagType);
+    pub struct LateTag<TagType>(TagType);
 
     // `FixedTag`'s mirror: the same two declarations, this one written where the registry has
     // already classified `LateTag`.
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TrailingFixedTag(pub LateTag<String>);
+    pub struct TrailingFixedTag(LateTag<String>);
 
     // A brand over a concrete instantiation of a generic sibling, at each scalar filling the
     // constrained-brand guard's own vocabulary names.
@@ -1944,25 +1969,25 @@ mod branded_sibling_inner_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainNumTag(pub LateTag<u32>);
+    pub struct PlainNumTag(LateTag<u32>);
 
     #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainBoolTag(pub LateTag<bool>);
+    pub struct PlainBoolTag(LateTag<bool>);
 
     #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainStrTag(pub LateTag<String>);
+    pub struct PlainStrTag(LateTag<String>);
 
     #[cfg(feature = "zod")]
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct PlainCount(pub i64);
+    pub struct PlainCount(i64);
 
     // A plain generic struct of named fields, so a brand stands over an object-shaped sibling
     // instantiation.
@@ -1977,7 +2002,7 @@ mod branded_sibling_inner_tests {
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrappedBrand(pub Wrapper<u32>);
+    pub struct WrappedBrand(Wrapper<u32>);
 
     // A generic, tag-discriminated enum, so a brand stands over a union-shaped sibling
     // instantiation.
@@ -1994,7 +2019,7 @@ mod branded_sibling_inner_tests {
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrappedChoice(pub Choice<u32>);
+    pub struct WrappedChoice(Choice<u32>);
 
     #[test]
     fn a_sibling_brand_writes_the_object_its_inner_writes() {
@@ -2003,12 +2028,12 @@ mod branded_sibling_inner_tests {
             b: 1,
         };
         assert_eq!(
-            serde_json::to_string(&WrappedPart(part.clone())).unwrap(),
+            serde_json::to_string(&WrappedPart::new(part.clone()).unwrap()).unwrap(),
             r#"{"a":"a","b":1}"#
         );
         assert_eq!(
             serde_json::to_string(&part).unwrap(),
-            serde_json::to_string(&WrappedPart(part)).unwrap()
+            serde_json::to_string(&WrappedPart::new(part).unwrap()).unwrap()
         );
     }
 
@@ -2128,9 +2153,13 @@ mod branded_sibling_inner_tests {
             ),
             "Got:\n{zod}"
         );
-        FixedTag(LateTag("abcd".to_owned())).validate().unwrap();
+        FixedTag::new(LateTag::new("abcd".to_owned()).unwrap())
+            .map(|_| ())
+            .unwrap();
         assert_eq!(
-            FixedTag(LateTag("ab".to_owned())).validate().unwrap_err(),
+            FixedTag::new(LateTag::new("ab".to_owned()).unwrap())
+                .map(|_| ())
+                .unwrap_err(),
             vec!["too short: minimum length is 3, got 2".to_owned()]
         );
     }
@@ -2152,12 +2181,12 @@ mod branded_sibling_inner_tests {
             TrailingFixedTag::ts_definition(),
             r#"export type TrailingFixedTag = LateTag<string> & $brand<"TrailingFixedTag">;"#
         );
-        TrailingFixedTag(LateTag("abcd".to_owned()))
-            .validate()
+        TrailingFixedTag::new(LateTag::new("abcd".to_owned()).unwrap())
+            .map(|_| ())
             .unwrap();
         assert_eq!(
-            TrailingFixedTag(LateTag("ab".to_owned()))
-                .validate()
+            TrailingFixedTag::new(LateTag::new("ab".to_owned()).unwrap())
+                .map(|_| ())
                 .unwrap_err(),
             vec!["too short: minimum length is 3, got 2".to_owned()]
         );
@@ -2238,32 +2267,32 @@ mod branded_chrono_inner_tests {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Stamp(pub NaiveDate);
+    pub struct Stamp(NaiveDate);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Clock(pub NaiveTime);
+    pub struct Clock(NaiveTime);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Moment(pub NaiveDateTime);
+    pub struct Moment(NaiveDateTime);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Instant(pub DateTime<Utc>);
+    pub struct Instant(DateTime<Utc>);
 
     #[model_schema(minLength = 10, maxLength = 10, pattern = r"^\d{4}-\d{2}-\d{2}$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct IsoStamp(pub NaiveDate);
+    pub struct IsoStamp(NaiveDate);
 
     #[model_schema(maxLength = 8, pattern = "^0", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct EarlyClock(pub NaiveTime);
+    pub struct EarlyClock(NaiveTime);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2278,12 +2307,12 @@ mod branded_chrono_inner_tests {
     fn a_chrono_brand_writes_the_string_its_inner_writes() {
         let date = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
         assert_eq!(
-            serde_json::to_string(&Stamp(date)).unwrap(),
+            serde_json::to_string(&Stamp::new(date).unwrap()).unwrap(),
             r#""2020-01-02""#
         );
         assert_eq!(
             serde_json::to_string(&date).unwrap(),
-            serde_json::to_string(&Stamp(date)).unwrap()
+            serde_json::to_string(&Stamp::new(date).unwrap()).unwrap()
         );
     }
 
@@ -2409,44 +2438,44 @@ mod branded_chrono_zod_tests {
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct UtcStamp(pub DateTime<Utc>);
+    pub struct UtcStamp(DateTime<Utc>);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DayStamp(pub NaiveDate);
+    pub struct DayStamp(NaiveDate);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct MomentStamp(pub NaiveDateTime);
+    pub struct MomentStamp(NaiveDateTime);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ClockStamp(pub NaiveTime);
+    pub struct ClockStamp(NaiveTime);
 
     #[model_schema(minLength = 10, maxLength = 10)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct BoundedDay(pub NaiveDate);
+    pub struct BoundedDay(NaiveDate);
 
     /// A brand over a generic brand already filled at a chrono argument: the value carries two
     /// brand markers over an ISO schema, which no single class could name.
     #[model_schema(default_types(IdType = NaiveDate), no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct DayFamily<IdType>(pub IdType);
+    pub struct DayFamily<IdType>(IdType);
 
     #[model_schema(no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct BoundDay(pub DayFamily<NaiveDate>);
+    pub struct BoundDay(DayFamily<NaiveDate>);
 
     #[model_schema(default_types(IdType = DateTime<Utc>), no_display)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct InstantFamily<IdType>(pub IdType);
+    pub struct InstantFamily<IdType>(IdType);
 
     #[test]
     fn every_chrono_brand_reads_its_annotation_off_its_own_raw_schema() {
@@ -2555,7 +2584,7 @@ mod constrained_path_brand_tests {
     #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct AssetPath(pub PathBuf);
+    pub struct AssetPath(PathBuf);
 
     #[test]
     fn test_a_constrained_path_brand_is_held_to_its_bound_on_the_wire() {
@@ -2576,7 +2605,7 @@ mod constrained_path_brand_tests {
         );
 
         let accepted = serde_json::from_str::<AssetPath>("\"/etc\"").unwrap();
-        assert_eq!(accepted, AssetPath(PathBuf::from("/etc")));
+        assert_eq!(accepted, AssetPath::new(PathBuf::from("/etc")).unwrap());
         assert!(
             accepted.validate().is_ok(),
             "A payload the wire admits must be one validate() admits: {:?}",
@@ -2586,13 +2615,15 @@ mod constrained_path_brand_tests {
 
     #[test]
     fn test_a_constrained_path_brand_is_held_to_its_bound_by_validate() {
-        AssetPath(PathBuf::from("/etc")).validate().unwrap();
+        AssetPath::new(PathBuf::from("/etc")).map(|_| ()).unwrap();
         assert_eq!(
-            AssetPath(PathBuf::from("/a")).validate().unwrap_err(),
+            AssetPath::new(PathBuf::from("/a")).map(|_| ()).unwrap_err(),
             vec!["too short: minimum length is 3, got 2"]
         );
         assert_eq!(
-            AssetPath(PathBuf::from("etcetera")).validate().unwrap_err(),
+            AssetPath::new(PathBuf::from("etcetera"))
+                .map(|_| ())
+                .unwrap_err(),
             vec!["does not match pattern '^/[a-z]+$'"]
         );
     }
@@ -2627,22 +2658,22 @@ mod wrapped_path_brand_tests {
     #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct ArcedPath(pub Arc<Path>);
+    pub struct ArcedPath(Arc<Path>);
 
     #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct BoxedPath(pub Box<Path>);
+    pub struct BoxedPath(Box<Path>);
 
     #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct CowedPath(pub Cow<'static, Path>);
+    pub struct CowedPath(Cow<'static, Path>);
 
     #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct RcedPath(pub Rc<Path>);
+    pub struct RcedPath(Rc<Path>);
 
     /// The wire criterion each spelling is held to: the bound rejects, the accepted payload is the
     /// path it spelled, and what the wire admits `validate()` admits too.
@@ -2699,32 +2730,52 @@ mod wrapped_path_brand_tests {
 
     #[test]
     fn test_every_wrapped_path_brand_is_held_to_its_bound_on_the_wire() {
-        assert_wire_bound::<ArcedPath>("ArcedPath", |brand| &brand.0, ArcedPath::validate);
-        assert_wire_bound::<BoxedPath>("BoxedPath", |brand| &brand.0, BoxedPath::validate);
-        assert_wire_bound::<CowedPath>("CowedPath", |brand| &brand.0, CowedPath::validate);
-        assert_wire_bound::<RcedPath>("RcedPath", |brand| &brand.0, RcedPath::validate);
+        assert_wire_bound::<ArcedPath>("ArcedPath", |brand| brand.as_inner(), ArcedPath::validate);
+        assert_wire_bound::<BoxedPath>("BoxedPath", |brand| brand.as_inner(), BoxedPath::validate);
+        assert_wire_bound::<CowedPath>("CowedPath", |brand| brand.as_inner(), CowedPath::validate);
+        assert_wire_bound::<RcedPath>("RcedPath", |brand| brand.as_inner(), RcedPath::validate);
     }
 
     #[test]
     fn test_every_wrapped_path_brand_is_held_to_its_bound_by_validate() {
         assert_validate_bound(
             "ArcedPath",
-            |raw| ArcedPath(Arc::from(Path::new(raw))),
+            |raw| {
+                ArcedPath::model_schema_read_unjudged(
+                    serde_json::to_value(Arc::<Path>::from(Path::new(raw))).unwrap(),
+                )
+                .unwrap()
+            },
             ArcedPath::validate,
         );
         assert_validate_bound(
             "BoxedPath",
-            |raw| BoxedPath(Box::from(Path::new(raw))),
+            |raw| {
+                BoxedPath::model_schema_read_unjudged(
+                    serde_json::to_value(Box::<Path>::from(Path::new(raw))).unwrap(),
+                )
+                .unwrap()
+            },
             BoxedPath::validate,
         );
         assert_validate_bound(
             "CowedPath",
-            |raw| CowedPath(Cow::Owned(PathBuf::from(raw))),
+            |raw| {
+                CowedPath::model_schema_read_unjudged(
+                    serde_json::to_value(Cow::<Path>::Owned(PathBuf::from(raw))).unwrap(),
+                )
+                .unwrap()
+            },
             CowedPath::validate,
         );
         assert_validate_bound(
             "RcedPath",
-            |raw| RcedPath(Rc::from(Path::new(raw))),
+            |raw| {
+                RcedPath::model_schema_read_unjudged(
+                    serde_json::to_value(Rc::<Path>::from(Path::new(raw))).unwrap(),
+                )
+                .unwrap()
+            },
             RcedPath::validate,
         );
     }
@@ -2772,12 +2823,14 @@ mod constrained_no_display_tests {
     #[model_schema(no_display, pattern = "^[a-z0-9_]+$", minLength = 3)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct QuietSlug(pub String);
+    pub struct QuietSlug(String);
 
     #[test]
     fn test_constrained_no_display_brand_validates() {
-        QuietSlug("hello_world".to_owned()).validate().unwrap();
-        QuietSlug("NO".to_owned()).validate().unwrap_err();
+        QuietSlug::new("hello_world".to_owned())
+            .map(|_| ())
+            .unwrap();
+        QuietSlug::new("NO".to_owned()).map(|_| ()).unwrap_err();
     }
 
     #[test]
@@ -2794,12 +2847,12 @@ mod no_zod_tests {
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct RoleIdNoZod<IdType>(pub IdType);
+    pub struct RoleIdNoZod<IdType>(IdType);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SessionToken(pub String);
+    pub struct SessionToken(String);
 
     #[test]
     fn test_branded_newtype_no_zod_ts_definition() {
@@ -2839,33 +2892,33 @@ mod serde_tests {
     #[model_schema(default_types(IdType = String))]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct GenericId<IdType>(pub IdType);
+    pub struct GenericId<IdType>(IdType);
 
     #[model_schema()]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct WrappedString(pub String);
+    pub struct WrappedString(String);
 
     #[test]
     fn test_branded_newtype_serde_transparent() {
-        let val = WrappedString("abc".to_owned());
+        let val = WrappedString::new("abc".to_owned()).unwrap();
         let json = serde_json::to_string(&val).unwrap();
         assert_eq!(json, "\"abc\"");
 
         let deserialized: WrappedString = serde_json::from_str("\"abc\"").unwrap();
-        assert_eq!(deserialized, WrappedString("abc".to_owned()));
+        assert_eq!(deserialized, WrappedString::new("abc".to_owned()).unwrap());
     }
 
     #[test]
     fn test_branded_newtype_generic_serde_roundtrip() {
-        let original = GenericId::<String>("abc-123".to_owned());
+        let original = GenericId::<String>::new("abc-123".to_owned()).unwrap();
         let json = serde_json::to_string(&original).unwrap();
         assert_eq!(json, "\"abc-123\"", "Should serialize transparently");
 
         let deserialized: GenericId<String> = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, original, "Roundtrip should preserve equality");
 
-        let num_original = GenericId::<u64>(42);
+        let num_original = GenericId::<u64>::new(42).unwrap();
         let num_json = serde_json::to_string(&num_original).unwrap();
         assert_eq!(num_json, "42", "Should serialize u64 transparently");
 
@@ -2888,7 +2941,7 @@ mod branded_scalar_keyword_tests {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TickBrand(pub u32);
+    pub struct TickBrand(u32);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2906,17 +2959,17 @@ mod branded_scalar_keyword_tests {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct RatioBrand(pub f64);
+    pub struct RatioBrand(f64);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SwitchBrand(pub bool);
+    pub struct SwitchBrand(bool);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SlugBrand(pub String);
+    pub struct SlugBrand(String);
 
     #[test]
     fn every_spelling_of_one_integer_publishes_one_keyword() {
@@ -2951,8 +3004,14 @@ mod branded_scalar_keyword_tests {
 
     #[test]
     fn the_keyword_names_what_serde_writes() {
-        assert_eq!(serde_json::to_string(&TickBrand(7)).unwrap(), "7");
-        assert_eq!(serde_json::to_string(&RatioBrand(0.5)).unwrap(), "0.5");
+        assert_eq!(
+            serde_json::to_string(&TickBrand::new(7_u32).unwrap()).unwrap(),
+            "7"
+        );
+        assert_eq!(
+            serde_json::to_string(&RatioBrand::new(0.5_f64).unwrap()).unwrap(),
+            "0.5"
+        );
     }
 }
 
@@ -2967,19 +3026,19 @@ mod untouched_by_the_slot_refusal_tests {
     #[model_schema(pattern = "^[a-z]+$", minLength = 2, maxLength = 8, enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct TypeLevel(pub String);
+    pub struct TypeLevel(String);
 
     #[cfg(feature = "serde")]
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct BareBrand(pub String);
+    pub struct BareBrand(String);
 
     #[model_schema(pattern = "^[a-z]+$", enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
     pub struct NamedTransparent {
-        pub inner: String,
+        inner: String,
     }
 
     #[cfg(feature = "serde")]
@@ -3049,9 +3108,7 @@ mod untouched_by_the_slot_refusal_tests {
             NamedTransparent::ts_definition()
         );
 
-        let held = NamedTransparent {
-            inner: "abc".to_owned(),
-        };
+        let held = NamedTransparent::new("abc".to_owned()).unwrap();
         assert_eq!(
             serde_json::to_value(&held).unwrap(),
             serde_json::json!("abc")

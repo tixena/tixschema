@@ -147,21 +147,21 @@ pub enum UntaggedShift<Stowed> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Daybook(pub HashMap<DateTime<Utc>, String>);
+pub struct Daybook(HashMap<DateTime<Utc>, String>);
 
 /// A brand with a named member over a map keyed by a date.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Chronicle {
-    pub by_at: HashMap<DateTime<Utc>, u8>,
+    by_at: HashMap<DateTime<Utc>, u8>,
 }
 
 /// A brand over a map of the parameter keyed by a date.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Diary<Stowed>(pub HashMap<DateTime<Utc>, Stowed>);
+pub struct Diary<Stowed>(HashMap<DateTime<Utc>, Stowed>);
 
 /// A map keyed by a date in a list, in a list of optionals, in an optional list and in an
 /// optional, and in a list whose maps hold a model.
@@ -193,7 +193,7 @@ pub struct StowedLogbook<Stowed> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Daybooks(pub Vec<HashMap<DateTime<Utc>, String>>);
+pub struct Daybooks(Vec<HashMap<DateTime<Utc>, String>>);
 
 /// A date, held beside a map keyed by dates.
 #[model_schema()]

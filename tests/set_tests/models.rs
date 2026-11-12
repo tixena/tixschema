@@ -163,7 +163,7 @@ pub struct Nesting {
 #[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Lanyard(pub HashSet<String>);
+pub struct Lanyard(HashSet<String>);
 
 /// A set in a slot of a tuple struct.
 #[model_schema(enable = ["jsonschema"])]
@@ -291,7 +291,7 @@ pub fn assert_rust_keeps_one_item() {
     );
     assert_eq!(
         read("brand"),
-        Ok(Lanyard(texts(&["a"]))),
+        Ok(Lanyard::new(texts::<HashSet<String>>(&["a"])).unwrap()),
         "a brand over a set keeps one item of a repeat"
     );
     assert_eq!(

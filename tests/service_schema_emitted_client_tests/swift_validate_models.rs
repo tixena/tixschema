@@ -69,25 +69,25 @@ pub struct Nameplate {
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A brand over a brand, with a bound of its own.
 #[model_schema(maxLength = 4)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SealedCode(pub Code);
+pub struct SealedCode(Code);
 
 /// A brand over a string with no rule of its own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Wick(pub String);
+pub struct Wick(String);
 
 /// A brand over a brand over a string with no rule of its own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Candle(pub Wick);
+pub struct Candle(Wick);
 
 /// A member typed with the brand over a brand, under a length of its own.
 #[model_schema()]
@@ -196,7 +196,7 @@ pub struct Waybill {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct LaterCode(pub String);
+pub struct LaterCode(String);
 
 /// A type with a parameter: a bound, and a check written once over every filling.
 #[model_schema(default_types(CodeType = String), check = ["withACode"])]
@@ -211,7 +211,7 @@ pub struct Crate<CodeType> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slogans(pub Vec<String>);
+pub struct Slogans(Vec<String>);
 
 /// An alias of a list.
 #[model_schema()]
@@ -221,13 +221,13 @@ pub type Mottos = Vec<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeSlogans(pub Slogans);
+pub struct SomeSlogans(Slogans);
 
 /// A generic brand whose declared default is a list.
 #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Carried<T>(pub T);
+pub struct Carried<T>(T);
 
 /// Members typed with the names above, each under a length of its own.
 #[model_schema()]
@@ -252,7 +252,7 @@ pub type Queue = indexmap::IndexSet<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeQueue(pub Queue);
+pub struct SomeQueue(Queue);
 
 /// Members typed with the alias of an `IndexSet` and with a brand over it, each under a length.
 #[cfg(feature = "indexmap")]
@@ -285,7 +285,7 @@ pub struct Archive<IdType> {
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Docket<IdType>(pub IdType);
+pub struct Docket<IdType>(IdType);
 
 /// A tuple struct of several slots: a bound on the first, a model in the second.
 #[model_schema()]

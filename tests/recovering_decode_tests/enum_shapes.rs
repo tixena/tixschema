@@ -457,19 +457,19 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
 fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     let mut calls = 0_u32;
     let written = serde_json::to_value(Review {
-        status: StatusRef(Status::Draft),
+        status: StatusRef::new(Status::Draft).unwrap(),
     })
     .unwrap();
     assert_eq!(written, json!({ "status": "Draft" }));
     assert_eq!(
         read_counting!(Review, review_schema, written, calls),
         Ok(Review {
-            status: StatusRef(Status::Draft),
+            status: StatusRef::new(Status::Draft).unwrap(),
         })
     );
     assert_eq!(
         read_counting!(StatusRef, status_ref_schema, json!("Published"), calls),
-        Ok(StatusRef(Status::Published))
+        Ok(StatusRef::new(Status::Published).unwrap())
     );
     assert_eq!(calls, 0);
 

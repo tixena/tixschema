@@ -156,7 +156,7 @@ JSON Schema has no type parameters. A generic type's document has to be built fr
 #[model_schema(enable = ["jsonschema"], default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DocumentId<IdType>(pub IdType);
+pub struct DocumentId<IdType>(IdType);
 
 #[model_schema(enable = ["jsonschema"], default_types(IdType = String, DateType = f64))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,7 +257,51 @@ The value's type is whatever the instantiation supplies, so nothing here holds i
 
 ### Branded Newtypes
 
-`#[serde(transparent)]` tuple structs with a single public field generate branded TypeScript types. The newtype is invisible in JSON serialization but carries a distinct type identity in TypeScript, preventing accidental mixing of different ID types.
+`#[serde(transparent)]` tuple structs with a single private field generate branded TypeScript types. The newtype is invisible in JSON serialization but carries a distinct type identity in TypeScript, preventing accidental mixing of different ID types.
+
+#### A brand is sealed
+
+A brand's slot is private, and the macro keeps it out of reach of the module that declares the brand as well. The only ways to make a brand are `new` and `TryFrom`, and both hold the value to the brand's rules:
+
+```rust
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+#[model_schema(minLength = 1, maxLength = 80)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(transparent)]
+pub struct LabelText(String);
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Label {
+    pub text: LabelText,
+}
+
+fn main() -> Result<(), Vec<String>> {
+    assert!(LabelText::new("").is_err());
+    let label = Label { text: LabelText::new("Shipping")? };
+    assert_eq!(label.text.as_inner(), "Shipping");
+    assert_eq!(serde_json::to_string(&label).unwrap(), r#"{"text":"Shipping"}"#);
+    assert!(serde_json::from_str::<Label>(r#"{"text":""}"#).is_err());
+    Ok(())
+}
+```
+
+`LabelText::new("")` answers `Err(vec!["too short: minimum length is 1, got 0".to_owned()])`, the messages `validate()` gives for that value. A brand that carries no rule answers `Ok` for every value, and `new` still returns `Result<Self, Vec<String>>`, so adding a rule later changes no caller. `as_inner()` borrows the value and `into_inner()` gives it back and ends the brand. Nothing hands out a `&mut` to it, so `label.0 = ...` and `&mut label.0` do not compile; to change a brand, build another from the changed value.
+
+A brand over a type parameter, over a list, with a skipped marker slot or with a named field is sealed the same way. Where the brand's inner is its own type parameter written alone, such as `DocumentId<IdType>`, it has no `TryFrom`, which core's blanket implementation already covers, and `new` takes the value itself.
+
+Two declarations stop the build, each with a message that says what to write instead:
+
+```text
+error: model_schema: type `LabelText`: a brand is sealed: its slot takes no `pub`. Drop the visibility, build the brand with `LabelText::new` or `TryFrom`, and read it with `as_inner()` or `into_inner()`
+error: model_schema: type `LabelText`: a brand is sealed: `#[derive(Default)]` is not allowed on it, because a derive builds a value without `validate()`. A brand derives only Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize
+```
+
+Remove `#[derive(Default)]` from the brand and write `#[serde(default = "...")]` on the member of the holder that needs a default.
+
+The seal is for immutability, not for security: `model_schema_read_unjudged` and `decode_with_read_unjudged` stay public on every brand, and a holder reads the brands it holds through them. The TypeScript side cannot be sealed: `value as LabelText` is a cast the compiler accepts for any string, so only a read through the brand's Zod schema checks a value there.
 
 A brand exists with tixschema's `serde` feature, and its rules then hold whatever the other features. Without the feature no `#[serde(...)]` attribute is read, so a `#[serde(transparent)]` struct is a struct like any other, and a `pattern`, `minLength` or `maxLength` written on it is refused, naming the feature:
 
@@ -283,13 +327,13 @@ use serde::{Deserialize, Serialize};
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct UserId<IdType>(pub IdType);
+pub struct UserId<IdType>(IdType);
 
 // Non-generic branded newtype
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct CorrelationId(pub String);
+pub struct CorrelationId(String);
 ```
 
 Generated TypeScript (with `zod` feature):
@@ -367,7 +411,7 @@ A brand carries its inner's wire form and adds a name to it, so it describes as 
 ```rust
 // Wrong: `Foreign` carries no `#[model_schema()]`, so no `foreign_schema` module exists
 #[derive(Serialize, Deserialize)]
-pub struct Foreign(pub String);
+pub struct Foreign(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -378,13 +422,13 @@ pub struct HoldsForeign {
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Wrapped(pub Foreign); // E0433: the same module, named in brand position
+pub struct Wrapped(Foreign); // E0433: the same module, named in brand position
 ```
 
 The remedy is either of two:
 
 - **Annotate the inner.** Put `#[model_schema()]` on `Foreign`, and both spellings resolve — the brand describing as whatever `Foreign` describes as.
-- **Brand the wire form instead.** Where the inner is a foreign scalar this crate cannot annotate -- `uuid::Uuid`, `rust_decimal::Decimal` -- brand the type it is written as: `pub struct Wrapped(pub String)`, with `pattern` on the brand where the format is worth pinning.
+- **Brand the wire form instead.** Where the inner is a foreign scalar this crate cannot annotate -- `uuid::Uuid`, `rust_decimal::Decimal` -- brand the type it is written as: `pub struct Wrapped(String)`, with `pattern` on the brand where the format is worth pinning.
 
 #### The `Display` Requirement and `no_display`
 
@@ -392,10 +436,10 @@ Every branded newtype gets a `Display` impl that delegates to its inner value, s
 
 ```text
 error[E0277]: `Vec<String>` doesn't implement `std::fmt::Display`
-  --> src/lib.rs:7:21
+  --> src/lib.rs:7:17
    |
- 7 | pub struct Tags(pub Vec<String>);
-   |                     ^^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `Vec<String>`
+ 7 | pub struct Tags(Vec<String>);
+   |                 ^^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `Vec<String>`
 ```
 
 Pass `no_display` for brands over an inner type that has none — a container, or a `PathBuf`. The brand then gets no `Display` impl and carries no such requirement; its schema and its serde transparency are unchanged. String constraints are a separate matter: `pattern`, `minLength`, and `maxLength` validate through `to_string()` for every inner but a path, so a constrained brand over one of the others needs a `Display` inner whether or not it passes `no_display`. A list is the other exception: it takes the two lengths as the count of its items and needs no `Display`. A map and a tuple cannot carry them at all (see [Branded Newtype Validation Constraints](#branded-newtype-validation-constraints)).
@@ -407,7 +451,7 @@ use serde::{Deserialize, Serialize};
 #[model_schema(no_display)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tags(pub Vec<String>);
+pub struct Tags(Vec<String>);
 ```
 
 A generic brand carries the requirement as a `Display` bound on its `Display` impl, so a non-`Display` type argument (e.g. `DocumentId<Vec<String>>`) is rejected where the brand is displayed rather than where it is declared.
@@ -428,13 +472,13 @@ A bound written here holds every value of the brand. One that should hold a sing
 #[model_schema(no_display, minLength = 1)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct NameConfig(pub Vec<Part>);
+pub struct NameConfig(Vec<Part>);
 
 NameConfig(Vec::new()).validate();
 // Err(["too short: minimum length is 1, got 0"])
 ```
 
-`serde_json::from_str::<NameConfig>("[]")` is refused with the same sentence, the Zod schema is `z.array(Part$Schema).min(1, { error: ... }).brand<"NameConfig">()`, and the JSON Schema writes `"minItems": 1` on the array. The list is written itself or behind `Box`, `Rc`, `Arc` or `Cow`. The brand may declare type parameters (`struct Batch<T>(pub Vec<T>)`), and the count holds whatever fills them. Such a brand passes `no_display`, a list having no `Display` to delegate to. `pattern` on a brand over a list is refused: a list has no text, and a rule for each item goes on the item's own type.
+`serde_json::from_str::<NameConfig>("[]")` is refused with the same sentence, the Zod schema is `z.array(Part$Schema).min(1, { error: ... }).brand<"NameConfig">()`, and the JSON Schema writes `"minItems": 1` on the array. The list is written itself or behind `Box`, `Rc`, `Arc` or `Cow`. The brand may declare type parameters (`struct Batch<T>(Vec<T>)`), and the count holds whatever fills them. Such a brand passes `no_display`, a list having no `Display` to delegate to. `pattern` on a brand over a list is refused: a list has no text, and a rule for each item goes on the item's own type.
 
 **A named inner is judged by what the named type publishes**, not by the fact that it is a name. The brand appends its checks to that type's own schema binding — `Inner$Schema.min(3, ...)` — so a name whose schema is an object, a union, a `z.enum`, a number or `z.unknown()` is rejected exactly as the same shape spelled directly is, and the refusal names both the brand and the inner. A name whose schema is an array is rejected too: only a list written on the brand itself is counted.
 
@@ -447,13 +491,13 @@ That answer comes from the type's own expansion, so it is only available once th
 #[model_schema(minLength = 24, maxLength = 24, pattern = "^[a-f0-9]{24}$", default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DocumentId<IdType>(pub IdType);
+pub struct DocumentId<IdType>(IdType);
 
 // Rejected: `IdType`'s declared default is `u32`, which cannot carry them.
 #[model_schema(minLength = 3, default_types(IdType = u32))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct GenericCount<IdType>(pub IdType);
+pub struct GenericCount<IdType>(IdType);
 ```
 
 ```typescript
@@ -479,7 +523,7 @@ The serde read follows the same rule, being the brand's own read followed by `va
 #[model_schema(minLength = 2, default_types(CodeType = String))]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Code<CodeType>(pub CodeType);
+pub struct Code<CodeType>(CodeType);
 
 #[model_schema(default_types(CodeType = String))]
 #[derive(Serialize, Deserialize)]
@@ -519,12 +563,12 @@ An entry `default_types` leaves out falls back to `String`, the same fallback a 
 #[model_schema(minLength = 3, default_types(T = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TaggedSlug<T>(pub Tagged<T>);
+pub struct TaggedSlug<T>(Tagged<T>);
 
 #[model_schema(default_types(T = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tagged<T>(pub T);
+pub struct Tagged<T>(T);
 ```
 
 Brand a string-typed inner instead. The bound belongs on a declaration that writes a string — a `String` brand of its own, which the parameterised type can then be instantiated with (`Tagged<BoundedSlug>`), so the check sits where every surface can read it.
@@ -537,7 +581,7 @@ A path inner is the one exception, and needs no `Display`: its checks read the p
 #[model_schema(no_display, minLength = 3, pattern = "^/[a-z]+$")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct AssetPath(pub std::path::PathBuf);
+pub struct AssetPath(std::path::PathBuf);
 ```
 
 That holds for every spelling of a path: a transparent wrapper writes nothing of its own on the wire and derefs to what it holds, so `Arc<Path>`, `Box<Path>`, `Cow<'static, Path>`, and `Rc<Path>` are branded and bounded exactly as `PathBuf` is.
@@ -546,7 +590,7 @@ That holds for every spelling of a path: a transparent wrapper writes nothing of
 #[model_schema(pattern = "^[a-z0-9_]+$", minLength = 3, maxLength = 50)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SlugId(pub String);
+pub struct SlugId(String);
 ```
 
 Generated Zod:
@@ -597,13 +641,13 @@ You can use any combination of the three constraints:
 #[model_schema(pattern = "^[0-9a-fA-F]{24}$")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ObjectIdStr(pub String);
+pub struct ObjectIdStr(String);
 
 // Length only -- no pattern
 #[model_schema(minLength = 1, maxLength = 255)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct NonEmptyString(pub String);
+pub struct NonEmptyString(String);
 ```
 
 An inner type whose schema is not a string is rejected at the field:
@@ -613,7 +657,7 @@ An inner type whose schema is not a string is rejected at the field:
 #[model_schema(pattern = "^[0-9]+$")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct BadNum(pub u64);
+pub struct BadNum(u64);
 ```
 
 ```text
@@ -621,7 +665,7 @@ error: model_schema: branded newtype `BadNum` applies string constraints (patter
        maxLength) to a numeric inner type, which cannot carry them: ...
  --> src/lib.rs:4:19
   |
-4 | pub struct BadNum(pub u64);
+4 | pub struct BadNum(u64);
   |                   ^^^
 ```
 
@@ -633,21 +677,21 @@ field:
 #[model_schema(no_display)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tags(pub Vec<String>);
+pub struct Tags(Vec<String>);
 
 // This will NOT compile either: `Tags` has no `Display` for `validate()` to render.
 #[model_schema(pattern = "^[a-z]+$")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TagsBrand(pub Tags);
+pub struct TagsBrand(Tags);
 ```
 
 ```text
 error[E0277]: `Tags` doesn't implement `std::fmt::Display`
-  --> src/lib.rs:12:26
+  --> src/lib.rs:12:22
    |
-12 | pub struct TagsBrand(pub Tags);
-   |                          ^^^^ unsatisfied trait bound
+12 | pub struct TagsBrand(Tags);
+   |                      ^^^^ unsatisfied trait bound
 ```
 
 #### Doc Comments and Examples on Branded Newtypes
@@ -666,7 +710,7 @@ Branded newtypes support doc comments (for Zod `.meta({ description })`) and com
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DocumentId<IdType>(pub IdType);
+pub struct DocumentId<IdType>(IdType);
 ```
 
 Generated Zod:

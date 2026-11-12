@@ -100,7 +100,7 @@ pub struct Tidemarks {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Tideday(pub chrono::NaiveDate);
+pub struct Tideday(chrono::NaiveDate);
 
 /// A map keyed by a brand over a date, which serde reads from the text of each key.
 #[cfg(feature = "chrono")]

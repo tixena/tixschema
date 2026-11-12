@@ -38,7 +38,7 @@ pub type WideKeyedAlias = BTreeMap<i64, bool>;
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct WideKeyedBrand(pub BTreeMap<i64, bool>);
+pub struct WideKeyedBrand(BTreeMap<i64, bool>);
 
 /// A map keyed by an `i64` in each place a member holds one, a key through an alias of an `i64`
 /// and a map through each type above among them, and a map keyed by a `u32`, whose every key a

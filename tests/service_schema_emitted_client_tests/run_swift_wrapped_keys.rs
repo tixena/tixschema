@@ -125,8 +125,8 @@ where
     Held: Clone,
 {
     under(
-        Callsign("alpha".to_owned()),
-        Callsign("bravo".to_owned()),
+        Callsign::new("alpha".to_owned()).unwrap(),
+        Callsign::new("bravo".to_owned()).unwrap(),
         held,
     )
 }
@@ -145,15 +145,19 @@ fn taskforce() -> Taskforce {
         berthing: under(Berthing::Port, Berthing::Starboard, &1),
         callsign: callsigns(&1),
         hailer: under(
-            Callsign("charlie".to_owned()),
-            Callsign("delta".to_owned()),
+            Callsign::new("charlie".to_owned()).unwrap(),
+            Callsign::new("delta".to_owned()).unwrap(),
             &2,
         ),
         greeting: under("echo".to_owned(), "foxtrot".to_owned(), &3),
         hull: hulls(&4),
-        lanyard: under(Lanyard(Burgee(7)), Lanyard(Burgee(8)), &5),
-        burgee: under(Burgee(5), Burgee(6), &6),
-        signal: under(Signal(true), Signal(false), &7),
+        lanyard: under(
+            Lanyard::new(Burgee::new(7_u32).unwrap()).unwrap(),
+            Lanyard::new(Burgee::new(8_u32).unwrap()).unwrap(),
+            &5,
+        ),
+        burgee: under(Burgee::new(5_u32).unwrap(), Burgee::new(6_u32).unwrap(), &6),
+        signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
     }
 }
 
@@ -187,8 +191,16 @@ fn struct_rows() -> Vec<Row> {
             &StowedTaskforce {
                 callsign: callsigns(&text),
                 hull: hulls(&text),
-                burgee: under(Burgee(1), Burgee(2), &text),
-                counts: under(Callsign("a".to_owned()), Callsign("b".to_owned()), &1),
+                burgee: under(
+                    Burgee::new(1_u32).unwrap(),
+                    Burgee::new(2_u32).unwrap(),
+                    &text,
+                ),
+                counts: under(
+                    Callsign::new("a".to_owned()).unwrap(),
+                    Callsign::new("b".to_owned()).unwrap(),
+                    &1,
+                ),
             },
         ),
         read_row(
@@ -212,19 +224,23 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "a brand that derives no Hash",
             "Unhashed",
-            &Unhashed("u".to_owned()),
+            &Unhashed::new("u".to_owned()).unwrap(),
         ),
-        read_row("a brand over a map", "Logroll", &Logroll(callsigns(&1))),
+        read_row(
+            "a brand over a map",
+            "Logroll",
+            &Logroll::new(callsigns(&1)).unwrap(),
+        ),
         read_row(
             "a brand over a map that declares a parameter",
             "Logroster<String>",
-            &Logroster(hulls(&text)),
+            &Logroster::new(hulls(&text)).unwrap(),
         ),
         refused_row(
             "a number brand under a key that is no number",
             "Taskforce",
             &Taskforce {
-                burgee: under(Burgee(1), Burgee(2), &6),
+                burgee: under(Burgee::new(1_u32).unwrap(), Burgee::new(2_u32).unwrap(), &6),
                 ..empty_taskforce()
             },
             "1",
@@ -242,7 +258,7 @@ fn struct_rows() -> Vec<Row> {
             "a brand over a flag under a key that is no flag",
             "Taskforce",
             &Taskforce {
-                signal: under(Signal(true), Signal(false), &7),
+                signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
                 ..empty_taskforce()
             },
             "true",
@@ -251,7 +267,11 @@ fn struct_rows() -> Vec<Row> {
             "an alias of a brand of a number under a key that is no number",
             "Taskforce",
             &Taskforce {
-                lanyard: under(Lanyard(Burgee(1)), Lanyard(Burgee(2)), &7),
+                lanyard: under(
+                    Lanyard::new(Burgee::new(1_u32).unwrap()).unwrap(),
+                    Lanyard::new(Burgee::new(2_u32).unwrap()).unwrap(),
+                    &7,
+                ),
                 ..empty_taskforce()
             },
             "1",
@@ -265,11 +285,19 @@ fn date_rows() -> Vec<Row> {
     let later = DateTime::<Utc>::from_timestamp_millis(1_709_208_000_100).unwrap();
     let held = Regatta {
         aliased: under(first(), later, &1),
-        branded: under(Postmark(first()), Postmark(later), &2),
+        branded: under(
+            Postmark::new(first()).unwrap(),
+            Postmark::new(later).unwrap(),
+            &2,
+        ),
     };
     let stowed = StowedRegatta {
         aliased: under(first(), later, &"t".to_owned()),
-        branded: under(Postmark(first()), Postmark(later), &"u".to_owned()),
+        branded: under(
+            Postmark::new(first()).unwrap(),
+            Postmark::new(later).unwrap(),
+            &"u".to_owned(),
+        ),
     };
     vec![
         read_row("a date brand and a date alias", "Regatta", &held),
@@ -305,9 +333,9 @@ fn refused_by_rule_row() -> Row {
         label: String::new(),
     };
     let held = Dockage {
-        callsign: HashMap::from([(Callsign("alpha".to_owned()), empty.clone())]),
+        callsign: HashMap::from([(Callsign::new("alpha".to_owned()).unwrap(), empty.clone())]),
         hull: HashMap::from([(7, empty.clone())]),
-        signal: HashMap::from([(Signal(true), empty)]),
+        signal: HashMap::from([(Signal::new(true).unwrap(), empty)]),
     };
     let messages = held.validate().unwrap_err();
     assert_eq!(messages.len(), 3, "{messages:?}");

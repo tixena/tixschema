@@ -87,19 +87,19 @@ const ERASED: [(&str, &str, &[&str]); 1] = [(
 #[model_schema(default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Tag<IdType>(pub IdType);
+pub struct Tag<IdType>(IdType);
 
 /// A brand whose declared default is written with arguments.
 #[model_schema(minLength = 3, maxLength = 5, default_types(WrapType = Tag<String>))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Wrapped<WrapType>(pub WrapType);
+pub struct Wrapped<WrapType>(WrapType);
 
 /// A member whose bound is read with no argument written after the declared default.
 #[model_schema(minLength = 3, default_types(WrapType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Plain<WrapType>(pub WrapType);
+pub struct Plain<WrapType>(WrapType);
 
 /// A plain enum a map is keyed by, each member under the name serde writes it.
 #[model_schema()]
@@ -114,7 +114,7 @@ pub enum Slot {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Berth(pub String);
+pub struct Berth(String);
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -224,42 +224,42 @@ fn rows() -> Vec<Row> {
             kotlin: "Wrapped<Tag<String>>(Tag(\"ab\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"ab\")).validate()",
             name: "the default, below the bound",
-            rust: Wrapped(Tag("ab".to_owned())).validate(),
+            rust: Wrapped::new(Tag::new("ab".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<String>>(Tag<String>('abcdef')).validate()",
             kotlin: "Wrapped<Tag<String>>(Tag(\"abcdef\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abcdef\")).validate()",
             name: "the default, past the bound",
-            rust: Wrapped(Tag("abcdef".to_owned())).validate(),
+            rust: Wrapped::new(Tag::new("abcdef".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<String>>(Tag<String>('abc')).validate()",
             kotlin: "Wrapped<Tag<String>>(Tag(\"abc\")).validate()",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abc\")).validate()",
             name: "the default, within the bound",
-            rust: Wrapped(Tag("abc".to_owned())).validate(),
+            rust: Wrapped::new(Tag::new("abc".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<Tag<int>>(Tag<int>(1)).validate()",
             kotlin: "Wrapped<Tag<UInt>>(Tag(1u)).validate()",
             swift: "Wrapped<Tag<UInt32>>(value: Tag<UInt32>(value: 1)).validate()",
             name: "another filling of the class",
-            rust: Wrapped(Tag(1_u32)).validate(),
+            rust: Wrapped::new(Tag::new(1_u32).unwrap()).map(|_| ()),
         },
         Row {
             dart: "Wrapped<String>('a').validate()",
             kotlin: "Wrapped<String>(\"a\").validate()",
             swift: "Wrapped<String>(value: \"a\").validate()",
             name: "another type",
-            rust: Wrapped("a".to_owned()).validate(),
+            rust: Wrapped::new("a".to_owned()).map(|_| ()),
         },
         Row {
             dart: "Plain<String>('ab').validate()",
             kotlin: "Plain<String>(\"ab\").validate()",
             swift: "Plain<String>(value: \"ab\").validate()",
             name: "a default written with no argument",
-            rust: Plain("ab".to_owned()).validate(),
+            rust: Plain::new("ab".to_owned()).map(|_| ()),
         },
         Row {
             dart: "Shelf<Slot>(by_slot: {'north-dock': Item(label: ''), 'south-dock': Item(label: 'a')}).validate()",
@@ -274,7 +274,7 @@ fn rows() -> Vec<Row> {
             swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
             name: "a map keyed by a brand",
             rust: Shelf {
-                by_slot: BTreeMap::from([(Berth("b1".to_owned()), item(""))]),
+                by_slot: BTreeMap::from([(Berth::new("b1".to_owned()).unwrap(), item(""))]),
             }
             .validate(),
         },
@@ -375,7 +375,7 @@ fn kotlin_answers_a_generic_brands_bound_and_a_maps_key_as_rust_does() {
 #[test]
 fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
     let shelf = Shelf {
-        by_slot: BTreeMap::from([(Tag("t".to_owned()), item(""))]),
+        by_slot: BTreeMap::from([(Tag::new("t".to_owned()).unwrap(), item(""))]),
     };
     let messages = shelf.validate().err().unwrap_or_default();
     let source = [
@@ -407,7 +407,7 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
 }
 
 fn held_reads() -> [HeldRead; 6] {
-    let stocked = || BTreeMap::from([(Tag("t".to_owned()), item(""))]);
+    let stocked = || BTreeMap::from([(Tag::new("t".to_owned()).unwrap(), item(""))]);
     [
         (
             "tagged variant",
@@ -454,7 +454,10 @@ fn held_reads() -> [HeldRead; 6] {
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
             Wardrobe {
                 shelf: Shelf {
-                    by_slot: BTreeMap::from([(Tag(Tag("t".to_owned())), item(""))]),
+                    by_slot: BTreeMap::from([(
+                        Tag::new(Tag::new("t".to_owned()).unwrap()).unwrap(),
+                        item(""),
+                    )]),
                 },
             }
             .validate(),

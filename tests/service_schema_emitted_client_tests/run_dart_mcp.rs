@@ -1584,7 +1584,8 @@ fn the_archive_answers_every_operation_of_every_service() {
     };
     let answered = poll_once(DartDocumentService::get_version(&Archive, &(), version())).unwrap();
     assert_eq!(answered.unwrap().version, 5);
-    let lookup = poll_once(Archive.lookup(&(), McpDocumentId("doc-1".to_owned()))).unwrap();
+    let lookup =
+        poll_once(Archive.lookup(&(), McpDocumentId::new("doc-1".to_owned()).unwrap())).unwrap();
     assert_eq!(lookup.unwrap_err(), McpVersionError::NotFound);
     let tagged = poll_once(Archive.get_tagged(&(), "doc-1".to_owned(), None)).unwrap();
     assert_eq!(tagged.unwrap_err(), McpVersionError::NotFound);

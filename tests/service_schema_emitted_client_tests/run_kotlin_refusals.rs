@@ -307,7 +307,7 @@ pub struct QuotedHolding<Held> {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct QuotedId(pub i64);
+pub struct QuotedId(i64);
 
 /// A date under `as_number`, which serde reads as epoch milliseconds.
 #[cfg(feature = "chrono")]

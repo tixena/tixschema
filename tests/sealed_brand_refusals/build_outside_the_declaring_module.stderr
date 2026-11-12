@@ -1,0 +1,13 @@
+error[E0423]: cannot find function, tuple struct or tuple variant `LabelText` in module `declared`
+  --> tests/sealed_brand_refusals/build_outside_the_declaring_module.rs:16:28
+   |
+16 |     let _label = declared::LabelText(String::new());
+   |                            ^^^^^^^^^ not found in `declared`
+   |
+   = note: a type alias named `declared::LabelText` exists in another namespace
+note: tuple struct `crate::declared::label_text_schema::__tixschema_sealed_label_text_schema::LabelText` exists but is inaccessible
+  --> tests/sealed_brand_refusals/build_outside_the_declaring_module.rs:9:5
+   |
+ 9 |     #[model_schema(minLength = 1, maxLength = 80)]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not accessible
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -168,7 +168,7 @@ fn struct_rows() -> Vec<Row> {
             &stowed_chart(),
         ),
         read_row("a tuple struct", "Tock", &Tock(first(), 2)),
-        read_row("a brand", "Chimed", &Chimed(first())),
+        read_row("a brand", "Chimed", &Chimed::new(first()).unwrap()),
     ]
 }
 

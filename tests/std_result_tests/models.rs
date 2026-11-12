@@ -28,7 +28,7 @@ pub struct Unparsed {
 #[model_schema(minLength = 2, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Ballot(pub String);
+pub struct Ballot(String);
 
 /// A type that declares a parameter, which a `Result` fills.
 #[model_schema(default_types(Held = String), enable = ["jsonschema"])]
@@ -71,7 +71,7 @@ pub struct Postbox {
 #[model_schema(no_display, enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Ruling(pub Result<u32, String>);
+pub struct Ruling(Result<u32, String>);
 
 /// A `Result` as the target of an alias.
 #[model_schema(enable = ["jsonschema"])]
@@ -173,7 +173,7 @@ pub fn unparsed(reason: &str) -> Unparsed {
 
 /// A ballot of `code`.
 pub fn ballot(code: &str) -> Ballot {
-    Ballot(code.to_owned())
+    Ballot::model_schema_read_unjudged(serde_json::to_value(code.to_owned()).unwrap()).unwrap()
 }
 
 /// The README's reply, which reads.
@@ -266,7 +266,7 @@ pub fn read_payloads() -> Vec<Payload> {
             "a brand and an alias",
             "Errand",
             &Errand {
-                ruled: Ruling(Err("x".to_owned())),
+                ruled: Ruling::new(Err("x".to_owned())).unwrap(),
                 settled: Ok(5),
             },
         ),

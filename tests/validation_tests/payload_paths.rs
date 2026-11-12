@@ -25,7 +25,7 @@ mod a_message_names_the_path_in_the_payload {
     #[model_schema(minLength = 2)]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct Code(pub String);
+    pub struct Code(String);
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -153,7 +153,7 @@ mod a_message_names_the_path_in_the_payload {
         Package {
             item_label: "A".to_owned(),
             listed_item_codes: vec!["x".to_owned()],
-            parcel_code: Code("ab".to_owned()),
+            parcel_code: Code::new("ab".to_owned()).unwrap(),
         }
     }
 
@@ -169,7 +169,10 @@ mod a_message_names_the_path_in_the_payload {
         Package {
             item_label: String::new(),
             listed_item_codes: Vec::new(),
-            parcel_code: Code("a".to_owned()),
+            parcel_code: Code::model_schema_read_unjudged(
+                serde_json::to_value("a".to_owned()).unwrap(),
+            )
+            .unwrap(),
         }
     }
 
@@ -272,7 +275,11 @@ mod a_message_names_the_path_in_the_payload {
     #[test]
     fn an_item_of_a_list_is_named_by_its_index_at_each_level_of_the_list() {
         let hold = Hold {
-            code_list: vec![Code("ab".to_owned()), Code("a".to_owned())],
+            code_list: vec![
+                Code::new("ab".to_owned()).unwrap(),
+                Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                    .unwrap(),
+            ],
             grid: vec![vec![sound(), unlabelled()], vec![unlabelled()]],
             parcel_pair: [sound(), unlabelled()],
             spare_list: Some(vec![unlabelled()]),
@@ -429,7 +436,10 @@ mod a_message_names_the_path_in_the_payload {
         );
         let held = Manifest {
             first_parcel: Package {
-                parcel_code: Code("a".to_owned()),
+                parcel_code: Code::model_schema_read_unjudged(
+                    serde_json::to_value("a".to_owned()).unwrap(),
+                )
+                .unwrap(),
                 ..sound()
             },
             ..sound_manifest()
@@ -458,7 +468,11 @@ mod a_message_names_the_path_in_the_payload {
                 ..sound_hold()
             },
             Hold {
-                code_list: vec![Code("ab".to_owned()), Code("a".to_owned())],
+                code_list: vec![
+                    Code::new("ab".to_owned()).unwrap(),
+                    Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                        .unwrap(),
+                ],
                 ..sound_hold()
             },
         ]

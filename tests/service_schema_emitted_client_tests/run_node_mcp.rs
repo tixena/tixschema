@@ -1643,7 +1643,7 @@ fn the_stand_in_answers_what_the_driver_implementations_do() {
         answered(DocumentService::lookup(
             &Stand,
             &ctx,
-            DocumentId("doc-1".to_owned())
+            DocumentId::new("doc-1".to_owned()).unwrap()
         ))
         .unwrap()
         .version,
@@ -1653,7 +1653,7 @@ fn the_stand_in_answers_what_the_driver_implementations_do() {
         answered(DocumentService::get_tagged(
             &Stand,
             &ctx,
-            DocumentId("doc-1".to_owned()),
+            DocumentId::new("doc-1".to_owned()).unwrap(),
             None
         ))
         .unwrap()

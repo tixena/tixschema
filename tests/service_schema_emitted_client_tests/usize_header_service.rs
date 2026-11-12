@@ -20,7 +20,7 @@ pub const WRITTEN: [&str; 4] = [
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Quota(pub usize);
+pub struct Quota(usize);
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -48,7 +48,7 @@ impl QuotaClientService<()> for QuotaBackEnd {
         if req.label.is_empty() {
             return Err(QuotaError::Missing);
         }
-        Ok((req, Quota(usize::MAX)))
+        Ok((req, Quota::new(usize::MAX).unwrap()))
     }
 }
 
@@ -58,7 +58,7 @@ fn the_quota_backend_answers_the_widest_value() {
         label: label.to_owned(),
     };
     let answered = super::tests::poll_once(QuotaBackEnd.ask(&(), ask("a"))).unwrap();
-    assert_eq!(answered, Ok((ask("a"), Quota(usize::MAX))));
+    assert_eq!(answered, Ok((ask("a"), Quota::new(usize::MAX).unwrap())));
     let refused = super::tests::poll_once(QuotaBackEnd.ask(&(), ask(""))).unwrap();
     assert_eq!(refused, Err(QuotaError::Missing));
 }

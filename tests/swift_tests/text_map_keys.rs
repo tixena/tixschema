@@ -163,10 +163,16 @@ fn each_struct_and_brand_is_written_as_serde_writes_it() {
         }),
         r#"{"by_stowed":{"7":1}}"#
     );
-    assert_eq!(read_back(&Datebook(days)), r#"{"2024-01-02":"d"}"#);
-    assert_eq!(read_back(&Hourbook { hours }), r#"{"03:04:05.678":"h"}"#);
     assert_eq!(
-        read_back(&Logsheet(moments)),
+        read_back(&Datebook::new(days).unwrap()),
+        r#"{"2024-01-02":"d"}"#
+    );
+    assert_eq!(
+        read_back(&Hourbook::new(hours).unwrap()),
+        r#"{"03:04:05.678":"h"}"#
+    );
+    assert_eq!(
+        read_back(&Logsheet::new(moments).unwrap()),
         r#"{"2024-01-02T03:04:05.678":"d"}"#
     );
 }

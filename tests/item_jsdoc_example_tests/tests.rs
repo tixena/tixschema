@@ -259,7 +259,7 @@ pub enum ExampleOnlySlot {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct ExampleOnlyBrand(pub String);
+pub struct ExampleOnlyBrand(String);
 
 // The undocumented twins of the shapes above.
 #[cfg(feature = "serde")]
@@ -290,7 +290,7 @@ pub enum UndocumentedSlot {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct UndocumentedBrand(pub String);
+pub struct UndocumentedBrand(String);
 
 #[cfg(feature = "serde")]
 #[model_schema()]

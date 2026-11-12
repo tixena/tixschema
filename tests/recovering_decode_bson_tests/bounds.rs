@@ -30,12 +30,12 @@ struct BoundedGroup {
 
 /// A label held to a rule of its own, which is where a rule for each item of a list is written.
 #[model_schema(enable = ["decode_with", "mongodb"], minLength = 2)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct BoundedLabel(String);
 
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct BoundedPath(String);
 
@@ -147,8 +147,8 @@ fn broken_group() -> BoundedGroup {
         human_name: Some(String::new()),
         labels: Vec::new(),
         level: 0,
-        sort_field: Some(BoundedPath(String::new())),
-        source: BoundedPath("Items".to_owned()),
+        sort_field: Some(BoundedPath::new(String::new()).unwrap()),
+        source: BoundedPath::new("Items".to_owned()).unwrap(),
         tags: vec!["ok".to_owned(), "A".to_owned(), "b".to_owned()],
         title: "long".to_owned(),
     }
@@ -496,10 +496,10 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
         read,
         Ok(BoundedGroup {
             human_name: None,
-            labels: vec![BoundedLabel("ok".to_owned())],
+            labels: vec![BoundedLabel::new("ok".to_owned()).unwrap()],
             level: 1,
             sort_field: None,
-            source: BoundedPath("Items".to_owned()),
+            source: BoundedPath::new("Items".to_owned()).unwrap(),
             tags: vec!["A".to_owned()],
             title: "ok".to_owned(),
         })

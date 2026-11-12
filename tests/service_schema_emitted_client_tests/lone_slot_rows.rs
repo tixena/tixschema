@@ -349,9 +349,10 @@ fn laden(label: &str, count: u32) -> Laden {
         monikers_by_name: HashMap::from([("n".to_owned(), Moniker(label.to_owned()))]),
         stacks: vec![bales()],
         stacks_by_name: HashMap::from([("n".to_owned(), bales())]),
-        twined: Twined(Twine {
+        twined: Twined::new(Twine {
             twine: "t".to_owned(),
-        }),
+        })
+        .unwrap(),
     }
 }
 
@@ -380,7 +381,7 @@ fn entry_rows() -> Vec<Row> {
             "Girthed",
             &Girthed {
                 count: 1,
-                girth: Girth(Sling::Slack),
+                girth: Girth::new(Sling::Slack).unwrap(),
             },
         ),
         read_row(
@@ -388,7 +389,7 @@ fn entry_rows() -> Vec<Row> {
             "Girthed",
             &Girthed {
                 count: 1,
-                girth: Girth(Sling::Taut { tension: 2 }),
+                girth: Girth::new(Sling::Taut { tension: 2 }).unwrap(),
             },
         ),
         read_row(
@@ -399,12 +400,12 @@ fn entry_rows() -> Vec<Row> {
         read_row(
             "a brand over a variant that holds members, beside a tag",
             "Rigger",
-            &Rigger::Girth(Girth(Sling::Taut { tension: 2 })),
+            &Rigger::Girth(Girth::new(Sling::Taut { tension: 2 }).unwrap()),
         ),
         read_row(
             "a brand over a unit variant, beside a tag",
             "Rigger",
-            &Rigger::Girth(Girth(Sling::Slack)),
+            &Rigger::Girth(Girth::new(Sling::Slack).unwrap()),
         ),
     ]
 }

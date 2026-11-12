@@ -216,13 +216,13 @@ pub struct Manifest {
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A brand with a bound and a check, which a variant of an untagged enum holds.
 #[model_schema(pattern = "^[A-Z]+$", check = ["unreserved"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Tag(pub String);
+pub struct Tag(String);
 
 /// A type with a parameter, a bound of its own and a brand.
 #[model_schema(default_types(CodeType = String))]
@@ -394,7 +394,7 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn unreserved(value: &Tag) -> Result<(), Vec<String>> {
-    if value.0 == "NONE" {
+    if value.as_inner() == "NONE" {
         return Err(vec!["a tag is not NONE".to_owned()]);
     }
     Ok(())
@@ -450,7 +450,8 @@ fn sealed_crate<CodeType>(codes: Vec<CodeType>, label: &str, seal: &str) -> Crat
     Crate {
         codes,
         label: label.to_owned(),
-        seal: Code(seal.to_owned()),
+        seal: Code::model_schema_read_unjudged(serde_json::to_value(seal.to_owned()).unwrap())
+            .unwrap(),
     }
 }
 
@@ -520,7 +521,8 @@ fn stack() -> Stack<i32> {
 
 fn docket() -> Docket {
     Docket {
-        code: Code("a".to_owned()),
+        code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap(),
     }
 }
 
@@ -661,13 +663,14 @@ fn judged_rows() -> Vec<Sample> {
         sample(
             "Code, one character",
             "Code",
-            &Code("a".to_owned()),
+            &Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                .unwrap(),
             |_| "Code",
         ),
         sample(
             "Code, two characters",
             "Code",
-            &Code("ab".to_owned()),
+            &Code::new("ab".to_owned()).unwrap(),
             |_| "Code",
         ),
         sample(
@@ -794,7 +797,15 @@ fn apart_rows() -> Vec<Sample> {
         pinned(
             "Crate<Code>, a code broken",
             "serializer<Crate<Code>>()",
-            &sealed_crate(vec![Code("ab".to_owned()), Code("a".to_owned())], "A", "ab"),
+            &sealed_crate(
+                vec![
+                    Code::new("ab".to_owned()).unwrap(),
+                    Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                        .unwrap(),
+                ],
+                "A",
+                "ab",
+            ),
             Err(&["too short: minimum length is 2, got 1"]),
         ),
         pinned(
@@ -825,7 +836,13 @@ fn unjudged_rows() -> Vec<Sample> {
             &four_broken(),
             Ok("Manifest"),
         ),
-        pinned("Code", "CodeUnjudged", &Code("a".to_owned()), Ok("Code")),
+        pinned(
+            "Code",
+            "CodeUnjudged",
+            &Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                .unwrap(),
+            Ok("Code"),
+        ),
         pinned(
             "Crate<Int>",
             "CrateUnjudged(serializer<Int>())",
@@ -945,9 +962,9 @@ fn every_fixture_is_written_as_serde_writes_it() {
     );
     assert_eq!(
         serde_json::to_value((
-            sealed_crate(vec![Tag("AB".to_owned())], "A", "ab"),
+            sealed_crate(vec![Tag::new("AB".to_owned()).unwrap()], "A", "ab"),
             Mark::Brief("ab".to_owned()),
-            Mark::Coded(Tag("ABCD".to_owned())),
+            Mark::Coded(Tag::new("ABCD".to_owned()).unwrap()),
             Cargo::Boxed(Pallet {
                 label: "p".to_owned()
             }),
@@ -1007,7 +1024,11 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
         [
             refused_by_rust(&sealed_crate(vec![held(), outside()], "A", "ab")),
             refused_by_rust(&sealed_crate(
-                vec![Code("ab".to_owned()), Code("a".to_owned())],
+                vec![
+                    Code::new("ab".to_owned()).unwrap(),
+                    Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                        .unwrap()
+                ],
                 "A",
                 "ab"
             )),
@@ -1047,7 +1068,7 @@ fn the_unjudged_serializer_of_a_type_reads_what_its_own_refuses() {
 fn a_value_that_keeps_every_rule_is_written_back_as_serde_wrote_it() {
     let kept = manifest(held(), held(), held(), None);
     let sealed = sealed_crate(vec![1_i32], "A", "ab");
-    let coded = Mark::Coded(Tag("ABCD".to_owned()));
+    let coded = Mark::Coded(Tag::new("ABCD".to_owned()).unwrap());
     let body = vec![
         written_back("Route", &route_held()),
         written_back("Manifest", &kept),

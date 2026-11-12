@@ -78,7 +78,7 @@ fn invoice() -> Invoice {
         discount: Rebate::Coupon {
             code: "FALL".to_owned(),
         },
-        id: InvoiceId(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap()),
+        id: InvoiceId::new(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap()).unwrap(),
         items: vec![
             LineItem {
                 article: "A-1".to_owned(),

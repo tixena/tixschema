@@ -28,12 +28,12 @@ mod a_length_counts_characters {
     #[model_schema(maxLength = 1)]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct OneMax(pub String);
+    pub struct OneMax(String);
 
     #[model_schema(minLength = 2)]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct TwoMin(pub String);
+    pub struct TwoMin(String);
 
     #[model_schema(maxLength = 1)]
     #[derive(Debug, Deserialize, Serialize)]
@@ -88,7 +88,7 @@ mod a_length_counts_characters {
 
     #[test]
     fn a_brand_under_a_maximum_counts_characters() {
-        let held = |text: &str| OneMax(text.to_owned()).validate();
+        let held = |text: &str| OneMax::new(text.to_owned()).map(|_| ());
         let refused =
             |count: usize| Err(vec![format!("too long: maximum length is 1, got {count}")]);
         assert_eq!(held(ACCENT), Ok(()));
@@ -99,7 +99,7 @@ mod a_length_counts_characters {
 
     #[test]
     fn a_brand_under_a_minimum_counts_characters() {
-        let held = |text: &str| TwoMin(text.to_owned()).validate();
+        let held = |text: &str| TwoMin::new(text.to_owned()).map(|_| ());
         let refused =
             |count: usize| Err(vec![format!("too short: minimum length is 2, got {count}")]);
         assert_eq!(held(ACCENT), refused(1));

@@ -131,26 +131,30 @@ fn a_type_with_a_parameter_is_read_as_validate_answers_at_each_filling() {
 #[test]
 fn a_brand_is_read_as_validate_answers() {
     for text in ["abc", "ABC"] {
-        let code = Code(text.to_owned());
+        let code = Code::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+            .unwrap();
         read_as_validated(&code, code.validate());
     }
     assert_eq!(
         serde_json::from_str::<Code>(r#""abc""#)
-            .map(|read| read.0)
+            .map(Code::into_inner)
             .map_err(|refused| refused.to_string()),
         Err("a code is upper case".to_owned())
     );
     for codes in [texts(&[]), texts(&["a"])] {
-        let batch = Batch(codes);
+        let batch =
+            Batch::<String>::model_schema_read_unjudged(serde_json::to_value(codes).unwrap())
+                .unwrap();
         read_as_validated(&batch, batch.validate());
     }
     for codes in [Vec::<u32>::new(), vec![7]] {
-        let counted = Batch(codes);
+        let counted =
+            Batch::<u32>::model_schema_read_unjudged(serde_json::to_value(codes).unwrap()).unwrap();
         read_as_validated(&counted, counted.validate());
     }
     assert_eq!(
         serde_json::from_str::<Batch<u32>>("[]")
-            .map(|read| read.0)
+            .map(Batch::into_inner)
             .map_err(|refused| refused.to_string()),
         Err("a batch holds at least one code".to_owned())
     );

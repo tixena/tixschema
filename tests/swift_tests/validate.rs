@@ -53,19 +53,19 @@ pub struct Inspection {
 #[model_schema(minLength = 2, maxLength = 8, pattern = "^[a-z]+$")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Slug(pub String);
+pub struct Slug(String);
 
 /// A brand over a brand, with a bound of its own.
 #[model_schema(maxLength = 6)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SealedSlug(pub Slug);
+pub struct SealedSlug(Slug);
 
 /// A brand with a parameter, whose bound holds the declared default alone.
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Marker<IdType>(pub IdType);
+pub struct Marker<IdType>(IdType);
 
 /// A range on a float and on an unsigned integer no value of which is below zero.
 #[model_schema()]
@@ -100,7 +100,7 @@ pub struct Routing {
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LaterSlug(pub String);
+pub struct LaterSlug(String);
 
 /// An enum with no tag attribute: a slot, a named member, a slot of several and no member.
 #[model_schema()]
@@ -491,7 +491,10 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
         serde_json::to_value(&manifest).unwrap()["parcelsByDock"]["north"]["label"],
         "A"
     );
-    assert_eq!(serde_json::to_value(Marker("ab".to_owned())).unwrap(), "ab");
+    assert_eq!(
+        serde_json::to_value(Marker::new("ab".to_owned()).unwrap()).unwrap(),
+        "ab"
+    );
     assert_eq!(
         serde_json::to_value(Reading {
             age: 4,
@@ -503,9 +506,9 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
     );
     assert_eq!(
         serde_json::to_value(Routing {
-            seen_code: Slug("ab".to_owned()),
+            seen_code: Slug::new("ab".to_owned()).unwrap(),
             titled: Heading::from("ti"),
-            unseen_code: LaterSlug("ab".to_owned()),
+            unseen_code: LaterSlug::new("ab".to_owned()).unwrap(),
         })
         .unwrap(),
         serde_json::json!({ "seenCode": "ab", "titled": "ti", "unseenCode": "ab" })
@@ -539,7 +542,8 @@ fn every_validated_fixture_is_built_and_written_by_serde() {
     );
     assert_eq!(serde_json::to_value(Sealed("s".to_owned())).unwrap(), "s");
     assert_eq!(
-        serde_json::to_value(SealedSlug(Slug("ab".to_owned()))).unwrap(),
+        serde_json::to_value(SealedSlug::new(Slug::new("ab".to_owned()).unwrap()).unwrap())
+            .unwrap(),
         "ab"
     );
 }

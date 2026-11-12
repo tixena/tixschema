@@ -15,27 +15,27 @@ use tixschema::model_schema;
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Hoarded(pub HashMap<u32, String>);
+pub struct Hoarded(HashMap<u32, String>);
 
 /// A brand over a list of maps under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Hoards(pub Vec<HashMap<u32, String>>);
+pub struct Hoards(Vec<HashMap<u32, String>>);
 
 /// A brand with named members over a map under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Coffer {
-    pub by_number: HashMap<u32, String>,
+    by_number: HashMap<u32, String>,
 }
 
 /// A brand over a map of the parameter under a key Swift wraps.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Stash<Stowed>(pub HashMap<u32, Stowed>);
+pub struct Stash<Stowed>(HashMap<u32, Stowed>);
 
 /// A tuple struct whose slot is a map under a key Swift wraps.
 #[model_schema()]
@@ -68,10 +68,13 @@ fn at_one<Held>(held: Held) -> HashMap<u32, Held> {
 #[test]
 fn each_brand_is_written_as_serde_writes_it() {
     let held = || at_one("a".to_owned());
-    assert_eq!(read_back(&Hoarded(held())), r#"{"1":"a"}"#);
-    assert_eq!(read_back(&Hoards(vec![held()])), r#"[{"1":"a"}]"#);
-    assert_eq!(read_back(&Coffer { by_number: held() }), r#"{"1":"a"}"#);
-    assert_eq!(read_back(&Stash(held())), r#"{"1":"a"}"#);
+    assert_eq!(read_back(&Hoarded::new(held()).unwrap()), r#"{"1":"a"}"#);
+    assert_eq!(
+        read_back(&Hoards::new(vec![held()]).unwrap()),
+        r#"[{"1":"a"}]"#
+    );
+    assert_eq!(read_back(&Coffer::new(held()).unwrap()), r#"{"1":"a"}"#);
+    assert_eq!(read_back(&Stash::new(held()).unwrap()), r#"{"1":"a"}"#);
     assert_eq!(read_back(&Trunk(held(), 2)), r#"[{"1":"a"},2]"#);
 }
 
