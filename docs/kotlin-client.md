@@ -159,6 +159,14 @@ the consumer's view; this is what a change has to keep.
   KSerializer<{Type}>`, and called it answers the first, which a holder that cannot name it reads
   by (`read_or_judged`, below). A type with parameters writes both as classes over one serializer
   per parameter.
+- **A brand is sealed.** Its value class has a private constructor, so `LabelText("")` does not
+  compile outside it, and its companion's `of` (`brand_factory`) builds the value and throws what
+  `{Type}Serializer` throws for one that breaks a rule. `{Type}Unjudged` of a brand is `private`
+  at the top level (`read::made_private`), which Kotlin reads as private to the file, and every
+  holder is in the file the emitted types are joined into; the plugin's generated serializer
+  builds through the constructor from inside the class. A brand that keys a map builds its key
+  in `KeyRead`, nested in the brand, and `{Brand}KeySerializer` delegates to it. A tuple struct
+  that also emits a value class keeps its public constructor.
 - **The plugin's serializer is kept where the plugin takes the annotation.** A class, a unit
   struct's `object` and a brand's value class carry `@KeepGeneratedSerializer` (`kept`,
   `kept_inline`), and their `{Type}Unjudged` delegates to `generatedSerializer()` (`generated`).

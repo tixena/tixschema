@@ -1258,8 +1258,10 @@ fn map_serializer(key: &FieldDef, keys: &str, values: &str) -> String {
 
 /// The `object` that reads the brand `export_name` as a map key: its value read from the text
 /// serde writes, then built and checked as the brand's own read builds and checks it. A key
-/// `validate()` refuses is refused at the path of its map, each message under the key's text.
-fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
+/// `validate()` refuses is refused at the path of its map, each message under the key's text. The
+/// object that builds the value is nested in the brand, which only it constructs; the one a holder
+/// names delegates to it.
+fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> (String, String) {
     let (held, read) = match leaf {
         texts::KeyLeaf::Brand(inner) => (
             lookup_kotlin_name(inner).unwrap_or_else(|| inner.clone()),
@@ -1279,13 +1281,17 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> String {
          SerializationException(violations.joinToString(\"; \") {{ \"'\" + key + \"': \" + it }}) \
          }} }}; return read }}"
     );
-    format!(
-        "object {export_name}KeySerializer : KSerializer<{export_name}> {{ private val leaf: \
-         KSerializer<{held}> = {read}; override val descriptor: SerialDescriptor = \
-         leaf.descriptor; override fun serialize(encoder: Encoder, value: {export_name}) = \
-         leaf.serialize(encoder, value.value); {} }}",
+    let nested = format!(
+        "object KeyRead : KSerializer<{export_name}> {{ private val leaf: KSerializer<{held}> = \
+         {read}; override val descriptor: SerialDescriptor = leaf.descriptor; override fun \
+         serialize(encoder: Encoder, value: {export_name}) = leaf.serialize(encoder, \
+         value.value); {} }}",
         read::with_decoded(&deserialize)
-    )
+    );
+    let delegating = format!(
+        "object {export_name}KeySerializer : KSerializer<{export_name}> by {export_name}.KeyRead"
+    );
+    (nested, delegating)
 }
 
 /// The class that reads a map keyed by the brand `export_name` entry by entry: the key from its
@@ -3008,6 +3014,27 @@ fn declared_default(value_field: &FieldDef, args: &KotlinArgs<'_>) -> Option<Fie
     Some(declared)
 }
 
+/// The companion of a sealed brand: `of` builds the value and throws what the brand's read throws
+/// for one that breaks its rules.
+fn brand_factory(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    value_type: &str,
+) -> String {
+    let declared = if type_parameters.is_empty() {
+        String::new()
+    } else {
+        format!("<{}> ", type_parameters.join(", "))
+    };
+    format!(
+        "companion object {{ fun {declared}of(value: {value_type}): {export_name}{generic_params} \
+         {{ val read = {export_name}{generic_params}(value); val violations = read.validate(); \
+         if (violations.isNotEmpty()) throw {}; return read }} }}",
+        read::JUDGED
+    )
+}
+
 /// The Kotlin tokens for a brand, which carries no shape of its own on the wire beyond the one
 /// value it holds: a `@JvmInline value class`, serialized identically to that value alone, whose
 /// `validate()` runs the brand's own bounds and checks, and its two serializers.
@@ -3092,12 +3119,16 @@ fn value_class_tokens(
     } else {
         (None, None)
     };
+    let sealed_read = read::made_private(&unjudged);
+    let built = brand_factory(&export_name, &generic_params, &type_parameters, &value_type);
+    let (key_read, delegating) = keyed.unzip();
+    let nested = key_read.map_or_else(String::new, |object| format!("; {object}"));
     let kotlin_source = format!(
-        "{} value class {export_name}{generic_params}(val value: {value_type}) {{ \
-         {answered}{validated} }} {unjudged} {}{}{}{alias}",
+        "{} value class {export_name}{generic_params} private constructor(val value: \
+         {value_type}) {{ {answered}{validated}; {built}{nested} }} {sealed_read} {}{}{}{alias}",
         read::kept_inline(&export_name),
         rules.judged(&export_name, &generic_params, &type_parameters, false),
-        keyed.map_or_else(String::new, |object| format!(" {object}")),
+        delegating.map_or_else(String::new, |object| format!(" {object}")),
         mapped.map_or_else(String::new, |object| format!(" {object}"))
     );
 

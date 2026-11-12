@@ -382,21 +382,25 @@ fn kotlin_toolchain() -> Option<KotlinToolchain> {
 /// workspace is gone; a compiler named explicitly that cannot be started is a failure instead,
 /// matching [`run_in`]'s rule.
 #[cfg(feature = "kotlin")]
-fn kotlin_compiled(toolchain: &KotlinToolchain, at: &Path, source: &str) -> Option<Output> {
+fn kotlin_compiled(
+    toolchain: &KotlinToolchain,
+    at: &Path,
+    source: &str,
+    beside: Option<&str>,
+) -> Option<Output> {
     fs::write(at.join("main.kt"), source).unwrap();
+    let mut files = vec!["main.kt"];
+    if let Some(other) = beside {
+        fs::write(at.join("beside.kt"), other).unwrap();
+        files.push("beside.kt");
+    }
 
     let named_kotlinc = env::var(KOTLINC_VAR).ok();
     let compile = Command::new(&toolchain.kotlinc)
         .arg(format!("-Xplugin={}", toolchain.plugin.display()))
-        .args([
-            "-Werror",
-            "-cp",
-            &toolchain.classpath,
-            "main.kt",
-            "-include-runtime",
-            "-d",
-            "main.jar",
-        ])
+        .args(["-Werror", "-cp", &toolchain.classpath])
+        .args(&files)
+        .args(["-include-runtime", "-d", "main.jar"])
         .current_dir(at)
         .output();
     let Ok(compiled) = compile else {
@@ -421,9 +425,15 @@ fn kotlin_compiled(toolchain: &KotlinToolchain, at: &Path, source: &str) -> Opti
 /// `None` says no toolchain piece was reachable.
 #[cfg(feature = "kotlin")]
 pub fn refused_by_kotlinc(source: &str) -> Option<String> {
+    refused_by_kotlinc_beside(source, None)
+}
+
+/// [`refused_by_kotlinc`] of `source` compiled with `beside`, a second file of the same package.
+#[cfg(feature = "kotlin")]
+pub fn refused_by_kotlinc_beside(source: &str, beside: Option<&str>) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
     let at = workspace("kotlin");
-    let compiled = kotlin_compiled(&toolchain, &at, source)?;
+    let compiled = kotlin_compiled(&toolchain, &at, source, beside)?;
     fs::remove_dir_all(&at).unwrap();
     assert!(
         !compiled.status.success(),
@@ -444,7 +454,7 @@ pub fn refused_by_kotlinc(source: &str) -> Option<String> {
 pub fn ran_kotlin(source: &str) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
     let at = workspace("kotlin");
-    let compiled = kotlin_compiled(&toolchain, &at, source)?;
+    let compiled = kotlin_compiled(&toolchain, &at, source, None)?;
     assert!(
         compiled.status.success(),
         "`{} main.kt` failed to compile.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
